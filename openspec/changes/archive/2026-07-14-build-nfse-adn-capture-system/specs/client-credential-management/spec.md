@@ -11,6 +11,21 @@ O sistema SHALL permitir que administradores e operadores cadastrem uma raiz de 
 - **WHEN** o usuário tenta associar ao cliente um estabelecimento cuja raiz difere da raiz cadastrada
 - **THEN** o sistema rejeita o cadastro com erro de validação
 
+### Requirement: Preenchimento assistido por consulta pública de CNPJ
+O sistema SHALL permitir que administradores e operadores consultem dados públicos de um CNPJ numérico válido durante o cadastro e SHALL manter o preenchimento manual disponível quando a fonte externa estiver indisponível ou não suportar o formato informado.
+
+#### Scenario: CNPJ numérico localizado
+- **WHEN** o usuário informa um CNPJ numérico válido no cadastro de cliente
+- **THEN** o sistema consulta a fonte pública pelo backend e sugere a razão social sem impedir que o usuário a edite
+
+#### Scenario: Consulta externa indisponível
+- **WHEN** a fonte pública demora, falha ou não localiza o CNPJ
+- **THEN** o sistema informa a falha de modo sanitizado e preserva os dados já digitados para cadastro manual
+
+#### Scenario: CNPJ alfanumérico
+- **WHEN** o usuário informa um CNPJ alfanumérico válido ainda não suportado pela fonte pública
+- **THEN** o sistema não descarta o valor e orienta o preenchimento manual do nome
+
 ### Requirement: Validação do A1 antes da ativação
 O sistema MUST validar senha, validade, identificação do titular, fingerprint e raiz do CNPJ de um PFX antes de ativá-lo para um cliente.
 
