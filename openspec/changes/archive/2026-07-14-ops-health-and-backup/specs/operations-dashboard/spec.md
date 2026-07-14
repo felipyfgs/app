@@ -1,17 +1,4 @@
-# Operations Dashboard
-
-## Purpose
-
-Painel operacional com resumo, saúde por estabelecimento, histórico de sync, auditoria, inbox operacional e métricas sem segredos.
-
-## Requirements
-
-### Requirement: Resumo operacional
-O sistema SHALL apresentar totais do escritório para clientes ativos, estabelecimentos, documentos, trabalhos pendentes, falhas e credenciais próximas do vencimento.
-
-#### Scenario: Abertura do painel
-- **WHEN** um usuário autenticado acessa o painel
-- **THEN** o sistema mostra somente métricas agregadas do escritório ativo com horário da última atualização
+## ADDED Requirements
 
 ### Requirement: Inbox operacional tipada e priorizada
 O sistema SHALL expor uma inbox operacional do escritório ativo com itens derivados de cursores, execuções de sincronização recentes, credenciais A1 em alerta ou vencidas e estado de backup da instância, cada um com tipo em lista permitida, severidade, título, corpo sanitizado, motivos em código, horários e vínculos estáveis ao cliente e ao estabelecimento quando aplicável.
@@ -57,6 +44,8 @@ O sistema SHALL incluir no resumo operacional contagens agregadas da inbox (ao m
 - **WHEN** existem cursores bloqueados e o usuário carrega o resumo
 - **THEN** as contagens da inbox refletem pelo menos esses itens e o horário de geração é atualizado
 
+## MODIFIED Requirements
+
 ### Requirement: Saúde por cliente e estabelecimento
 O sistema SHALL exibir último sucesso, próximo agendamento, NSU atual, estado do cursor e erro sanitizado de cada estabelecimento e SHALL destacar estabelecimentos em estado operacional problemático (`BLOCKED`, `ERROR` ou falha recente) na inbox e no painel, com o motivo operacional e a ação permitida ao perfil do usuário, sem oferecer edição de NSU.
 
@@ -67,27 +56,6 @@ O sistema SHALL exibir último sucesso, próximo agendamento, NSU atual, estado 
 #### Scenario: Estabelecimento com erro recuperável
 - **WHEN** o cursor está `ERROR` com mensagem sanitizada
 - **THEN** a inbox inclui item `cursor_error` e o detalhe de sincronização do cliente permanece acessível por deep-link
-
-### Requirement: Histórico de sincronizações
-O sistema SHALL manter e listar execuções com início, fim, cursor inicial/final, documentos processados, páginas, resultado e número de tentativas.
-
-#### Scenario: Execução sem documentos
-- **WHEN** o ADN não entrega documentos novos
-- **THEN** o histórico registra sucesso sem documentos e o próximo horário previsto
-
-### Requirement: Trilha de auditoria
-O sistema MUST registrar autenticação relevante, alterações de cadastro, gestão de certificados, sincronizações manuais, downloads e exportações com ator, alvo, resultado, horário e IP quando disponível.
-
-#### Scenario: Substituição de certificado
-- **WHEN** um administrador ativa uma nova credencial
-- **THEN** a auditoria registra os identificadores e fingerprints envolvidos sem registrar senha ou material criptográfico
-
-### Requirement: Logs e métricas sem segredos
-O sistema MUST produzir logs estruturados e métricas de fila, atraso, sucesso, falha, 429 e uso de disco sem incluir PFX, senha, chave privada ou XML fiscal.
-
-#### Scenario: Erro remoto do ADN
-- **WHEN** uma chamada falha e a resposta contém dados potencialmente sensíveis
-- **THEN** o log mantém apenas código, identificador de correlação e mensagem sanitizada
 
 ### Requirement: Estado de backup verificável
 O sistema SHALL apresentar a data e o resultado do último backup e do último teste de restauração registrado, bem como indicadores de atraso (mais de 24 horas sem sucesso) e de ausência total de backup, sem expor a chave mestra nem paths de custódia offline.

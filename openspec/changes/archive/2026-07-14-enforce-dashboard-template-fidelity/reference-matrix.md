@@ -96,6 +96,7 @@ tsconfig.json
 | `app/components/customers/AddModal.vue` | `frontend/app/components/clients/ClientCreateModal.vue` | modal, formulário, campos e footer | CNPJ alfanumérico, busca apenas para numérico, erros 422 e API real |
 | `app/pages/customers.vue` | `frontend/app/pages/exports/index.vue` | arquétipo de lista administrativa | dados, estados, filtros, modal e paginação da API de Exportações |
 | `app/pages/customers.vue` | `frontend/app/pages/syncs/index.vue` | arquétipo de lista administrativa | dados, estados, cursor e ações reais de Sincronizações |
+| `app/pages/customers.vue` | `frontend/app/pages/health/index.vue` | arquétipo de lista administrativa (tabela, toolbar, filtros) | inbox operacional (`severity`/`type` na URL), empty state positivo, deep-links; sem restore/bulk |
 | `app/pages/settings.vue` e subpáginas | `frontend/app/pages/clients/[id].vue` e `frontend/app/components/clients/*` | navbar, toolbar, navegação, largura e cards | seções reais, contratos da API e limpeza de segredos A1 |
 | `app/pages/settings.vue` e subpáginas | `frontend/app/pages/admin/index.vue` | arquétipo Settings | gate `ADMIN` + 2FA e operações administrativas reais |
 | `app/pages/inbox.vue` | `frontend/app/pages/notes/index.vue` e `NotesWorkspace.vue` | mestre–detalhe, painel redimensionável e slideover móvel | rota canônica, filtros e cursor da API |

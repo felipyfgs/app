@@ -124,19 +124,88 @@ O sistema SHALL apresentar Notas como catálogo mestre–detalhe, com painel de 
 - **THEN** o sistema carrega o detalhe autorizado e disponibiliza retorno ao catálogo sem revelar existência de nota de outro escritório
 
 ### Requirement: Detalhe de Cliente organizado por seções
-O sistema SHALL apresentar o detalhe de Cliente em página dedicada com subnavegação para `Resumo`, `Estabelecimentos`, `Certificado A1` e `Sincronização`, condicionando seções e ações às permissões.
+O sistema SHALL apresentar o detalhe de Cliente em página dedicada no arquétipo Settings com subnavegação para `Resumo`, `Cadastro`, `Estabelecimentos`, `Certificado A1` e `Sincronização`, condicionando conteúdo e ações às permissões e mantendo a seção reproduzível na URL.
 
 #### Scenario: Abertura do cliente
 - **WHEN** o usuário abre `/clients/:id` sem seção especificada
 - **THEN** o sistema apresenta Resumo com identidade da raiz, estado e progresso do onboarding
+
+#### Scenario: Seção Cadastro
+- **WHEN** o usuário autorizado abre a seção Cadastro
+- **THEN** o sistema apresenta dados da raiz, estado, origem/atualização e contatos em cards Settings, editáveis somente para administrador ou operador
 
 #### Scenario: Operador sem gestão de credencial
 - **WHEN** um usuário que não pode gerir A1 visualiza o onboarding
 - **THEN** a etapa informa que o certificado é gerenciado por `ADMIN` sem expor formulário sensível nem representar falta de permissão como falha operacional
 
 #### Scenario: Seção reproduzível
-- **WHEN** o usuário abre uma URL válida da seção Estabelecimentos, Certificado A1 ou Sincronização
+- **WHEN** o usuário abre uma URL válida da seção Cadastro, Estabelecimentos, Certificado A1 ou Sincronização
 - **THEN** a toolbar destaca a seção e o corpo renderiza somente o conteúdo correspondente
+
+### Requirement: Criação assistida permanece focada e transacional
+O sistema SHALL apresentar a criação de Cliente em modal derivado de `customers/AddModal.vue`, solicitar o CNPJ completo e oferecer os dados básicos do onboarding, contato responsável, notas, A1 autorizado e campos adicionais sem reproduzir a ficha cadastral pública completa.
+
+#### Scenario: Prévia encontrada
+- **WHEN** a consulta de CNPJ retorna dados sanitizados
+- **THEN** o modal preenche razão social e nome fantasia editáveis e não exige redigitar o CNPJ
+
+#### Scenario: Consulta falha sem perder trabalho
+- **WHEN** a consulta externa falha depois de o usuário preencher campos
+- **THEN** o modal mantém valores não sensíveis, informa o fallback e permite continuar manualmente
+
+#### Scenario: CNPJ já pertence a cliente do escritório
+- **WHEN** a API informa que a raiz já está cadastrada no escritório ativo
+- **THEN** o modal não cria duplicata e oferece abrir a seção Estabelecimentos do Cliente existente
+
+#### Scenario: Criação concluída
+- **WHEN** a API cria Cliente e primeiro Estabelecimento
+- **THEN** a interface fecha e limpa o modal, informa sucesso e navega ao detalhe do novo Cliente
+
+#### Scenario: Contato responsável opcional
+- **WHEN** o usuário informa nome e ao menos um canal do contato interno responsável
+- **THEN** a interface envia o contato separado do e-mail e telefone públicos e a API o cria na mesma transação do cadastro inicial
+
+#### Scenario: Certificado opcional autorizado
+- **WHEN** um administrador com 2FA informa PFX e senha válidos no modal
+- **THEN** a interface cria o cadastro básico, ativa o A1 pelo endpoint protegido, limpa o material sensível e navega ao Cliente sem expor senha ou PFX
+
+#### Scenario: Campo adicional secreto
+- **WHEN** um administrador autorizado adiciona um campo do tipo Segredo
+- **THEN** a interface envia o valor somente na gravação e, depois, apresenta apenas rótulo e estado configurado sem recuperar o conteúdo
+
+### Requirement: Manutenção cadastral completa segue o arquétipo Settings
+O sistema SHALL oferecer formulários completos de Cliente, contatos, campos adicionais e estabelecimentos usando `UForm`, cards e overlays reconhecíveis do template fixado, sem transformar overlays focados em fichas públicas extensas.
+
+#### Scenario: Edição da raiz
+- **WHEN** um administrador ou operador edita dados na seção Cadastro
+- **THEN** os campos são agrupados semanticamente, erros locais e 422 aparecem junto ao campo e valores válidos permanecem após falha
+
+#### Scenario: Edição de estabelecimento
+- **WHEN** um administrador ou operador abre um estabelecimento
+- **THEN** a interface apresenta identidade imutável, dados cadastrais, endereço, contato público e habilitação de captura sem permitir alterar raiz ou NSU
+
+#### Scenario: Viewer consulta cadastro
+- **WHEN** um `VIEWER` abre Cadastro ou Estabelecimentos
+- **THEN** a mesma informação autorizada aparece em modo somente leitura sem botões de salvar, criar, inativar ou habilitar captura
+
+#### Scenario: Contato interno e contato público
+- **WHEN** contatos aparecem no detalhe
+- **THEN** a interface distingue visual e semanticamente contatos internos editáveis de telefone/e-mail públicos do estabelecimento
+
+### Requirement: Proveniência e elegibilidade são visíveis sem depender de cor
+O sistema SHALL apresentar origem e data da última consulta cadastral, situação externa, estado interno e habilitação da captura como conceitos distintos, por texto e ícone além da cor.
+
+#### Scenario: Dados externos possivelmente defasados
+- **WHEN** o cadastro possui origem externa e data de atualização
+- **THEN** a interface mostra a fonte e a data sem afirmar atualização em tempo real
+
+#### Scenario: Captura desabilitada
+- **WHEN** um estabelecimento está cadastrado mas não elegível para captura
+- **THEN** a interface explica qual condição falhou, remove o disparo disponível e preserva acesso ao cadastro e histórico
+
+#### Scenario: Situação desconhecida
+- **WHEN** o cadastro manual não possui situação externa confirmada
+- **THEN** a interface apresenta “Não consultada” ou equivalente e não a confunde com baixa, inaptidão ou falha operacional
 
 ### Requirement: Formulários e diálogos consistentes
 O sistema SHALL usar `UForm`, validação local tipada quando aplicável, campos associados por nome, erros 422 junto aos campos, loading de submissão e ações de cancelar/confirmar consistentes com o template.
@@ -156,6 +225,50 @@ O sistema SHALL usar `UForm`, validação local tipada quando aplicável, campos
 #### Scenario: Fechamento da gestão de A1
 - **WHEN** o usuário fecha ou conclui o modal de certificado
 - **THEN** senha e referência ao arquivo PFX são removidas do estado da interface
+
+### Requirement: Home com alerta de backup e atalho da inbox
+O sistema SHALL apresentar no dashboard home o estado de backup da instância (ok, atrasado ou nunca) e um bloco de atenção operacional com os itens mais graves da inbox e link para a lista completa de saúde, sem botões de restore em produção.
+
+#### Scenario: Backup atrasado no home
+- **WHEN** o resumo indica backup `stale` ou `never`
+- **THEN** o home exibe alerta visual de severidade adequada e não mostra a chave mestra nem caminhos de dump
+
+#### Scenario: Itens críticos na inbox
+- **WHEN** a inbox retorna itens de severidade crítica ou alta
+- **THEN** o home lista um subconjunto priorizado com deep-link funcional para o destino do item
+
+### Requirement: Lista de saúde operacional
+O sistema SHALL oferecer uma lista server-side de itens da inbox com filtros de severidade e tipo refletidos na URL, estados de carregamento/vazio/erro e paginação ou cursor alinhados à API, no visual de tabela administrativa do template.
+
+#### Scenario: Filtro por severidade
+- **WHEN** o usuário aplica filtro `critical` na lista de saúde
+- **THEN** a URL reflete o filtro, a API é consultada de novo e apenas itens críticos são exibidos
+
+#### Scenario: Lista vazia saudável
+- **WHEN** a inbox não retorna itens
+- **THEN** a UI mostra estado vazio positivo (sem problemas operacionais) sem inventar alertas cosméticos
+
+### Requirement: Slideover de alertas alimentado pela inbox
+O sistema SHALL preferir a inbox operacional como fonte do painel global de alertas e SHALL degradar de forma sanitizada se a inbox falhar, sem exibir segredos nem corpo bruto de erros remotos.
+
+#### Scenario: Carregamento do slideover
+- **WHEN** o usuário abre o painel de alertas
+- **THEN** os itens exibidos correspondem a entradas da inbox ou a um fallback explícito de erro de carga
+
+#### Scenario: Clique no alerta de cursor
+- **WHEN** o usuário ativa um alerta de cursor bloqueado
+- **THEN** a navegação leva ao destino de sincronização do cliente associado
+
+### Requirement: Status de backup na Administração
+O sistema SHALL exibir, na área de Administração restrita a `ADMIN` com segundo fator quando exigido, o último backup `SUCCESS`, o último restore drill e o estado de atraso, em modo somente leitura.
+
+#### Scenario: Admin com 2FA
+- **WHEN** um administrador autorizado abre Administração
+- **THEN** o card de backup mostra timestamps e status sem oferecer restore pela UI
+
+#### Scenario: Não administrador
+- **WHEN** um `OPERATOR` ou `VIEWER` tenta a rota de Administração
+- **THEN** o conteúdo administrativo de backup não é oferecido além do alerta já presente no home
 
 ### Requirement: Alertas operacionais distinguem vazio de erro
 O sistema SHALL carregar alertas ao abrir o slideover e apresentar separadamente carregamento, lista acionável, ausência de ocorrências e falha de consulta.
