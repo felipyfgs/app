@@ -1,0 +1,114 @@
+# =============================================================================
+# Monorepo NFS-e ADN — fonte única de ignore na raiz
+# backend/ e frontend/ mantêm .gitignore locais (Laravel/Nuxt); este arquivo
+# cobre o repositório central e reforça o que nunca deve entrar no git.
+# =============================================================================
+
+# --- Referência local (templates clonados; NÃO versionar, sem nested .git) ---
+.reference/
+
+# --- Secrets e ambiente ---
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+**/.env
+!**/.env.example
+backend/auth.json
+**/auth.json
+
+# --- Dependências ---
+**/node_modules/
+backend/vendor/
+# Store local do pnpm (nunca versionar; regenera com install)
+**/.pnpm-store/
+.pnpm-store/
+.opencode/node_modules/
+.opencode/package.json
+.opencode/package-lock.json
+.opencode/bun.lock
+
+# --- Backend (Laravel) ---
+backend/public/build
+backend/public/hot
+backend/public/storage
+backend/public/fonts-manifest.dev.json
+backend/storage/*.key
+backend/storage/pail
+backend/storage/logs/*
+!backend/storage/logs/.gitignore
+backend/storage/framework/cache/data/*
+!backend/storage/framework/cache/data/.gitignore
+backend/storage/framework/sessions/*
+!backend/storage/framework/sessions/.gitignore
+backend/storage/framework/testing/*
+!backend/storage/framework/testing/.gitignore
+backend/storage/framework/views/*
+!backend/storage/framework/views/.gitignore
+backend/bootstrap/cache/*.php
+!backend/bootstrap/cache/.gitignore
+backend/.phpunit.result.cache
+backend/.phpunit.cache
+backend/_ide_helper.php
+backend/_ide_helper_models.php
+backend/.phpstorm.meta.php
+backend/Homestead.json
+backend/Homestead.yaml
+backend/.phpactor.json
+
+# --- Frontend (Nuxt) ---
+frontend/.nuxt/
+frontend/.output/
+frontend/.data/
+frontend/.nitro/
+frontend/.cache/
+frontend/dist/
+frontend/.fleet/
+frontend/.history/
+
+# --- Docker / runtime local ---
+docker-compose.override.yml
+docker-compose.*.local.yml
+backups/
+
+# --- Vault, dados fiscais e certificados (NUNCA versionar) ---
+data/
+vault/
+*.pfx
+*.p12
+*.pem
+*.key
+!docker/**/*.conf
+!**/.gitkeep
+
+# --- Testes / cobertura / caches ---
+coverage/
+.phpunit.result.cache
+.phpunit.cache
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- IDE / OS / editores ---
+.idea/
+.vscode/
+.zed/
+.nova/
+.cursor/
+.fleet/
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+
+# --- Ferramentas locais de agente (manter skills/commands; ignorar lixo) ---
+.codex/.tmp/
+.opencode/.tmp/

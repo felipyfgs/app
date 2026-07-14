@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<retDistDFeInt xmlns="http://www.sped.fazenda.gov.br/nfse">
+  <tpAmb>1</tpAmb>
+  <cStat>138</cStat>
+  <xMotivo>Documentos localizados</xMotivo>
+  <dhResp>2026-07-13T12:00:00-03:00</dhResp>
+  <ultNSU>2</ultNSU>
+  <maxNSU>10</maxNSU>
+  <loteDistDFeInt>
+    <docZip schema="NFSe_v1.00.xsd" NSU="1">H4sIAAAAAAAAAwtJLS/EysgBAF6f7bEHAAAA</docZip>
+    <docZip schema="evento_v1.00.xsd" NSU="2">H4sIAAAAAAAAAwtJLS/EysgBAF6f7bEHAAAA</docZip>
+  </loteDistDFeInt>
+</retDistDFeInt>

@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: curl, dom, mbstring, pcntl, pdo_sqlite, sodium, zip
+      - uses: ramsey/composer-install@v3
+        with:
+          working-directory: backend
+      - name: Validar dependências
+        run: composer validate --strict --no-check-publish
+      - name: Validar estilo
+        run: vendor/bin/pint --test
+      - name: Executar testes
+        run: php artisan test
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+      - name: Validar lint
+        run: pnpm run lint
+      - name: Validar tipos
+        run: pnpm run typecheck
+      - name: Gerar SPA
+        run: pnpm run generate
+
+  infrastructure:
+    name: Compose e OpenSpec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validar scripts operacionais
+        run: sh -n docker/ops/backup.sh docker/ops/restore.sh
+      - name: Validar Docker Compose
+        run: docker compose config --quiet
+      - name: Construir PHP e conferir extensões críticas
+        run: |
+          docker compose build php
+          docker compose run --rm --no-deps --entrypoint php php -r \
+            'exit(extension_loaded("curl") && extension_loaded("sodium") ? 0 : 1);'
+      - name: Validar mudança OpenSpec
+        run: npx --yes @fission-ai/openspec@1.5.0 validate build-nfse-adn-capture-system --json
+

@@ -1,0 +1,37 @@
+<?php
+
+namespace App\Models;
+
+use Database\Factories\OfficeFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+#[Fillable(['name', 'slug', 'is_active'])]
+class Office extends Model
+{
+    /** @use HasFactory<OfficeFactory> */
+    use HasFactory;
+
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+        ];
+    }
+
+    public function users(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class)
+            ->using(OfficeMembership::class)
+            ->withPivot(['role', 'is_active'])
+            ->withTimestamps();
+    }
+
+    public function memberships(): HasMany
+    {
+        return $this->hasMany(OfficeMembership::class);
+    }
+}

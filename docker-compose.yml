@@ -1,0 +1,205 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./backend:/var/www/html:ro
+      - ./frontend/.output/public:/var/www/frontend:ro
+    depends_on:
+      php:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/up"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - app
+
+  php:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-nfse}
+      DB_USERNAME: ${DB_USERNAME:-nfse}
+      DB_PASSWORD: ${DB_PASSWORD:-nfse}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      VAULT_DISK_ROOT: /var/vault
+    volumes:
+      - ./backend:/var/www/html
+      - vault_data:/var/vault
+      - private_storage:/var/www/html/storage/app/private
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "php -r 'exit(0);'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app
+
+  horizon:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    command: php artisan horizon
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-nfse}
+      DB_USERNAME: ${DB_USERNAME:-nfse}
+      DB_PASSWORD: ${DB_PASSWORD:-nfse}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      VAULT_DISK_ROOT: /var/vault
+    volumes:
+      - ./backend:/var/www/html
+      - vault_data:/var/vault
+      - private_storage:/var/www/html/storage/app/private
+    depends_on:
+      php:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    command: php artisan schedule:work
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-nfse}
+      DB_USERNAME: ${DB_USERNAME:-nfse}
+      DB_PASSWORD: ${DB_PASSWORD:-nfse}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      VAULT_DISK_ROOT: /var/vault
+    volumes:
+      - ./backend:/var/www/html
+      - vault_data:/var/vault
+      - private_storage:/var/www/html/storage/app/private
+    depends_on:
+      php:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app
+
+  frontend-dev:
+    image: node:24-bookworm
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "127.0.0.1:${FRONTEND_DEV_PORT:-3000}:3000"
+    environment:
+      NUXT_SANCTUM_PROXY: "true"
+      NUXT_SANCTUM_PROXY_BASE: http://nginx
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
+      HOST: 0.0.0.0
+    command: bash -lc "corepack enable && pnpm install --frozen-lockfile && pnpm run dev --host 0.0.0.0 --port 3000"
+    profiles: ["dev"]
+    depends_on:
+      nginx:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-nfse}
+      POSTGRES_USER: ${DB_USERNAME:-nfse}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-nfse}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - app
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - app
+
+volumes:
+  postgres_data:
+  redis_data:
+  vault_data:
+  private_storage:
+  frontend_node_modules:
+
+networks:
+  app:
+    driver: bridge

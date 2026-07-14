@@ -1,0 +1,82 @@
+<?php
+
+namespace App\Models;
+
+use App\Enums\OfficeRole;
+use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Fortify\TwoFactorAuthenticatable;
+use Laravel\Sanctum\HasApiTokens;
+
+#[Fillable(['name', 'email', 'password', 'is_active'])]
+#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
+class User extends Authenticatable
+{
+    /** @use HasFactory<UserFactory> */
+    use HasApiTokens, HasFactory, Notifiable, TwoFactorAuthenticatable;
+
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'is_active' => 'boolean',
+            'two_factor_confirmed_at' => 'datetime',
+        ];
+    }
+
+    public function offices(): BelongsToMany
+    {
+        return $this->belongsToMany(Office::class)
+            ->using(OfficeMembership::class)
+            ->withPivot(['role', 'is_active'])
+            ->withTimestamps();
+    }
+
+    public function memberships(): HasMany
+    {
+        return $this->hasMany(OfficeMembership::class);
+    }
+
+    public function activeMembership(): ?OfficeMembership
+    {
+        return $this->memberships()
+            ->where('is_active', true)
+            ->whereHas('office', fn ($q) => $q->where('is_active', true))
+            ->orderBy('id')
+            ->first();
+    }
+
+    public function roleIn(?Office $office): ?OfficeRole
+    {
+        if ($office === null) {
+            return null;
+        }
+
+        $membership = $this->memberships()
+            ->where('office_id', $office->id)
+            ->where('is_active', true)
+            ->first();
+
+        return $membership?->role;
+    }
+
+    public function hasConfirmedTwoFactor(): bool
+    {
+        return $this->two_factor_confirmed_at !== null
+            && $this->two_factor_secret !== null;
+    }
+
+    public function requiresTwoFactorForAdmin(): bool
+    {
+        $role = $this->roleIn($this->activeMembership()?->office);
+
+        return $role === OfficeRole::Admin && ! $this->hasConfirmedTwoFactor();
+    }
+}
