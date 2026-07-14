@@ -21,6 +21,11 @@ frontend/.env.*
 !**/.env.example
 backend/auth.json
 **/auth.json
+# Chaves e segredos soltos
+**/secrets/
+**/*secret*
+!**/*.example
+!**/*.md
 
 # --- Dependências ---
 **/node_modules/
@@ -50,6 +55,9 @@ backend/storage/framework/testing/*
 !backend/storage/framework/testing/.gitignore
 backend/storage/framework/views/*
 !backend/storage/framework/views/.gitignore
+# Private disk (volume Docker / artefatos locais)
+backend/storage/app/private/*
+!backend/storage/app/private/.gitignore
 backend/bootstrap/cache/*.php
 !backend/bootstrap/cache/.gitignore
 backend/.phpunit.result.cache
@@ -60,6 +68,8 @@ backend/.phpstorm.meta.php
 backend/Homestead.json
 backend/Homestead.yaml
 backend/.phpactor.json
+backend/.php-cs-fixer.cache
+backend/.phpstan.result.cache
 
 # --- Frontend (Nuxt) ---
 frontend/.nuxt/
@@ -70,11 +80,18 @@ frontend/.cache/
 frontend/dist/
 frontend/.fleet/
 frontend/.history/
+frontend/.eslintcache
+frontend/.vite/
+frontend/**/*.tsbuildinfo
 
 # --- Docker / runtime local ---
 docker-compose.override.yml
 docker-compose.*.local.yml
 backups/
+# dumps acidentais fora de backups/
+*.sql
+*.sql.gz
+*.dump
 
 # --- Vault, dados fiscais e certificados (NUNCA versionar) ---
 data/
@@ -96,7 +113,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# --- IDE / OS / editores ---
+# --- IDE / OS / editores / agentes locais ---
 .idea/
 .vscode/
 .zed/
@@ -112,3 +129,18 @@ Thumbs.db
 # --- Ferramentas locais de agente (manter skills/commands; ignorar lixo) ---
 .codex/.tmp/
 .opencode/.tmp/
+# Grok: versionar skills e commands OpenSpec; ignorar resto local
+.grok/*
+!.grok/skills/
+!.grok/skills/**
+!.grok/commands/
+!.grok/commands/**
+
+# --- Artefatos locais de review/agente e screenshots de sessão ---
+.review-reports/
+/image.png
+/image copy.png
+/pw-*.png
+frontend/pw-clients.mjs
+frontend/test-results/
+frontend/playwright-report/

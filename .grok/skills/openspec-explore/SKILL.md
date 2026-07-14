@@ -1,13 +1,14 @@
 ---
 name: openspec-explore
-description: Enter explore mode - a thinking partner for exploring ideas, investigating problems, and clarifying requirements. Use when the user wants to think through something before or during a change.
-allowed-tools: Bash(openspec:*)
+description: >
+  Enter explore mode - a thinking partner for exploring ideas, investigating problems, and clarifying requirements. Use when the user wants to think through something before or during a change. Also when the user runs /openspec-explore or /opsx-explore.
 license: MIT
 compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
-  generatedBy: "1.6.0"
+  adaptedFor: grok
+  source: openspec codex skills (generatedBy 1.6.0)
 ---
 
 Enter explore mode. Think deeply. Visualize freely. Follow the conversation wherever it goes.
@@ -203,7 +204,7 @@ You: [reads codebase]
 
 **User is stuck mid-implementation:**
 ```
-User: /opsx:explore add-auth-system
+User: /opsx-explore add-auth-system
       The OAuth integration is more complex than expected
 
 You: [reads change artifacts]

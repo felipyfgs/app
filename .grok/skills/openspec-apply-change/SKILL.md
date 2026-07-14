@@ -1,13 +1,14 @@
 ---
 name: openspec-apply-change
-description: Implement tasks from an OpenSpec change. Use when the user wants to start implementing, continue implementation, or work through tasks.
-allowed-tools: Bash(openspec:*)
+description: >
+  Implement tasks from an OpenSpec change. Use when the user wants to start implementing, continue implementation, or work through tasks. Also when the user runs /openspec-apply-change or /opsx-apply.
 license: MIT
 compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
-  generatedBy: "1.6.0"
+  adaptedFor: grok
+  source: openspec codex skills (generatedBy 1.6.0)
 ---
 
 Implement tasks from an OpenSpec change.
@@ -23,9 +24,9 @@ Implement tasks from an OpenSpec change.
    If a name is provided, use it. Otherwise:
    - Infer from conversation context if the user mentioned a change
    - Auto-select if only one active change exists
-   - If ambiguous, run `openspec list --json` to get available changes and use the **AskUserQuestion tool** to let the user select
+   - If ambiguous, run `openspec list --json` to get available changes and use the **ask_user_question** tool to let the user select
 
-   Always announce: "Using change: <name>" and how to override (e.g., `/opsx:apply <other>`).
+   Always announce: "Using change: <name>" and how to override (e.g., `/opsx-apply <other>`).
 
 2. **Check status to understand the schema**
    ```bash

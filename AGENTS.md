@@ -9,11 +9,12 @@
 ## State of the repo
 
 - A implementação está em andamento em `backend/`, `frontend/` e `docker/`; a fonte de verdade continua sendo o OpenSpec em `openspec/`.
-- Main specs (`openspec/specs/`) are empty until a change is archived/synced.
-- Active change: `build-nfse-adn-capture-system` (artefatos de planejamento completos; consultar `openspec instructions apply` para o progresso real e as tarefas reabertas pela revisão).
-- OpenSpec skills/commands (oficial via `openspec init --tools …` / `openspec update`):
+- Main specs em `openspec/specs/` (sincronizados em 2026-07-14 a partir das changes arquivadas).
+- Active changes: nenhuma (`openspec list`). Arquivo recente: `openspec/changes/archive/2026-07-14-*` (`build-nfse-adn-capture-system`, `refactor-frontend-dashboard-ux`, `enforce-dashboard-template-fidelity`).
+- OpenSpec skills/commands (oficial via `openspec init --tools …` / `openspec update` onde existir; Grok adaptado manualmente — CLI ainda não lista `grok`):
   - OpenCode: `.opencode/skills/openspec-*` + `.opencode/commands/opsx-*.md` (`/opsx-propose`, `/opsx-explore`, `/opsx-apply`, `/opsx-sync`, `/opsx-archive`)
   - Codex: `.codex/skills/openspec-*`
+  - Grok: `.grok/skills/openspec-*` + `.grok/commands/opsx-*.md` (mesmos slash: `/opsx-propose`, `/opsx-explore`, `/opsx-apply`, `/opsx-sync`, `/opsx-archive`; também `/openspec-propose`, etc.)
   Preferir essas skills em vez de inventar workflow.
 
 ## OpenSpec workflow
@@ -67,3 +68,20 @@ Non-goals (MVP): portal scraping, municipal APIs, emit/cancel NFS-e, DANFSe/PDF,
 Follow design migration plan: infra/schema/office+admin 2FA → vault backup/restore → mTLS smoke (emitente/tomador/intermediário) → pilot few roots → scale. Prefer interfaces (`SecureObjectStore`, `AdnContributorClient`) early.
 
 Until `tasks.md` exists and apply instructions say otherwise, do not scaffold app code ad hoc.
+
+## Frontend AI stack (Nuxt + Nuxt UI + template)
+
+UI do painel em `frontend/` **sempre** passa por este encadeamento (não inventar layout):
+
+| Ordem | Peça | Escopo | Função |
+|------:|------|--------|--------|
+| 1 | Domínio (`AGENTS.md` / OpenSpec) | repo | tenancy, papéis, SPA+Sanctum, segredos |
+| 2 | Skill **`nuxt-dashboard-template`** | **projeto** | copiar arquétipo de `.reference/nuxt-dashboard-template` @ `0f30c09` |
+| 3 | Skill + MCP **`nuxt-ui`** | global + MCP | API de componentes `U*`, ícones, theming |
+| 4 | Skill + MCP **`nuxt`** | global + MCP | Nuxt 4 (`app/`, middleware, pages, config) |
+
+- Orquestrador: **`/frontend-nuxt-stack`** (`.grok/skills/frontend-nuxt-stack/`).
+- Template detalhe: **`/nuxt-dashboard-template`** + `references/stack.md`.
+- MCPs: `nuxt-ui` → `https://ui.nuxt.com/mcp` · `nuxt` → `https://nuxt.com/mcp` (configurados no user agent).
+- Conflito forma vs docs: **template vence** na estrutura; MCP só completa props.
+- Não scaffoldar app Nuxt novo nem outro starter; estender `frontend/`.

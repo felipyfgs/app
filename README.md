@@ -26,7 +26,7 @@ CONTEXT.md   Vocabulário de domínio
 make setup
 ```
 
-O comando cria `.env` e `backend/.env` com permissão `0600` quando ausentes, gera `APP_KEY` e `VAULT_MASTER_KEY` distintas, instala as dependências, executa as migrations e sobe a stack. Revise as senhas antes de qualquer uso fora do computador local. As portas publicadas pelo Compose escutam apenas em `127.0.0.1`.
+O comando cria `.env` e `backend/.env` com permissão `0600` quando ausentes, gera `APP_KEY` e `VAULT_MASTER_KEY` distintas, instala as dependências, executa as migrations e sobe a stack. Revise as senhas antes de qualquer uso fora do computador local. Em dev, nginx (`APP_PORT`, default 8080) e Nuxt (`FRONTEND_DEV_PORT`, default 3000) publicam em `0.0.0.0` para acesso remoto por IP:porta; Postgres e Redis permanecem em `127.0.0.1`. Ajuste `APP_URL`, `SESSION_DOMAIN` e `SANCTUM_STATEFUL_DOMAINS` no `backend/.env` ao mudar o host/IP.
 
 ## Desenvolvimento
 
