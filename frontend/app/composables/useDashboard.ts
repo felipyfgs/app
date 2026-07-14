@@ -30,6 +30,7 @@ const _useDashboard = () => {
     'g-n': () => router.push('/notes'),
     'g-e': () => router.push('/exports'),
     'g-s': () => router.push('/syncs'),
+    'g-o': () => router.push('/health'),
     'g-a': () => {
       if (canAccessAdministration.value) {
         router.push('/admin')

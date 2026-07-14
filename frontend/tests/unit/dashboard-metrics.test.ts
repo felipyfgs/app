@@ -34,4 +34,10 @@ describe('dashboard operacional', () => {
     expect(source).toContain('refreshError')
     expect(source).toContain('Última atualização válida')
   })
+
+  it('expõe alerta de backup e atalho da inbox no home', () => {
+    expect(source).toMatch(/backup\?\.never|backup\?\.stale|Nenhum backup/)
+    expect(source).toContain('/health')
+    expect(source).toContain('inboxItems')
+  })
 })

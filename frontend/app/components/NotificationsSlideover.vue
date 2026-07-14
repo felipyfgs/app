@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formatTimeAgo } from '@vueuse/core'
-import type { AppNotification } from '~/types/api'
+import type { AppNotification, InboxItem } from '~/types/api'
 
 const { isNotificationsSlideoverOpen, me } = useDashboard()
 const api = useApi()
@@ -9,101 +9,119 @@ const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 const loadState = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
 
+function severityColor(severity: string): AppNotification['color'] {
+  return inboxSeverityColor(severity)
+}
+
+function itemTo(item: InboxItem): string {
+  if (String(item.type).startsWith('credential') && item.links?.credential) {
+    return item.links.credential
+  }
+  if (item.links?.sync) return item.links.sync
+  if (item.links?.client) return item.links.client
+  if (String(item.type).startsWith('backup')) return '/health'
+  return '/health'
+}
+
+function mapInbox(items: InboxItem[]): AppNotification[] {
+  return items.map(item => ({
+    id: item.id,
+    title: item.title,
+    body: item.body,
+    date: item.occurred_at || new Date().toISOString(),
+    unread: true,
+    to: itemTo(item),
+    color: severityColor(item.severity)
+  }))
+}
+
+/** Fallback sanitizado se a inbox falhar (sem corpo bruto remoto). */
+async function loadFallback(): Promise<AppNotification[]> {
+  const operational: AppNotification[] = []
+  try {
+    const summary = (await api.operations.summary()).data
+    const generatedAt = summary.generated_at || new Date().toISOString()
+    if (summary.sync_blocked > 0) {
+      operational.push({
+        id: 'sync-blocked',
+        title: 'Estabelecimentos bloqueados',
+        body: `${summary.sync_blocked} cursor(es) exigem intervenção.`,
+        date: generatedAt,
+        unread: true,
+        to: '/health',
+        color: 'error'
+      })
+    }
+    if (summary.credentials_expiring_30d > 0) {
+      operational.push({
+        id: 'credentials-expiring',
+        title: 'Certificados a vencer',
+        body: `${summary.credentials_expiring_30d} certificado(s) vencem em até 30 dias.`,
+        date: generatedAt,
+        unread: true,
+        to: '/clients',
+        color: 'warning'
+      })
+    }
+    if (summary.sync_failures_24h > 0) {
+      operational.push({
+        id: 'sync-failures-24h',
+        title: 'Falhas recentes de sincronização',
+        body: `${summary.sync_failures_24h} execução(ões) nas últimas 24 horas.`,
+        date: generatedAt,
+        unread: true,
+        to: '/syncs',
+        color: 'error'
+      })
+    }
+    if (summary.backup?.never) {
+      operational.push({
+        id: 'backup-never',
+        title: 'Nenhum backup bem-sucedido',
+        body: 'A instância ainda não registrou backup SUCCESS.',
+        date: generatedAt,
+        unread: true,
+        to: '/health',
+        color: 'error'
+      })
+    } else if (summary.backup?.stale) {
+      operational.push({
+        id: 'backup-stale',
+        title: 'Backup atrasado',
+        body: 'Mais de 24 horas sem backup SUCCESS.',
+        date: generatedAt,
+        unread: true,
+        to: '/health',
+        color: 'warning'
+      })
+    }
+  } catch {
+    // silencioso — caller decide estado de erro
+  }
+  return operational
+}
+
 async function load() {
   loading.value = true
   loadState.value = 'loading'
   errorMessage.value = null
 
   try {
-    const results = await Promise.allSettled([
-      api.operations.summary(),
-      api.sync.history({ limit: 10 })
-    ])
-
-    const summaryResult = results[0]
-    const syncsResult = results[1]
-    const operational: AppNotification[] = []
-    let partial = false
-
-    if (summaryResult.status === 'fulfilled') {
-      const summary = summaryResult.value.data
-      const generatedAt = summary.generated_at || new Date().toISOString()
-
-      if (summary.sync_blocked > 0) {
-        operational.push({
-          id: 'sync-blocked',
-          title: 'Estabelecimentos bloqueados',
-          body: `${summary.sync_blocked} cursor(es) exigem intervenção.`,
-          date: generatedAt,
-          unread: true,
-          to: '/syncs',
-          color: 'error'
-        })
-      }
-      if (summary.credentials_expiring_30d > 0) {
-        operational.push({
-          id: 'credentials-expiring',
-          title: 'Certificados a vencer',
-          body: `${summary.credentials_expiring_30d} certificado(s) vencem em até 30 dias.`,
-          date: generatedAt,
-          unread: true,
-          to: '/clients',
-          color: 'warning'
-        })
-      }
-      if (summary.sync_failures_24h > 0) {
-        operational.push({
-          id: 'sync-failures-24h',
-          title: 'Falhas recentes de sincronização',
-          body: `${summary.sync_failures_24h} execução(ões) nas últimas 24 horas.`,
-          date: generatedAt,
-          unread: true,
-          to: '/syncs',
-          color: 'error'
-        })
-      }
+    const inbox = await api.operations.inbox({ limit: 20 })
+    notifications.value = mapInbox(inbox.data)
+    errorMessage.value = null
+    loadState.value = 'success'
+  } catch {
+    const fallback = await loadFallback()
+    if (fallback.length) {
+      notifications.value = fallback
+      errorMessage.value = 'Inbox indisponível; exibindo resumo sanitizado.'
+      loadState.value = 'error'
     } else {
-      partial = true
-    }
-
-    if (syncsResult.status === 'fulfilled') {
-      const generatedAt = new Date().toISOString()
-      operational.push(
-        ...syncsResult.value.data
-          .filter(sync => sync.status === 'FAILED')
-          .map(sync => ({
-            id: `sync-${sync.id}`,
-            title: `Sincronização #${sync.id} falhou`,
-            body: sync.error_message || 'Falha sanitizada na sincronização ADN.',
-            date: sync.finished_at || sync.started_at || sync.created_at || generatedAt,
-            unread: true,
-            to: '/syncs' as const,
-            color: 'error' as const
-          }))
-      )
-    } else {
-      partial = true
-    }
-
-    if (summaryResult.status === 'rejected' && syncsResult.status === 'rejected') {
       notifications.value = []
       errorMessage.value = 'Não foi possível carregar os alertas operacionais.'
       loadState.value = 'error'
-      return
     }
-
-    notifications.value = operational
-    if (partial) {
-      errorMessage.value = 'Parte dos alertas não pôde ser carregada.'
-      loadState.value = 'error'
-    } else {
-      errorMessage.value = null
-      loadState.value = 'success'
-    }
-  } catch {
-    notifications.value = []
-    errorMessage.value = 'Não foi possível carregar os alertas operacionais.'
-    loadState.value = 'error'
   } finally {
     loading.value = false
   }
@@ -178,6 +196,21 @@ watch(() => me.value?.id, (next, prev) => {
           }]"
         />
 
+        <div class="mb-3 flex items-center justify-between gap-2">
+          <p class="text-xs text-muted">
+            Fonte: inbox operacional
+          </p>
+          <UButton
+            to="/health"
+            size="xs"
+            color="neutral"
+            variant="ghost"
+            label="Ver saúde"
+            trailing-icon="i-lucide-arrow-right"
+            @click="() => { isNotificationsSlideoverOpen = false }"
+          />
+        </div>
+
         <UEmpty
           v-if="!notifications.length"
           icon="i-lucide-circle-check"
@@ -188,7 +221,7 @@ watch(() => me.value?.id, (next, prev) => {
         <NuxtLink
           v-for="notification in notifications"
           :key="notification.id"
-          :to="notification.to || '/syncs'"
+          :to="notification.to || '/health'"
           class="relative -mx-3 flex items-center gap-3 rounded-md px-3 py-2.5 first:-mt-3 last:-mb-3 hover:bg-elevated/50"
         >
           <UChip :color="notification.color || 'error'" :show="!!notification.unread" inset>
@@ -212,16 +245,16 @@ watch(() => me.value?.id, (next, prev) => {
             </div>
           </UChip>
 
-          <div class="flex-1 text-sm">
+          <div class="min-w-0 flex-1 text-sm">
             <p class="flex items-center justify-between gap-2">
-              <span class="font-medium text-highlighted">{{ notification.title }}</span>
+              <span class="truncate font-medium text-highlighted">{{ notification.title }}</span>
               <time
                 :datetime="notification.date"
                 class="shrink-0 text-xs text-muted"
                 v-text="formatTimeAgo(new Date(notification.date))"
               />
             </p>
-            <p class="text-dimmed">
+            <p class="truncate text-dimmed">
               {{ notification.body }}
             </p>
           </div>

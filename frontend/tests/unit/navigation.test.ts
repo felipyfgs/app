@@ -54,15 +54,27 @@ describe('navigation', () => {
       'clients-list',
       'clients-dashboard'
     ])
-    expect(tree.find(d => d.id === 'operations')?.children?.map(c => c.id)).toEqual(['exports', 'syncs'])
+    expect(tree.find(d => d.id === 'operations')?.children?.map(c => c.id)).toEqual([
+      'health',
+      'exports',
+      'syncs'
+    ])
     expect(flattenDestinations(tree).map(d => d.id)).toEqual([
       'home',
       'clients-list',
       'clients-dashboard',
       'notes',
+      'health',
       'exports',
       'syncs'
     ])
+  })
+
+  it('inclui destino Saúde para todos os papéis autenticados do escritório', () => {
+    for (const role of ['VIEWER', 'OPERATOR', 'ADMIN'] as const) {
+      const ids = flattenDestinations(mainDestinations(user(role, role === 'ADMIN'))).map(d => d.id)
+      expect(ids).toContain('health')
+    }
   })
 
   it('toNavigationItems gera trigger com children no estilo template Settings', () => {
@@ -73,7 +85,7 @@ describe('navigation', () => {
     expect(clients?.to).toBeUndefined()
     const ops = items.find(i => i.label === 'Operações')
     expect(ops?.type).toBe('trigger')
-    expect(ops?.children?.length).toBe(2)
+    expect(ops?.children?.length).toBe(3)
     expect(ops?.to).toBeUndefined()
   })
 })

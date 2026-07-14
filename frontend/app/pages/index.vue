@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
-import type { OperationsSummary } from '~/types/api'
+import type { InboxItem, OperationsSummary } from '~/types/api'
 import { quickActions } from '~/utils/navigation'
 
 const api = useApi()
 const toast = useToast()
 const { isNotificationsSlideoverOpen, me } = useDashboard()
 const summary = ref<OperationsSummary | null>(null)
+const inboxItems = ref<InboxItem[]>([])
 const lastValidAt = ref<string | null>(null)
 const loading = ref(false)
+const inboxLoading = ref(false)
 const refreshError = ref<string | null>(null)
 
 const actionItems = computed<DropdownMenuItem[][]>(() => [[
@@ -19,19 +21,41 @@ const actionItems = computed<DropdownMenuItem[][]>(() => [[
   }))
 ]])
 
+const alertCount = computed(() => {
+  if (!summary.value) return 0
+  if (typeof summary.value.inbox_total === 'number') {
+    return summary.value.inbox_total
+  }
+  return (summary.value.sync_blocked || 0) + (summary.value.sync_failures_24h || 0)
+})
+
 async function load() {
   loading.value = true
+  inboxLoading.value = true
   try {
-    const data = (await api.operations.summary()).data
-    summary.value = data
-    lastValidAt.value = data.generated_at
-    refreshError.value = null
-  } catch (caught) {
-    const message = apiErrorMessage(caught, 'Não foi possível carregar o resumo operacional.')
-    refreshError.value = message
-    toast.add({ title: message, color: 'error' })
+    const [summaryResult, inboxResult] = await Promise.allSettled([
+      api.operations.summary(),
+      api.operations.inbox({ limit: 5 })
+    ])
+
+    if (summaryResult.status === 'fulfilled') {
+      summary.value = summaryResult.value.data
+      lastValidAt.value = summaryResult.value.data.generated_at
+      refreshError.value = null
+    } else {
+      const message = apiErrorMessage(summaryResult.reason, 'Não foi possível carregar o resumo operacional.')
+      refreshError.value = message
+      toast.add({ title: message, color: 'error' })
+    }
+
+    if (inboxResult.status === 'fulfilled') {
+      inboxItems.value = inboxResult.value.data
+    } else if (summaryResult.status === 'fulfilled') {
+      inboxItems.value = []
+    }
   } finally {
     loading.value = false
+    inboxLoading.value = false
   }
 }
 
@@ -57,7 +81,7 @@ onMounted(load)
             >
               <UChip
                 color="primary"
-                :show="(summary?.sync_blocked || 0) + (summary?.sync_failures_24h || 0) > 0"
+                :show="alertCount > 0"
                 inset
               >
                 <UIcon name="i-lucide-bell" class="size-5 shrink-0" />
@@ -101,6 +125,8 @@ onMounted(load)
       <HomeOperations
         :summary="summary"
         :loading="loading"
+        :inbox-items="inboxItems"
+        :inbox-loading="inboxLoading"
         :error="refreshError"
         @retry="load"
       />

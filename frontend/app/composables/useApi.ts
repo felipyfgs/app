@@ -13,12 +13,23 @@ import type {
   FiscalRole,
   LoginResponse,
   MeResponse,
+  InboxItem,
+  InboxMeta,
+  InboxItemType,
+  InboxSeverity,
   NfseNote,
   OperationsSummary,
   PageMeta,
   SyncRun,
   TwoFactorQrCode
 } from '~/types/api'
+
+export interface InboxListParams {
+  severity?: InboxSeverity | ''
+  type?: InboxItemType | ''
+  limit?: number
+  cursor?: string
+}
 
 export interface ClientListParams {
   q?: string
@@ -138,7 +149,9 @@ export function useApi() {
       downloadUrl: (id: number) => apiUrl(`/api/v1/exports/${id}/download`)
     },
     operations: {
-      summary: () => client<{ data: OperationsSummary }>('/api/v1/operations/summary')
+      summary: () => client<{ data: OperationsSummary }>('/api/v1/operations/summary'),
+      inbox: (params?: InboxListParams) =>
+        client<{ data: InboxItem[], meta: InboxMeta }>('/api/v1/operations/inbox', { query: params })
     },
     twoFactor: {
       confirmPassword: (password: string) =>

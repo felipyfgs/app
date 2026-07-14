@@ -193,6 +193,17 @@ const summary: OperationsSummary = {
   sync_blocked: 1,
   sync_failures_24h: 2,
   credentials_expiring_30d: 1,
+  inbox_critical: 1,
+  inbox_high: 2,
+  inbox_total: 4,
+  backup: {
+    last_success_at: '2026-06-14T12:00:00.000Z',
+    last_status: 'SUCCESS',
+    last_restore_drill_at: '2026-06-14T13:00:00.000Z',
+    last_restore_drill_status: 'SUCCESS',
+    stale: false,
+    never: false
+  },
   generated_at: FIXED_NOW
 }
 
@@ -251,6 +262,28 @@ export async function installApiFixtures(
     }
     if (pathname.endsWith('/api/v1/operations/summary')) {
       return fulfill(route, { data: summary })
+    }
+    if (pathname.endsWith('/api/v1/operations/inbox')) {
+      return fulfill(route, {
+        data: [{
+          id: 'inbox-fixture-blocked',
+          type: 'cursor_blocked',
+          severity: 'critical',
+          title: 'Cursor bloqueado: Cliente Fixture',
+          body: 'Cursor bloqueado. Intervenção necessária antes de retomar a captura.',
+          reasons: ['cursor_blocked'],
+          client_id: 1,
+          establishment_id: 1,
+          occurred_at: FIXED_NOW,
+          links: {
+            client: '/clients/1',
+            sync: '/clients/1/sincronizacao',
+            credential: '/clients/1/certificado'
+          },
+          actions: [{ type: 'open', label: 'Abrir' }]
+        }],
+        meta: { next_cursor: null, total_estimate: 1, generated_at: FIXED_NOW }
+      })
     }
     if (pathname.endsWith('/api/v1/clients') && method === 'GET') {
       if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)

@@ -337,6 +337,60 @@ export interface SyncRun {
   created_at?: string | null
 }
 
+export type InboxSeverity = 'critical' | 'high' | 'medium' | 'low'
+export type InboxItemType =
+  | 'cursor_blocked'
+  | 'cursor_error'
+  | 'sync_failed_recent'
+  | 'credential_expired'
+  | 'credential_expiring_7d'
+  | 'credential_expiring_30d'
+  | 'backup_stale'
+  | 'backup_never'
+
+export interface InboxItemAction {
+  type: 'open' | 'trigger_sync' | string
+  label: string
+  establishment_id?: number
+}
+
+export interface InboxItemLinks {
+  client?: string
+  sync?: string
+  credential?: string
+}
+
+export interface InboxItem {
+  id: string
+  type: InboxItemType | string
+  severity: InboxSeverity | string
+  title: string
+  body: string
+  reasons: string[]
+  client_id?: number | null
+  establishment_id?: number | null
+  occurred_at: string
+  links: InboxItemLinks
+  actions: InboxItemAction[]
+}
+
+export interface InboxMeta {
+  next_cursor: string | null
+  total_estimate?: number
+  generated_at: string
+}
+
+export interface BackupStatus {
+  last_success_at?: string | null
+  last_full_success_at?: string | null
+  last_kind?: string | null
+  last_status?: string | null
+  last_restore_drill_at?: string | null
+  last_restore_drill_status?: string | null
+  stale: boolean
+  never: boolean
+}
+
 export interface OperationsSummary {
   clients: number
   establishments: number
@@ -347,6 +401,10 @@ export interface OperationsSummary {
   sync_blocked: number
   sync_failures_24h: number
   credentials_expiring_30d: number
+  inbox_critical?: number
+  inbox_high?: number
+  inbox_total?: number
+  backup?: BackupStatus
   generated_at: string
 }
 

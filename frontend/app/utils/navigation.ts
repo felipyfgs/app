@@ -38,7 +38,10 @@ export function mainDestinations(
   const path = options?.path || ''
   // Mantém o grupo expandido quando a rota atual está dentro do módulo.
   const clientsOpen = !path || path === '/clients' || path.startsWith('/clients/')
-  const operationsOpen = !path || path.startsWith('/exports') || path.startsWith('/syncs')
+  const operationsOpen = !path
+    || path.startsWith('/exports')
+    || path.startsWith('/syncs')
+    || path.startsWith('/health')
 
   const items: NavDestination[] = [
     {
@@ -83,6 +86,12 @@ export function mainDestinations(
       type: 'trigger',
       defaultOpen: operationsOpen,
       children: [
+        {
+          id: 'health',
+          label: 'Saúde',
+          icon: 'i-lucide-heart-pulse',
+          to: '/health'
+        },
         {
           id: 'exports',
           label: 'Exportações',
