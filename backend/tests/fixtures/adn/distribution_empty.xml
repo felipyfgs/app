@@ -5,5 +5,7 @@
   <xMotivo>Nenhum documento localizado</xMotivo>
   <dhResp>2026-07-13T12:00:00-03:00</dhResp>
   <ultNSU>0</ultNSU>
-  <maxNSU>0</maxNSU>
+  <maxNSU>10</maxNSU>
+  <loteDistDFeInt>
+  </loteDistDFeInt>
 </retDistDFeInt>

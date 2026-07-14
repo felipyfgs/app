@@ -46,5 +46,19 @@ class DatabaseSeeder extends Seeder
                     'password' => 'password',
                 ]);
         }
+
+        // Viewer só leitura
+        if (! User::query()->where('email', 'viewer@example.com')->exists()) {
+            User::factory()
+                ->forOffice($office, OfficeRole::Viewer)
+                ->create([
+                    'name' => 'Viewer Demo',
+                    'email' => 'viewer@example.com',
+                    'password' => 'password',
+                ]);
+        }
+
+        // Catálogo rico: clientes, sync, notas, exportações (só local/testing)
+        $this->call(DemoCatalogSeeder::class);
     }
 }

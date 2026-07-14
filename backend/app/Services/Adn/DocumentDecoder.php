@@ -16,9 +16,15 @@ final class DocumentDecoder
             throw new DocumentDecodeException('Base64 inválido.');
         }
 
-        $decoded = @gzdecode($binary);
+        set_error_handler(static fn (): bool => true);
+
+        try {
+            $decoded = gzdecode($binary);
+        } finally {
+            restore_error_handler();
+        }
+
         if ($decoded === false || $decoded === '') {
-            // gzdecode pode emitir warning; normalizamos para exceção de domínio
             throw new DocumentDecodeException('GZip inválido.');
         }
 

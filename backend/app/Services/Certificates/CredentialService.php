@@ -2,11 +2,14 @@
 
 namespace App\Services\Certificates;
 
+use App\Contracts\PfxReaderInterface;
 use App\Contracts\SecureObjectStore;
 use App\Domain\Cnpj;
 use App\Enums\CredentialStatus;
+use App\Enums\SyncCursorStatus;
 use App\Models\Client;
 use App\Models\ClientCredential;
+use App\Models\SyncCursor;
 use App\Support\CurrentOffice;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -16,7 +19,7 @@ final class CredentialService
 {
     public function __construct(
         private readonly SecureObjectStore $store,
-        private readonly PfxReader $pfxReader,
+        private readonly PfxReaderInterface $pfxReader,
         private readonly CurrentOffice $currentOffice,
     ) {}
 
@@ -128,6 +131,10 @@ final class CredentialService
         }
 
         if ($credential->valid_to->isPast()) {
+            $credential->status = CredentialStatus::Expired;
+            $credential->save();
+            $this->blockCursorsForClient((int) $credential->client_id, 'Credencial A1 expirada.');
+
             return null;
         }
 
@@ -152,26 +159,35 @@ final class CredentialService
         ];
     }
 
-    public function refreshExpiryAlerts(): int
+    /**
+     * @return array{credentials: int, cursors_blocked: int}
+     */
+    public function refreshExpiryAlerts(): array
     {
-        $count = 0;
+        $credentialsUpdated = 0;
+        $cursorsBlocked = 0;
         $now = now();
 
         ClientCredential::query()
             ->where('status', CredentialStatus::Active)
             ->orderBy('id')
-            ->chunkById(100, function ($rows) use ($now, &$count): void {
+            ->chunkById(100, function ($rows) use ($now, &$credentialsUpdated, &$cursorsBlocked): void {
                 foreach ($rows as $credential) {
                     /** @var ClientCredential $credential */
                     if ($credential->valid_to->isPast()) {
                         $credential->status = CredentialStatus::Expired;
                         $credential->save();
-                        $count++;
+                        $credentialsUpdated++;
+                        $cursorsBlocked += $this->blockCursorsForClient(
+                            (int) $credential->client_id,
+                            'Credencial A1 expirada.',
+                        );
 
                         continue;
                     }
 
-                    $days = $now->diffInDays($credential->valid_to, false);
+                    // diffInDays com false: negativo se valid_to está no passado (já tratado).
+                    $days = (int) floor($now->floatDiffInRealDays($credential->valid_to, false));
                     $changed = false;
                     if ($days <= 30 && ! $credential->expires_alert_30) {
                         $credential->expires_alert_30 = true;
@@ -187,12 +203,38 @@ final class CredentialService
                     }
                     if ($changed) {
                         $credential->save();
-                        $count++;
+                        $credentialsUpdated++;
                     }
                 }
             });
 
-        return $count;
+        return [
+            'credentials' => $credentialsUpdated,
+            'cursors_blocked' => $cursorsBlocked,
+        ];
+    }
+
+    private function blockCursorsForClient(int $clientId, string $reason): int
+    {
+        $blocked = 0;
+
+        SyncCursor::query()
+            ->whereHas('establishment', fn ($q) => $q->where('client_id', $clientId))
+            ->where('status', '!=', SyncCursorStatus::Blocked)
+            ->orderBy('id')
+            ->chunkById(100, function ($cursors) use ($reason, &$blocked): void {
+                foreach ($cursors as $cursor) {
+                    /** @var SyncCursor $cursor */
+                    $cursor->status = SyncCursorStatus::Blocked;
+                    $cursor->last_error = $reason;
+                    $cursor->locked_at = null;
+                    $cursor->lock_owner = null;
+                    $cursor->save();
+                    $blocked++;
+                }
+            });
+
+        return $blocked;
     }
 
     private function invalidateSupersededObject(int $credentialId, string $objectId): void

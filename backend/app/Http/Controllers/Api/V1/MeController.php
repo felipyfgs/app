@@ -21,6 +21,7 @@ class MeController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'two_factor_confirmed' => $user->hasConfirmedTwoFactor(),
+                'two_factor_required' => (bool) config('fortify.two_factor_required', true),
                 'requires_two_factor_setup' => $user->requiresTwoFactorForAdmin(),
                 'office' => $office === null ? null : [
                     'id' => $office->id,

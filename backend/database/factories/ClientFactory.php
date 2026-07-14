@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Domain\Cnpj;
+use App\Enums\RegistrationSource;
 use App\Models\Client;
 use App\Models\Office;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -20,10 +21,18 @@ class ClientFactory extends Factory
 
         return [
             'office_id' => Office::factory(),
-            'name' => fake()->company(),
+            'legal_name' => fake()->company(),
+            'display_name' => null,
             'root_cnpj' => substr($cnpj, 0, 8),
+            'legal_nature_code' => null,
+            'legal_nature_name' => null,
+            'company_size_code' => null,
+            'company_size_name' => null,
             'notes' => null,
             'is_active' => true,
+            'inactive_reason' => null,
+            'registration_source' => RegistrationSource::Manual,
+            'registration_refreshed_at' => null,
         ];
     }
 
@@ -37,13 +46,16 @@ class ClientFactory extends Factory
         return $this->state(fn () => ['root_cnpj' => strtoupper(substr($root8, 0, 8))]);
     }
 
+    public function legacy(): static
+    {
+        return $this->state(fn () => ['registration_source' => RegistrationSource::Legacy]);
+    }
+
     private function validNumericCnpj(): string
     {
-        // Gera base e calcula DV
         $base = str_pad((string) random_int(1, 999999999999), 12, '0', STR_PAD_LEFT);
         for ($i = 0; $i < 100; $i++) {
             $candidate = $base;
-            // força tentativa com DV calculado via Cnpj helper interno
             $d1 = self::digit($candidate, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
             $d2 = self::digit($candidate.$d1, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
             $full = $candidate.$d1.$d2;
@@ -53,7 +65,7 @@ class ClientFactory extends Factory
             $base = str_pad((string) random_int(1, 999999999999), 12, '0', STR_PAD_LEFT);
         }
 
-        return '11222333000181'; // fallback conhecido válido
+        return '11222333000181';
     }
 
     /**

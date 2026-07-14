@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Sync;
 
+use App\Enums\CredentialStatus;
 use App\Enums\SyncCursorStatus;
 use App\Jobs\SyncEstablishmentDistributionJob;
 use App\Models\Client;
+use App\Models\ClientCredential;
 use App\Models\Establishment;
 use App\Models\Office;
 use Carbon\CarbonImmutable;
@@ -13,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class DispatchDueSyncsCapacityTest extends TestCase
@@ -23,9 +26,29 @@ class DispatchDueSyncsCapacityTest extends TestCase
     {
         Queue::fake();
 
+        // Jobs fakes não liberam lease; evita re-dispatch por recuperação de WAITING no ciclo de 60 min.
+        config([
+            'adn.stale_lease_seconds' => 7200,
+            'adn.job_timeout_seconds' => 900,
+            'adn.lock_ttl_seconds' => 960,
+        ]);
+
         $office = Office::factory()->create();
-        $client = Client::factory()->forOffice($office)->create(['root_cnpj' => '11222333']);
+        $client = Client::factory()->forOffice($office)->create(['root_cnpj' => '11222333', 'is_active' => true]);
         $timestamp = CarbonImmutable::parse('2026-07-13 12:00:00', 'UTC');
+
+        ClientCredential::query()->create([
+            'office_id' => $office->id,
+            'client_id' => $client->id,
+            'status' => CredentialStatus::Active,
+            'subject_name' => $client->legal_name,
+            'holder_cnpj' => '11222333000181',
+            'fingerprint_sha256' => hash('sha256', 'capacity-test'),
+            'valid_from' => $timestamp->subYear(),
+            'valid_to' => $timestamp->addYear(),
+            'vault_object_id' => (string) Str::ulid(),
+            'activated_at' => $timestamp,
+        ]);
 
         $establishments = [];
         for ($index = 1; $index <= 1_001; $index++) {
@@ -36,6 +59,9 @@ class DispatchDueSyncsCapacityTest extends TestCase
                 'trade_name' => 'Estabelecimento '.$index,
                 'is_matrix' => $index === 1,
                 'is_active' => true,
+                'capture_enabled' => true,
+                'registration_status' => 'UNKNOWN',
+                'registration_source' => 'LEGACY',
                 'created_at' => $timestamp,
                 'updated_at' => $timestamp,
             ];

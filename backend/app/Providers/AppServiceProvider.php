@@ -3,15 +3,21 @@
 namespace App\Providers;
 
 use App\Contracts\AdnContributorClient;
+use App\Contracts\CnpjRegistrationLookup;
+use App\Contracts\PfxReaderInterface;
 use App\Contracts\SecureObjectStore;
 use App\Models\Client;
+use App\Models\ClientContact;
 use App\Models\ClientCredential;
 use App\Models\Establishment;
+use App\Policies\ClientContactPolicy;
 use App\Policies\ClientCredentialPolicy;
 use App\Policies\ClientPolicy;
 use App\Policies\EstablishmentPolicy;
 use App\Services\Adn\CurlMtlsTransport;
 use App\Services\Adn\HttpAdnContributorClient;
+use App\Services\Certificates\PfxReader;
+use App\Services\Clients\CnpjWsRegistrationLookup;
 use App\Services\Vault\EnvelopeCrypto;
 use App\Services\Vault\FilesystemSecureObjectStore;
 use App\Support\CurrentOffice;
@@ -62,6 +68,10 @@ class AppServiceProvider extends ServiceProvider
                 (string) config('adn.base_url'),
             );
         });
+
+        $this->app->singleton(PfxReaderInterface::class, PfxReader::class);
+        $this->app->singleton(CnpjRegistrationLookup::class, CnpjWsRegistrationLookup::class);
+        $this->app->singleton(CnpjWsRegistrationLookup::class);
     }
 
     public function boot(): void
@@ -69,5 +79,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Client::class, ClientPolicy::class);
         Gate::policy(Establishment::class, EstablishmentPolicy::class);
         Gate::policy(ClientCredential::class, ClientCredentialPolicy::class);
+        Gate::policy(ClientContact::class, ClientContactPolicy::class);
     }
 }

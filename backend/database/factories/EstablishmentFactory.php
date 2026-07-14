@@ -3,6 +3,8 @@
 namespace Database\Factories;
 
 use App\Domain\Cnpj;
+use App\Enums\RegistrationSource;
+use App\Enums\RegistrationStatus;
 use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\Office;
@@ -24,6 +26,27 @@ class EstablishmentFactory extends Factory
             'trade_name' => fake()->company(),
             'is_matrix' => true,
             'is_active' => true,
+            'registration_status' => RegistrationStatus::Unknown,
+            'registration_status_at' => null,
+            'registration_status_reason' => null,
+            'activity_started_at' => null,
+            'main_cnae_code' => null,
+            'main_cnae_name' => null,
+            'address_postal_code' => null,
+            'address_street_type' => null,
+            'address_street' => null,
+            'address_number' => null,
+            'address_complement' => null,
+            'address_district' => null,
+            'address_city' => null,
+            'address_city_ibge_code' => null,
+            'address_state' => null,
+            'address_country' => 'BR',
+            'public_email' => null,
+            'public_phone' => null,
+            'capture_enabled' => true,
+            'registration_source' => RegistrationSource::Manual,
+            'registration_refreshed_at' => null,
         ];
     }
 
@@ -36,6 +59,21 @@ class EstablishmentFactory extends Factory
             'client_id' => $client->id,
             'cnpj' => $cnpj,
         ]);
+    }
+
+    public function matrix(): static
+    {
+        return $this->state(fn () => ['is_matrix' => true]);
+    }
+
+    public function branch(): static
+    {
+        return $this->state(fn () => ['is_matrix' => false]);
+    }
+
+    public function captureDisabled(): static
+    {
+        return $this->state(fn () => ['capture_enabled' => false]);
     }
 
     public static function cnpjWithRoot(string $root8, string $branch = '0001'): string

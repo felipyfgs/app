@@ -70,6 +70,32 @@ class AdminTwoFactorTest extends TestCase
             ->assertJsonPath('ok', true);
     }
 
+    public function test_admin_sem_2fa_acessa_quando_exigencia_esta_desativada(): void
+    {
+        config()->set('fortify.two_factor_required', false);
+
+        $office = Office::factory()->create();
+        $admin = User::factory()->forOffice($office, OfficeRole::Admin)->create();
+
+        Route::middleware([
+            'web',
+            'auth:sanctum',
+            EnsureOfficeContext::class,
+            EnsureAdminTwoFactor::class,
+        ])->get('/api/v1/__admin_probe_without_2fa', fn () => response()->json(['ok' => true]));
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('data.two_factor_required', false)
+            ->assertJsonPath('data.requires_two_factor_setup', false);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/__admin_probe_without_2fa')
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+    }
+
     public function test_operador_nao_precisa_2fa_para_rotas_comuns(): void
     {
         $office = Office::factory()->create();

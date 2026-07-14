@@ -3,10 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Enums\SyncCursorStatus;
-use App\Jobs\SyncEstablishmentDistributionJob;
 use App\Models\SyncCursor;
 use App\Models\SyncRun;
 use App\Services\Adn\SyncDispatchService;
+use App\Services\Clients\CaptureEligibilityService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -18,13 +18,14 @@ class DispatchDueSyncsCommand extends Command
 
     protected $description = 'Enfileira sincronizações de cursores vencidos com espalhamento determinístico';
 
-    public function handle(SyncDispatchService $dispatcher): int
+    public function handle(SyncDispatchService $dispatcher, CaptureEligibilityService $eligibility): int
     {
         $now = now();
         $minute = (int) $now->format('i');
         $recovered = $this->recoverExpiredLeases($now);
 
         $query = SyncCursor::query()
+            ->with(['establishment.client'])
             ->whereNotIn('status', [SyncCursorStatus::Blocked->value, SyncCursorStatus::Running->value])
             ->whereNull('locked_at')
             ->whereNull('lock_owner')
@@ -34,7 +35,8 @@ class DispatchDueSyncsCommand extends Command
             ->orderBy('id');
 
         $dispatched = 0;
-        $query->chunkById(100, function ($cursors) use ($dispatcher, $minute, &$dispatched): void {
+        $skippedIneligible = 0;
+        $query->chunkById(100, function ($cursors) use ($dispatcher, $eligibility, $minute, &$dispatched, &$skippedIneligible): void {
             foreach ($cursors as $cursor) {
                 // Primeiro ciclo (next_sync_at nulo): espalha por id % 60.
                 // Ciclos seguintes: next_sync_at já aponta ao minuto preferencial (job).
@@ -44,13 +46,21 @@ class DispatchDueSyncsCommand extends Command
                     continue;
                 }
 
+                $establishment = $cursor->establishment;
+                if ($establishment === null || ! $eligibility->isEligible($establishment, $cursor)) {
+                    // Não enfileira; NSU permanece intacto.
+                    $skippedIneligible++;
+
+                    continue;
+                }
+
                 if ($dispatcher->claimAndDispatch($cursor->id)) {
                     $dispatched++;
                 }
             }
         });
 
-        $this->info("Leases recuperados: {$recovered}; disparados: {$dispatched}");
+        $this->info("Leases recuperados: {$recovered}; disparados: {$dispatched}; inelegíveis: {$skippedIneligible}");
 
         return self::SUCCESS;
     }
@@ -85,7 +95,7 @@ class DispatchDueSyncsCommand extends Command
                             $fresh = SyncCursor::query()->whereKey($cursor->id)->lockForUpdate()->first();
 
                             if ($fresh === null
-                                || $fresh->status !== SyncCursorStatus::Running
+                                || ! in_array($fresh->status, [SyncCursorStatus::Running, SyncCursorStatus::Waiting], true)
                                 || $fresh->locked_at === null
                                 || $fresh->locked_at->greaterThan($cutoff)) {
                                 return false;

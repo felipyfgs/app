@@ -1,15 +1,17 @@
 <?php
 
+use App\Http\Controllers\Api\V1\ClientContactController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\ClientCredentialController;
+use App\Http\Controllers\Api\V1\CnpjLookupController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\NoteController;
 use App\Http\Controllers\Api\V1\OperationsSummaryController;
 use App\Http\Controllers\Api\V1\SyncController;
-use App\Http\Middleware\EnsureAdminTwoFactor;
 use App\Http\Middleware\EnsureActiveUser;
+use App\Http\Middleware\EnsureAdminTwoFactor;
 use App\Http\Middleware\EnsureOfficeContext;
 use Illuminate\Support\Facades\Route;
 
@@ -19,12 +21,18 @@ Route::prefix('v1')->group(function (): void {
 
         Route::middleware([EnsureOfficeContext::class, EnsureAdminTwoFactor::class])->group(function (): void {
             Route::get('/clients', [ClientController::class, 'index']);
+            Route::get('/cnpj/{cnpj}/lookup', CnpjLookupController::class)->middleware('throttle:30,1');
             Route::post('/clients', [ClientController::class, 'store']);
             Route::get('/clients/{client}', [ClientController::class, 'show']);
             Route::patch('/clients/{client}', [ClientController::class, 'update']);
 
             Route::post('/clients/{client}/establishments', [EstablishmentController::class, 'store']);
             Route::patch('/establishments/{establishment}', [EstablishmentController::class, 'update']);
+
+            Route::get('/clients/{client}/contacts', [ClientContactController::class, 'index']);
+            Route::post('/clients/{client}/contacts', [ClientContactController::class, 'store']);
+            Route::patch('/clients/{client}/contacts/{contact}', [ClientContactController::class, 'update']);
+            Route::delete('/clients/{client}/contacts/{contact}', [ClientContactController::class, 'destroy']);
 
             Route::get('/clients/{client}/credential', [ClientCredentialController::class, 'show']);
             Route::post('/clients/{client}/credential', [ClientCredentialController::class, 'store']);

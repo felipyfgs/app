@@ -75,6 +75,10 @@ class User extends Authenticatable
 
     public function requiresTwoFactorForAdmin(): bool
     {
+        if (! config('fortify.two_factor_required', true)) {
+            return false;
+        }
+
         $role = $this->roleIn($this->activeMembership()?->office);
 
         return $role === OfficeRole::Admin && ! $this->hasConfirmedTwoFactor();

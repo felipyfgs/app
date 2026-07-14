@@ -21,9 +21,13 @@ class EnsureOfficeContext
             ], 403);
         }
 
-        // Strip any client-supplied office_id so domain code never trusts it.
+        // Strip any client-supplied office_id so domain code never trusts it
+        // (inclui body JSON: getInputSource() usa json() para application/json).
         $request->request->remove('office_id');
         $request->query->remove('office_id');
+        if ($request->isJson() && $request->json() !== null) {
+            $request->json()->remove('office_id');
+        }
 
         return $next($request);
     }

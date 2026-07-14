@@ -19,6 +19,8 @@ class EnsureActiveUser
         }
 
         Auth::guard('web')->logout();
+        Auth::forgetGuards();
+        $request->setUserResolver(static fn () => null);
 
         if ($request->hasSession()) {
             $request->session()->invalidate();

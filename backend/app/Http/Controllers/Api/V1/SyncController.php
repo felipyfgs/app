@@ -4,11 +4,12 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\SyncCursorStatus;
 use App\Http\Controllers\Controller;
-use App\Jobs\SyncEstablishmentDistributionJob;
 use App\Models\Establishment;
 use App\Models\SyncCursor;
 use App\Models\SyncRun;
 use App\Services\Adn\SyncDispatchService;
+use App\Services\Audit\AuditLogger;
+use App\Services\Clients\CaptureEligibilityService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,8 +39,9 @@ class SyncController extends Controller
         Request $request,
         CurrentOffice $currentOffice,
         SyncDispatchService $dispatcher,
-    ): JsonResponse
-    {
+        AuditLogger $audit,
+        CaptureEligibilityService $eligibility,
+    ): JsonResponse {
         $role = $currentOffice->role();
         if ($role === null || ! $role->canTriggerSync()) {
             abort(403);
@@ -49,7 +51,7 @@ class SyncController extends Controller
             'establishment_id' => ['required', 'integer'],
         ]);
 
-        $establishment = Establishment::query()->findOrFail($data['establishment_id']);
+        $establishment = Establishment::query()->with('client')->findOrFail($data['establishment_id']);
         $env = (string) config('adn.environment', 'restricted_production');
 
         $cursor = SyncCursor::query()->firstOrCreate(
@@ -65,8 +67,23 @@ class SyncController extends Controller
             ]
         );
 
-        if ($cursor->status === SyncCursorStatus::Blocked) {
-            return response()->json(['message' => 'Cursor bloqueado; resolva a falha antes de sincronizar.'], 422);
+        $eval = $eligibility->evaluate($establishment, $cursor);
+        if (! $eval['eligible']) {
+            $audit->record('sync.trigger', 'FAILED', $cursor, [
+                'establishment_id' => $establishment->id,
+                'reason' => 'ineligible',
+                'reasons_codes' => $eval['reasons_codes'],
+            ]);
+
+            return response()->json([
+                'message' => $eval['reasons'][0] ?? 'Estabelecimento inelegível para captura.',
+                'data' => [
+                    'eligible' => false,
+                    'reasons' => $eval['reasons'],
+                    'reasons_codes' => $eval['reasons_codes'],
+                    'last_nsu' => $cursor->last_nsu,
+                ],
+            ], 422);
         }
 
         $dispatched = $dispatcher->claimAndDispatch(
@@ -76,8 +93,18 @@ class SyncController extends Controller
         );
 
         if (! $dispatched) {
+            $audit->record('sync.trigger', 'FAILED', $cursor, [
+                'establishment_id' => $establishment->id,
+                'reason' => 'already_running',
+            ]);
+
             return response()->json(['message' => 'Sincronização já enfileirada ou em execução.'], 409);
         }
+
+        $audit->record('sync.trigger', 'SUCCESS', $cursor, [
+            'establishment_id' => $establishment->id,
+            'last_nsu' => $cursor->last_nsu,
+        ]);
 
         return response()->json(['data' => ['sync_cursor_id' => $cursor->id]], 202);
     }

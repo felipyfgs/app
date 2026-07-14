@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NFSe xmlns="http://www.sped.fazenda.gov.br/nfse">
+  <infNFSe>
+    <chNFSe>35260755444333000122550010000000031123456789</chNFSe>
+    <emit><CNPJ>55444333000122</CNPJ></emit>
+    <toma><CNPJ>99888777000166</CNPJ></toma>
+    <intermediario><CNPJ>11222333000181</CNPJ></intermediario>
+    <dCompet>2026-05</dCompet>
+    <dhEmi>2026-05-01T11:00:00-03:00</dhEmi>
+    <vServ>99.99</vServ>
+  </infNFSe>
+</NFSe>

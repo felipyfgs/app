@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Jobs\BuildExportZipJob;
 use App\Models\Export;
+use App\Services\Audit\AuditLogger;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,7 +20,7 @@ class ExportController extends Controller
         return response()->json(['data' => $items->map(fn (Export $e) => $this->public($e))]);
     }
 
-    public function store(Request $request, CurrentOffice $currentOffice): JsonResponse
+    public function store(Request $request, CurrentOffice $currentOffice, AuditLogger $audit): JsonResponse
     {
         if (! $currentOffice->role()?->canExport()) {
             abort(403);
@@ -40,10 +41,15 @@ class ExportController extends Controller
 
         BuildExportZipJob::dispatch($export->id);
 
+        $audit->record('export.create', 'SUCCESS', $export, [
+            'filters' => $export->filters,
+            'include_events' => $export->include_events,
+        ]);
+
         return response()->json(['data' => $this->public($export)], 202);
     }
 
-    public function download(Export $export): BinaryFileResponse
+    public function download(Export $export, AuditLogger $audit): BinaryFileResponse
     {
         if ($export->user_id !== auth()->id()) {
             abort(404);
@@ -54,6 +60,11 @@ class ExportController extends Controller
         if ($export->expires_at && $export->expires_at->isPast()) {
             abort(410, 'Exportação expirada.');
         }
+
+        $audit->record('export.download', 'SUCCESS', $export, [
+            'files_count' => $export->files_count,
+            'byte_size' => $export->byte_size,
+        ]);
 
         return response()->download($export->storage_path, 'export-'.$export->id.'.zip');
     }

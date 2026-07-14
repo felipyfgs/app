@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<retDistDFeInt xmlns="http://www.sped.fazenda.gov.br/nfse">
+  <tpAmb>1</tpAmb>
+  <cStat>138</cStat>
+  <xMotivo>Lote multi-papel</xMotivo>
+  <dhResp>2026-07-13T12:00:00-03:00</dhResp>
+  <ultNSU>3</ultNSU>
+  <maxNSU>30</maxNSU>
+  <loteDistDFeInt>
+    <docZip NSU="1" schema="NFSe_v1.00.xsd">H4sIAAKcVWoC/1WQS4+CMBSF9/6Khj3tLZWHpNQYxcXEV4RJZstIVZKhGCFo5tdPKWiGLnof59xvcfj8Wf6gVt7rolKRRTFYSKpTlRfqElmf6doOrLmY8N06kUhbVR1Z16a5hYQ8Hg9c32SOz9mvVHmGL1WLv+9EnWtpiQlCvFDn7q7r9XS6moG5jgc+pY7jMMYAgAbUdXWB4VGtsanr+cGMk+GoJ8iyaARf7g4fYnzPiVny564qpTgc4yRdrPZHFH/F28NmjzbpasFJr3JiMD2xqcpsIM5mQRD4vt8RPW9MTPfbES/5RzOInpYvq/ImG+GA49ngc/JaDPI1LouXaFNI6TRkEALYwPSv7cbQm9tE3ltBdTDY1VI/dqGSd6qcmPoHweHHwMMBAAA=</docZip>
+    <docZip NSU="2" schema="NFSe_v1.00.xsd">H4sIAAKcVWoC/z2QwY6DIBCG730Kw10YQBAbtIemPeyh2aTdB7AVq0lFo0Y3+/SLaEsIwz//989h9OG3eQWT6Ye6tSmiGFBg7KMtavtM0c/tHCp0yHb6cr6awKF2SFE1jt2ekHme8dCZApf5n7FFjp/thO89seVgULYLAl3bcsktf6celRdcMAlxkiil4jgGACqlEK7AdhiljEdCxirRZAutE0xTj5k+Xr6/MiGiKOKcL3nGNPFNTTyxwmPb5BvsBjK2wYp+YE+scHFsm86MGQMmQ5CavBubXZ2a+m2GVNwg2QO4GwJ3r8M9sMLT1fSTgwEvzqqWbZDPOjTx9R8V9y/7fAEAAA==</docZip>
+    <docZip NSU="3" schema="NFSe_v1.00.xsd">H4sIAAKcVWoC/1WQzY6DIBDH730K410+xY8G7aHZHvbQbNLuA9iKlWQBo0Q3+/SLQpuUEIaZ+f2HYfjhV/1EsxgnaXQVY4DiSOi7aaV+VPH39ZQU8aHe8fPpIiKH6qmKe2uHPYTLsoBpEC3omj+h2wY8zAxuI9TdJOJ6F0Vc6m7VrXfn3fvNoYxkKGcsTVNKKUIIE8KYMygsijGhKcvyouQwiHwFoaSt+fH89Vm/6zncghxuhIetUU2Ay7IoijzPVzjLXvBGeFhqK0YlWtmM0gSVa4OQ8ESBX6p31Mvbo1GDsDVBJEsQ4/AZCOn+Q8lnMkH4ivEeIbcTRN3p8A3w8HwR4+xaBqX7vnfWWcLXMDnc7D+EJseMugEAAA==</docZip>
+  </loteDistDFeInt>
+</retDistDFeInt>

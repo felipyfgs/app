@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'cnpj_public_lookup' => [
+        'url' => env('CNPJ_PUBLIC_LOOKUP_URL', 'https://publica.cnpj.ws/cnpj'),
+        'timeout_seconds' => (int) env('CNPJ_PUBLIC_LOOKUP_TIMEOUT_SECONDS', 5),
+        'cache_seconds' => (int) env('CNPJ_PUBLIC_LOOKUP_CACHE_SECONDS', 86400),
+    ],
+
 ];

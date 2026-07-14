@@ -2,6 +2,7 @@
 
 namespace App\Services\Certificates;
 
+use App\Contracts\PfxReaderInterface;
 use App\Domain\Cnpj;
 use Carbon\CarbonImmutable;
 use NFePHP\Common\Certificate;
@@ -11,7 +12,7 @@ use Throwable;
 /**
  * Leitura de PFX via sped-common — somente metadados; sem persistir PEM.
  */
-final class PfxReader
+final class PfxReader implements PfxReaderInterface
 {
     /**
      * @return array{

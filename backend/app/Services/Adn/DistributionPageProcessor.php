@@ -21,6 +21,15 @@ use Throwable;
 
 final class DistributionPageProcessor
 {
+    /** Schemas oficiais reconhecidos pelo parser versionado do MVP. */
+    private const KNOWN_SCHEMAS = [
+        'NFSe_v1.00.xsd',
+        'NFSe_v1.01.xsd',
+        'evento_v1.00.xsd',
+        'evento_v1.01.xsd',
+        'retDistDFeInt_v1.00.xsd',
+    ];
+
     public function __construct(
         private readonly DocumentDecoder $decoder,
         private readonly NfseXmlParser $parser,
@@ -130,6 +139,7 @@ final class DistributionPageProcessor
             $parseAlert = null;
             $accessKey = null;
             $fiscalRole = null;
+            $parsed = null;
 
             if ($doc->type === AdnDocumentType::Nfse || $doc->type === AdnDocumentType::Unknown) {
                 $parsed = $this->parser->parseNote($bytes);
@@ -142,6 +152,12 @@ final class DistributionPageProcessor
                 $accessKey = $parsed['access_key'];
                 $parseStatus = $parsed['parse_status'];
                 $parseAlert = $parsed['parse_alert'];
+            }
+
+            // XML bem-formado com XSD/schema desconhecido: preserva bytes, marca REVIEW, não bloqueia cursor.
+            if ($parseStatus !== 'FAILED' && ! $this->isKnownSchema($doc->schema)) {
+                $parseStatus = 'REVIEW';
+                $parseAlert = trim(($parseAlert ? $parseAlert.' ' : '').'Schema/XSD desconhecido: '.$doc->schema.'; XML preservado.');
             }
 
             $existing = DfeDocument::query()->create([
@@ -185,24 +201,46 @@ final class DistributionPageProcessor
                     'event_at' => $parsed['event_at'] ?? null,
                     'status' => $parsed['status'] ?? null,
                 ]);
+
+                $this->applyDerivedNoteStatus(
+                    officeId: (int) $cursor->office_id,
+                    accessKey: (string) ($parsed['access_key'] ?? ''),
+                    eventType: $parsed['event_type'] ?? null,
+                );
             }
         } else {
             // Papel fiscal é por estabelecimento (interesse), não o da nota original.
             $fiscalRole = $this->fiscalRoleForEstablishment($existing, $establishment);
         }
 
-        DocumentInterest::query()->firstOrCreate(
-            [
-                'establishment_id' => $establishment->id,
-                'environment' => $cursor->environment,
-                'nsu' => $doc->nsu,
-            ],
-            [
-                'office_id' => $cursor->office_id,
-                'dfe_document_id' => $existing->id,
-                'fiscal_role' => $fiscalRole ?? null,
-            ]
-        );
+        // Idempotência: (establishment, env, nsu) e no máximo um vínculo documento↔estabelecimento.
+        $byNsu = DocumentInterest::query()
+            ->where('establishment_id', $establishment->id)
+            ->where('environment', $cursor->environment)
+            ->where('nsu', $doc->nsu)
+            ->first();
+
+        if ($byNsu !== null) {
+            return;
+        }
+
+        $byDocument = DocumentInterest::query()
+            ->where('dfe_document_id', $existing->id)
+            ->where('establishment_id', $establishment->id)
+            ->first();
+
+        if ($byDocument !== null) {
+            return;
+        }
+
+        DocumentInterest::query()->create([
+            'establishment_id' => $establishment->id,
+            'environment' => $cursor->environment,
+            'nsu' => $doc->nsu,
+            'office_id' => $cursor->office_id,
+            'dfe_document_id' => $existing->id,
+            'fiscal_role' => $fiscalRole ?? null,
+        ]);
     }
 
     private function fiscalRoleForEstablishment(DfeDocument $document, Establishment $establishment): ?FiscalRole
@@ -225,5 +263,39 @@ final class DistributionPageProcessor
         }
 
         return null;
+    }
+
+    private function isKnownSchema(string $schema): bool
+    {
+        $base = basename(str_replace('\\', '/', $schema));
+
+        return in_array($base, self::KNOWN_SCHEMAS, true);
+    }
+
+    /**
+     * Atualiza somente a projeção nfse_notes; o XML original permanece imutável.
+     */
+    private function applyDerivedNoteStatus(int $officeId, string $accessKey, ?string $eventType): void
+    {
+        if ($accessKey === '' || $eventType === null) {
+            return;
+        }
+
+        $normalized = strtoupper($eventType);
+        $status = null;
+        if (str_contains($normalized, 'CANCEL') || $normalized === '110111' || $normalized === 'E101') {
+            $status = 'CANCELLED';
+        } elseif (str_contains($normalized, 'SUBST') || $normalized === 'E102') {
+            $status = 'REPLACED';
+        }
+
+        if ($status === null) {
+            return;
+        }
+
+        NfseNote::query()
+            ->where('office_id', $officeId)
+            ->where('access_key', $accessKey)
+            ->update(['status' => $status]);
     }
 }

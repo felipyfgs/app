@@ -15,6 +15,10 @@ class EnsureAdminTwoFactor
 
     public function handle(Request $request, Closure $next): Response
     {
+        if (! config('fortify.two_factor_required', true)) {
+            return $next($request);
+        }
+
         $user = $request->user();
 
         if (! $user instanceof User) {

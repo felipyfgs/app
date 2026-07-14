@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Policies\ClientCredentialPolicy;
+use App\Services\Audit\AuditLogger;
 use App\Services\Certificates\CredentialService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,8 +26,12 @@ class ClientCredentialController extends Controller
         ]);
     }
 
-    public function store(Request $request, Client $client, CredentialService $credentials): JsonResponse
-    {
+    public function store(
+        Request $request,
+        Client $client,
+        CredentialService $credentials,
+        AuditLogger $audit,
+    ): JsonResponse {
         $this->authorize('update', $client);
         $this->assertAdmin($client);
 
@@ -43,16 +48,31 @@ class ClientCredentialController extends Controller
 
             $credential = $credentials->activate($client, $binary, $data['password']);
         } catch (RuntimeException $e) {
+            // Nunca passar password/PFX ao pipeline de auditoria — só mensagem sanitizada.
+            $audit->record('credential.activate', 'FAILED', $client, [
+                'message' => $e->getMessage() ?: 'Falha ao ativar certificado.',
+            ]);
+
             return response()->json([
                 'message' => $e->getMessage() ?: 'Falha ao ativar certificado.',
             ], 422);
         } catch (Throwable $e) {
             report($e);
+            $audit->record('credential.activate', 'FAILED', $client, [
+                'message' => 'Falha ao ativar certificado.',
+            ]);
 
             return response()->json([
                 'message' => 'Falha ao ativar certificado.',
             ], 422);
         }
+
+        $audit->record('credential.activate', 'SUCCESS', $credential, [
+            'client_id' => $client->id,
+            'fingerprint_sha256' => $credential->fingerprint_sha256,
+            'holder_cnpj' => $credential->holder_cnpj,
+            'valid_to' => $credential->valid_to?->toIso8601String(),
+        ]);
 
         return response()->json([
             'data' => $credential->toPublicArray(),

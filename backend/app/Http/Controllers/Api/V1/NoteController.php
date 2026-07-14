@@ -4,11 +4,12 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Contracts\SecureObjectStore;
 use App\Http\Controllers\Controller;
+use App\Models\NfseEvent;
 use App\Models\NfseNote;
+use App\Services\Audit\AuditLogger;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class NoteController extends Controller
@@ -72,25 +73,49 @@ class NoteController extends Controller
 
     public function show(string $accessKey): JsonResponse
     {
-        $note = NfseNote::query()->where('access_key', $accessKey)->firstOrFail();
+        $note = NfseNote::query()->where('access_key', $accessKey)->with('document')->firstOrFail();
+        $events = NfseEvent::query()
+            ->where('access_key', $accessKey)
+            ->orderBy('event_at')
+            ->orderBy('id')
+            ->get();
 
-        return response()->json(['data' => $note->load('document')]);
+        return response()->json([
+            'data' => [
+                'note' => $note,
+                'events' => $events,
+                // Metadados do documento original — nunca o XML bruto em JSON.
+                'document' => [
+                    'id' => $note->document?->id,
+                    'sha256' => $note->document?->sha256,
+                    'schema_version' => $note->document?->schema_version,
+                    'parse_status' => $note->document?->parse_status,
+                    'parse_alert' => $note->document?->parse_alert,
+                    'byte_size' => $note->document?->byte_size,
+                    'document_type' => $note->document?->document_type,
+                ],
+            ],
+        ]);
     }
 
-    public function downloadXml(string $accessKey, SecureObjectStore $store, CurrentOffice $currentOffice): StreamedResponse
-    {
+    public function downloadXml(
+        string $accessKey,
+        SecureObjectStore $store,
+        CurrentOffice $currentOffice,
+        AuditLogger $audit,
+    ): StreamedResponse {
         $note = NfseNote::query()->where('access_key', $accessKey)->with('document')->firstOrFail();
         $doc = $note->document;
-
-        Log::info('xml.download', [
-            'user_id' => auth()->id(),
-            'office_id' => $currentOffice->id(),
-            'access_key' => $accessKey,
-        ]);
 
         $bytes = $store->get($doc->vault_object_id, [
             'office_id' => $doc->office_id,
             'sha256' => $doc->sha256,
+        ]);
+
+        $audit->record('xml.download', 'SUCCESS', $note, [
+            'access_key' => $accessKey,
+            'sha256' => $doc->sha256,
+            'byte_size' => $doc->byte_size,
         ]);
 
         return response()->streamDownload(function () use ($bytes): void {

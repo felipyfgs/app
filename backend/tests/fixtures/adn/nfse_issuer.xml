@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NFSe xmlns="http://www.sped.fazenda.gov.br/nfse">
+  <infNFSe>
+    <chNFSe>35260711222333000181550010000000011123456789</chNFSe>
+    <emit><CNPJ>11222333000181</CNPJ><xNome>PRESTADOR EXEMPLO LTDA</xNome></emit>
+    <toma><CNPJ>99888777000166</CNPJ><xNome>TOMADOR EXEMPLO SA</xNome></toma>
+    <dCompet>2026-07</dCompet>
+    <dhEmi>2026-07-10T14:30:00-03:00</dhEmi>
+    <vServ>1500.50</vServ>
+  </infNFSe>
+</NFSe>

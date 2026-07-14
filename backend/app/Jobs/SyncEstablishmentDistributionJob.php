@@ -12,7 +12,9 @@ use App\Models\ClientCredential;
 use App\Models\SyncCursor;
 use App\Models\SyncRun;
 use App\Services\Adn\DistributionPageProcessor;
+use App\Services\Adn\SyncDispatchService;
 use App\Services\Certificates\CredentialService;
+use App\Services\Clients\CaptureEligibilityService;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -74,6 +76,15 @@ class SyncEstablishmentDistributionJob implements ShouldQueue
                 return;
             }
 
+            $eligibility = app(CaptureEligibilityService::class);
+            $eval = $eligibility->evaluate($cursor->establishment, $cursor);
+            if (! $eval['eligible']) {
+                // Sem chamada ADN e sem avanço de NSU; libera lease para reavaliação futura.
+                $this->releaseIneligibleClaim($owner, $eval);
+
+                return;
+            }
+
             $run = SyncRun::query()->create([
                 'office_id' => $cursor->office_id,
                 'sync_cursor_id' => $cursor->id,
@@ -90,6 +101,10 @@ class SyncEstablishmentDistributionJob implements ShouldQueue
                 ->first();
 
             if ($credential === null || $credential->valid_to->isPast()) {
+                if ($credential !== null && $credential->valid_to->isPast()) {
+                    $credential->status = CredentialStatus::Expired;
+                    $credential->save();
+                }
                 $cursor->status = SyncCursorStatus::Blocked;
                 $cursor->last_error = 'Credencial A1 ausente ou expirada.';
                 $cursor->locked_at = null;
@@ -130,11 +145,28 @@ class SyncEstablishmentDistributionJob implements ShouldQueue
                 $cursor->refresh();
             }
 
+            $cursor->refresh();
+            $cursor->loadMissing('establishment.client');
+
+            $mayRequeue = false;
+            $requeueBlockReason = null;
+            if ($hasMore) {
+                $requeueEval = $eligibility->evaluate($cursor->establishment, $cursor);
+                $mayRequeue = $requeueEval['eligible'];
+                if (! $mayRequeue) {
+                    $requeueBlockReason = $requeueEval['reasons'][0]
+                        ?? 'Estabelecimento inelegível para captura.';
+                }
+            }
+
             $cursor->status = SyncCursorStatus::Idle;
-            $cursor->next_sync_at = $hasMore ? now()->addSeconds(2) : $this->nextHourlySlot($cursor);
+            $cursor->next_sync_at = $mayRequeue ? now()->addSeconds(2) : $this->nextHourlySlot($cursor);
             $cursor->locked_at = null;
             $cursor->lock_owner = null;
             $cursor->attempts = 0;
+            if ($requeueBlockReason !== null) {
+                $cursor->last_error = $requeueBlockReason;
+            }
             $cursor->save();
 
             $run->status = 'COMPLETED';
@@ -144,8 +176,8 @@ class SyncEstablishmentDistributionJob implements ShouldQueue
             $run->finished_at = now();
             $run->save();
 
-            if ($hasMore) {
-                app(\App\Services\Adn\SyncDispatchService::class)->claimAndDispatch(
+            if ($mayRequeue) {
+                app(SyncDispatchService::class)->claimAndDispatch(
                     $cursor->id,
                     $this->trigger,
                     $this->triggeredBy,
@@ -221,6 +253,43 @@ class SyncEstablishmentDistributionJob implements ShouldQueue
             $this->triggeredBy,
             $this->leaseOwner,
         )->delay(now()->addSeconds(5));
+    }
+
+    /**
+     * Libera lease de claim quando o estabelecimento ficou inelegível antes da chamada ADN.
+     * Não altera last_nsu. Mensagens vêm de CaptureEligibilityService (sanitizadas).
+     *
+     * @param  array{eligible: bool, reasons: list<string>, reasons_codes: list<string>}  $eval
+     */
+    private function releaseIneligibleClaim(string $owner, array $eval): void
+    {
+        DB::transaction(function () use ($owner, $eval): void {
+            $cursor = SyncCursor::query()->whereKey($this->syncCursorId)->lockForUpdate()->first();
+
+            if ($cursor === null || $cursor->lock_owner !== $owner) {
+                return;
+            }
+
+            $message = $eval['reasons'][0] ?? 'Estabelecimento inelegível para captura.';
+            $codes = $eval['reasons_codes'];
+            $credentialIssue = in_array('credential_missing', $codes, true)
+                || in_array('credential_expired', $codes, true);
+
+            // Credencial: BLOCKED (alinha ao caminho pós-claim de A1).
+            // Demais (capture off, cliente/est. inativo): IDLE + slot horário — scheduler reavalia.
+            if ($credentialIssue) {
+                $cursor->status = SyncCursorStatus::Blocked;
+                $cursor->next_sync_at = null;
+            } else {
+                $cursor->status = SyncCursorStatus::Idle;
+                $cursor->next_sync_at = $this->nextHourlySlot($cursor);
+            }
+
+            $cursor->last_error = $message;
+            $cursor->locked_at = null;
+            $cursor->lock_owner = null;
+            $cursor->save();
+        });
     }
 
     private function recordFailure(string $owner, Throwable $exception, string $message): void

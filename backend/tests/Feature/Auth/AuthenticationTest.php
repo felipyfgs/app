@@ -6,6 +6,7 @@ use App\Enums\OfficeRole;
 use App\Models\Office;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Fortify\Features;
 use Tests\Concerns\InteractsWithSpaAuth;
 use Tests\TestCase;
 
@@ -35,6 +36,32 @@ class AuthenticationTest extends TestCase
             ->assertJsonPath('data.email', 'op@example.com')
             ->assertJsonPath('data.office.id', $office->id)
             ->assertJsonPath('data.role', 'OPERATOR');
+    }
+
+    public function test_login_admin_ignora_desafio_quando_2fa_esta_desativado(): void
+    {
+        config()->set('fortify.two_factor_required', false);
+        config()->set('fortify.features', array_values(array_diff(
+            config('fortify.features'),
+            [Features::twoFactorAuthentication()],
+        )));
+
+        $office = Office::factory()->create();
+        $admin = User::factory()
+            ->forOffice($office, OfficeRole::Admin)
+            ->withTwoFactorConfirmed()
+            ->create([
+                'email' => 'admin-dev@example.com',
+                'password' => 'password',
+            ]);
+
+        $this->asSpa()->postJson('/login', [
+            'email' => 'admin-dev@example.com',
+            'password' => 'password',
+        ])->assertOk()
+            ->assertJsonMissing(['two_factor' => true]);
+
+        $this->assertAuthenticatedAs($admin);
     }
 
     public function test_me_sem_sessao_retorna_401_json(): void

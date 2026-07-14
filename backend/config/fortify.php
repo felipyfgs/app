@@ -2,6 +2,8 @@
 
 use Laravel\Fortify\Features;
 
+$twoFactorRequired = env('AUTH_TWO_FACTOR_REQUIRED', true);
+
 return [
 
     /*
@@ -134,6 +136,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Exigência de autenticação em duas etapas
+    |--------------------------------------------------------------------------
+    |
+    | Pode ser desativada explicitamente em desenvolvimento local. O padrão
+    | permanece seguro: quando a variável não existe, o 2FA é obrigatório.
+    |
+    */
+
+    'two_factor_required' => $twoFactorRequired,
+
+    /*
+    |--------------------------------------------------------------------------
     | Features
     |--------------------------------------------------------------------------
     |
@@ -143,15 +157,15 @@ return [
     |
     */
 
-    'features' => [
+    'features' => array_values(array_filter([
         // Cadastro público desabilitado: bootstrap via app:bootstrap-office
         Features::resetPasswords(),
         Features::updateProfileInformation(),
         Features::updatePasswords(),
-        Features::twoFactorAuthentication([
+        $twoFactorRequired ? Features::twoFactorAuthentication([
             'confirm' => true,
             'confirmPassword' => true,
-        ]),
-    ],
+        ]) : null,
+    ])),
 
 ];
