@@ -1,101 +1,66 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import {
+  flattenDestinations,
+  mainDestinations,
+  quickActions,
+  secondaryDestinations,
+  toNavigationItems
+} from '~/utils/navigation'
 
+/**
+ * Shell autenticado — estrutura copiada de
+ * `.reference/nuxt-dashboard-template/app/layouts/default.vue`
+ * (UDashboardGroup + Sidebar header/search/nav/footer + Search + slot).
+ */
+const route = useRoute()
 const open = ref(false)
-const { canAccessAdministration, canCreateExport, canManageClients } = useDashboard()
+const { me } = useDashboard()
 
+const closeSidebar = () => {
+  open.value = false
+}
+
+/** Dois menus verticais: primário + secundário (mt-auto), como no template. */
 const links = computed(() => {
-  const main: NavigationMenuItem[] = [{
-    label: 'Dashboard',
-    icon: 'i-lucide-house',
-    to: '/',
-    onSelect: () => {
-      open.value = false
-    }
-  }, {
-    label: 'Clientes',
-    icon: 'i-lucide-building-2',
-    to: '/clients',
-    onSelect: () => {
-      open.value = false
-    }
-  }, {
-    label: 'Notas fiscais',
-    icon: 'i-lucide-file-text',
-    to: '/notes',
-    onSelect: () => {
-      open.value = false
-    }
-  }, {
-    label: 'Exportações',
-    icon: 'i-lucide-package',
-    to: '/exports',
-    onSelect: () => {
-      open.value = false
-    }
-  }, {
-    label: 'Sincronizações',
-    icon: 'i-lucide-refresh-cw',
-    to: '/syncs',
-    onSelect: () => {
-      open.value = false
-    }
-  }]
-
-  if (canAccessAdministration.value) {
-    main.push({
-      label: 'Administração',
-      icon: 'i-lucide-shield',
-      to: '/admin',
-      onSelect: () => {
-        open.value = false
-      }
-    })
-  }
-
-  const secondary: NavigationMenuItem[] = [{
-    label: 'Documentação ADN',
-    icon: 'i-lucide-book-open',
-    to: 'https://www.gov.br/nfse',
-    target: '_blank'
-  }]
-
-  return [main, secondary] satisfies NavigationMenuItem[][]
+  const primary = toNavigationItems(
+    mainDestinations(me.value, { path: route.path }),
+    closeSidebar
+  )
+  const secondary = toNavigationItems(
+    secondaryDestinations(),
+    closeSidebar
+  )
+  return [primary, secondary] as NavigationMenuItem[][]
 })
 
 const groups = computed(() => {
-  const actions = []
-  if (canManageClients.value) {
-    actions.push({
-      id: 'new-client',
-      label: 'Novo cliente',
-      icon: 'i-lucide-user-plus',
-      to: '/clients?new=1'
-    })
-  }
-  if (canCreateExport.value) {
-    actions.push({
-      id: 'new-export',
-      label: 'Nova exportação',
-      icon: 'i-lucide-download',
-      to: '/exports?new=1'
-    })
-  }
+  const destinations = [
+    ...flattenDestinations(mainDestinations(me.value, { path: route.path })),
+    ...secondaryDestinations()
+  ]
 
   return [{
     id: 'links',
     label: 'Ir para',
-    items: links.value.flat().map(item => ({
-      id: String(item.to || item.label),
-      label: item.label || '',
-      icon: item.icon,
-      to: item.to,
-      target: item.target
-    }))
+    items: destinations
+      .filter(item => item.to)
+      .map(item => ({
+        id: item.id,
+        label: item.label,
+        icon: item.icon,
+        to: item.to,
+        target: item.target
+      }))
   }, {
     id: 'actions',
     label: 'Ações',
-    items: actions
+    items: quickActions(me.value).map(action => ({
+      id: action.id,
+      label: action.label,
+      icon: action.icon,
+      to: action.to
+    }))
   }]
 })
 </script>
@@ -105,17 +70,21 @@ const groups = computed(() => {
     <UDashboardSidebar
       id="default"
       v-model:open="open"
+      data-testid="shell-sidebar"
       collapsible
       resizable
       class="bg-elevated/25"
       :ui="{ footer: 'lg:border-t lg:border-default' }"
     >
       <template #header="{ collapsed }">
-        <TeamsMenu :collapsed="collapsed" />
+        <OfficeIdentity :collapsed="collapsed" />
       </template>
 
       <template #default="{ collapsed }">
-        <UDashboardSearchButton :collapsed="collapsed" class="bg-transparent ring-default" />
+        <UDashboardSearchButton
+          :collapsed="collapsed"
+          class="bg-transparent ring-default"
+        />
 
         <UNavigationMenu
           :collapsed="collapsed"

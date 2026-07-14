@@ -6,6 +6,7 @@ const api = useApi()
 const items = ref<SyncRun[]>([])
 const cursor = ref<string | null>(null)
 const loading = ref(false)
+const loadError = ref<string | null>(null)
 const selected = ref<SyncRun | null>(null)
 const detailOpen = ref(false)
 const toast = useToast()
@@ -44,8 +45,10 @@ async function load(reset = false) {
     })
     items.value = reset ? response.data : [...items.value, ...response.data]
     cursor.value = response.meta.next_cursor
+    loadError.value = null
   } catch (caught) {
-    toast.add({ title: apiErrorMessage(caught, 'Erro ao carregar sincronizações.'), color: 'error' })
+    loadError.value = apiErrorMessage(caught, 'Erro ao carregar sincronizações.')
+    toast.add({ title: loadError.value, color: 'error' })
   } finally {
     loading.value = false
   }
@@ -60,25 +63,34 @@ function selectRow(_event: Event, row: TableRow<SyncRun>) {
   openDetail(row.original)
 }
 
+/** Bloqueio é sinalizado no status/mensagem — nunca oferecer salto de NSU. */
+function isBlocked(run: SyncRun) {
+  const message = (run.error_message || '').toLowerCase()
+  return run.status === 'FAILED' && (message.includes('bloque') || message.includes('block'))
+}
+
 onMounted(() => load(true))
 </script>
 
 <template>
   <UDashboardPanel id="syncs">
     <template #header>
-      <UDashboardNavbar title="Sincronizações">
+      <UDashboardNavbar data-testid="page-navbar" title="Sincronizações">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
-          <UButton
-            icon="i-lucide-refresh-cw"
-            color="neutral"
-            variant="ghost"
-            square
-            :loading="loading"
-            @click="load(true)"
-          />
+          <UTooltip text="Atualizar histórico">
+            <UButton
+              icon="i-lucide-refresh-cw"
+              color="neutral"
+              variant="ghost"
+              square
+              aria-label="Atualizar histórico de sincronizações"
+              :loading="loading"
+              @click="load(true)"
+            />
+          </UTooltip>
         </template>
       </UDashboardNavbar>
     </template>
@@ -87,18 +99,46 @@ onMounted(() => load(true))
       <UAlert
         icon="i-lucide-info"
         title="Sincronização por NSU"
-        description="O cursor só avança após a persistência integral da página. Falhas exibidas abaixo são sanitizadas."
+        description="O cursor só avança após a persistência integral da página. Não há avanço ou salto manual de NSU. Falhas exibidas abaixo são sanitizadas."
+      />
+
+      <UAlert
+        v-if="loadError"
+        :color="items.length ? 'warning' : 'error'"
+        icon="i-lucide-wifi-off"
+        :title="items.length ? 'Falha ao atualizar sincronizações' : 'Não foi possível carregar sincronizações'"
+        :description="loadError"
+        :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: () => load(true) }]"
       />
 
       <UTable
+        data-testid="data-table"
         :data="items"
         :loading="loading"
         :columns="columns"
         class="shrink-0"
+        :ui="{
+          base: 'table-fixed border-separate border-spacing-0',
+          thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
+          tbody: '[&>tr]:last:[&>td]:border-b-0',
+          th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
+          td: 'border-b border-default',
+          separator: 'h-0'
+        }"
         @select="selectRow"
       >
         <template #status-cell="{ row }">
-          <AppStatusBadge :status="row.original.status" />
+          <div class="flex flex-wrap items-center gap-2">
+            <AppStatusBadge :status="row.original.status" />
+            <UBadge
+              v-if="isBlocked(row.original)"
+              color="error"
+              variant="subtle"
+              icon="i-lucide-ban"
+            >
+              Cursor bloqueado
+            </UBadge>
+          </div>
         </template>
         <template #trigger-cell="{ row }">
           {{ statusLabel(row.original.trigger) }}
@@ -119,7 +159,7 @@ onMounted(() => load(true))
       </UTable>
 
       <UEmpty
-        v-if="!loading && !items.length"
+        v-if="!loading && !loadError && !items.length"
         icon="i-lucide-history"
         title="Nenhuma execução registrada"
         description="O histórico aparecerá após a primeira sincronização automática ou manual."
@@ -135,55 +175,89 @@ onMounted(() => load(true))
         />
       </div>
 
-      <USlideover v-model:open="detailOpen" :title="selected ? `Execução #${selected.id}` : 'Execução'">
+      <USlideover
+        v-model:open="detailOpen"
+        :title="selected ? `Execução #${selected.id}` : 'Execução'"
+      >
         <template #body>
           <div v-if="selected" class="space-y-5">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-wrap items-center justify-between gap-2">
               <AppStatusBadge :status="selected.status" />
               <UBadge color="neutral" variant="subtle">
                 {{ statusLabel(selected.trigger) }}
               </UBadge>
             </div>
+
+            <UAlert
+              v-if="isBlocked(selected)"
+              color="error"
+              icon="i-lucide-ban"
+              title="Cursor bloqueado"
+              description="Falhas consecutivas de decodificação bloquearam o avanço. Não há ação de salto ou edição manual de NSU."
+            />
+
             <dl class="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <dt class="text-muted">
+                  Origem
+                </dt>
+                <dd class="text-highlighted">
+                  {{ statusLabel(selected.trigger) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-muted">
+                  Resultado
+                </dt>
+                <dd class="text-highlighted">
+                  {{ statusLabel(selected.status) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-muted">
                   Início
-                </dt><dd class="text-highlighted">
+                </dt>
+                <dd class="text-highlighted">
                   {{ formatDateTime(selected.started_at) }}
                 </dd>
               </div>
               <div>
                 <dt class="text-muted">
                   Fim
-                </dt><dd class="text-highlighted">
+                </dt>
+                <dd class="text-highlighted">
                   {{ formatDateTime(selected.finished_at) }}
                 </dd>
               </div>
               <div>
                 <dt class="text-muted">
                   NSU inicial
-                </dt><dd class="font-mono text-highlighted">
+                </dt>
+                <dd class="font-mono text-highlighted">
                   {{ selected.from_nsu }}
                 </dd>
               </div>
               <div>
                 <dt class="text-muted">
                   NSU final
-                </dt><dd class="font-mono text-highlighted">
+                </dt>
+                <dd class="font-mono text-highlighted">
                   {{ selected.to_nsu }}
                 </dd>
               </div>
               <div>
                 <dt class="text-muted">
                   Páginas
-                </dt><dd class="text-highlighted">
+                </dt>
+                <dd class="text-highlighted">
                   {{ selected.pages_processed }}
                 </dd>
               </div>
               <div>
                 <dt class="text-muted">
                   Documentos
-                </dt><dd class="text-highlighted">
+                </dt>
+                <dd class="text-highlighted">
                   {{ selected.documents_persisted }}
                 </dd>
               </div>

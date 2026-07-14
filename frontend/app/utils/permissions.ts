@@ -12,7 +12,7 @@ export function unwrapMeUser(identity: MeIdentity): MeUser | null {
 
 export function hasConfirmedAdminAccess(user?: MeUser | null): boolean {
   return user?.role === 'ADMIN'
-    && user.two_factor_confirmed
+    && (!user.two_factor_required || user.two_factor_confirmed)
     && !user.requires_two_factor_setup
 }
 

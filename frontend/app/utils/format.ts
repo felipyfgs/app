@@ -12,6 +12,29 @@ export function formatDateTime(value?: string | null): string {
   }).format(date)
 }
 
+/**
+ * CNPJ limpo para armazenamento/clipboard: maiúsculo, sem máscara.
+ * Aceita numérico ou alfanumérico (14 chars no domínio).
+ */
+export function normalizeCnpj(value?: string | null): string {
+  return String(value || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+}
+
+/**
+ * Máscara visual `AA.AAA.AAA/AAAA-AA` (14 chars).
+ * Valores incompletos/inesperados retornam o limpo sem forçar máscara.
+ */
+export function formatCnpj(value?: string | null): string {
+  const clean = normalizeCnpj(value)
+  if (!clean) {
+    return '—'
+  }
+  if (clean.length !== 14) {
+    return clean
+  }
+  return `${clean.slice(0, 2)}.${clean.slice(2, 5)}.${clean.slice(5, 8)}/${clean.slice(8, 12)}-${clean.slice(12, 14)}`
+}
+
 export function formatCurrency(value?: string | number | null): string {
   if (value === null || value === undefined || value === '') {
     return '—'

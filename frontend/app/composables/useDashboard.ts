@@ -12,8 +12,9 @@ import type { MeIdentity } from '~/utils/permissions'
 const _useDashboard = () => {
   const route = useRoute()
   const router = useRouter()
-  const { user } = useSanctumAuth()
+  const { user, isAuthenticated } = useSanctumAuth()
   const isNotificationsSlideoverOpen = ref(false)
+  const sessionEpoch = ref(0)
 
   const me = computed(() => unwrapMeUser(user.value as MeIdentity))
 
@@ -43,6 +44,20 @@ const _useDashboard = () => {
     isNotificationsSlideoverOpen.value = false
   })
 
+  // Limpa alertas e estado de UI sensível quando a identidade muda ou a sessão termina.
+  watch(
+    () => [me.value?.id ?? null, isAuthenticated.value] as const,
+    ([nextId, authenticated], [prevId, wasAuthenticated]) => {
+      const identityChanged = prevId !== undefined && nextId !== prevId
+      const loggedOut = wasAuthenticated && !authenticated
+
+      if (identityChanged || loggedOut) {
+        isNotificationsSlideoverOpen.value = false
+        sessionEpoch.value += 1
+      }
+    }
+  )
+
   return {
     canAccessAdministration,
     canCreateExport,
@@ -50,7 +65,8 @@ const _useDashboard = () => {
     canManageCredentials,
     canTriggerSync,
     isNotificationsSlideoverOpen,
-    me
+    me,
+    sessionEpoch
   }
 }
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { NuxtError } from '#app'
+import { pt_br } from '@nuxt/ui/locale'
 
 defineProps<{
   error: NuxtError
@@ -18,7 +19,7 @@ useHead({
 </script>
 
 <template>
-  <UApp>
+  <UApp :locale="pt_br">
     <UError :error="error" />
   </UApp>
 </template>

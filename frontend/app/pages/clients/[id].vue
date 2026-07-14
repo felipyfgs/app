@@ -1,117 +1,88 @@
 <script setup lang="ts">
+/**
+ * Página de detalhe do cliente — arquétipo Settings do template
+ * + layout de detalhe (header identidade + main + aside), inspirado em HubStrom.
+ * Fonte template: .reference/nuxt-dashboard-template/app/pages/settings.vue
+ */
+import type { NavigationMenuItem } from '@nuxt/ui'
 import type { Client, ClientCredential, Establishment } from '~/types/api'
+import { clientDetailKey, clientSectionPath } from '~/composables/useClientDetail'
 
 const route = useRoute()
+const router = useRouter()
 const api = useApi()
 const toast = useToast()
-const { canManageClients, canManageCredentials, canTriggerSync } = useDashboard()
-const clientId = Number(route.params.id)
+const {
+  canManageClients,
+  canManageCredentials,
+  canTriggerSync
+} = useDashboard()
+
+const clientId = computed(() => Number(route.params.id))
 const item = ref<Client | null>(null)
 const credential = ref<ClientCredential | null>(null)
 const loading = ref(true)
-const establishmentOpen = ref(false)
-const credentialOpen = ref(false)
-const savingEstablishment = ref(false)
-const activatingCredential = ref(false)
 const triggeringId = ref<number | null>(null)
 const triggeredIds = ref<number[]>([])
-const establishmentForm = reactive({ cnpj: '', trade_name: '', is_matrix: false })
-const establishmentErrors = ref<Record<string, string[]>>({})
-const credentialPassword = ref('')
-const credentialFile = ref<File | null>(null)
+
 
 const establishments = computed(() => item.value?.establishments || [])
-const onboardingSteps = computed(() => [{
-  title: 'Cliente',
-  description: 'Raiz cadastrada',
-  complete: !!item.value
-}, {
-  title: 'Estabelecimento',
-  description: establishments.value.length ? `${establishments.value.length} cadastrado(s)` : 'Adicione matriz ou filial',
-  complete: establishments.value.length > 0
-}, {
-  title: 'Certificado A1',
-  description: canManageCredentials.value
-    ? (credential.value ? 'Validado e ativo' : 'Envie o PFX')
-    : 'Gerenciado por ADMIN',
-  complete: canManageCredentials.value ? !!credential.value : false
-}, {
-  title: 'Primeira sincronização',
-  description: triggeredIds.value.length ? 'Solicitada' : 'Dispare após ativar o A1',
-  complete: triggeredIds.value.length > 0
-}])
+
+const sectionLinks = computed<NavigationMenuItem[]>(() => {
+  const id = clientId.value
+  const path = route.path.replace(/\/$/, '')
+  const base = `/clients/${id}`
+
+  return [{
+    label: 'Resumo',
+    icon: 'i-lucide-layout-dashboard',
+    to: base,
+    exact: true,
+    active: path === base
+  }, {
+    label: 'Cadastro',
+    icon: 'i-lucide-clipboard-list',
+    to: `${base}/cadastro`,
+    active: path.endsWith('/cadastro')
+  }, {
+    label: 'Estabelecimentos',
+    icon: 'i-lucide-map-pin-house',
+    to: `${base}/estabelecimentos`,
+    active: path.endsWith('/estabelecimentos')
+  }, {
+    label: 'Certificado A1',
+    icon: 'i-lucide-badge-check',
+    to: `${base}/certificado`,
+    active: path.endsWith('/certificado')
+  }, {
+    label: 'Sincronização',
+    icon: 'i-lucide-refresh-cw',
+    to: `${base}/sincronizacao`,
+    active: path.endsWith('/sincronizacao')
+  }]
+})
 
 async function load() {
   loading.value = true
-  if (!Number.isInteger(clientId) || clientId <= 0) {
+  const id = clientId.value
+  if (!Number.isInteger(id) || id <= 0) {
+    item.value = null
     loading.value = false
     return
   }
 
   try {
-    item.value = (await api.clients.get(clientId)).data
+    item.value = (await api.clients.get(id)).data
     if (canManageCredentials.value) {
-      credential.value = (await api.credentials.get(clientId)).data
+      credential.value = (await api.credentials.get(id)).data
+    } else {
+      credential.value = null
     }
   } catch (caught) {
+    item.value = null
     toast.add({ title: apiErrorMessage(caught, 'Não foi possível carregar o cliente.'), color: 'error' })
   } finally {
     loading.value = false
-  }
-}
-
-async function createEstablishment() {
-  if (!canManageClients.value) {
-    return
-  }
-
-  establishmentErrors.value = {}
-  savingEstablishment.value = true
-  try {
-    await api.establishments.create(clientId, { ...establishmentForm })
-    establishmentOpen.value = false
-    establishmentForm.cnpj = ''
-    establishmentForm.trade_name = ''
-    establishmentForm.is_matrix = false
-    toast.add({ title: 'Estabelecimento cadastrado.', color: 'success' })
-    await load()
-  } catch (caught) {
-    establishmentErrors.value = apiFieldErrors(caught)
-    toast.add({ title: apiErrorMessage(caught, 'Falha ao cadastrar estabelecimento.'), color: 'error' })
-  } finally {
-    savingEstablishment.value = false
-  }
-}
-
-function selectCredentialFile(event: Event) {
-  const input = event.target as HTMLInputElement
-  credentialFile.value = input.files?.[0] || null
-}
-
-async function activateCredential() {
-  if (!canManageCredentials.value) {
-    return
-  }
-
-  if (!credentialFile.value) {
-    toast.add({ title: 'Selecione um arquivo PFX.', color: 'warning' })
-    return
-  }
-  activatingCredential.value = true
-  try {
-    credential.value = (await api.credentials.activate(clientId, credentialFile.value, credentialPassword.value)).data
-    credentialOpen.value = false
-    credentialPassword.value = ''
-    credentialFile.value = null
-    toast.add({
-      title: 'Certificado validado e ativado.',
-      description: 'Senha, validade, titular, fingerprint e raiz foram verificados.',
-      color: 'success'
-    })
-  } catch (caught) {
-    toast.add({ title: apiErrorMessage(caught, 'Não foi possível ativar o certificado.'), color: 'error' })
-  } finally {
-    activatingCredential.value = false
   }
 }
 
@@ -134,13 +105,90 @@ async function triggerSync(establishment: Establishment) {
   }
 }
 
-onMounted(load)
+function onCredentialActivated(value: ClientCredential) {
+  credential.value = value
+  // Mantém summary alinhado para KPIs/aside (mesmo sem re-fetch).
+  if (item.value) {
+    item.value = {
+      ...item.value,
+      credential_summary: {
+        status: value.status,
+        valid_to: value.valid_to,
+        expires_alert_30: value.expires_alert_30,
+        expires_alert_7: value.expires_alert_7,
+        expires_alert_1: value.expires_alert_1
+      }
+    }
+  }
+}
+
+function sectionPath(section?: string) {
+  return clientSectionPath(clientId.value, section)
+}
+
+/** Editar → aba Cadastro com formulário desbloqueado */
+function goEditCadastro() {
+  if (!item.value || !canManageClients.value) return
+  navigateTo({
+    path: clientSectionPath(item.value.id, 'cadastro'),
+    query: { edit: '1' }
+  })
+}
+
+provide(clientDetailKey, {
+  clientId,
+  item,
+  credential,
+  loading,
+  establishments,
+  triggeringId,
+  triggeredIds,
+  canManageClients,
+  canManageCredentials,
+  canTriggerSync,
+  load,
+  triggerSync,
+  onCredentialActivated,
+  sectionPath
+})
+
+/**
+ * Compat: URLs antigas ?section=X → /clients/:id[/X]
+ * Padrão Nuxt/template Settings: rotas aninhadas, não query.
+ */
+async function migrateLegacySectionQuery() {
+  const raw = route.query.section
+  if (typeof raw !== 'string' || raw === '') {
+    return
+  }
+
+  const allowed = new Set(['resumo', 'cadastro', 'estabelecimentos', 'certificado', 'sincronizacao'])
+  if (!allowed.has(raw)) {
+    return
+  }
+
+  const { section: _drop, ...rest } = route.query
+  await router.replace({
+    path: clientSectionPath(clientId.value, raw),
+    query: rest
+  })
+}
+
+watch(clientId, () => {
+  triggeredIds.value = []
+  load()
+})
+
+onMounted(async () => {
+  await migrateLegacySectionQuery()
+  await load()
+})
 </script>
 
 <template>
-  <UDashboardPanel id="client-detail">
+  <UDashboardPanel id="client-detail" data-testid="settings-panel" :ui="{ body: 'lg:py-8' }">
     <template #header>
-      <UDashboardNavbar :title="item?.name || 'Cliente'">
+      <UDashboardNavbar title="Clientes">
         <template #leading>
           <div class="flex items-center gap-1">
             <UDashboardSidebarCollapse />
@@ -149,294 +197,104 @@ onMounted(load)
               color="neutral"
               variant="ghost"
               icon="i-lucide-arrow-left"
+              label="Voltar aos clientes"
+              class="hidden sm:inline-flex"
+            />
+            <UButton
+              to="/clients"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-arrow-left"
               square
-              aria-label="Voltar para clientes"
+              class="sm:hidden"
+              aria-label="Voltar aos clientes"
             />
           </div>
         </template>
         <template #right>
-          <UBadge v-if="item" :color="item.is_active ? 'success' : 'neutral'" variant="subtle">
-            {{ item.is_active ? 'Ativo' : 'Inativo' }}
-          </UBadge>
+          <UButton
+            v-if="item && canManageClients"
+            color="primary"
+            variant="soft"
+            icon="i-lucide-pencil"
+            label="Editar cliente"
+            class="hidden sm:inline-flex"
+            @click="goEditCadastro"
+          />
+          <UButton
+            v-if="item && canManageClients"
+            color="primary"
+            variant="soft"
+            icon="i-lucide-pencil"
+            square
+            class="sm:hidden"
+            aria-label="Editar cliente"
+            @click="goEditCadastro"
+          />
         </template>
       </UDashboardNavbar>
     </template>
 
     <template #body>
-      <div v-if="loading" class="space-y-4">
-        <USkeleton class="h-28 w-full" />
-        <USkeleton class="h-52 w-full" />
-      </div>
-
-      <UEmpty
-        v-else-if="!item"
-        icon="i-lucide-building-x"
-        title="Cliente não encontrado"
-        description="O registro não existe ou pertence a outro escritório."
-      >
-        <UButton to="/clients" label="Voltar para clientes" />
-      </UEmpty>
-
-      <template v-else>
-        <UCard>
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div v-for="(step, index) in onboardingSteps" :key="step.title" class="flex gap-3">
-              <div
-                class="flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-                :class="step.complete ? 'bg-success/15 text-success' : 'bg-elevated text-muted'"
-              >
-                <UIcon v-if="step.complete" name="i-lucide-check" class="size-4" />
-                <span v-else>{{ index + 1 }}</span>
-              </div>
-              <div>
-                <p class="font-medium text-highlighted">
-                  {{ step.title }}
-                </p>
-                <p class="text-xs text-muted">
-                  {{ step.description }}
-                </p>
-              </div>
+      <div class="flex w-full flex-col gap-4 sm:gap-5">
+        <div v-if="loading && !item" class="space-y-4" role="status" aria-label="Carregando cliente">
+          <USkeleton class="h-28 w-full rounded-lg" />
+          <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+            <USkeleton class="h-96 w-full rounded-lg" />
+            <div class="space-y-4">
+              <USkeleton class="h-40 w-full rounded-lg" />
+              <USkeleton class="h-32 w-full rounded-lg" />
             </div>
           </div>
-        </UCard>
-
-        <div class="grid gap-4 xl:grid-cols-3">
-          <UCard class="xl:col-span-2">
-            <template #header>
-              <div class="flex items-center justify-between gap-3">
-                <div>
-                  <h2 class="font-semibold">
-                    Estabelecimentos
-                  </h2>
-                  <p class="text-sm text-muted">
-                    CNPJ completo, numérico ou alfanumérico.
-                  </p>
-                </div>
-                <UButton
-                  v-if="canManageClients"
-                  icon="i-lucide-plus"
-                  label="Adicionar"
-                  size="sm"
-                  @click="establishmentOpen = true"
-                />
-              </div>
-            </template>
-
-            <div v-if="establishments.length" class="divide-y divide-default">
-              <div
-                v-for="establishment in establishments"
-                :key="establishment.id"
-                class="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium">{{ establishment.trade_name || establishment.cnpj }}</span>
-                    <UBadge v-if="establishment.is_matrix" color="info" variant="subtle">
-                      Matriz
-                    </UBadge>
-                    <UBadge :color="establishment.is_active ? 'success' : 'neutral'" variant="subtle">
-                      {{ establishment.is_active ? 'Ativo' : 'Inativo' }}
-                    </UBadge>
-                  </div>
-                  <p class="font-mono text-sm text-muted">
-                    {{ establishment.cnpj }}
-                  </p>
-                </div>
-                <UButton
-                  v-if="canTriggerSync"
-                  icon="i-lucide-refresh-cw"
-                  label="Sincronizar"
-                  color="neutral"
-                  variant="subtle"
-                  size="sm"
-                  :loading="triggeringId === establishment.id"
-                  :disabled="!establishment.is_active || (canManageCredentials && !credential)"
-                  @click="triggerSync(establishment)"
-                />
-              </div>
-            </div>
-            <UEmpty
-              v-else
-              icon="i-lucide-map-pin-plus"
-              title="Nenhum estabelecimento"
-              description="Adicione a matriz ou uma filial para continuar."
-            />
-          </UCard>
-
-          <UCard>
-            <template #header>
-              <div>
-                <h2 class="font-semibold">
-                  Certificado A1
-                </h2>
-                <p class="text-sm text-muted">
-                  Um certificado por raiz do cliente.
-                </p>
-              </div>
-            </template>
-
-            <div v-if="!canManageCredentials" class="space-y-3">
-              <UAlert
-                color="info"
-                icon="i-lucide-lock-keyhole"
-                title="Acesso administrativo"
-                description="Somente ADMIN pode consultar metadados ou substituir o A1."
-              />
-            </div>
-            <div v-else-if="credential" class="space-y-3 text-sm">
-              <AppStatusBadge :status="credential.status" />
-              <dl class="space-y-2">
-                <div>
-                  <dt class="text-muted">
-                    Titular
-                  </dt>
-                  <dd class="break-words text-highlighted">
-                    {{ credential.subject_name }}
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-muted">
-                    CNPJ
-                  </dt>
-                  <dd class="font-mono text-highlighted">
-                    {{ credential.holder_cnpj }}
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-muted">
-                    Validade
-                  </dt>
-                  <dd class="text-highlighted">
-                    {{ formatDateTime(credential.valid_to) }}
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-muted">
-                    Fingerprint SHA-256
-                  </dt>
-                  <dd class="break-all font-mono text-xs text-highlighted">
-                    {{ credential.fingerprint_sha256 }}
-                  </dd>
-                </div>
-              </dl>
-              <UAlert
-                v-if="credential.expires_alert_30"
-                color="warning"
-                title="Certificado próximo do vencimento"
-              />
-              <UButton
-                block
-                color="neutral"
-                variant="outline"
-                @click="credentialOpen = true"
-              >
-                Substituir certificado
-              </UButton>
-            </div>
-            <UEmpty
-              v-else
-              icon="i-lucide-badge-alert"
-              title="A1 não configurado"
-              description="O upload valida senha, titular, raiz, validade e fingerprint antes da ativação."
-            >
-              <UButton label="Enviar e validar A1" @click="credentialOpen = true" />
-            </UEmpty>
-          </UCard>
         </div>
 
-        <UAlert
-          icon="i-lucide-info"
-          title="Cobertura do ADN"
-          description="A primeira sincronização começa no NSU zero. Documentos não compartilhados no ADN não são obtidos por scraping ou API municipal."
-        />
-      </template>
+        <UEmpty
+          v-else-if="!item"
+          icon="i-lucide-building-2"
+          title="Cliente não encontrado"
+          description="O registro não existe ou pertence a outro escritório."
+        >
+          <UButton to="/clients" label="Voltar para clientes" />
+        </UEmpty>
 
-      <UModal
-        v-if="canManageClients"
-        v-model:open="establishmentOpen"
-        title="Adicionar estabelecimento"
-      >
-        <template #body>
-          <form class="space-y-4" @submit.prevent="createEstablishment">
-            <UFormField label="CNPJ completo" required :error="establishmentErrors.cnpj?.[0]">
-              <UInput
-                v-model="establishmentForm.cnpj"
-                class="w-full"
-                required
-                autocomplete="off"
-              />
-            </UFormField>
-            <UFormField label="Nome fantasia" :error="establishmentErrors.trade_name?.[0]">
-              <UInput v-model="establishmentForm.trade_name" class="w-full" />
-            </UFormField>
-            <UCheckbox v-model="establishmentForm.is_matrix" label="Este estabelecimento é a matriz" />
-            <div class="flex justify-end gap-2">
-              <UButton
-                color="neutral"
-                variant="ghost"
-                type="button"
-                @click="establishmentOpen = false"
-              >
-                Cancelar
-              </UButton>
-              <UButton type="submit" :loading="savingEstablishment">
-                Adicionar
-              </UButton>
-            </div>
-          </form>
-        </template>
-      </UModal>
+        <template v-else>
+          <!-- Identidade (estilo HubStrom) -->
+          <ClientsClientDetailHeader
+            :client="item"
+            :establishments="establishments"
+            :can-manage-clients="canManageClients"
+            @edit="goEditCadastro"
+          />
 
-      <UModal
-        v-if="canManageCredentials"
-        v-model:open="credentialOpen"
-        title="Enviar certificado A1"
-        description="O PFX e a senha são usados somente para validação e armazenados juntos no cofre criptografado. Nunca poderão ser recuperados pela API."
-      >
-        <template #body>
-          <form class="space-y-4" @submit.prevent="activateCredential">
-            <UFormField label="Arquivo PFX" required help="Máximo de 5 MB.">
-              <input
-                id="credential-pfx"
-                name="pfx"
-                type="file"
-                accept=".pfx,.p12,application/x-pkcs12"
-                class="block w-full rounded-md border border-default bg-default px-3 py-2 text-sm"
-                required
-                @change="selectCredentialFile"
-              >
-            </UFormField>
-            <UFormField label="Senha do certificado" required>
-              <UInput
-                v-model="credentialPassword"
-                type="password"
-                autocomplete="off"
-                class="w-full"
-                required
-              />
-            </UFormField>
-            <UAlert
-              color="warning"
-              icon="i-lucide-shield-alert"
-              title="Substituição atômica"
-              description="O certificado atual só será substituído se o novo arquivo passar por todas as validações."
-            />
-            <div class="flex justify-end gap-2">
-              <UButton
-                color="neutral"
-                variant="ghost"
-                type="button"
-                @click="credentialOpen = false"
-              >
-                Cancelar
-              </UButton>
-              <UButton type="submit" :loading="activatingCredential">
-                Validar e ativar
-              </UButton>
+          <!-- Main + aside -->
+          <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+            <!-- Conteúdo com abas de seção (Settings toolbar no card) -->
+            <div class="min-w-0 rounded-lg ring ring-default bg-elevated/25">
+              <div class="border-b border-default px-2 sm:px-3">
+                <UNavigationMenu
+                  :items="sectionLinks"
+                  highlight
+                  class="-mx-1 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                />
+              </div>
+              <div class="p-4 sm:p-5 lg:p-6">
+                <NuxtPage />
+              </div>
             </div>
-          </form>
+
+            <!-- Lateral: progresso, cert, atalhos -->
+            <aside class="xl:sticky xl:top-4">
+              <ClientsClientDetailAside
+                :client="item"
+                :credential="credential"
+                :establishments="establishments"
+                :can-manage-credentials="canManageCredentials"
+              />
+            </aside>
+          </div>
+
         </template>
-      </UModal>
+      </div>
     </template>
   </UDashboardPanel>
 </template>

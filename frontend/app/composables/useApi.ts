@@ -1,7 +1,12 @@
 import type {
   Client,
+  ClientContact,
   ClientCredential,
+  CnpjLookupResult,
+  CreateClientPayload,
+  CreateClientResponse,
   CursorMeta,
+  DfeDocumentMetadata,
   Establishment,
   ExportFilters,
   ExportJob,
@@ -19,6 +24,8 @@ export interface ClientListParams {
   q?: string
   page?: number
   per_page?: number
+  /** Filtro de estado no escritório (true/false) */
+  is_active?: boolean | 0 | 1
 }
 
 export interface NoteListParams {
@@ -46,17 +53,43 @@ export function useApi() {
     clients: {
       list: (params?: ClientListParams) =>
         client<{ data: Client[], meta: PageMeta }>('/api/v1/clients', { query: params }),
-      create: (body: { name: string, cnpj: string, notes?: string }) =>
-        client<{ data: Client }>('/api/v1/clients', { method: 'POST', body }),
+      create: (body: CreateClientPayload) =>
+        client<{ data: CreateClientResponse }>('/api/v1/clients', { method: 'POST', body }),
       get: (id: number) => client<{ data: Client }>(`/api/v1/clients/${id}`),
-      update: (id: number, body: { name?: string, notes?: string | null, is_active?: boolean }) =>
+      update: (id: number, body: Partial<{
+        legal_name: string
+        display_name: string | null
+        notes: string | null
+        is_active: boolean
+        inactive_reason: string | null
+        legal_nature_code: string | null
+        legal_nature_name: string | null
+        company_size_code: string | null
+        company_size_name: string | null
+        tax_regime: string | null
+      }>) =>
         client<{ data: Client }>(`/api/v1/clients/${id}`, { method: 'PATCH', body })
     },
+    cnpj: {
+      lookup: (cnpj: string) => client<{ data: CnpjLookupResult }>(
+        `/api/v1/cnpj/${encodeURIComponent(cnpj)}/lookup`
+      )
+    },
     establishments: {
-      create: (clientId: number, body: { cnpj: string, trade_name?: string, is_matrix?: boolean }) =>
+      create: (clientId: number, body: Record<string, unknown>) =>
         client<{ data: Establishment }>(`/api/v1/clients/${clientId}/establishments`, { method: 'POST', body }),
-      update: (id: number, body: { trade_name?: string | null, is_matrix?: boolean, is_active?: boolean }) =>
+      update: (id: number, body: Record<string, unknown>) =>
         client<{ data: Establishment }>(`/api/v1/establishments/${id}`, { method: 'PATCH', body })
+    },
+    contacts: {
+      list: (clientId: number) =>
+        client<{ data: ClientContact[] }>(`/api/v1/clients/${clientId}/contacts`),
+      create: (clientId: number, body: Record<string, unknown>) =>
+        client<{ data: ClientContact }>(`/api/v1/clients/${clientId}/contacts`, { method: 'POST', body }),
+      update: (clientId: number, contactId: number, body: Record<string, unknown>) =>
+        client<{ data: ClientContact }>(`/api/v1/clients/${clientId}/contacts/${contactId}`, { method: 'PATCH', body }),
+      remove: (clientId: number, contactId: number) =>
+        client(`/api/v1/clients/${clientId}/contacts/${contactId}`, { method: 'DELETE' })
     },
     credentials: {
       get: (clientId: number) =>
@@ -74,7 +107,19 @@ export function useApi() {
     notes: {
       list: (params?: NoteListParams) =>
         client<{ data: NfseNote[], meta: CursorMeta }>('/api/v1/notes', { query: params }),
-      get: (accessKey: string) => client<{ data: NfseNote }>(`/api/v1/notes/${encodeURIComponent(accessKey)}`),
+      get: (accessKey: string) => client<{
+        data: {
+          note: NfseNote
+          events: Array<{
+            id: number
+            access_key: string
+            event_type?: string | null
+            event_at?: string | null
+            status?: string | null
+          }>
+          document: DfeDocumentMetadata | null
+        }
+      }>(`/api/v1/notes/${encodeURIComponent(accessKey)}`),
       xmlUrl: (accessKey: string) => apiUrl(`/api/v1/notes/${encodeURIComponent(accessKey)}/xml`)
     },
     sync: {
