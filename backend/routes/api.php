@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\NoteController;
+use App\Http\Controllers\Api\V1\OperationsInboxController;
 use App\Http\Controllers\Api\V1\OperationsSummaryController;
 use App\Http\Controllers\Api\V1\SyncController;
 use App\Http\Middleware\EnsureActiveUser;
@@ -49,6 +50,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/exports/{export}/download', [ExportController::class, 'download']);
 
             Route::get('/operations/summary', OperationsSummaryController::class);
+            Route::get('/operations/inbox', OperationsInboxController::class);
         });
     });
 });

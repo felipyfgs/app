@@ -9,15 +9,26 @@ use App\Models\Client;
 use App\Models\ClientCredential;
 use App\Models\Establishment;
 use App\Models\Export;
+use App\Models\InstanceBackupRun;
 use App\Models\NfseNote;
 use App\Models\SyncCursor;
 use App\Models\SyncRun;
+use App\Services\Operations\OperationsInboxBuilder;
+use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 
 class OperationsSummaryController extends Controller
 {
-    public function __invoke(): JsonResponse
-    {
+    public function __invoke(
+        CurrentOffice $currentOffice,
+        OperationsInboxBuilder $inbox,
+    ): JsonResponse {
+        $officeId = $currentOffice->id();
+        abort_if($officeId === null, 403);
+
+        $counts = $inbox->counts($officeId, $currentOffice->role());
+        $backup = InstanceBackupRun::statusSummary();
+
         return response()->json([
             'data' => [
                 'clients' => Client::query()->count(),
@@ -38,6 +49,10 @@ class OperationsSummaryController extends Controller
                     ->where('status', CredentialStatus::Active)
                     ->where('valid_to', '<=', now()->addDays(30))
                     ->count(),
+                'inbox_critical' => $counts['inbox_critical'],
+                'inbox_high' => $counts['inbox_high'],
+                'inbox_total' => $counts['inbox_total'],
+                'backup' => $backup,
                 'generated_at' => now()->toIso8601String(),
             ],
         ]);
