@@ -1,7 +1,8 @@
 <?php
 
 return [
-    'base_url' => env('ADN_BASE_URL', 'https://adn.nfse.gov.br/contribuintes'),
+    // Empty ADN_BASE_URL= in .env must not wipe the official default (JSON contribuintes API).
+    'base_url' => env('ADN_BASE_URL') ?: 'https://adn.nfse.gov.br/contribuintes',
     'environment' => env('ADN_ENVIRONMENT', 'restricted_production'),
     'timeout_seconds' => (int) env('ADN_TIMEOUT_SECONDS', 30),
     'connect_timeout_seconds' => (int) env('ADN_CONNECT_TIMEOUT_SECONDS', 10),

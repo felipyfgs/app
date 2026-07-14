@@ -30,6 +30,20 @@ function shortKey(accessKey: string) {
   return `${accessKey.slice(0, 8)}…${accessKey.slice(-6)}`
 }
 
+/** Contraparte relativa ao papel: tomador se emitente, emitente se tomador. */
+function counterpartyLabel(note: NfseNote) {
+  if (note.fiscal_role === 'ISSUER') {
+    return note.taker_name || formatCnpj(note.taker_cnpj)
+  }
+  if (note.fiscal_role === 'TAKER') {
+    return note.issuer_name || formatCnpj(note.issuer_cnpj)
+  }
+  if (note.fiscal_role === 'INTERMEDIARY') {
+    return note.issuer_name || formatCnpj(note.issuer_cnpj)
+  }
+  return note.issuer_name || note.taker_name || formatCnpj(note.issuer_cnpj)
+}
+
 watch(
   () => props.selectedAccessKey,
   (key) => {
@@ -106,13 +120,14 @@ defineShortcuts({
         >
           <div class="flex items-start justify-between gap-2">
             <div class="min-w-0">
-              <p class="truncate font-mono text-xs font-medium text-highlighted">
-                {{ shortKey(note.access_key) }}
+              <p class="truncate text-sm font-medium text-highlighted">
+                <template v-if="note.number">NFS-e nº {{ note.number }}</template>
+                <template v-else>{{ shortKey(note.access_key) }}</template>
               </p>
               <p class="mt-0.5 truncate text-xs text-muted">
                 {{ statusLabel(note.fiscal_role) }}
-                <template v-if="note.issuer_cnpj">
-                  · {{ note.issuer_cnpj }}
+                <template v-if="counterpartyLabel(note)">
+                  · {{ counterpartyLabel(note) }}
                 </template>
               </p>
             </div>
@@ -125,7 +140,8 @@ defineShortcuts({
           </div>
           <div class="mt-1 flex items-center justify-between gap-2">
             <p class="truncate text-xs text-dimmed">
-              Tomador {{ note.taker_cnpj || '—' }}
+              {{ formatCnpj(note.issuer_cnpj) }}
+              <span v-if="note.issue_location"> · {{ note.issue_location }}</span>
             </p>
             <p class="shrink-0 text-xs font-medium tabular-nums text-highlighted">
               {{ formatCurrency(note.service_amount) }}

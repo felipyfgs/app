@@ -60,6 +60,10 @@ const events = computed(() => {
 })
 
 const shortTitle = computed(() => {
+  const n = note.value
+  if (n?.number) {
+    return `NFS-e nº ${n.number}`
+  }
   const key = props.accessKey
   if (key.length <= 22) return key
   return `${key.slice(0, 10)}…${key.slice(-8)}`
@@ -71,9 +75,29 @@ const partyRows = computed<MetaRow[]>(() => {
   const n = note.value
   if (!n) return []
   return [
-    { field: 'Emitente', value: n.issuer_cnpj || '—', mono: true },
-    { field: 'Tomador', value: n.taker_cnpj || '—', mono: true },
-    { field: 'Intermediário', value: n.intermediary_cnpj || '—', mono: true }
+    {
+      field: 'Emitente',
+      value: n.issuer_name
+        ? `${n.issuer_name} (${formatCnpj(n.issuer_cnpj)})`
+        : formatCnpj(n.issuer_cnpj),
+      mono: !n.issuer_name
+    },
+    {
+      field: 'Tomador',
+      value: n.taker_name
+        ? `${n.taker_name} (${formatCnpj(n.taker_cnpj)})`
+        : formatCnpj(n.taker_cnpj),
+      mono: !n.taker_name
+    },
+    {
+      field: 'Intermediário',
+      value: n.intermediary_cnpj
+        ? (n.intermediary_name
+            ? `${n.intermediary_name} (${formatCnpj(n.intermediary_cnpj)})`
+            : formatCnpj(n.intermediary_cnpj))
+        : '—',
+      mono: !!(n.intermediary_cnpj && !n.intermediary_name)
+    }
   ]
 })
 
@@ -81,10 +105,20 @@ const fiscalRows = computed<MetaRow[]>(() => {
   const n = note.value
   if (!n) return []
   return [
+    { field: 'Número', value: n.number || '—' },
     { field: 'Papel fiscal', value: statusLabel(n.fiscal_role) },
     { field: 'Competência', value: n.competence || '—' },
     { field: 'Emissão', value: formatDateTime(n.issued_at) },
-    { field: 'Valor do serviço', value: formatCurrency(n.service_amount) }
+    { field: 'Valor do serviço', value: formatCurrency(n.service_amount) },
+    { field: 'Local de emissão', value: n.issue_location || '—' },
+    { field: 'Local da prestação', value: n.service_location || '—' },
+    {
+      field: 'Situação (cStat)',
+      value: n.official_status_code
+        ? `${n.official_status_code} · ${statusLabel(n.status)}`
+        : statusLabel(n.status)
+    },
+    { field: 'Chave de acesso', value: n.access_key || '—', mono: true }
   ]
 })
 

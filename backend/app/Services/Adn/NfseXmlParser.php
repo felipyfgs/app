@@ -10,12 +10,19 @@ final class NfseXmlParser
     /**
      * @return array{
      *   access_key: ?string,
+     *   number: ?string,
      *   issuer_cnpj: ?string,
+     *   issuer_name: ?string,
      *   taker_cnpj: ?string,
+     *   taker_name: ?string,
      *   intermediary_cnpj: ?string,
+     *   intermediary_name: ?string,
      *   competence: ?string,
      *   issued_at: ?CarbonImmutable,
      *   service_amount: ?string,
+     *   issue_location: ?string,
+     *   service_location: ?string,
+     *   official_status_code: ?string,
      *   status: string,
      *   parse_status: string,
      *   parse_alert: ?string,
@@ -33,13 +40,80 @@ final class NfseXmlParser
             return $this->failed('XML malformado.');
         }
 
+        // Nacional: chave em infNFSe/@Id (prefixo NFS) ou chNFSe — sempre uppercase.
         $accessKey = $this->first($doc, ['//*[local-name()="chNFSe"]', '//*[local-name()="chaveAcesso"]']);
-        $issuer = $this->cnpj($doc, ['//*[local-name()="emit"]//*[local-name()="CNPJ"]', '//*[local-name()="prestador"]//*[local-name()="CNPJ"]']);
-        $taker = $this->cnpj($doc, ['//*[local-name()="toma"]//*[local-name()="CNPJ"]', '//*[local-name()="tomador"]//*[local-name()="CNPJ"]']);
-        $intermediary = $this->cnpj($doc, ['//*[local-name()="intermediario"]//*[local-name()="CNPJ"]']);
-        $competence = $this->first($doc, ['//*[local-name()="dCompet"]', '//*[local-name()="competencia"]']);
-        $issuedRaw = $this->first($doc, ['//*[local-name()="dhEmi"]', '//*[local-name()="dataEmissao"]']);
-        $amount = $this->first($doc, ['//*[local-name()="vServ"]', '//*[local-name()="valorServicos"]']);
+        $accessKey = $accessKey !== null ? strtoupper($accessKey) : $this->accessKeyFromInfId($doc);
+
+        $number = $this->first($doc, [
+            '//*[local-name()="infNFSe"]/*[local-name()="nNFSe"]',
+            '//*[local-name()="nNFSe"]',
+        ]);
+
+        $issuer = $this->cnpj($doc, [
+            '//*[local-name()="infNFSe"]/*[local-name()="emit"]/*[local-name()="CNPJ"]',
+            '//*[local-name()="emit"]//*[local-name()="CNPJ"]',
+            '//*[local-name()="prest"]//*[local-name()="CNPJ"]',
+            '//*[local-name()="prestador"]//*[local-name()="CNPJ"]',
+        ]);
+        $issuerName = $this->first($doc, [
+            '//*[local-name()="infNFSe"]/*[local-name()="emit"]/*[local-name()="xNome"]',
+            '//*[local-name()="emit"]/*[local-name()="xNome"]',
+            '//*[local-name()="prest"]/*[local-name()="xNome"]',
+        ]);
+
+        $taker = $this->cnpj($doc, [
+            '//*[local-name()="toma"]//*[local-name()="CNPJ"]',
+            '//*[local-name()="tomador"]//*[local-name()="CNPJ"]',
+            '//*[local-name()="dest"]//*[local-name()="CNPJ"]',
+        ]);
+        $takerName = $this->first($doc, [
+            '//*[local-name()="toma"]/*[local-name()="xNome"]',
+            '//*[local-name()="toma"]//*[local-name()="xNome"]',
+            '//*[local-name()="tomador"]//*[local-name()="xNome"]',
+        ]);
+
+        $intermediary = $this->cnpj($doc, [
+            '//*[local-name()="intermediario"]//*[local-name()="CNPJ"]',
+            '//*[local-name()="intermediarioServico"]//*[local-name()="CNPJ"]',
+        ]);
+        $intermediaryName = $this->first($doc, [
+            '//*[local-name()="intermediario"]//*[local-name()="xNome"]',
+            '//*[local-name()="intermediarioServico"]//*[local-name()="xNome"]',
+        ]);
+
+        $competence = $this->first($doc, [
+            '//*[local-name()="dCompet"]',
+            '//*[local-name()="competencia"]',
+        ]);
+        // Preferir emissão da DPS (dhEmi), não dhProc (processamento ADN).
+        $issuedRaw = $this->first($doc, [
+            '//*[local-name()="infDPS"]/*[local-name()="dhEmi"]',
+            '//*[local-name()="dhEmi"]',
+            '//*[local-name()="dataEmissao"]',
+            '//*[local-name()="dhProc"]',
+        ]);
+        // Valor: preferir vServPrest/vServ do DPS; depois vLiq.
+        $amount = $this->first($doc, [
+            '//*[local-name()="vServPrest"]/*[local-name()="vServ"]',
+            '//*[local-name()="valores"]/*[local-name()="vLiq"]',
+            '//*[local-name()="vServ"]',
+            '//*[local-name()="valorServicos"]',
+        ]);
+
+        $issueLocation = $this->first($doc, [
+            '//*[local-name()="infNFSe"]/*[local-name()="xLocEmi"]',
+            '//*[local-name()="xLocEmi"]',
+        ]);
+        $serviceLocation = $this->first($doc, [
+            '//*[local-name()="infNFSe"]/*[local-name()="xLocPrestacao"]',
+            '//*[local-name()="xLocPrestacao"]',
+        ]);
+
+        $cStat = $this->first($doc, [
+            '//*[local-name()="infNFSe"]/*[local-name()="cStat"]',
+            '//*[local-name()="cStat"]',
+        ]);
+        $status = $this->mapOfficialStatus($cStat);
 
         $parseStatus = 'OK';
         $alert = null;
@@ -50,13 +124,20 @@ final class NfseXmlParser
 
         return [
             'access_key' => $accessKey,
+            'number' => $number,
             'issuer_cnpj' => $issuer,
+            'issuer_name' => $this->truncateName($issuerName),
             'taker_cnpj' => $taker,
+            'taker_name' => $this->truncateName($takerName),
             'intermediary_cnpj' => $intermediary,
+            'intermediary_name' => $this->truncateName($intermediaryName),
             'competence' => $this->normalizeCompetence($competence),
             'issued_at' => $issuedRaw ? CarbonImmutable::parse($issuedRaw) : null,
-            'service_amount' => $amount,
-            'status' => 'ACTIVE',
+            'service_amount' => $this->normalizeAmount($amount),
+            'issue_location' => $this->truncateName($issueLocation, 120),
+            'service_location' => $this->truncateName($serviceLocation, 120),
+            'official_status_code' => $cStat,
+            'status' => $status,
             'parse_status' => $parseStatus,
             'parse_alert' => $alert,
             'fiscal_role_for' => function (string $establishmentCnpj) use ($issuer, $taker, $intermediary): ?FiscalRole {
@@ -97,14 +178,47 @@ final class NfseXmlParser
             ];
         }
 
+        $accessKey = $this->first($doc, ['//*[local-name()="chNFSe"]', '//*[local-name()="chaveAcesso"]']);
+        $accessKey = $accessKey !== null ? strtoupper($accessKey) : $this->accessKeyFromInfId($doc);
+
         return [
-            'access_key' => $this->first($doc, ['//*[local-name()="chNFSe"]', '//*[local-name()="chaveAcesso"]']),
+            'access_key' => $accessKey,
             'event_type' => $this->first($doc, ['//*[local-name()="tpEvento"]', '//*[local-name()="tipoEvento"]']),
             'event_at' => ($raw = $this->first($doc, ['//*[local-name()="dhEvento"]'])) ? CarbonImmutable::parse($raw) : null,
             'status' => $this->first($doc, ['//*[local-name()="cStat"]']),
             'parse_status' => 'OK',
             'parse_alert' => null,
         ];
+    }
+
+    /**
+     * Layout nacional: infNFSe Id="NFS{chave50}" (ou similar).
+     */
+    private function accessKeyFromInfId(\DOMDocument $doc): ?string
+    {
+        $xpath = new \DOMXPath($doc);
+        foreach (['infNFSe', 'infEvento', 'infDFe'] as $local) {
+            $nodes = $xpath->query('//*[local-name()="'.$local.'"]');
+            if (! $nodes || $nodes->length === 0) {
+                continue;
+            }
+            $el = $nodes->item(0);
+            if (! $el instanceof \DOMElement) {
+                continue;
+            }
+            $id = trim($el->getAttribute('Id') ?: $el->getAttribute('id'));
+            if ($id === '') {
+                continue;
+            }
+            if (preg_match('/^NFS([0-9A-Za-z]{44,50})$/i', $id, $m)) {
+                return strtoupper($m[1]);
+            }
+            if (preg_match('/^([0-9A-Za-z]{44,50})$/', $id, $m)) {
+                return strtoupper($m[1]);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -151,6 +265,49 @@ final class NfseXmlParser
         return $value;
     }
 
+    private function normalizeAmount(?string $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        // Aceita 1234.56 ou 1.234,56
+        $clean = str_replace([' ', "\u{00A0}"], '', $value);
+        if (str_contains($clean, ',') && str_contains($clean, '.')) {
+            $clean = str_replace('.', '', $clean);
+            $clean = str_replace(',', '.', $clean);
+        } elseif (str_contains($clean, ',')) {
+            $clean = str_replace(',', '.', $clean);
+        }
+        if (! is_numeric($clean)) {
+            return $value;
+        }
+
+        return number_format((float) $clean, 2, '.', '');
+    }
+
+    private function mapOfficialStatus(?string $cStat): string
+    {
+        return match ($cStat) {
+            '100' => 'ACTIVE',
+            '101' => 'CANCELLED',
+            '102' => 'REPLACED',
+            default => $cStat ? 'ACTIVE' : 'ACTIVE',
+        };
+    }
+
+    private function truncateName(?string $value, int $max = 255): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
+        if (mb_strlen($value) <= $max) {
+            return $value;
+        }
+
+        return mb_substr($value, 0, $max);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -158,12 +315,19 @@ final class NfseXmlParser
     {
         return [
             'access_key' => null,
+            'number' => null,
             'issuer_cnpj' => null,
+            'issuer_name' => null,
             'taker_cnpj' => null,
+            'taker_name' => null,
             'intermediary_cnpj' => null,
+            'intermediary_name' => null,
             'competence' => null,
             'issued_at' => null,
             'service_amount' => null,
+            'issue_location' => null,
+            'service_location' => null,
+            'official_status_code' => null,
             'status' => 'UNKNOWN',
             'parse_status' => 'FAILED',
             'parse_alert' => $alert,

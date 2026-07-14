@@ -54,8 +54,8 @@ final class DistributionPageProcessor
                     $persisted++;
                 }
 
-                // cStat 137 preserva o cursor; cStat 138 foi validado item a item.
-                $newNsu = $page->status === '137'
+                // NENHUM_DOCUMENTO_LOCALIZADO preserva o cursor; DOCUMENTOS_LOCALIZADOS avança ao maior NSU do lote.
+                $newNsu = $page->status === HttpAdnContributorClient::STATUS_NONE_FOUND
                     ? $cursor->last_nsu
                     : $page->ultimoNsu;
                 $cursor->last_nsu = $newNsu;
@@ -85,7 +85,7 @@ final class DistributionPageProcessor
 
     private function assertPageCanAdvance(SyncCursor $cursor, DistributionPageDto $page): void
     {
-        if ($page->status === '137') {
+        if ($page->status === HttpAdnContributorClient::STATUS_NONE_FOUND) {
             if ($page->documents !== [] || $page->hasMore) {
                 throw new AdnInvalidResponseException;
             }
@@ -93,7 +93,7 @@ final class DistributionPageProcessor
             return;
         }
 
-        if ($page->status !== '138'
+        if ($page->status !== HttpAdnContributorClient::STATUS_DOCUMENTS_FOUND
             || $page->documents === []
             || $page->ultimoNsu <= $cursor->last_nsu
             || $page->maxNsu < $page->ultimoNsu) {
@@ -143,15 +143,11 @@ final class DistributionPageProcessor
 
             if ($doc->type === AdnDocumentType::Nfse || $doc->type === AdnDocumentType::Unknown) {
                 $parsed = $this->parser->parseNote($bytes);
-                $accessKey = $parsed['access_key'];
-                $parseStatus = $parsed['parse_status'];
-                $parseAlert = $parsed['parse_alert'];
+                [$accessKey, $parseStatus, $parseAlert] = $this->resolveAccessKeyAndParseStatus($parsed, $doc->accessKey);
                 $fiscalRole = ($parsed['fiscal_role_for'])($establishment->cnpj);
             } elseif ($doc->type === AdnDocumentType::Event) {
                 $parsed = $this->parser->parseEvent($bytes);
-                $accessKey = $parsed['access_key'];
-                $parseStatus = $parsed['parse_status'];
-                $parseAlert = $parsed['parse_alert'];
+                [$accessKey, $parseStatus, $parseAlert] = $this->resolveAccessKeyAndParseStatus($parsed, $doc->accessKey);
             }
 
             // XML bem-formado com XSD/schema desconhecido: preserva bytes, marca REVIEW, não bloqueia cursor.
@@ -172,31 +168,22 @@ final class DistributionPageProcessor
                 'parse_alert' => $parseAlert,
             ]);
 
-            if ($doc->type === AdnDocumentType::Nfse && isset($parsed) && is_array($parsed) && ($parsed['access_key'] ?? null)) {
+            if ($doc->type === AdnDocumentType::Nfse && isset($parsed) && is_array($parsed) && $accessKey) {
                 NfseNote::query()->firstOrCreate(
                     [
                         'office_id' => $cursor->office_id,
-                        'access_key' => $parsed['access_key'],
+                        'access_key' => $accessKey,
                     ],
-                    [
-                        'dfe_document_id' => $existing->id,
-                        'issuer_cnpj' => $parsed['issuer_cnpj'],
-                        'taker_cnpj' => $parsed['taker_cnpj'],
-                        'intermediary_cnpj' => $parsed['intermediary_cnpj'],
-                        'fiscal_role' => $fiscalRole,
-                        'competence' => $parsed['competence'],
-                        'issued_at' => $parsed['issued_at'],
-                        'service_amount' => $parsed['service_amount'],
-                        'status' => $parsed['status'],
-                    ]
+                    $this->noteProjectionAttributes($existing->id, $parsed, $fiscalRole),
                 );
             }
 
             if ($doc->type === AdnDocumentType::Event && isset($parsed) && is_array($parsed)) {
+                $eventKey = $accessKey ?? '';
                 NfseEvent::query()->create([
                     'office_id' => $cursor->office_id,
                     'dfe_document_id' => $existing->id,
-                    'access_key' => $parsed['access_key'] ?? '',
+                    'access_key' => $eventKey,
                     'event_type' => $parsed['event_type'] ?? null,
                     'event_at' => $parsed['event_at'] ?? null,
                     'status' => $parsed['status'] ?? null,
@@ -204,13 +191,17 @@ final class DistributionPageProcessor
 
                 $this->applyDerivedNoteStatus(
                     officeId: (int) $cursor->office_id,
-                    accessKey: (string) ($parsed['access_key'] ?? ''),
+                    accessKey: $eventKey,
                     eventType: $parsed['event_type'] ?? null,
                 );
             }
         } else {
             // Papel fiscal é por estabelecimento (interesse), não o da nota original.
             $fiscalRole = $this->fiscalRoleForEstablishment($existing, $establishment);
+            // Backfill de projeção quando o XML já existia sem chave (parser legado).
+            if ($existing->access_key === null && $doc->type === AdnDocumentType::Nfse) {
+                $this->backfillNoteProjection($existing, $establishment, $doc);
+            }
         }
 
         // Idempotência: (establishment, env, nsu) e no máximo um vínculo documento↔estabelecimento.
@@ -297,5 +288,95 @@ final class DistributionPageProcessor
             ->where('office_id', $officeId)
             ->where('access_key', $accessKey)
             ->update(['status' => $status]);
+    }
+
+    /**
+     * Reprojeta nota quando o documento já existia sem access_key (parser anterior).
+     * Não altera bytes/SHA do XML imutável.
+     */
+    private function backfillNoteProjection(
+        DfeDocument $existing,
+        Establishment $establishment,
+        DistributionDocumentDto $doc,
+    ): void {
+        try {
+            $bytes = $this->store->get($existing->vault_object_id, [
+                'office_id' => $existing->office_id,
+                'sha256' => $existing->sha256,
+            ]);
+        } catch (Throwable) {
+            return;
+        }
+
+        $parsed = $this->parser->parseNote($bytes);
+        [$accessKey, $parseStatus, $parseAlert] = $this->resolveAccessKeyAndParseStatus($parsed, $doc->accessKey);
+        if (! $accessKey) {
+            return;
+        }
+
+        $fiscalRole = ($parsed['fiscal_role_for'])($establishment->cnpj);
+        $existing->access_key = $accessKey;
+        // Chave do envelope não mascara FAILED; só limpa REVIEW por chave ausente.
+        $existing->parse_status = $parseStatus;
+        $existing->parse_alert = $parseAlert;
+        $existing->save();
+
+        $attrs = $this->noteProjectionAttributes($existing->id, $parsed, $fiscalRole);
+        $note = NfseNote::query()->firstOrNew([
+            'office_id' => $existing->office_id,
+            'access_key' => $accessKey,
+        ]);
+        $note->fill($attrs);
+        $note->save();
+    }
+
+    /**
+     * Chave do envelope só preenche identidade; nunca promove parse FAILED → OK.
+     *
+     * @param  array{access_key?: ?string, parse_status: string, parse_alert?: ?string}  $parsed
+     * @return array{0: ?string, 1: string, 2: ?string}
+     */
+    private function resolveAccessKeyAndParseStatus(array $parsed, ?string $envelopeAccessKey): array
+    {
+        $envelopeKey = $envelopeAccessKey !== null && $envelopeAccessKey !== ''
+            ? strtoupper(trim($envelopeAccessKey))
+            : null;
+        $accessKey = $parsed['access_key'] ?? $envelopeKey;
+        $parseStatus = $parsed['parse_status'];
+        $parseAlert = $parsed['parse_alert'] ?? null;
+
+        if (($parsed['access_key'] ?? null) === null && $envelopeKey !== null && $parseStatus !== 'FAILED') {
+            // REVIEW típico por chave ausente no XML: envelope resolve a identidade.
+            $parseStatus = 'OK';
+            $parseAlert = null;
+        }
+
+        return [$accessKey, $parseStatus, $parseAlert];
+    }
+
+    /**
+     * @param  array<string, mixed>  $parsed
+     * @return array<string, mixed>
+     */
+    private function noteProjectionAttributes(int $dfeDocumentId, array $parsed, ?FiscalRole $fiscalRole): array
+    {
+        return [
+            'dfe_document_id' => $dfeDocumentId,
+            'number' => $parsed['number'] ?? null,
+            'issuer_cnpj' => $parsed['issuer_cnpj'] ?? null,
+            'issuer_name' => $parsed['issuer_name'] ?? null,
+            'taker_cnpj' => $parsed['taker_cnpj'] ?? null,
+            'taker_name' => $parsed['taker_name'] ?? null,
+            'intermediary_cnpj' => $parsed['intermediary_cnpj'] ?? null,
+            'intermediary_name' => $parsed['intermediary_name'] ?? null,
+            'fiscal_role' => $fiscalRole,
+            'competence' => $parsed['competence'] ?? null,
+            'issued_at' => $parsed['issued_at'] ?? null,
+            'service_amount' => $parsed['service_amount'] ?? null,
+            'issue_location' => $parsed['issue_location'] ?? null,
+            'service_location' => $parsed['service_location'] ?? null,
+            'status' => $parsed['status'] ?? 'ACTIVE',
+            'official_status_code' => $parsed['official_status_code'] ?? null,
+        ];
     }
 }

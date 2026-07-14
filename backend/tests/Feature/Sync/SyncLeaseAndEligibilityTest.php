@@ -198,7 +198,7 @@ class SyncLeaseAndEligibilityTest extends TestCase
                 $est->save();
 
                 return new DistributionPageDto(
-                    status: '138',
+                    status: 'DOCUMENTOS_LOCALIZADOS',
                     maxNsu: 100,
                     ultimoNsu: 1,
                     documents: [

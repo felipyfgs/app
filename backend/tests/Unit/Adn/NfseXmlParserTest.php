@@ -48,4 +48,50 @@ class NfseXmlParserTest extends TestCase
         $this->assertSame('CANCELAMENTO', $parsed['event_type']);
         $this->assertSame('35260711222333000181550010000000011123456789', $parsed['access_key']);
     }
+
+    public function test_layout_nacional_chave_em_id_inf_nfse(): void
+    {
+        $parser = new NfseXmlParser;
+        $xml = <<<'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<NFSe versao="1.00" xmlns="http://www.sped.fazenda.gov.br/nfse">
+  <infNFSe Id="NFS21053022254880350000119000000000005024102528648917">
+    <xLocEmi>Imperatriz</xLocEmi>
+    <xLocPrestacao>Imperatriz</xLocPrestacao>
+    <nNFSe>64</nNFSe>
+    <cStat>100</cStat>
+    <emit>
+      <CNPJ>54880350000119</CNPJ>
+      <xNome>PRESTADOR EXEMPLO LTDA</xNome>
+    </emit>
+    <valores><vLiq>375.00</vLiq></valores>
+    <DPS>
+      <infDPS>
+        <dhEmi>2024-10-16T13:23:49-03:00</dhEmi>
+        <dCompet>2024-10-16</dCompet>
+        <toma>
+          <CNPJ>34194865000158</CNPJ>
+          <xNome>S. E. L. DE SOUZA SUARES VEICULOS</xNome>
+        </toma>
+        <valores><vServPrest><vServ>375.00</vServ></vServPrest></valores>
+      </infDPS>
+    </DPS>
+  </infNFSe>
+</NFSe>
+XML;
+        $parsed = $parser->parseNote($xml);
+        $this->assertSame('OK', $parsed['parse_status']);
+        $this->assertSame('21053022254880350000119000000000005024102528648917', $parsed['access_key']);
+        $this->assertSame('64', $parsed['number']);
+        $this->assertSame('54880350000119', $parsed['issuer_cnpj']);
+        $this->assertSame('PRESTADOR EXEMPLO LTDA', $parsed['issuer_name']);
+        $this->assertSame('34194865000158', $parsed['taker_cnpj']);
+        $this->assertSame('S. E. L. DE SOUZA SUARES VEICULOS', $parsed['taker_name']);
+        $this->assertSame('375.00', $parsed['service_amount']);
+        $this->assertSame('2024-10', $parsed['competence']);
+        $this->assertSame('Imperatriz', $parsed['issue_location']);
+        $this->assertSame('100', $parsed['official_status_code']);
+        $this->assertSame('ACTIVE', $parsed['status']);
+        $this->assertSame(FiscalRole::Taker, ($parsed['fiscal_role_for'])('34194865000158'));
+    }
 }

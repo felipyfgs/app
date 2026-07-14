@@ -9,8 +9,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'office_id', 'dfe_document_id', 'access_key', 'issuer_cnpj', 'taker_cnpj',
-    'intermediary_cnpj', 'fiscal_role', 'competence', 'issued_at', 'service_amount', 'status',
+    'office_id', 'dfe_document_id', 'access_key', 'number',
+    'issuer_cnpj', 'issuer_name', 'taker_cnpj', 'taker_name',
+    'intermediary_cnpj', 'intermediary_name', 'fiscal_role',
+    'competence', 'issued_at', 'service_amount',
+    'issue_location', 'service_location', 'status', 'official_status_code',
 ])]
 class NfseNote extends Model
 {

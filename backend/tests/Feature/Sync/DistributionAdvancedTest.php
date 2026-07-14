@@ -28,7 +28,7 @@ class DistributionAdvancedTest extends TestCase
         $b64 = base64_encode(gzencode($xml));
 
         $page = new DistributionPageDto(
-            status: '138',
+            status: 'DOCUMENTOS_LOCALIZADOS',
             maxNsu: 5,
             ultimoNsu: 1,
             documents: [
@@ -53,7 +53,7 @@ class DistributionAdvancedTest extends TestCase
         $b64 = base64_encode(gzencode($xml));
 
         $page1 = new DistributionPageDto(
-            status: '138',
+            status: 'DOCUMENTOS_LOCALIZADOS',
             maxNsu: 10,
             ultimoNsu: 1,
             documents: [new DistributionDocumentDto(1, AdnDocumentType::Nfse, 'NFSe_v1.00.xsd', $b64)],
@@ -64,7 +64,7 @@ class DistributionAdvancedTest extends TestCase
         $client2 = Client::factory()->forOffice(Office::query()->find($cursor->office_id))->create(['root_cnpj' => '99888777']);
         // mesmo escritório, outro estabelecimento com mesmo CNPJ de tomador não aplica; reprocessa mesmo doc via NSU diferente
         $page2 = new DistributionPageDto(
-            status: '138',
+            status: 'DOCUMENTOS_LOCALIZADOS',
             maxNsu: 10,
             ultimoNsu: 2,
             documents: [new DistributionDocumentDto(2, AdnDocumentType::Nfse, 'NFSe_v1.00.xsd', $b64)],
@@ -85,7 +85,7 @@ class DistributionAdvancedTest extends TestCase
         $eventXml = file_get_contents(base_path('tests/fixtures/adn/event_cancel.xml'));
 
         $page = new DistributionPageDto(
-            status: '138',
+            status: 'DOCUMENTOS_LOCALIZADOS',
             maxNsu: 10,
             ultimoNsu: 2,
             documents: [
@@ -103,14 +103,14 @@ class DistributionAdvancedTest extends TestCase
         $this->assertSame(hash('sha256', $noteXml), $doc->sha256);
     }
 
-    public function test_fim_distribuicao_137_nao_avanca_e_nao_exige_docs(): void
+    public function test_fim_distribuicao_nenhum_documento_nao_avanca_e_nao_exige_docs(): void
     {
         [$cursor, $establishment] = $this->seedCursor();
         $cursor->last_nsu = 5;
         $cursor->save();
 
         $page = new DistributionPageDto(
-            status: '137',
+            status: 'NENHUM_DOCUMENTO_LOCALIZADO',
             maxNsu: 5,
             ultimoNsu: 5,
             documents: [],
@@ -129,7 +129,7 @@ class DistributionAdvancedTest extends TestCase
 
         for ($i = 1; $i <= 5; $i++) {
             $page = new DistributionPageDto(
-                status: '138',
+                status: 'DOCUMENTOS_LOCALIZADOS',
                 maxNsu: 100,
                 ultimoNsu: $cursor->fresh()->last_nsu + 1,
                 documents: [

@@ -273,14 +273,23 @@ export interface DfeDocumentMetadata {
 export interface NfseNote {
   id: number
   access_key: string
+  /** Número da NFS-e (nNFSe). */
+  number?: string | null
   issuer_cnpj?: string | null
+  issuer_name?: string | null
   taker_cnpj?: string | null
+  taker_name?: string | null
   intermediary_cnpj?: string | null
+  intermediary_name?: string | null
   fiscal_role?: FiscalRole | null
   competence?: string | null
   issued_at?: string | null
   service_amount?: string | null
+  issue_location?: string | null
+  service_location?: string | null
   status: string
+  /** cStat oficial do XML (ex.: 100). */
+  official_status_code?: string | null
   document?: DfeDocumentMetadata
 }
 

@@ -57,7 +57,7 @@ class CurlMtlsTransport
             CURLOPT_SSLCERT_BLOB => $certificate['pfx'],
             CURLOPT_KEYPASSWD => (string) ($certificate['password'] ?? ''),
             CURLOPT_HTTPHEADER => [
-                'Accept: application/xml, text/xml, */*',
+                'Accept: application/json, application/xml, text/xml, */*',
             ],
             CURLOPT_HEADERFUNCTION => function ($curl, string $line) use (&$headers): int {
                 $len = strlen($line);

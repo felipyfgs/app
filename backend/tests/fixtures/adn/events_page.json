@@ -1,0 +1,16 @@
+{
+  "StatusProcessamento": "DOCUMENTOS_LOCALIZADOS",
+  "LoteDFe": [
+    {
+      "NSU": 0,
+      "ChaveAcesso": "12345678901234567890123456789012345678901234",
+      "TipoDocumento": "EVENTO",
+      "ArquivoXml": "H4sIAAKcVWoC/0VPy26DMBC88xWW79i7dg00Mo6iiJxaegj5ABqcECkxKFhQ9etrEEpXq33OaHb19udxJ6N9DrfO5RQZUGLduWtu7prTU3WIM7o1kbajdb4rD0dLAsENOW297zecT9PEht427FL/WtfU7NqN7PvJ3WWw1ESE6HM704xUIoEUUQghpQQAzFCpkGA1DDv5ppI0e9d8Jc183xeLuNnvyn3xsfssyupL89d4xjTt2ggQSQxpjKJC2MDsMcgQNX9hlqOOvvYGpQpSSxlp/v+j+QNVby/qFwEAAA=="
+    }
+  ],
+  "Alertas": [],
+  "Erros": [],
+  "TipoAmbiente": "PRODUCAO",
+  "VersaoAplicativo": "1.0.0.0-test",
+  "DataHoraProcessamento": "2026-07-14T12:00:00-03:00"
+}
