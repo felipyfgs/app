@@ -2,7 +2,8 @@ services:
   nginx:
     image: nginx:1.27-alpine
     ports:
-      - "127.0.0.1:${APP_PORT:-8080}:80"
+      # 0.0.0.0: acesso remoto por IP:porta (dev). Postgres/Redis seguem em 127.0.0.1.
+      - "${APP_PORT:-8080}:80"
     volumes:
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./backend:/var/www/html:ro
@@ -141,12 +142,17 @@ services:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
     ports:
-      - "127.0.0.1:${FRONTEND_DEV_PORT:-3000}:3000"
+      # 0.0.0.0: Nuxt dev acessível remotamente por IP:porta
+      - "${FRONTEND_DEV_PORT:-3000}:3000"
     environment:
       NUXT_SANCTUM_PROXY: "true"
       NUXT_SANCTUM_PROXY_BASE: http://nginx
       CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
       HOST: 0.0.0.0
+      FRONTEND_DEV_PORT: ${FRONTEND_DEV_PORT:-3000}
+      # IP/host visto pelo browser remoto (HMR WebSocket). Ex.: PUBLIC_HOST=74.x.x.x
+      NUXT_DEV_HMR_HOST: ${PUBLIC_HOST:-}
+      PUBLIC_HOST: ${PUBLIC_HOST:-}
     command: bash -lc "corepack enable && pnpm install --frozen-lockfile && pnpm run dev --host 0.0.0.0 --port 3000"
     profiles: ["dev"]
     depends_on:
