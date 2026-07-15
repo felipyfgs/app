@@ -110,7 +110,7 @@ export function formatBytes(value?: number | null): string {
  */
 const labels: Record<string, string> = {
   // Situação fiscal (documento) — padrão operacional do escritório
-  ACTIVE: 'Autorizada',
+  ACTIVE: 'Ativa',
   AUTHORIZED: 'Autorizada',
   BLOCKED: 'Bloqueada',
   CANCELLED: 'Cancelada',
@@ -216,7 +216,7 @@ export function statusLabel(value?: string | null): string {
   if (!value) return '—'
   const upper = value.toUpperCase()
   // Situação fiscal unificada (NFS-e / NF-e / CT-e): Autorizada · Cancelada · Em revisão
-  if (['ACTIVE', 'SUBSTITUTE', 'JUDICIAL', 'CANCELLED', 'CANCELED', 'SUPERSEDED', 'REPLACED', 'UNKNOWN', 'AUTHORIZED', 'REVIEW', 'DENIED', 'DENEGADA'].includes(upper)) {
+  if (['SUBSTITUTE', 'JUDICIAL', 'CANCELLED', 'CANCELED', 'SUPERSEDED', 'REPLACED', 'UNKNOWN', 'AUTHORIZED', 'REVIEW', 'DENIED', 'DENEGADA'].includes(upper)) {
     if (upper === 'DENIED' || upper === 'DENEGADA') return 'Denegada'
     return nfseOperationalLabel(value)
   }

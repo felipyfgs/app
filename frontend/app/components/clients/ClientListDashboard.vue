@@ -120,7 +120,7 @@ const chartData = computed((): DataRecord[] => {
 
 const chartTotal = computed(() =>
   props.stats.total || props.clients.length
-    || (chartData.value.length ? chartData.value[chartData.value.length - 1]!.amount : 0)
+  || (chartData.value.length ? chartData.value[chartData.value.length - 1]!.amount : 0)
 )
 
 const x = (_: DataRecord, i: number) => i
@@ -220,9 +220,9 @@ const columns: TableColumn<RecentRow>[] = [
     header: () => h('div', { class: 'text-right' }, 'A1'),
     cell: ({ row }) => {
       const color = {
-        OK: 'success' as const,
+        'OK': 'success' as const,
         'A vencer': 'warning' as const,
-        Vencido: 'error' as const,
+        'Vencido': 'error' as const,
         'Sem A1': 'neutral' as const
       }[row.original.a1] || 'neutral' as const
       return h('div', { class: 'text-right' }, [

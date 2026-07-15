@@ -1,5 +1,9 @@
 <script setup lang="ts">
-const { item, canManageClients, load } = useClientDetail()
+const { item, canManageClients, load, registrationEditRequested } = useClientDetail()
+
+function onEditingChange(value: boolean) {
+  registrationEditRequested.value = value
+}
 </script>
 
 <template>
@@ -7,6 +11,8 @@ const { item, canManageClients, load } = useClientDetail()
     v-if="item"
     :client="item"
     :can-manage-clients="canManageClients"
+    :start-editing="registrationEditRequested"
+    @editing-change="onEditingChange"
     @updated="load"
   />
 </template>

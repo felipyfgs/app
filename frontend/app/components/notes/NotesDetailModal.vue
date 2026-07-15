@@ -19,9 +19,34 @@ const props = defineProps<{
 const sanctum = useSanctumClient()
 const toast = useToast()
 const downloading = ref(false)
+/** Preenchido pelo GET de detalhe quando a lista filtrada não tem preview. */
+const resolvedNote = ref<NfseNote | null>(null)
+
+watch(
+  () => props.accessKey,
+  () => {
+    resolvedNote.value = null
+  }
+)
+
+watch(
+  () => props.preview,
+  (preview) => {
+    if (preview?.access_key === props.accessKey) {
+      resolvedNote.value = preview
+    }
+  },
+  { immediate: true }
+)
+
+const displayNote = computed(() => {
+  if (props.preview?.access_key === props.accessKey) return props.preview
+  if (resolvedNote.value?.access_key === props.accessKey) return resolvedNote.value
+  return null
+})
 
 const title = computed(() => {
-  const n = props.preview
+  const n = displayNote.value
   if (n?.number) return `${n.kind_label || documentKindLabel(n.kind)} nº ${n.number}`
   const key = props.accessKey
   if (!key) return 'Detalhe do documento'
@@ -30,7 +55,7 @@ const title = computed(() => {
 })
 
 const description = computed(() => {
-  const n = props.preview
+  const n = displayNote.value
   if (!n) return 'Documento fiscal eletrônico'
   const parts = [
     n.kind_label || documentKindLabel(n.kind),
@@ -40,6 +65,12 @@ const description = computed(() => {
   ].filter(Boolean)
   return parts.length ? parts.join(' · ') : 'Documento fiscal eletrônico'
 })
+
+function onDetailLoaded(note: NfseNote) {
+  if (note.access_key === props.accessKey) {
+    resolvedNote.value = note
+  }
+}
 
 async function copyAccessKey() {
   const key = (props.accessKey || '').trim()
@@ -127,22 +158,22 @@ async function downloadXml() {
   >
     <template #actions>
       <div
-        v-if="preview"
+        v-if="displayNote"
         class="me-6 flex flex-wrap items-center gap-1.5"
       >
         <AppStatusBadge
-          v-if="preview.status"
-          :status="preview.status"
-          :label="preview.status_label"
+          v-if="displayNote.status"
+          :status="displayNote.status"
+          :label="displayNote.status_label"
         />
         <UBadge
-          v-if="preview.service_amount != null"
+          v-if="displayNote.service_amount != null"
           color="neutral"
           variant="subtle"
           class="tabular-nums"
           size="sm"
         >
-          {{ formatCurrency(preview.service_amount) }}
+          {{ formatCurrency(displayNote.service_amount) }}
         </UBadge>
       </div>
     </template>
@@ -154,6 +185,7 @@ async function downloadXml() {
           :access-key="accessKey"
           :preview="preview"
           embedded
+          @loaded="onDetailLoaded"
         />
       </div>
     </template>

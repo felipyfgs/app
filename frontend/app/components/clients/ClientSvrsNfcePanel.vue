@@ -20,8 +20,6 @@ const props = defineProps<{
 
 const api = useApi()
 const toast = useToast()
-const route = useRoute()
-const router = useRouter()
 
 /** Sentinela USelect — Reka UI proíbe SelectItem com value "". */
 const STATUS_ALL = 'all'
@@ -32,11 +30,6 @@ const channel = ref<SvrsNfceChannelSummary | null>(null)
 const profileSummary = ref<SvrsNfceProfileSummary | null>(null)
 const recoveries = ref<SvrsNfceRecovery[]>([])
 const meta = ref({ current_page: 1, last_page: 1, total: 0 })
-const statusFilter = ref<string>(
-  (typeof route.query.svrs_status === 'string' && route.query.svrs_status)
-    ? route.query.svrs_status
-    : STATUS_ALL
-)
 const busyId = ref<number | null>(null)
 
 const statusFilterItems = [
@@ -50,6 +43,8 @@ const statusFilterItems = [
   { label: 'Indisponível', value: 'NOT_AVAILABLE_VISIBLE' },
   { label: 'Fallback', value: 'RESOLVED_BY_OTHER_SOURCE' }
 ] as const
+const statusFilter = ref<(typeof statusFilterItems)[number]['value']>(STATUS_ALL)
+const page = ref(1)
 const killReason = ref('')
 const killBusy = ref(false)
 const breakerReason = ref('')
@@ -111,7 +106,6 @@ async function load() {
   const previousError = error.value
   error.value = null
   try {
-    const page = Number(route.query.svrs_page || 1)
     const [sum, list] = await Promise.all([
       api.outbound.svrsNfce.summary(),
       api.outbound.svrsNfce.recoveries({
@@ -120,7 +114,7 @@ async function load() {
           : undefined,
         client_id: props.clientId,
         profile_id: profile65.value?.id,
-        page,
+        page: page.value,
         per_page: 10
       })
     ])
@@ -149,22 +143,12 @@ async function load() {
 }
 
 async function applyFilter() {
-  await router.replace({
-    query: {
-      ...route.query,
-      svrs_status: statusFilter.value && statusFilter.value !== STATUS_ALL
-        ? statusFilter.value
-        : undefined,
-      svrs_page: undefined
-    }
-  })
+  page.value = 1
   await load()
 }
 
 async function goPage(p: number) {
-  await router.replace({
-    query: { ...route.query, svrs_page: p > 1 ? String(p) : undefined }
-  })
+  page.value = p
   await load()
 }
 

@@ -8,7 +8,7 @@ A forma visual continua subordinada ao template fixado em `.reference/nuxt-dashb
 
 **Goals:**
 
-- Tornar todas as tabelas reconhecíveis como derivação literal de `customers.vue`, `HomeSales.vue` ou `inbox.vue`.
+- Tornar todas as tabelas reconhecíveis como derivação literal de `customers.vue` ou `HomeSales.vue`.
 - Eliminar cópias divergentes do objeto `ui` e padronizar estados e rodapés.
 - Manter volume de dados limitado no navegador por paginação/cursor server-side.
 - Preservar identidade, estado e ação principal em 360 px.
@@ -37,17 +37,17 @@ Cada `UTable` continuará declarando colunas e slots localmente. Um wrapper univ
 
 Tabelas administrativas usarão um único estado vazio. Quando a identidade visual pedir `UEmpty`, a tabela será ocultada sem dados ou o slot `#empty` conterá esse estado; não haverá linha vazia padrão mais um segundo `UEmpty`.
 
-### 3. Clientes será realmente server-side
+### 3. Clientes será realmente server-side com estado local
 
-A página manterá `page`, `per_page`, `q`, `status`, filtro operacional e ordenação na URL. A API devolverá uma página e metadados; o frontend não percorrerá todas as páginas. KPIs continuarão vindo de agregação independente do recorte da página.
+A página manterá `page`, `per_page`, `q`, `status`, filtro operacional e ordenação em estado local, seguindo `customers.vue`. Esses valores serão enviados como query somente à API Laravel; a URL do navegador permanecerá `/clients`. A API devolverá uma página e metadados; o frontend não percorrerá todas as páginas. KPIs continuarão vindo de agregação independente do recorte da página.
 
 ### 4. Cursores não serão convertidos em páginas aleatórias
 
 Documentos, Saúde e Sincronizações manterão o padrão “carregar mais”. Documentos acumulará resultados usando `next_cursor`; mudança de filtro reiniciará linhas e cursor. `UPagination` será usado somente onde a API oferece total/página estáveis.
 
-### 5. Documentos retoma o arquétipo Inbox
+### 5. Documentos preserva a largura do catálogo
 
-Em desktop, a lista ocupará painel redimensionável e o detalhe ficará adjacente. Abaixo de `lg`, o detalhe abrirá em slideover. A rota canônica e os filtros permanecerão na URL.
+O detalhe abrirá em modal responsivo tanto no desktop quanto no mobile. O painel lateral do arquétipo Inbox foi rejeitado após validação visual porque comprimia a tabela e criava uma grande área vazia sem documento selecionado. “Por cliente” usará `/docs`, “Catálogo” usará `/docs/catalog` e o detalhe usará `/docs/:accessKey`; filtros, cursor e seleção permanecerão no estado local do workspace.
 
 ### 6. APIs limitadas terão paginação explícita
 
@@ -59,7 +59,7 @@ Badges e botões usarão labels pt-BR. Códigos técnicos permanecerão em `titl
 
 ## Risks / Trade-offs
 
-- [Mudança de URL pode quebrar links antigos] → aceitar parâmetros ausentes e manter defaults compatíveis.
+- [Links antigos podem conter estado tabular na query] → ignorar o estado efêmero legado e carregar os defaults canônicos da página.
 - [Cursor acumulado aumenta memória] → limitar tamanho da página e oferecer reinício por filtro; não permitir salto arbitrário.
 - [Paginação por empresa exige consulta agregada mais complexa] → agregar no PostgreSQL antes de paginar e testar isolamento por escritório.
 - [Baselines visuais podem mudar em lote] → atualizar somente após comparação por zona e usar fixtures sintéticas determinísticas.
@@ -70,7 +70,7 @@ Badges e botões usarão labels pt-BR. Códigos técnicos permanecerão em `titl
 1. Introduzir presets e migrar tabelas sem alterar dados.
 2. Uniformizar loading/vazio/erro/footer e labels.
 3. Migrar Clientes, Exportações e Por empresa para paginação server-side.
-4. Migrar Documentos para cursor incremental e mestre–detalhe.
+4. Migrar Documentos para cursor incremental e modal de detalhe responsivo.
 5. Atualizar testes de estado, responsividade e snapshots.
 6. Liberar após unitários, typecheck, lint do escopo e build passarem.
 

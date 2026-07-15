@@ -79,18 +79,18 @@ describe('navigation', () => {
     ])
   })
 
-  it('marca Catálogo ativo em /docs?view=document e preserva filtros na query', () => {
+  it('usa paths canônicos para as visões de Documentos', () => {
     const tree = mainDestinations(user('OPERATOR'), {
-      path: '/docs',
-      query: { view: 'document', kind: 'NFE' }
+      path: '/docs/catalog'
     })
     const docs = tree.find(d => d.id === 'docs')
     const byClient = docs?.children?.find(c => c.id === 'docs-by-client')
     const catalog = docs?.children?.find(c => c.id === 'docs-catalog')
     expect(byClient?.active).toBe(false)
+    expect(docs?.defaultOpen).toBe(true)
     expect(catalog?.active).toBe(true)
-    expect(catalog?.to).toEqual({ path: '/docs', query: { kind: 'NFE', view: 'document' } })
-    expect(byClient?.to).toEqual({ path: '/docs', query: { kind: 'NFE' } })
+    expect(catalog?.to).toBe('/docs/catalog')
+    expect(byClient?.to).toBe('/docs')
   })
 
   it('inclui destino Saúde para todos os papéis autenticados do escritório', () => {

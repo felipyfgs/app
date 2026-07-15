@@ -25,6 +25,10 @@ const props = defineProps<{
   embedded?: boolean
 }>()
 
+const emit = defineEmits<{
+  loaded: [note: NfseNote]
+}>()
+
 const api = useApi()
 const toast = useToast()
 const { canTriggerSync } = useDashboard()
@@ -201,6 +205,7 @@ async function load() {
     const data = (await api.documents.get(key)).data
     if (generation !== loadGeneration) return
     detail.value = data
+    if (data.note) emit('loaded', data.note)
   } catch (caught) {
     if (generation !== loadGeneration) return
     detail.value = null

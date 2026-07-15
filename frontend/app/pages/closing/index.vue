@@ -31,57 +31,21 @@ function defaultCompetence(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-const competence = computed({
-  get: () => {
-    const q = String(route.query.competence || '')
-    return /^\d{4}-\d{2}$/.test(q) ? q : defaultCompetence()
-  },
-  set: (value: string) => {
-    void updateQuery({ competence: value || undefined })
-  }
-})
-
-const bandFilter = computed({
-  get: () => {
-    const v = String(route.query.band || FILTER_ALL).toUpperCase()
-    const allowed = ['PLANNED', 'ATTENTION', 'CONTINGENCY', 'OVERDUE', FILTER_ALL]
-    return allowed.includes(v) ? v : FILTER_ALL
-  },
-  set: (value: string) => {
-    void updateQuery({ band: value === FILTER_ALL ? undefined : value })
-  }
-})
-
-const modelFilter = computed({
-  get: () => {
-    const v = String(route.query.model || FILTER_ALL)
-    return ['55', '65', 'NFE', 'NFCE', FILTER_ALL].includes(v) ? v : FILTER_ALL
-  },
-  set: (value: string) => {
-    void updateQuery({ model: value === FILTER_ALL ? undefined : value })
-  }
-})
-
-const rootFilter = computed({
-  get: () => String(route.query.root || ''),
-  set: (value: string) => {
-    void updateQuery({ root: value.trim() || undefined })
-  }
-})
-
-const sourceFilter = computed({
-  get: () => String(route.query.source || FILTER_ALL),
-  set: (value: string) => {
-    void updateQuery({ source: value === FILTER_ALL ? undefined : value })
-  }
-})
-
-const clientFilter = computed({
-  get: () => String(route.query.client_id || ''),
-  set: (value: string) => {
-    void updateQuery({ client_id: value.trim() || undefined })
-  }
-})
+const initialCompetence = String(route.query.competence || '')
+const competence = ref(/^\d{4}-\d{2}$/.test(initialCompetence) ? initialCompetence : defaultCompetence())
+const initialBand = String(route.query.band || FILTER_ALL).toUpperCase()
+const bandFilter = ref(
+  ['PLANNED', 'ATTENTION', 'CONTINGENCY', 'OVERDUE', FILTER_ALL].includes(initialBand)
+    ? initialBand
+    : FILTER_ALL
+)
+const initialModel = String(route.query.model || FILTER_ALL)
+const modelFilter = ref(
+  ['55', '65', 'NFE', 'NFCE', FILTER_ALL].includes(initialModel) ? initialModel : FILTER_ALL
+)
+const rootFilter = ref(String(route.query.root || ''))
+const sourceFilter = ref(String(route.query.source || FILTER_ALL))
+const clientFilter = ref(String(route.query.client_id || ''))
 
 const summary = ref<OutboundCompetenceSummary | null>(null)
 const capacity = ref<OutboundCapacityForecast | null>(null)
@@ -260,16 +224,6 @@ function technicalLabel(row: OutboundDeadlinePendingItem): string {
   return 'OK / aguardando'
 }
 
-async function updateQuery(patch: Record<string, string | undefined>) {
-  const next = { ...route.query, ...patch }
-  for (const key of Object.keys(next)) {
-    if (next[key] === undefined || next[key] === '') {
-      delete next[key]
-    }
-  }
-  await router.replace({ query: next })
-}
-
 async function load() {
   loading.value = true
   try {
@@ -401,24 +355,23 @@ async function advanceTarget() {
 }
 
 watch(
-  () => [
-    route.query.competence,
-    route.query.band,
-    route.query.model,
-    route.query.root,
-    route.query.source,
-    route.query.client_id
-  ],
+  [competence, bandFilter, modelFilter, rootFilter, sourceFilter, clientFilter],
   () => {
-    pendingPage.value = 1
+    if (pendingPage.value !== 1) {
+      pendingPage.value = 1
+      return
+    }
     void load()
-  }
+  },
+  { immediate: true }
 )
 
 watch(pendingPage, () => void load())
 
 onMounted(() => {
-  void load()
+  if (Object.keys(route.query).length) {
+    void router.replace({ path: route.path })
+  }
 })
 </script>
 
@@ -524,19 +477,27 @@ onMounted(() => {
         data-testid="closing-stats"
       >
         <UCard>
-          <div class="text-sm text-muted">Conhecidos / capturados</div>
+          <div class="text-sm text-muted">
+            Conhecidos / capturados
+          </div>
           <div class="text-2xl font-semibold tabular-nums">
             {{ summary?.captured_total ?? '—' }}
             <span class="text-base font-normal text-muted">/ {{ summary?.known_total ?? '—' }}</span>
           </div>
           <div class="text-xs text-muted mt-1">
             Completude conhecida
-            <template v-if="knownCompletenessPct != null">: {{ knownCompletenessPct }}%</template>
-            <template v-else>: —</template>
+            <template v-if="knownCompletenessPct != null">
+              : {{ knownCompletenessPct }}%
+            </template>
+            <template v-else>
+              : —
+            </template>
           </div>
         </UCard>
         <UCard>
-          <div class="text-sm text-muted">Meta / prazo</div>
+          <div class="text-sm text-muted">
+            Meta / prazo
+          </div>
           <div class="text-sm font-medium mt-1">
             Meta: {{ formatDateTime(projection?.target_at) }}
           </div>
@@ -548,7 +509,9 @@ onMounted(() => {
           </div>
         </UCard>
         <UCard>
-          <div class="text-sm text-muted">Capacidade auto ({{ fractionPct }}%)</div>
+          <div class="text-sm text-muted">
+            Capacidade auto ({{ fractionPct }}%)
+          </div>
           <div class="text-2xl font-semibold tabular-nums">
             {{ projection?.safe_capacity_exchanges ?? '—' }}
             <span class="text-base font-normal text-muted">exch.</span>
@@ -558,7 +521,9 @@ onMounted(() => {
           </div>
         </UCard>
         <UCard>
-          <div class="text-sm text-muted">Contingência / vencidos</div>
+          <div class="text-sm text-muted">
+            Contingência / vencidos
+          </div>
           <div class="text-2xl font-semibold tabular-nums">
             {{ summary?.by_band?.CONTINGENCY ?? 0 }}
             <span class="text-base font-normal text-muted">/ {{ summary?.by_band?.OVERDUE ?? 0 }}</span>
@@ -690,7 +655,12 @@ onMounted(() => {
         </template>
         <template #footer>
           <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" label="Cancelar" @click="() => { advanceOpen = false }" />
+            <UButton
+              color="neutral"
+              variant="ghost"
+              label="Cancelar"
+              @click="() => { advanceOpen = false }"
+            />
             <UButton
               color="primary"
               label="Aplicar antecipação"
@@ -712,12 +682,15 @@ onMounted(() => {
       >
         <template #urgency_band-cell="{ row }">
           <div class="flex items-center gap-2">
-            <UIcon :name="bandIcon(row.original.urgency_band)" class="size-4 shrink-0" :class="{
-              'text-error': bandColor(row.original.urgency_band) === 'error',
-              'text-warning': bandColor(row.original.urgency_band) === 'warning',
-              'text-info': bandColor(row.original.urgency_band) === 'info',
-              'text-success': bandColor(row.original.urgency_band) === 'success'
-            }"
+            <UIcon
+              :name="bandIcon(row.original.urgency_band)"
+              class="size-4 shrink-0"
+              :class="{
+                'text-error': bandColor(row.original.urgency_band) === 'error',
+                'text-warning': bandColor(row.original.urgency_band) === 'warning',
+                'text-info': bandColor(row.original.urgency_band) === 'info',
+                'text-success': bandColor(row.original.urgency_band) === 'success'
+              }"
             />
             <UBadge :color="bandColor(row.original.urgency_band)" variant="subtle">
               {{ bandLabel(row.original.urgency_band) }}

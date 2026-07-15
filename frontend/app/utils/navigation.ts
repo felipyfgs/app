@@ -10,11 +10,11 @@ export interface NavDestination {
   id: string
   label: string
   icon: string
-  to?: string | { path: string, query?: Record<string, string> }
+  to?: string
   target?: string
   external?: boolean
   exact?: boolean
-  /** Força estado ativo (útil com query string, ex. /docs?view=document). */
+  /** Força estado ativo em destinos com detalhe dinâmico. */
   active?: boolean
   /** Grupo colapsável no estilo Settings do template (UNavigationMenu type=trigger). */
   type?: 'trigger'
@@ -26,27 +26,7 @@ export interface QuickAction {
   id: string
   label: string
   icon: string
-  to: string
-}
-
-/** Query de filtros de /docs a preservar ao trocar a view no sidebar. */
-function docsPreservedQuery(
-  path: string,
-  query?: Record<string, unknown>
-): Record<string, string> {
-  if (!query) return {}
-  const onDocsCatalog = path === '/docs'
-    || (path.startsWith('/docs/') && !path.startsWith('/docs/imports'))
-  if (!onDocsCatalog) return {}
-
-  const out: Record<string, string> = {}
-  for (const [key, raw] of Object.entries(query)) {
-    if (key === 'view') continue
-    if (typeof raw === 'string' && raw) {
-      out[key] = raw
-    }
-  }
-  return out
+  to?: string
 }
 
 /**
@@ -55,14 +35,16 @@ function docsPreservedQuery(
  */
 export function mainDestinations(
   user?: MeUser | null,
-  options?: { path?: string, query?: Record<string, unknown> }
+  options?: { path?: string }
 ): NavDestination[] {
   const path = options?.path || ''
-  const query = options?.query || {}
   // Mantém o grupo expandido quando a rota atual está dentro do módulo.
   const clientsOpen = !path || path === '/clients' || path.startsWith('/clients/')
-  const docsDetail = path.startsWith('/docs/') && !path.startsWith('/docs/imports')
-  const docsOpen = !path || path === '/docs' || docsDetail
+  const docsCatalog = path === '/docs/catalog'
+  const docsDetail = path.startsWith('/docs/')
+    && !path.startsWith('/docs/imports')
+    && !docsCatalog
+  const docsOpen = !path || path === '/docs' || docsCatalog || docsDetail
   const operationsOpen = !path
     || path.startsWith('/exports')
     || path.startsWith('/closing')
@@ -70,19 +52,8 @@ export function mainDestinations(
     || path.startsWith('/health')
     || path.startsWith('/docs/imports')
 
-  // Tabs legadas Clientes | Documentos → submenu do sidebar (query view=document).
-  const viewParam = typeof query.view === 'string' ? query.view : ''
-  const isDocsDocumentView = docsDetail
-    || path === '/docs' && (viewParam === 'document' || viewParam === 'nfs')
-  const isDocsClientView = path === '/docs' && !isDocsDocumentView
-  const docsFilters = docsPreservedQuery(path, query)
-  const docsClientTo = Object.keys(docsFilters).length
-    ? { path: '/docs', query: docsFilters }
-    : '/docs'
-  const docsDocumentTo = {
-    path: '/docs',
-    query: { ...docsFilters, view: 'document' }
-  }
+  const isDocsDocumentView = docsCatalog || docsDetail
+  const isDocsClientView = path === '/docs'
 
   const items: NavDestination[] = [
     {
@@ -125,7 +96,7 @@ export function mainDestinations(
           id: 'docs-by-client',
           label: 'Por cliente',
           icon: 'i-lucide-building-2',
-          to: docsClientTo,
+          to: '/docs',
           exact: true,
           active: isDocsClientView
         },
@@ -133,7 +104,7 @@ export function mainDestinations(
           id: 'docs-catalog',
           label: 'Catálogo',
           icon: 'i-lucide-file-stack',
-          to: docsDocumentTo,
+          to: '/docs/catalog',
           active: isDocsDocumentView
         }
       ]
@@ -218,8 +189,7 @@ export function quickActions(user?: MeUser | null): QuickAction[] {
     actions.push({
       id: 'new-client',
       label: 'Novo cliente',
-      icon: 'i-lucide-user-plus',
-      to: '/clients?new=1'
+      icon: 'i-lucide-user-plus'
     })
   }
 
@@ -227,8 +197,7 @@ export function quickActions(user?: MeUser | null): QuickAction[] {
     actions.push({
       id: 'new-export',
       label: 'Nova exportação',
-      icon: 'i-lucide-download',
-      to: '/exports?new=1'
+      icon: 'i-lucide-download'
     })
   }
 

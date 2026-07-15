@@ -5,7 +5,7 @@ import { quickActions } from '~/utils/navigation'
 
 const api = useApi()
 const toast = useToast()
-const { isNotificationsSlideoverOpen, me } = useDashboard()
+const { isNotificationsSlideoverOpen, me, openClientCreate, openExportCreate } = useDashboard()
 const summary = ref<OperationsSummary | null>(null)
 const inboxItems = ref<InboxItem[]>([])
 const lastValidAt = ref<string | null>(null)
@@ -17,7 +17,12 @@ const actionItems = computed<DropdownMenuItem[][]>(() => [[
   ...quickActions(me.value).map(action => ({
     label: action.label,
     icon: action.icon,
-    to: action.to
+    to: action.to,
+    onSelect: action.id === 'new-client'
+      ? openClientCreate
+      : action.id === 'new-export'
+        ? openExportCreate
+        : undefined
   }))
 ]])
 

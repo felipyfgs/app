@@ -591,7 +591,7 @@ export async function installApiFixtures(
         }
       })
     }
-    
+
     // --- SVRS NFC-e XML recovery ---
     if (pathname.endsWith('/api/v1/outbound/svrs-nfce/summary') && method === 'GET') {
       return fulfill(route, {
@@ -774,16 +774,25 @@ export async function installApiFixtures(
               review_count: 0,
               last_issued_at: FIXED_NOW
             }],
-        meta: { total_clients: listScenario === 'empty' ? 0 : 1 }
+        meta: {
+          current_page: 1,
+          last_page: 1,
+          per_page: 20,
+          total: listScenario === 'empty' ? 0 : 1,
+          total_clients: listScenario === 'empty' ? 0 : 1
+        }
       })
     }
     if (pathname.endsWith('/api/v1/documents') || pathname.endsWith('/api/v1/notes')) {
       if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
       if (listScenario === 'slow') await new Promise(resolve => setTimeout(resolve, 1500))
-      return fulfill(route, { data: listScenario === 'empty' ? [] : notes, meta: { next_cursor: null } })
+      return fulfill(route, {
+        data: listScenario === 'empty' ? [] : notes,
+        meta: { next_cursor: null, total: listScenario === 'empty' ? 0 : notes.length, per_page: 25 }
+      })
     }
     const noteMatch = pathname.match(/\/api\/v1\/(?:documents|notes)\/([^/]+)$/)
-    if (noteMatch && noteMatch[1] !== 'by-client' && noteMatch[1] !== 'insights') {
+    if (noteMatch && !['by-client', 'insights', 'import-batches'].includes(noteMatch[1] || '')) {
       const matchedNote = notes.find(note => note.access_key === decodeURIComponent(noteMatch[1]!))
       if (!matchedNote) return fulfill(route, { message: 'Nota não encontrada.' }, 404)
       return fulfill(route, {
@@ -804,7 +813,81 @@ export async function installApiFixtures(
       if (method === 'POST') return fulfill(route, { data: exports[0] }, 202)
       if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
       if (listScenario === 'slow') await new Promise(resolve => setTimeout(resolve, 1500))
-      return fulfill(route, { data: listScenario === 'empty' ? [] : exports })
+      return fulfill(route, {
+        data: listScenario === 'empty' ? [] : exports,
+        meta: {
+          current_page: 1,
+          last_page: 1,
+          per_page: 20,
+          total: listScenario === 'empty' ? 0 : exports.length
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/documents/import-batches')) {
+      return fulfill(route, {
+        data: listScenario === 'empty'
+          ? []
+          : [{
+              id: 1,
+              public_id: 'batch-fixture-001',
+              status: 'COMPLETED',
+              file_count: 2,
+              processed_count: 2,
+              imported_count: 1,
+              upload_complete: true,
+              processing_complete: true,
+              created_at: FIXED_NOW
+            }],
+        meta: { current_page: 1, last_page: 1, per_page: 20, total: listScenario === 'empty' ? 0 : 1 }
+      })
+    }
+    if (pathname.endsWith('/api/v1/outbound/deadline/competence')) {
+      return fulfill(route, {
+        data: {
+          competence: '2026-07',
+          known_total: 3,
+          captured_total: 2,
+          pending_total: 1,
+          contingency_total: 0,
+          overdue_total: 0,
+          completeness_scope: 'known_documents_only',
+          readiness: null,
+          alerts: []
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/outbound/deadline/capacity')) {
+      return fulfill(route, {
+        data: {
+          competence: '2026-07',
+          projection: {
+            target_at: FIXED_NOW,
+            due_at: FIXED_NOW,
+            estimated_completion_at: FIXED_NOW,
+            automatic_capacity: 100,
+            required_requests: 1,
+            spare_capacity: 99,
+            auto_queue_fraction: 0.6
+          }
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/outbound/deadline/pending')) {
+      return fulfill(route, {
+        data: [{
+          id: 1,
+          urgency_band: 'ATTENTION',
+          access_key_masked: '3526••••••••0001',
+          due_at: FIXED_NOW,
+          target_at: FIXED_NOW,
+          capacity_at_risk: false,
+          next_step: 'PREPARE_ASSISTED_BATCH'
+        }],
+        meta: { current_page: 1, last_page: 1, per_page: 50, total: 1 }
+      })
+    }
+    if (pathname.endsWith('/api/v1/outbound/deadline/metrics')) {
+      return fulfill(route, { data: { competence: '2026-07', pending_total: 1 } })
     }
 
     return fulfill(route, { message: 'Endpoint não previsto pela fixture sintética.' }, 404)

@@ -9,6 +9,7 @@ export interface ClientDetailContext {
   establishments: ComputedRef<Establishment[]>
   triggeringId: Ref<number | null>
   triggeredIds: Ref<number[]>
+  registrationEditRequested: Ref<boolean>
   canManageClients: ComputedRef<boolean>
   canManageCredentials: ComputedRef<boolean>
   canTriggerSync: ComputedRef<boolean>

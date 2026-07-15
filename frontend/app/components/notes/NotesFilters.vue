@@ -13,6 +13,8 @@ import {
 } from '~/utils/notes-filters'
 
 const filters = defineModel<NotesFilterState>('filters', { required: true })
+/** Filtro operacional da lista de clientes (Documentos → Por cliente). */
+const operationalFilter = defineModel<string>('operationalFilter', { default: 'total' })
 
 const props = defineProps<{
   clients: Client[]
@@ -30,6 +32,14 @@ const emit = defineEmits<{
   clientChange: []
   exportSelection: []
 }>()
+
+const clientOperationalItems = [
+  { label: 'Todos os clientes', value: 'total' },
+  { label: 'Com A1', value: 'with_credential' },
+  { label: 'Sem A1', value: 'without_credential' },
+  { label: 'A1 a vencer', value: 'expiring' },
+  { label: 'Captura com problema', value: 'capture_problem' }
+]
 
 const open = ref(false)
 
@@ -65,7 +75,7 @@ const hasClient = computed(() => filters.value.client_id !== FILTER_ALL && !!fil
 
 const searchPlaceholder = computed(() =>
   props.view === 'client'
-    ? 'Filtrar por cliente, CNPJ…'
+    ? 'Filtrar por nome ou CNPJ/CPF…'
     : 'Buscar número, emitente, destinatário, CNPJ ou chave…'
 )
 
@@ -73,6 +83,10 @@ const activeCount = computed(() => {
   let n = 0
   const f = filters.value
   if (f.q) n++
+  if (props.view === 'client') {
+    if (operationalFilter.value && operationalFilter.value !== 'total') n++
+    return n
+  }
   if (f.kind && f.kind !== FILTER_ALL) n++
   // direction / fiscal_role saíram da grade: recorte por CNPJ emit/dest (padrão leiaute)
   if (f.client_id && f.client_id !== FILTER_ALL) n++
@@ -90,14 +104,25 @@ const activeCount = computed(() => {
   <div class="flex w-full flex-col gap-3">
     <!-- Toolbar customers.vue: busca esquerda · ações direita -->
     <div class="flex flex-wrap items-center justify-between gap-1.5">
-      <UInput
-        v-model="filters.q"
-        class="max-w-sm"
-        icon="i-lucide-search"
-        :placeholder="searchPlaceholder"
-        aria-label="Buscar no catálogo de documentos"
-        @keydown.enter.prevent="emit('apply')"
-      />
+      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+        <UInput
+          v-model="filters.q"
+          class="max-w-sm"
+          icon="i-lucide-search"
+          :placeholder="searchPlaceholder"
+          :aria-label="view === 'client' ? 'Filtrar clientes por nome ou CNPJ/CPF' : 'Buscar no catálogo de documentos'"
+          @keydown.enter.prevent="emit('apply')"
+        />
+        <USelect
+          v-if="view === 'client'"
+          v-model="operationalFilter"
+          :items="clientOperationalItems"
+          value-key="value"
+          class="min-w-44"
+          aria-label="Filtro operacional de captura e certificado"
+          @update:model-value="emit('apply')"
+        />
+      </div>
 
       <div class="flex flex-wrap items-center gap-1.5">
         <UButton
@@ -115,6 +140,7 @@ const activeCount = computed(() => {
         </UButton>
 
         <UButton
+          v-if="view !== 'client'"
           color="neutral"
           variant="outline"
           icon="i-lucide-list-filter"
@@ -127,11 +153,18 @@ const activeCount = computed(() => {
           label="Aplicar"
           @click="emit('apply')"
         />
+        <UButton
+          v-if="view === 'client' && (filters.q || operationalFilter !== 'total')"
+          color="neutral"
+          variant="ghost"
+          label="Limpar"
+          @click="emit('reset')"
+        />
       </div>
     </div>
 
     <form
-      v-show="open"
+      v-show="open && view !== 'client'"
       class="grid gap-2 rounded-lg border border-default bg-elevated/25 p-3 sm:grid-cols-2 lg:grid-cols-3"
       @submit.prevent="emit('apply')"
     >

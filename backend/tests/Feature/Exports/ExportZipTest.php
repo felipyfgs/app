@@ -176,6 +176,45 @@ class ExportZipTest extends TestCase
         $this->assertSame(1, $export->files_count);
     }
 
+    public function test_historico_de_exportacoes_e_paginado_e_isolado(): void
+    {
+        [$office, $user] = $this->seedOperator();
+        $otherUser = User::factory()->forOffice($office, OfficeRole::Operator)->withTwoFactorConfirmed()->create();
+        $this->actingAs($user);
+        app(CurrentOffice::class)->resolve($user);
+
+        foreach (range(1, 3) as $index) {
+            Export::query()->create([
+                'office_id' => $office->id,
+                'user_id' => $user->id,
+                'status' => 'PENDING',
+                'filters' => ['competence' => "2026-0{$index}"],
+                'include_events' => false,
+            ]);
+        }
+        Export::query()->create([
+            'office_id' => $office->id,
+            'user_id' => $otherUser->id,
+            'status' => 'PENDING',
+            'filters' => [],
+            'include_events' => false,
+        ]);
+
+        $first = $this->getJson('/api/v1/exports?per_page=2&page=1')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.total', 3);
+
+        $second = $this->getJson('/api/v1/exports?per_page=2&page=2')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+
+        $ids = collect($first->json('data'))->merge($second->json('data'))->pluck('id');
+        $this->assertCount(3, $ids->unique());
+    }
+
     /**
      * @return array{0: Office, 1: User}
      */

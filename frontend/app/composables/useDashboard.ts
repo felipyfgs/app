@@ -15,6 +15,10 @@ const _useDashboard = () => {
   const router = useRouter()
   const { user, isAuthenticated } = useSanctumAuth()
   const isNotificationsSlideoverOpen = ref(false)
+  const isClientFormOpen = ref(false)
+  const isExportFormOpen = ref(false)
+  /** Incrementado a cada "Novo cliente" global — força modo create na lista. */
+  const clientFormCreateNonce = ref(0)
   const sessionEpoch = ref(0)
 
   const me = computed(() => unwrapMeUser(user.value as MeIdentity))
@@ -25,6 +29,24 @@ const _useDashboard = () => {
   const canCreateExport = computed(() => userCanCreateExport(me.value))
   const canImportDocuments = computed(() => userCanImportDocuments(me.value))
   const canAccessAdministration = computed(() => hasConfirmedAdminAccess(me.value))
+
+  async function openClientCreate() {
+    if (!canManageClients.value) return
+    if (route.path !== '/clients') {
+      await router.push('/clients')
+    }
+    // Sempre modo create: zera cliente residual na lista via watch do nonce.
+    clientFormCreateNonce.value += 1
+    isClientFormOpen.value = true
+  }
+
+  async function openExportCreate() {
+    if (!canCreateExport.value) return
+    if (route.path !== '/exports') {
+      await router.push('/exports')
+    }
+    isExportFormOpen.value = true
+  }
 
   defineShortcuts({
     'g-h': () => router.push('/'),
@@ -47,6 +69,12 @@ const _useDashboard = () => {
 
   watch(() => route.fullPath, () => {
     isNotificationsSlideoverOpen.value = false
+    if (route.path !== '/clients') {
+      isClientFormOpen.value = false
+    }
+    if (route.path !== '/exports') {
+      isExportFormOpen.value = false
+    }
   })
 
   // Limpa alertas e estado de UI sensível quando a identidade muda ou a sessão termina.
@@ -58,6 +86,8 @@ const _useDashboard = () => {
 
       if (identityChanged || loggedOut) {
         isNotificationsSlideoverOpen.value = false
+        isClientFormOpen.value = false
+        isExportFormOpen.value = false
         sessionEpoch.value += 1
       }
     }
@@ -70,8 +100,13 @@ const _useDashboard = () => {
     canManageClients,
     canManageCredentials,
     canTriggerSync,
+    clientFormCreateNonce,
+    isClientFormOpen,
+    isExportFormOpen,
     isNotificationsSlideoverOpen,
     me,
+    openClientCreate,
+    openExportCreate,
     sessionEpoch
   }
 }

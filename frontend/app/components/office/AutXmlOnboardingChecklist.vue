@@ -206,7 +206,12 @@ onMounted(() => {
       :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
     />
 
-    <div v-if="loading" class="space-y-2" role="status" aria-live="polite">
+    <div
+      v-if="loading"
+      class="space-y-2"
+      role="status"
+      aria-live="polite"
+    >
       <USkeleton class="h-10 w-full" />
       <USkeleton class="h-10 w-full" />
     </div>

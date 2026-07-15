@@ -1,13 +1,12 @@
 <script setup lang="ts">
 /**
  * Posto operacional Documentos (`/docs`) — tabela densa (customers)
- * + detalhe mestre–detalhe no desktop/slideover no mobile + export. Views
+ * + detalhe em modal responsivo + export. Views
  * ficam no submenu do sidebar (`navigation.ts`), não em tabs da página.
  * Fonte: .reference/nuxt-dashboard-template/app/pages/customers.vue
  */
 import { documentKindLabel, isDocumentKindCaptureAvailable } from '~/utils/documentKinds'
-import { breakpointsTailwind } from '@vueuse/core'
-import type { Client, Establishment, ExportFilters, NfseNote, NoteClientAggregate, NotesInsights } from '~/types/api'
+import type { Client, Establishment, ExportFilters, NfseNote, NotesInsights } from '~/types/api'
 import type { NoteListParams } from '~/composables/useApi'
 import {
   activeTriageQueue,
@@ -15,8 +14,6 @@ import {
   catalogToExportFilters,
   emptyNotesFilters,
   FILTER_ALL,
-  filtersFromQuery,
-  filtersToQuery,
   hasExportableCatalogFilters,
   isActiveFilterValue,
   type NotesFilterState,
@@ -31,14 +28,22 @@ const api = useApi()
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const { canCreateExport, canImportDocuments } = useDashboard()
+const props = withDefaults(defineProps<{
+  initialView?: NotesViewMode
+}>(), {
+  initialView: 'client'
+})
+const { canCreateExport, canImportDocuments, sessionEpoch } = useDashboard()
 
 const notes = ref<NfseNote[]>([])
-const byClientRows = ref<NoteClientAggregate[]>([])
+/** Lista de clientes (API de cadastro) na visão Por cliente — com captura/sync. */
+const byClientRows = ref<Client[]>([])
 const byClientPage = ref(1)
-const byClientPerPage = 20
+const byClientPerPage = ref(20)
 const byClientTotal = ref(0)
 const byClientLastPage = ref(1)
+/** Filtro operacional server-side da lista de clientes em Documentos. */
+const clientOperationalFilter = ref('total')
 const clients = ref<Client[]>([])
 const establishments = ref<Establishment[]>([])
 const insights = ref<NotesInsights | null>(null)
@@ -60,10 +65,19 @@ const selectedKeys = ref<string[]>([])
 
 const triageQueue = computed(() => activeTriageQueue(filters))
 
-const filters = reactive<NotesFilterState>(emptyNotesFilters())
-const initial = filtersFromQuery(route.query as Record<string, unknown>)
-Object.assign(filters, initial.filters)
-const view = ref<NotesViewMode>(initial.view)
+const persistedFilters = useState<NotesFilterState>('notes-workspace-filters', emptyNotesFilters)
+const filters = reactive<NotesFilterState>({ ...persistedFilters.value })
+const view = ref<NotesViewMode>(props.initialView)
+
+watch(filters, (value) => {
+  persistedFilters.value = { ...value }
+}, { deep: true })
+
+watch(sessionEpoch, () => {
+  const empty = emptyNotesFilters()
+  Object.assign(filters, empty)
+  persistedFilters.value = empty
+})
 
 const selectedAccessKey = computed(() =>
   typeof route.params.accessKey === 'string' ? route.params.accessKey : null
@@ -72,15 +86,6 @@ const selectedAccessKey = computed(() =>
 const selectedPreview = computed(() =>
   notes.value.find(n => n.access_key === selectedAccessKey.value) || null
 )
-
-const breakpoints = useBreakpoints(breakpointsTailwind)
-const isMobile = breakpoints.smaller('lg')
-const detailTitle = computed(() => {
-  if (selectedPreview.value?.number) {
-    return `${selectedPreview.value.kind_label || documentKindLabel(selectedPreview.value.kind)} nº ${selectedPreview.value.number}`
-  }
-  return 'Detalhe do documento'
-})
 
 /** Controla o detalhe canônico pela rota. */
 const isDetailOpen = computed({
@@ -150,41 +155,12 @@ function insightsParams(): NoteListParams {
   return p
 }
 
-async function syncRouteQuery() {
-  const query = filtersToQuery(filters, undefined, view.value)
-  const path = selectedAccessKey.value ? `/docs/${selectedAccessKey.value}` : '/docs'
-  await router.replace({ path, query })
-}
-
 async function reloadActive() {
   await Promise.all([
     view.value === 'client' ? loadByClient() : load(true),
     loadInsights()
   ])
 }
-
-/**
- * Sidebar Documentos (Por cliente | Catálogo) navega por query `view`.
- * Mantém o estado local alinhado sem as tabs da página.
- */
-watch(
-  () => [
-    route.path,
-    typeof route.query.view === 'string' ? route.query.view : ''
-  ] as const,
-  async ([, viewRaw], previous) => {
-    if (!previous) return
-    const next: NotesViewMode = selectedAccessKey.value
-      || viewRaw === 'document'
-      || viewRaw === 'nfs'
-      ? 'document'
-      : 'client'
-    if (view.value === next) return
-    view.value = next
-    selectedKeys.value = []
-    await reloadActive()
-  }
-)
 
 async function loadInsights() {
   insightsLoading.value = true
@@ -206,9 +182,10 @@ async function onTriageSelect(queue: NotesTriageQueue) {
   selectedKeys.value = []
   // Fila de documento força view catálogo (exceto "all" em por cliente)
   if (nextQueue !== 'all' && view.value !== 'document') {
-    view.value = 'document'
+    persistedFilters.value = { ...filters }
+    await router.push('/docs/catalog')
+    return
   }
-  await syncRouteQuery()
   await reloadActive()
 }
 
@@ -229,7 +206,6 @@ async function load(reset = false): Promise<void> {
     listTotal.value = response.meta.total
       ?? notes.value.length
     loadError.value = null
-    await syncRouteQuery()
   } catch (caught) {
     loadError.value = apiErrorMessage(caught, 'Erro ao listar documentos.')
     toast.add({ title: loadError.value, color: 'error' })
@@ -250,17 +226,22 @@ async function loadByClient() {
   loading.value = true
   loadError.value = null
   try {
-    const response = await api.documents.byClient({
-      ...insightsParams(),
+    const operational = clientOperationalFilter.value
+    const response = await api.clients.list({
       page: byClientPage.value,
-      per_page: byClientPerPage
+      per_page: byClientPerPage.value,
+      q: isActiveFilterValue(filters.q) ? filters.q.trim() : undefined,
+      operational_filter: operational === 'total'
+        ? undefined
+        : operational as 'with_credential' | 'without_credential' | 'expiring' | 'capture_problem',
+      sort: 'legal_name',
+      direction: 'asc'
     })
     byClientRows.value = response.data
     byClientTotal.value = response.meta.total
     byClientLastPage.value = response.meta.last_page
-    await syncRouteQuery()
   } catch (caught) {
-    loadError.value = apiErrorMessage(caught, 'Erro ao agregar por empresa.')
+    loadError.value = apiErrorMessage(caught, 'Erro ao listar clientes.')
     toast.add({ title: loadError.value, color: 'error' })
     byClientRows.value = []
   } finally {
@@ -294,6 +275,7 @@ function resetFilters() {
   Object.assign(filters, emptyNotesFilters())
   establishments.value = []
   selectedKeys.value = []
+  clientOperationalFilter.value = 'total'
   byClientPage.value = 1
   reloadActive()
 }
@@ -310,23 +292,33 @@ async function onByClientPageChange(page: number) {
   await loadByClient()
 }
 
+async function onByClientPerPageChange(size: number) {
+  const next = Math.min(50, Math.max(10, Math.floor(size)))
+  if (next === byClientPerPage.value || loading.value) return
+  byClientPerPage.value = next
+  byClientPage.value = 1
+  await loadByClient()
+}
+
 async function selectNote(note: NfseNote) {
-  const query = filtersToQuery(filters, undefined, view.value)
-  await router.push({ path: `/docs/${note.access_key}`, query })
+  await router.push(`/docs/${note.access_key}`)
 }
 
 async function closeDetail() {
-  const query = filtersToQuery(filters, undefined, view.value)
-  await router.replace({ path: '/docs', query })
+  await router.replace('/docs/catalog')
 }
 
-async function openClientNotes(row: NoteClientAggregate) {
-  filters.client_id = String(row.client_id)
+async function openClientNotes(client: Client) {
+  filters.client_id = String(client.id)
   filters.establishment_id = FILTER_ALL
-  view.value = 'document'
   selectedKeys.value = []
   await onClientChange()
-  await load(true)
+  persistedFilters.value = { ...filters }
+  await router.push('/docs/catalog')
+}
+
+async function openClientDetail(client: Client) {
+  await navigateTo(`/clients/${client.id}`)
 }
 
 function buildExportFiltersFromCatalog(): ExportFilters {
@@ -515,10 +507,19 @@ async function exportSelection() {
 }
 
 onMounted(async () => {
-  // Deep-link de nota força aba NFS-e nacional
-  if (selectedAccessKey.value && view.value !== 'document') {
-    view.value = 'document'
+  const legacyDocumentView = route.query.view === 'document' || route.query.view === 'nfs'
+  if (Object.keys(route.query).length) {
+    const currentPath = route.path
+    const cleanPath = selectedAccessKey.value
+      ? `/docs/${selectedAccessKey.value}`
+      : legacyDocumentView
+        ? '/docs/catalog'
+        : currentPath
+    await router.replace(cleanPath)
+    if (cleanPath !== currentPath) return
   }
+  // Deep link de detalhe: o chrome do modal hidrata via GET da nota.
+  // Filtros de sessão continuam para /docs e /docs/catalog (estado local).
   if (isActiveFilterValue(filters.client_id)) {
     await onClientChange()
   }
@@ -532,14 +533,7 @@ onMounted(async () => {
     Arquétipo customers.vue. Views por cliente | catálogo no sidebar (Documentos).
     Tabelas com :ui do template.
   -->
-  <UDashboardPanel
-    id="docs"
-    :default-size="60"
-    :min-size="36"
-    :max-size="75"
-    class="min-w-0"
-    resizable
-  >
+  <UDashboardPanel id="docs" class="min-w-0">
     <template #header>
       <UDashboardNavbar data-testid="page-navbar" title="Documentos">
         <template #leading>
@@ -547,7 +541,7 @@ onMounted(async () => {
         </template>
         <template #trailing>
           <UBadge
-            :label="view === 'client' ? String(byClientRows.length) : String(notes.length)"
+            :label="view === 'client' ? String(byClientTotal) : String(listTotal || notes.length)"
             variant="subtle"
           />
         </template>
@@ -715,6 +709,7 @@ onMounted(async () => {
 
         <NotesFilters
           v-model:filters="filters"
+          v-model:operational-filter="clientOperationalFilter"
           :clients="clients"
           :establishments="establishments"
           :loading-filters="loadingFilters"
@@ -738,7 +733,9 @@ onMounted(async () => {
           :total="byClientTotal"
           :last-page="byClientLastPage"
           @open-client="openClientNotes"
+          @open-client-detail="openClientDetail"
           @update:page="onByClientPageChange"
+          @update:per-page="onByClientPerPageChange"
           @retry="loadByClient"
         />
 
@@ -773,53 +770,9 @@ onMounted(async () => {
     </template>
   </UDashboardPanel>
 
-  <UDashboardPanel
-    v-if="selectedAccessKey"
-    id="docs-detail"
-    class="hidden min-w-0 lg:flex"
-  >
-    <template #header>
-      <UDashboardNavbar :title="detailTitle">
-        <template #right>
-          <UButton
-            icon="i-lucide-x"
-            color="neutral"
-            variant="ghost"
-            square
-            aria-label="Fechar detalhe do documento"
-            @click="closeDetail"
-          />
-        </template>
-      </UDashboardNavbar>
-    </template>
-    <template #body>
-      <NotesDetail
-        :access-key="selectedAccessKey"
-        :preview="selectedPreview"
-        embedded
-      />
-    </template>
-  </UDashboardPanel>
-
-  <div v-else class="hidden flex-1 items-center justify-center lg:flex">
-    <UIcon name="i-lucide-files" class="size-28 text-dimmed" />
-  </div>
-
-  <ClientOnly>
-    <USlideover
-      v-if="isMobile"
-      v-model:open="isDetailOpen"
-      :title="detailTitle"
-      description="Documento fiscal eletrônico"
-    >
-      <template #body>
-        <NotesDetail
-          v-if="selectedAccessKey"
-          :access-key="selectedAccessKey"
-          :preview="selectedPreview"
-          embedded
-        />
-      </template>
-    </USlideover>
-  </ClientOnly>
+  <NotesDetailModal
+    v-model:open="isDetailOpen"
+    :access-key="selectedAccessKey"
+    :preview="selectedPreview"
+  />
 </template>

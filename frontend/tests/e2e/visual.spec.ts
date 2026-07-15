@@ -39,8 +39,8 @@ test.describe('regressão visual por zonas', () => {
     await expect(dialog).toHaveScreenshot('clients-create-modal.png')
   })
 
-  test('detalhe fiscal sanitizado', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'desktop-1440', 'O detalhe adjacente é a zona canônica de desktop.')
+  test('detalhe fiscal sanitizado em modal', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop-1440', 'O modal fiscal é validado uma vez no desktop.')
     await openStable(page, `/docs/${NOTE_ACCESS_KEY}`, 'Documentos')
 
     const detail = page.getByTestId('note-detail')
@@ -95,6 +95,21 @@ test.describe('regressão visual por zonas', () => {
       await expect(dialog).toHaveScreenshot('notes-detail-mobile.png')
     }
   })
+
+  for (const list of [
+    { path: '/health', heading: 'Saúde operacional', slug: 'health' },
+    { path: '/docs/imports', heading: 'Importações XML/ZIP', slug: 'imports' },
+    { path: '/closing', heading: 'Fechamento de saídas', slug: 'closing' }
+  ] as const) {
+    test(`superfície tabular de ${list.heading}`, async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name === 'minimum-360', 'A largura de 360 px é validada pela suíte autenticada.')
+      await openStable(page, list.path, list.heading)
+
+      await expect(page.getByTestId('page-navbar')).toHaveScreenshot(`${list.slug}-navbar.png`)
+      const table = page.getByRole('table').first()
+      await expect(table).toHaveScreenshot(`${list.slug}-table.png`)
+    })
+  }
 })
 
 test.describe('regressão visual escura', () => {

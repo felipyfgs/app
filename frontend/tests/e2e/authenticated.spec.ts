@@ -9,7 +9,10 @@ const routes = [
   { path: '/docs', heading: 'Documentos' },
   { path: `/docs/${NOTE_ACCESS_KEY}`, heading: 'Documentos', mobileDialog: true },
   { path: '/exports', heading: 'Exportações' },
-  { path: '/syncs', heading: 'Sincronizações' }
+  { path: '/syncs', heading: 'Sincronizações' },
+  { path: '/health', heading: 'Saúde operacional' },
+  { path: '/docs/imports', heading: 'Importações XML/ZIP' },
+  { path: '/closing', heading: 'Fechamento de saídas' }
 ] as const
 
 for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] satisfies OfficeRole[]) {
@@ -19,12 +22,12 @@ for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] satisfies OfficeRole[]) {
     })
 
     for (const route of routes) {
-      test(`${route.path} renderiza seu painel`, async ({ page }, testInfo) => {
+      test(`${route.path} renderiza seu painel`, async ({ page }) => {
         await page.goto(route.path)
-        if ('mobileDialog' in route && route.mobileDialog && testInfo.project.name !== 'desktop-1440') {
+        if ('mobileDialog' in route && route.mobileDialog) {
           const dialog = page.getByRole('dialog')
           await expect(dialog).toBeVisible()
-          await expect(dialog.getByText('Detalhe da nota', { exact: true })).toBeVisible()
+          await expect(dialog.getByRole('heading', { name: 'NFS-e nº 1001', exact: true })).toBeVisible()
         } else {
           await expect(page.getByRole('heading', { name: route.heading, exact: true })).toBeVisible()
         }
@@ -112,7 +115,7 @@ test('Settings abre seção direta e navega por teclado', async ({ page }, testI
 test('modal de cadastro usa dados básicos, contato e campo adicional', async ({ page }) => {
   await installApiFixtures(page, 'ADMIN')
   await page.goto('/clients')
-  // "Novo cliente" fica na toolbar da lista, não no page-navbar
+  // Ação primária no navbar, conforme customers.vue.
   await page.getByRole('button', { name: 'Novo cliente' }).click()
   const dialog = page.getByRole('dialog', { name: 'Novo cliente' })
   await page.getByLabel('CNPJ completo').fill('11.222.333/0001-81')

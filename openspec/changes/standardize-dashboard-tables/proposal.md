@@ -4,11 +4,12 @@ As tabelas do painel foram implementadas em momentos diferentes e hoje divergem 
 
 ## What Changes
 
-- Derivar todas as tabelas administrativas dos blocos fixados de `customers.vue`, `HomeSales.vue` e `inbox.vue` do template Nuxt UI Dashboard.
+- Derivar todas as tabelas administrativas dos blocos fixados de `customers.vue` e `HomeSales.vue` do template Nuxt UI Dashboard.
 - Centralizar os presets visuais canônicos de `UTable`, com variantes administrativa, densa e compacta rastreáveis ao template.
 - Uniformizar loading, vazio, erro, ações de linha, rodapé, contagem e controles de paginação.
-- Corrigir Clientes para paginação, busca, filtros e ordenação server-side com estado reproduzível na URL.
-- Corrigir Documentos para navegação por cursor sem simular offset e restaurar o mestre–detalhe no desktop com slideover no mobile.
+- Manter filtros, ordenação, paginação e overlays como estado local de UI; reservar paths para visões navegáveis e não serializar estado efêmero em query parameters do navegador.
+- Corrigir Clientes para paginação, busca, filtros e ordenação server-side, mantendo o estado efêmero da tabela local à página e a URL canônica limpa, como em `customers.vue`.
+- Corrigir Documentos para navegação por cursor sem simular offset e abrir o detalhe em modal responsivo, sem comprimir a tabela.
 - Paginar Exportações e a visão de Documentos por empresa, preservando `office_id` derivado da sessão.
 - Padronizar Fechamento, Saúde, Sincronizações, Importações, onboarding `autXML` e tabelas contextuais.
 - Traduzir estados e ações técnicas para pt-BR sem perder o valor técnico em detalhes acessíveis.
@@ -27,7 +28,7 @@ Nenhuma.
 
 ## Impact
 
-- Frontend Nuxt: páginas e componentes com `UTable`, utilitários visuais, navegação mestre–detalhe, tipos e composables de API.
+- Frontend Nuxt: páginas e componentes com `UTable`, utilitários visuais, modal de detalhe, tipos e composables de API.
 - Backend Laravel: contratos paginados de Clientes, Exportações e agregação de Documentos por empresa.
 - Testes: unitários, typecheck, lint, estados de lista, responsividade em 360 px e snapshots em 390/1440 px.
 - Sem nova dependência de runtime e sem alteração de tenancy, autenticação ou tratamento de segredos.

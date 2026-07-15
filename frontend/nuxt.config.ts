@@ -5,6 +5,7 @@ const apiBase = useSanctumProxy ? '/api/sanctum' : (process.env.NUXT_PUBLIC_API_
 // frequentemente não chega no container — polling é necessário para HMR.
 const usePolling = process.env.CHOKIDAR_USEPOLLING !== 'false'
 const frontendDevPort = Number(process.env.FRONTEND_DEV_PORT || 3000)
+const nitroOutputDir = process.env.NITRO_OUTPUT_DIR
 // Host público para HMR/WS (IP ou domínio). Se vazio, o client usa window.location.hostname
 // (necessário p/ acesso remoto). Nunca forçar "localhost" em dev exposto por IP.
 const hmrHost = process.env.NUXT_DEV_HMR_HOST || process.env.PUBLIC_HOST || ''
@@ -57,7 +58,8 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-06-30',
 
   nitro: {
-    preset: 'static'
+    preset: 'static',
+    ...(nitroOutputDir ? { output: { dir: nitroOutputDir } } : {})
   },
 
   vite: {

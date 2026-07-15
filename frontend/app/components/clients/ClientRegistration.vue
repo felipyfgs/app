@@ -9,18 +9,17 @@ import { formatSourceDate, registrationSourceLabel } from '~/utils/registrationL
 const props = defineProps<{
   client: Client
   canManageClients: boolean
-  /** Abre já em modo edição (ex.: ?edit=1 ou botão global) */
+  /** Abre já em modo edição por uma ação local do detalhe. */
   startEditing?: boolean
 }>()
 
 const emit = defineEmits<{
   updated: []
+  editingChange: [value: boolean]
 }>()
 
 const api = useApi()
 const toast = useToast()
-const route = useRoute()
-const router = useRouter()
 
 const formRef = ref<{ reset: () => void, saving: { value: boolean } } | null>(null)
 const editing = ref(false)
@@ -53,19 +52,10 @@ function startEdit() {
 function cancelEdit() {
   editing.value = false
   formRef.value?.reset()
-  // limpa ?edit=1 da URL se existir
-  if (route.query.edit) {
-    const { edit: _drop, ...rest } = route.query
-    router.replace({ query: rest })
-  }
 }
 
 function onSaved() {
   editing.value = false
-  if (route.query.edit) {
-    const { edit: _drop, ...rest } = route.query
-    router.replace({ query: rest })
-  }
   emit('updated')
 }
 
@@ -140,14 +130,16 @@ async function removeContact(contact: ClientContact) {
 }
 
 watch(
-  () => [props.startEditing, route.query.edit] as const,
-  ([start, editQuery]) => {
-    if (props.canManageClients && (start || editQuery === '1')) {
+  () => props.startEditing,
+  (start) => {
+    if (props.canManageClients && start) {
       editing.value = true
     }
   },
   { immediate: true }
 )
+
+watch(editing, value => emit('editingChange', value))
 
 // se o client recarregar e não estiver editando, re-hidrata
 watch(

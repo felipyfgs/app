@@ -15,7 +15,7 @@ import {
  */
 const route = useRoute()
 const open = ref(false)
-const { me } = useDashboard()
+const { me, openClientCreate, openExportCreate } = useDashboard()
 
 const closeSidebar = () => {
   open.value = false
@@ -24,8 +24,7 @@ const closeSidebar = () => {
 /** Dois menus verticais: primário + secundário (mt-auto), como no template. */
 const links = computed(() => {
   const navOptions = {
-    path: route.path,
-    query: route.query as Record<string, unknown>
+    path: route.path
   }
   const primary = toNavigationItems(
     mainDestinations(me.value, navOptions),
@@ -41,8 +40,7 @@ const links = computed(() => {
 const groups = computed(() => {
   const destinations = [
     ...flattenDestinations(mainDestinations(me.value, {
-      path: route.path,
-      query: route.query as Record<string, unknown>
+      path: route.path
     })),
     ...secondaryDestinations()
   ]
@@ -66,7 +64,12 @@ const groups = computed(() => {
       id: action.id,
       label: action.label,
       icon: action.icon,
-      to: action.to
+      to: action.to,
+      onSelect: action.id === 'new-client'
+        ? openClientCreate
+        : action.id === 'new-export'
+          ? openExportCreate
+          : undefined
     }))
   }]
 })

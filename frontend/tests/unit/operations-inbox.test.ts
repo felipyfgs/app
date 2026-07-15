@@ -12,18 +12,19 @@ describe('operations inbox surface', () => {
   const admin = readFileSync(resolve(APP_ROOT, 'pages/admin/index.vue'), 'utf8')
 
   it('expõe client tipado de inbox e summary com backup', () => {
-    expect(api).toContain("'/api/v1/operations/inbox'")
+    expect(api).toContain(`'/api/v1/operations/inbox'`)
     expect(api).toContain('inbox:')
     expect(types).toContain('export interface InboxItem')
     expect(types).toContain('export interface BackupStatus')
     expect(types).toContain('inbox_total')
   })
 
-  it('lista /health usa filtros na URL e empty state positivo', () => {
-    expect(health).toContain('route.query.severity')
-    expect(health).toContain('route.query.type')
+  it('lista /health mantém filtros locais e empty state positivo', () => {
+    expect(health).toContain('const severityFilter = ref')
+    expect(health).toContain('const typeFilter = ref')
+    expect(health).not.toContain('router.replace({ query:')
     expect(health).toContain('Nenhum problema operacional')
-    expect(health).not.toMatch(/selecionar todos|bulk select|label=\"Restaurar\"/i)
+    expect(health).not.toMatch(/selecionar todos|bulk select|label="Restaurar"/i)
     expect(health).toContain('Não há restore')
   })
 
@@ -37,6 +38,6 @@ describe('operations inbox surface', () => {
     expect(admin).toContain('admin-backup-card')
     expect(admin).toContain('Último SUCCESS')
     expect(admin).toContain('restore drill')
-    expect(admin).not.toMatch(/@click=.*restore|label=\"Restaurar\"|to=\".*restore/i)
+    expect(admin).not.toMatch(/@click=.*restore|label="Restaurar"|to=".*restore/i)
   })
 })

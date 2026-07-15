@@ -103,7 +103,7 @@ watch(
     const prev = rowSelection.value
     const same
       = Object.keys(prev).length === Object.keys(next).length
-      && Object.keys(next).every(k => prev[k] === true)
+        && Object.keys(next).every(k => prev[k] === true)
     if (!same) {
       rowSelection.value = next
     }
@@ -385,11 +385,11 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
             },
             () =>
               h(UButton, {
-                icon: 'i-lucide-ellipsis-vertical',
-                color: 'neutral',
-                variant: 'ghost',
-                square: true,
-                class: 'ml-auto',
+                'icon': 'i-lucide-ellipsis-vertical',
+                'color': 'neutral',
+                'variant': 'ghost',
+                'square': true,
+                'class': 'ml-auto',
                 'aria-label': `Ações de ${noteTitle(row.original)}`
               })
           )
@@ -409,7 +409,6 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
 const selectedCount = computed(() =>
   Object.values(rowSelection.value).filter(Boolean).length
 )
-
 
 defineShortcuts({
   arrowdown: () => {

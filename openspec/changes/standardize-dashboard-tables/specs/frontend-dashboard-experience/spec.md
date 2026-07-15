@@ -5,7 +5,7 @@ Clientes, Exportações, Documentos por empresa e qualquer lista tabular cujo un
 
 #### Scenario: Carteira com várias páginas de clientes
 - **WHEN** o operador abre Clientes e muda busca, estado, ordenação ou página
-- **THEN** o frontend solicita somente o recorte correspondente, atualiza a URL e mantém os KPIs do escritório independentes da página atual
+- **THEN** o frontend solicita somente o recorte correspondente, mantém a URL canônica `/clients` sem estado efêmero da tabela e preserva os KPIs do escritório independentes da página atual
 
 #### Scenario: Histórico com mais de cinquenta exportações
 - **WHEN** o usuário navega no histórico de Exportações
@@ -33,3 +33,13 @@ Cabeçalhos, estados vazios, ações e badges SHALL usar labels pt-BR do domíni
 - **WHEN** um item possui estado `DUPLICATE`, `UNMATCHED` ou `QUARANTINED`
 - **THEN** a tabela mostra “Duplicado”, “Sem vínculo” ou “Em quarentena” e preserva o código técnico no detalhe quando necessário
 
+### Requirement: URL canônica sem estado efêmero de tabela
+Filtros, busca, ordenação, paginação, cursor, seleção e abertura de overlay SHALL permanecer em estado local da interface e MUST NOT ser serializados em query parameters do navegador. Visões que constituem destinos navegáveis SHALL usar paths próprios; parâmetros enviados pelo frontend à API MAY continuar em query HTTP sem alterar a URL visível.
+
+#### Scenario: Filtrar uma lista administrativa
+- **WHEN** o operador altera um filtro, a ordenação ou a página de Clientes, Saúde, Fechamento ou Exportações
+- **THEN** a lista solicita o recorte correto à API e a URL visível permanece no path canônico da tela
+
+#### Scenario: Alternar a visão de Documentos
+- **WHEN** o operador alterna entre a agregação por cliente e o catálogo documental
+- **THEN** o sistema navega entre `/docs` e `/docs/catalog`, preserva filtros no estado local e não cria `?view=` nem queries de filtro

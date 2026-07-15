@@ -319,11 +319,32 @@ class NoteCatalogTest extends TestCase
             'fiscal_role' => FiscalRole::Issuer,
         ]);
 
-        $response = $this->getJson('/api/v1/notes/by-client?competence=2026-07')->assertOk();
+        $clientSecond = Client::factory()->forOffice($office)->create([
+            'legal_name' => 'Segundo Cliente',
+            'root_cnpj' => '44555666',
+        ]);
+        $estSecond = Establishment::factory()->forClient($clientSecond)->create();
+        $n3 = $this->seedNote($office->id, 'AGG3', '2026-07', '2026-07-03', FiscalRole::Issuer, 'ACTIVE', '<d/>');
+        DocumentInterest::query()->create([
+            'office_id' => $office->id,
+            'dfe_document_id' => $n3->dfe_document_id,
+            'establishment_id' => $estSecond->id,
+            'nsu' => 3,
+            'environment' => 'production',
+            'fiscal_role' => FiscalRole::Issuer,
+        ]);
+
+        $response = $this->getJson('/api/v1/notes/by-client?competence=2026-07&per_page=1&page=1')->assertOk();
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.client_id', $client->id);
         $response->assertJsonPath('data.0.notes_count', 2);
         $response->assertJsonPath('data.0.service_amount_sum', '50.00');
+        $response->assertJsonPath('meta.current_page', 1);
+        $response->assertJsonPath('meta.last_page', 2);
+        $response->assertJsonPath('meta.total', 2);
+        $this->getJson('/api/v1/notes/by-client?competence=2026-07&per_page=1&page=2')
+            ->assertOk()
+            ->assertJsonPath('data.0.client_id', $clientSecond->id);
         $this->assertStringNotContainsString('vault', (string) $response->getContent());
         $body = strtolower((string) $response->getContent());
         $this->assertStringNotContainsString('vault_object', $body);

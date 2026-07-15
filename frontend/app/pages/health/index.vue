@@ -17,25 +17,13 @@ const generatedAt = ref<string | null>(null)
 
 const FILTER_ALL = 'all'
 
-const severityFilter = computed({
-  get: () => {
-    const value = String(route.query.severity || FILTER_ALL)
-    return ['critical', 'high', 'medium', 'low', FILTER_ALL].includes(value) ? value : FILTER_ALL
-  },
-  set: (value: string) => {
-    void updateQuery({ severity: value === FILTER_ALL ? undefined : value })
-  }
-})
-
-const typeFilter = computed({
-  get: () => {
-    const value = String(route.query.type || FILTER_ALL)
-    return value || FILTER_ALL
-  },
-  set: (value: string) => {
-    void updateQuery({ type: value === FILTER_ALL ? undefined : value })
-  }
-})
+const initialSeverity = String(route.query.severity || FILTER_ALL)
+const severityFilter = ref(
+  ['critical', 'high', 'medium', 'low', FILTER_ALL].includes(initialSeverity)
+    ? initialSeverity
+    : FILTER_ALL
+)
+const typeFilter = ref(String(route.query.type || FILTER_ALL) || FILTER_ALL)
 
 const severityItems = [
   { label: 'Todas as severidades', value: FILTER_ALL },
@@ -151,16 +139,6 @@ function itemLink(item: InboxItem): string {
   return '/health'
 }
 
-async function updateQuery(patch: Record<string, string | undefined>) {
-  const next = { ...route.query, ...patch }
-  for (const key of Object.keys(next)) {
-    if (next[key] === undefined || next[key] === '') {
-      delete next[key]
-    }
-  }
-  await router.replace({ query: next })
-}
-
 async function load(reset = false) {
   if (reset) {
     cursor.value = null
@@ -200,12 +178,18 @@ function selectRow(_event: Event, row: TableRow<InboxItem>) {
 }
 
 watch(
-  () => [route.query.severity, route.query.type] as const,
+  [severityFilter, typeFilter],
   () => {
     void load(true)
   },
   { immediate: true }
 )
+
+onMounted(() => {
+  if (Object.keys(route.query).length) {
+    void router.replace({ path: route.path })
+  }
+})
 </script>
 
 <template>

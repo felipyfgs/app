@@ -24,7 +24,7 @@ const credential = ref<ClientCredential | null>(null)
 const loading = ref(true)
 const triggeringId = ref<number | null>(null)
 const triggeredIds = ref<number[]>([])
-
+const registrationEditRequested = ref(false)
 
 const establishments = computed(() => item.value?.establishments || [])
 
@@ -134,10 +134,8 @@ function sectionPath(section?: string) {
 /** Editar → aba Cadastro com formulário desbloqueado */
 function goEditCadastro() {
   if (!item.value || !canManageClients.value) return
-  navigateTo({
-    path: clientSectionPath(item.value.id, 'cadastro'),
-    query: { edit: '1' }
-  })
+  registrationEditRequested.value = true
+  navigateTo(clientSectionPath(item.value.id, 'cadastro'))
 }
 
 provide(clientDetailKey, {
@@ -148,6 +146,7 @@ provide(clientDetailKey, {
   establishments,
   triggeringId,
   triggeredIds,
+  registrationEditRequested,
   canManageClients,
   canManageCredentials,
   canTriggerSync,

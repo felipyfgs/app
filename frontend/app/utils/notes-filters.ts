@@ -118,55 +118,6 @@ export function currentCompetenceLabel(): string {
 
 export type NotesViewMode = 'document' | 'client'
 
-/** Lê filtros, cursor e aba de visualização da query da rota. */
-export function filtersFromQuery(query: Record<string, unknown>): {
-  filters: NotesFilterState
-  cursor: string | null
-  view: NotesViewMode
-} {
-  const filters = emptyNotesFilters()
-  for (const key of FILTER_KEYS) {
-    const value = query[key]
-    if (typeof value === 'string' && value && value !== FILTER_ALL) {
-      filters[key] = value
-    }
-  }
-  // Compat: ?access_key= legado vira busca q
-  if (!filters.q && typeof query.access_key === 'string' && query.access_key) {
-    filters.q = query.access_key
-  }
-  const cursor = typeof query.cursor === 'string' && query.cursor ? query.cursor : null
-  // Default: Clientes (por empresa). NFS-e nacional = view=document|nfs
-  const view: NotesViewMode
-    = query.view === 'document' || query.view === 'nfs'
-      ? 'document'
-      : 'client'
-  return { filters, cursor, view }
-}
-
-/** Serializa filtros, cursor e aba (sem chaves vazias / "all"). */
-export function filtersToQuery(
-  filters: NotesFilterState,
-  cursor?: string | null,
-  view?: NotesViewMode | null
-): Record<string, string> {
-  const query: Record<string, string> = {}
-  for (const key of FILTER_KEYS) {
-    const value = filters[key]
-    if (isActiveFilterValue(value)) {
-      query[key] = value
-    }
-  }
-  if (cursor) {
-    query.cursor = cursor
-  }
-  // Default é client — só grava na URL quando for NFS-e nacional
-  if (view === 'document') {
-    query.view = 'document'
-  }
-  return query
-}
-
 /** Export filters espelhando o catálogo (campos que o ZIP job entende). */
 export function catalogToExportFilters(filters: NotesFilterState): {
   access_key?: string

@@ -152,4 +152,35 @@ class ClientListOperationalTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data');
     }
+
+    public function test_paginacao_filtros_e_ordenacao_sao_aplicados_no_servidor(): void
+    {
+        $office = Office::factory()->create();
+        $user = User::factory()->forOffice($office, OfficeRole::Operator)->withTwoFactorConfirmed()->create();
+
+        Client::factory()->forOffice($office)->create(['legal_name' => 'Alfa', 'root_cnpj' => '11111111', 'is_active' => true]);
+        Client::factory()->forOffice($office)->create(['legal_name' => 'Beta', 'root_cnpj' => '22222222', 'is_active' => true]);
+        Client::factory()->forOffice($office)->create(['legal_name' => 'Gama', 'root_cnpj' => '33333333', 'is_active' => false]);
+
+        $this->actingAs($user);
+        app(CurrentOffice::class)->resolve($user);
+
+        $first = $this->getJson('/api/v1/clients?is_active=1&sort=legal_name&direction=desc&per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.legal_name', 'Beta')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.total', 2);
+
+        $this->getJson('/api/v1/clients?is_active=1&sort=legal_name&direction=desc&per_page=1&page=2')
+            ->assertOk()
+            ->assertJsonPath('data.0.legal_name', 'Alfa');
+
+        $this->getJson('/api/v1/clients?operational_filter=without_credential&per_page=2')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 3);
+
+        $this->assertSame(2, $first->json('meta.stats.active'));
+    }
 }

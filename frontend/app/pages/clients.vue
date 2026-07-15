@@ -9,7 +9,8 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 const route = useRoute()
-const { canManageClients } = useDashboard()
+const router = useRouter()
+const { canManageClients, openClientCreate } = useDashboard()
 
 /** Lista e Dashboard compartilham o shell; detalhe do cliente não. */
 const isCatalog = computed(() => {
@@ -27,6 +28,21 @@ const links = [[{
   icon: 'i-lucide-layout-dashboard',
   to: '/clients/dashboard'
 }]] satisfies NavigationMenuItem[][]
+
+/**
+ * Compatibilidade de entrada: remove queries antigas do catálogo e mantém a
+ * URL canônica. `?new=1` ainda abre o modal uma vez antes de ser descartado.
+ */
+watch(
+  () => route.fullPath,
+  async () => {
+    if (!isCatalog.value || !Object.keys(route.query).length) return
+    const shouldOpenCreate = route.path === '/clients' && route.query.new === '1'
+    await router.replace({ path: route.path })
+    if (shouldOpenCreate) await openClientCreate()
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -50,9 +66,9 @@ const links = [[{
         <template #right>
           <UButton
             v-if="canManageClients"
-            to="/clients?new=1"
             icon="i-lucide-plus"
             label="Novo cliente"
+            @click="openClientCreate"
           />
         </template>
       </UDashboardNavbar>

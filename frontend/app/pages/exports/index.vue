@@ -11,7 +11,7 @@ import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 const api = useApi()
 const route = useRoute()
 const router = useRouter()
-const { canCreateExport } = useDashboard()
+const { canCreateExport, isExportFormOpen } = useDashboard()
 const toast = useToast()
 
 const items = ref<ExportJob[]>([])
@@ -22,7 +22,7 @@ const lastPage = ref(1)
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const creating = ref(false)
-const createOpen = ref(canCreateExport.value && route.query.new === '1')
+const createOpen = isExportFormOpen
 const showAdvanced = ref(false)
 
 const FILTER_ALL = 'all'
@@ -340,9 +340,6 @@ async function load(silent = false) {
     items.value = response.data
     total.value = response.meta.total
     lastPage.value = response.meta.last_page
-    await router.replace({
-      query: { ...route.query, page: page.value > 1 ? String(page.value) : undefined }
-    })
     loadError.value = null
   } catch (caught) {
     loadError.value = apiErrorMessage(caught, 'Erro ao listar exportações.')
@@ -434,7 +431,6 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
     })
     createOpen.value = false
     resetForm()
-    await router.replace({ query: {} })
     toast.add({
       title: 'Exportação pedida',
       description: 'O ZIP está na fila. Quando ficar Disponível, o botão Baixar aparece na lista.',
@@ -465,7 +461,14 @@ watch(page, () => void load())
 watch(createOpen, (open) => {
   if (!open) resetForm()
 })
-onMounted(load)
+onMounted(async () => {
+  const shouldOpenCreate = canCreateExport.value && route.query.new === '1'
+  if (Object.keys(route.query).length) {
+    await router.replace({ path: route.path })
+  }
+  if (shouldOpenCreate) createOpen.value = true
+  await load()
+})
 onBeforeUnmount(pause)
 </script>
 
@@ -543,7 +546,7 @@ onBeforeUnmount(pause)
             label="Fechamento mensal de saídas"
           />
           <UButton
-            to="/docs"
+            to="/docs/catalog"
             color="neutral"
             variant="ghost"
             size="sm"

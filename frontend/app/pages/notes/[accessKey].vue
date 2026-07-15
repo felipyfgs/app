@@ -3,7 +3,7 @@
 const route = useRoute()
 const key = typeof route.params.accessKey === 'string' ? route.params.accessKey : ''
 await navigateTo(
-  { path: key ? `/docs/${key}` : '/docs', query: route.query },
+  key ? `/docs/${key}` : '/docs',
   { redirectCode: 301, replace: true }
 )
 </script>

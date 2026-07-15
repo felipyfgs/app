@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Compat: /notes → /docs
-await navigateTo({ path: '/docs', query: useRoute().query }, { redirectCode: 301, replace: true })
+// Compat: /notes → /docs (estado tabular legado não é propagado)
+await navigateTo('/docs', { redirectCode: 301, replace: true })
 </script>
 
 <template>

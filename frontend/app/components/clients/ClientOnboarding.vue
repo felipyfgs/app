@@ -32,6 +32,7 @@ const emit = defineEmits<{
 }>()
 
 const route = useRoute()
+const { openClientCreate } = useDashboard()
 const formOpen = ref(false)
 
 type SectionKey = 'resumo' | 'cadastro' | 'certificado' | 'sincronizacao'
@@ -390,7 +391,7 @@ const displayName = computed(() =>
             variant="subtle"
             icon="i-lucide-user-plus"
             label="Cadastrar filial (novo cliente)"
-            to="/clients?new=1"
+            @click="openClientCreate"
           />
         </div>
       </template>
