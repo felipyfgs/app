@@ -14,11 +14,24 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ExportController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request, CurrentOffice $currentOffice): JsonResponse
     {
-        $items = Export::query()->where('user_id', auth()->id())->orderByDesc('id')->limit(50)->get();
+        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        $paginator = Export::query()
+            ->where('office_id', $currentOffice->id())
+            ->where('user_id', auth()->id())
+            ->orderByDesc('id')
+            ->paginate($perPage);
 
-        return response()->json(['data' => $items->map(fn (Export $e) => $this->public($e))]);
+        return response()->json([
+            'data' => collect($paginator->items())->map(fn (Export $e) => $this->public($e)),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ],
+        ]);
     }
 
     public function store(Request $request, CurrentOffice $currentOffice, AuditLogger $audit): JsonResponse

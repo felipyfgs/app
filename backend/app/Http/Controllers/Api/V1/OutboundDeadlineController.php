@@ -149,13 +149,13 @@ class OutboundDeadlineController extends Controller
         $root = $request->query('root_cnpj');
         $clientId = $request->query('client_id');
         $source = $request->query('source');
+        $perPage = min(100, max(1, (int) $request->query('per_page', 50)));
 
         $q = MaOutboundRetrievalRequest::query()
             ->where('office_id', $officeId)
             ->where('origin', OutboundRetrievalOrigin::SvrsPortalByKey)
             ->whereNotIn('urgency_band', [OutboundUrgencyBand::Captured->value])
-            ->orderBy('due_at')
-            ->limit(min(100, max(1, (int) $request->query('limit', 50))));
+            ->orderBy('due_at');
 
         if (is_string($competence) && $competence !== '') {
             $q->where('competence', $competence);
@@ -185,7 +185,8 @@ class OutboundDeadlineController extends Controller
             $q->where('capture_source', 'like', '%'.strtoupper($source).'%');
         }
 
-        $items = $q->get()->map(function (MaOutboundRetrievalRequest $r) {
+        $paginator = $q->paginate($perPage);
+        $items = collect($paginator->items())->map(function (MaOutboundRetrievalRequest $r) {
             $arr = $r->toPublicArray();
             $arr['due_at'] = $r->due_at?->toIso8601String();
             $arr['target_at'] = $r->target_at?->toIso8601String();
@@ -201,7 +202,15 @@ class OutboundDeadlineController extends Controller
             return $arr;
         });
 
-        return response()->json(['data' => $items]);
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ],
+        ]);
     }
 
     public function contingencyBatch(Request $request): JsonResponse

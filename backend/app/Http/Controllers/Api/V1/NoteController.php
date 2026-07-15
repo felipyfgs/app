@@ -9,7 +9,6 @@ use App\Enums\DocumentKind;
 use App\Enums\FiscalRole;
 use App\Enums\NfeManifestationType;
 use App\Http\Controllers\Controller;
-use App\Models\Client;
 use App\Models\CteDocument;
 use App\Models\DocumentAcquisition;
 use App\Models\NfeDocument;
@@ -292,14 +291,7 @@ class NoteController extends Controller
 
         $notesQuery = NfseNote::query()->where('office_id', $officeId);
         $this->applyCatalogFilters($notesQuery, $request, ignoreClientId: true);
-        $noteIds = $notesQuery->pluck('id');
-
-        if ($noteIds->isEmpty()) {
-            return response()->json([
-                'data' => [],
-                'meta' => ['total_clients' => 0],
-            ]);
-        }
+        $noteIds = $notesQuery->select('nfse_notes.id');
 
         // Uma linha por (nota, cliente) — evita multiplicar valor por vários interests no mesmo cliente.
         $pairs = DB::table('document_interests as di')
@@ -316,64 +308,65 @@ class NoteController extends Controller
                 'n.status',
                 'n.issued_at',
             ])
-            ->distinct()
-            ->get();
+            ->distinct();
 
-        $byClient = $pairs->groupBy('client_id');
-        $clientIds = $byClient->keys()->map(fn ($id) => (int) $id)->all();
-        $clients = Client::query()
-            ->where('office_id', $officeId)
-            ->whereIn('id', $clientIds)
-            ->with(['establishments' => fn ($q) => $q->orderBy('id')->limit(1)])
-            ->get()
-            ->keyBy('id');
+        $cancelledStatuses = NfseNoteStatus::statusesInGroup(NfseNoteStatus::GROUP_CANCELLED);
+        $cancelledPlaceholders = implode(', ', array_fill(0, count($cancelledStatuses), '?'));
+        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
 
-        $data = $byClient->map(function ($rows, $clientId) use ($clients) {
-            $client = $clients->get((int) $clientId);
-            if ($client === null) {
-                return null;
-            }
-            $unique = $rows->unique('note_id');
-            $notesCount = $unique->count();
-            $amountSum = $unique->sum(fn ($r) => (float) $r->service_amount);
-            $cancelledStatuses = NfseNoteStatus::statusesInGroup(NfseNoteStatus::GROUP_CANCELLED);
-            $cancelled = $unique->filter(fn ($r) => in_array((string) $r->status, $cancelledStatuses, true))->count();
-            $review = $unique->where('status', 'UNKNOWN')->count();
-            $lastIssued = $unique
-                ->pluck('issued_at')
-                ->filter()
-                ->map(fn ($d) => (string) $d)
-                ->sort()
-                ->last();
-            $primary = $client->establishments->first();
-
-            return [
-                'client_id' => $client->id,
-                'legal_name' => $client->legal_name,
-                'display_name' => $client->display_name,
-                'name' => $client->displayLabel(),
-                'root_cnpj' => $client->root_cnpj,
-                'cnpj' => $primary?->cnpj,
-                'notes_count' => $notesCount,
-                'service_amount_sum' => number_format($amountSum, 2, '.', ''),
-                'cancelled_count' => $cancelled,
-                'review_count' => $review,
-                'last_issued_at' => $lastIssued ? (new CarbonImmutable($lastIssued))->toIso8601String() : null,
-            ];
-        })
-            ->filter()
-            // Problemas primeiro, depois volume
-            ->sortBy([
-                fn ($row) => -((int) ($row['review_count'] ?? 0) + (int) ($row['cancelled_count'] ?? 0)),
-                fn ($row) => -((int) ($row['notes_count'] ?? 0)),
-                fn ($row) => mb_strtolower($row['legal_name'] ?? ''),
+        $paginator = DB::query()
+            ->fromSub($pairs, 'p')
+            ->join('clients as c', function ($join) use ($officeId): void {
+                $join->on('c.id', '=', 'p.client_id')
+                    ->where('c.office_id', '=', $officeId)
+                    ->whereNull('c.deleted_at');
+            })
+            ->select([
+                'c.id as client_id',
+                'c.legal_name',
+                'c.display_name',
+                'c.root_cnpj',
             ])
-            ->values();
+            ->selectRaw('COALESCE(c.display_name, c.legal_name) as name')
+            ->selectRaw('(SELECT e2.cnpj FROM establishments e2 WHERE e2.client_id = c.id AND e2.deleted_at IS NULL ORDER BY e2.id LIMIT 1) as cnpj')
+            ->selectRaw('COUNT(*) as notes_count')
+            ->selectRaw('COALESCE(SUM(p.service_amount), 0) as service_amount_sum')
+            ->selectRaw("SUM(CASE WHEN p.status IN ($cancelledPlaceholders) THEN 1 ELSE 0 END) as cancelled_count", $cancelledStatuses)
+            ->selectRaw("SUM(CASE WHEN p.status = 'UNKNOWN' THEN 1 ELSE 0 END) as review_count")
+            ->selectRaw('MAX(p.issued_at) as last_issued_at')
+            ->groupBy('c.id', 'c.legal_name', 'c.display_name', 'c.root_cnpj')
+            ->orderByDesc('review_count')
+            ->orderByDesc('cancelled_count')
+            ->orderByDesc('notes_count')
+            ->orderBy('c.legal_name')
+            ->paginate($perPage);
+
+        $data = collect($paginator->items())->map(static function ($row): array {
+            return [
+                'client_id' => (int) $row->client_id,
+                'legal_name' => $row->legal_name,
+                'display_name' => $row->display_name,
+                'name' => $row->name,
+                'root_cnpj' => $row->root_cnpj,
+                'cnpj' => $row->cnpj,
+                'notes_count' => (int) $row->notes_count,
+                'service_amount_sum' => number_format((float) $row->service_amount_sum, 2, '.', ''),
+                'cancelled_count' => (int) $row->cancelled_count,
+                'review_count' => (int) $row->review_count,
+                'last_issued_at' => $row->last_issued_at
+                    ? (new CarbonImmutable((string) $row->last_issued_at))->toIso8601String()
+                    : null,
+            ];
+        });
 
         return response()->json([
             'data' => $data,
             'meta' => [
-                'total_clients' => $data->count(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'total_clients' => $paginator->total(),
             ],
         ]);
     }

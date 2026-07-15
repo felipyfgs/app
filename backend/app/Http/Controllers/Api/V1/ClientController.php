@@ -93,6 +93,34 @@ class ClientController extends Controller
             $base->where('is_active', $request->boolean('is_active'));
         }
 
+        match ($request->string('operational_filter')->toString()) {
+            'with_credential' => $base->whereHas('credential'),
+            'without_credential' => $base->whereDoesntHave('credential'),
+            'expiring' => $base->whereHas('credentials', function ($q): void {
+                $q->where('status', 'ACTIVE')
+                    ->where(function ($inner): void {
+                        $inner->where('expires_alert_30', true)
+                            ->orWhere('expires_alert_7', true)
+                            ->orWhere('expires_alert_1', true)
+                            ->orWhereBetween('valid_to', [now(), now()->addDays(30)]);
+                    });
+            }),
+            'capture_problem' => $base->whereHas('establishments.syncCursors', function ($q): void {
+                $q->whereIn('status', [
+                    SyncCursorStatus::Blocked->value,
+                    SyncCursorStatus::Error->value,
+                ]);
+            }),
+            default => null,
+        };
+
+        $sort = match ($request->string('sort')->toString()) {
+            'cnpj' => 'root_cnpj',
+            'is_active' => 'is_active',
+            default => 'legal_name',
+        };
+        $direction = $request->string('direction')->lower()->toString() === 'desc' ? 'desc' : 'asc';
+
         $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
         $paginator = (clone $base)
             ->withCount('establishments')
@@ -101,7 +129,8 @@ class ClientController extends Controller
                 // Estabelecimentos + cursores para resumo de captura/sync sem N+1.
                 'establishments' => fn ($q) => $q->orderBy('id')->with('syncCursors'),
             ])
-            ->orderBy('legal_name')
+            ->orderBy($sort, $direction)
+            ->orderBy('id')
             ->paginate($perPage);
 
         $items = collect($paginator->items())->map(function (Client $client) {
