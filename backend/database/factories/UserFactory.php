@@ -53,4 +53,21 @@ class UserFactory extends Factory
             ]);
         });
     }
+
+    /**
+     * PLATFORM_ADMIN global — sem membership de office e sem acesso fiscal implícito.
+     */
+    public function asPlatformAdmin(): static
+    {
+        return $this->afterCreating(function (User $user): void {
+            \App\Models\PlatformMembership::query()->firstOrCreate(
+                [
+                    'user_id' => $user->id,
+                    'role' => \App\Enums\PlatformRole::PlatformAdmin->value,
+                ],
+                ['is_active' => true],
+            );
+        });
+    }
 }
+

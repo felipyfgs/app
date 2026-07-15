@@ -9,13 +9,21 @@ use App\Models\User;
 use Illuminate\Contracts\Auth\Authenticatable;
 use RuntimeException;
 
+/**
+ * Contexto do tenant ativo derivado exclusivamente de membership autorizada.
+ * Nunca confia office_id fornecido livremente pelo cliente.
+ */
 class CurrentOffice
 {
+    public const SESSION_KEY = 'current_office_id';
+
     private ?Office $office = null;
 
     private ?OfficeMembership $membership = null;
 
     private ?OfficeRole $role = null;
+
+    private ?int $boundUserId = null;
 
     public function resolve(?Authenticatable $user = null): ?Office
     {
@@ -27,11 +35,11 @@ class CurrentOffice
             return null;
         }
 
-        if ($this->office !== null && $this->membership?->user_id === $user->id) {
+        if ($this->office !== null && $this->boundUserId === $user->id) {
             return $this->office;
         }
 
-        $membership = $user->activeMembership();
+        $membership = $this->resolveMembership($user);
 
         if ($membership === null) {
             $this->clear();
@@ -39,11 +47,49 @@ class CurrentOffice
             return null;
         }
 
+        $this->bind($user, $membership);
+
+        return $this->office;
+    }
+
+    /**
+     * Resolve membership ativa: preferência pela sessão (troca explícita),
+     * senão a primeira membership ativa determinística.
+     */
+    public function resolveMembership(User $user): ?OfficeMembership
+    {
+        $sessionOfficeId = $this->sessionOfficeId();
+
+        if ($sessionOfficeId !== null) {
+            $fromSession = $user->memberships()
+                ->where('office_id', $sessionOfficeId)
+                ->where('is_active', true)
+                ->whereHas('office', fn ($q) => $q->where('is_active', true))
+                ->with('office')
+                ->first();
+
+            if ($fromSession !== null) {
+                return $fromSession;
+            }
+
+            // Session stale (membership revogada / office inativo): limpar chave.
+            $this->forgetSessionOfficeId();
+        }
+
+        return $user->memberships()
+            ->where('is_active', true)
+            ->whereHas('office', fn ($q) => $q->where('is_active', true))
+            ->with('office')
+            ->orderBy('id')
+            ->first();
+    }
+
+    public function bind(User $user, OfficeMembership $membership): void
+    {
+        $this->boundUserId = $user->id;
         $this->membership = $membership;
         $this->office = $membership->office;
         $this->role = $membership->role;
-
-        return $this->office;
     }
 
     public function id(): ?int
@@ -81,6 +127,7 @@ class CurrentOffice
         $this->office = null;
         $this->membership = null;
         $this->role = null;
+        $this->boundUserId = null;
     }
 
     /**
@@ -91,5 +138,39 @@ class CurrentOffice
         if ($this->id() !== $officeId) {
             abort(404);
         }
+    }
+
+    private function sessionOfficeId(): ?int
+    {
+        if (! app()->bound('request')) {
+            return null;
+        }
+
+        $request = request();
+        if ($request === null || ! $request->hasSession()) {
+            return null;
+        }
+
+        $value = $request->session()->get(self::SESSION_KEY);
+
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    private function forgetSessionOfficeId(): void
+    {
+        if (! app()->bound('request')) {
+            return;
+        }
+
+        $request = request();
+        if ($request === null || ! $request->hasSession()) {
+            return;
+        }
+
+        $request->session()->forget(self::SESSION_KEY);
     }
 }

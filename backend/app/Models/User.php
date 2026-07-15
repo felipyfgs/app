@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\OfficeRole;
+use App\Enums\PlatformRole;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -44,6 +45,23 @@ class User extends Authenticatable
         return $this->hasMany(OfficeMembership::class);
     }
 
+    public function platformMemberships(): HasMany
+    {
+        return $this->hasMany(PlatformMembership::class);
+    }
+
+    /**
+     * PLATFORM_ADMIN é autorização global separada — NÃO implica membership de office
+     * nem leitura fiscal de qualquer tenant.
+     */
+    public function isPlatformAdmin(): bool
+    {
+        return $this->platformMemberships()
+            ->where('is_active', true)
+            ->where('role', PlatformRole::PlatformAdmin->value)
+            ->exists();
+    }
+
     public function activeMembership(): ?OfficeMembership
     {
         return $this->memberships()
@@ -51,6 +69,15 @@ class User extends Authenticatable
             ->whereHas('office', fn ($q) => $q->where('is_active', true))
             ->orderBy('id')
             ->first();
+    }
+
+    public function hasActiveMembershipIn(int $officeId): bool
+    {
+        return $this->memberships()
+            ->where('office_id', $officeId)
+            ->where('is_active', true)
+            ->whereHas('office', fn ($q) => $q->where('is_active', true))
+            ->exists();
     }
 
     public function roleIn(?Office $office): ?OfficeRole
@@ -84,3 +111,4 @@ class User extends Authenticatable
         return $role === OfficeRole::Admin && ! $this->hasConfirmedTwoFactor();
     }
 }
+

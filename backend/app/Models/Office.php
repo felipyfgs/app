@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable(['name', 'slug', 'is_active', 'deadline_timezone'])]
 class Office extends Model
@@ -34,4 +35,10 @@ class Office extends Model
     {
         return $this->hasMany(OfficeMembership::class);
     }
+
+    public function subscription(): HasOne
+    {
+        return $this->hasOne(OfficeSubscription::class);
+    }
 }
+
