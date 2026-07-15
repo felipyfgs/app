@@ -19,7 +19,8 @@
 3. Trigger manual ou scheduler (`sefaz:dispatch-ma-outbound-due`).
 4. Posição é **nNF** (nunca NSU).
 5. 562 sem chave → `LIMITED_NO_KEY` (sem força bruta).
-6. Chave descoberta → `XML_PENDING` até pacote oficial.
+6. Chave descoberta → `XML_PENDING` até pacote oficial (ou outra fonte de `procNFe`).
+7. Consulta **não** grava XML de guarda — ver `ma-outbound-xml-auto-discovery.md`.
 
 CSC **não** participa da consulta.
 
@@ -71,3 +72,5 @@ SEFAZ_MA_OUTBOUND_KILL_SWITCH=true
 ```
 
 Preserva XML, aquisições, cursores nNF e auditoria.
+
+Evidência de drill 10.4 (2026-07-15): `docs/ops/ma-outbound-pilot-log-2026-07-15.md`.

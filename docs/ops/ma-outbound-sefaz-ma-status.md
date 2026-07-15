@@ -27,3 +27,9 @@ Fontes públicas consultadas (notícia de plataforma de download, portais SVAN/S
 ## Próximo passo
 
 Quando houver ofício/e-mail/contrato da SEFAZ-MA autorizando M2M, atualizar este arquivo com referência, data e escopo; só então reavaliar G4.
+
+## Descobertas técnicas (XML automático)
+
+O que já se sabe sobre consulta vs. download de `procNFe`, DistDFe 641/618 e caminhos alternativos (ERP, autXML, ASSISTED) está em:
+
+→ **`docs/ops/ma-outbound-xml-auto-discovery.md`**

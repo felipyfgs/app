@@ -15,6 +15,19 @@
 
 Reavaliar somente com ofício/e-mail formal; atualizar `docs/ops/ma-outbound-sefaz-ma-status.md`.
 
+### Evidência técnica nova — não altera o gate automaticamente
+
+Em 2026-07-15 foi recuperado e validado um `nfeProc` de NFC-e 65 do MA pelo
+formulário autenticado `NFCESSL/DownloadXMLDFe` da SVRS, com chave conhecida e A1
+do emitente. Digest e assinatura XMLDSig foram confirmados. O resultado muda a
+viabilidade técnica de **“impossível”** para **“possível por chave”**, mas a SVRS
+não publica esse formulário como API/webservice M2M nem informa limites de uso.
+
+Assim, `NO_GO_M2M` permanece por decisão de produto/contrato, não por incapacidade
+técnica. Ver `docs/ops/svrs-nfce-downloadxml-dfe-research.md`.
+
+Contexto técnico (por que M2M/ERP/autXML e não “só DistDFe/consulta”): `docs/ops/ma-outbound-xml-auto-discovery.md`.
+
 ## G5 — Mutação (539 / inutilização)
 
 | Campo | Valor |

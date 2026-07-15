@@ -78,6 +78,20 @@ Clientes Alpha/Beta/Gamma do `DemoCatalogSeeder` são **fake** — não usar par
 | `SEFAZ_MANIFEST_ENABLED` | RecepcaoEvento4 (ciência/conclusivas) |
 | `SEFAZ_CTE_ENABLED` | CT-e DistDFe |
 | `SEFAZ_NFCE_ENABLED` | NFC-e (gap — não habilitar sem canal real) |
+| `SEFAZ_MA_OUTBOUND_ENABLED` | Captura saídas MA (perfil/série nNF) |
+| `SEFAZ_MA_PROTOCOL_QUERY_ENABLED` | Consulta protocolo read-only (SVAN 55 / SVRS 65) |
+| `SEFAZ_MA_M2M_RETRIEVAL_ENABLED` | M2M pacote MA — default off / `NO_GO_M2M` |
+| `SEFAZ_MA_MUTATING_PROBE_ENABLED` | Fallback mutante 539 — default off |
+
+### Piloto MA outbound (NFC-e 65)
+
+| Campo | Valor |
+|-------|--------|
+| Log | `docs/ops/ma-outbound-pilot-log-2026-07-15.md` |
+| Gates | `docs/ops/ma-outbound-poc-gates.md` |
+| Descoberta XML | `docs/ops/ma-outbound-xml-auto-discovery.md` |
+| Perfil local | ACTIVE · modelo 65 · est. 11 · série 1 · allowlisted |
+| Rollback drill 10.4 | OK 2026-07-15 (kill switch + preservação de cursores/chaves) |
 | ~~`SEFAZ_MDFE_ENABLED`~~ | **MDF-e fora do escopo escritural** — flag ignorada / sempre off |
 
 - **Saídas NF-e/NFC-e:** DistDFe **não** entrega a própria nota ao emitente → importar XML do ERP.

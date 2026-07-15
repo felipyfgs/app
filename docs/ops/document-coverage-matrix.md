@@ -29,7 +29,7 @@ Backfill: `php artisan documents:backfill-direction`.
 2. **Não avançar NSU** se decode falhar; bloquear após 5 falhas.
 3. **Import** só armazena XML já autorizado — **não emite** nota.
 4. Download **prefere XML completo** (`is_summary=false`) sobre resumo.
-5. Export ZIP organiza em pastas `entrada/` e `saida/` (+ kind).
+5. Export ZIP: `{entrada|saida}/{nfse|nfe|nfce|cte}/{cnpj}/{YYYYMM}/{chave}.xml` — sem pasta de papel (ISSUER/TAKER); competência compacta.
 
 ## Onboarding do cliente
 

@@ -28,10 +28,15 @@
 Para estabelecimentos **UF=MA**, a change `build-ma-outbound-nfe-nfce-capture` introduz:
 
 - captura de **NFC-e 65 OUT** via pacote oficial assistido + reconciliação por `nNF`;
-- consulta de protocolo (sem CSC);
-- **sem** DistDFe de NFC-e e **sem** RPA.
+- consulta de protocolo (sem CSC) — **descobre chave**, não devolve `procNFe`;
+- **sem** DistDFe de NFC-e e **sem** RPA;
+- M2M SEFAZ-MA desligado (`NO_GO_M2M`) até contrato formal.
 
-Ver `docs/ops/ma-outbound-g0-decision.md` e `docs/ops/ma-outbound-runbooks.md`.
+Descobertas consolidadas (limites 641/618, ASSISTED vs AUTOMATIC, caminhos ERP/autXML/M2M):
+
+→ **`docs/ops/ma-outbound-xml-auto-discovery.md`**
+
+Ver também `ma-outbound-g0-decision.md`, `ma-outbound-g4-g5-decision.md` e `ma-outbound-runbooks.md`.
 
 ## Referência
 

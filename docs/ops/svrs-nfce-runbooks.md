@@ -53,3 +53,7 @@
 - Backlog > limiar ou idade do item mais antigo > 24h
 - Breaker global open
 - Queda abrupta da taxa de captura vs baseline piloto
+
+## Política de tentativas orientada a prazo (2026-07-15)
+
+Com `OUTBOUND_DEADLINE_RETRY_POLICY=true`, o orquestrador limita a **2** transações SVRS por chave com intervalo ≥**24h**, substituindo o backoff 15m/1h/6h/12h e a 5ª tentativa. Default permanece `false` (legado). Ver `docs/ops/outbound-deadline-dependencies.md`.
