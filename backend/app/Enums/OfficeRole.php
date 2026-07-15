@@ -28,7 +28,19 @@ enum OfficeRole: string
         return $this === self::Admin || $this === self::Operator;
     }
 
+    /** Manifestação do destinatário / unlock XML (OPERATOR/ADMIN). */
+    public function canManifestNfe(): bool
+    {
+        return $this === self::Admin || $this === self::Operator;
+    }
+
     public function canExport(): bool
+    {
+        return $this === self::Admin || $this === self::Operator;
+    }
+
+    /** Importação de XML de saída (OPERATOR/ADMIN). */
+    public function canImportDocuments(): bool
     {
         return $this === self::Admin || $this === self::Operator;
     }

@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\SyncCursorStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Clients\StoreClientRequest;
 use App\Http\Requests\Clients\UpdateClientRequest;
 use App\Models\Client;
 use App\Models\ClientContact;
 use App\Models\Establishment;
+use App\Models\SyncCursor;
 use App\Services\Audit\AuditLogger;
 use App\Services\Clients\CaptureEligibilityService;
 use App\Services\Clients\ClientRootConflictException;
@@ -17,6 +19,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use InvalidArgumentException;
 
 class ClientController extends Controller
@@ -46,6 +49,9 @@ class ClientController extends Controller
         $active = (clone $statsQuery)->where('is_active', true)->count();
         // credentials() (hasMany, qualquer status): KPIs que filtram além de ACTIVE.
         // credential() (hasOne ACTIVE) é só para resumo operacional na lista.
+        $withActiveCredential = (clone $statsQuery)
+            ->whereHas('credential')
+            ->count();
         $withoutCredential = (clone $statsQuery)
             ->whereDoesntHave('credentials', function ($q): void {
                 $q->whereIn('status', ['ACTIVE', 'PENDING']);
@@ -72,6 +78,15 @@ class ClientController extends Controller
                 });
             })
             ->count();
+        // Captura problemática: cursor BLOCKED/ERROR em qualquer estabelecimento do cliente.
+        $captureProblem = (clone $statsQuery)
+            ->whereHas('establishments.syncCursors', function ($q): void {
+                $q->whereIn('status', [
+                    SyncCursorStatus::Blocked->value,
+                    SyncCursorStatus::Error->value,
+                ]);
+            })
+            ->count();
 
         // Filtro de estado só na lista (USelect do template)
         if ($request->filled('is_active')) {
@@ -83,8 +98,8 @@ class ClientController extends Controller
             ->withCount('establishments')
             ->with([
                 'credential',
-                // 1 cliente = 1 estabelecimento: carrega o CNPJ completo para a lista
-                'establishments' => fn ($q) => $q->orderBy('id')->limit(1),
+                // Estabelecimentos + cursores para resumo de captura/sync sem N+1.
+                'establishments' => fn ($q) => $q->orderBy('id')->with('syncCursors'),
             ])
             ->orderBy('legal_name')
             ->paginate($perPage);
@@ -104,6 +119,8 @@ class ClientController extends Controller
                     'expires_alert_7' => (bool) $credential->expires_alert_7,
                     'expires_alert_1' => (bool) $credential->expires_alert_1,
                 ];
+            $payload['capture_summary'] = $this->buildCaptureSummary($client->establishments);
+            $payload['sync_summary'] = $this->buildSyncSummary($client->establishments);
 
             return $payload;
         });
@@ -118,9 +135,11 @@ class ClientController extends Controller
                 'stats' => [
                     'total' => $total,
                     'active' => $active,
+                    'with_credential' => $withActiveCredential,
                     'without_credential' => $withoutCredential,
                     'credential_expiring_30d' => $credentialExpiring,
                     'credential_expired' => $credentialExpired,
+                    'capture_problem' => $captureProblem,
                 ],
             ],
         ]);
@@ -386,6 +405,88 @@ class ClientController extends Controller
             'is_active' => $contact->is_active,
             'created_at' => $contact->created_at?->toIso8601String(),
             'updated_at' => $contact->updated_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Resumo de captura na lista (sem elegibilidade completa — evita N+1 de policy).
+     *
+     * @param  Collection<int, Establishment>  $establishments
+     * @return array{enabled: bool, status: string, establishments_total: int, establishments_enabled: int}
+     */
+    private function buildCaptureSummary(Collection $establishments): array
+    {
+        $total = $establishments->count();
+        $enabled = $establishments->filter(fn (Establishment $e) => $e->is_active && $e->capture_enabled)->count();
+
+        $status = match (true) {
+            $total === 0 => 'NONE',
+            $enabled === 0 => 'OFF',
+            $enabled === $total => 'ON',
+            default => 'PARTIAL',
+        };
+
+        return [
+            'enabled' => $enabled > 0,
+            'status' => $status,
+            'establishments_total' => $total,
+            'establishments_enabled' => $enabled,
+        ];
+    }
+
+    /**
+     * Pior status de cursor entre estabelecimentos + último sucesso.
+     * Prioridade: BLOCKED > ERROR > RUNNING > WAITING > IDLE > NONE.
+     *
+     * @param  Collection<int, Establishment>  $establishments
+     * @return array{status: string, last_success_at: ?string, has_cursor: bool}
+     */
+    private function buildSyncSummary(Collection $establishments): array
+    {
+        /** @var Collection<int, SyncCursor> $cursors */
+        $cursors = $establishments->flatMap(fn (Establishment $e) => $e->relationLoaded('syncCursors')
+            ? $e->syncCursors
+            : collect());
+
+        if ($cursors->isEmpty()) {
+            return [
+                'status' => 'NONE',
+                'last_success_at' => null,
+                'has_cursor' => false,
+            ];
+        }
+
+        $rank = [
+            SyncCursorStatus::Blocked->value => 50,
+            SyncCursorStatus::Error->value => 40,
+            SyncCursorStatus::Running->value => 30,
+            SyncCursorStatus::Waiting->value => 20,
+            SyncCursorStatus::Idle->value => 10,
+        ];
+
+        $worst = 'IDLE';
+        $worstRank = -1;
+        $lastSuccess = null;
+
+        foreach ($cursors as $cursor) {
+            $status = $cursor->status instanceof SyncCursorStatus
+                ? $cursor->status->value
+                : (string) $cursor->status;
+            $r = $rank[$status] ?? 0;
+            if ($r > $worstRank) {
+                $worstRank = $r;
+                $worst = $status;
+            }
+            $at = $cursor->last_success_at;
+            if ($at !== null && ($lastSuccess === null || $at->gt($lastSuccess))) {
+                $lastSuccess = $at;
+            }
+        }
+
+        return [
+            'status' => $worst,
+            'last_success_at' => $lastSuccess?->toIso8601String(),
+            'has_cursor' => true,
         ];
     }
 }

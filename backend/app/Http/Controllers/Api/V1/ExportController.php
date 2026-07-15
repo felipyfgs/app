@@ -9,6 +9,7 @@ use App\Services\Audit\AuditLogger;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ExportController extends Controller
@@ -28,14 +29,35 @@ class ExportController extends Controller
 
         $data = $request->validate([
             'filters' => ['nullable', 'array'],
+            'filters.competence' => ['sometimes', 'nullable', 'string', 'max:7'],
+            'filters.access_key' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'filters.access_keys' => ['sometimes', 'nullable', 'array', 'max:'.BuildExportZipJob::MAX_ACCESS_KEYS],
+            'filters.access_keys.*' => ['string', 'max:64'],
+            'filters.issuer_cnpj' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'filters.taker_cnpj' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'filters.fiscal_role' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'filters.direction' => ['sometimes', 'nullable', 'in:IN,OUT,UNKNOWN'],
+            'filters.status' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'filters.issued_from' => ['sometimes', 'nullable', 'date'],
+            'filters.issued_to' => ['sometimes', 'nullable', 'date'],
+            'filters.client_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'filters.establishment_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'include_events' => ['sometimes', 'boolean'],
         ]);
+
+        $filters = $this->normalizeFilters($data['filters'] ?? []);
+
+        if (isset($filters['access_keys']) && count($filters['access_keys']) > BuildExportZipJob::MAX_ACCESS_KEYS) {
+            throw ValidationException::withMessages([
+                'filters.access_keys' => ['No máximo '.BuildExportZipJob::MAX_ACCESS_KEYS.' chaves por exportação.'],
+            ]);
+        }
 
         $export = Export::query()->create([
             'office_id' => $currentOffice->office()->id,
             'user_id' => auth()->id(),
             'status' => 'PENDING',
-            'filters' => $data['filters'] ?? [],
+            'filters' => $filters,
             'include_events' => $data['include_events'] ?? false,
         ]);
 
@@ -47,6 +69,46 @@ class ExportController extends Controller
         ]);
 
         return response()->json(['data' => $this->public($export)], 202);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    private function normalizeFilters(array $filters): array
+    {
+        $out = [];
+
+        foreach (['competence', 'access_key', 'fiscal_role', 'direction', 'status', 'issued_from', 'issued_to'] as $key) {
+            if (! empty($filters[$key]) && is_string($filters[$key])) {
+                $out[$key] = trim($filters[$key]);
+            }
+        }
+
+        foreach (['issuer_cnpj', 'taker_cnpj'] as $key) {
+            if (! empty($filters[$key]) && is_string($filters[$key])) {
+                $out[$key] = strtoupper(preg_replace('/[^A-Z0-9]/i', '', $filters[$key]) ?? '');
+            }
+        }
+
+        if (! empty($filters['client_id'])) {
+            $out['client_id'] = (int) $filters['client_id'];
+        }
+        if (! empty($filters['establishment_id'])) {
+            $out['establishment_id'] = (int) $filters['establishment_id'];
+        }
+
+        if (! empty($filters['access_keys']) && is_array($filters['access_keys'])) {
+            $keys = array_values(array_unique(array_filter(array_map(
+                static fn ($k) => is_string($k) ? trim($k) : '',
+                $filters['access_keys'],
+            ))));
+            if ($keys !== []) {
+                $out['access_keys'] = $keys;
+            }
+        }
+
+        return $out;
     }
 
     public function download(Export $export, AuditLogger $audit): BinaryFileResponse

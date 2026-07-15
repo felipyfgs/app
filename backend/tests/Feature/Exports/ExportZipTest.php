@@ -7,7 +7,10 @@ use App\Enums\AdnDocumentType;
 use App\Enums\FiscalRole;
 use App\Enums\OfficeRole;
 use App\Jobs\BuildExportZipJob;
+use App\Models\Client;
 use App\Models\DfeDocument;
+use App\Models\DocumentInterest;
+use App\Models\Establishment;
 use App\Models\Export;
 use App\Models\NfseNote;
 use App\Models\Office;
@@ -30,11 +33,12 @@ class ExportZipTest extends TestCase
         app(CurrentOffice::class)->resolve($user);
 
         $this->postJson('/api/v1/exports', [
-            'filters' => ['competence' => '2026-07'],
+            'filters' => ['competence' => '2026-07', 'direction' => 'OUT'],
             'include_events' => true,
         ])->assertStatus(202);
 
         Queue::assertPushed(BuildExportZipJob::class);
+        $this->assertSame('OUT', Export::query()->latest('id')->first()?->filters['direction'] ?? null);
         $this->assertDatabaseHas('audit_logs', ['action' => 'export.create']);
     }
 
@@ -103,6 +107,66 @@ class ExportZipTest extends TestCase
         $this->get("/api/v1/exports/{$export->id}/download")->assertNotFound();
     }
 
+    public function test_export_por_access_keys_respeita_teto_e_isolamento(): void
+    {
+        Queue::fake();
+        [$office, $user] = $this->seedOperator();
+        $officeB = Office::factory()->create();
+        $this->actingAs($user);
+        app(CurrentOffice::class)->resolve($user);
+
+        $this->seedNote($office->id, 'KEY-A', '2026-07', FiscalRole::Issuer, '<a/>');
+        $this->seedNote($office->id, 'KEY-B', '2026-07', FiscalRole::Issuer, '<b/>');
+        $this->seedNote($officeB->id, 'KEY-OTHER', '2026-07', FiscalRole::Issuer, '<c/>');
+
+        $tooMany = array_map(fn (int $i) => 'K'.$i, range(1, BuildExportZipJob::MAX_ACCESS_KEYS + 1));
+        $this->postJson('/api/v1/exports', [
+            'filters' => ['access_keys' => $tooMany],
+        ])->assertStatus(422);
+
+        $this->postJson('/api/v1/exports', [
+            'filters' => ['access_keys' => ['KEY-A', 'KEY-OTHER']],
+        ])->assertStatus(202);
+
+        $export = Export::query()->latest('id')->first();
+        $this->assertNotNull($export);
+        $this->assertSame(['KEY-A', 'KEY-OTHER'], $export->filters['access_keys'] ?? null);
+
+        (new BuildExportZipJob($export->id))->handle(app(SecureObjectStore::class));
+        $export->refresh();
+        $this->assertSame('READY', $export->status);
+        // KEY-OTHER de outro office não entra (scope + where office_id no job).
+        $this->assertSame(1, $export->files_count);
+    }
+
+    public function test_export_filtra_por_client_id_via_interest(): void
+    {
+        [$office, $user] = $this->seedOperator();
+        $this->actingAs($user);
+        app(CurrentOffice::class)->resolve($user);
+
+        $client = Client::factory()->forOffice($office)->create(['root_cnpj' => '11222333']);
+        $est = Establishment::factory()->forClient($client)->create();
+        $other = Client::factory()->forOffice($office)->create(['root_cnpj' => '99888777']);
+        $estOther = Establishment::factory()->forClient($other)->create();
+
+        $this->seedNoteWithInterest($office->id, 'WITH-C', '2026-07', FiscalRole::Issuer, '<a/>', $est->id);
+        $this->seedNoteWithInterest($office->id, 'OTHER-C', '2026-07', FiscalRole::Issuer, '<b/>', $estOther->id);
+
+        $export = Export::query()->create([
+            'office_id' => $office->id,
+            'user_id' => $user->id,
+            'status' => 'PENDING',
+            'filters' => ['client_id' => $client->id],
+            'include_events' => false,
+        ]);
+
+        (new BuildExportZipJob($export->id))->handle(app(SecureObjectStore::class));
+        $export->refresh();
+        $this->assertSame('READY', $export->status);
+        $this->assertSame(1, $export->files_count);
+    }
+
     /**
      * @return array{0: Office, 1: User}
      */
@@ -116,6 +180,17 @@ class ExportZipTest extends TestCase
 
     private function seedNote(int $officeId, string $key, string $comp, FiscalRole $role, string $xml): void
     {
+        $this->seedNoteWithInterest($officeId, $key, $comp, $role, $xml, null);
+    }
+
+    private function seedNoteWithInterest(
+        int $officeId,
+        string $key,
+        string $comp,
+        FiscalRole $role,
+        string $xml,
+        ?int $establishmentId,
+    ): void {
         $sha = hash('sha256', $xml.$key);
         $objectId = app(SecureObjectStore::class)->put($xml, ['office_id' => $officeId, 'sha256' => $sha]);
         $doc = DfeDocument::query()->create([
@@ -137,6 +212,17 @@ class ExportZipTest extends TestCase
             'competence' => $comp,
             'issued_at' => $comp.'-01',
             'status' => 'ACTIVE',
+            'service_amount' => '10.00',
         ]);
+        if ($establishmentId !== null) {
+            DocumentInterest::query()->create([
+                'office_id' => $officeId,
+                'dfe_document_id' => $doc->id,
+                'establishment_id' => $establishmentId,
+                'nsu' => 1,
+                'environment' => 'production',
+                'fiscal_role' => $role,
+            ]);
+        }
     }
 }

@@ -1,0 +1,38 @@
+<?php
+
+namespace App\Models;
+
+use App\Enums\DocumentDirection;
+use App\Enums\FiscalRole;
+use App\Models\Concerns\BelongsToOffice;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'office_id', 'dfe_document_id', 'access_key', 'number', 'series', 'model',
+    'issuer_cnpj', 'issuer_name', 'taker_cnpj', 'taker_name',
+    'sender_cnpj', 'recipient_cnpj', 'fiscal_role', 'direction',
+    'issued_at', 'total_amount', 'status', 'official_status_code',
+    'is_summary', 'schema_hint',
+])]
+class CteDocument extends Model
+{
+    use BelongsToOffice;
+
+    protected function casts(): array
+    {
+        return [
+            'fiscal_role' => FiscalRole::class,
+            'direction' => DocumentDirection::class,
+            'issued_at' => 'immutable_datetime',
+            'total_amount' => 'decimal:2',
+            'is_summary' => 'boolean',
+        ];
+    }
+
+    public function document(): BelongsTo
+    {
+        return $this->belongsTo(DfeDocument::class, 'dfe_document_id');
+    }
+}

@@ -2,6 +2,7 @@
 
 namespace App\Services\Clients;
 
+use App\Enums\CaptureChannel;
 use App\Enums\CredentialStatus;
 use App\Enums\SyncCursorStatus;
 use App\Models\Client;
@@ -12,6 +13,7 @@ use App\Models\SyncCursor;
 /**
  * Regra central: Cliente ativo + Estabelecimento ativo + capture_enabled
  * + credencial válida + cursor não bloqueado.
+ * Inclui resumo por canal (ADN / DistDFe NF-e / CT-e / MDF-e).
  */
 final class CaptureEligibilityService
 {
@@ -19,7 +21,8 @@ final class CaptureEligibilityService
      * @return array{
      *   eligible: bool,
      *   reasons: list<string>,
-     *   reasons_codes: list<string>
+     *   reasons_codes: list<string>,
+     *   channels: array<string, array{label: string, enabled: bool, eligible: bool}>
      * }
      */
     public function evaluate(Establishment $establishment, ?SyncCursor $cursor = null): array
@@ -64,15 +67,36 @@ final class CaptureEligibilityService
             $codes[] = 'cursor_blocked';
         }
 
+        $baseOk = $reasons === [];
+
         return [
-            'eligible' => $reasons === [],
+            'eligible' => $baseOk,
             'reasons' => $reasons,
             'reasons_codes' => $codes,
+            'channels' => $this->channelSummary($baseOk),
         ];
     }
 
     public function isEligible(Establishment $establishment, ?SyncCursor $cursor = null): bool
     {
         return $this->evaluate($establishment, $cursor)['eligible'];
+    }
+
+    /**
+     * @return array<string, array{label: string, enabled: bool, eligible: bool}>
+     */
+    private function channelSummary(bool $baseOk): array
+    {
+        $out = [];
+        foreach (CaptureChannel::cases() as $channel) {
+            $enabled = $channel->isEnabled();
+            $out[$channel->value] = [
+                'label' => $channel->label(),
+                'enabled' => $enabled,
+                'eligible' => $baseOk && $enabled,
+            ];
+        }
+
+        return $out;
     }
 }

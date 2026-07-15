@@ -5,6 +5,8 @@ namespace App\Services\Operations;
 use App\Enums\CredentialStatus;
 use App\Enums\OfficeRole;
 use App\Enums\SyncCursorStatus;
+use App\Enums\CaptureChannel;
+use App\Models\ChannelSyncCursor;
 use App\Models\Client;
 use App\Models\ClientCredential;
 use App\Models\Establishment;
@@ -147,6 +149,7 @@ final class OperationsInboxBuilder
         $items = collect();
 
         $items = $items->merge($this->cursorItems($officeId, $role));
+        $items = $items->merge($this->channelCursorItems($officeId, $role));
         $items = $items->merge($this->syncFailedItems($officeId, $role));
         $items = $items->merge($this->credentialItems($officeId));
         $items = $items->merge($this->backupItems());
@@ -182,8 +185,8 @@ final class OperationsInboxBuilder
                 : null;
 
             $body = $type === 'cursor_blocked'
-                ? 'Cursor bloqueado. Intervenção necessária antes de retomar a captura.'
-                : 'Cursor em erro. Verifique o histórico de sincronização.';
+                ? 'Cursor ADN bloqueado. Intervenção necessária antes de retomar a captura.'
+                : 'Cursor ADN em erro. Verifique o histórico de sincronização.';
 
             if ($envLabel !== null) {
                 $body .= ' Ambiente: '.$envLabel.'.';
@@ -195,8 +198,8 @@ final class OperationsInboxBuilder
             }
 
             $titleBase = $type === 'cursor_blocked'
-                ? 'Cursor bloqueado: '.$this->clientLabel($client)
-                : 'Cursor com erro: '.$this->clientLabel($client);
+                ? 'Cursor ADN bloqueado: '.$this->clientLabel($client)
+                : 'Cursor ADN com erro: '.$this->clientLabel($client);
 
             return $this->item(
                 type: $type,
@@ -210,6 +213,77 @@ final class OperationsInboxBuilder
                 establishment: $establishment,
                 cursor: $cursor,
             );
+        })->filter()->values();
+    }
+
+    /**
+     * Cursores multi-canal SEFAZ (NF-e DistDFe, CT-e, …) em channel_sync_cursors.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function channelCursorItems(int $officeId, ?OfficeRole $role): Collection
+    {
+        $cursors = ChannelSyncCursor::query()
+            ->where('office_id', $officeId)
+            ->whereIn('status', [SyncCursorStatus::Blocked, SyncCursorStatus::Error])
+            ->with(['establishment.client'])
+            ->orderBy('id')
+            ->get();
+
+        return $cursors->map(function (ChannelSyncCursor $cursor) use ($role) {
+            $establishment = $cursor->establishment;
+            $client = $establishment?->client;
+            if ($establishment === null || $client === null) {
+                return null;
+            }
+
+            $channel = $cursor->channel instanceof CaptureChannel
+                ? $cursor->channel
+                : CaptureChannel::tryFrom((string) $cursor->channel);
+            $channelLabel = $channel?->label() ?? (string) ($cursor->channel?->value ?? $cursor->channel ?? 'SEFAZ');
+
+            $type = $cursor->status === SyncCursorStatus::Blocked
+                ? 'cursor_blocked'
+                : 'cursor_error';
+
+            $envLabel = is_string($cursor->environment) && $cursor->environment !== ''
+                ? $cursor->environment
+                : null;
+
+            $body = $type === 'cursor_blocked'
+                ? "Cursor {$channelLabel} bloqueado (cStat ".($cursor->last_cstat ?? '—').').'
+                : "Cursor {$channelLabel} em erro.";
+
+            if ($envLabel !== null) {
+                $body .= ' Ambiente: '.$envLabel.'.';
+            }
+
+            $sanitizedError = $this->sanitizeText($cursor->last_error);
+            if ($sanitizedError !== null && $sanitizedError !== '') {
+                $body .= ' '.$sanitizedError;
+            }
+
+            $titleBase = $type === 'cursor_blocked'
+                ? "Cursor {$channelLabel} bloqueado: ".$this->clientLabel($client)
+                : "Cursor {$channelLabel} com erro: ".$this->clientLabel($client);
+
+            // item() espera SyncCursor; passamos null e embutimos id no subject via reasons/title uniqueness
+            $item = $this->item(
+                type: $type,
+                title: $envLabel !== null ? $titleBase.' ('.$envLabel.')' : $titleBase,
+                body: $body,
+                reasons: [$type, 'channel:'.($channel?->value ?? 'unknown'), 'chcur'.$cursor->id],
+                clientId: $client->id,
+                establishmentId: $establishment->id,
+                occurredAt: $cursor->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+                role: $role,
+                establishment: $establishment,
+                cursor: null,
+            );
+            // id estável e distinto de cursores ADN
+            $item['id'] = substr(hash('sha256', 'channel:'.$type.':'.$cursor->id), 0, 32);
+
+            return $item;
         })->filter()->values();
     }
 

@@ -94,4 +94,54 @@ XML;
         $this->assertSame('ACTIVE', $parsed['status']);
         $this->assertSame(FiscalRole::Taker, ($parsed['fiscal_role_for'])('34194865000158'));
     }
+
+    public function test_cstat_101_e_substituta_nao_cancelada(): void
+    {
+        $parser = new NfseXmlParser;
+        $xml = <<<'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<NFSe versao="1.00" xmlns="http://www.sped.fazenda.gov.br/nfse">
+  <infNFSe Id="NFS21053022254880350000119000000000005024102528648918">
+    <nNFSe>65</nNFSe>
+    <cStat>101</cStat>
+    <emit><CNPJ>54880350000119</CNPJ><xNome>PRESTADOR</xNome></emit>
+    <DPS><infDPS><dhEmi>2024-10-16T13:23:49-03:00</dhEmi><dCompet>2024-10-16</dCompet>
+      <toma><CNPJ>34194865000158</CNPJ><xNome>TOMADOR</xNome></toma>
+      <valores><vServPrest><vServ>10.00</vServ></vServPrest></valores>
+    </infDPS></DPS>
+  </infNFSe>
+</NFSe>
+XML;
+        $parsed = $parser->parseNote($xml);
+        $this->assertSame('101', $parsed['official_status_code']);
+        $this->assertSame('SUBSTITUTE', $parsed['status']);
+    }
+
+    public function test_cstat_102_judicial_e_ausente_unknown(): void
+    {
+        $parser = new NfseXmlParser;
+        $with102 = <<<'XML'
+<?xml version="1.0"?><NFSe><infNFSe Id="NFS21053022254880350000119000000000005024102528648919">
+  <cStat>102</cStat><nNFSe>1</nNFSe>
+  <emit><CNPJ>54880350000119</CNPJ></emit>
+  <DPS><infDPS><dhEmi>2024-10-16T13:23:49-03:00</dhEmi><dCompet>2024-10-16</dCompet>
+    <toma><CNPJ>34194865000158</CNPJ></toma>
+    <valores><vServPrest><vServ>1</vServ></vServPrest></valores>
+  </infDPS></DPS>
+</infNFSe></NFSe>
+XML;
+        $this->assertSame('JUDICIAL', $parser->parseNote($with102)['status']);
+
+        $noStat = <<<'XML'
+<?xml version="1.0"?><NFSe><infNFSe Id="NFS21053022254880350000119000000000005024102528648920">
+  <nNFSe>2</nNFSe>
+  <emit><CNPJ>54880350000119</CNPJ></emit>
+  <DPS><infDPS><dhEmi>2024-10-16T13:23:49-03:00</dhEmi><dCompet>2024-10-16</dCompet>
+    <toma><CNPJ>34194865000158</CNPJ></toma>
+    <valores><vServPrest><vServ>1</vServ></vServPrest></valores>
+  </infDPS></DPS>
+</infNFSe></NFSe>
+XML;
+        $this->assertSame('UNKNOWN', $parser->parseNote($noStat)['status']);
+    }
 }

@@ -6,6 +6,7 @@ use App\Contracts\SecureObjectStore;
 use App\Domain\Adn\DistributionDocumentDto;
 use App\Domain\Adn\DistributionPageDto;
 use App\Enums\AdnDocumentType;
+use App\Enums\DocumentDirection;
 use App\Enums\FiscalRole;
 use App\Enums\SyncCursorStatus;
 use App\Exceptions\Adn\AdnInvalidResponseException;
@@ -266,20 +267,18 @@ final class DistributionPageProcessor
     /**
      * Atualiza somente a projeção nfse_notes; o XML original permanece imutável.
      */
+    /**
+     * Eventos de cancelamento/substituição atualizam a projeção da nota (sem apagar XML).
+     *
+     * @see \App\Support\NfseNoteStatus::fromEventType
+     */
     private function applyDerivedNoteStatus(int $officeId, string $accessKey, ?string $eventType): void
     {
         if ($accessKey === '' || $eventType === null) {
             return;
         }
 
-        $normalized = strtoupper($eventType);
-        $status = null;
-        if (str_contains($normalized, 'CANCEL') || $normalized === '110111' || $normalized === 'E101') {
-            $status = 'CANCELLED';
-        } elseif (str_contains($normalized, 'SUBST') || $normalized === 'E102') {
-            $status = 'REPLACED';
-        }
-
+        $status = \App\Support\NfseNoteStatus::fromEventType($eventType);
         if ($status === null) {
             return;
         }
@@ -370,6 +369,7 @@ final class DistributionPageProcessor
             'intermediary_cnpj' => $parsed['intermediary_cnpj'] ?? null,
             'intermediary_name' => $parsed['intermediary_name'] ?? null,
             'fiscal_role' => $fiscalRole,
+            'direction' => DocumentDirection::fromFiscalRole($fiscalRole),
             'competence' => $parsed['competence'] ?? null,
             'issued_at' => $parsed['issued_at'] ?? null,
             'service_amount' => $parsed['service_amount'] ?? null,

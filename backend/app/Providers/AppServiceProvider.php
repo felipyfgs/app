@@ -6,6 +6,9 @@ use App\Contracts\AdnContributorClient;
 use App\Contracts\CnpjRegistrationLookup;
 use App\Contracts\PfxReaderInterface;
 use App\Contracts\SecureObjectStore;
+use App\Contracts\SefazCteDistDfeClient;
+use App\Contracts\SefazDistDfeClient;
+use App\Contracts\SefazNfeManifestationClient;
 use App\Models\Client;
 use App\Models\ClientContact;
 use App\Models\ClientCredential;
@@ -17,6 +20,11 @@ use App\Policies\EstablishmentPolicy;
 use App\Services\Adn\CurlMtlsTransport;
 use App\Services\Adn\HttpAdnContributorClient;
 use App\Services\Certificates\PfxReader;
+use App\Services\Sefaz\DistDfeResponseParser;
+use App\Services\Sefaz\HttpSefazCteDistDfeClient;
+use App\Services\Sefaz\HttpSefazDistDfeClient;
+use App\Services\Sefaz\HttpSefazNfeManifestationClient;
+use App\Services\Sefaz\ManifestationResponseParser;
 use App\Services\Clients\CnpjWsRegistrationLookup;
 use App\Services\Vault\EnvelopeCrypto;
 use App\Services\Vault\FilesystemSecureObjectStore;
@@ -66,6 +74,28 @@ class AppServiceProvider extends ServiceProvider
             return new HttpAdnContributorClient(
                 $app->make(CurlMtlsTransport::class),
                 (string) config('adn.base_url'),
+            );
+        });
+
+        $this->app->singleton(DistDfeResponseParser::class);
+        $this->app->singleton(SefazDistDfeClient::class, function ($app) {
+            return new HttpSefazDistDfeClient(
+                $app->make(CurlMtlsTransport::class),
+                $app->make(DistDfeResponseParser::class),
+            );
+        });
+        $this->app->singleton(SefazCteDistDfeClient::class, function ($app) {
+            return new HttpSefazCteDistDfeClient(
+                $app->make(CurlMtlsTransport::class),
+                $app->make(DistDfeResponseParser::class),
+            );
+        });
+
+        $this->app->singleton(ManifestationResponseParser::class);
+        $this->app->singleton(SefazNfeManifestationClient::class, function ($app) {
+            return new HttpSefazNfeManifestationClient(
+                $app->make(CurlMtlsTransport::class),
+                $app->make(ManifestationResponseParser::class),
             );
         });
 

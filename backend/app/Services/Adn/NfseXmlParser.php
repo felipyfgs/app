@@ -285,14 +285,16 @@ final class NfseXmlParser
         return number_format((float) $clean, 2, '.', '');
     }
 
+    /**
+     * cStat da NFS-e Nacional (documento) → status operacional.
+     * 100 Gerada · 101 Substituta · 102 Decisão judicial · 103 Avulsa.
+     * Cancelamento real vem de eventos (não do cStat 101).
+     *
+     * @see \App\Support\NfseNoteStatus
+     */
     private function mapOfficialStatus(?string $cStat): string
     {
-        return match ($cStat) {
-            '100' => 'ACTIVE',
-            '101' => 'CANCELLED',
-            '102' => 'REPLACED',
-            default => $cStat ? 'ACTIVE' : 'ACTIVE',
-        };
+        return \App\Support\NfseNoteStatus::fromCStat($cStat);
     }
 
     private function truncateName(?string $value, int $max = 255): ?string

@@ -27,12 +27,46 @@ class CurlMtlsTransport
      */
     public function get(string $url, array $certificate): array
     {
+        return $this->request('GET', $url, $certificate, null, [
+            'Accept: application/json, application/xml, text/xml, */*',
+        ]);
+    }
+
+    /**
+     * POST SOAP/mTLS com PFX em memória (DistDFe SEFAZ e similares).
+     *
+     * @param  array{pfx: string, password: string}  $certificate
+     * @param  list<string>  $extraHeaders
+     * @return array{status: int, body: string, headers: array<string, string>}
+     */
+    public function post(string $url, array $certificate, string $body, array $extraHeaders = []): array
+    {
+        $headers = array_merge([
+            'Content-Type: application/soap+xml; charset=utf-8',
+            'Accept: application/soap+xml, application/xml, text/xml, */*',
+        ], $extraHeaders);
+
+        return $this->request('POST', $url, $certificate, $body, $headers);
+    }
+
+    /**
+     * @param  array{pfx: string, password: string}  $certificate
+     * @param  list<string>  $httpHeaders
+     * @return array{status: int, body: string, headers: array<string, string>}
+     */
+    private function request(
+        string $method,
+        string $url,
+        array $certificate,
+        ?string $body,
+        array $httpHeaders,
+    ): array {
         if (! extension_loaded('curl')) {
-            throw new AdnPermanentException('Cliente ADN indisponível por falha de configuração.');
+            throw new AdnPermanentException('Cliente mTLS indisponível por falha de configuração.');
         }
 
         if (! defined('CURLOPT_SSLCERT_BLOB')) {
-            throw new AdnPermanentException('Cliente ADN sem suporte a PFX em memória.');
+            throw new AdnPermanentException('Cliente mTLS sem suporte a PFX em memória.');
         }
 
         if (($certificate['pfx'] ?? '') === '' || ! is_string($certificate['pfx'])) {
@@ -41,11 +75,11 @@ class CurlMtlsTransport
 
         $ch = curl_init($url);
         if ($ch === false) {
-            throw new AdnPermanentException('Cliente ADN indisponível por falha de configuração.');
+            throw new AdnPermanentException('Cliente mTLS indisponível por falha de configuração.');
         }
 
-        $headers = [];
-        curl_setopt_array($ch, [
+        $responseHeaders = [];
+        $opts = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_TIMEOUT => $this->timeoutSeconds,
@@ -56,21 +90,26 @@ class CurlMtlsTransport
             CURLOPT_SSLCERTTYPE => 'P12',
             CURLOPT_SSLCERT_BLOB => $certificate['pfx'],
             CURLOPT_KEYPASSWD => (string) ($certificate['password'] ?? ''),
-            CURLOPT_HTTPHEADER => [
-                'Accept: application/json, application/xml, text/xml, */*',
-            ],
-            CURLOPT_HEADERFUNCTION => function ($curl, string $line) use (&$headers): int {
+            CURLOPT_HTTPHEADER => $httpHeaders,
+            CURLOPT_HEADERFUNCTION => function ($curl, string $line) use (&$responseHeaders): int {
                 $len = strlen($line);
                 $parts = explode(':', $line, 2);
                 if (count($parts) === 2) {
-                    $headers[strtolower(trim($parts[0]))] = trim($parts[1]);
+                    $responseHeaders[strtolower(trim($parts[0]))] = trim($parts[1]);
                 }
 
                 return $len;
             },
-        ]);
+        ];
 
-        $body = curl_exec($ch);
+        if (strtoupper($method) === 'POST') {
+            $opts[CURLOPT_POST] = true;
+            $opts[CURLOPT_POSTFIELDS] = $body ?? '';
+        }
+
+        curl_setopt_array($ch, $opts);
+
+        $responseBody = curl_exec($ch);
         $errno = curl_errno($ch);
         $error = curl_error($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -80,20 +119,20 @@ class CurlMtlsTransport
             unset($error);
 
             if ($this->isRetryableCurlError($errno)) {
-                throw new AdnRetryableException('Falha temporária na comunicação com o ADN.');
+                throw new AdnRetryableException('Falha temporária na comunicação mTLS.');
             }
 
-            throw new AdnPermanentException('Falha permanente na comunicação mTLS com o ADN.');
+            throw new AdnPermanentException('Falha permanente na comunicação mTLS.');
         }
 
-        if ($body === false) {
-            throw new AdnRetryableException('O ADN não retornou uma resposta utilizável.');
+        if ($responseBody === false) {
+            throw new AdnRetryableException('Servidor remoto não retornou uma resposta utilizável.');
         }
 
         return [
             'status' => $status,
-            'body' => $body,
-            'headers' => $headers,
+            'body' => $responseBody,
+            'headers' => $responseHeaders,
         ];
     }
 

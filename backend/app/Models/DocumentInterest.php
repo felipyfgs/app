@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'office_id', 'dfe_document_id', 'establishment_id', 'nsu', 'environment', 'fiscal_role',
+    'office_id', 'dfe_document_id', 'establishment_id', 'nsu', 'environment', 'channel', 'fiscal_role',
 ])]
 class DocumentInterest extends Model
 {

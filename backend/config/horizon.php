@@ -199,7 +199,13 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['default'],
+            'queue' => [
+                'default',
+                env('SEFAZ_QUEUE_NFE', 'sync-sefaz-nfe'),
+                env('SEFAZ_QUEUE_MANIFEST', 'manifest-nfe'),
+                env('SEFAZ_QUEUE_CTE', 'sync-sefaz-cte'),
+                env('SEFAZ_QUEUE_MDFE', 'sync-sefaz-mdfe'),
+            ],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,

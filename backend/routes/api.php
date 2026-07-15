@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\CnpjLookupController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\MeController;
+use App\Http\Controllers\Api\V1\DocumentImportController;
 use App\Http\Controllers\Api\V1\NoteController;
 use App\Http\Controllers\Api\V1\OperationsInboxController;
 use App\Http\Controllers\Api\V1\OperationsSummaryController;
@@ -38,7 +39,20 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/clients/{client}/credential', [ClientCredentialController::class, 'show']);
             Route::post('/clients/{client}/credential', [ClientCredentialController::class, 'store']);
 
+            // Catálogo unificado Documentos (canônico)
+            Route::get('/documents', [NoteController::class, 'index']);
+            Route::get('/documents/by-client', [NoteController::class, 'byClient']);
+            Route::get('/documents/insights', [NoteController::class, 'insights']);
+            Route::post('/documents/import', [DocumentImportController::class, 'store']);
+            Route::get('/documents/{accessKey}', [NoteController::class, 'show']);
+            Route::get('/documents/{accessKey}/xml', [NoteController::class, 'downloadXml']);
+            Route::post('/documents/{accessKey}/unlock-xml', [NoteController::class, 'unlockXml']);
+            Route::post('/documents/{accessKey}/manifestations', [NoteController::class, 'manifest']);
+
+            // Alias compatível (legado "notes")
             Route::get('/notes', [NoteController::class, 'index']);
+            Route::get('/notes/by-client', [NoteController::class, 'byClient']);
+            Route::get('/notes/insights', [NoteController::class, 'insights']);
             Route::get('/notes/{accessKey}', [NoteController::class, 'show']);
             Route::get('/notes/{accessKey}/xml', [NoteController::class, 'downloadXml']);
 
