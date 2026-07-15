@@ -41,7 +41,7 @@ test.describe('regressão visual por zonas', () => {
 
   test('detalhe fiscal sanitizado', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-1440', 'O detalhe adjacente é a zona canônica de desktop.')
-    await openStable(page, `/notes/${NOTE_ACCESS_KEY}`, 'Notas fiscais')
+    await openStable(page, `/docs/${NOTE_ACCESS_KEY}`, 'Documentos')
 
     const detail = page.getByTestId('note-detail')
     await expect(detail).toBeVisible()
@@ -83,13 +83,13 @@ test.describe('regressão visual por zonas', () => {
 
   test('catálogo e detalhe móvel de notas', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name === 'minimum-360', 'Snapshots aprovados usam desktop e mobile de 390 px.')
-    await openStable(page, '/notes', 'Notas fiscais')
+    await openStable(page, '/docs', 'Documentos')
     await expect(page.getByTestId('page-navbar')).toHaveScreenshot('notes-navbar.png')
     await expect(page.getByTestId('data-table')).toHaveScreenshot('notes-table.png')
 
     if (testInfo.project.name === 'mobile-390') {
       await page.getByRole('button', { name: 'Abrir nota' }).first().click()
-      await expect(page).toHaveURL(new RegExp(`/notes/${NOTE_ACCESS_KEY}`))
+      await expect(page).toHaveURL(new RegExp(`/docs/${NOTE_ACCESS_KEY}`))
       const dialog = page.getByRole('dialog')
       await expect(dialog).toBeVisible()
       await expect(dialog).toHaveScreenshot('notes-detail-mobile.png')

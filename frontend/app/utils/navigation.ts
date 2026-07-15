@@ -74,10 +74,10 @@ export function mainDestinations(
       ]
     },
     {
-      id: 'notes',
-      label: 'Notas fiscais',
-      icon: 'i-lucide-inbox',
-      to: '/notes'
+      id: 'docs',
+      label: 'Documentos',
+      icon: 'i-lucide-file-stack',
+      to: '/docs'
     },
     {
       id: 'operations',

@@ -13,6 +13,7 @@ import type {
 const FIXED_NOW = '2026-07-14T15:00:00.000Z'
 export const NOTE_ACCESS_KEY = 'NFS20260714000000000000000000000000000000000001'
 export const SECOND_NOTE_ACCESS_KEY = 'NFS20260714000000000000000000000000000000000002'
+export const NFE_ACCESS_KEY = '35240111222333000181550010000000011000000010'
 export type ListScenario = 'ready' | 'empty' | 'error' | 'slow'
 
 const clients: Client[] = [{
@@ -32,6 +33,17 @@ const clients: Client[] = [{
     expires_alert_7: false,
     expires_alert_1: false
   },
+  capture_summary: {
+    enabled: true,
+    status: 'PARTIAL',
+    establishments_total: 2,
+    establishments_enabled: 1
+  },
+  sync_summary: {
+    status: 'IDLE',
+    last_success_at: FIXED_NOW,
+    has_cursor: true
+  },
   establishments: [{
     id: 11,
     client_id: 1,
@@ -42,7 +54,17 @@ const clients: Client[] = [{
     capture_enabled: true,
     registration_status: 'UNKNOWN',
     registration_source: 'LEGACY',
-    capture_eligibility: { eligible: true, reasons: [], reasons_codes: [] }
+    capture_eligibility: {
+      eligible: true,
+      reasons: [],
+      reasons_codes: [],
+      channels: {
+        NFSE_ADN: { label: 'NFS-e ADN', enabled: true, eligible: true },
+        NFE_DISTDFE: { label: 'NF-e DistDFe', enabled: false, eligible: false },
+        CTE_DISTDFE: { label: 'CT-e DistDFe', enabled: false, eligible: false },
+        MDFE_DISTDFE: { label: 'MDF-e DistDFe', enabled: false, eligible: false }
+      }
+    }
   }, {
     id: 12,
     client_id: 1,
@@ -56,7 +78,13 @@ const clients: Client[] = [{
     capture_eligibility: {
       eligible: false,
       reasons: ['Captura desabilitada para este estabelecimento.'],
-      reasons_codes: ['capture_disabled']
+      reasons_codes: ['capture_disabled'],
+      channels: {
+        NFSE_ADN: { label: 'NFS-e ADN', enabled: true, eligible: false },
+        NFE_DISTDFE: { label: 'NF-e DistDFe', enabled: false, eligible: false },
+        CTE_DISTDFE: { label: 'CT-e DistDFe', enabled: false, eligible: false },
+        MDFE_DISTDFE: { label: 'MDF-e DistDFe', enabled: false, eligible: false }
+      }
     }
   }],
   contacts: [],
@@ -81,14 +109,23 @@ const credential: ClientCredential = {
 
 const notes: NfseNote[] = [{
   id: 31,
+  kind: 'NFSE',
+  kind_label: 'NFS-e',
+  source: 'ADN',
   access_key: NOTE_ACCESS_KEY,
+  number: '1001',
   issuer_cnpj: '12ABC345678900',
+  issuer_name: 'Emitente Demo Ltda',
   taker_cnpj: '98XYZ765432100',
+  taker_name: 'Tomador Exemplo SA',
   fiscal_role: 'ISSUER',
   competence: '2026-07',
   issued_at: FIXED_NOW,
   service_amount: '1250.00',
+  issue_location: 'São Paulo/SP',
+  service_location: 'Campinas/SP',
   status: 'ACTIVE',
+  official_status_code: '100',
   document: {
     id: 41,
     sha256: 'b'.repeat(64),
@@ -100,14 +137,22 @@ const notes: NfseNote[] = [{
   }
 }, {
   id: 32,
+  kind: 'NFSE',
+  kind_label: 'NFS-e',
+  source: 'ADN',
   access_key: SECOND_NOTE_ACCESS_KEY,
+  number: '1002',
   issuer_cnpj: '12ABC345678901',
+  issuer_name: 'Outro Emitente ME',
   taker_cnpj: '98XYZ765432100',
+  taker_name: 'Tomador Exemplo SA',
   fiscal_role: 'TAKER',
   competence: '2026-06',
   issued_at: '2026-06-14T15:00:00.000Z',
   service_amount: '850.00',
+  issue_location: 'Rio de Janeiro/RJ',
   status: 'CANCELLED',
+  official_status_code: '101',
   document: {
     id: 42,
     sha256: 'c'.repeat(64),
@@ -116,6 +161,38 @@ const notes: NfseNote[] = [{
     access_key: SECOND_NOTE_ACCESS_KEY,
     byte_size: 1536,
     parse_status: 'PARSED'
+  }
+}, {
+  id: 33,
+  kind: 'NFE',
+  kind_label: 'NF-e',
+  source: 'SEFAZ',
+  access_key: NFE_ACCESS_KEY,
+  number: '1',
+  issuer_cnpj: '11222333000181',
+  issuer_name: 'Fornecedor SEFAZ Demo',
+  taker_cnpj: '12ABC345678900',
+  taker_name: 'Cliente Demonstração Segura',
+  fiscal_role: 'TAKER',
+  direction: 'IN',
+  direction_label: 'Entrada',
+  competence: '2026-07',
+  issued_at: FIXED_NOW,
+  service_amount: '500.00',
+  status: 'SUMMARY',
+  status_label: 'Somente resumo',
+  is_summary: true,
+  has_full_xml: false,
+  xml_completeness: 'SUMMARY_ONLY',
+  manifestation_status: 'PENDING_MANIFESTATION',
+  document: {
+    id: 43,
+    sha256: 'd'.repeat(64),
+    document_type: 'NFE',
+    schema_version: 'resNFe_v1.01.xsd',
+    access_key: NFE_ACCESS_KEY,
+    byte_size: 1024,
+    parse_status: 'OK'
   }
 }]
 
@@ -144,6 +221,18 @@ const syncRuns: SyncRun[] = [{
   started_at: '2026-07-14T13:00:00.000Z',
   finished_at: '2026-07-14T13:01:00.000Z',
   created_at: '2026-07-14T13:00:00.000Z'
+}, {
+  id: 53,
+  sync_cursor_id: 63,
+  status: 'COMPLETED',
+  trigger: 'SCHEDULED',
+  pages_processed: 1,
+  documents_persisted: 3,
+  from_nsu: 0,
+  to_nsu: 96,
+  started_at: '2026-07-14T14:10:00.000Z',
+  finished_at: '2026-07-14T14:12:00.000Z',
+  created_at: '2026-07-14T14:10:00.000Z'
 }]
 
 const exports: ExportJob[] = [{
@@ -296,8 +385,8 @@ export async function installApiFixtures(
           per_page: 15,
           total: listScenario === 'empty' ? 0 : clients.length,
           stats: listScenario === 'empty'
-            ? { total: 0, active: 0, without_credential: 0, credential_expiring_30d: 0, credential_expired: 0 }
-            : { total: clients.length, active: 1, without_credential: 0, credential_expiring_30d: 0, credential_expired: 0 }
+            ? { total: 0, active: 0, with_credential: 0, without_credential: 0, credential_expiring_30d: 0, credential_expired: 0, capture_problem: 0 }
+            : { total: clients.length, active: 1, with_credential: 1, without_credential: 0, credential_expiring_30d: 0, credential_expired: 0, capture_problem: 0 }
         }
       })
     }
@@ -387,13 +476,43 @@ export async function installApiFixtures(
     if (/\/api\/v1\/clients\/1$/.test(pathname)) {
       return fulfill(route, { data: clients[0] })
     }
-    if (pathname.endsWith('/api/v1/notes')) {
+    // Catálogo unificado: /documents (canônico) e /notes (alias)
+    if (pathname.endsWith('/api/v1/documents/insights') || pathname.endsWith('/api/v1/notes/insights')) {
+      if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
+      return fulfill(route, {
+        data: listScenario === 'empty'
+          ? { total: 0, active: 0, cancelled: 0, review: 0, missing_party_name: 0, competence_current: 0, competence_current_label: '2026-07' }
+          : { total: notes.length, active: 1, cancelled: 1, review: 0, substitute: 0, superseded: 0, missing_party_name: 0, competence_current: 1, competence_current_label: '2026-07' }
+      })
+    }
+    if (pathname.endsWith('/api/v1/documents/by-client') || pathname.endsWith('/api/v1/notes/by-client')) {
+      if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
+      return fulfill(route, {
+        data: listScenario === 'empty'
+          ? []
+          : [{
+              client_id: 1,
+              legal_name: clients[0]!.legal_name,
+              display_name: null,
+              name: clients[0]!.name,
+              root_cnpj: clients[0]!.root_cnpj,
+              cnpj: clients[0]!.establishments?.[0]?.cnpj,
+              notes_count: notes.length,
+              service_amount_sum: '2100.00',
+              cancelled_count: 1,
+              review_count: 0,
+              last_issued_at: FIXED_NOW
+            }],
+        meta: { total_clients: listScenario === 'empty' ? 0 : 1 }
+      })
+    }
+    if (pathname.endsWith('/api/v1/documents') || pathname.endsWith('/api/v1/notes')) {
       if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
       if (listScenario === 'slow') await new Promise(resolve => setTimeout(resolve, 1500))
       return fulfill(route, { data: listScenario === 'empty' ? [] : notes, meta: { next_cursor: null } })
     }
-    const noteMatch = pathname.match(/\/api\/v1\/notes\/([^/]+)$/)
-    if (noteMatch) {
+    const noteMatch = pathname.match(/\/api\/v1\/(?:documents|notes)\/([^/]+)$/)
+    if (noteMatch && noteMatch[1] !== 'by-client' && noteMatch[1] !== 'insights') {
       const matchedNote = notes.find(note => note.access_key === decodeURIComponent(noteMatch[1]!))
       if (!matchedNote) return fulfill(route, { message: 'Nota não encontrada.' }, 404)
       return fulfill(route, {
@@ -411,7 +530,7 @@ export async function installApiFixtures(
       return fulfill(route, { data: listScenario === 'empty' ? [] : syncRuns, meta: { next_cursor: null } })
     }
     if (pathname.endsWith('/api/v1/exports')) {
-      if (method === 'POST') return fulfill(route, { data: exports[0] }, 201)
+      if (method === 'POST') return fulfill(route, { data: exports[0] }, 202)
       if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
       if (listScenario === 'slow') await new Promise(resolve => setTimeout(resolve, 1500))
       return fulfill(route, { data: listScenario === 'empty' ? [] : exports })

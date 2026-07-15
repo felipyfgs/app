@@ -49,7 +49,7 @@ describe('navigation', () => {
 
   it('destinos folha do operador batem com o produto (Clientes e Operações em submenu)', () => {
     const tree = mainDestinations(user('OPERATOR'))
-    expect(tree.map(d => d.id)).toEqual(['home', 'clients', 'notes', 'operations'])
+    expect(tree.map(d => d.id)).toEqual(['home', 'clients', 'docs', 'operations'])
     expect(tree.find(d => d.id === 'clients')?.children?.map(c => c.id)).toEqual([
       'clients-list',
       'clients-dashboard'
@@ -63,7 +63,7 @@ describe('navigation', () => {
       'home',
       'clients-list',
       'clients-dashboard',
-      'notes',
+      'docs',
       'health',
       'exports',
       'syncs'

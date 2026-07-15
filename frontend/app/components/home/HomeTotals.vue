@@ -18,9 +18,9 @@ const data = computed<TotalRow[]>(() => [{
   value: props.summary?.clients ?? 0,
   to: '/clients'
 }, {
-  label: 'Notas fiscais',
+  label: 'Documentos',
   value: props.summary?.notes ?? 0,
-  to: '/notes'
+  to: '/docs'
 }, {
   label: 'Exportações prontas',
   value: props.summary?.exports_ready ?? 0,

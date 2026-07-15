@@ -43,3 +43,8 @@ export function canTriggerSync(user?: MeUser | null): boolean {
 export function canCreateExport(user?: MeUser | null): boolean {
   return hasMutationAccess(user)
 }
+
+/** Importação de XML de saída (mesmo perfil de mutação que export). */
+export function canImportDocuments(user?: MeUser | null): boolean {
+  return hasMutationAccess(user)
+}

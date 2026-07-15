@@ -1,5 +1,8 @@
 export type OfficeRole = 'ADMIN' | 'OPERATOR' | 'VIEWER'
 export type FiscalRole = 'ISSUER' | 'TAKER' | 'INTERMEDIARY'
+
+/** Direção fiscal no catálogo: entrada / saída. */
+export type DocumentDirection = 'IN' | 'OUT' | 'UNKNOWN'
 export type RegistrationSource = 'LEGACY' | 'MANUAL' | 'CNPJ_WS'
 export type RegistrationStatus = 'ACTIVE' | 'VOID' | 'SUSPENDED' | 'UNFIT' | 'CLOSED' | 'UNKNOWN'
 
@@ -100,12 +103,33 @@ export interface ClientCredentialSummary {
   expires_alert_1: boolean
 }
 
+/** Resumo de captura ADN na listagem (sem material de certificado). */
+export interface ClientCaptureSummary {
+  enabled: boolean
+  /** ON | OFF | PARTIAL | NONE */
+  status: string
+  establishments_total: number
+  establishments_enabled: number
+}
+
+/** Pior status de cursor entre estabelecimentos do cliente. */
+export interface ClientSyncSummary {
+  /** IDLE | RUNNING | WAITING | BLOCKED | ERROR | NONE */
+  status: string
+  last_success_at?: string | null
+  has_cursor: boolean
+}
+
 export interface ClientListStats {
   total: number
   active: number
+  /** Clientes com credencial ACTIVE. */
+  with_credential?: number
   without_credential: number
   credential_expiring_30d: number
   credential_expired: number
+  /** Clientes com cursor BLOCKED/ERROR. */
+  capture_problem?: number
 }
 
 /** Resumo de matriz/filial vinculada (cada uma tem cadastro próprio). */
@@ -157,6 +181,8 @@ export interface Client {
   contacts?: ClientContact[]
   custom_fields?: ClientCustomField[]
   credential_summary?: ClientCredentialSummary | null
+  capture_summary?: ClientCaptureSummary | null
+  sync_summary?: ClientSyncSummary | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -270,10 +296,23 @@ export interface DfeDocumentMetadata {
   parse_alert?: string | null
 }
 
-export interface NfseNote {
+/** Tipos DF-e mais comuns (Path B: só NFSE capturado). */
+export type DocumentKind = 'NFSE' | 'NFE' | 'NFCE' | 'CTE' | 'MDFE'
+
+export type DocumentSource = 'ADN' | 'SEFAZ' | string
+
+/** Item do catálogo unificado (hoje projeção NFS-e + kind). */
+export interface FiscalDocument {
   id: number
+  /** Tipo DF-e (NFSE, NFE, CTE, …). */
+  kind?: DocumentKind | string | null
+  kind_label?: string | null
+  /** Fonte de captura (ADN, SEFAZ, …). */
+  source?: DocumentSource | null
+  /** Captura habilitada no backend para o tipo desta linha. */
+  capture_available?: boolean
   access_key: string
-  /** Número da NFS-e (nNFSe). */
+  /** Número do documento (nNFSe / nNF / nCT). */
   number?: string | null
   issuer_cnpj?: string | null
   issuer_name?: string | null
@@ -282,16 +321,33 @@ export interface NfseNote {
   intermediary_cnpj?: string | null
   intermediary_name?: string | null
   fiscal_role?: FiscalRole | null
+  /** Entrada (IN) / Saída (OUT) / Indefinida. */
+  direction?: DocumentDirection | null
+  direction_label?: string | null
   competence?: string | null
   issued_at?: string | null
   service_amount?: string | null
   issue_location?: string | null
   service_location?: string | null
   status: string
+  /** Label operacional (Autorizada / Cancelada / Em revisão). */
+  status_label?: string | null
   /** cStat oficial do XML (ex.: 100). */
   official_status_code?: string | null
+  /** Descrição oficial curta (cStat ou nuance granular). */
+  official_status_label?: string | null
+  /** NF-e DistDFe: true se só resNFe. */
+  is_summary?: boolean | null
+  /** true se procNFe (full) disponível no vault. */
+  has_full_xml?: boolean | null
+  /** FULL | SUMMARY_ONLY */
+  xml_completeness?: string | null
+  manifestation_status?: string | null
   document?: DfeDocumentMetadata
 }
+
+/** @deprecated Preferir FiscalDocument — alias de compat. */
+export type NfseNote = FiscalDocument
 
 export interface NfseEvent {
   id: number
@@ -309,6 +365,8 @@ export interface NoteDetail {
 
 export interface ExportFilters {
   access_key?: string
+  /** Seleção em lote (teto no backend, ex. 100). */
+  access_keys?: string[]
   issuer_cnpj?: string
   taker_cnpj?: string
   competence?: string
@@ -316,6 +374,39 @@ export interface ExportFilters {
   issued_from?: string
   issued_to?: string
   fiscal_role?: FiscalRole | ''
+  direction?: Exclude<DocumentDirection, 'UNKNOWN'> | ''
+  client_id?: number
+  establishment_id?: number
+}
+
+/** Agregação por cliente do escritório (aba Clientes). */
+export interface NoteClientAggregate {
+  client_id: number
+  legal_name: string
+  display_name?: string | null
+  name: string
+  root_cnpj: string
+  cnpj?: string | null
+  notes_count: number
+  service_amount_sum?: string | null
+  cancelled_count?: number
+  review_count?: number
+  last_issued_at?: string | null
+}
+
+/** Contagens reais de triagem (chips) no escopo dos filtros. */
+export interface NotesInsights {
+  total: number
+  active: number
+  cancelled: number
+  review: number
+  missing_party_name: number
+  competence_current: number
+  competence_current_label: string
+  superseded?: number
+  substitute?: number
+  /** Contagens brutas por kind no escritório (quando a API expõe). */
+  by_kind?: Partial<Record<DocumentKind | string, number>> | null
 }
 
 export interface ExportJob {
@@ -347,15 +438,15 @@ export interface SyncRun {
 }
 
 export type InboxSeverity = 'critical' | 'high' | 'medium' | 'low'
-export type InboxItemType =
-  | 'cursor_blocked'
-  | 'cursor_error'
-  | 'sync_failed_recent'
-  | 'credential_expired'
-  | 'credential_expiring_7d'
-  | 'credential_expiring_30d'
-  | 'backup_stale'
-  | 'backup_never'
+export type InboxItemType
+  = | 'cursor_blocked'
+    | 'cursor_error'
+    | 'sync_failed_recent'
+    | 'credential_expired'
+    | 'credential_expiring_7d'
+    | 'credential_expiring_30d'
+    | 'backup_stale'
+    | 'backup_never'
 
 export interface InboxItemAction {
   type: 'open' | 'trigger_sync' | string
@@ -436,7 +527,7 @@ export interface AppNotification {
   date: string
   unread?: boolean
   to?: string
-  color?: 'error' | 'warning' | 'info'
+  color?: 'error' | 'warning' | 'info' | 'neutral'
 }
 
 export interface TwoFactorQrCode {

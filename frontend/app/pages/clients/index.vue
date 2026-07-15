@@ -39,9 +39,11 @@ const clients = ref<Client[]>([])
 const stats = ref<ClientListStats>({
   total: 0,
   active: 0,
+  with_credential: 0,
   without_credential: 0,
   credential_expiring_30d: 0,
-  credential_expired: 0
+  credential_expired: 0,
+  capture_problem: 0
 })
 const loading = ref(false)
 const loadError = ref<string | null>(null)
@@ -60,9 +62,11 @@ const deleting = ref(false)
 const emptyStats: ClientListStats = {
   total: 0,
   active: 0,
+  with_credential: 0,
   without_credential: 0,
   credential_expiring_30d: 0,
-  credential_expired: 0
+  credential_expired: 0,
+  capture_problem: 0
 }
 
 /**
@@ -79,7 +83,7 @@ const filter = computed({
   }
 })
 
-type KpiFilter = 'total' | 'active' | 'without_credential' | 'expiring' | 'expired'
+type KpiFilter = 'total' | 'with_credential' | 'without_credential' | 'expiring' | 'capture_problem'
 
 /** Filtro dos cards KPI (clique = filtra a tabela pelo conteúdo do card). */
 const kpiFilter = ref<KpiFilter>('total')
@@ -99,18 +103,23 @@ function isCredentialExpiring(client: Client): boolean {
   return !!(summary.expires_alert_1 || summary.expires_alert_7 || summary.expires_alert_30)
 }
 
+function isCaptureProblem(client: Client): boolean {
+  const status = client.sync_summary?.status
+  return status === 'BLOCKED' || status === 'ERROR'
+}
+
 /** Dados da tabela após o filtro do card (busca/estado da toolbar continuam na UTable). */
 const tableData = computed(() => {
   const list = clients.value
   switch (kpiFilter.value) {
-    case 'active':
-      return list.filter(c => c.is_active)
+    case 'with_credential':
+      return list.filter(c => !!c.credential_summary && !isCredentialExpired(c))
     case 'without_credential':
       return list.filter(c => !c.credential_summary)
     case 'expiring':
       return list.filter(c => isCredentialExpiring(c))
-    case 'expired':
-      return list.filter(c => isCredentialExpired(c))
+    case 'capture_problem':
+      return list.filter(c => isCaptureProblem(c))
     default:
       return list
   }
@@ -119,16 +128,7 @@ const tableData = computed(() => {
 function applyKpiFilter(key: KpiFilter) {
   // segundo clique no mesmo card limpa (volta ao total)
   kpiFilter.value = kpiFilter.value === key && key !== 'total' ? 'total' : key
-
-  // alinha o USelect de estado quando o card for Ativos / Total
-  if (kpiFilter.value === 'active') {
-    statusFilter.value = 'active'
-  } else if (kpiFilter.value === 'total') {
-    statusFilter.value = 'all'
-  } else {
-    // filtros de certificado: não misturar com estado inativo
-    statusFilter.value = 'all'
-  }
+  statusFilter.value = 'all'
 
   nextTick(() => {
     syncStatusColumnFilter()
@@ -149,21 +149,15 @@ function syncStatusColumnFilter() {
   }
 }
 
-watch(() => statusFilter.value, (newVal) => {
-  // se o usuário mudou o select manualmente, sincroniza o card
-  if (newVal === 'active' && kpiFilter.value !== 'active') {
-    kpiFilter.value = 'active'
-  } else if (newVal === 'all' && (kpiFilter.value === 'active')) {
-    kpiFilter.value = 'total'
-  } else if (newVal === 'inactive') {
-    // inativos só pelo select (não há card dedicado)
-    if (kpiFilter.value === 'active') kpiFilter.value = 'total'
-  }
+watch(() => statusFilter.value, () => {
   syncStatusColumnFilter()
   table.value?.tableApi?.setPageIndex(0)
 })
 
-/** Mesma anatomia do HomeStats do template (title + icon + value). */
+/**
+ * KPIs operacionais (contagens reais da API):
+ * total · com A1 · sem A1 · a vencer · captura problemática
+ */
 const kpiCards = computed(() => [
   {
     key: 'total' as const,
@@ -172,14 +166,14 @@ const kpiCards = computed(() => [
     icon: 'i-lucide-users'
   },
   {
-    key: 'active' as const,
-    title: 'Ativos',
-    value: stats.value.active,
-    icon: 'i-lucide-circle-check'
+    key: 'with_credential' as const,
+    title: 'Com A1',
+    value: stats.value.with_credential ?? Math.max(0, stats.value.total - stats.value.without_credential),
+    icon: 'i-lucide-badge-check'
   },
   {
     key: 'without_credential' as const,
-    title: 'Sem certificado',
+    title: 'Sem A1',
     value: stats.value.without_credential,
     icon: 'i-lucide-shield-off'
   },
@@ -190,9 +184,9 @@ const kpiCards = computed(() => [
     icon: 'i-lucide-badge-alert'
   },
   {
-    key: 'expired' as const,
-    title: 'Vencidos',
-    value: stats.value.credential_expired,
+    key: 'capture_problem' as const,
+    title: 'Captura com problema',
+    value: stats.value.capture_problem ?? 0,
     icon: 'i-lucide-triangle-alert'
   }
 ])
@@ -232,27 +226,11 @@ function clientSearchFilter(row: Row<Client>, _columnId: string, filterValue: un
 }
 
 /**
- * Ordem inspirada no HubStrom (customers):
- * Certificado | Razão social | CNPJ | Regime | Estado | Ações
- *
- * Distribuição (table-fixed + %): razão social leva o miolo;
- * colunas de valor fixo (chip, CNPJ, ações) só o necessário — evita
- * “buraco” vazio no meio da linha.
+ * Posto de captura — colunas P0:
+ * Razão · CNPJ · A1 · Captura · Sync · Ações
+ * Mobile: razão + A1 + ações; captura/sync/CNPJ escondidos em xs.
  */
 const columns: TableColumn<Client>[] = [
-  {
-    id: 'credential',
-    accessorFn: row => row.credential_summary?.valid_to || '',
-    header: ({ column }) => sortHeader('Certificado A1', column),
-    enableSorting: true,
-    enableHiding: false,
-    meta: {
-      class: {
-        th: 'w-[22%] min-w-44',
-        td: 'w-[22%] min-w-44'
-      }
-    }
-  },
   {
     accessorKey: 'legal_name',
     header: ({ column }) => sortHeader('Razão social', column),
@@ -260,8 +238,8 @@ const columns: TableColumn<Client>[] = [
     filterFn: clientSearchFilter,
     meta: {
       class: {
-        th: 'w-[34%] min-w-40',
-        td: 'w-[34%] min-w-40'
+        th: 'w-[28%] min-w-36',
+        td: 'w-[28%] min-w-36'
       }
     }
   },
@@ -271,18 +249,43 @@ const columns: TableColumn<Client>[] = [
     header: ({ column }) => sortHeader('CNPJ', column),
     meta: {
       class: {
-        th: 'w-[16%] min-w-40',
-        td: 'w-[16%] min-w-40'
+        th: 'hidden sm:table-cell w-[14%] min-w-36',
+        td: 'hidden sm:table-cell w-[14%] min-w-36'
       }
     }
   },
   {
-    accessorKey: 'tax_regime',
-    header: ({ column }) => sortHeader('Regime tributário', column),
+    id: 'credential',
+    accessorFn: row => row.credential_summary?.valid_to || '',
+    header: ({ column }) => sortHeader('A1', column),
+    enableSorting: true,
+    enableHiding: false,
     meta: {
       class: {
-        th: 'hidden md:table-cell w-[14%]',
-        td: 'hidden md:table-cell w-[14%]'
+        th: 'w-[18%] min-w-36',
+        td: 'w-[18%] min-w-36'
+      }
+    }
+  },
+  {
+    id: 'capture',
+    accessorFn: row => row.capture_summary?.status || '',
+    header: ({ column }) => sortHeader('Captura', column),
+    meta: {
+      class: {
+        th: 'hidden md:table-cell w-[12%]',
+        td: 'hidden md:table-cell w-[12%]'
+      }
+    }
+  },
+  {
+    id: 'sync',
+    accessorFn: row => row.sync_summary?.status || '',
+    header: ({ column }) => sortHeader('Sync', column),
+    meta: {
+      class: {
+        th: 'hidden lg:table-cell w-[12%]',
+        td: 'hidden lg:table-cell w-[12%]'
       }
     }
   },
@@ -292,8 +295,8 @@ const columns: TableColumn<Client>[] = [
     filterFn: 'equals',
     meta: {
       class: {
-        th: 'hidden sm:table-cell w-[8%]',
-        td: 'hidden sm:table-cell w-[8%]'
+        th: 'hidden xl:table-cell w-[8%]',
+        td: 'hidden xl:table-cell w-[8%]'
       }
     }
   },
@@ -304,28 +307,27 @@ const columns: TableColumn<Client>[] = [
     enableSorting: false,
     meta: {
       class: {
-        th: 'w-[6%] min-w-20',
-        td: 'w-[6%] min-w-20'
+        th: 'w-[8%] min-w-20',
+        td: 'w-[8%] min-w-20'
       }
     }
   }
 ]
 
-type CredentialTone = 'success' | 'warning' | 'error' | 'neutral'
+type ChipTone = 'success' | 'warning' | 'error' | 'neutral' | 'info'
 
 /**
- * Chip único do A1 (padrão HubStrom):
- * "Válido até 26/08/2026" | "A vencer 03/08/2026" | "Vencido 01/01/2025" | "Sem certificado"
+ * Chip A1: válido / ausente / a vencer / vencido
  */
 function credentialInfo(client: Client): {
   chipLabel: string
-  color: CredentialTone
+  color: ChipTone
   hasCredential: boolean
 } {
   const summary = client.credential_summary
   if (!summary) {
     return {
-      chipLabel: 'Sem certificado',
+      chipLabel: 'Sem A1',
       color: 'neutral',
       hasCredential: false
     }
@@ -351,7 +353,7 @@ function credentialInfo(client: Client): {
   }
   if (summary.status === 'ACTIVE' || summary.valid_to) {
     return {
-      chipLabel: validToLabel !== '—' ? `Válido até ${validToLabel}` : 'Ativo',
+      chipLabel: validToLabel !== '—' ? `Válido até ${validToLabel}` : 'Válido',
       color: 'success',
       hasCredential: true
     }
@@ -360,6 +362,44 @@ function credentialInfo(client: Client): {
     chipLabel: statusLabel(summary.status),
     color: 'neutral',
     hasCredential: true
+  }
+}
+
+function captureInfo(client: Client): { chipLabel: string, color: ChipTone } {
+  const summary = client.capture_summary
+  if (!summary || summary.status === 'NONE') {
+    return { chipLabel: 'Sem est.', color: 'neutral' }
+  }
+  if (summary.status === 'ON') {
+    return { chipLabel: 'Captura on', color: 'success' }
+  }
+  if (summary.status === 'PARTIAL') {
+    return { chipLabel: 'Parcial', color: 'warning' }
+  }
+  return { chipLabel: 'Captura off', color: 'neutral' }
+}
+
+function syncInfo(client: Client): { chipLabel: string, color: ChipTone, title?: string } {
+  const summary = client.sync_summary
+  if (!summary || !summary.has_cursor || summary.status === 'NONE') {
+    return { chipLabel: 'Sem cursor', color: 'neutral' }
+  }
+  const last = summary.last_success_at
+    ? `Último sucesso: ${formatDateTime(summary.last_success_at)}`
+    : undefined
+  switch (summary.status) {
+    case 'BLOCKED':
+      return { chipLabel: 'Bloqueado', color: 'error', title: last }
+    case 'ERROR':
+      return { chipLabel: 'Erro', color: 'error', title: last }
+    case 'RUNNING':
+      return { chipLabel: 'Em execução', color: 'info', title: last }
+    case 'WAITING':
+      return { chipLabel: 'Na fila', color: 'warning', title: last }
+    case 'IDLE':
+      return { chipLabel: 'OK', color: 'success', title: last }
+    default:
+      return { chipLabel: statusLabel(summary.status), color: 'neutral', title: last }
   }
 }
 
@@ -702,10 +742,11 @@ onMounted(() => {
                   .filter((column: any) => column.getCanHide())
                   .map((column: any) => ({
                     label: ({
-                      credential: 'Certificado A1',
+                      credential: 'A1',
                       legal_name: 'Razão social',
                       cnpj: 'CNPJ',
-                      tax_regime: 'Regime tributário',
+                      capture: 'Captura',
+                      sync: 'Sync',
                       is_active: 'Estado',
                       actions: 'Ações'
                     } as Record<string, string>)[column.id] || upperFirst(column.id),
@@ -782,11 +823,48 @@ onMounted(() => {
             separator: 'h-0'
           }"
         >
+          <template #legal_name-cell="{ row }">
+            <div class="min-w-0">
+              <button
+                type="button"
+                class="block w-full truncate text-left font-medium text-highlighted hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                :title="row.original.display_name
+                  ? `${row.original.legal_name || row.original.name} · ${row.original.display_name}`
+                  : (row.original.legal_name || row.original.name)"
+                @click="openPage(row.original)"
+              >
+                {{ row.original.legal_name || row.original.name }}
+              </button>
+              <p
+                v-if="row.original.display_name"
+                class="truncate text-xs text-muted"
+              >
+                {{ row.original.display_name }}
+              </p>
+              <!-- CNPJ sob o nome no mobile (coluna CNPJ some em xs) -->
+              <p class="mt-0.5 font-mono text-xs text-dimmed sm:hidden">
+                {{ formatCnpj(row.original.cnpj || row.original.root_cnpj) }}
+              </p>
+            </div>
+          </template>
+
+          <template #cnpj-cell="{ row }">
+            <button
+              type="button"
+              class="group inline-flex w-full max-w-full items-center gap-1.5 font-mono text-highlighted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              :title="`Copiar ${normalizeCnpj(row.original.cnpj || row.original.root_cnpj)}`"
+              @click.stop="copyCnpj(row.original.cnpj || row.original.root_cnpj)"
+            >
+              <span class="min-w-0 truncate">{{ formatCnpj(row.original.cnpj || row.original.root_cnpj) }}</span>
+              <UIcon
+                name="i-lucide-copy"
+                class="size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-70"
+                aria-hidden="true"
+              />
+            </button>
+          </template>
+
           <template #credential-cell="{ row }">
-            <!--
-              Chip e botão desacoplados (não formam um único controle).
-              grid mantém ⋮ alinhado entre linhas; texto do status centralizado.
-            -->
             <div
               v-for="info in [credentialInfo(row.original)]"
               :key="`cred-${row.original.id}`"
@@ -806,7 +884,6 @@ onMounted(() => {
                 {{ info.chipLabel }}
               </UBadge>
               <div class="flex size-8 shrink-0 items-center justify-center">
-                <!-- Sem A1: + verde (precisa configurar). Com A1: ⋮ cinza. -->
                 <UButton
                   v-if="!info.hasCredential && canManageCredentials"
                   icon="i-lucide-plus"
@@ -835,52 +912,37 @@ onMounted(() => {
             </div>
           </template>
 
-          <template #legal_name-cell="{ row }">
-            <div class="min-w-0">
-              <button
-                type="button"
-                class="block w-full truncate text-left font-medium text-highlighted hover:text-primary hover:underline"
-                :title="row.original.display_name
-                  ? `${row.original.legal_name || row.original.name} · ${row.original.display_name}`
-                  : (row.original.legal_name || row.original.name)"
-                @click="openPage(row.original)"
-              >
-                {{ row.original.legal_name || row.original.name }}
-              </button>
-              <p
-                v-if="row.original.display_name"
-                class="truncate text-xs text-muted"
-              >
-                {{ row.original.display_name }}
-              </p>
-            </div>
+          <template #capture-cell="{ row }">
+            <UBadge
+              v-for="info in [captureInfo(row.original)]"
+              :key="`cap-${row.original.id}`"
+              :color="info.color"
+              variant="soft"
+              size="sm"
+              class="font-normal"
+            >
+              {{ info.chipLabel }}
+            </UBadge>
           </template>
 
-          <template #cnpj-cell="{ row }">
+          <template #sync-cell="{ row }">
             <button
+              v-for="info in [syncInfo(row.original)]"
+              :key="`sync-${row.original.id}`"
               type="button"
-              class="group inline-flex w-full max-w-full items-center gap-1.5 font-mono text-highlighted hover:text-primary"
-              :title="`Copiar ${normalizeCnpj(row.original.cnpj || row.original.root_cnpj)}`"
-              @click.stop="copyCnpj(row.original.cnpj || row.original.root_cnpj)"
+              class="inline-flex focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              :title="info.title || info.chipLabel"
+              @click.stop="openPage(row.original, 'sincronizacao')"
             >
-              <span class="min-w-0 truncate">{{ formatCnpj(row.original.cnpj || row.original.root_cnpj) }}</span>
-              <UIcon
-                name="i-lucide-copy"
-                class="size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-70"
-                aria-hidden="true"
-              />
+              <UBadge
+                :color="info.color"
+                variant="soft"
+                size="sm"
+                class="font-normal"
+              >
+                {{ info.chipLabel }}
+              </UBadge>
             </button>
-          </template>
-
-          <template #tax_regime-cell="{ row }">
-            <span
-              v-if="row.original.tax_regime"
-              class="block truncate text-highlighted"
-              :title="row.original.tax_regime"
-            >
-              {{ row.original.tax_regime }}
-            </span>
-            <span v-else class="text-muted">—</span>
           </template>
 
           <template #is_active-cell="{ row }">

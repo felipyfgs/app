@@ -45,8 +45,10 @@ describe('superfície sem material sensível', () => {
 
   it('páginas de detalhe de nota não renderizam XML bruto', () => {
     const detail = readFileSync(resolve(APP_ROOT, 'components/notes/NotesDetail.vue'), 'utf8')
+    const modal = readFileSync(resolve(APP_ROOT, 'components/notes/NotesDetailModal.vue'), 'utf8')
     expect(detail).not.toMatch(/v-html/i)
-    expect(detail).toContain('Baixar XML')
+    expect(modal).not.toMatch(/v-html/i)
+    expect(modal).toContain('Baixar XML')
     expect(detail).toMatch(/não é renderizado|download auditado/i)
   })
 

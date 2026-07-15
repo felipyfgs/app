@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatCnpj, normalizeCnpj } from '../../app/utils/format'
+import { formatCnpj, nfseOperationalLabel, normalizeCnpj, statusLabel } from '../../app/utils/format'
 
 describe('normalizeCnpj / formatCnpj', () => {
   it('normaliza removendo máscara e colocando maiúsculas', () => {
@@ -17,5 +17,12 @@ describe('normalizeCnpj / formatCnpj', () => {
     expect(formatCnpj('11222333')).toBe('11222333')
     expect(formatCnpj('')).toBe('—')
     expect(formatCnpj(null)).toBe('—')
+  })
+})
+
+describe('labels de status por contexto', () => {
+  it('não trata credencial ACTIVE como situação fiscal', () => {
+    expect(statusLabel('ACTIVE')).toBe('Ativa')
+    expect(nfseOperationalLabel('ACTIVE')).toBe('Autorizada')
   })
 })

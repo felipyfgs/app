@@ -34,6 +34,11 @@ const links = [[{
     id="clients"
   >
     <template #header>
+      <!--
+        Hierarquia: navbar com título (sem ação primária duplicada no shell);
+        "Novo cliente" fica na toolbar do corpo da lista (customers.vue).
+        Tabs Lista/Dashboard = toolbar secundária (settings.vue).
+      -->
       <UDashboardNavbar
         data-testid="page-navbar"
         title="Clientes"

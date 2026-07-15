@@ -12,9 +12,11 @@ const clients = ref<Client[]>([])
 const stats = ref<ClientListStats>({
   total: 0,
   active: 0,
+  with_credential: 0,
   without_credential: 0,
   credential_expiring_30d: 0,
-  credential_expired: 0
+  credential_expired: 0,
+  capture_problem: 0
 })
 const loading = ref(false)
 
@@ -33,13 +35,16 @@ async function load() {
     stats.value = first.meta.stats || {
       total: first.meta.total ?? all.length,
       active: all.filter(c => c.is_active).length,
+      with_credential: all.filter(c => !!c.credential_summary).length,
       without_credential: all.filter(c => !c.credential_summary).length,
       credential_expiring_30d: 0,
-      credential_expired: 0
+      credential_expired: 0,
+      capture_problem: 0
     }
     if (!first.meta.stats) {
       stats.value.total = all.length
       stats.value.active = all.filter(c => c.is_active).length
+      stats.value.with_credential = all.filter(c => !!c.credential_summary).length
       stats.value.without_credential = all.filter(c => !c.credential_summary).length
     }
   } catch (caught) {

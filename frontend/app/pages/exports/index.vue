@@ -76,10 +76,9 @@ const roleItems = [
 ]
 const statusItems = [
   { label: 'Todas as situações', value: FILTER_ALL },
-  { label: 'Ativa', value: 'ACTIVE' },
+  { label: 'Autorizada', value: 'AUTHORIZED' },
   { label: 'Cancelada', value: 'CANCELLED' },
-  { label: 'Em revisão', value: 'UNKNOWN' },
-  { label: 'Autorizada', value: 'AUTHORIZED' }
+  { label: 'Em revisão', value: 'UNKNOWN' }
 ]
 
 const hasPending = computed(() =>

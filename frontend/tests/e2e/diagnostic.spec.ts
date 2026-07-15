@@ -5,8 +5,8 @@ const routes = [
   { slug: 'dashboard', path: '/', heading: 'Dashboard' },
   { slug: 'clients', path: '/clients', heading: 'Clientes' },
   { slug: 'client', path: '/clients/1', heading: 'Cliente Demonstração Segura' },
-  { slug: 'notes', path: '/notes', heading: 'Notas fiscais' },
-  { slug: 'note', path: `/notes/${NOTE_ACCESS_KEY}`, heading: 'Notas fiscais' },
+  { slug: 'docs', path: '/docs', heading: 'Documentos' },
+  { slug: 'doc', path: `/docs/${NOTE_ACCESS_KEY}`, heading: 'Documentos' },
   { slug: 'exports', path: '/exports', heading: 'Exportações' },
   { slug: 'syncs', path: '/syncs', heading: 'Sincronizações' },
   { slug: 'admin', path: '/admin', heading: 'Administração' }

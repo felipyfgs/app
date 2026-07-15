@@ -1,6 +1,7 @@
 import { createSharedComposable } from '@vueuse/core'
 import {
   canCreateExport as userCanCreateExport,
+  canImportDocuments as userCanImportDocuments,
   canManageClients as userCanManageClients,
   canManageCredentials as userCanManageCredentials,
   canTriggerSync as userCanTriggerSync,
@@ -22,12 +23,14 @@ const _useDashboard = () => {
   const canManageCredentials = computed(() => userCanManageCredentials(me.value))
   const canTriggerSync = computed(() => userCanTriggerSync(me.value))
   const canCreateExport = computed(() => userCanCreateExport(me.value))
+  const canImportDocuments = computed(() => userCanImportDocuments(me.value))
   const canAccessAdministration = computed(() => hasConfirmedAdminAccess(me.value))
 
   defineShortcuts({
     'g-h': () => router.push('/'),
     'g-c': () => router.push('/clients'),
-    'g-n': () => router.push('/notes'),
+    'g-n': () => router.push('/docs'),
+    'g-d': () => router.push('/docs'),
     'g-e': () => router.push('/exports'),
     'g-s': () => router.push('/syncs'),
     'g-o': () => router.push('/health'),
@@ -62,6 +65,7 @@ const _useDashboard = () => {
   return {
     canAccessAdministration,
     canCreateExport,
+    canImportDocuments,
     canManageClients,
     canManageCredentials,
     canTriggerSync,

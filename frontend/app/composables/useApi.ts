@@ -10,6 +10,7 @@ import type {
   Establishment,
   ExportFilters,
   ExportJob,
+  DocumentDirection,
   FiscalRole,
   LoginResponse,
   MeResponse,
@@ -18,6 +19,8 @@ import type {
   InboxItemType,
   InboxSeverity,
   NfseNote,
+  NoteClientAggregate,
+  NotesInsights,
   OperationsSummary,
   PageMeta,
   SyncRun,
@@ -40,16 +43,25 @@ export interface ClientListParams {
 }
 
 export interface NoteListParams {
+  /** Busca de triagem: número, nome, CNPJ ou chave. */
+  q?: string
+  /** Tipo DF-e (NFSE, NFE, CTE, …). */
+  kind?: string
+  /** @deprecated Preferir `q`; mantido para compat. */
   access_key?: string
   issuer_cnpj?: string
   taker_cnpj?: string
   competence?: string
   status?: string
   fiscal_role?: FiscalRole | ''
+  /** Entrada (IN) / Saída (OUT) / Indefinida. */
+  direction?: DocumentDirection | ''
   client_id?: number
   establishment_id?: number
   issued_from?: string
   issued_to?: string
+  /** Fila: falta nome de emitente ou tomador. */
+  missing_party_name?: boolean | 0 | 1
   cursor?: string
   limit?: number
 }
@@ -115,9 +127,16 @@ export function useApi() {
         })
       }
     },
-    notes: {
+    documents: {
       list: (params?: NoteListParams) =>
-        client<{ data: NfseNote[], meta: CursorMeta }>('/api/v1/notes', { query: params }),
+        client<{ data: NfseNote[], meta: CursorMeta }>('/api/v1/documents', { query: params }),
+      byClient: (params?: NoteListParams) =>
+        client<{ data: NoteClientAggregate[], meta: { total_clients: number } }>(
+          '/api/v1/documents/by-client',
+          { query: params }
+        ),
+      insights: (params?: NoteListParams) =>
+        client<{ data: NotesInsights }>('/api/v1/documents/insights', { query: params }),
       get: (accessKey: string) => client<{
         data: {
           note: NfseNote
@@ -130,8 +149,92 @@ export function useApi() {
           }>
           document: DfeDocumentMetadata | null
         }
-      }>(`/api/v1/notes/${encodeURIComponent(accessKey)}`),
-      xmlUrl: (accessKey: string) => apiUrl(`/api/v1/notes/${encodeURIComponent(accessKey)}/xml`)
+      }>(`/api/v1/documents/${encodeURIComponent(accessKey)}`),
+      xmlUrl: (accessKey: string) => apiUrl(`/api/v1/documents/${encodeURIComponent(accessKey)}/xml`),
+      /** Desbloqueio de XML completo (ciência 210210). */
+      unlockXml: (accessKey: string) =>
+        client<{
+          data: {
+            status: string
+            has_full_xml: boolean
+            message: string
+            manifestation_status?: string | null
+            protocol?: string | null
+          }
+        }>(`/api/v1/documents/${encodeURIComponent(accessKey)}/unlock-xml`, { method: 'POST' }),
+      /** Manifestação do destinatário (ciência / conclusivas). */
+      manifest: (
+        accessKey: string,
+        body: {
+          type: 'CIENCIA' | 'CONFIRMACAO' | 'DESCONHECIMENTO' | 'NAO_REALIZADA'
+          justification?: string
+          purpose?: 'UNLOCK_XML' | 'FISCAL'
+        }
+      ) =>
+        client<{
+          data: {
+            status: string
+            has_full_xml: boolean
+            message: string
+            manifestation_status?: string | null
+            protocol?: string | null
+            c_stat?: string | null
+          }
+        }>(`/api/v1/documents/${encodeURIComponent(accessKey)}/manifestations`, {
+          method: 'POST',
+          body
+        }),
+      /** Import multipart de XML/ZIP de saídas (NF-e / NFC-e). */
+      import: (files: File[], clientId?: number | null) => {
+        const body = new FormData()
+        for (const file of files) {
+          body.append('files[]', file)
+        }
+        if (clientId != null && clientId > 0) {
+          body.append('client_id', String(clientId))
+        }
+        return client<{
+          data: {
+            imported: number
+            skipped: number
+            errors: number
+            items: Array<{
+              status: string
+              filename: string
+              access_key?: string
+              kind?: string
+              message?: string
+              sha256?: string
+            }>
+          }
+        }>('/api/v1/documents/import', { method: 'POST', body })
+      }
+    },
+    /** @deprecated Preferir `documents` — alias de compat. */
+    notes: {
+      list: (params?: NoteListParams) =>
+        client<{ data: NfseNote[], meta: CursorMeta }>('/api/v1/documents', { query: params }),
+      byClient: (params?: NoteListParams) =>
+        client<{ data: NoteClientAggregate[], meta: { total_clients: number } }>(
+          '/api/v1/documents/by-client',
+          { query: params }
+        ),
+      insights: (params?: NoteListParams) =>
+        client<{ data: NotesInsights }>('/api/v1/documents/insights', { query: params }),
+      get: (accessKey: string) => client<{
+        data: {
+          note: NfseNote
+          events: Array<{
+            id: number
+            access_key: string
+            event_type?: string | null
+            event_at?: string | null
+            status?: string | null
+          }>
+          document: DfeDocumentMetadata | null
+        }
+      }>(`/api/v1/documents/${encodeURIComponent(accessKey)}`),
+      xmlUrl: (accessKey: string) => apiUrl(`/api/v1/documents/${encodeURIComponent(accessKey)}/xml`)
     },
     sync: {
       history: (params?: { cursor?: string, limit?: number }) =>

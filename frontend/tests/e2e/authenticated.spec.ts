@@ -6,8 +6,8 @@ const routes = [
   { path: '/', heading: 'Dashboard' },
   { path: '/clients', heading: 'Clientes' },
   { path: '/clients/1', heading: 'Cliente Demonstração Segura (MATRIZ)' },
-  { path: '/notes', heading: 'Notas fiscais' },
-  { path: `/notes/${NOTE_ACCESS_KEY}`, heading: 'Notas fiscais', mobileDialog: true },
+  { path: '/docs', heading: 'Documentos' },
+  { path: `/docs/${NOTE_ACCESS_KEY}`, heading: 'Documentos', mobileDialog: true },
   { path: '/exports', heading: 'Exportações' },
   { path: '/syncs', heading: 'Sincronizações' }
 ] as const
