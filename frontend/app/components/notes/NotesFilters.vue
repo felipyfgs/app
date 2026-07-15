@@ -33,11 +33,9 @@ const emit = defineEmits<{
   exportSelection: []
 }>()
 
+/** Só recortes de captura — certificado/cadastro ficam em /clients. */
 const clientOperationalItems = [
-  { label: 'Todos os clientes', value: 'total' },
-  { label: 'Com A1', value: 'with_credential' },
-  { label: 'Sem A1', value: 'without_credential' },
-  { label: 'A1 a vencer', value: 'expiring' },
+  { label: 'Todos', value: 'total' },
   { label: 'Captura com problema', value: 'capture_problem' }
 ]
 

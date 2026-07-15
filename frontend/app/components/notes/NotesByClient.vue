@@ -1,64 +1,87 @@
 <script setup lang="ts">
 /**
- * Documentos → Por cliente: lista no padrão de /clients (customers.vue),
- * com colunas operacionais de captura. Filtros de busca ficam no NotesFilters.
+ * Documentos → Por cliente — arquétipo customers.vue / lista canônica do painel.
+ * Recurso: busca, filtro operacional, Exibir colunas, sort server-side,
+ * refresh, loading/empty/error, paginação e ações de linha.
+ * Domínio: captura/sync (sem colunas de cadastro A1/estado).
  */
-import type { TableColumn } from '@nuxt/ui'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { Client } from '~/types/api'
+import { upperFirst } from 'scule'
 import { DENSE_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+
+const UButton = resolveComponent('UButton')
 
 defineProps<{
   rows: Client[]
   loading?: boolean
   error?: string | null
-  page: number
-  perPage: number
   total: number
   lastPage: number
 }>()
 
+const search = defineModel<string>('search', { default: '' })
+const operationalFilter = defineModel<string>('operationalFilter', { default: 'total' })
+const page = defineModel<number>('page', { default: 1 })
+const perPage = defineModel<number>('perPage', { default: 20 })
+const sorting = defineModel<{ id: string, desc: boolean }[]>('sorting', {
+  default: () => [{ id: 'legal_name', desc: false }]
+})
+
 const emit = defineEmits<{
   openClient: [client: Client]
-  openClientDetail: [client: Client]
   retry: []
-  'update:page': [page: number]
-  'update:perPage': [perPage: number]
+  apply: []
 }>()
 
+const table = useTemplateRef('table')
+const columnVisibility = ref()
+const toast = useToast()
+
+const operationalItems = [
+  { label: 'Todos', value: 'total' },
+  { label: 'Captura com problema', value: 'capture_problem' }
+]
+
 type ChipTone = 'success' | 'warning' | 'error' | 'neutral' | 'info'
+
+function sortHeader(
+  label: string,
+  column: { getIsSorted: () => false | 'asc' | 'desc', toggleSorting: (desc?: boolean) => void }
+) {
+  const isSorted = column.getIsSorted()
+  return h(UButton, {
+    color: 'neutral',
+    variant: 'ghost',
+    label,
+    icon: isSorted
+      ? (isSorted === 'asc' ? 'i-lucide-arrow-up-narrow-wide' : 'i-lucide-arrow-down-wide-narrow')
+      : 'i-lucide-arrow-up-down',
+    class: '-mx-2.5',
+    onClick: () => column.toggleSorting(column.getIsSorted() === 'asc')
+  })
+}
 
 const columns: TableColumn<Client>[] = [
   {
     accessorKey: 'legal_name',
-    header: 'Razão social / nome',
+    header: ({ column }) => sortHeader('Cliente', column),
     enableHiding: false,
     meta: {
       class: {
-        th: 'w-[30%] min-w-36',
-        td: 'w-[30%] min-w-36'
+        th: 'w-[36%] min-w-40',
+        td: 'w-[36%] min-w-40'
       }
     }
   },
   {
     id: 'cnpj',
     accessorFn: row => row.cnpj || row.root_cnpj,
-    header: 'CNPJ/CPF',
+    header: ({ column }) => sortHeader('CNPJ/CPF', column),
     meta: {
       class: {
-        th: 'hidden sm:table-cell w-[16%] min-w-36',
-        td: 'hidden sm:table-cell w-[16%] min-w-36'
-      }
-    }
-  },
-  {
-    id: 'credential',
-    accessorFn: row => row.credential_summary?.valid_to || '',
-    header: 'Certificado digital',
-    enableSorting: false,
-    meta: {
-      class: {
-        th: 'w-[18%] min-w-36',
-        td: 'w-[18%] min-w-36'
+        th: 'hidden sm:table-cell w-[18%] min-w-36',
+        td: 'hidden sm:table-cell w-[18%] min-w-36'
       }
     }
   },
@@ -69,8 +92,8 @@ const columns: TableColumn<Client>[] = [
     enableSorting: false,
     meta: {
       class: {
-        th: 'hidden md:table-cell w-[12%]',
-        td: 'hidden md:table-cell w-[12%]'
+        th: 'w-[14%] min-w-28',
+        td: 'w-[14%] min-w-28'
       }
     }
   },
@@ -81,18 +104,8 @@ const columns: TableColumn<Client>[] = [
     enableSorting: false,
     meta: {
       class: {
-        th: 'hidden lg:table-cell w-[12%]',
-        td: 'hidden lg:table-cell w-[12%]'
-      }
-    }
-  },
-  {
-    accessorKey: 'is_active',
-    header: 'Estado',
-    meta: {
-      class: {
-        th: 'hidden xl:table-cell w-[8%]',
-        td: 'hidden xl:table-cell w-[8%]'
+        th: 'hidden md:table-cell w-[14%]',
+        td: 'hidden md:table-cell w-[14%]'
       }
     }
   },
@@ -100,52 +113,15 @@ const columns: TableColumn<Client>[] = [
     id: 'actions',
     header: 'Ações',
     enableSorting: false,
+    enableHiding: false,
     meta: {
       class: {
-        th: 'w-[12%] min-w-28',
-        td: 'w-[12%] min-w-28'
+        th: 'w-[12%] min-w-24',
+        td: 'w-[12%] min-w-24'
       }
     }
   }
 ]
-
-function formatDateOnly(value?: string | null): string {
-  if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(date)
-}
-
-function credentialInfo(client: Client): { chipLabel: string, color: ChipTone } {
-  const summary = client.credential_summary
-  if (!summary) {
-    return { chipLabel: 'Sem A1', color: 'neutral' }
-  }
-
-  const expired = summary.status === 'EXPIRED'
-    || !!(summary.valid_to && new Date(summary.valid_to) < new Date())
-  const validToLabel = formatDateOnly(summary.valid_to)
-
-  if (expired) {
-    return {
-      chipLabel: validToLabel !== '—' ? `Vencido ${validToLabel}` : 'Vencido',
-      color: 'error'
-    }
-  }
-  if (summary.expires_alert_1 || summary.expires_alert_7 || summary.expires_alert_30) {
-    return {
-      chipLabel: validToLabel !== '—' ? `A vencer ${validToLabel}` : 'A vencer',
-      color: summary.expires_alert_1 ? 'error' : 'warning'
-    }
-  }
-  if (summary.status === 'ACTIVE' || summary.valid_to) {
-    return {
-      chipLabel: validToLabel !== '—' ? `Válido até ${validToLabel}` : 'Válido',
-      color: 'success'
-    }
-  }
-  return { chipLabel: statusLabel(summary.status), color: 'neutral' }
-}
 
 function captureInfo(client: Client): { chipLabel: string, color: ChipTone } {
   const summary = client.capture_summary
@@ -184,25 +160,157 @@ function syncInfo(client: Client): { chipLabel: string, color: ChipTone, title?:
       return { chipLabel: statusLabel(summary.status), color: 'neutral', title: last }
   }
 }
+
+async function copyCnpj(value?: string | null) {
+  const clean = normalizeCnpj(value)
+  if (!clean) return
+  try {
+    await navigator.clipboard.writeText(clean)
+    toast.add({ title: 'CNPJ copiado', description: clean, color: 'success' })
+  } catch {
+    toast.add({ title: 'Não foi possível copiar o CNPJ', color: 'error' })
+  }
+}
+
+function rowActions(client: Client): DropdownMenuItem[][] {
+  return [[{
+    label: 'Ver documentos',
+    icon: 'i-lucide-file-text',
+    onSelect: () => emit('openClient', client)
+  }, {
+    label: 'Copiar CNPJ/CPF',
+    icon: 'i-lucide-copy',
+    onSelect: () => void copyCnpj(client.cnpj || client.root_cnpj)
+  }]]
+}
+
+function onSearchEnter() {
+  page.value = 1
+  emit('apply')
+}
+
+function onOperationalChange() {
+  page.value = 1
+  emit('apply')
+}
+
+function onPerPageChange(value: number) {
+  const next = Math.min(50, Math.max(10, Math.floor(Number(value))))
+  if (next === perPage.value) return
+  perPage.value = next
+  page.value = 1
+  emit('apply')
+}
+
+function clearSearch() {
+  search.value = ''
+  operationalFilter.value = 'total'
+  page.value = 1
+  emit('apply')
+}
 </script>
 
 <template>
   <div class="flex min-h-0 w-full flex-col gap-4" data-testid="notes-by-client">
+    <!-- Toolbar canônica (customers.vue): busca · filtros · Exibir · refresh -->
+    <div class="flex flex-wrap items-center justify-between gap-1.5">
+      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+        <UInput
+          v-model="search"
+          class="max-w-sm"
+          icon="i-lucide-search"
+          placeholder="Filtrar por nome ou CNPJ/CPF..."
+          aria-label="Filtrar clientes por nome ou CNPJ/CPF"
+          @keydown.enter.prevent="onSearchEnter"
+        />
+        <USelect
+          v-model="operationalFilter"
+          :items="operationalItems"
+          value-key="value"
+          class="min-w-44"
+          aria-label="Filtro de captura"
+          @update:model-value="onOperationalChange"
+        />
+      </div>
+
+      <div class="flex flex-wrap items-center gap-1.5">
+        <UButton
+          v-if="search || operationalFilter !== 'total'"
+          color="neutral"
+          variant="ghost"
+          label="Limpar"
+          @click="clearSearch"
+        />
+        <UDropdownMenu
+          :items="
+            table?.tableApi
+              ?.getAllColumns()
+              .filter((column: any) => column.getCanHide())
+              .map((column: any) => ({
+                label: ({
+                  legal_name: 'Cliente',
+                  cnpj: 'CNPJ/CPF',
+                  capture: 'Captura',
+                  sync: 'Sync',
+                  actions: 'Ações'
+                } as Record<string, string>)[column.id] || upperFirst(column.id),
+                type: 'checkbox' as const,
+                checked: column.getIsVisible(),
+                onUpdateChecked(checked: boolean) {
+                  table?.tableApi?.getColumn(column.id)?.toggleVisibility(!!checked)
+                },
+                onSelect(e?: Event) {
+                  e?.preventDefault()
+                }
+              }))
+          "
+          :content="{ align: 'end' }"
+        >
+          <UButton
+            label="Exibir"
+            color="neutral"
+            variant="outline"
+            trailing-icon="i-lucide-settings-2"
+          />
+        </UDropdownMenu>
+        <UButton
+          color="primary"
+          variant="soft"
+          label="Aplicar"
+          @click="onSearchEnter"
+        />
+        <UButton
+          icon="i-lucide-refresh-cw"
+          color="neutral"
+          variant="ghost"
+          square
+          aria-label="Atualizar lista"
+          :loading="loading"
+          @click="emit('retry')"
+        />
+      </div>
+    </div>
+
     <UAlert
       v-if="error"
-      color="error"
+      color="warning"
+      variant="subtle"
       icon="i-lucide-wifi-off"
-      title="Não foi possível carregar clientes"
+      :title="rows.length ? 'Falha ao atualizar clientes' : 'Não foi possível carregar clientes'"
       :description="error"
       :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: () => emit('retry') }]"
     />
 
     <UTable
       v-if="loading || rows.length"
+      ref="table"
+      v-model:column-visibility="columnVisibility"
+      v-model:sorting="sorting"
+      data-testid="data-table"
+      class="shrink-0"
       :data="rows"
       :columns="columns"
-      :loading="loading && !rows.length"
-      class="shrink-0"
+      :loading="loading"
       :ui="DENSE_DASHBOARD_TABLE_UI"
     >
       <template #legal_name-cell="{ row }">
@@ -230,27 +338,19 @@ function syncInfo(client: Client): { chipLabel: string, color: ChipTone, title?:
       </template>
 
       <template #cnpj-cell="{ row }">
-        <span class="font-mono text-sm tabular-nums">
-          {{ formatCnpj(row.original.cnpj || row.original.root_cnpj) }}
-        </span>
-      </template>
-
-      <template #credential-cell="{ row }">
-        <UBadge
-          v-for="info in [credentialInfo(row.original)]"
-          :key="`cred-${row.original.id}`"
-          :color="info.color"
-          variant="soft"
-          size="md"
-          class="h-8 min-w-0 tabular-nums font-normal"
-          :ui="{
-            base: 'h-8 w-full min-w-0 justify-center rounded-md',
-            label: 'truncate text-center'
-          }"
-          :title="info.chipLabel"
+        <button
+          type="button"
+          class="group inline-flex w-full max-w-full items-center gap-1.5 font-mono text-highlighted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          :title="`Copiar ${normalizeCnpj(row.original.cnpj || row.original.root_cnpj)}`"
+          @click.stop="copyCnpj(row.original.cnpj || row.original.root_cnpj)"
         >
-          {{ info.chipLabel }}
-        </UBadge>
+          <span class="min-w-0 truncate">{{ formatCnpj(row.original.cnpj || row.original.root_cnpj) }}</span>
+          <UIcon
+            name="i-lucide-copy"
+            class="size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-70"
+            aria-hidden="true"
+          />
+        </button>
       </template>
 
       <template #capture-cell="{ row }">
@@ -282,56 +382,59 @@ function syncInfo(client: Client): { chipLabel: string, color: ChipTone, title?:
         </UBadge>
       </template>
 
-      <template #is_active-cell="{ row }">
-        <UBadge
-          :color="row.original.is_active ? 'success' : 'neutral'"
-          variant="soft"
-          size="md"
-          class="h-8 font-normal"
-          :ui="{ base: 'h-8 rounded-md' }"
-        >
-          {{ row.original.is_active ? 'Ativo' : 'Inativo' }}
-        </UBadge>
-      </template>
-
       <template #actions-cell="{ row }">
         <div class="flex items-center justify-end gap-1.5">
           <UButton
-            size="sm"
+            icon="i-lucide-file-text"
             color="primary"
             variant="soft"
-            label="Documentos"
-            icon="i-lucide-file-text"
-            class="hidden sm:inline-flex"
-            @click="emit('openClient', row.original)"
-          />
-          <UButton
             size="sm"
-            color="primary"
-            variant="soft"
-            icon="i-lucide-file-text"
             square
-            class="sm:hidden size-8"
+            class="size-8"
             :aria-label="`Documentos de ${row.original.legal_name || row.original.name}`"
             @click="emit('openClient', row.original)"
           />
-          <UButton
-            size="sm"
-            color="neutral"
-            variant="soft"
-            icon="i-lucide-user-round"
-            square
-            class="size-8"
-            :aria-label="`Cadastro de ${row.original.legal_name || row.original.name}`"
-            @click="emit('openClientDetail', row.original)"
+          <span
+            class="h-5 w-px shrink-0 bg-accented"
+            aria-hidden="true"
           />
+          <UDropdownMenu
+            :content="{ align: 'end' }"
+            :items="rowActions(row.original)"
+          >
+            <UButton
+              icon="i-lucide-ellipsis-vertical"
+              color="neutral"
+              variant="soft"
+              size="sm"
+              square
+              class="size-8"
+              :aria-label="`Mais ações de ${row.original.legal_name || row.original.name}`"
+            />
+          </UDropdownMenu>
         </div>
       </template>
     </UTable>
 
+    <UEmpty
+      v-if="!loading && !error && !rows.length"
+      icon="i-lucide-building-2"
+      title="Nenhum cliente encontrado"
+      description="Ajuste a busca ou o filtro de captura."
+    >
+      <UButton
+        v-if="search || operationalFilter !== 'total'"
+        label="Limpar filtros"
+        color="neutral"
+        variant="outline"
+        @click="clearSearch"
+      />
+    </UEmpty>
+
+    <!-- Footer canônico -->
     <div class="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4">
       <div class="text-sm text-muted">
-        {{ total }} cliente(s) · página {{ page }} de {{ lastPage }}
+        {{ total }} cliente(s) · página {{ page }} de {{ lastPage || 1 }}
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
         <USelect
@@ -344,31 +447,15 @@ function syncInfo(client: Client): { chipLabel: string, color: ChipTone, title?:
           value-key="value"
           class="w-36"
           aria-label="Clientes por página"
-          @update:model-value="(value: number) => emit('update:perPage', Number(value))"
+          @update:model-value="onPerPageChange"
         />
         <UPagination
-          :page="page"
+          v-model:page="page"
           :items-per-page="perPage"
           :total="total"
           :disabled="loading"
-          @update:page="(value: number) => emit('update:page', value)"
         />
       </div>
     </div>
-
-    <UEmpty
-      v-if="!loading && !error && !rows.length"
-      icon="i-lucide-building-2"
-      title="Nenhum cliente encontrado"
-      description="Ajuste a busca ou os filtros de captura. Cadastre clientes em Clientes."
-    >
-      <UButton
-        to="/clients"
-        label="Ir para Clientes"
-        icon="i-lucide-users"
-        color="neutral"
-        variant="outline"
-      />
-    </UEmpty>
   </div>
 </template>

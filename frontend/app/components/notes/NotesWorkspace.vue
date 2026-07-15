@@ -44,6 +44,7 @@ const byClientTotal = ref(0)
 const byClientLastPage = ref(1)
 /** Filtro operacional server-side da lista de clientes em Documentos. */
 const clientOperationalFilter = ref('total')
+const byClientSorting = ref<{ id: string, desc: boolean }[]>([{ id: 'legal_name', desc: false }])
 const clients = ref<Client[]>([])
 const establishments = ref<Establishment[]>([])
 const insights = ref<NotesInsights | null>(null)
@@ -156,10 +157,11 @@ function insightsParams(): NoteListParams {
 }
 
 async function reloadActive() {
-  await Promise.all([
-    view.value === 'client' ? loadByClient() : load(true),
-    loadInsights()
-  ])
+  if (view.value === 'client') {
+    await loadByClient()
+    return
+  }
+  await Promise.all([load(true), loadInsights()])
 }
 
 async function loadInsights() {
@@ -227,15 +229,17 @@ async function loadByClient() {
   loadError.value = null
   try {
     const operational = clientOperationalFilter.value
+    const sort = byClientSorting.value[0]
+    const sortId = sort?.id === 'cnpj' ? 'cnpj' : 'legal_name'
     const response = await api.clients.list({
       page: byClientPage.value,
       per_page: byClientPerPage.value,
-      q: isActiveFilterValue(filters.q) ? filters.q.trim() : undefined,
+      q: filters.q.trim() || undefined,
       operational_filter: operational === 'total'
         ? undefined
-        : operational as 'with_credential' | 'without_credential' | 'expiring' | 'capture_problem',
-      sort: 'legal_name',
-      direction: 'asc'
+        : operational as 'capture_problem',
+      sort: sortId,
+      direction: sort?.desc ? 'desc' : 'asc'
     })
     byClientRows.value = response.data
     byClientTotal.value = response.meta.total
@@ -286,19 +290,25 @@ async function applyFilters() {
   await reloadActive()
 }
 
-async function onByClientPageChange(page: number) {
-  if (page === byClientPage.value || loading.value) return
-  byClientPage.value = page
+async function onByClientApply() {
+  if (byClientPage.value !== 1) {
+    byClientPage.value = 1
+    return
+  }
   await loadByClient()
 }
 
-async function onByClientPerPageChange(size: number) {
-  const next = Math.min(50, Math.max(10, Math.floor(size)))
-  if (next === byClientPerPage.value || loading.value) return
-  byClientPerPage.value = next
-  byClientPage.value = 1
-  await loadByClient()
-}
+watch(byClientPage, () => {
+  void loadByClient()
+})
+
+watch(byClientSorting, () => {
+  if (byClientPage.value !== 1) {
+    byClientPage.value = 1
+    return
+  }
+  void loadByClient()
+}, { deep: true })
 
 async function selectNote(note: NfseNote) {
   await router.push(`/docs/${note.access_key}`)
@@ -315,10 +325,6 @@ async function openClientNotes(client: Client) {
   await onClientChange()
   persistedFilters.value = { ...filters }
   await router.push('/docs/catalog')
-}
-
-async function openClientDetail(client: Client) {
-  await navigateTo(`/clients/${client.id}`)
 }
 
 function buildExportFiltersFromCatalog(): ExportFilters {
@@ -700,22 +706,25 @@ onMounted(async () => {
         Body: insights (HomeStats-like) → toolbar busca → tabela (customers).
       -->
       <div class="flex w-full flex-col gap-4 sm:gap-5">
+        <!-- Insights de triagem só no catálogo de documentos — por cliente é só captura. -->
         <NotesInsightsBar
+          v-if="view === 'document'"
           :insights="insights"
           :loading="insightsLoading"
           :active-queue="triageQueue"
           @select="onTriageSelect"
         />
 
+        <!-- Filtros de catálogo só na visão documento; por cliente a toolbar fica na tabela. -->
         <NotesFilters
+          v-if="view === 'document'"
           v-model:filters="filters"
-          v-model:operational-filter="clientOperationalFilter"
           :clients="clients"
           :establishments="establishments"
           :loading-filters="loadingFilters"
-          :view="view"
+          view="document"
           :selected-count="selectedKeys.length"
-          :can-export="canCreateExport && view === 'document' && kindExportAvailable"
+          :can-export="canCreateExport && kindExportAvailable"
           :exporting="exporting"
           @apply="applyFilters"
           @reset="resetFilters"
@@ -725,17 +734,18 @@ onMounted(async () => {
 
         <NotesByClient
           v-if="view === 'client'"
+          v-model:search="filters.q"
+          v-model:operational-filter="clientOperationalFilter"
+          v-model:page="byClientPage"
+          v-model:per-page="byClientPerPage"
+          v-model:sorting="byClientSorting"
           :rows="byClientRows"
           :loading="loading"
           :error="loadError"
-          :page="byClientPage"
-          :per-page="byClientPerPage"
           :total="byClientTotal"
           :last-page="byClientLastPage"
           @open-client="openClientNotes"
-          @open-client-detail="openClientDetail"
-          @update:page="onByClientPageChange"
-          @update:per-page="onByClientPerPageChange"
+          @apply="onByClientApply"
           @retry="loadByClient"
         />
 
