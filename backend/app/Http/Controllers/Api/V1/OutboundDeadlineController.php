@@ -192,11 +192,13 @@ class OutboundDeadlineController extends Controller
             $arr['target_at'] = $r->target_at?->toIso8601String();
             $arr['urgency_band'] = $r->urgency_band?->value;
             $arr['root_cnpj'] = $r->root_cnpj;
-            $arr['next_step'] = match ($r->urgency_band) {
-                OutboundUrgencyBand::Contingency, OutboundUrgencyBand::Overdue => 'ASSISTED_IMPORT',
-                OutboundUrgencyBand::Attention => 'PREPARE_ASSISTED_BATCH',
-                default => 'WAIT_OR_PREFER_AUTXML',
-            };
+            $arr['next_step'] = $r->capacity_at_risk
+                ? 'PREFER_AUTXML_XML_ZIP_OR_OFFICIAL_PACKAGE'
+                : match ($r->urgency_band) {
+                    OutboundUrgencyBand::Contingency, OutboundUrgencyBand::Overdue => 'ASSISTED_IMPORT',
+                    OutboundUrgencyBand::Attention => 'PREPARE_ASSISTED_BATCH',
+                    default => 'WAIT_OR_PREFER_AUTXML',
+                };
             // não expor prioridade remota editável, PFX, senha ou chave completa
 
             return $arr;

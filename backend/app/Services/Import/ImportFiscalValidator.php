@@ -2,10 +2,13 @@
 
 namespace App\Services\Import;
 
+use App\Enums\SignatureVerificationResult;
 use App\Services\Outbound\AccessKeyCandidateBuilder;
 use App\Services\Sefaz\CteXmlProjectionParser;
 use App\Services\Sefaz\NfeXmlProjectionParser;
+use App\Services\Sefaz\SpedCommonCteXmlSignatureValidator;
 use DOMDocument;
+use DOMXPath;
 
 /**
  * Validação fiscal de import de saída (procNFe / cteProc) e eventos.
@@ -34,6 +37,7 @@ final class ImportFiscalValidator
         private readonly CteXmlProjectionParser $cteParser = new CteXmlProjectionParser,
         private readonly AccessKeyCandidateBuilder $keys = new AccessKeyCandidateBuilder,
         private readonly SecureXmlLoader $xmlLoader = new SecureXmlLoader,
+        private readonly SpedCommonCteXmlSignatureValidator $cteSignatureValidator = new SpedCommonCteXmlSignatureValidator,
     ) {}
 
     /**
@@ -170,6 +174,17 @@ final class ImportFiscalValidator
             return ['ok' => false, 'code' => 'INVALID', 'message' => 'infCte/@Id diverge da chCTe.'];
         }
 
+        $protocolKey = $this->firstXPath($doc, '//*[local-name()="protCTe"]//*[local-name()="chCTe"]');
+        if ($protocolKey !== null && strtoupper($protocolKey) !== $key) {
+            return ['ok' => false, 'code' => 'INVALID', 'message' => 'chCTe do protocolo diverge da chave.'];
+        }
+
+        $documentEnvironment = $this->firstXPath($doc, '//*[local-name()="infCte"]//*[local-name()="ide"]/*[local-name()="tpAmb"]');
+        $protocolEnvironment = $this->firstXPath($doc, '//*[local-name()="protCTe"]//*[local-name()="tpAmb"]');
+        if ($documentEnvironment !== null && $protocolEnvironment !== null && $documentEnvironment !== $protocolEnvironment) {
+            return ['ok' => false, 'code' => 'INVALID', 'message' => 'Ambiente do protocolo diverge do CT-e.'];
+        }
+
         $model = (string) ($parsed['model'] ?? substr($key, 20, 2));
         if ($model !== '57') {
             return [
@@ -194,13 +209,8 @@ final class ImportFiscalValidator
             return ['ok' => false, 'code' => 'INVALID', 'message' => 'emit/CNPJ ausente.'];
         }
 
-        $sig = $this->validateSignaturePresence($doc);
-        if (! $sig['ok']) {
-            // Em testing, fixtures sanitizadas podem omitir Signature real
-            if (! app()->environment('testing')) {
-                return $sig;
-            }
-            $parseAlert = trim(($parseAlert ?? '').' Assinatura não verificada (ambiente de teste).');
+        if ($this->cteSignatureValidator->validate($bytes) === SignatureVerificationResult::Invalid) {
+            return ['ok' => false, 'code' => 'INVALID', 'message' => 'Digest ou assinatura XMLDSig do CT-e inválidos.'];
         }
 
         $parsed['model'] = $model;
@@ -247,11 +257,8 @@ final class ImportFiscalValidator
             return ['ok' => false, 'code' => 'INVALID', 'message' => 'Protocolo do evento CT-e ausente.'];
         }
 
-        if (! app()->environment('testing')) {
-            $sig = $this->validateSignaturePresence($doc);
-            if (! $sig['ok']) {
-                return $sig;
-            }
+        if ($this->cteSignatureValidator->validate($bytes) === SignatureVerificationResult::Invalid) {
+            return ['ok' => false, 'code' => 'INVALID', 'message' => 'Digest ou assinatura XMLDSig do evento CT-e inválidos.'];
         }
 
         $parsed['access_key'] = $key;
@@ -398,5 +405,17 @@ final class ImportFiscalValidator
         $v = trim((string) $nodes->item(0)?->textContent);
 
         return $v !== '' ? $v : null;
+    }
+
+    private function firstXPath(DOMDocument $doc, string $expression): ?string
+    {
+        $nodes = (new DOMXPath($doc))->query($expression);
+        if ($nodes === false || $nodes->length === 0) {
+            return null;
+        }
+
+        $value = trim((string) $nodes->item(0)?->textContent);
+
+        return $value !== '' ? $value : null;
     }
 }

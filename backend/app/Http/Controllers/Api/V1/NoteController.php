@@ -10,6 +10,7 @@ use App\Enums\FiscalRole;
 use App\Enums\NfeManifestationType;
 use App\Http\Controllers\Controller;
 use App\Models\CteDocument;
+use App\Models\DfeDocument;
 use App\Models\DocumentAcquisition;
 use App\Models\NfeDocument;
 use App\Models\NfseEvent;
@@ -113,7 +114,9 @@ class NoteController extends Controller
                 $q->where('id', '<', $beforeId);
             }
             $this->applyCteCatalogFilters($q, $request);
-            $cteModels = $q->limit($limit + 1)->get();
+            // Visão por cliente: autoriza apenas documentos com interesse no client_id.
+            // Visão ampla: BelongsToOffice garante mesmo office_id da sessão.
+            $cteModels = $q->with(['document.interests', 'document.acquisitions'])->limit($limit + 1)->get();
             $fullCteKeys = $this->fullAccessKeysForCte($cteModels);
             $rows = $rows->merge(
                 $cteModels->map(fn (CteDocument $n) => $this->serializeCteListItem($n, $fullCteKeys))
@@ -688,7 +691,27 @@ class NoteController extends Controller
             ->first();
 
         if ($cte !== null) {
-            $doc = $cte->document;
+            // Preferência de download: ORIGINAL > AUTXML_ORIGINAL > AUTXML_REDACTED (sem reconstrução).
+            $preferredAcq = DocumentAcquisition::query()
+                ->where('office_id', $cte->office_id)
+                ->where('access_key', $accessKey)
+                ->where('is_canonical', true)
+                ->orderByRaw("CASE artifact_quality
+                    WHEN 'ORIGINAL' THEN 3
+                    WHEN 'AUTXML_ORIGINAL' THEN 2
+                    WHEN 'AUTXML_REDACTED' THEN 1
+                    ELSE 0 END DESC")
+                ->orderByDesc('id')
+                ->first();
+
+            $doc = null;
+            if ($preferredAcq !== null) {
+                $doc = DfeDocument::query()
+                    ->where('office_id', $cte->office_id)
+                    ->whereKey($preferredAcq->dfe_document_id)
+                    ->first();
+            }
+            $doc ??= $cte->document;
             if ($doc === null) {
                 abort(404, 'XML canônico indisponível.');
             }
@@ -699,12 +722,18 @@ class NoteController extends Controller
                 (string) $doc->sha256,
             );
 
+            $quality = $preferredAcq?->artifact_quality;
+            $qualityValue = $quality instanceof \App\Enums\DocumentArtifactQuality
+                ? $quality->value
+                : (string) ($quality ?? 'UNKNOWN');
+
             $audit->record('xml.download', 'SUCCESS', $cte, [
                 'access_key' => $accessKey,
                 'sha256' => $doc->sha256,
                 'byte_size' => $doc->byte_size,
                 'xml_kind' => $cte->is_summary ? 'CTE_SUMMARY' : 'CTE_FULL',
                 'is_summary' => $cte->is_summary,
+                'artifact_quality' => $qualityValue,
             ]);
 
             $suffix = $cte->is_summary ? '-resumo' : '';
@@ -714,6 +743,7 @@ class NoteController extends Controller
             }, $accessKey.$suffix.'.xml', [
                 'Content-Type' => 'application/xml',
                 'X-Xml-Completeness' => $cte->is_summary ? 'SUMMARY' : 'FULL',
+                'X-Artifact-Quality' => $qualityValue,
             ]);
         }
 
@@ -978,6 +1008,21 @@ class NoteController extends Controller
         $signature = $acquisition?->signature_result;
         $isRedacted = $quality === DocumentArtifactQuality::AutXmlRedacted;
 
+        $interests = $doc->relationLoaded('document') && $doc->document?->relationLoaded('interests')
+            ? $doc->document->interests
+            : collect();
+        $interestPayload = $interests->map(function ($i) {
+            return [
+                'establishment_id' => $i->establishment_id,
+                'fiscal_role' => $i->fiscal_role instanceof FiscalRole ? $i->fiscal_role->value : $i->fiscal_role,
+                'direction' => $i->direction instanceof DocumentDirection ? $i->direction->value : $i->direction,
+                'channel' => $i->channel instanceof \App\Enums\CaptureChannel
+                    ? $i->channel->value
+                    : $i->channel,
+                'nsu' => $i->nsu,
+            ];
+        })->values()->all();
+
         return [
             'id' => $doc->id,
             'kind' => $kind->value,
@@ -1005,6 +1050,8 @@ class NoteController extends Controller
             'fiscal_role_label' => $doc->fiscal_role?->label(),
             'direction' => $doc->direction?->value ?? DocumentDirection::In->value,
             'direction_label' => ($doc->direction ?? DocumentDirection::In)->label(),
+            'interests' => $interestPayload,
+            'multi_role' => count($interestPayload) > 1,
             'acquisition_source' => $acquisition?->source?->value,
             'acquisition_source_label' => $acquisition?->source?->label(),
             'artifact_quality' => $quality?->value,
@@ -1076,6 +1123,12 @@ class NoteController extends Controller
                     ->orWhereHas('document.interests', fn ($i) => $i->where('fiscal_role', $role));
             });
         }
+        if ($v = $request->string('acquisition_source')->toString()) {
+            $source = strtoupper($v);
+            $query->whereHas('document.acquisitions', function ($acquisition) use ($source): void {
+                $acquisition->where('source', $source);
+            });
+        }
         if ($v = $request->string('artifact_quality')->toString()) {
             $quality = strtoupper($v);
             $query->whereHas('document', function ($dfe) use ($quality): void {
@@ -1099,32 +1152,16 @@ class NoteController extends Controller
                     });
             });
         }
+        // Visão por cliente: autoriza por interesse (fonte de verdade multi-papel).
+        // Não usar só CNPJ de projeção — evita vazar docs de outro cliente do mesmo office.
         if ($clientId = $request->integer('client_id')) {
-            $query->where(function ($q) use ($clientId): void {
-                $q->whereHas('document.interests.establishment', function ($interest) use ($clientId): void {
-                    $interest->where('client_id', $clientId);
-                })->orWhereIn('issuer_cnpj', function ($sub) use ($clientId): void {
-                    $sub->select('cnpj')
-                        ->from('establishments')
-                        ->where('client_id', $clientId)
-                        ->whereNull('deleted_at');
-                })->orWhereIn('taker_cnpj', function ($sub) use ($clientId): void {
-                    $sub->select('cnpj')
-                        ->from('establishments')
-                        ->where('client_id', $clientId)
-                        ->whereNull('deleted_at');
-                });
+            $query->whereHas('document.interests.establishment', function ($interest) use ($clientId): void {
+                $interest->where('client_id', $clientId);
             });
         }
         if ($establishmentId = $request->integer('establishment_id')) {
-            $query->where(function ($q) use ($establishmentId): void {
-                $q->whereHas('document.interests', function ($interest) use ($establishmentId): void {
-                    $interest->where('establishment_id', $establishmentId);
-                })->orWhereIn('issuer_cnpj', function ($sub) use ($establishmentId): void {
-                    $sub->select('cnpj')->from('establishments')->where('id', $establishmentId);
-                })->orWhereIn('taker_cnpj', function ($sub) use ($establishmentId): void {
-                    $sub->select('cnpj')->from('establishments')->where('id', $establishmentId);
-                });
+            $query->whereHas('document.interests', function ($interest) use ($establishmentId): void {
+                $interest->where('establishment_id', $establishmentId);
             });
         }
         if ($from = $request->string('issued_from')->toString()) {

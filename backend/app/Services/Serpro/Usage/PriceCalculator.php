@@ -1,0 +1,173 @@
+<?php
+
+namespace App\Services\Serpro\Usage;
+
+use App\Enums\SerproConsumptionClass;
+use App\Models\SerproPriceTier;
+use App\Models\SerproPriceVersion;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+
+/**
+ * Cálculo de custo estimado por faixas configuráveis (sem hardcode no client HTTP).
+ * Preserva versão de preço usada no momento da reserva/finalização.
+ */
+final class PriceCalculator
+{
+    /**
+     * Resolve a versão de preço vigente no instante informado.
+     */
+    public function resolveVersion(Carbon|string|null $at = null): ?SerproPriceVersion
+    {
+        $at = $at instanceof Carbon ? $at : ($at ? Carbon::parse($at) : now());
+
+        return SerproPriceVersion::query()
+            ->where('is_active', true)
+            ->where('effective_from', '<=', $at)
+            ->where(function ($q) use ($at): void {
+                $q->whereNull('effective_to')->orWhere('effective_to', '>=', $at);
+            })
+            ->orderByDesc('effective_from')
+            ->first();
+    }
+
+    /**
+     * @return array{
+     *     price_version_id: int|null,
+     *     estimated_cost_micros: int|null,
+     *     unit_cost_micros: int|null,
+     *     currency: string|null
+     * }
+     */
+    public function estimate(
+        SerproConsumptionClass $class,
+        int $quantity = 1,
+        ?string $systemCode = null,
+        ?string $serviceCode = null,
+        ?string $operationCode = null,
+        Carbon|string|null $at = null,
+        ?SerproPriceVersion $version = null,
+    ): array {
+        if (! $class->allowsCostEstimate()) {
+            return [
+                'price_version_id' => $version?->id ?? $this->resolveVersion($at)?->id,
+                'estimated_cost_micros' => null,
+                'unit_cost_micros' => null,
+                'currency' => $version?->currency ?? $this->resolveVersion($at)?->currency,
+            ];
+        }
+
+        $version ??= $this->resolveVersion($at);
+
+        if ($version === null) {
+            return [
+                'price_version_id' => null,
+                'estimated_cost_micros' => $class === SerproConsumptionClass::NaoFaturavel ? 0 : null,
+                'unit_cost_micros' => null,
+                'currency' => null,
+            ];
+        }
+
+        if ($class === SerproConsumptionClass::NaoFaturavel) {
+            $tier = $this->findTier($version, $class, $quantity, $systemCode, $serviceCode, $operationCode);
+
+            return [
+                'price_version_id' => $version->id,
+                'estimated_cost_micros' => 0,
+                'unit_cost_micros' => $tier?->unit_cost_micros ?? 0,
+                'currency' => $version->currency,
+            ];
+        }
+
+        $tier = $this->findTier($version, $class, $quantity, $systemCode, $serviceCode, $operationCode);
+
+        if ($tier === null) {
+            return [
+                'price_version_id' => $version->id,
+                'estimated_cost_micros' => null,
+                'unit_cost_micros' => null,
+                'currency' => $version->currency,
+            ];
+        }
+
+        return [
+            'price_version_id' => $version->id,
+            'estimated_cost_micros' => $tier->unit_cost_micros * max(1, $quantity),
+            'unit_cost_micros' => $tier->unit_cost_micros,
+            'currency' => $version->currency,
+        ];
+    }
+
+    private function findTier(
+        SerproPriceVersion $version,
+        SerproConsumptionClass $class,
+        int $quantity,
+        ?string $systemCode,
+        ?string $serviceCode,
+        ?string $operationCode,
+    ): ?SerproPriceTier {
+        /** @var Collection<int, SerproPriceTier> $tiers */
+        $tiers = $version->relationLoaded('tiers')
+            ? $version->tiers
+            : $version->tiers()->get();
+
+        $candidates = $tiers
+            ->filter(fn (SerproPriceTier $t) => $t->consumption_class === $class)
+            ->filter(fn (SerproPriceTier $t) => $t->matchesQuantity($quantity))
+            ->sortByDesc(fn (SerproPriceTier $t) => $this->specificityScore($t, $systemCode, $serviceCode, $operationCode))
+            ->values();
+
+        foreach ($candidates as $tier) {
+            if ($this->tierMatches($tier, $systemCode, $serviceCode, $operationCode)) {
+                return $tier;
+            }
+        }
+
+        return null;
+    }
+
+    private function tierMatches(
+        SerproPriceTier $tier,
+        ?string $systemCode,
+        ?string $serviceCode,
+        ?string $operationCode,
+    ): bool {
+        if ($tier->operation_code !== null && $tier->operation_code !== $operationCode) {
+            return false;
+        }
+        if ($tier->service_code !== null && $tier->service_code !== $serviceCode) {
+            return false;
+        }
+        if ($tier->system_code !== null && $tier->system_code !== $systemCode) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function specificityScore(
+        SerproPriceTier $tier,
+        ?string $systemCode,
+        ?string $serviceCode,
+        ?string $operationCode,
+    ): int {
+        $score = 0;
+        if ($tier->system_code !== null && $tier->system_code === $systemCode) {
+            $score += 4;
+        } elseif ($tier->system_code !== null) {
+            return -1;
+        }
+        if ($tier->service_code !== null && $tier->service_code === $serviceCode) {
+            $score += 2;
+        } elseif ($tier->service_code !== null) {
+            return -1;
+        }
+        if ($tier->operation_code !== null && $tier->operation_code === $operationCode) {
+            $score += 1;
+        } elseif ($tier->operation_code !== null) {
+            return -1;
+        }
+
+        return $score;
+    }
+}

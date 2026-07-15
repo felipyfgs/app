@@ -31,6 +31,7 @@ final class OutboundMetrics
         $safeLabels = array_intersect_key($labels, array_flip([
             'channel', 'environment', 'outcome', 'model',
             'urgency_band', 'source', 'competence', 'risk',
+            'cause', 'state', 'decision', 'exchange_kind',
         ]));
         // Nunca aceitar labels de alta cardinalidade / PII
         unset($safeLabels['access_key'], $safeLabels['cnpj'], $safeLabels['pfx'], $safeLabels['password']);

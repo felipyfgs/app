@@ -22,7 +22,15 @@ class OfficeSubscriptionFactory extends Factory
         $now = now();
 
         return [
-            'office_id' => Office::factory(),
+            'office_id' => function () {
+                $prev = OfficeFactory::$autoSubscription;
+                OfficeFactory::$autoSubscription = false;
+                try {
+                    return Office::factory()->create()->id;
+                } finally {
+                    OfficeFactory::$autoSubscription = $prev;
+                }
+            },
             'plan' => $plan,
             'status' => SubscriptionStatus::Active,
             'trial_ends_at' => null,
@@ -58,11 +66,17 @@ class OfficeSubscriptionFactory extends Factory
 
     public function trial(): static
     {
+        $limits = SubscriptionPlan::Starter->defaultLimits();
+
         return $this->state(fn () => [
             'status' => SubscriptionStatus::Trial,
             'trial_ends_at' => now()->addDays(14),
             'plan' => SubscriptionPlan::Starter,
-        ])->plan(SubscriptionPlan::Starter);
+            'monthly_api_quota' => $limits['monthly_api_quota'],
+            'max_clients' => $limits['max_clients'],
+            'max_users' => $limits['max_users'],
+            'limits' => $limits,
+        ]);
     }
 
     public function active(): static

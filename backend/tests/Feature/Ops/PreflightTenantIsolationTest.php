@@ -5,6 +5,7 @@ namespace Tests\Feature\Ops;
 use App\Models\Office;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class PreflightTenantIsolationTest extends TestCase
@@ -20,12 +21,19 @@ class PreflightTenantIsolationTest extends TestCase
     public function test_preflight_json_contem_chaves_esperadas(): void
     {
         $this->artisan('ops:preflight-tenant-isolation', ['--json' => true])
-            ->expectsOutputToContain('"can_proceed"')
-            ->expectsOutputToContain('"blockers"')
             ->assertSuccessful();
+
+        \Illuminate\Support\Facades\Artisan::call('ops:preflight-tenant-isolation', ['--json' => true]);
+        $payload = json_decode(\Illuminate\Support\Facades\Artisan::output(), true);
+
+        $this->assertIsArray($payload);
+        $this->assertArrayHasKey('can_proceed', $payload);
+        $this->assertArrayHasKey('blockers', $payload);
+        $this->assertArrayHasKey('warnings', $payload);
+        $this->assertArrayHasKey('details', $payload);
     }
 
-    public function test_preflight_detecta_office_id_nulo_em_tabela_de_negocio(): void
+    public function test_preflight_detecta_role_invalido_e_falha_com_flag(): void
     {
         $office = Office::query()->create([
             'name' => 'Escritório A',
@@ -33,29 +41,21 @@ class PreflightTenantIsolationTest extends TestCase
             'is_active' => true,
         ]);
 
-        // clients exige office_id em app normal; forçamos nulo via DB para o preflight.
-        \DB::table('clients')->insert([
-            'office_id' => null,
-            'root_cnpj' => '12345678',
-            'legal_name' => 'Cliente sem office',
+        $user = User::factory()->create(['is_active' => true]);
+
+        DB::table('office_user')->insert([
+            'office_id' => $office->id,
+            'user_id' => $user->id,
+            'role' => 'SUPERUSER',
             'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        // SQLite/migrations podem rejeitar null se NOT NULL — nesse caso o teste não se aplica.
-        $nullCount = (int) \DB::table('clients')->whereNull('office_id')->count();
-        if ($nullCount === 0) {
-            $this->markTestSkipped('Schema rejeita office_id nulo em clients (esperado em PG).');
-        }
-
         $this->artisan('ops:preflight-tenant-isolation', [
             '--json' => true,
             '--fail-on-issues' => true,
         ])->assertFailed();
-
-        // limpeza simbólica (RefreshDatabase)
-        unset($office);
     }
 
     public function test_preflight_com_membership_valida_nao_bloqueia(): void
@@ -67,7 +67,7 @@ class PreflightTenantIsolationTest extends TestCase
         ]);
 
         $user = User::factory()->create(['is_active' => true]);
-        \DB::table('office_user')->insert([
+        DB::table('office_user')->insert([
             'office_id' => $office->id,
             'user_id' => $user->id,
             'role' => 'ADMIN',

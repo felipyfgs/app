@@ -10,13 +10,16 @@ use App\Exceptions\Adn\AdnPermanentException;
 use App\Exceptions\Adn\AdnRetryableException;
 use App\Exceptions\Adn\DocumentDecodeException;
 use App\Models\ChannelSyncCursor;
+use App\Models\ChannelSyncCursorTransition;
 use App\Models\ClientCredential;
 use App\Services\Certificates\CredentialService;
+use App\Services\Operations\OperationsMetrics;
+use App\Services\Operations\StructuredLogger;
 use App\Services\Sefaz\CteDistDfePageProcessor;
+use App\Support\LogSanitizer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -43,6 +46,8 @@ class SyncSefazCteDistDfeJob implements ShouldQueue
         SefazCteDistDfeClient $client,
         CteDistDfePageProcessor $processor,
         CredentialService $credentials,
+        StructuredLogger $logger,
+        OperationsMetrics $metrics,
     ): void {
         if (! config('sefaz.cte_enabled')) {
             return;
@@ -65,13 +70,23 @@ class SyncSefazCteDistDfeJob implements ShouldQueue
         }
 
         $owner = (string) Str::uuid();
+        $started = hrtime(true);
+        $totalQuarantine = 0;
 
         try {
+            $fromStatus = $cursor->status?->value;
             $cursor->status = SyncCursorStatus::Running;
             $cursor->locked_at = now();
             $cursor->lock_owner = $owner;
             $cursor->attempts = (int) $cursor->attempts + 1;
             $cursor->save();
+            ChannelSyncCursorTransition::record(
+                $cursor,
+                'job_start',
+                $fromStatus,
+                SyncCursorStatus::Running->value,
+                metadata: ['trigger' => $this->trigger],
+            );
 
             $establishment = $cursor->establishment;
             $clientModel = $establishment?->client;
@@ -96,6 +111,7 @@ class SyncSefazCteDistDfeJob implements ShouldQueue
             $sleep = (float) config('sefaz.page_sleep_seconds', 2);
             $pages = 0;
             $totalDocs = 0;
+            $lastCstat = null;
 
             while ($pages < $maxPages) {
                 $page = $client->distByNsu(
@@ -104,13 +120,15 @@ class SyncSefazCteDistDfeJob implements ShouldQueue
                     (int) $cursor->last_nsu,
                     $cUf,
                 );
+                $lastCstat = $page->cStat;
 
                 $result = $processor->process($cursor, $establishment, $page);
                 $totalDocs += $result['documents'];
+                $totalQuarantine += $result['quarantined'];
                 $cursor->refresh();
                 $pages++;
 
-                if ($page->isAbuse() || $page->isEndOfQueue() || $page->isEmpty()) {
+                if ($page->isAbuse() || $page->isAuthError() || $page->isEndOfQueue() || $page->isEmpty()) {
                     break;
                 }
 
@@ -133,36 +151,103 @@ class SyncSefazCteDistDfeJob implements ShouldQueue
                 $cursor->save();
             }
 
-            Log::info('sefaz.cte.job.done', [
+            $latencyMs = (int) ((hrtime(true) - $started) / 1_000_000);
+            $logger->info('sefaz.cte.job.done', [
                 'cursor_id' => $cursor->id,
                 'pages' => $pages,
                 'documents' => $totalDocs,
+                'quarantined' => $totalQuarantine,
                 'last_nsu' => $cursor->last_nsu,
+                'cstat' => $lastCstat,
+                'trigger' => $this->trigger,
+            ], $cursor->office_id);
+            $metrics->increment('cte.sync.pages', $pages, [
+                'channel' => CaptureChannel::CteDistDfe->value,
+                'stream' => 'client',
             ]);
+            $metrics->increment('cte.documents', $totalDocs, [
+                'channel' => CaptureChannel::CteDistDfe->value,
+                'result' => 'sync',
+            ]);
+            if ($totalQuarantine > 0) {
+                $metrics->increment('cte.quarantine', $totalQuarantine, [
+                    'channel' => CaptureChannel::CteDistDfe->value,
+                ]);
+            }
+            if ($lastCstat !== null) {
+                $metrics->increment('cte.cstat', 1, [
+                    'channel' => CaptureChannel::CteDistDfe->value,
+                    'cstat' => $lastCstat,
+                ]);
+            }
+            $metrics->observeLatency('cte.sync.latency_ms', $latencyMs, [
+                'channel' => CaptureChannel::CteDistDfe->value,
+                'stream' => 'client',
+            ]);
+            ChannelSyncCursorTransition::record(
+                $cursor,
+                'job_done',
+                SyncCursorStatus::Running->value,
+                $cursor->status?->value,
+                metadata: [
+                    'pages' => $pages,
+                    'documents' => $totalDocs,
+                    'cstat' => $lastCstat,
+                ],
+            );
         } catch (DocumentDecodeException|AdnPermanentException $e) {
-            $this->failCursor($cursor, $e->getMessage(), permanent: true);
+            $this->failCursor($cursor, $e->getMessage(), permanent: true, logger: $logger, metrics: $metrics);
         } catch (AdnRetryableException $e) {
-            $this->failCursor($cursor, $e->getMessage(), permanent: false);
+            $this->failCursor($cursor, $e->getMessage(), permanent: false, logger: $logger, metrics: $metrics);
         } catch (Throwable $e) {
-            $this->failCursor($cursor, 'Falha CT-e DistDFe: '.mb_substr($e->getMessage(), 0, 200), permanent: false);
+            $this->failCursor(
+                $cursor,
+                'Falha CT-e DistDFe: '.mb_substr($e->getMessage(), 0, 200),
+                permanent: false,
+                logger: $logger,
+                metrics: $metrics,
+            );
             throw $e;
         } finally {
             $lock->release();
         }
     }
 
-    private function failCursor(?ChannelSyncCursor $cursor, string $message, bool $permanent): void
-    {
+    private function failCursor(
+        ?ChannelSyncCursor $cursor,
+        string $message,
+        bool $permanent,
+        ?StructuredLogger $logger = null,
+        ?OperationsMetrics $metrics = null,
+    ): void {
         if (! $cursor) {
             return;
         }
+        $from = $cursor->status?->value;
         $cursor->refresh();
-        $cursor->last_error = $message;
+        $cursor->last_error = LogSanitizer::scrubString($message);
         $cursor->status = $permanent ? SyncCursorStatus::Blocked : SyncCursorStatus::Error;
         $cursor->locked_at = null;
         $cursor->lock_owner = null;
         $cursor->next_sync_at = now()->addMinutes($permanent ? 60 : 15);
         $cursor->save();
+
+        ChannelSyncCursorTransition::record(
+            $cursor,
+            $permanent ? 'job_blocked' : 'job_error',
+            $from,
+            $cursor->status->value,
+            metadata: ['permanent' => $permanent],
+        );
+        $logger?->error('sefaz.cte.job.failed', [
+            'cursor_id' => $cursor->id,
+            'permanent' => $permanent,
+            'status' => $cursor->status->value,
+        ], $cursor->office_id);
+        $metrics?->increment('cte.sync', 1, [
+            'channel' => CaptureChannel::CteDistDfe->value,
+            'result' => $permanent ? 'blocked' : 'error',
+        ]);
     }
 
     private function resolveUfAutor($establishment): string

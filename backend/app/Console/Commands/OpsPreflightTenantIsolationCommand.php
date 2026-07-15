@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Enums\OfficeRole;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -37,7 +36,8 @@ class OpsPreflightTenantIsolationCommand extends Command
         $blockers = [
             'membership_orphans' => $membershipIssues['orphan_office'] + $membershipIssues['orphan_user'],
             'invalid_roles' => $membershipIssues['invalid_roles'],
-            'null_office_id_rows' => $nullOfficeId['total_null_rows'],
+            // Somente colunas office_id NOT NULL com nulos (violação de invariante).
+            'null_office_id_rows' => $nullOfficeId['total_null_required'],
             'critical_duplicates' => $duplicateCritical['total'],
             'pending_migrations' => count($pendingMigrations['pending']),
         ];
@@ -46,6 +46,7 @@ class OpsPreflightTenantIsolationCommand extends Command
             'active_membership_on_inactive_office' => $membershipIssues['active_on_inactive_office'],
             'users_with_multiple_active_memberships' => $membershipIssues['multi_active_users'],
             'offices_without_active_membership' => $membershipIssues['offices_without_active'],
+            'nullable_office_id_null_rows' => $nullOfficeId['total_null_optional'],
             'vault_orphan_scan_limited' => $vaultOrphans['limited'] ? 1 : 0,
             'vault_null_refs' => $vaultOrphans['null_ref_total'],
         ];
@@ -74,12 +75,13 @@ class OpsPreflightTenantIsolationCommand extends Command
                 [
                     ['Memberships órfãs (office/user)', $blockers['membership_orphans'], 'bloqueio'],
                     ['Roles inválidos em office_user', $blockers['invalid_roles'], 'bloqueio'],
-                    ['Linhas de negócio com office_id nulo', $blockers['null_office_id_rows'], 'bloqueio'],
+                    ['office_id nulo em colunas obrigatórias', $blockers['null_office_id_rows'], 'bloqueio'],
                     ['Duplicidades críticas', $blockers['critical_duplicates'], 'bloqueio'],
                     ['Migrations pendentes', $blockers['pending_migrations'], 'bloqueio'],
                     ['Membership ativa em office inativo', $warnings['active_membership_on_inactive_office'], 'aviso'],
                     ['Usuários com múltiplas memberships ativas', $warnings['users_with_multiple_active_memberships'], 'aviso'],
                     ['Offices sem membership ativa', $warnings['offices_without_active_membership'], 'aviso'],
+                    ['office_id nulo em colunas nullable (ex.: audit)', $warnings['nullable_office_id_null_rows'], 'aviso'],
                     ['Scan de vault limitado (sem catálogo)', $warnings['vault_orphan_scan_limited'], 'aviso'],
                     ['Referências vault nulas em colunas esperadas', $warnings['vault_null_refs'], 'aviso'],
                 ],
@@ -186,46 +188,67 @@ class OpsPreflightTenantIsolationCommand extends Command
 
     /**
      * Heurística: tabelas com coluna office_id e contagem de nulos.
+     * NOT NULL com nulos → bloqueio; nullable com nulos → aviso (escopo global legítimo).
      *
-     * @return array{total_null_rows: int, tables: list<array{table: string, null_count: int}>}
+     * @return array{
+     *     total_null_required: int,
+     *     total_null_optional: int,
+     *     required_tables: list<array{table: string, null_count: int}>,
+     *     optional_tables: list<array{table: string, null_count: int}>,
+     *     scanned_tables: int
+     * }
      */
     private function checkNullOfficeIds(): array
     {
-        $tables = $this->tablesWithOfficeIdColumn();
-        $hits = [];
-        $total = 0;
+        $columns = $this->officeIdColumns();
+        $requiredHits = [];
+        $optionalHits = [];
+        $totalRequired = 0;
+        $totalOptional = 0;
 
-        foreach ($tables as $table) {
-            // Tabelas de pivot / memberships: office_id é FK obrigatória; ainda assim contamos nulos.
+        foreach ($columns as $meta) {
+            $table = $meta['table'];
+            $nullable = $meta['nullable'];
+
             try {
                 $count = (int) DB::table($table)->whereNull('office_id')->count();
             } catch (\Throwable) {
                 continue;
             }
 
-            if ($count > 0) {
-                $hits[] = ['table' => $table, 'null_count' => $count];
-                $total += $count;
+            if ($count === 0) {
+                continue;
+            }
+
+            $entry = ['table' => $table, 'null_count' => $count];
+            if ($nullable) {
+                $optionalHits[] = $entry;
+                $totalOptional += $count;
+            } else {
+                $requiredHits[] = $entry;
+                $totalRequired += $count;
             }
         }
 
         return [
-            'total_null_rows' => $total,
-            'tables' => $hits,
-            'scanned_tables' => count($tables),
+            'total_null_required' => $totalRequired,
+            'total_null_optional' => $totalOptional,
+            'required_tables' => $requiredHits,
+            'optional_tables' => $optionalHits,
+            'scanned_tables' => count($columns),
         ];
     }
 
     /**
-     * @return list<string>
+     * @return list<array{table: string, nullable: bool}>
      */
-    private function tablesWithOfficeIdColumn(): array
+    private function officeIdColumns(): array
     {
         $driver = Schema::getConnection()->getDriverName();
 
         if ($driver === 'pgsql') {
             $rows = DB::select(<<<'SQL'
-                SELECT table_name
+                SELECT table_name, is_nullable
                 FROM information_schema.columns
                 WHERE table_schema = current_schema()
                   AND column_name = 'office_id'
@@ -233,7 +256,10 @@ class OpsPreflightTenantIsolationCommand extends Command
                 ORDER BY table_name
             SQL);
 
-            return array_values(array_map(fn ($r) => (string) $r->table_name, $rows));
+            return array_values(array_map(fn ($r) => [
+                'table' => (string) $r->table_name,
+                'nullable' => strtoupper((string) $r->is_nullable) === 'YES',
+            ], $rows));
         }
 
         if ($driver === 'sqlite') {
@@ -241,25 +267,38 @@ class OpsPreflightTenantIsolationCommand extends Command
                 fn ($r) => (string) $r->name,
                 DB::select("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"),
             );
-            $withColumn = [];
+            $out = [];
             foreach ($names as $name) {
-                if (Schema::hasColumn($name, 'office_id')) {
-                    $withColumn[] = $name;
+                if (! Schema::hasColumn($name, 'office_id')) {
+                    continue;
                 }
+                $nullable = true;
+                try {
+                    $cols = DB::select('PRAGMA table_info('.$this->quoteSqliteIdent($name).')');
+                    foreach ($cols as $col) {
+                        if ((string) ($col->name ?? '') === 'office_id') {
+                            // notnull=1 significa NOT NULL
+                            $nullable = ((int) ($col->notnull ?? 0)) === 0;
+                            break;
+                        }
+                    }
+                } catch (\Throwable) {
+                    // assume nullable se não der para inspecionar
+                }
+                $out[] = ['table' => $name, 'nullable' => $nullable];
             }
 
-            return $withColumn;
+            return $out;
         }
 
-        // Fallback genérico
-        $withColumn = [];
+        $out = [];
         foreach (Schema::getTableListing() as $name) {
             if (Schema::hasColumn($name, 'office_id')) {
-                $withColumn[] = $name;
+                $out[] = ['table' => $name, 'nullable' => true];
             }
         }
 
-        return $withColumn;
+        return $out;
     }
 
     /**
@@ -389,43 +428,39 @@ class OpsPreflightTenantIsolationCommand extends Command
     }
 
     /**
+     * Usa o Migrator (sem Artisan::call) para não poluir stdout do relatório.
+     *
      * @return array{pending: list<string>, ran: int, status_available: bool}
      */
     private function checkPendingMigrations(): array
     {
         try {
-            Artisan::call('migrate:status');
-            $output = Artisan::output();
+            $migrator = app('migrator');
+            if (! $migrator->repositoryExists()) {
+                return [
+                    'pending' => ['repositório de migrations ausente'],
+                    'ran' => 0,
+                    'status_available' => true,
+                ];
+            }
+
+            /** @var array<string, string> $files name => path */
+            $files = $migrator->getMigrationFiles([database_path('migrations')]);
+            $ran = $migrator->getRepository()->getRan();
+            $pending = array_values(array_diff(array_keys($files), $ran));
+
+            return [
+                'pending' => $pending,
+                'ran' => count($ran),
+                'status_available' => true,
+            ];
         } catch (\Throwable $e) {
             return [
-                'pending' => ['migrate:status indisponível: '.$e->getMessage()],
+                'pending' => ['checagem de migrations indisponível: '.$e->getMessage()],
                 'ran' => 0,
                 'status_available' => false,
             ];
         }
-
-        $pending = [];
-        $ran = 0;
-        foreach (preg_split('/\R/', $output) ?: [] as $line) {
-            $line = trim($line);
-            if ($line === '') {
-                continue;
-            }
-            // Formato Laravel: "  2026_...  Pending" ou "Ran"
-            if (preg_match('/(\d{4}_\d{2}_\d{2}_\d{6}_\S+)\s+\.+\s+Pending/i', $line, $m)) {
-                $pending[] = $m[1];
-            } elseif (preg_match('/Pending/i', $line) && preg_match('/(\d{4}_\d{2}_\d{2}_\d{6}\S*)/', $line, $m)) {
-                $pending[] = $m[1];
-            } elseif (preg_match('/\bRan\b/i', $line)) {
-                $ran++;
-            }
-        }
-
-        return [
-            'pending' => array_values(array_unique($pending)),
-            'ran' => $ran,
-            'status_available' => true,
-        ];
     }
 
     /**

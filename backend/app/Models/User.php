@@ -4,10 +4,12 @@ namespace App\Models;
 
 use App\Enums\OfficeRole;
 use App\Enums\PlatformRole;
+use App\Support\CurrentOffice;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -30,6 +32,11 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    public function selectedOffice(): BelongsTo
+    {
+        return $this->belongsTo(Office::class, 'selected_office_id');
     }
 
     public function offices(): BelongsToMany
@@ -100,13 +107,17 @@ class User extends Authenticatable
             && $this->two_factor_secret !== null;
     }
 
+    /**
+     * Office ADMIN no tenant resolvido (sessão / selected_office_id / fallback)
+     * deve ter TOTP confirmado. Não usa activeMembership() legado (primeiro por id).
+     */
     public function requiresTwoFactorForAdmin(): bool
     {
         if (! config('fortify.two_factor_required', true)) {
             return false;
         }
 
-        $role = $this->roleIn($this->activeMembership()?->office);
+        $role = app(CurrentOffice::class)->resolveMembership($this)?->role;
 
         return $role === OfficeRole::Admin && ! $this->hasConfirmedTwoFactor();
     }

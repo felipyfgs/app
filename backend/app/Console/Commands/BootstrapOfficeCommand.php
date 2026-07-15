@@ -3,7 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Enums\OfficeRole;
+use App\Enums\SubscriptionPlan;
+use App\Enums\SubscriptionStatus;
 use App\Models\Office;
+use App\Models\OfficeSubscription;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -70,15 +73,36 @@ class BootstrapOfficeCommand extends Command
                 'email' => Str::lower($adminEmail),
                 'password' => Hash::make($adminPassword),
                 'is_active' => true,
+                'selected_office_id' => $office->id,
             ]);
 
             $office->users()->attach($user->id, [
                 'role' => OfficeRole::Admin->value,
                 'is_active' => true,
             ]);
+
+            // Assinatura ACTIVE para o tenant (sem isso, mutações HTTP retornam 403 MISSING).
+            $plan = SubscriptionPlan::Professional;
+            $limits = $plan->defaultLimits();
+            $now = now();
+            OfficeSubscription::query()->create([
+                'office_id' => $office->id,
+                'plan' => $plan,
+                'status' => SubscriptionStatus::Active,
+                'trial_ends_at' => null,
+                'starts_at' => $now,
+                'ends_at' => null,
+                'current_period_starts_at' => $now->copy()->startOfMonth(),
+                'current_period_ends_at' => $now->copy()->endOfMonth(),
+                'monthly_api_quota' => $limits['monthly_api_quota'],
+                'max_clients' => $limits['max_clients'],
+                'max_users' => $limits['max_users'],
+                'limits' => $limits,
+                'notes' => 'Assinatura ACTIVE criada no bootstrap inicial.',
+            ]);
         });
 
-        $this->info('Escritório e administrador criados.');
+        $this->info('Escritório, administrador e assinatura ACTIVE criados.');
         $this->warn('Configure e confirme o TOTP antes de usar funções administrativas.');
 
         return self::SUCCESS;

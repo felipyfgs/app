@@ -1,0 +1,120 @@
+<?php
+
+/**
+ * Núcleo de monitoramento fiscal (fiscal-monitoring-core).
+ * Defaults seguros: mutações off; limites modestos; retenção configurável.
+ */
+return [
+    /**
+     * Master switch do núcleo (além de features.global_enabled).
+     * Módulos filhos (simples_mei, sitfis, …) usam FeatureFlags por módulo.
+     */
+    'enabled' => filter_var(env('FISCAL_MONITORING_ENABLED', false), FILTER_VALIDATE_BOOL),
+
+    /** Kill switch exclusivo do núcleo (não substitui FEATURES_KILL_SWITCH). */
+    'kill_switch' => filter_var(env('FISCAL_MONITORING_KILL_SWITCH', false), FILTER_VALIDATE_BOOL),
+
+    /** Mutações fiscais desabilitadas por padrão no núcleo. */
+    'mutating_enabled' => filter_var(env('FISCAL_MONITORING_MUTATING_ENABLED', false), FILTER_VALIDATE_BOOL),
+
+    /**
+     * Lease (minutos) para attempt DCTFWeb/MIT em SENT durante call upstream.
+     * Após o lease, SENT deixa de bloquear nova tentativa (crash recovery).
+     * UNCERTAIN continua com blocked_retry_until.
+     */
+    'mutation_inflight_lease_minutes' => (int) env('FISCAL_MONITORING_MUTATION_INFLIGHT_LEASE_MINUTES', 30),
+
+    'scheduler' => [
+        'enabled' => filter_var(env('FISCAL_MONITORING_SCHEDULER_ENABLED', false), FILTER_VALIDATE_BOOL),
+        /** Máximo de jobs enfileirados por tick do scheduler. */
+        'max_dispatch_per_tick' => (int) env('FISCAL_MONITORING_MAX_DISPATCH_PER_TICK', 40),
+        /** Concorrência global (locks) no contrato. */
+        'global_concurrent_limit' => (int) env('FISCAL_MONITORING_GLOBAL_CONCURRENT', 8),
+        /** Concorrência por tenant. */
+        'tenant_concurrent_limit' => (int) env('FISCAL_MONITORING_TENANT_CONCURRENT', 2),
+        /** Espalhamento em minutos na hora (0–59). */
+        'spread_minutes' => 60,
+        /** Intervalo padrão entre execuções agendadas (minutos). */
+        'default_interval_minutes' => (int) env('FISCAL_MONITORING_DEFAULT_INTERVAL_MINUTES', 60),
+    ],
+
+    'job' => [
+        'timeout_seconds' => (int) env('FISCAL_MONITORING_JOB_TIMEOUT', 300),
+        'lock_ttl_seconds' => (int) env('FISCAL_MONITORING_LOCK_TTL', 360),
+        'max_items_per_run' => (int) env('FISCAL_MONITORING_MAX_ITEMS_PER_RUN', 50),
+        'max_pages_per_run' => (int) env('FISCAL_MONITORING_MAX_PAGES_PER_RUN', 20),
+        'queue' => env('FISCAL_MONITORING_QUEUE', 'default'),
+    ],
+
+    'evidence' => [
+        /** Dias de retenção padrão no cofre (metadado; purge opcional). */
+        'retention_days' => (int) env('FISCAL_EVIDENCE_RETENTION_DAYS', 2555), // ~7 anos
+        'max_bytes' => (int) env('FISCAL_EVIDENCE_MAX_BYTES', 5_242_880), // 5 MiB
+    ],
+
+    'cache' => [
+        /** Prefixo obrigatório — sempre incluir office_id nas chaves reais. */
+        'key_prefix' => 'fiscal',
+        'ttl_seconds' => (int) env('FISCAL_MONITORING_CACHE_TTL', 300),
+    ],
+
+    'rate_limit' => [
+        'global_rps' => (float) env('FISCAL_MONITORING_GLOBAL_RPS', 4.0),
+        'tenant_rps' => (float) env('FISCAL_MONITORING_TENANT_RPS', 1.0),
+    ],
+
+    /**
+     * Simples Nacional / MEI — geração assistida de DAS e monitores.
+     */
+    'simples_mei' => [
+        /** Permite stub local de DAS sem chamada externa quando mutações estão OFF. */
+        'das_stub_without_mutating' => filter_var(
+            env('FISCAL_SIMPLES_MEI_DAS_STUB_WITHOUT_MUTATING', true),
+            FILTER_VALIDATE_BOOL
+        ),
+    ],
+
+    /**
+     * Integra-SITFIS — fluxo assíncrono solicitação/protocolo/espera/emissão.
+     * Polling respeitoso: nunca mais agressivo que poll_interval; espera min_wait antes da 1ª emissão.
+     */
+    'sitfis' => [
+        'system_code' => 'INTEGRA_SITFIS',
+        'service_code' => 'SITFIS',
+        'operation_code' => 'MONITOR',
+        'solicit_operation' => 'SOLICITAR_RELATORIO',
+        'emit_operation' => 'EMITIR_RELATORIO',
+        /** Espera mínima oficial (s) entre solicitação e primeira tentativa de emissão. */
+        'min_wait_seconds' => (int) env('SITFIS_MIN_WAIT_SECONDS', 30),
+        /** Intervalo mínimo entre polls de emissão (s). */
+        'poll_interval_seconds' => (int) env('SITFIS_POLL_INTERVAL_SECONDS', 60),
+        /** Máximo de tentativas de emissão após o min_wait. */
+        'max_polls' => (int) env('SITFIS_MAX_POLLS', 20),
+        /** TTL do snapshot (s) — alinhado ao catálogo SERPRO (86400). */
+        'snapshot_ttl_seconds' => (int) env('SITFIS_SNAPSHOT_TTL_SECONDS', 86400),
+        'parser_version' => '1.0',
+    ],
+
+    /**
+     * Caixa Postal / DTE — conteúdo fiscal restrito; triagem interna ≠ leitura oficial.
+     */
+    'mailbox' => [
+        'retention_days' => (int) env('MAILBOX_RETENTION_DAYS', 2555), // ~7 anos
+        'max_body_bytes' => (int) env('MAILBOX_MAX_BODY_BYTES', 2_097_152), // 2 MiB
+        'max_attachment_bytes' => (int) env('MAILBOX_MAX_ATTACHMENT_BYTES', 10_485_760), // 10 MiB
+        'due_soon_days' => (int) env('MAILBOX_DUE_SOON_DAYS', 7),
+        'sensitivity_class' => 'FISCAL_RESTRICTED',
+        /** Categorias oficiais tratadas como críticas para alerta. */
+        'critical_categories' => ['INTIMACAO', 'NOTIFICACAO', 'COBRANCA', 'URGENTE'],
+    ],
+
+    /**
+     * Perfil demonstrativo (somente local/testing).
+     * Seeder pleno: config/fiscal_demo.php + FiscalMonitoringDemoSeeder.
+     * Nunca habilita origem DEMO em production — guard no DataOriginResolver.
+     */
+    'demo' => [
+        'office_slug' => env('FISCAL_DEMO_OFFICE_SLUG', 'demo'),
+        'force_simulated' => filter_var(env('FISCAL_DEMO_FORCE_SIMULATED', false), FILTER_VALIDATE_BOOL),
+    ],
+];

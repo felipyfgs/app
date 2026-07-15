@@ -36,7 +36,7 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
     {
         $exchanges = $request->exchangesNeeded;
         if ($exchanges < 1) {
-            return SvrsEgressReserveResult::deny('invalid_exchanges');
+            return $this->denied('invalid_exchanges');
         }
 
         try {
@@ -50,12 +50,12 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
                     $retry = max(0, strtotime((string) $health['next_probe_at']) - time());
                 }
 
-                return SvrsEgressReserveResult::deny('breaker_open', $retry > 0 ? $retry : 900);
+                return $this->denied('breaker_open', $retry > 0 ? $retry : 900);
             }
 
             $lock = Cache::lock($this->mutexKey(), 5);
             if (! $lock->get()) {
-                return SvrsEgressReserveResult::deny('mutex', 2);
+                return $this->denied('mutex', 2);
             }
 
             try {
@@ -63,36 +63,36 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
 
                 $inflight = (int) Cache::get($this->inflightKey(), 0);
                 if ($inflight >= $this->config->maxInflightTransactions()) {
-                    return SvrsEgressReserveResult::deny('inflight', 5);
+                    return $this->denied('inflight', 5);
                 }
 
                 $lastGlobal = (float) Cache::get($this->globalLastKey(), 0.0);
                 $globalWait = $this->config->minIntervalGlobalSeconds() - ($now - $lastGlobal);
                 if ($globalWait > 0) {
-                    return SvrsEgressReserveResult::deny('global_interval', (int) ceil($globalWait));
+                    return $this->denied('global_interval', (int) ceil($globalWait));
                 }
 
                 $rootKey = $this->normalizeRoot($request->rootCnpj);
                 $lastRoot = (float) Cache::get($this->rootLastKey($rootKey), 0.0);
                 $rootWait = $this->config->minIntervalRootSeconds() - ($now - $lastRoot);
                 if ($rootWait > 0) {
-                    return SvrsEgressReserveResult::deny('root_interval', (int) ceil($rootWait));
+                    return $this->denied('root_interval', (int) ceil($rootWait));
                 }
 
                 $hourUsed = $this->windowCount($this->hourKey());
                 if ($hourUsed + $exchanges > $this->config->maxExchangesPerHour()) {
-                    return SvrsEgressReserveResult::deny('hour_budget', $this->secondsToNextHour());
+                    return $this->denied('hour_budget', $this->secondsToNextHour());
                 }
 
                 $dayUsed = $this->windowCount($this->dayKey());
                 if ($dayUsed + $exchanges > $this->config->maxExchangesPerDay()) {
-                    return SvrsEgressReserveResult::deny('day_budget', $this->secondsToNextDay());
+                    return $this->denied('day_budget', $this->secondsToNextDay());
                 }
 
                 $rootDayKey = $this->rootDayKey($rootKey);
                 $rootKeysToday = $this->windowCount($rootDayKey);
                 if ($rootKeysToday + 1 > $this->config->maxKeysPerRootPerDay()) {
-                    return SvrsEgressReserveResult::deny('root_day_keys', $this->secondsToNextDay());
+                    return $this->denied('root_day_keys', $this->secondsToNextDay());
                 }
 
                 // Reserva atômica sob mutex: inflight + intervalos + pré-débito de budgets.
@@ -128,6 +128,14 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
                     $this->config->reservationTtlSeconds()
                 );
 
+                $this->metric('svrs_egress_reservations', 1, [
+                    'channel' => $request->channel,
+                    'decision' => 'allowed',
+                ]);
+                $this->metric('svrs_egress_exchanges_reserved', $exchanges, [
+                    'channel' => $request->channel,
+                ]);
+
                 return SvrsEgressReserveResult::allow($reservation);
             } finally {
                 $lock->release();
@@ -137,7 +145,7 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
                 'error' => mb_substr($e->getMessage(), 0, 200),
             ]);
 
-            return SvrsEgressReserveResult::deny('coordinator_unavailable', 60);
+            return $this->denied('coordinator_unavailable', 60);
         }
     }
 
@@ -159,6 +167,10 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
         $data['consumed'] = $consumed;
         Cache::put($key, $data, $this->config->reservationTtlSeconds());
         $reservation->exchangesConsumed = $consumed;
+        $this->metric('svrs_egress_exchanges', 1, [
+            'channel' => $reservation->channel,
+            'exchange_kind' => $kind,
+        ]);
 
         try {
             SvrsEgressCohortState::query()
@@ -268,6 +280,10 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
             'cooldown_seconds' => $cooldown,
             'fingerprint' => $templateFingerprint ? mb_substr($templateFingerprint, 0, 16) : null,
         ], $userId, $officeId);
+        $this->metric('svrs_egress_breaker_open', 1, [
+            'cause' => $cause->value,
+            'state' => 'open',
+        ]);
     }
 
     public function closeBreakerAfterCanarySuccess(?int $userId = null, ?int $officeId = null): void
@@ -290,6 +306,10 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
             'cohort_id' => $this->cohortId(),
             'reason' => 'canary_success',
         ], $userId, $officeId);
+        $this->metric('svrs_egress_canary_result', 1, [
+            'outcome' => 'success',
+            'state' => 'closed',
+        ]);
     }
 
     public function extendCooldown(int $additionalSeconds, int $userId, ?int $officeId = null): void
@@ -310,6 +330,9 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
             'cohort_id' => $this->cohortId(),
             'additional_seconds' => $additionalSeconds,
         ], $userId, $officeId);
+        $this->metric('svrs_egress_cooldown_extended', 1, [
+            'state' => 'open',
+        ]);
     }
 
     public function cohortHealth(): array
@@ -369,9 +392,11 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
         $row->refresh();
 
         if ($row->state === 'open') {
+            $this->metric('svrs_egress_canary_selection', 1, ['decision' => 'denied_cooldown']);
             return ['ok' => false, 'reason' => 'cooldown_active'];
         }
         if ($row->state !== 'half_open' && $row->state !== 'closed') {
+            $this->metric('svrs_egress_canary_selection', 1, ['decision' => 'denied_state']);
             return ['ok' => false, 'reason' => 'invalid_state'];
         }
 
@@ -385,6 +410,7 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
             'cohort_id' => $this->cohortId(),
             'key_mask' => mb_substr($accessKeyMask, 0, 20),
         ], $userId, $officeId);
+        $this->metric('svrs_egress_canary_selection', 1, ['decision' => 'selected']);
 
         return ['ok' => true, 'reason' => 'selected'];
     }
@@ -542,5 +568,29 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
         $tomorrow = strtotime('tomorrow UTC');
 
         return max(1, $tomorrow - time());
+    }
+
+    private function denied(string $reason, int $retryAfterSeconds = 0): SvrsEgressReserveResult
+    {
+        $this->metric('svrs_egress_reservations', 1, [
+            'decision' => 'denied',
+            'cause' => $reason,
+        ]);
+
+        return SvrsEgressReserveResult::deny($reason, $retryAfterSeconds);
+    }
+
+    /**
+     * Métrica best-effort com labels de baixa cardinalidade; nunca interfere no governador.
+     *
+     * @param  array<string, scalar|null>  $labels
+     */
+    private function metric(string $name, int $by = 1, array $labels = []): void
+    {
+        try {
+            app(OutboundMetrics::class)->increment($name, $by, $labels);
+        } catch (Throwable) {
+            // observabilidade não pode alterar a decisão fail-closed
+        }
     }
 }

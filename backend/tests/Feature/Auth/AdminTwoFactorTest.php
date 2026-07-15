@@ -112,4 +112,42 @@ class AdminTwoFactorTest extends TestCase
             ->getJson('/api/v1/__op_probe')
             ->assertOk();
     }
+
+    public function test_requires_two_factor_setup_usa_office_selecionado_nao_primeira_membership(): void
+    {
+        config()->set('fortify.two_factor_required', true);
+
+        $officeViewer = Office::factory()->create(['name' => 'Viewer First']);
+        $officeAdmin = Office::factory()->create(['name' => 'Admin Selected']);
+
+        // Membership #1 VIEWER, #2 ADMIN — selected_office_id aponta para ADMIN sem TOTP
+        $user = User::factory()->create();
+        $officeViewer->users()->attach($user->id, [
+            'role' => OfficeRole::Viewer->value,
+            'is_active' => true,
+        ]);
+        $officeAdmin->users()->attach($user->id, [
+            'role' => OfficeRole::Admin->value,
+            'is_active' => true,
+        ]);
+        $user->forceFill(['selected_office_id' => $officeAdmin->id])->save();
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('data.office.id', $officeAdmin->id)
+            ->assertJsonPath('data.role', OfficeRole::Admin->value)
+            ->assertJsonPath('data.requires_two_factor_setup', true);
+
+        // Inverso: selected = VIEWER (primeira membership ADMIN) → não deve forçar setup
+        $user->forceFill(['selected_office_id' => $officeViewer->id])->save();
+        app(\App\Support\CurrentOffice::class)->clear();
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('data.office.id', $officeViewer->id)
+            ->assertJsonPath('data.role', OfficeRole::Viewer->value)
+            ->assertJsonPath('data.requires_two_factor_setup', false);
+    }
 }

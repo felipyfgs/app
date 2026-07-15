@@ -11,12 +11,14 @@ use App\Exceptions\Adn\DocumentDecodeException;
 use App\Models\OfficeDistributionCursor;
 use App\Models\OfficeDistributionRun;
 use App\Services\Certificates\OfficeCredentialResolver;
+use App\Services\Operations\OperationsMetrics;
+use App\Services\Operations\StructuredLogger;
 use App\Services\Sefaz\OfficeCteAutXmlPageProcessor;
 use App\Support\CteAutXmlFeature;
+use App\Support\LogSanitizer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -44,6 +46,8 @@ class SyncOfficeCteAutXmlDistDfeJob implements ShouldQueue
         SefazCteDistDfeClient $client,
         OfficeCteAutXmlPageProcessor $processor,
         OfficeCredentialResolver $resolver,
+        StructuredLogger $logger,
+        OperationsMetrics $metrics,
     ): void {
         if (! CteAutXmlFeature::isGloballyEnabled()) {
             return;
@@ -59,9 +63,13 @@ class SyncOfficeCteAutXmlDistDfeJob implements ShouldQueue
         }
 
         if ($cursor->external_consumer_status === 'EXTERNAL_CONSUMER_CONFLICT') {
-            Log::warning('sefaz.cte_autxml.external_consumer_conflict', [
+            $logger->warning('sefaz.cte_autxml.external_consumer_conflict', [
                 'cursor_id' => $cursor->id,
-                'office_id' => $cursor->office_id,
+            ], $cursor->office_id);
+            $metrics->increment('cte.sync', 1, [
+                'channel' => CaptureChannel::CteAutXmlDistDfe->value,
+                'result' => 'external_consumer',
+                'stream' => 'office',
             ]);
 
             return;
@@ -129,7 +137,7 @@ class SyncOfficeCteAutXmlDistDfeJob implements ShouldQueue
                     $run->save();
                 }
 
-                if ($page->isAbuse() || $page->isEndOfQueue() || $page->isEmpty()) {
+                if ($page->isAbuse() || $page->isAuthError() || $page->isEndOfQueue() || $page->isEmpty()) {
                     break;
                 }
 
@@ -162,14 +170,27 @@ class SyncOfficeCteAutXmlDistDfeJob implements ShouldQueue
                 $run->save();
             }
 
-            Log::info('sefaz.cte_autxml.job.done', [
+            $logger->info('sefaz.cte_autxml.job.done', [
                 'cursor_id' => $cursor->id,
-                'office_id' => $cursor->office_id,
                 'pages' => $pages,
                 'documents' => $totalDocs,
                 'quarantined' => $totalQuarantine,
                 'last_nsu' => $cursor->last_nsu,
+                'trigger' => $this->trigger,
+            ], $cursor->office_id);
+            $metrics->increment('cte.sync.pages', $pages, [
+                'channel' => CaptureChannel::CteAutXmlDistDfe->value,
+                'stream' => 'office',
             ]);
+            $metrics->increment('cte.documents', $totalDocs, [
+                'channel' => CaptureChannel::CteAutXmlDistDfe->value,
+                'result' => 'sync',
+            ]);
+            if ($totalQuarantine > 0) {
+                $metrics->increment('cte.quarantine', $totalQuarantine, [
+                    'channel' => CaptureChannel::CteAutXmlDistDfe->value,
+                ]);
+            }
         } catch (DocumentDecodeException $e) {
             $cursor->refresh();
             $this->failCursor(
@@ -178,15 +199,26 @@ class SyncOfficeCteAutXmlDistDfeJob implements ShouldQueue
                 $e->getMessage(),
                 permanent: $cursor->status === SyncCursorStatus::Blocked,
             );
+            $metrics->increment('cte.sync', 1, [
+                'channel' => CaptureChannel::CteAutXmlDistDfe->value,
+                'result' => 'decode_error',
+            ]);
         } catch (AdnPermanentException $e) {
             $this->failCursor($cursor, $run, $e->getMessage(), permanent: true);
+            $metrics->increment('cte.sync', 1, [
+                'channel' => CaptureChannel::CteAutXmlDistDfe->value,
+                'result' => 'blocked',
+            ]);
         } catch (AdnRetryableException $e) {
             $this->failCursor($cursor, $run, $e->getMessage(), permanent: false);
-        } catch (Throwable $e) {
-            Log::error('sefaz.cte_autxml.job.error', [
-                'cursor_id' => $this->officeDistributionCursorId,
-                'message' => class_basename($e).': sanitized',
+            $metrics->increment('cte.sync', 1, [
+                'channel' => CaptureChannel::CteAutXmlDistDfe->value,
+                'result' => 'retryable',
             ]);
+        } catch (Throwable $e) {
+            $logger->error('sefaz.cte_autxml.job.error', [
+                'cursor_id' => $this->officeDistributionCursorId,
+            ], $cursor->office_id, $e);
             $this->failCursor($cursor, $run, 'Falha interna no job CT-e autXML.', permanent: false);
             throw $e;
         } finally {
@@ -201,7 +233,8 @@ class SyncOfficeCteAutXmlDistDfeJob implements ShouldQueue
         bool $permanent,
     ): void {
         $cursor->status = $permanent ? SyncCursorStatus::Blocked : SyncCursorStatus::Idle;
-        $cursor->last_error = mb_substr($message, 0, 500);
+        $safeMessage = LogSanitizer::scrubString($message);
+        $cursor->last_error = $safeMessage;
         $cursor->locked_at = null;
         $cursor->lock_owner = null;
         $cursor->next_sync_at = now()->addHours(
@@ -213,7 +246,7 @@ class SyncOfficeCteAutXmlDistDfeJob implements ShouldQueue
 
         if ($run) {
             $run->status = 'FAILED';
-            $run->error_message = mb_substr($message, 0, 500);
+            $run->error_message = $safeMessage;
             $run->finished_at = now();
             $run->save();
         }

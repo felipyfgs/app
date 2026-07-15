@@ -13,6 +13,8 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 /**
  * Troca explícita de tenant entre memberships ativas.
  * Nunca confia office_id como autoridade sem revalidar membership.
+ *
+ * Persistência: `users.selected_office_id` (durável) + sessão SPA quando disponível.
  */
 final class TenantSwitchService
 {
@@ -49,7 +51,6 @@ final class TenantSwitchService
                 result: 'DENIED',
                 context: [
                     'from_office_id' => $fromOfficeId,
-                    // Não logar o target real de forma que vaze inventário; só flag.
                     'reason' => 'no_active_membership',
                 ],
                 userId: $user->id,
@@ -61,10 +62,13 @@ final class TenantSwitchService
 
         $office = $membership->office;
 
+        // Preferência durável (funciona sem sessão SPA / token / testes).
+        $user->forceFill(['selected_office_id' => $office->id])->save();
+
         if ($request->hasSession()) {
             $request->session()->put(self::SESSION_KEY, $office->id);
-            // Rotaciona id de sessão após troca de contexto sensível.
-            $request->session()->migrate(true);
+            // Rotaciona id de sessão sem destroy (mantém atributos no driver array).
+            $request->session()->regenerate();
         }
 
         $this->currentOffice->clear();
@@ -88,7 +92,7 @@ final class TenantSwitchService
     /**
      * Lista memberships ativas do usuário (sem conteúdo fiscal).
      *
-     * @return list<array{office_id: int, office_name: string, office_slug: string, role: string, is_current: bool}>
+     * @return list<array{office_id: int, office_name: string|null, office_slug: string|null, role: string, is_current: bool}>
      */
     public function listMemberships(User $user): array
     {

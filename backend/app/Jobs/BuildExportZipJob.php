@@ -3,15 +3,21 @@
 namespace App\Jobs;
 
 use App\Contracts\SecureObjectStore;
+use App\DTO\Fiscal\Module\ModulePortfolioFilters;
 use App\Enums\DocumentDirection;
 use App\Enums\DocumentKind;
+use App\Enums\FiscalDataOrigin;
+use App\Enums\FiscalModuleKey;
 use App\Enums\FiscalRole;
 use App\Models\CteDocument;
 use App\Models\Export;
 use App\Models\NfeDocument;
 use App\Models\NfseEvent;
 use App\Models\NfseNote;
+use App\Models\Office;
+use App\Services\FiscalMonitoring\ModulePortfolio\ModulePortfolioQueryService;
 use App\Services\Vault\DocumentVaultReader;
+use App\Support\LogSanitizer;
 use App\Support\NfseNoteStatus;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Builder;
@@ -31,7 +37,7 @@ class BuildExportZipJob implements ShouldQueue
 
     public function __construct(public int $exportId) {}
 
-    public function handle(SecureObjectStore $store): void
+    public function handle(SecureObjectStore $store, ModulePortfolioQueryService $portfolio): void
     {
         $export = Export::query()->find($this->exportId);
         if ($export === null) {
@@ -52,6 +58,16 @@ class BuildExportZipJob implements ShouldQueue
             }
 
             $filters = $export->filters ?? [];
+
+            if (($filters['export_scope'] ?? null) === 'fiscal_portfolio') {
+                // Sempre gera manifesto + CSV/JSON (mesmo com 0 clientes no filtro).
+                $count = $this->addFiscalPortfolioEntries($zip, $export, $filters, $portfolio);
+                $zip->close();
+                $this->markReady($export, $path, $count);
+
+                return;
+            }
+
             $kinds = $this->resolveKinds($filters);
             $count = 0;
             $seen = [];
@@ -301,13 +317,7 @@ class BuildExportZipJob implements ShouldQueue
                 return;
             }
 
-            $export->status = 'READY';
-            $export->storage_path = $path;
-            $export->byte_size = filesize($path) ?: 0;
-            $export->files_count = $count;
-            $export->expires_at = now()->addHours(24);
-            $export->completed_at = now();
-            $export->save();
+            $this->markReady($export, $path, $count);
         } catch (Throwable $e) {
             if (is_file($path)) {
                 @unlink($path);
@@ -318,6 +328,174 @@ class BuildExportZipJob implements ShouldQueue
             $export->save();
             report($e);
         }
+    }
+
+    /**
+     * Carteira fiscal sanitizada: CSV + JSON + manifesto (marcação DEMO/SIMULATED).
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    private function addFiscalPortfolioEntries(
+        ZipArchive $zip,
+        Export $export,
+        array $filters,
+        ModulePortfolioQueryService $portfolio,
+    ): int {
+        $module = FiscalModuleKey::tryFromRoute((string) ($filters['module_key'] ?? ''));
+        if ($module === null || $module === FiscalModuleKey::Dashboard) {
+            throw new \RuntimeException('Módulo fiscal inválido no export.');
+        }
+
+        $office = Office::query()->find($export->office_id);
+        if ($office === null) {
+            throw new \RuntimeException('Escritório do export não encontrado.');
+        }
+
+        $portfolioFilters = new ModulePortfolioFilters(
+            page: 1,
+            perPage: 100,
+            q: isset($filters['q']) && is_string($filters['q']) ? $filters['q'] : null,
+            situation: isset($filters['situation']) && is_string($filters['situation'])
+                ? strtoupper($filters['situation'])
+                : null,
+            competence: isset($filters['competence']) && is_string($filters['competence'])
+                ? $filters['competence']
+                : null,
+            submodule: isset($filters['submodule']) && is_string($filters['submodule'])
+                ? strtoupper($filters['submodule'])
+                : null,
+            clientId: isset($filters['client_id']) ? (int) $filters['client_id'] : null,
+        );
+
+        $payload = $portfolio->exportSanitizedRows($office, $module, $portfolioFilters);
+        /** @var FiscalDataOrigin $origin */
+        $origin = $payload['data_origin'];
+        $isDemo = (bool) $payload['is_demonstration'];
+        /** @var list<array<string, mixed>> $rows */
+        $rows = $payload['rows'];
+
+        $manifest = [
+            'export_id' => $export->id,
+            'export_scope' => 'fiscal_portfolio',
+            'module_key' => $module->value,
+            'module_label' => $module->label(),
+            'filters' => [
+                'module_key' => $module->value,
+                'situation' => $portfolioFilters->situation,
+                'competence' => $portfolioFilters->competence,
+                'q' => $portfolioFilters->q,
+                'submodule' => $portfolioFilters->submodule,
+                'client_id' => $portfolioFilters->clientId,
+            ],
+            'data_origin' => $origin->value,
+            'data_origin_label' => $origin->label(),
+            'is_demonstration' => $isDemo,
+            'demonstration_banner' => $isDemo
+                ? 'DEMONSTRAÇÃO — dados sem validade fiscal; não utilizar para obrigações reais.'
+                : null,
+            'row_count' => count($rows),
+            'total_in_scope' => $payload['total'],
+            'generated_at' => now()->toIso8601String(),
+            'sanitization' => [
+                'cnpj_masked' => true,
+                'no_secrets' => true,
+                'no_xml' => true,
+                'no_vault_ids' => true,
+            ],
+            // office_id NÃO é exposto no manifesto público do ZIP além do path de storage
+            // (já isolado). Identidade comercial do tenant fica fora do artefato.
+        ];
+
+        $count = 0;
+
+        $zip->addFromString(
+            'manifest.json',
+            (string) json_encode($manifest, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+        );
+        $count++;
+
+        $zip->addFromString(
+            'portfolio.json',
+            (string) json_encode([
+                'manifest' => [
+                    'module_key' => $module->value,
+                    'data_origin' => $origin->value,
+                    'is_demonstration' => $isDemo,
+                    'row_count' => count($rows),
+                ],
+                'data' => $rows,
+            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+        );
+        $count++;
+
+        $zip->addFromString('portfolio.csv', $this->buildPortfolioCsv($rows));
+        $count++;
+
+        if ($isDemo) {
+            $zip->addFromString(
+                'DEMONSTRACAO.txt',
+                "DEMONSTRAÇÃO / DADOS SINTÉTICOS\n"
+                ."Origem: {$origin->value} ({$origin->label()})\n"
+                ."Este arquivo NÃO possui validade fiscal.\n"
+                ."Não utilize para entrega, recolhimento ou prova junto a órgãos públicos.\n"
+            );
+            $count++;
+        }
+
+        return $count;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function buildPortfolioCsv(array $rows): string
+    {
+        $headers = [
+            'module_key',
+            'client_id',
+            'legal_name',
+            'display_name',
+            'cnpj_masked',
+            'root_cnpj_masked',
+            'competence',
+            'situation',
+            'coverage',
+            'data_origin',
+            'last_consulted_at',
+            'next_deadline_at',
+            'next_action',
+        ];
+
+        $fh = fopen('php://temp', 'r+');
+        if ($fh === false) {
+            throw new \RuntimeException('Falha ao abrir buffer CSV.');
+        }
+
+        fputcsv($fh, $headers, ',', '"', '\\');
+        foreach ($rows as $row) {
+            $line = [];
+            foreach ($headers as $h) {
+                $val = $row[$h] ?? '';
+                $line[] = is_scalar($val) || $val === null ? (string) ($val ?? '') : '';
+            }
+            fputcsv($fh, $line, ',', '"', '\\');
+        }
+        rewind($fh);
+        $csv = stream_get_contents($fh) ?: '';
+        fclose($fh);
+
+        return $csv;
+    }
+
+    private function markReady(Export $export, string $path, int $count): void
+    {
+        $export->status = 'READY';
+        $export->storage_path = $path;
+        $export->byte_size = filesize($path) ?: 0;
+        $export->files_count = $count;
+        $export->expires_at = now()->addHours(24);
+        $export->completed_at = now();
+        $export->save();
     }
 
     /**
@@ -346,7 +524,11 @@ class BuildExportZipJob implements ShouldQueue
             $trim = ltrim($bytes);
             if ($trim !== '' && ($trim[0] === '{' || $trim[0] === '[')) {
                 $skipped[] = ['kind' => $kind, 'access_key' => $accessKey, 'reason' => 'conteudo_nao_xml'];
-                Log::warning('export.vault_not_xml', ['kind' => $kind, 'access_key' => $accessKey]);
+                // Nunca logar access_key completa — só prefixo; contexto via LogSanitizer.
+                Log::warning('export.vault_not_xml', LogSanitizer::redact([
+                    'kind' => $kind,
+                    'key_hint' => $this->maskAccessKeyForLog($accessKey),
+                ]));
 
                 return null;
             }
@@ -354,14 +536,25 @@ class BuildExportZipJob implements ShouldQueue
             return $bytes;
         } catch (Throwable $e) {
             $skipped[] = ['kind' => $kind, 'access_key' => $accessKey, 'reason' => 'vault_inacessivel'];
-            Log::warning('export.vault_read_failed', [
+            Log::warning('export.vault_read_failed', LogSanitizer::redact([
                 'kind' => $kind,
-                'access_key' => $accessKey,
-                'message' => $e->getMessage(),
-            ]);
+                'key_hint' => $this->maskAccessKeyForLog($accessKey),
+                'message' => LogSanitizer::scrubString($e->getMessage()),
+            ]));
 
             return null;
         }
+    }
+
+    /** Prefixo seguro para logs (nunca chave completa de 44 dígitos). */
+    private function maskAccessKeyForLog(string $accessKey): string
+    {
+        $key = strtoupper(preg_replace('/\s+/', '', $accessKey) ?? '');
+        if ($key === '') {
+            return '';
+        }
+
+        return mb_substr($key, 0, 8).'…';
     }
 
     /**

@@ -5,7 +5,7 @@ namespace App\Domain\Sefaz;
 /**
  * Página de distribuição DistDFe (retDistDFeInt).
  *
- * cStat: 138 docs · 137 nenhum · 656 consumo indevido
+ * cStat: 138 docs · 137 nenhum · 593 cert/CNPJ · 656 consumo indevido
  *
  * @param  list<DistDfeDocumentDto>  $documents
  */
@@ -33,6 +33,12 @@ final readonly class DistDfePageDto
     public function isAbuse(): bool
     {
         return $this->cStat === '656';
+    }
+
+    /** Certificado ou CNPJ consultado rejeitado (permanente até correção operacional). */
+    public function isAuthError(): bool
+    {
+        return $this->cStat === '593';
     }
 
     public function isEndOfQueue(): bool

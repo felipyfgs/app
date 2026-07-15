@@ -2,11 +2,13 @@
 
 namespace App\Console\Commands;
 
+use App\Contracts\SvrsPortalEgressGovernor;
 use App\Jobs\PlanOutboundDeadlineScheduleJob;
 use App\Jobs\RecoverSvrsNfceXmlJob;
 use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\SvrsNfceRecoveryStatus;
 use App\Models\MaOutboundRetrievalRequest;
+use App\Services\Outbound\OutboundDeadlineFairQueue;
 use Illuminate\Console\Command;
 
 class DispatchOutboundDeadlinePlannerCommand extends Command
@@ -39,6 +41,33 @@ class DispatchOutboundDeadlinePlannerCommand extends Command
         }
 
         $limit = (int) config('outbound_deadline.dispatch_batch_size', 20);
+        try {
+            $governor = app(SvrsPortalEgressGovernor::class);
+            $health = $governor->cohortHealth();
+            if (! $governor->isCallAllowed(false) || ($health['state'] ?? 'open') !== 'closed') {
+                $this->warn('Governador SVRS sem capacidade automática — preserve o backlog e use fallback assistido.');
+
+                return self::SUCCESS;
+            }
+            $fraction = min(1.0, max(0.0, (float) config('outbound_deadline.auto_queue_capacity_fraction', 0.60)));
+            $remaining = min(
+                (int) ($health['exchanges_hour_remaining'] ?? 0),
+                (int) ($health['exchanges_day_remaining'] ?? 0),
+            );
+            $perTransaction = max(1, (int) config('outbound_deadline.exchanges_per_transaction', 2));
+            $limit = min($limit, (int) floor(($remaining * $fraction) / $perTransaction));
+        } catch (\Throwable) {
+            $this->warn('Governador SVRS indisponível — dispatch fail-closed; backlog preservado.');
+
+            return self::SUCCESS;
+        }
+
+        if ($limit < 1) {
+            $this->warn('Budget preventivo sem slots para auto-queue; priorize autXML, XML/ZIP ou pacote oficial.');
+
+            return self::SUCCESS;
+        }
+
         $dueQuery = MaOutboundRetrievalRequest::query()
             ->where('origin', OutboundRetrievalOrigin::SvrsPortalByKey)
             ->whereIn('recovery_status', [
@@ -52,15 +81,18 @@ class DispatchOutboundDeadlinePlannerCommand extends Command
             ->where(function ($q): void {
                 $q->whereNull('accommodation_until')->orWhere('accommodation_until', '<=', now());
             })
-            ->orderBy('due_at')
-            ->limit($limit);
+            // Overflow/capacidade em massa fica visível para fallback, sem rajada no portal.
+            ->where('capacity_at_risk', false)
+            ->limit(max($limit, $limit * 10));
 
         // Mesmo filtro de office do planner: --office=N não pode despachar slots de outros escritórios.
         if ($office !== null) {
             $dueQuery->where('office_id', $office);
         }
 
-        $due = $dueQuery->get();
+        $candidates = $dueQuery->get();
+        $fairQueue = app(OutboundDeadlineFairQueue::class);
+        $due = $fairQueue->fairSelect($fairQueue->order($candidates), $limit);
 
         $n = 0;
         $satisfaction = app(\App\Services\Outbound\OutboundDeadlineSatisfactionService::class);

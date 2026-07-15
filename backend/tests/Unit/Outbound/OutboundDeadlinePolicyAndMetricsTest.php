@@ -460,6 +460,13 @@ class OutboundDeadlinePolicyAndMetricsTest extends TestCase
             'accommodation_until' => now()->subMinute(),
             'created_at' => now()->subDays(2),
         ]);
+        $reqRisk = $reqA->replicate();
+        $reqRisk->forceFill([
+            'access_key' => '35260711222333000181550010000000011234567922',
+            'capacity_at_risk' => true,
+            'next_attempt_at' => now()->subMinute(),
+            'accommodation_until' => now()->subMinute(),
+        ])->save();
         $reqB = MaOutboundRetrievalRequest::query()->create([
             'office_id' => $officeB->id,
             'outbound_capture_profile_id' => $profileB->id,
@@ -491,6 +498,9 @@ class OutboundDeadlinePolicyAndMetricsTest extends TestCase
         });
         Queue::assertNotPushed(RecoverSvrsNfceXmlJob::class, function (RecoverSvrsNfceXmlJob $job) use ($reqB) {
             return $job->retrievalRequestId === $reqB->id;
+        });
+        Queue::assertNotPushed(RecoverSvrsNfceXmlJob::class, function (RecoverSvrsNfceXmlJob $job) use ($reqRisk) {
+            return $job->retrievalRequestId === $reqRisk->id;
         });
         Queue::assertPushed(RecoverSvrsNfceXmlJob::class, 1);
     }

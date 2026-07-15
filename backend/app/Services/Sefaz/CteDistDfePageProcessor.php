@@ -3,6 +3,7 @@
 namespace App\Services\Sefaz;
 
 use App\Contracts\SecureObjectStore;
+use App\Contracts\CteXmlSignatureValidator;
 use App\Domain\Sefaz\DistDfeDocumentDto;
 use App\Domain\Sefaz\DistDfePageDto;
 use App\Enums\AdnDocumentType;
@@ -26,6 +27,7 @@ use App\Models\Establishment;
 use App\Models\FiscalDocumentQuarantine;
 use App\Services\Adn\DocumentDecoder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -44,6 +46,7 @@ final class CteDistDfePageProcessor
         private readonly CteXmlProjectionParser $parser,
         private readonly SecureObjectStore $store,
         private readonly DistDfeResponseParser $schemaHelper,
+        private readonly CteXmlSignatureValidator $signatureValidator,
     ) {}
 
     /**
@@ -53,14 +56,42 @@ final class CteDistDfePageProcessor
         ChannelSyncCursor $cursor,
         Establishment $establishment,
         DistDfePageDto $page,
+        bool $advanceSequentialCursor = true,
     ): array {
         if ($page->isAbuse()) {
+            $from = $cursor->status?->value;
             $cursor->status = SyncCursorStatus::Blocked;
             $cursor->last_cstat = $page->cStat;
             $cursor->last_xmotivo = mb_substr($page->xMotivo, 0, 255);
             $cursor->last_error = 'Consumo indevido SEFAZ CT-e (cStat 656). Aguardar ≥1h.';
             $cursor->next_sync_at = now()->addHours((float) config('sefaz.quiet_hours_after_empty', 1));
             $cursor->save();
+            \App\Models\ChannelSyncCursorTransition::record(
+                $cursor,
+                'cstat_656_circuit',
+                $from,
+                SyncCursorStatus::Blocked->value,
+                metadata: ['cstat' => '656'],
+            );
+
+            return ['documents' => 0, 'quarantined' => 0, 'advanced_to' => (int) $cursor->last_nsu];
+        }
+
+        if ($page->isAuthError()) {
+            $from = $cursor->status?->value;
+            $cursor->status = SyncCursorStatus::Blocked;
+            $cursor->last_cstat = $page->cStat;
+            $cursor->last_xmotivo = mb_substr($page->xMotivo, 0, 255);
+            $cursor->last_error = 'Certificado/CNPJ divergente SEFAZ CT-e (cStat 593).';
+            $cursor->next_sync_at = now()->addHours(1);
+            $cursor->save();
+            \App\Models\ChannelSyncCursorTransition::record(
+                $cursor,
+                'cstat_593_auth',
+                $from,
+                SyncCursorStatus::Blocked->value,
+                metadata: ['cstat' => '593'],
+            );
 
             return ['documents' => 0, 'quarantined' => 0, 'advanced_to' => (int) $cursor->last_nsu];
         }
@@ -68,7 +99,7 @@ final class CteDistDfePageProcessor
         $storedObjectIds = [];
 
         try {
-            return DB::transaction(function () use ($cursor, $establishment, $page, &$storedObjectIds) {
+            return DB::transaction(function () use ($cursor, $establishment, $page, $advanceSequentialCursor, &$storedObjectIds) {
                 $cursor = ChannelSyncCursor::query()->whereKey($cursor->id)->lockForUpdate()->firstOrFail();
                 $persisted = 0;
                 $quarantined = 0;
@@ -98,7 +129,17 @@ final class CteDistDfePageProcessor
                     $quarantined += $r['quarantined'];
                 }
 
-                // Autoridade do cursor: ultNSU da resposta (nunca max NSU de item)
+                // Path de reparo (consNSU): persiste docs sem mutar o stream sequencial
+                // (last_nsu, quiet period, saúde do cursor, circuit de decode).
+                if (! $advanceSequentialCursor) {
+                    return [
+                        'documents' => $persisted,
+                        'quarantined' => $quarantined,
+                        'advanced_to' => (int) $cursor->last_nsu,
+                    ];
+                }
+
+                // Autoridade do cursor sequencial: ultNSU da resposta (nunca max NSU de item)
                 $newNsu = $page->isEmpty()
                     ? (int) $cursor->last_nsu
                     : max((int) $cursor->last_nsu, $page->ultNsu);
@@ -129,7 +170,8 @@ final class CteDistDfePageProcessor
         } catch (Throwable $e) {
             $this->deleteStoredObjects($storedObjectIds);
 
-            if ($e instanceof DocumentDecodeException) {
+            // Circuit de decode falha só no DistDFe sequencial — reparo não bloqueia o stream.
+            if ($e instanceof DocumentDecodeException && $advanceSequentialCursor) {
                 $fresh = ChannelSyncCursor::query()->whereKey($cursor->id)->first();
                 if ($fresh) {
                     $fresh->consecutive_decode_failures++;
@@ -140,9 +182,31 @@ final class CteDistDfePageProcessor
                     }
                     $fresh->save();
                 }
+            } elseif ($e instanceof DocumentDecodeException) {
+                Log::warning('sefaz.cte.repair.decode_failed', [
+                    'channel_sync_cursor_id' => $cursor->id,
+                    'office_id' => $cursor->office_id,
+                    'establishment_id' => $cursor->establishment_id,
+                    'error' => mb_substr($e->getMessage(), 0, 200),
+                ]);
             }
             throw $e;
         }
+    }
+
+    /**
+     * Persiste o resultado de consNSU conhecido sem mover o cursor sequencial
+     * e sem efeitos colaterais de quiet/circuit/saúde do stream DistDFe.
+     * O pipeline transacional/idempotente de documentos é reutilizado.
+     *
+     * @return array{documents: int, quarantined: int, advanced_to: int}
+     */
+    public function processKnownNsuRepair(
+        ChannelSyncCursor $cursor,
+        Establishment $establishment,
+        DistDfePageDto $page,
+    ): array {
+        return $this->process($cursor, $establishment, $page, advanceSequentialCursor: false);
     }
 
     /**
@@ -161,6 +225,24 @@ final class CteDistDfePageProcessor
         $accessKey = $parsed['access_key'] ?? null;
         $consulted = strtoupper((string) $establishment->cnpj);
         $issuer = $parsed['issuer_cnpj'] ?? null;
+
+        $signature = ($parsed['is_summary'] ?? false)
+            ? SignatureVerificationResult::Valid
+            : $this->signatureValidator->validate($decoded['bytes']);
+        if ($signature === SignatureVerificationResult::Invalid) {
+            $this->quarantine(
+                $cursor,
+                $establishment,
+                $doc,
+                $decoded,
+                $accessKey,
+                $issuer,
+                QuarantineReason::InvalidSignature,
+                $storedObjectIds,
+            );
+
+            return ['promoted' => 0, 'quarantined' => 1];
+        }
 
         // Contrato: DistDFe do cliente não distribui XML principal ao próprio emitente
         if ($issuer !== null && $issuer === $consulted) {
@@ -214,7 +296,7 @@ final class CteDistDfePageProcessor
             $storedObjectIds,
         );
 
-        $this->recordAcquisition($cursor, $establishment, $dfe, $doc, $decoded['sha256']);
+        $this->recordAcquisition($cursor, $establishment, $dfe, $doc, $decoded['sha256'], $signature);
 
         foreach ($roles as $role) {
             DocumentInterest::query()->firstOrCreate(
@@ -255,6 +337,21 @@ final class CteDistDfePageProcessor
         $decoded = $this->decoder->decodeBase64Gzip($doc->contentBase64);
         $parsed = $this->parser->parse($decoded['bytes'], $family, $establishment->cnpj);
         $accessKey = $parsed['access_key'] ?? null;
+        $signature = $this->signatureValidator->validate($decoded['bytes']);
+        if ($signature === SignatureVerificationResult::Invalid) {
+            $this->quarantine(
+                $cursor,
+                $establishment,
+                $doc,
+                $decoded,
+                $accessKey,
+                $parsed['issuer_cnpj'] ?? null,
+                QuarantineReason::InvalidSignature,
+                $storedObjectIds,
+            );
+
+            return ['promoted' => 0, 'quarantined' => 1];
+        }
 
         $dfe = $this->findOrStoreDocument(
             $cursor,
@@ -265,7 +362,7 @@ final class CteDistDfePageProcessor
             $storedObjectIds,
         );
 
-        $this->recordAcquisition($cursor, $establishment, $dfe, $doc, $decoded['sha256']);
+        $this->recordAcquisition($cursor, $establishment, $dfe, $doc, $decoded['sha256'], $signature);
 
         DocumentInterest::query()->firstOrCreate(
             [
@@ -389,6 +486,7 @@ final class CteDistDfePageProcessor
         DfeDocument $dfe,
         DistDfeDocumentDto $doc,
         string $sha256,
+        SignatureVerificationResult $signature,
     ): void {
         DocumentAcquisition::query()->firstOrCreate(
             [
@@ -402,7 +500,7 @@ final class CteDistDfePageProcessor
                 'channel' => CaptureChannel::CteDistDfe,
                 'nsu' => $doc->nsu,
                 'artifact_quality' => DocumentArtifactQuality::Original,
-                'signature_result' => SignatureVerificationResult::Valid, // validação estrita em serviço dedicado futuro
+                'signature_result' => $signature,
                 'is_canonical' => true,
                 'establishment_id' => $establishment->id,
             ]

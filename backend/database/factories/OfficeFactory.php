@@ -2,6 +2,8 @@
 
 namespace Database\Factories;
 
+use App\Enums\SubscriptionPlan;
+use App\Enums\SubscriptionStatus;
 use App\Models\Office;
 use App\Models\OfficeSubscription;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -13,6 +15,9 @@ use Illuminate\Support\Str;
 class OfficeFactory extends Factory
 {
     protected $model = Office::class;
+
+    /** Quando false, não cria assinatura ACTIVE no afterCreating (evita colisão com OfficeSubscriptionFactory). */
+    public static bool $autoSubscription = true;
 
     public function definition(): array
     {
@@ -28,17 +33,43 @@ class OfficeFactory extends Factory
     public function configure(): static
     {
         return $this->afterCreating(function (Office $office): void {
-            if (! OfficeSubscription::query()->where('office_id', $office->id)->exists()) {
-                OfficeSubscription::factory()->forOffice($office)->active()->create();
+            if (! static::$autoSubscription) {
+                return;
             }
+
+            if (OfficeSubscription::query()->where('office_id', $office->id)->exists()) {
+                return;
+            }
+
+            $plan = SubscriptionPlan::Professional;
+            $limits = $plan->defaultLimits();
+            $now = now();
+
+            // create() direto (não factory) para não reentrar no ciclo office→subscription.
+            OfficeSubscription::query()->create([
+                'office_id' => $office->id,
+                'plan' => $plan,
+                'status' => SubscriptionStatus::Active,
+                'trial_ends_at' => null,
+                'starts_at' => $now,
+                'ends_at' => null,
+                'current_period_starts_at' => $now->copy()->startOfMonth(),
+                'current_period_ends_at' => $now->copy()->endOfMonth(),
+                'monthly_api_quota' => $limits['monthly_api_quota'],
+                'max_clients' => $limits['max_clients'],
+                'max_users' => $limits['max_users'],
+                'limits' => $limits,
+                'notes' => null,
+            ]);
         });
     }
 
     public function withoutSubscription(): static
     {
-        return $this->state(fn () => [])->afterCreating(function (): void {
-            // no-op marker; callers that need bare office should delete subscription or use withoutEvents
+        return $this->afterMaking(function (): void {
+            static::$autoSubscription = false;
+        })->afterCreating(function (): void {
+            static::$autoSubscription = true;
         });
     }
 }
-

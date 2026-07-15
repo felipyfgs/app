@@ -12,6 +12,11 @@ use RuntimeException;
 /**
  * Contexto do tenant ativo derivado exclusivamente de membership autorizada.
  * Nunca confia office_id fornecido livremente pelo cliente.
+ *
+ * Ordem de resolução:
+ * 1. Sessão SPA (`current_office_id`) se membership ainda válida
+ * 2. `users.selected_office_id` (troca explícita persistida)
+ * 3. Primeira membership ativa (determinística por id)
  */
 class CurrentOffice
 {
@@ -53,27 +58,34 @@ class CurrentOffice
     }
 
     /**
-     * Resolve membership ativa: preferência pela sessão (troca explícita),
-     * senão a primeira membership ativa determinística.
+     * Resolve membership ativa: sessão → preferência persistida → primeira ativa.
      */
     public function resolveMembership(User $user): ?OfficeMembership
     {
+        $candidates = [];
+
         $sessionOfficeId = $this->sessionOfficeId();
-
         if ($sessionOfficeId !== null) {
-            $fromSession = $user->memberships()
-                ->where('office_id', $sessionOfficeId)
-                ->where('is_active', true)
-                ->whereHas('office', fn ($q) => $q->where('is_active', true))
-                ->with('office')
-                ->first();
+            $candidates[] = $sessionOfficeId;
+        }
 
-            if ($fromSession !== null) {
-                return $fromSession;
+        if ($user->selected_office_id !== null) {
+            $candidates[] = (int) $user->selected_office_id;
+        }
+
+        foreach (array_unique($candidates) as $officeId) {
+            $membership = $this->activeMembershipFor($user, $officeId);
+            if ($membership !== null) {
+                return $membership;
             }
 
-            // Session stale (membership revogada / office inativo): limpar chave.
-            $this->forgetSessionOfficeId();
+            // Preferência inválida (revogada / office inativo)
+            if ($sessionOfficeId === $officeId) {
+                $this->forgetSessionOfficeId();
+            }
+            if ((int) $user->selected_office_id === $officeId) {
+                $user->forceFill(['selected_office_id' => null])->saveQuietly();
+            }
         }
 
         return $user->memberships()
@@ -138,6 +150,16 @@ class CurrentOffice
         if ($this->id() !== $officeId) {
             abort(404);
         }
+    }
+
+    private function activeMembershipFor(User $user, int $officeId): ?OfficeMembership
+    {
+        return $user->memberships()
+            ->where('office_id', $officeId)
+            ->where('is_active', true)
+            ->whereHas('office', fn ($q) => $q->where('is_active', true))
+            ->with('office')
+            ->first();
     }
 
     private function sessionOfficeId(): ?int

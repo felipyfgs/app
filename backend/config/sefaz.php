@@ -76,6 +76,7 @@ return [
     ],
 
     'cte' => [
+        'require_signature' => filter_var(env('SEFAZ_CTE_REQUIRE_SIGNATURE', true), FILTER_VALIDATE_BOOL),
         'production' => env(
             'SEFAZ_CTE_DISTDFE_URL',
             'https://www1.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx'

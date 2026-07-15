@@ -3,7 +3,10 @@
 namespace Database\Seeders;
 
 use App\Enums\OfficeRole;
+use App\Enums\SubscriptionPlan;
+use App\Enums\SubscriptionStatus;
 use App\Models\Office;
+use App\Models\OfficeSubscription;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -24,6 +27,8 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Escritório Demo', 'is_active' => true],
         );
 
+        $this->ensureActiveSubscription($office);
+
         // Operador: acessa o painel sem exigir TOTP
         if (! User::query()->where('email', 'operador@example.com')->exists()) {
             User::factory()
@@ -32,6 +37,7 @@ class DatabaseSeeder extends Seeder
                     'name' => 'Operador Demo',
                     'email' => 'operador@example.com',
                     'password' => 'password',
+                    'selected_office_id' => $office->id,
                 ]);
         }
 
@@ -44,6 +50,7 @@ class DatabaseSeeder extends Seeder
                     'name' => 'Admin Demo',
                     'email' => 'admin@example.com',
                     'password' => 'password',
+                    'selected_office_id' => $office->id,
                 ]);
         }
 
@@ -55,10 +62,49 @@ class DatabaseSeeder extends Seeder
                     'name' => 'Viewer Demo',
                     'email' => 'viewer@example.com',
                     'password' => 'password',
+                    'selected_office_id' => $office->id,
                 ]);
         }
 
+        // Garante tenant ativo nos usuários demo já existentes
+        User::query()
+            ->whereIn('email', [
+                'operador@example.com',
+                'admin@example.com',
+                'viewer@example.com',
+            ])
+            ->whereNull('selected_office_id')
+            ->update(['selected_office_id' => $office->id]);
+
         // Catálogo rico: clientes, sync, notas, exportações (só local/testing)
         $this->call(DemoCatalogSeeder::class);
+
+        // Fixtures fiscais do hub de monitoramento (office demo only; guard interno)
+        $this->call(FiscalMonitoringDemoSeeder::class);
+    }
+
+    private function ensureActiveSubscription(Office $office): void
+    {
+        if (OfficeSubscription::query()->where('office_id', $office->id)->exists()) {
+            return;
+        }
+
+        $plan = SubscriptionPlan::Professional;
+        $limits = $plan->defaultLimits();
+        $now = now();
+
+        OfficeSubscription::query()->create([
+            'office_id' => $office->id,
+            'plan' => $plan,
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => $now,
+            'current_period_starts_at' => $now->copy()->startOfMonth(),
+            'current_period_ends_at' => $now->copy()->endOfMonth(),
+            'monthly_api_quota' => $limits['monthly_api_quota'],
+            'max_clients' => $limits['max_clients'],
+            'max_users' => $limits['max_users'],
+            'limits' => $limits,
+            'notes' => 'Assinatura ACTIVE criada no DatabaseSeeder (local/testing).',
+        ]);
     }
 }

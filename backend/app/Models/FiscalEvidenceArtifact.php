@@ -1,0 +1,95 @@
+<?php
+
+namespace App\Models;
+
+use App\Models\Concerns\BelongsToOffice;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use LogicException;
+
+/**
+ * Evidência oficial imutável (bytes no cofre; metadados sem paths internos).
+ */
+#[Fillable([
+    'office_id',
+    'run_id',
+    'vault_object_id',
+    'content_sha256',
+    'content_type',
+    'byte_size',
+    'source',
+    'source_version',
+    'observed_at',
+    'retention_until',
+    'is_immutable',
+    'metadata',
+    'created_at',
+])]
+class FiscalEvidenceArtifact extends Model
+{
+    use BelongsToOffice;
+
+    public $timestamps = false;
+
+    protected function casts(): array
+    {
+        return [
+            'byte_size' => 'integer',
+            'observed_at' => 'immutable_datetime',
+            'retention_until' => 'immutable_datetime',
+            'is_immutable' => 'boolean',
+            'metadata' => 'array',
+            'created_at' => 'immutable_datetime',
+        ];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (self $model): bool {
+            if ($model->is_immutable) {
+                $protected = [
+                    'office_id', 'run_id', 'vault_object_id', 'content_sha256',
+                    'content_type', 'byte_size', 'source', 'source_version',
+                    'observed_at', 'is_immutable',
+                ];
+                foreach ($protected as $col) {
+                    if ($model->isDirty($col)) {
+                        throw new LogicException(
+                            "Artefato de evidência fiscal é imutável (coluna: {$col})."
+                        );
+                    }
+                }
+            }
+
+            return true;
+        });
+    }
+
+    public function run(): BelongsTo
+    {
+        return $this->belongsTo(FiscalMonitoringRun::class, 'run_id');
+    }
+
+    /**
+     * Metadados públicos — sem vault_object_id (path/id interno de cofre).
+     *
+     * @return array<string, mixed>
+     */
+    public function toPublicArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'office_id' => $this->office_id,
+            'run_id' => $this->run_id,
+            'content_sha256' => $this->content_sha256,
+            'content_type' => $this->content_type,
+            'byte_size' => $this->byte_size,
+            'source' => $this->source,
+            'source_version' => $this->source_version,
+            'observed_at' => $this->observed_at?->toIso8601String(),
+            'retention_until' => $this->retention_until?->toIso8601String(),
+            'created_at' => $this->created_at?->toIso8601String(),
+        ];
+    }
+}

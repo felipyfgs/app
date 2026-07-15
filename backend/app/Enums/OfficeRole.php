@@ -44,4 +44,10 @@ enum OfficeRole: string
     {
         return $this === self::Admin || $this === self::Operator;
     }
+
+    /** Operações fiscais mutantes (emissão/transmissão) — somente ADMIN. */
+    public function canMutateFiscal(): bool
+    {
+        return $this === self::Admin;
+    }
 }

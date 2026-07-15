@@ -108,6 +108,7 @@ class MaOutboundRetrievalRequest extends Model
         return [
             'id' => $this->id,
             'profile_id' => $this->outbound_capture_profile_id,
+            'number_state_id' => $this->outbound_number_state_id,
             'establishment_id' => $this->establishment_id,
             'environment' => $this->environment,
             'model' => $this->model instanceof OutboundFiscalModel ? $this->model->value : $this->model,

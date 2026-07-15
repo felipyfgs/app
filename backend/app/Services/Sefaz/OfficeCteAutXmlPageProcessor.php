@@ -3,6 +3,7 @@
 namespace App\Services\Sefaz;
 
 use App\Contracts\SecureObjectStore;
+use App\Contracts\CteXmlSignatureValidator;
 use App\Domain\Sefaz\DistDfeDocumentDto;
 use App\Domain\Sefaz\DistDfePageDto;
 use App\Enums\AdnDocumentType;
@@ -14,6 +15,7 @@ use App\Enums\FiscalRole;
 use App\Enums\QuarantineReason;
 use App\Enums\QuarantineResolutionStatus;
 use App\Enums\SyncCursorStatus;
+use App\Enums\SignatureVerificationResult;
 use App\Exceptions\Adn\DocumentDecodeException;
 use App\Models\CteDocument;
 use App\Models\CteEvent;
@@ -41,6 +43,7 @@ final class OfficeCteAutXmlPageProcessor
         private readonly CteArtifactQualityClassifier $quality,
         private readonly SecureObjectStore $store,
         private readonly DistDfeResponseParser $schemaHelper,
+        private readonly CteXmlSignatureValidator $signatureValidator,
     ) {}
 
     /**
@@ -171,6 +174,23 @@ final class OfficeCteAutXmlPageProcessor
         $accessKey = $parsed['access_key'] ?? null;
         $issuerCnpj = $parsed['issuer_cnpj'] ?? null;
         $autXml = $parsed['autxml_cnpjs'] ?? [];
+        $signature = $this->signatureValidator->validate(
+            $decoded['bytes'],
+            allowOfficialRedaction: (bool) ($parsed['has_official_redaction'] ?? false),
+        );
+        if ($signature === SignatureVerificationResult::Invalid) {
+            $this->quarantine(
+                $cursor,
+                $doc,
+                $decoded,
+                $accessKey,
+                $issuerCnpj,
+                QuarantineReason::InvalidSignature,
+                $storedObjectIds,
+            );
+
+            return ['promoted' => 0, 'quarantined' => 1];
+        }
 
         if (! in_array($queryCnpj, $autXml, true)) {
             $this->quarantine(
@@ -223,8 +243,8 @@ final class OfficeCteAutXmlPageProcessor
         $quality = $this->quality->classify(
             $parsed,
             fromOfficialAutXmlChannel: true,
-            signatureValid: true,
-            signatureChecked: false,
+            signatureValid: $signature === SignatureVerificationResult::Valid,
+            signatureChecked: true,
         );
 
         $dfe = $this->findOrStoreDocument(
@@ -325,6 +345,20 @@ final class OfficeCteAutXmlPageProcessor
         $decoded = $this->decoder->decodeBase64Gzip($doc->contentBase64);
         $parsed = $this->parser->parse($decoded['bytes'], $family, null);
         $accessKey = $parsed['access_key'] ?? null;
+        $signature = $this->signatureValidator->validate($decoded['bytes']);
+        if ($signature === SignatureVerificationResult::Invalid) {
+            $this->quarantine(
+                $cursor,
+                $doc,
+                $decoded,
+                $accessKey,
+                $parsed['issuer_cnpj'] ?? null,
+                QuarantineReason::InvalidSignature,
+                $storedObjectIds,
+            );
+
+            return ['promoted' => 0, 'quarantined' => 1];
+        }
 
         $dfe = $this->findOrStoreDocument(
             $cursor,
@@ -335,7 +369,12 @@ final class OfficeCteAutXmlPageProcessor
             $storedObjectIds,
         );
 
-        $quality = $this->quality->classify($parsed, true, true, false);
+        $quality = $this->quality->classify(
+            $parsed,
+            true,
+            $signature === SignatureVerificationResult::Valid,
+            true,
+        );
         $this->recordAcquisition($cursor, $dfe, $doc, $decoded['sha256'], $quality['quality'], $quality['signature'], null);
 
         if (! $accessKey) {

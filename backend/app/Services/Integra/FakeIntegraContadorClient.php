@@ -1,0 +1,413 @@
+<?php
+
+namespace App\Services\Integra;
+
+use App\Contracts\IntegraContadorClient;
+use App\DTO\Serpro\IntegraRequest;
+use App\DTO\Serpro\IntegraResponse;
+use App\Services\Integra\Dctfweb\DctfwebCodes;
+
+/**
+ * Client trial/CI — resultados SIMULATED por padrão (não viram evidência produtiva).
+ * Testes podem enfileirar respostas produtivas via queue().
+ */
+final class FakeIntegraContadorClient implements IntegraContadorClient
+{
+    /** @var array<string, list<IntegraResponse|callable(IntegraRequest): IntegraResponse>> */
+    private array $queue = [];
+
+    public int $calls = 0;
+
+    /** @var list<IntegraRequest> */
+    public array $history = [];
+
+    public function reset(): void
+    {
+        $this->queue = [];
+        $this->calls = 0;
+        $this->history = [];
+    }
+
+    /**
+     * @param  IntegraResponse|callable(IntegraRequest): IntegraResponse  $response
+     */
+    public function queue(
+        string $solution,
+        string $service,
+        string $operation,
+        IntegraResponse|callable $response,
+    ): void {
+        $key = $this->key($solution, $service, $operation);
+        $this->queue[$key] ??= [];
+        $this->queue[$key][] = $response;
+    }
+
+    public function execute(IntegraRequest $request): IntegraResponse
+    {
+        $this->calls++;
+        $this->history[] = $request;
+
+        $key = $this->key($request->solutionCode, $request->serviceCode, $request->operationCode);
+        if (! empty($this->queue[$key])) {
+            $next = array_shift($this->queue[$key]);
+
+            return is_callable($next) ? $next($request) : $next;
+        }
+
+        return $this->defaultResponse($request);
+    }
+
+    private function defaultResponse(IntegraRequest $request): IntegraResponse
+    {
+        $op = strtoupper($request->operationCode);
+        $svc = strtoupper($request->serviceCode);
+        $solution = strtoupper($request->solutionCode);
+        $period = (string) ($request->payload['competencia']
+            ?? $request->payload['periodo']
+            ?? $request->payload['ano']
+            ?? '2026-01');
+        $force = strtoupper((string) ($request->payload['force_status']
+            ?? $request->payload['scenario']
+            ?? ''));
+
+        // Integra-SN / Integra-MEI — corpos versionados (dto_version=1) para adapters SimplesMei
+        if ($solution === 'INTEGRA_SN' || $solution === 'INTEGRA_MEI') {
+            return new IntegraResponse(
+                success: true,
+                httpStatus: 200,
+                body: $this->simplesMeiBody($solution, $svc, $op, $period, $force),
+                headers: ['x-simulated' => '1'],
+                simulated: true,
+                correlationId: $request->correlationId,
+                latencyMs: 1,
+            );
+        }
+
+        // Mutantes: simulado sem efeito real
+        if (in_array($op, [DctfwebCodes::OP_TRANSMITIR, DctfwebCodes::OP_MIT_ENCERRAR], true)) {
+            return new IntegraResponse(
+                success: true,
+                httpStatus: 200,
+                body: [
+                    'simulated' => true,
+                    'message' => 'Mutação simulada (trial) — sem efeito fiscal real.',
+                    'competencia' => $period,
+                ],
+                headers: ['x-simulated' => '1'],
+                simulated: true,
+                correlationId: $request->correlationId,
+                latencyMs: 1,
+            );
+        }
+
+        if ($svc === DctfwebCodes::SERVICE_MIT || str_contains(strtoupper($request->solutionCode), 'MIT')) {
+            return new IntegraResponse(
+                success: true,
+                httpStatus: 200,
+                body: [
+                    'simulated' => true,
+                    'competencia' => $period,
+                    'status' => 'DESCONHECIDO',
+                    'encerrado' => false,
+                    'solution' => $request->solutionCode,
+                    'service' => $request->serviceCode,
+                    'operation' => $request->operationCode,
+                ],
+                headers: ['x-simulated' => '1'],
+                simulated: true,
+                correlationId: $request->correlationId,
+                latencyMs: 1,
+            );
+        }
+
+        if ($svc === DctfwebCodes::SERVICE_DCTFWEB || str_contains(strtoupper($request->solutionCode), 'DCTF')) {
+            return new IntegraResponse(
+                success: true,
+                httpStatus: 200,
+                body: [
+                    'simulated' => true,
+                    'competencia' => $period,
+                    'status' => 'DESCONHECIDO',
+                    'transmitida' => false,
+                    'solution' => $request->solutionCode,
+                    'service' => $request->serviceCode,
+                    'operation' => $request->operationCode,
+                ],
+                headers: ['x-simulated' => '1'],
+                simulated: true,
+                correlationId: $request->correlationId,
+                latencyMs: 1,
+            );
+        }
+
+        return new IntegraResponse(
+            success: true,
+            httpStatus: 200,
+            body: [
+                'simulated' => true,
+                'solution' => $request->solutionCode,
+                'service' => $request->serviceCode,
+                'operation' => $request->operationCode,
+                'message' => 'Resposta simulada do Integra Contador (trial).',
+            ],
+            headers: ['x-simulated' => '1'],
+            simulated: true,
+            correlationId: $request->correlationId,
+            latencyMs: 1,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function simplesMeiBody(
+        string $solution,
+        string $service,
+        string $operation,
+        string $period,
+        string $force,
+    ): array {
+        if ($service === 'PGDASD' && $operation === 'GERAR_DAS') {
+            return [
+                'dto_version' => '1',
+                'data' => [
+                    'competence' => $period !== '' ? $period : now()->format('Y-m'),
+                    'document_number' => 'DAS-SN-SIM-001',
+                    'due_date' => now()->addDays(20)->toDateString(),
+                    'amount' => 150.75,
+                    'emission_status' => 'ISSUED',
+                ],
+            ];
+        }
+
+        if ($service === 'PGDASD' && $operation === 'TRANSMITIR') {
+            return [
+                'dto_version' => '1',
+                'status' => 'TRANSMITIDA',
+                'data' => ['status' => 'TRANSMITIDA'],
+            ];
+        }
+
+        if ($service === 'PGDASD') {
+            $status = match ($force) {
+                'PENDING', 'PENDENTE', 'OMISSA' => 'PENDENTE',
+                'INCONCLUSIVO', 'UNKNOWN' => 'INCONCLUSIVO',
+                'NO_RECEIPT' => 'ENTREGUE',
+                default => 'ENTREGUE',
+            };
+            $receipt = ($status === 'ENTREGUE' && $force !== 'NO_RECEIPT')
+                ? 'REC-PGDASD-'.str_replace('-', '', $period !== '' ? $period : '000000')
+                : null;
+
+            return [
+                'dto_version' => '1',
+                'data' => [
+                    'competence' => $period !== '' ? $period : now()->format('Y-m'),
+                    'status' => $status,
+                    'receipt_number' => $receipt,
+                    'declaration_id' => 'DECL-PGDASD-1',
+                    'transmitted_at' => $receipt ? now()->toIso8601String() : null,
+                ],
+            ];
+        }
+
+        if ($service === 'DEFIS') {
+            $year = strlen($period) >= 4 ? substr($period, 0, 4) : (string) now()->year;
+            $status = match ($force) {
+                'PENDING', 'PENDENTE' => 'PENDENTE',
+                'INCONCLUSIVO' => 'INCONCLUSIVO',
+                default => 'ENTREGUE',
+            };
+
+            return [
+                'dto_version' => '1',
+                'data' => [
+                    'year' => $year,
+                    'status' => $status,
+                    'receipt_number' => $status === 'ENTREGUE' ? 'REC-DEFIS-'.$year : null,
+                ],
+            ];
+        }
+
+        if ($service === 'REGIME_APURACAO') {
+            if ($force === 'MEI_ONLY') {
+                return [
+                    'dto_version' => '1',
+                    'data' => [
+                        'current_regime' => 'MEI',
+                        'periods' => [[
+                            'regime' => 'MEI',
+                            'effective_from' => '2024-01-01',
+                            'effective_to' => null,
+                        ]],
+                    ],
+                ];
+            }
+            if ($force === 'REGIME_CHANGE') {
+                return [
+                    'dto_version' => '1',
+                    'data' => [
+                        'current_regime' => 'SIMPLES_NACIONAL',
+                        'periods' => [
+                            ['regime' => 'MEI', 'effective_from' => '2023-01-01', 'effective_to' => '2023-12-31'],
+                            ['regime' => 'SIMPLES_NACIONAL', 'effective_from' => '2024-01-01', 'effective_to' => null],
+                        ],
+                    ],
+                ];
+            }
+
+            return [
+                'dto_version' => '1',
+                'data' => [
+                    'current_regime' => 'SIMPLES_NACIONAL',
+                    'periods' => [[
+                        'regime' => 'SIMPLES_NACIONAL',
+                        'effective_from' => '2020-01-01',
+                        'effective_to' => null,
+                    ]],
+                ],
+            ];
+        }
+
+        if ($service === 'PGMEI' && $operation === 'GERAR_DAS') {
+            return [
+                'dto_version' => '1',
+                'data' => [
+                    'competence' => $period !== '' ? $period : now()->format('Y-m'),
+                    'document_number' => 'DAS-MEI-SIM-001',
+                    'due_date' => now()->addDays(20)->toDateString(),
+                    'amount' => 71.60,
+                    'emission_status' => 'ISSUED',
+                ],
+            ];
+        }
+
+        if ($service === 'PGMEI') {
+            $status = match ($force) {
+                'PENDING', 'PENDENTE' => 'PENDENTE',
+                'INCONCLUSIVO' => 'INCONCLUSIVO',
+                default => 'EMITIDO',
+            };
+
+            return [
+                'dto_version' => '1',
+                'data' => [
+                    'competence' => $period !== '' ? $period : now()->format('Y-m'),
+                    'status' => $status,
+                    'das_number' => $status === 'EMITIDO' ? 'DAS-MEI-1' : null,
+                    'due_date' => now()->addDays(10)->toDateString(),
+                    'amount' => 71.60,
+                ],
+            ];
+        }
+
+        if ($service === 'CCMEI') {
+            $status = match ($force) {
+                'INATIVO' => 'INATIVO',
+                'INCONCLUSIVO' => 'INCONCLUSIVO',
+                default => 'ATIVO',
+            };
+
+            return [
+                'dto_version' => '1',
+                'data' => [
+                    'status' => $status,
+                    'certificate_number' => $status === 'ATIVO' ? 'CCMEI-SIM-1' : null,
+                    'issued_at' => now()->toIso8601String(),
+                ],
+            ];
+        }
+
+        if ($service === 'DASN_SIMEI') {
+            $year = strlen($period) >= 4 ? substr($period, 0, 4) : (string) now()->year;
+            $status = match ($force) {
+                'PENDING', 'PENDENTE' => 'PENDENTE',
+                'INCONCLUSIVO' => 'INCONCLUSIVO',
+                default => 'ENTREGUE',
+            };
+
+            return [
+                'dto_version' => '1',
+                'data' => [
+                    'year' => $year,
+                    'status' => $status,
+                    'receipt_number' => $status === 'ENTREGUE' ? 'REC-DASN-'.$year : null,
+                ],
+            ];
+        }
+
+        return [
+            'dto_version' => '1',
+            'simulated' => true,
+            'solution' => $solution,
+            'service' => $service,
+            'operation' => $operation,
+            'message' => 'Resposta simulada SN/MEI genérica.',
+        ];
+    }
+
+    private function key(string $solution, string $service, string $operation): string
+    {
+        return strtoupper($solution).'|'.strtoupper($service).'|'.strtoupper($operation);
+    }
+
+    /** Helper de teste: recibo transmitido produtivo. */
+    public static function productiveRecibo(
+        string $periodKey = '2026-01',
+        string $receipt = 'REC-001',
+        bool $retificadora = false,
+        ?string $xmlHint = null,
+    ): IntegraResponse {
+        $body = [
+            'competencia' => $periodKey,
+            'status' => 'TRANSMITIDA',
+            'transmitida' => true,
+            'recibo' => $receipt,
+            'tipo' => $retificadora ? 'RETIFICADORA' : 'ORIGINAL',
+            'dataHoraTransmissao' => '2026-02-10T15:30:00-03:00',
+            'versao' => $retificadora ? '2' : '1',
+        ];
+        if ($xmlHint !== null) {
+            $body['xml'] = $xmlHint;
+        }
+
+        return new IntegraResponse(
+            success: true,
+            httpStatus: 200,
+            body: $body,
+            simulated: false,
+            correlationId: null,
+            latencyMs: 5,
+        );
+    }
+
+    public static function productiveMitEncerrado(string $periodKey = '2026-01'): IntegraResponse
+    {
+        return new IntegraResponse(
+            success: true,
+            httpStatus: 200,
+            body: [
+                'competencia' => $periodKey,
+                'status' => 'ENCERRADO',
+                'encerrado' => true,
+                'situacao' => 'ENCERRADO',
+                'dataEncerramento' => '2026-02-05T10:00:00-03:00',
+            ],
+            simulated: false,
+            latencyMs: 5,
+        );
+    }
+
+    public static function uncertainTimeout(): IntegraResponse
+    {
+        return new IntegraResponse(
+            success: false,
+            httpStatus: 504,
+            body: [],
+            errorCode: 'UNCERTAIN_TIMEOUT',
+            errorMessage: 'Timeout após envio — resultado incerto.',
+            simulated: false,
+            latencyMs: 30000,
+        );
+    }
+}

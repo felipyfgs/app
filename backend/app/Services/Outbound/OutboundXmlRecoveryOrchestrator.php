@@ -668,6 +668,11 @@ final class OutboundXmlRecoveryOrchestrator
         ?string $sha,
         $startedAt,
     ): void {
+        $this->metrics->increment('svrs_egress_results', 1, [
+            'model' => $this->profileModelCode($profile),
+            'outcome' => $failure?->value ?? $result->value,
+        ]);
+
         try {
             OutboundXmlRecoveryAttempt::query()->create([
                 'office_id' => $request->office_id,

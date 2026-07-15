@@ -8,6 +8,7 @@ Schedule::command('sefaz:dispatch-due-autxml')->everyMinute();
 Schedule::command('sefaz:dispatch-due-cte-autxml')->everyMinute();
 Schedule::command('sefaz:dispatch-ma-outbound-due')->everyMinute();
 Schedule::command('sefaz:dispatch-svrs-nfce-xml-recoveries')->everyMinute();
+Schedule::command('fiscal:dispatch-due-monitoring')->everyMinute();
 Schedule::command('outbound:deadline-plan')->hourly();
 Schedule::command('exports:purge-expired')->hourly();
 Schedule::command('import:purge-expired-spools')->hourly();

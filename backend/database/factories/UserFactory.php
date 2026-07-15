@@ -56,10 +56,11 @@ class UserFactory extends Factory
 
     /**
      * PLATFORM_ADMIN global — sem membership de office e sem acesso fiscal implícito.
+     * Inclui TOTP confirmado (rotas platform/* exigem EnsurePlatformAdminTwoFactor).
      */
     public function asPlatformAdmin(): static
     {
-        return $this->afterCreating(function (User $user): void {
+        return $this->withTwoFactorConfirmed()->afterCreating(function (User $user): void {
             \App\Models\PlatformMembership::query()->firstOrCreate(
                 [
                     'user_id' => $user->id,

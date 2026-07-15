@@ -2,13 +2,17 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\FiscalModuleKey;
+use App\Enums\FiscalSituation;
 use App\Http\Controllers\Controller;
 use App\Jobs\BuildExportZipJob;
 use App\Models\Export;
 use App\Services\Audit\AuditLogger;
 use App\Support\CurrentOffice;
+use App\Support\FeatureFlags;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -40,8 +44,16 @@ class ExportController extends Controller
             abort(403);
         }
 
+        // office_id nunca do client (top-level já stripado; reforço em filters).
+        $request->request->remove('office_id');
+        $request->query->remove('office_id');
+        if ($request->isJson() && $request->json() !== null) {
+            $request->json()->remove('office_id');
+        }
+
         $data = $request->validate([
             'filters' => ['nullable', 'array'],
+            'filters.export_scope' => ['sometimes', 'nullable', 'string', Rule::in(['documents', 'fiscal_portfolio'])],
             'filters.competence' => ['sometimes', 'nullable', 'string', 'max:7'],
             'filters.access_key' => ['sometimes', 'nullable', 'string', 'max:64'],
             'filters.access_keys' => ['sometimes', 'nullable', 'array', 'max:'.BuildExportZipJob::MAX_ACCESS_KEYS],
@@ -55,10 +67,26 @@ class ExportController extends Controller
             'filters.issued_to' => ['sometimes', 'nullable', 'date'],
             'filters.client_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'filters.establishment_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            // fiscal_portfolio
+            'filters.module_key' => ['required_if:filters.export_scope,fiscal_portfolio', 'nullable', 'string', 'max:64'],
+            'filters.situation' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'filters.q' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'filters.submodule' => ['sometimes', 'nullable', 'string', 'max:64'],
             'include_events' => ['sometimes', 'boolean'],
         ]);
 
-        $filters = $this->normalizeFilters($data['filters'] ?? []);
+        $rawFilters = $data['filters'] ?? [];
+        // Nunca persistir office_id fornecido pelo cliente.
+        unset($rawFilters['office_id']);
+
+        $filters = $this->normalizeFilters($rawFilters);
+        $scope = $filters['export_scope'] ?? 'documents';
+
+        if ($scope === 'fiscal_portfolio') {
+            $this->assertFiscalPortfolioFilters($filters, $currentOffice);
+            // include_events não se aplica à carteira.
+            $data['include_events'] = false;
+        }
 
         if (isset($filters['access_keys']) && count($filters['access_keys']) > BuildExportZipJob::MAX_ACCESS_KEYS) {
             throw ValidationException::withMessages([
@@ -79,9 +107,41 @@ class ExportController extends Controller
         $audit->record('export.create', 'SUCCESS', $export, [
             'filters' => $export->filters,
             'include_events' => $export->include_events,
+            'export_scope' => $scope,
         ]);
 
         return response()->json(['data' => $this->public($export)], 202);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function assertFiscalPortfolioFilters(array $filters, CurrentOffice $currentOffice): void
+    {
+        $module = FiscalModuleKey::tryFromRoute((string) ($filters['module_key'] ?? ''));
+        if ($module === null || $module === FiscalModuleKey::Dashboard) {
+            throw ValidationException::withMessages([
+                'filters.module_key' => ['Módulo fiscal inválido para exportação de carteira.'],
+            ]);
+        }
+
+        if (isset($filters['situation']) && FiscalSituation::tryFrom((string) $filters['situation']) === null) {
+            throw ValidationException::withMessages([
+                'filters.situation' => ['Situação fiscal inválida.'],
+            ]);
+        }
+
+        if (isset($filters['competence']) && ! preg_match('/^\d{4}-\d{2}$/', (string) $filters['competence'])) {
+            throw ValidationException::withMessages([
+                'filters.competence' => ['Competência deve estar no formato YYYY-MM.'],
+            ]);
+        }
+
+        $flag = $module->featureFlagKey();
+        $officeId = (int) $currentOffice->id();
+        if ($flag === null || ! FeatureFlags::isModuleEnabled($flag, $officeId)) {
+            abort(403, 'Módulo fiscal desabilitado para este escritório.');
+        }
     }
 
     /**
@@ -90,7 +150,70 @@ class ExportController extends Controller
      */
     private function normalizeFilters(array $filters): array
     {
+        unset($filters['office_id']);
+
+        $scope = isset($filters['export_scope']) && is_string($filters['export_scope'])
+            ? strtolower(trim($filters['export_scope']))
+            : 'documents';
+
+        if ($scope === 'fiscal_portfolio') {
+            return $this->normalizeFiscalPortfolioFilters($filters);
+        }
+
+        return $this->normalizeDocumentFilters($filters);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    private function normalizeFiscalPortfolioFilters(array $filters): array
+    {
+        $out = [
+            'export_scope' => 'fiscal_portfolio',
+        ];
+
+        $module = FiscalModuleKey::tryFromRoute(is_string($filters['module_key'] ?? null)
+            ? (string) $filters['module_key']
+            : '');
+        if ($module !== null && $module !== FiscalModuleKey::Dashboard) {
+            $out['module_key'] = $module->value;
+        }
+
+        if (! empty($filters['situation']) && is_string($filters['situation'])) {
+            $out['situation'] = strtoupper(trim($filters['situation']));
+        }
+
+        if (! empty($filters['competence']) && is_string($filters['competence'])) {
+            $out['competence'] = trim($filters['competence']);
+        }
+
+        if (! empty($filters['q']) && is_string($filters['q'])) {
+            $out['q'] = trim($filters['q']);
+        }
+
+        if (! empty($filters['submodule']) && is_string($filters['submodule'])) {
+            $out['submodule'] = strtoupper(trim($filters['submodule']));
+        }
+
+        if (! empty($filters['client_id'])) {
+            $out['client_id'] = (int) $filters['client_id'];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    private function normalizeDocumentFilters(array $filters): array
+    {
         $out = [];
+
+        if (isset($filters['export_scope']) && is_string($filters['export_scope'])) {
+            $out['export_scope'] = 'documents';
+        }
 
         foreach (['competence', 'access_key', 'fiscal_role', 'direction', 'status', 'issued_from', 'issued_to'] as $key) {
             if (! empty($filters[$key]) && is_string($filters[$key])) {
@@ -119,6 +242,19 @@ class ExportController extends Controller
             if ($keys !== []) {
                 $out['access_keys'] = $keys;
             }
+        }
+
+        // Preservar kind/kinds se vierem (exports de documentos por tipo).
+        if (! empty($filters['kind']) && is_string($filters['kind'])) {
+            $out['kind'] = trim($filters['kind']);
+        }
+        if (! empty($filters['kinds']) && is_array($filters['kinds'])) {
+            $out['kinds'] = array_values(array_filter($filters['kinds'], 'is_string'));
+        }
+
+        // Manifesto de ausências (outbound mensal) — path interno, nunca do client.
+        if (! empty($filters['absence_manifest_path']) && is_string($filters['absence_manifest_path'])) {
+            $out['absence_manifest_path'] = $filters['absence_manifest_path'];
         }
 
         return $out;

@@ -125,6 +125,99 @@ class OfficeCteAutXmlPageProcessorTest extends TestCase
         );
     }
 
+    public function test_lote_multiempresa_cria_issuer_e_papel_adicional_do_mesmo_office(): void
+    {
+        [$cursor, $issuerEst] = $this->seedCursorWithIssuer(
+            officeCnpj: '55666777000155',
+            issuerCnpj: '11222333000181',
+        );
+        // Participante tomador/remetente do mesmo office (fixture roles_all usa 34194865000158 como tomador)
+        $client2 = \App\Models\Client::factory()->forOffice(
+            Office::query()->findOrFail($cursor->office_id)
+        )->create();
+        $takerEst = \App\Models\Establishment::factory()->forClient($client2)->create([
+            'cnpj' => '34194865000158',
+            'is_active' => true,
+        ]);
+
+        // roles_all já inclui autXML 55666777000155 + emit 11222333000181 + tomador 3419…
+        $xmlAll = file_get_contents(base_path('tests/fixtures/cte/procCTe_57_roles_all.xml'));
+        $page = $this->page($xmlAll, 20, 20, 30);
+
+        $result = app(OfficeCteAutXmlPageProcessor::class)->process($cursor, $page);
+
+        $this->assertSame(1, $result['documents']);
+        $this->assertSame(1, DocumentInterest::query()
+            ->where('establishment_id', $issuerEst->id)
+            ->where('fiscal_role', FiscalRole::Issuer)
+            ->count());
+        $this->assertGreaterThanOrEqual(1, DocumentInterest::query()
+            ->where('establishment_id', $takerEst->id)
+            ->where('direction', DocumentDirection::In)
+            ->count());
+    }
+
+    public function test_office_divergente_nao_promove_emitente_de_outro_tenant(): void
+    {
+        $otherOffice = Office::factory()->create();
+        $otherClient = \App\Models\Client::factory()->forOffice($otherOffice)->create();
+        \App\Models\Establishment::factory()->forClient($otherClient)->create([
+            'cnpj' => '11222333000181',
+            'is_active' => true,
+        ]);
+
+        // Cursor no office A; emitente só existe no office B
+        [$cursor] = $this->seedCursorWithIssuer(
+            officeCnpj: '55666777000155',
+            issuerCnpj: '99999999000199', // emitente local diferente
+        );
+
+        $xml = file_get_contents(base_path('tests/fixtures/cte/procCTe_57_autxml_original.xml'));
+        $page = $this->page($xml, 3, 3, 3);
+
+        $result = app(OfficeCteAutXmlPageProcessor::class)->process($cursor, $page);
+
+        $this->assertSame(0, $result['documents']);
+        $this->assertSame(
+            QuarantineReason::UnmatchedIssuer,
+            FiscalDocumentQuarantine::query()->firstOrFail()->reason
+        );
+        $this->assertSame(0, CteDocument::query()->where('office_id', $cursor->office_id)->count());
+    }
+
+    public function test_duplicata_mesma_pagina_e_idempotente(): void
+    {
+        [$cursor] = $this->seedCursorWithIssuer(
+            officeCnpj: '55666777000155',
+            issuerCnpj: '11222333000181',
+        );
+        $xml = file_get_contents(base_path('tests/fixtures/cte/procCTe_57_autxml_original.xml'));
+        $page = $this->page($xml, 5, 5, 5);
+
+        app(OfficeCteAutXmlPageProcessor::class)->process($cursor, $page);
+        app(OfficeCteAutXmlPageProcessor::class)->process($cursor->fresh(), $page);
+
+        $this->assertSame(1, CteDocument::query()->count());
+        $this->assertSame(1, DocumentInterest::query()
+            ->where('fiscal_role', FiscalRole::Issuer)->count());
+        $this->assertSame(1, DocumentAcquisition::query()->count());
+    }
+
+    public function test_redacao_oficial_classifica_autxml_redacted(): void
+    {
+        [$cursor] = $this->seedCursorWithIssuer(
+            officeCnpj: '55666777000155',
+            issuerCnpj: '11222333000181',
+        );
+        $xml = file_get_contents(base_path('tests/fixtures/cte/procCTe_57_autxml_redacted.xml'));
+        $page = $this->page($xml, 6, 6, 6);
+
+        app(OfficeCteAutXmlPageProcessor::class)->process($cursor, $page);
+
+        $acq = DocumentAcquisition::query()->firstOrFail();
+        $this->assertSame(DocumentArtifactQuality::AutXmlRedacted, $acq->artifact_quality);
+    }
+
     /**
      * @return array{0: OfficeDistributionCursor, 1: \App\Models\Establishment}
      */

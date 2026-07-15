@@ -23,6 +23,7 @@ use App\Models\Office;
 use App\Models\OutboundCaptureProfile;
 use App\Models\User;
 use App\Services\Outbound\OutboundMonthlyExportService;
+use App\Services\FiscalMonitoring\ModulePortfolio\ModulePortfolioQueryService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -101,7 +102,10 @@ class OutboundMonthlyExportTest extends TestCase
         $this->assertStringNotContainsString($keyPending, json_encode($json));
 
         // Gera ZIP com manifesto embutido
-        (new BuildExportZipJob($export->id))->handle(app(SecureObjectStore::class));
+        (new BuildExportZipJob($export->id))->handle(
+            app(SecureObjectStore::class),
+            app(ModulePortfolioQueryService::class),
+        );
         $export->refresh();
         $this->assertSame('READY', $export->status);
         $this->assertStringContainsString('/private/exports/'.$office->id.'/', $export->storage_path);

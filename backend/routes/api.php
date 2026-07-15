@@ -15,14 +15,39 @@ use App\Http\Controllers\Api\V1\OperationsSummaryController;
 use App\Http\Controllers\Api\V1\FiscalDocumentQuarantineController;
 use App\Http\Controllers\Api\V1\OfficeAutXmlController;
 use App\Http\Controllers\Api\V1\OfficeFiscalCredentialController;
+use App\Http\Controllers\Api\V1\OfficeSubscriptionController;
 use App\Http\Controllers\Api\V1\OutboundCaptureController;
 use App\Http\Controllers\Api\V1\OutboundDeadlineController;
+use App\Http\Controllers\Api\V1\OfficeSerproUsageController;
+use App\Http\Controllers\Api\V1\Platform\SerproUsageAdminController;
+use App\Http\Controllers\Api\V1\OfficeSerproAuthorizationController;
+use App\Http\Controllers\Api\V1\Platform\SerproContractController;
+use App\Http\Controllers\Api\V1\Platform\TenantAdminController;
 use App\Http\Controllers\Api\V1\SvrsNfceRecoveryController;
 use App\Http\Controllers\Api\V1\CteEmitterPushController;
+use App\Http\Controllers\Api\V1\CteOperationsController;
 use App\Http\Controllers\Api\V1\SyncController;
+use App\Http\Controllers\Api\V1\TenantSwitchController;
+use App\Http\Controllers\Api\V1\Fiscal\DeclarationHubController;
+use App\Http\Controllers\Api\V1\Fiscal\DctfwebController;
+use App\Http\Controllers\Api\V1\Fiscal\FiscalCategoryController;
+use App\Http\Controllers\Api\V1\Fiscal\FiscalModulePortfolioController;
+use App\Http\Controllers\Api\V1\Fiscal\FiscalMonitoringRunController;
+use App\Http\Controllers\Api\V1\Fiscal\FiscalMutationController;
+use App\Http\Controllers\Api\V1\Fiscal\FgtsEsocialController;
+use App\Http\Controllers\Api\V1\Fiscal\FiscalSnapshotController;
+use App\Http\Controllers\Api\V1\Fiscal\MailboxMessageController;
+use App\Http\Controllers\Api\V1\Fiscal\MitController;
+use App\Http\Controllers\Api\V1\Fiscal\SimplesMeiController;
+use App\Http\Controllers\Api\V1\Fiscal\SitfisSituationController;
+use App\Http\Controllers\Api\V1\Fiscal\TaxGuideController;
+use App\Http\Controllers\Api\V1\Fiscal\TaxInstallmentController;
 use App\Http\Middleware\EnsureActiveUser;
 use App\Http\Middleware\EnsureAdminTwoFactor;
 use App\Http\Middleware\EnsureOfficeContext;
+use App\Http\Middleware\EnsureOfficeSubscriptionWritable;
+use App\Http\Middleware\EnsurePlatformAdmin;
+use App\Http\Middleware\EnsurePlatformAdminTwoFactor;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
@@ -33,7 +58,168 @@ Route::prefix('v1')->group(function (): void {
     Route::middleware(['auth:sanctum', EnsureActiveUser::class])->group(function (): void {
         Route::get('/me', MeController::class);
 
-        Route::middleware([EnsureOfficeContext::class, EnsureAdminTwoFactor::class])->group(function (): void {
+        // Troca explícita de tenant (fora de EnsureOfficeContext — office_id de destino é validado por membership)
+        Route::get('/tenants/memberships', [TenantSwitchController::class, 'memberships']);
+        Route::post('/tenants/switch', [TenantSwitchController::class, 'switch'])
+            ->middleware('throttle:30,1');
+
+        // Administração global da plataforma (SEM office context; SEM conteúdo fiscal; TOTP obrigatório)
+        Route::middleware([
+            EnsurePlatformAdmin::class,
+            EnsurePlatformAdminTwoFactor::class,
+        ])->prefix('platform')->group(function (): void {
+            Route::get('/tenants', [TenantAdminController::class, 'index']);
+            Route::get('/tenants/{office}', [TenantAdminController::class, 'show']);
+            Route::patch('/tenants/{office}/subscription', [TenantAdminController::class, 'updateSubscription']);
+
+            // Consolidação e conciliação de consumo SERPRO (ledger)
+            Route::get('/serpro-usage/consolidation', [SerproUsageAdminController::class, 'consolidation']);
+            Route::post('/serpro-usage/recompute', [SerproUsageAdminController::class, 'recompute']);
+            Route::post('/serpro-usage/reconciliations', [SerproUsageAdminController::class, 'registerReconciliation']);
+
+            // Contrato SERPRO global — metadados sanitizados; sem recuperação de segredo
+            Route::get('/serpro/contracts', [SerproContractController::class, 'index']);
+            Route::post('/serpro/contracts', [SerproContractController::class, 'store']);
+            Route::get('/serpro/contracts/{serproContract}', [SerproContractController::class, 'show']);
+            Route::post('/serpro/contracts/{serproContract}/activate', [SerproContractController::class, 'activate']);
+            Route::post('/serpro/contracts/{serproContract}/deactivate', [SerproContractController::class, 'deactivate']);
+            Route::post('/serpro/contracts/{serproContract}/block', [SerproContractController::class, 'block']);
+            Route::get('/serpro/health', [SerproContractController::class, 'health']);
+            Route::get('/serpro/catalog', [SerproContractController::class, 'catalog']);
+            Route::get('/serpro/kill-switch', [SerproContractController::class, 'killSwitchStatus']);
+            Route::post('/serpro/kill-switch', [SerproContractController::class, 'killSwitch']);
+            Route::post('/serpro/breaker/reset', [SerproContractController::class, 'breakerReset']);
+        });
+
+        Route::middleware([
+            EnsureOfficeContext::class,
+            EnsureAdminTwoFactor::class,
+            EnsureOfficeSubscriptionWritable::class,
+        ])->group(function (): void {
+            // Assinatura/limites do office atual (leitura liberada mesmo suspenso — middleware só bloqueia mutações)
+            Route::get('/office/subscription', [OfficeSubscriptionController::class, 'show']);
+
+            // Onboarding Integra: Autor, Termo, procurações (sem XML/PFX/tokens na resposta)
+            Route::get('/office/serpro-authorization', [OfficeSerproAuthorizationController::class, 'show']);
+            Route::post('/office/serpro-authorization/author', [OfficeSerproAuthorizationController::class, 'configureAuthor']);
+            Route::post('/office/serpro-authorization/termo', [OfficeSerproAuthorizationController::class, 'uploadTermo']);
+            Route::post('/office/serpro-authorization/author-a1', [OfficeSerproAuthorizationController::class, 'storeAuthorA1']);
+            Route::post('/office/serpro-authorization/refresh-token', [OfficeSerproAuthorizationController::class, 'refreshToken']);
+            Route::get('/office/serpro-authorization/proxy-powers', [OfficeSerproAuthorizationController::class, 'listProxyPowers']);
+            Route::post('/office/serpro-authorization/proxy-powers', [OfficeSerproAuthorizationController::class, 'importProxyPower']);
+            Route::post('/office/serpro-authorization/proxy-powers/sync', [OfficeSerproAuthorizationController::class, 'syncProxyPowers']);
+            Route::post('/office/serpro-authorization/eligibility', [OfficeSerproAuthorizationController::class, 'eligibility']);
+            Route::get('/office/serpro-authorization/health', [OfficeSerproAuthorizationController::class, 'platformHealth']);
+
+            // Consumo/franquia SERPRO do tenant (sem orçamento global nem outros offices)
+            Route::get('/office/serpro-usage', [OfficeSerproUsageController::class, 'summary']);
+            Route::get('/office/serpro-usage/entries', [OfficeSerproUsageController::class, 'entries']);
+
+            // Núcleo de monitoramento fiscal (tenant-scoped; mutações off por padrão no adapter)
+            Route::get('/fiscal/categories', [FiscalCategoryController::class, 'indexCategories']);
+            Route::get('/fiscal/category-links', [FiscalCategoryController::class, 'indexLinks']);
+            Route::post('/fiscal/category-links', [FiscalCategoryController::class, 'associate']);
+            Route::post('/fiscal/category-links/batch', [FiscalCategoryController::class, 'associateBatch']);
+            Route::get('/fiscal/runs', [FiscalMonitoringRunController::class, 'index']);
+            Route::post('/fiscal/runs', [FiscalMonitoringRunController::class, 'store']);
+            Route::get('/fiscal/runs/{run}', [FiscalMonitoringRunController::class, 'show']);
+            Route::get('/fiscal/snapshots', [FiscalSnapshotController::class, 'index']);
+            Route::get('/fiscal/snapshots/{snapshot}', [FiscalSnapshotController::class, 'show']);
+            Route::get('/fiscal/findings', [FiscalSnapshotController::class, 'findings']);
+            Route::get('/fiscal/pending-items', [FiscalSnapshotController::class, 'pending']);
+            Route::get('/fiscal/evidence/{evidence}/download', [FiscalSnapshotController::class, 'downloadEvidence']);
+
+            // Read model de carteira por módulo (overview + clients; office_id só via membership)
+            Route::get('/fiscal/modules/{module}/overview', [FiscalModulePortfolioController::class, 'overview']);
+            Route::get('/fiscal/modules/{module}/clients', [FiscalModulePortfolioController::class, 'clients']);
+
+            // DCTFWeb / MIT (evidências versionadas; transmissão/encerramento atrás de flags mutantes OFF)
+            Route::get('/fiscal/dctfweb/declarations', [DctfwebController::class, 'indexDeclarations']);
+            Route::get('/fiscal/dctfweb/declarations/{declaration}', [DctfwebController::class, 'showDeclaration']);
+            Route::post('/fiscal/dctfweb/events', [DctfwebController::class, 'ingestEvent']);
+            Route::post('/fiscal/dctfweb/consult', [DctfwebController::class, 'enqueueConsult']);
+            Route::post('/fiscal/dctfweb/transmit', [DctfwebController::class, 'transmit'])
+                ->middleware('throttle:10,1');
+            Route::get('/fiscal/mit/apuracoes', [MitController::class, 'index']);
+            Route::get('/fiscal/mit/apuracoes/{apuracao}', [MitController::class, 'show']);
+            Route::post('/fiscal/mit/consult', [MitController::class, 'enqueueConsult']);
+            Route::post('/fiscal/mit/encerrar', [MitController::class, 'encerrar'])
+                ->middleware('throttle:10,1');
+
+            // Parcelamentos SN/MEI (modalidades catalogadas; mutantes OFF)
+            Route::get('/fiscal/installments/modalities', [TaxInstallmentController::class, 'modalities']);
+            Route::get('/fiscal/installments/orders', [TaxInstallmentController::class, 'orders']);
+            Route::get('/fiscal/installments/orders/{order}', [TaxInstallmentController::class, 'showOrder']);
+            Route::get('/fiscal/installments/parcels', [TaxInstallmentController::class, 'parcels']);
+            Route::get('/fiscal/installments/guides', [TaxInstallmentController::class, 'guides']);
+            Route::post('/fiscal/installments/runs', [TaxInstallmentController::class, 'enqueue']);
+
+
+            // Operações fiscais mutantes (OFF por default; 2FA recente + confirmação + idempotência)
+            Route::post('/auth/confirm-totp', [FiscalMutationController::class, 'confirmTotp'])
+                ->middleware('throttle:10,1');
+            Route::post('/fiscal/mutations/preflight', [FiscalMutationController::class, 'preflight'])
+                ->middleware('throttle:30,1');
+            Route::post('/fiscal/mutations', [FiscalMutationController::class, 'execute'])
+                ->middleware('throttle:20,1');
+            Route::get('/fiscal/mutations/{mutation}', [FiscalMutationController::class, 'show']);
+            Route::post('/fiscal/mutations/{mutation}/reconcile', [FiscalMutationController::class, 'reconcile'])
+                ->middleware('throttle:20,1');
+
+            // Situação Fiscal (SITFIS) — snapshot com idade; refresh respeita TTL
+            Route::get('/fiscal/sitfis', [SitfisSituationController::class, 'show']);
+            Route::post('/fiscal/sitfis/refresh', [SitfisSituationController::class, 'refresh']);
+
+            // Caixa Postal / DTE (tenant-scoped; conteúdo restrito; triagem ≠ leitura oficial)
+            Route::get('/fiscal/mailbox/messages', [MailboxMessageController::class, 'index']);
+            Route::get('/fiscal/mailbox/messages/{message}', [MailboxMessageController::class, 'show']);
+            Route::patch('/fiscal/mailbox/messages/{message}/triage', [MailboxMessageController::class, 'triage']);
+            Route::get('/fiscal/mailbox/messages/{message}/body', [MailboxMessageController::class, 'downloadBody']);
+            Route::get('/fiscal/mailbox/messages/{message}/attachments/{attachment}', [MailboxMessageController::class, 'downloadAttachment']);
+            Route::get('/fiscal/mailbox/state', [MailboxMessageController::class, 'state']);
+            Route::get('/fiscal/mailbox/alerts', [MailboxMessageController::class, 'alerts']);
+
+            // Central de declarações (catálogo versionado, projeções, recibos — sem guias)
+            Route::get('/fiscal/declarations/catalog', [DeclarationHubController::class, 'catalog']);
+            Route::get('/fiscal/declarations/summary', [DeclarationHubController::class, 'summary']);
+            Route::get('/fiscal/declarations', [DeclarationHubController::class, 'index']);
+            Route::post('/fiscal/declarations/project', [DeclarationHubController::class, 'project']);
+            Route::post('/fiscal/declarations/calendar', [DeclarationHubController::class, 'publishCalendar']);
+            Route::get('/fiscal/declarations/{projection}', [DeclarationHubController::class, 'show']);
+            Route::post('/fiscal/declarations/{projection}/evidences', [DeclarationHubController::class, 'attachEvidence']);
+            Route::get('/fiscal/declarations/{projection}/evidences/{evidence}', [DeclarationHubController::class, 'showEvidence']);
+
+            // Central de guias (mutações OFF por default — FeatureFlags guias)
+            Route::get('/fiscal/guides', [TaxGuideController::class, 'index']);
+            Route::post('/fiscal/guides/preflight', [TaxGuideController::class, 'preflight']);
+            Route::post('/fiscal/guides/challenge', [TaxGuideController::class, 'challenge'])
+                ->middleware('throttle:10,1');
+            Route::post('/fiscal/guides', [TaxGuideController::class, 'store'])
+                ->middleware('throttle:20,1');
+            Route::get('/fiscal/guides/downloads/{token}', [TaxGuideController::class, 'download']);
+            Route::get('/fiscal/guides/{guide}', [TaxGuideController::class, 'show']);
+            Route::post('/fiscal/guides/{guide}/download-token', [TaxGuideController::class, 'issueDownloadToken']);
+            Route::post('/fiscal/guides/{guide}/payment-confirmations', [TaxGuideController::class, 'confirmPayment']);
+            Route::post('/fiscal/guides/{guide}/reconcile', [TaxGuideController::class, 'reconcile']);
+
+            // Simples Nacional / MEI (tenant-scoped; mutações bloqueadas no piloto)
+            Route::get('/fiscal/simples-mei/catalog', [SimplesMeiController::class, 'catalog']);
+            Route::get('/fiscal/simples-mei/clients/{client}/regimes', [SimplesMeiController::class, 'regimes']);
+            Route::get('/fiscal/simples-mei/clients/{client}/competences', [SimplesMeiController::class, 'competences']);
+            Route::get('/fiscal/simples-mei/clients/{client}/snapshots', [SimplesMeiController::class, 'snapshots']);
+            Route::get('/fiscal/simples-mei/clients/{client}/guide-stubs', [SimplesMeiController::class, 'guideStubs']);
+            Route::post('/fiscal/simples-mei/consult', [SimplesMeiController::class, 'consult']);
+            Route::post('/fiscal/simples-mei/das', [SimplesMeiController::class, 'generateDas']);
+            Route::post('/fiscal/simples-mei/transmit', [SimplesMeiController::class, 'transmit']);
+
+            // FGTS parcial via eSocial (cobertura explícita; sem portal FGTS Digital)
+            Route::get('/fiscal/fgts/coverage', [FgtsEsocialController::class, 'coverage']);
+            Route::get('/fiscal/fgts/competences', [FgtsEsocialController::class, 'competences']);
+            Route::get('/fiscal/fgts/competences/{status}', [FgtsEsocialController::class, 'showCompetence']);
+            Route::get('/fiscal/fgts/events', [FgtsEsocialController::class, 'events']);
+            Route::post('/fiscal/fgts/sync', [FgtsEsocialController::class, 'sync']);
+            Route::post('/fiscal/fgts/sync-now', [FgtsEsocialController::class, 'syncNow']);
+
             Route::get('/clients', [ClientController::class, 'index']);
             Route::get('/cnpj/{cnpj}/lookup', CnpjLookupController::class)->middleware('throttle:30,1');
             Route::post('/clients', [ClientController::class, 'store']);
@@ -70,6 +256,13 @@ Route::prefix('v1')->group(function (): void {
                 ->middleware('throttle:'.(int) config('sefaz.cte_emitter_push.admin_token_rate_limit_per_minute', 10).',1');
             Route::post('/office/integration-tokens/{token}/revoke', [CteEmitterPushController::class, 'revokeToken'])
                 ->middleware('throttle:'.(int) config('sefaz.cte_emitter_push.admin_token_rate_limit_per_minute', 10).',1');
+
+            // Operação CT-e: onboarding, dois streams, cobertura e pendências sanitizadas
+            Route::get('/cte/onboarding', [CteOperationsController::class, 'onboarding']);
+            Route::get('/cte/health', [CteOperationsController::class, 'health']);
+            Route::get('/cte/coverage', [CteOperationsController::class, 'coverage']);
+            Route::get('/cte/pending', [CteOperationsController::class, 'pending']);
+            Route::post('/cte/repairs', [CteOperationsController::class, 'repairKnownNsu']);
 
             // Catálogo unificado Documentos (canônico)
             Route::get('/documents', [NoteController::class, 'index']);

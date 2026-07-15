@@ -13,6 +13,7 @@ use App\Models\Establishment;
 use App\Models\Office;
 use App\Models\User;
 use App\Services\Import\OutboundXmlIngestionService;
+use App\Services\Import\ImportFiscalValidator;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -49,10 +50,54 @@ class CteXmlImportTest extends TestCase
 
         $interest = DocumentInterest::query()->where('fiscal_role', FiscalRole::Issuer)->first();
         $this->assertNotNull($interest);
+        $this->assertNull($interest->nsu);
 
         $acq = DocumentAcquisition::query()->first();
         $this->assertNotNull($acq);
         $this->assertSame(DocumentArtifactQuality::Original, $acq->artifact_quality);
+    }
+
+    public function test_segundo_cte_xml_mesmo_emitente_importa_sem_colisao_de_nsu(): void
+    {
+        $office = Office::factory()->create();
+        $client = Client::factory()->forOffice($office)->create();
+        Establishment::factory()->forClient($client)->create(['cnpj' => '11222333000181']);
+
+        $xml1 = file_get_contents(base_path('tests/fixtures/cte/procCTe_57_roles_all.xml'));
+        $xml2 = file_get_contents(base_path('tests/fixtures/cte/procCTe_57_toma3_rem.xml'));
+        $this->assertNotFalse($xml1);
+        $this->assertNotFalse($xml2);
+
+        $r1 = app(OutboundXmlIngestionService::class)->ingestXmlBytes(
+            $office->id,
+            $client->id,
+            $xml1,
+            'cte-1.xml',
+        );
+        $r2 = app(OutboundXmlIngestionService::class)->ingestXmlBytes(
+            $office->id,
+            $client->id,
+            $xml2,
+            'cte-2.xml',
+        );
+
+        $this->assertSame('imported', $r1['status'], $r1['message'] ?? '');
+        $this->assertSame('imported', $r2['status'], $r2['message'] ?? '');
+        $this->assertSame(2, CteDocument::query()->where('office_id', $office->id)->count());
+        $this->assertSame(
+            2,
+            DocumentInterest::query()
+                ->where('fiscal_role', FiscalRole::Issuer)
+                ->where('channel', \App\Enums\CaptureChannel::ImportXml->value)
+                ->count()
+        );
+        $this->assertTrue(
+            DocumentInterest::query()
+                ->where('fiscal_role', FiscalRole::Issuer)
+                ->where('channel', \App\Enums\CaptureChannel::ImportXml->value)
+                ->whereNull('nsu')
+                ->count() === 2
+        );
     }
 
     public function test_modelo_67_rejeitado_como_unsupported(): void
@@ -125,5 +170,24 @@ class CteXmlImportTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.kind', 'CTE')
             ->assertJsonPath('data.0.direction', 'OUT');
+    }
+
+    public function test_matriz_fiscal_rejeita_protocolo_e_ambiente_divergentes(): void
+    {
+        $xml = (string) file_get_contents(base_path('tests/fixtures/cte/procCTe_57_toma3_rem.xml'));
+        $validator = app(ImportFiscalValidator::class);
+
+        $protocolMismatch = preg_replace(
+            '/<chCTe>[A-Z0-9]{44}<\/chCTe>/',
+            '<chCTe>99999999999999999999999999999999999999999999</chCTe>',
+            $xml,
+            1,
+        );
+        $this->assertIsString($protocolMismatch);
+        $this->assertSame('INVALID', $validator->validateProcCte($protocolMismatch)['code'] ?? null);
+
+        $environmentMismatch = str_replace('<infProt>', '<infProt><tpAmb>2</tpAmb>', $xml);
+        $this->assertIsString($environmentMismatch);
+        $this->assertSame('INVALID', $validator->validateProcCte($environmentMismatch)['code'] ?? null);
     }
 }

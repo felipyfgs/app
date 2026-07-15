@@ -57,6 +57,7 @@
         <server name="SEFAZ_SVRS_NFE55_XML_AUTO_QUEUE_ENABLED" value="false"/>
         <server name="SEFAZ_SVRS_NFE55_XML_KILL_SWITCH" value="false"/>
         <server name="SVRS_EGRESS_COHORT_ID" value="test-cohort"/>
+        <server name="SEFAZ_CTE_REQUIRE_SIGNATURE" value="false"/>
 
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="AUTH_TWO_FACTOR_REQUIRED" value="true" force="true"/>
@@ -105,8 +106,12 @@
         <env name="SEFAZ_SVRS_NFE55_XML_AUTO_QUEUE_ENABLED" value="false" force="true"/>
         <env name="SEFAZ_SVRS_NFE55_XML_KILL_SWITCH" value="false" force="true"/>
         <env name="SVRS_EGRESS_COHORT_ID" value="test-cohort" force="true"/>
+        <env name="SEFAZ_CTE_REQUIRE_SIGNATURE" value="false" force="true"/>
         <env name="SVRS_EGRESS_MIN_INTERVAL_GLOBAL" value="120" force="true"/>
         <env name="SVRS_EGRESS_MIN_INTERVAL_ROOT" value="900" force="true"/>
         <env name="SVRS_EGRESS_MAX_KEYS_PER_JOB" value="1" force="true"/>
+        <!-- Ledger SERPRO: shadow on / bloqueio comercial off no CI -->
+        <env name="SERPRO_USAGE_SHADOW_MODE" value="true" force="true"/>
+        <env name="SERPRO_USAGE_COMMERCIAL_BLOCKING" value="false" force="true"/>
     </php>
 </phpunit>

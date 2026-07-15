@@ -23,6 +23,7 @@ use App\Models\FiscalDocumentQuarantine;
 use App\Models\NfeDocument;
 use App\Services\Sefaz\CteArtifactQualityClassifier;
 use App\Services\Sefaz\CteXmlProjectionParser;
+use App\Services\Sefaz\CteReconciliationService;
 use App\Services\Sefaz\NfeXmlProjectionParser;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +46,7 @@ final class OutboundXmlIngestionService
         private readonly ImportXmlClassifier $classifier = new ImportXmlClassifier,
         private readonly ImportFiscalValidator $fiscal = new ImportFiscalValidator,
         private readonly ImportMetrics $metrics = new ImportMetrics,
+        private readonly CteReconciliationService $cteReconciliation = new CteReconciliationService,
     ) {}
 
     /**
@@ -889,7 +891,8 @@ final class OutboundXmlIngestionService
                     ]
                 );
 
-                // nsu=0 = sem NSU real (SQLite não permite NULL; Postgres aceita ambos)
+                // Interesse ISSUER/OUT sem NSU (null) — alinhado ao import NF-e; múltiplos
+                // NULL não colidem na unique (estab, env, channel, nsu, fiscal_role).
                 DocumentInterest::query()->firstOrCreate(
                     [
                         'dfe_document_id' => $dfe->id,
@@ -900,7 +903,7 @@ final class OutboundXmlIngestionService
                     [
                         'office_id' => $officeId,
                         'environment' => 'import',
-                        'nsu' => 0,
+                        'nsu' => null,
                         'direction' => DocumentDirection::Out->value,
                     ]
                 );
@@ -949,6 +952,8 @@ final class OutboundXmlIngestionService
                 'message' => 'Falha ao persistir o CT-e importado.',
             ];
         }
+
+        $this->cteReconciliation->reconcileDocument($officeId, $accessKey);
 
         return [
             'status' => 'imported',
@@ -1051,6 +1056,8 @@ final class OutboundXmlIngestionService
                 'message' => 'Falha ao persistir evento CT-e.',
             ];
         }
+
+        $this->cteReconciliation->reconcileDocument($officeId, $key);
 
         return [
             'status' => 'imported',
