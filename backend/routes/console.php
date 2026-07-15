@@ -4,8 +4,11 @@ use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('adn:dispatch-due-syncs')->everyMinute();
 Schedule::command('sefaz:dispatch-due-syncs')->everyMinute();
+Schedule::command('sefaz:dispatch-due-autxml')->everyMinute();
 Schedule::command('sefaz:dispatch-ma-outbound-due')->everyMinute();
+Schedule::command('sefaz:dispatch-svrs-nfce-xml-recoveries')->everyMinute();
 Schedule::command('exports:purge-expired')->hourly();
+Schedule::command('import:purge-expired-spools')->hourly();
 Schedule::command('credentials:refresh-expiry')->hourly();
 
 if (config('backup.schedule_enabled')) {

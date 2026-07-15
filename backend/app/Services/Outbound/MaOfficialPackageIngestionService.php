@@ -246,6 +246,14 @@ final class MaOfficialPackageIngestionService
             ]);
 
             if ($isCanonical) {
+                // Encerra recovery SVRS pendente da mesma chave (fallback assistido)
+                try {
+                    app(OutboundXmlRecoveryOrchestrator::class)
+                        ->resolveByOtherSource($officeId, $key, 'MA_OFFICIAL_PACKAGE');
+                } catch (\Throwable) {
+                    // não bloquear ingestão
+                }
+
                 $parsed = $this->parser->parse($xml, 'procNFe');
                 NfeDocument::query()->updateOrCreate(
                     [

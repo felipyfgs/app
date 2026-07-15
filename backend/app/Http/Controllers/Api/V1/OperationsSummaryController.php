@@ -13,7 +13,13 @@ use App\Models\InstanceBackupRun;
 use App\Models\NfseNote;
 use App\Models\SyncCursor;
 use App\Models\SyncRun;
+use App\Enums\OutboundRetrievalOrigin;
+use App\Enums\SvrsNfceRecoveryStatus;
+use App\Models\MaOutboundRetrievalRequest;
 use App\Services\Operations\OperationsInboxBuilder;
+use App\Services\Outbound\SvrsNfceCircuitBreaker;
+use App\Services\Outbound\SvrsNfceConfig;
+use App\Services\Outbound\SvrsNfceKillSwitchService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 
@@ -22,12 +28,26 @@ class OperationsSummaryController extends Controller
     public function __invoke(
         CurrentOffice $currentOffice,
         OperationsInboxBuilder $inbox,
+        SvrsNfceConfig $svrsConfig,
+        SvrsNfceKillSwitchService $svrsKill,
+        SvrsNfceCircuitBreaker $svrsBreaker,
     ): JsonResponse {
         $officeId = $currentOffice->id();
         abort_if($officeId === null, 403);
 
         $counts = $inbox->counts($officeId, $currentOffice->role());
         $backup = InstanceBackupRun::statusSummary();
+
+        $svrsBacklog = MaOutboundRetrievalRequest::query()
+            ->where('office_id', $officeId)
+            ->where('origin', OutboundRetrievalOrigin::SvrsPortalByKey)
+            ->whereIn('recovery_status', [
+                SvrsNfceRecoveryStatus::Eligible,
+                SvrsNfceRecoveryStatus::Queued,
+                SvrsNfceRecoveryStatus::Running,
+                SvrsNfceRecoveryStatus::RetryScheduled,
+            ])
+            ->count();
 
         return response()->json([
             'data' => [
@@ -53,6 +73,13 @@ class OperationsSummaryController extends Controller
                 'inbox_high' => $counts['inbox_high'],
                 'inbox_total' => $counts['inbox_total'],
                 'backup' => $backup,
+                'svrs_nfce' => [
+                    'retrieval_enabled' => $svrsConfig->retrievalEnabled(),
+                    'auto_queue_enabled' => $svrsConfig->autoQueueEnabled(),
+                    'kill_switch' => $svrsKill->isActive(),
+                    'breaker_global' => $svrsBreaker->globalStatus()['state'],
+                    'backlog' => $svrsBacklog,
+                ],
                 'generated_at' => now()->toIso8601String(),
             ],
         ]);

@@ -38,6 +38,9 @@
         <server name="VAULT_MASTER_KEY_VERSION" value="1"/>
         <server name="VAULT_DISK_ROOT" value="/tmp/nfse-vault-test"/>
         <server name="LOG_CHANNEL" value="stderr"/>
+        <server name="SEFAZ_SVRS_NFCE_XML_REQUIRE_SIGNATURE" value="false"/>
+        <server name="SEFAZ_SVRS_NFCE_XML_RETRIEVAL_ENABLED" value="false"/>
+        <server name="SEFAZ_SVRS_NFCE_XML_AUTO_QUEUE_ENABLED" value="false"/>
 
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="AUTH_TWO_FACTOR_REQUIRED" value="true" force="true"/>
@@ -58,5 +61,18 @@
         <env name="VAULT_MASTER_KEY_VERSION" value="1" force="true"/>
         <env name="VAULT_DISK_ROOT" value="/tmp/nfse-vault-test" force="true"/>
         <env name="LOG_CHANNEL" value="stderr" force="true"/>
+        <!-- Canal MA: defaults off no CI mesmo se .env local tiver piloto ligado -->
+        <env name="SEFAZ_MA_OUTBOUND_ENABLED" value="false" force="true"/>
+        <env name="SEFAZ_MA_PROTOCOL_QUERY_ENABLED" value="false" force="true"/>
+        <env name="SEFAZ_MA_M2M_RETRIEVAL_ENABLED" value="false" force="true"/>
+        <env name="SEFAZ_MA_MUTATING_PROBE_ENABLED" value="false" force="true"/>
+        <env name="SEFAZ_MA_OUTBOUND_KILL_SWITCH" value="false" force="true"/>
+        <env name="SEFAZ_MA_M2M_STATUS" value="NO_GO_M2M" force="true"/>
+        <!-- Canal autXML do escritório: defaults off no CI -->
+        <env name="SEFAZ_AUTXML_DISTDFE_ENABLED" value="false" force="true"/>
+        <env name="SEFAZ_AUTXML_KILL_SWITCH" value="false" force="true"/>
+        <env name="SEFAZ_AUTXML_OFFICE_ALLOWLIST" value="" force="true"/>
+        <env name="SEFAZ_AUTXML_ALLOW_ALL_OFFICES" value="false" force="true"/>
+        <env name="IMPORT_ASYNC_BATCHES_ENABLED" value="false" force="true"/>
     </php>
 </phpunit>

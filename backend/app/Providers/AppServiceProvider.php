@@ -7,6 +7,8 @@ use App\Contracts\CnpjRegistrationLookup;
 use App\Contracts\MaOutboundXmlRetrievalClient;
 use App\Contracts\PfxReaderInterface;
 use App\Contracts\SecureObjectStore;
+use App\Contracts\SvrsNfceDownloadResponseParser as SvrsNfceDownloadResponseParserContract;
+use App\Contracts\SvrsNfceOutboundXmlRetrievalClient;
 use App\Contracts\SefazCteDistDfeClient;
 use App\Contracts\SefazDistDfeClient;
 use App\Contracts\SefazNfeManifestationClient;
@@ -17,11 +19,14 @@ use App\Models\Client;
 use App\Models\ClientContact;
 use App\Models\ClientCredential;
 use App\Models\Establishment;
+use App\Models\OfficeCredential;
+use App\Models\OfficeFiscalIdentity;
 use App\Models\OutboundCaptureProfile;
 use App\Policies\ClientContactPolicy;
 use App\Policies\ClientCredentialPolicy;
 use App\Policies\ClientPolicy;
 use App\Policies\EstablishmentPolicy;
+use App\Policies\OfficeFiscalCredentialPolicy;
 use App\Policies\OutboundCaptureProfilePolicy;
 use App\Services\Adn\CurlMtlsTransport;
 use App\Services\Adn\HttpAdnContributorClient;
@@ -29,8 +34,13 @@ use App\Services\Certificates\PfxReader;
 use App\Services\Outbound\DisabledMaOutboundXmlRetrievalClient;
 use App\Services\Outbound\DisabledSefazOutboundInutilizationClient;
 use App\Services\Outbound\DisabledSefazOutboundMutatingProbeClient;
+use App\Services\Outbound\DisabledSvrsNfceOutboundXmlRetrievalClient;
 use App\Services\Outbound\HttpSefazOutboundProtocolQueryClient;
+use App\Services\Outbound\HttpSvrsNfceOutboundXmlRetrievalClient;
 use App\Services\Outbound\ProtocolQueryResponseParser;
+use App\Services\Outbound\SvrsNfceConfig;
+use App\Services\Outbound\SvrsNfceDownloadResponseParser;
+use App\Services\Outbound\SvrsNfceKillSwitchService;
 use App\Services\Sefaz\DistDfeResponseParser;
 use App\Services\Sefaz\HttpSefazCteDistDfeClient;
 use App\Services\Sefaz\HttpSefazDistDfeClient;
@@ -125,6 +135,20 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(MaOutboundXmlRetrievalClient::class, DisabledMaOutboundXmlRetrievalClient::class);
         $this->app->singleton(SefazOutboundInutilizationClient::class, DisabledSefazOutboundInutilizationClient::class);
         $this->app->singleton(SefazOutboundMutatingProbeClient::class, DisabledSefazOutboundMutatingProbeClient::class);
+
+        // SVRS NFC-e XML retrieval — default disabled client unless flag on
+        $this->app->singleton(SvrsNfceConfig::class);
+        $this->app->singleton(SvrsNfceKillSwitchService::class);
+        $this->app->singleton(SvrsNfceDownloadResponseParserContract::class, SvrsNfceDownloadResponseParser::class);
+        $this->app->singleton(SvrsNfceDownloadResponseParser::class);
+        // Factory por resolução (não singleton): flag pode mudar sem restart do worker
+        $this->app->bind(SvrsNfceOutboundXmlRetrievalClient::class, function ($app) {
+            if (! (bool) config('sefaz.svrs_nfce_xml.retrieval_enabled', false)) {
+                return $app->make(DisabledSvrsNfceOutboundXmlRetrievalClient::class);
+            }
+
+            return $app->make(HttpSvrsNfceOutboundXmlRetrievalClient::class);
+        });
     }
 
     public function boot(): void
@@ -134,5 +158,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(ClientCredential::class, ClientCredentialPolicy::class);
         Gate::policy(ClientContact::class, ClientContactPolicy::class);
         Gate::policy(OutboundCaptureProfile::class, OutboundCaptureProfilePolicy::class);
+        Gate::policy(OfficeFiscalIdentity::class, OfficeFiscalCredentialPolicy::class);
+        Gate::policy(OfficeCredential::class, OfficeFiscalCredentialPolicy::class);
     }
 }

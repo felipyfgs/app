@@ -35,7 +35,11 @@ class NfeXmlUnlockTest extends TestCase
 
     public function test_unlock_flag_off_com_resumo(): void
     {
-        config(['sefaz.manifest_enabled' => false]);
+        // Ciência/unlock usa AUTO_CIENCIA ou MANIFEST — ambos off.
+        config([
+            'sefaz.manifest_enabled' => false,
+            'sefaz.auto_ciencia_enabled' => false,
+        ]);
         [$office, $user] = $this->seedOfficeUser();
         $this->actingAs($user);
         app(CurrentOffice::class)->resolve($user);

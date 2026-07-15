@@ -6,10 +6,16 @@ use App\Enums\CredentialStatus;
 use App\Enums\DocumentAcquisitionSource;
 use App\Enums\OfficeRole;
 use App\Enums\OutboundNumberStatus;
+use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\OutboundRetrievalStatus;
 use App\Enums\OutboundSeriesStatus;
+use App\Enums\SvrsNfceFailureReason;
+use App\Enums\SvrsNfceRecoveryStatus;
 use App\Enums\SyncCursorStatus;
 use App\Enums\CaptureChannel;
+use App\Services\Outbound\SvrsNfceCircuitBreaker;
+use App\Services\Outbound\SvrsNfceConfig;
+use App\Services\Outbound\SvrsNfceKillSwitchService;
 use App\Models\ChannelSyncCursor;
 use App\Models\Client;
 use App\Models\ClientCredential;
@@ -47,6 +53,15 @@ final class OperationsInboxBuilder
         'outbound_xml_divergent',
         'outbound_authorized_unexpected',
         'outbound_cancel_failed',
+        // Canal SVRS NFC-e XML
+        'svrs_nfce_a1',
+        'svrs_nfce_auth',
+        'svrs_nfce_rate_limit',
+        'svrs_nfce_contract_changed',
+        'svrs_nfce_xml_signature',
+        'svrs_nfce_divergent',
+        'svrs_nfce_breaker',
+        'svrs_nfce_exhausted',
     ];
 
     public const SEVERITIES = [
@@ -72,6 +87,14 @@ final class OperationsInboxBuilder
         'outbound_xml_divergent' => 'high',
         'outbound_authorized_unexpected' => 'critical',
         'outbound_cancel_failed' => 'critical',
+        'svrs_nfce_a1' => 'high',
+        'svrs_nfce_auth' => 'critical',
+        'svrs_nfce_rate_limit' => 'medium',
+        'svrs_nfce_contract_changed' => 'critical',
+        'svrs_nfce_xml_signature' => 'critical',
+        'svrs_nfce_divergent' => 'high',
+        'svrs_nfce_breaker' => 'critical',
+        'svrs_nfce_exhausted' => 'high',
     ];
 
     private const SEVERITY_RANK = [
@@ -177,6 +200,135 @@ final class OperationsInboxBuilder
         $items = $items->merge($this->credentialItems($officeId));
         $items = $items->merge($this->backupItems());
         $items = $items->merge($this->outboundMaItems($officeId, $role));
+        $items = $items->merge($this->svrsNfceItems($officeId, $role));
+
+        return $items->values();
+    }
+
+    /**
+     * Inbox tipada do canal SVRS NFC-e (sem chave completa / HTML / XML).
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function svrsNfceItems(int $officeId, ?OfficeRole $role): Collection
+    {
+        $items = collect();
+
+        $map = [
+            SvrsNfceFailureReason::A1Unavailable->value => 'svrs_nfce_a1',
+            SvrsNfceFailureReason::A1NotRelated->value => 'svrs_nfce_a1',
+            SvrsNfceFailureReason::AuthForbidden->value => 'svrs_nfce_auth',
+            SvrsNfceFailureReason::RateLimited->value => 'svrs_nfce_rate_limit',
+            SvrsNfceFailureReason::ResponseContractChanged->value => 'svrs_nfce_contract_changed',
+            SvrsNfceFailureReason::InvalidSignature->value => 'svrs_nfce_xml_signature',
+            SvrsNfceFailureReason::InvalidXml->value => 'svrs_nfce_xml_signature',
+            SvrsNfceFailureReason::IdentityMismatch->value => 'svrs_nfce_xml_signature',
+            SvrsNfceFailureReason::DivergentBytes->value => 'svrs_nfce_divergent',
+            SvrsNfceFailureReason::MaxAttempts->value => 'svrs_nfce_exhausted',
+            SvrsNfceFailureReason::BreakerOpen->value => 'svrs_nfce_breaker',
+        ];
+
+        $recoveries = MaOutboundRetrievalRequest::query()
+            ->where('office_id', $officeId)
+            ->where('origin', OutboundRetrievalOrigin::SvrsPortalByKey)
+            ->whereIn('recovery_status', [
+                SvrsNfceRecoveryStatus::Blocked,
+                SvrsNfceRecoveryStatus::NotAvailableVisible,
+                SvrsNfceRecoveryStatus::RetryScheduled,
+            ])
+            ->whereNotNull('failure_reason')
+            ->with(['establishment.client', 'profile'])
+            ->orderByDesc('id')
+            ->limit(40)
+            ->get();
+
+        foreach ($recoveries as $req) {
+            $reason = $req->failure_reason instanceof SvrsNfceFailureReason
+                ? $req->failure_reason->value
+                : (string) $req->failure_reason;
+            $type = $map[$reason] ?? null;
+            if ($type === null) {
+                if ($req->recovery_status === SvrsNfceRecoveryStatus::NotAvailableVisible) {
+                    $type = 'svrs_nfce_exhausted';
+                } else {
+                    continue;
+                }
+            }
+            $establishment = $req->establishment;
+            $client = $establishment?->client;
+            $item = $this->item(
+                type: $type,
+                title: 'SVRS NFC-e: '.($req->failure_reason instanceof SvrsNfceFailureReason
+                    ? $req->failure_reason->label()
+                    : $reason),
+                body: 'Recovery '.$req->recovery_status?->value.' — fallback assistido disponível. '
+                    .$this->sanitizeText($req->last_error),
+                reasons: [$type, 'origin:SVRS_PORTAL_BY_KEY'],
+                clientId: $client?->id,
+                establishmentId: $establishment?->id,
+                occurredAt: $req->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+                role: $role,
+                establishment: $establishment,
+                cursor: null,
+            );
+            $item['id'] = substr(hash('sha256', 'svrs:rec:'.$req->id.':'.$type), 0, 32);
+            $item['links'] = array_filter([
+                'recovery_id' => $req->id,
+                'profile_id' => $req->outbound_capture_profile_id,
+                'establishment_id' => $req->establishment_id,
+            ]);
+            $items->push($item);
+        }
+
+        // Breaker global open
+        try {
+            $breaker = app(SvrsNfceCircuitBreaker::class);
+            $global = $breaker->globalStatus();
+            if (($global['state'] ?? 'closed') === 'open') {
+                $item = $this->item(
+                    type: 'svrs_nfce_breaker',
+                    title: 'Circuit breaker SVRS global aberto',
+                    body: 'Novos GET/POST bloqueados. Use fallback assistido; reset somente ADMIN+2FA após smoke.',
+                    reasons: ['svrs_nfce_breaker', 'scope:global'],
+                    clientId: null,
+                    establishmentId: null,
+                    occurredAt: now()->toIso8601String(),
+                    role: $role,
+                    establishment: null,
+                    cursor: null,
+                );
+                $item['id'] = substr(hash('sha256', 'svrs:breaker:global'), 0, 32);
+                $items->push($item);
+            }
+        } catch (\Throwable) {
+            // ignore
+        }
+
+        // Divergentes SVRS
+        $divergent = DocumentAcquisition::query()
+            ->where('office_id', $officeId)
+            ->where('bytes_diverge_from_canonical', true)
+            ->where('source', DocumentAcquisitionSource::SvrsNfceDownloadXmlDfe->value)
+            ->orderByDesc('id')
+            ->limit(15)
+            ->get();
+
+        foreach ($divergent as $acq) {
+            $item = $this->item(
+                type: 'svrs_nfce_divergent',
+                title: 'XML SVRS divergente (chave mascarada)',
+                body: 'Canônico preservado; revisão humana necessária.',
+                reasons: ['svrs_nfce_divergent'],
+                clientId: null,
+                establishmentId: $acq->establishment_id,
+                occurredAt: $acq->created_at?->toIso8601String() ?? now()->toIso8601String(),
+                role: $role,
+                establishment: null,
+                cursor: null,
+            );
+            $item['id'] = substr(hash('sha256', 'svrs:div:'.$acq->id), 0, 32);
+            $items->push($item);
+        }
 
         return $items->values();
     }
@@ -327,6 +479,7 @@ final class OperationsInboxBuilder
                 DocumentAcquisitionSource::MaOfficialPackage->value,
                 DocumentAcquisitionSource::MaAssistedUpload->value,
                 DocumentAcquisitionSource::MaM2mRetrieval->value,
+                DocumentAcquisitionSource::SvrsNfceDownloadXmlDfe->value,
             ])
             ->orderByDesc('id')
             ->limit(20)

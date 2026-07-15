@@ -6,6 +6,15 @@
  * @see openspec/changes/capture-multi-dfe-sefaz
  */
 return [
+    /**
+     * Bundle CA adicional (ICP-Brasil / intermediários SEFAZ).
+     * Necessário quando o SO não confia na cadeia SERPRO/ICP-Brasil.
+     */
+    'ca_bundle' => env(
+        'SEFAZ_CA_BUNDLE',
+        storage_path('app/certs/sefaz-ca-bundle.pem')
+    ),
+
     // Feature flags (default off)
     'distdfe_enabled' => filter_var(env('SEFAZ_DISTDFE_ENABLED', false), FILTER_VALIDATE_BOOL),
     // MD-e manual/conclusiva (UI). Ciência automática usa auto_ciencia_enabled.
@@ -213,5 +222,107 @@ return [
 
         // Status M2M: NO_GO até contrato formal da SEFAZ-MA
         'm2m_status' => env('SEFAZ_MA_M2M_STATUS', 'NO_GO_M2M'),
+    ],
+
+    /**
+     * Canal SVRS — recuperação de nfeProc de NFC-e 65 por chave + A1 (portal oficial).
+     * Defaults off; hosts/paths allowlisted; sem override por request de API.
+     *
+     * @see openspec/changes/add-svrs-nfce-outbound-xml-retrieval
+     * @see docs/ops/svrs-nfce-enablement-matrix.md
+     */
+    'svrs_nfce_xml' => [
+        // Feature flags (todas false por padrão)
+        'retrieval_enabled' => filter_var(env('SEFAZ_SVRS_NFCE_XML_RETRIEVAL_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'auto_queue_enabled' => filter_var(env('SEFAZ_SVRS_NFCE_XML_AUTO_QUEUE_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'pilot_allowlist_only' => filter_var(env('SEFAZ_SVRS_NFCE_XML_PILOT_ALLOWLIST_ONLY', false), FILTER_VALIDATE_BOOL),
+
+        // Kill switch operacional (não apaga estado/XML/tentativas)
+        'kill_switch' => filter_var(env('SEFAZ_SVRS_NFCE_XML_KILL_SWITCH', false), FILTER_VALIDATE_BOOL),
+
+        // Host e paths HTTPS allowlisted (sem override por request)
+        'scheme' => 'https',
+        'host' => env('SEFAZ_SVRS_NFCE_XML_HOST', 'dfe-portal.svrs.rs.gov.br'),
+        'allowed_hosts' => array_values(array_filter(array_map(
+            static fn (string $h): string => strtolower(trim($h)),
+            explode(',', (string) env(
+                'SEFAZ_SVRS_NFCE_XML_ALLOWED_HOSTS',
+                'dfe-portal.svrs.rs.gov.br'
+            ))
+        ), static fn (string $h): bool => $h !== '')),
+        'get_path' => env('SEFAZ_SVRS_NFCE_XML_GET_PATH', '/NFCESSL/DownloadXMLDFe'),
+        'post_path' => env('SEFAZ_SVRS_NFCE_XML_POST_PATH', '/NfceSSL/DownloadXmlDfe'),
+        'min_tls_version' => '1.2',
+        'verify_tls' => true, // nunca desligável via env de request
+        'verify_hostname' => true,
+
+        // Timeouts e limites de payload
+        'timeout_seconds' => (int) env('SEFAZ_SVRS_NFCE_XML_TIMEOUT_SECONDS', 30),
+        'connect_timeout_seconds' => (int) env('SEFAZ_SVRS_NFCE_XML_CONNECT_TIMEOUT_SECONDS', 10),
+        'max_html_bytes' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_HTML_BYTES', 524288), // 512 KiB
+        'max_literal_bytes' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_LITERAL_BYTES', 262144), // 256 KiB
+        'max_xml_bytes' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_XML_BYTES', 262144),
+
+        // Rate limit / batch (conservadores — design D6)
+        'max_inflight_global' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_INFLIGHT', 1),
+        'min_interval_global_seconds' => (float) env('SEFAZ_SVRS_NFCE_XML_MIN_INTERVAL_GLOBAL', 5),
+        'min_interval_root_seconds' => (float) env('SEFAZ_SVRS_NFCE_XML_MIN_INTERVAL_ROOT', 30),
+        'max_keys_per_run' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_KEYS_PER_RUN', 20),
+        'max_recoverable_attempts' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_ATTEMPTS', 5),
+        // Backoff em segundos: 15m, 1h, 6h, 12h
+        'retry_backoff_seconds' => [900, 3600, 21600, 43200],
+        'retry_jitter_ratio' => (float) env('SEFAZ_SVRS_NFCE_XML_RETRY_JITTER', 0.1),
+
+        // Circuit breaker
+        'breaker_open_seconds' => (int) env('SEFAZ_SVRS_NFCE_XML_BREAKER_OPEN_SECONDS', 3600),
+        'breaker_failure_threshold' => (int) env('SEFAZ_SVRS_NFCE_XML_BREAKER_THRESHOLD', 3),
+
+        'queue' => env('SEFAZ_SVRS_NFCE_XML_QUEUE', env('SEFAZ_MA_OUTBOUND_QUEUE', 'capture-outbound-ma')),
+        'job_timeout_seconds' => (int) env('SEFAZ_SVRS_NFCE_XML_JOB_TIMEOUT', 120),
+        'lock_ttl_seconds' => (int) env('SEFAZ_SVRS_NFCE_XML_LOCK_TTL', 180),
+
+        // Parser versionado (bump quando fixture/contrato muda de forma compatível)
+        'wrapper_parser_version' => env('SEFAZ_SVRS_NFCE_XML_PARSER_VERSION', '1'),
+        // Exigir XMLDSig em produção; em testing fixtures sem Signature são aceitas se false
+        'require_signature' => filter_var(env('SEFAZ_SVRS_NFCE_XML_REQUIRE_SIGNATURE', true), FILTER_VALIDATE_BOOL),
+
+        // Campos oficiais do POST (imutáveis por request)
+        'post_fields' => [
+            'sistema' => 'Nfce',
+            'OrigemSite' => '0',
+            // Ambiente e ChaveAcessoDfe preenchidos em runtime
+        ],
+    ],
+
+    /**
+     * Canal NFE_AUTXML_DISTDFE — escritório como terceiro em autXML.
+     * Default off; allowlist vazia; kill switch não apaga cursor/XML.
+     *
+     * @see openspec/changes/add-office-autxml-and-bulk-xml-import
+     * @see docs/ops/autxml-external-distnsu-consumers.md
+     */
+    'autxml' => [
+        'enabled' => filter_var(env('SEFAZ_AUTXML_DISTDFE_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'kill_switch' => filter_var(env('SEFAZ_AUTXML_KILL_SWITCH', false), FILTER_VALIDATE_BOOL),
+        /**
+         * Lista opcional de office_id permitidos no piloto.
+         * Vazia = nenhum office, mesmo com enabled=true (exceto se allowlist for desligada explicitamente).
+         */
+        'office_allowlist' => array_values(array_filter(array_map(
+            static fn (string $id): int => (int) trim($id),
+            explode(',', (string) env('SEFAZ_AUTXML_OFFICE_ALLOWLIST', ''))
+        ), static fn (int $id): bool => $id > 0)),
+        /**
+         * Quando true e allowlist vazia, qualquer office é elegível (somente após gates de piloto).
+         * Default false: allowlist vazia bloqueia todos.
+         */
+        'allow_all_offices' => filter_var(env('SEFAZ_AUTXML_ALLOW_ALL_OFFICES', false), FILTER_VALIDATE_BOOL),
+        'queue' => env('SEFAZ_AUTXML_QUEUE', 'sync-sefaz-autxml'),
+        'max_pages_per_job' => (int) env('SEFAZ_AUTXML_MAX_PAGES_PER_JOB', 20),
+        'page_sleep_seconds' => (float) env('SEFAZ_AUTXML_PAGE_SLEEP_SECONDS', 2),
+        'quiet_hours_after_empty' => (float) env('SEFAZ_AUTXML_QUIET_HOURS', 1),
+        'decode_failure_threshold' => (int) env('SEFAZ_AUTXML_DECODE_FAILURE_THRESHOLD', 5),
+        'job_timeout_seconds' => (int) env('SEFAZ_AUTXML_JOB_TIMEOUT_SECONDS', 900),
+        'lock_ttl_seconds' => (int) env('SEFAZ_AUTXML_LOCK_TTL_SECONDS', 960),
     ],
 ];

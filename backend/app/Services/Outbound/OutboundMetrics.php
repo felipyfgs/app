@@ -16,6 +16,31 @@ use Illuminate\Support\Facades\Log;
 final class OutboundMetrics
 {
     /**
+     * Contador de baixa cardinalidade (sem CNPJ/chave como label).
+     */
+    public function increment(string $name, int $by = 1, array $labels = []): void
+    {
+        // Sem backend Prometheus nesta fase — log estruturado + cache simples.
+        $safeLabels = array_intersect_key($labels, array_flip([
+            'channel', 'environment', 'outcome', 'model',
+        ]));
+        Log::info('metrics.counter', [
+            'name' => $name,
+            'by' => $by,
+            'labels' => $safeLabels,
+        ]);
+
+        $key = 'metrics.counter.'.$name;
+        try {
+            \Illuminate\Support\Facades\Cache::increment($key, $by);
+        } catch (\Throwable) {
+            // cache array driver may not support increment in all versions
+            $cur = (int) \Illuminate\Support\Facades\Cache::get($key, 0);
+            \Illuminate\Support\Facades\Cache::put($key, $cur + $by, 86400);
+        }
+    }
+
+    /**
      * @return array{
      *   queue: string,
      *   series_idle: int,

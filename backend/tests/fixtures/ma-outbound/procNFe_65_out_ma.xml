@@ -2,7 +2,7 @@
 <!-- Fixture sanitizada: NFC-e 65 OUT MA (cUF=21). Sem certificado/CSC real. -->
 <nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
   <NFe>
-    <infNFe Id="NFe21260712345678000190650010000000011234567891" versao="4.00">
+    <infNFe Id="NFe21260712345678000190650010000000011234567892" versao="4.00">
       <ide>
         <cUF>21</cUF>
         <cNF>12345679</cNF>
@@ -16,7 +16,7 @@
         <cMunFG>2111300</cMunFG>
         <tpImp>4</tpImp>
         <tpEmis>1</tpEmis>
-        <cDV>1</cDV>
+        <cDV>2</cDV>
         <tpAmb>2</tpAmb>
         <finNFe>1</finNFe>
         <indFinal>1</indFinal>
@@ -46,7 +46,7 @@
   <protNFe versao="4.00">
     <infProt>
       <tpAmb>2</tpAmb>
-      <chNFe>21260712345678000190650010000000011234567891</chNFe>
+      <chNFe>21260712345678000190650010000000011234567892</chNFe>
       <dhRecbto>2026-07-01T11:01:00-03:00</dhRecbto>
       <nProt>121260000000002</nProt>
       <digVal>fixtureDigestValueNotReal==</digVal>
