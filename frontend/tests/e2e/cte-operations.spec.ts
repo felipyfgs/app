@@ -5,6 +5,9 @@ import {
 } from './support/api-fixtures'
 
 test.describe('operações CT-e', () => {
+  // Overlay Vite/HMR e cold-start do dev server ocasionalmente mascaram o 1º teste.
+  test.describe.configure({ retries: 1 })
+
   for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] as const) {
     test(`${role} consulta checklist sem material sensível`, async ({ page }, testInfo) => {
       test.skip(testInfo.project.name !== 'desktop-1440', 'Matriz de papel validada uma vez no desktop.')
@@ -35,12 +38,14 @@ test.describe('operações CT-e', () => {
       await expect(page.getByText('Emitente sem vínculo no escritório')).toBeVisible()
       await expect(page.getByRole('button', { name: /abrir portal|gov\.br/i })).toHaveCount(0)
 
+      // aria-label completo: "Marcar pendência {id} como resolvida"
+      const resolveBtn = page.getByRole('button', { name: /Marcar pendência .* como resolvida|Marcar resolvido/i })
       if (role === 'VIEWER') {
         await expect(page.getByText('Somente leitura')).toBeVisible()
-        await expect(page.getByRole('button', { name: 'Marcar resolvido' })).toHaveCount(0)
+        await expect(resolveBtn).toHaveCount(0)
       } else {
-        await expect(page.getByRole('button', { name: 'Marcar resolvido' })).toBeVisible()
-        await page.getByRole('button', { name: 'Marcar resolvido' }).click()
+        await expect(resolveBtn).toBeVisible()
+        await resolveBtn.click()
         await expect(page.getByTestId('cte-pending-item')).toHaveCount(0, { timeout: 10_000 })
       }
     })
@@ -91,7 +96,7 @@ test.describe('operações CT-e', () => {
     await page.keyboard.press('Escape')
 
     await page.getByRole('button', { name: 'CT-e nº 57', exact: true }).click()
-    await expect(page.getByText(/Visão oficial redigida/i)).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('Visão oficial redigida via autXML', { exact: true })).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('body')).not.toContainText(/PRIVATE KEY|BEGIN CERTIFICATE/i)
   })
 

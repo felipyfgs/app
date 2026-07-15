@@ -306,7 +306,12 @@ defineExpose({ startEdit, cancelEdit, editing })
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-medium">{{ contact.name }}</span>
-              <UBadge v-if="contact.is_primary" color="primary" variant="subtle" icon="i-lucide-star">
+              <UBadge
+                v-if="contact.is_primary"
+                color="primary"
+                variant="subtle"
+                icon="i-lucide-star"
+              >
                 Principal
               </UBadge>
               <UBadge color="info" variant="subtle" icon="i-lucide-users">
@@ -359,7 +364,12 @@ defineExpose({ startEdit, cancelEdit, editing })
     >
       <template #body>
         <form class="space-y-4" @submit.prevent="onContactSubmit">
-          <UFormField label="Nome" name="name" required :error="contactErrors.name?.[0]">
+          <UFormField
+            label="Nome"
+            name="name"
+            required
+            :error="contactErrors.name?.[0]"
+          >
             <UInput v-model="contactState.name" class="w-full" />
           </UFormField>
           <UFormField label="Função" name="role">
@@ -378,8 +388,19 @@ defineExpose({ startEdit, cancelEdit, editing })
             <UTextarea v-model="contactState.notes" class="w-full" :rows="2" />
           </UFormField>
           <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="subtle" type="button" label="Cancelar" @click="() => { contactOpen = false }" />
-            <UButton type="submit" color="primary" label="Salvar" :loading="contactSaving" />
+            <UButton
+              color="neutral"
+              variant="subtle"
+              type="button"
+              label="Cancelar"
+              @click="() => { contactOpen = false }"
+            />
+            <UButton
+              type="submit"
+              color="primary"
+              label="Salvar"
+              :loading="contactSaving"
+            />
           </div>
         </form>
       </template>

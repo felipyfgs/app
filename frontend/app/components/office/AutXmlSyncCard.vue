@@ -65,7 +65,12 @@ onMounted(() => {
     title="Sincronização central autXML (escritório)"
     description="Cursor NFE_AUTXML_DISTDFE por CNPJ-base do escritório — separado dos canais por cliente. NSU não é editável."
   >
-    <div v-if="loading" class="space-y-2" role="status" aria-live="polite">
+    <div
+      v-if="loading"
+      class="space-y-2"
+      role="status"
+      aria-live="polite"
+    >
       <USkeleton class="h-4 w-1/2" />
       <USkeleton class="h-4 w-2/3" />
     </div>

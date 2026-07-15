@@ -185,7 +185,12 @@ function itemLink(item: InboxItem): string {
       title="Resumo indisponível"
       :description="error"
     >
-      <UButton color="neutral" variant="subtle" label="Tentar novamente" @click="emit('retry')" />
+      <UButton
+        color="neutral"
+        variant="subtle"
+        label="Tentar novamente"
+        @click="emit('retry')"
+      />
     </UEmpty>
 
     <div

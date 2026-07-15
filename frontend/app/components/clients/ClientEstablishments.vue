@@ -370,7 +370,12 @@ function ineligibilityHint(est: Establishment): string | null {
           @submit="onEdit"
         >
           <UFormField label="CNPJ" name="cnpj_readonly">
-            <UInput :model-value="editing.cnpj" class="w-full font-mono" disabled readonly />
+            <UInput
+              :model-value="editing.cnpj"
+              class="w-full font-mono"
+              disabled
+              readonly
+            />
           </UFormField>
           <UFormField label="Nome fantasia" name="trade_name" :error="fieldErrors.trade_name?.[0]">
             <UInput v-model="editState.trade_name" class="w-full" />
@@ -431,7 +436,13 @@ function ineligibilityHint(est: Establishment): string | null {
             </UFormField>
           </div>
           <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="subtle" type="button" label="Cancelar" @click="() => { editOpen = false }" />
+            <UButton
+              color="neutral"
+              variant="subtle"
+              type="button"
+              label="Cancelar"
+              @click="() => { editOpen = false }"
+            />
             <UButton type="submit" label="Salvar" :loading="saving" />
           </div>
         </UForm>

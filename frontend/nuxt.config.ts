@@ -116,31 +116,6 @@ export default defineNuxtConfig({
     }
   },
 
-  sanctum: {
-    baseUrl: apiBase,
-    mode: 'cookie',
-    endpoints: {
-      csrf: '/sanctum/csrf-cookie',
-      login: '/login',
-      logout: '/logout',
-      user: '/api/v1/me'
-    },
-    redirect: {
-      onLogin: false,
-      onLogout: '/login',
-      onAuthOnly: '/login',
-      onGuestOnly: '/'
-    },
-    globalMiddleware: {
-      enabled: false
-    },
-    serverProxy: {
-      enabled: useSanctumProxy,
-      route: '/api/sanctum',
-      baseUrl: process.env.NUXT_SANCTUM_PROXY_BASE || 'http://localhost:8080'
-    }
-  },
-
   /**
    * PWA — app instalável no navegador (Chrome/Edge/Android “Instalar app”).
    * Requisito: contexto seguro (HTTPS ou localhost). HTTP em IP público NÃO
@@ -211,6 +186,31 @@ export default defineNuxtConfig({
       // Em localhost permite testar SW/manifest; em IP HTTP o Chrome ainda bloqueia install.
       enabled: process.env.NUXT_PWA_DEV === 'true',
       type: 'module'
+    }
+  },
+
+  sanctum: {
+    baseUrl: apiBase,
+    mode: 'cookie',
+    endpoints: {
+      csrf: '/sanctum/csrf-cookie',
+      login: '/login',
+      logout: '/logout',
+      user: '/api/v1/me'
+    },
+    redirect: {
+      onLogin: false,
+      onLogout: '/login',
+      onAuthOnly: '/login',
+      onGuestOnly: '/'
+    },
+    globalMiddleware: {
+      enabled: false
+    },
+    serverProxy: {
+      enabled: useSanctumProxy,
+      route: '/api/sanctum',
+      baseUrl: process.env.NUXT_SANCTUM_PROXY_BASE || 'http://localhost:8080'
     }
   }
 })

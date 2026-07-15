@@ -37,7 +37,7 @@ const categoryItems = computed(() =>
 
 const categoryIdModel = computed<number | undefined>({
   get: () => categoryId.value ?? undefined,
-  set: value => { categoryId.value = value ?? null }
+  set: (value) => { categoryId.value = value ?? null }
 })
 
 watch(open, async (isOpen) => {

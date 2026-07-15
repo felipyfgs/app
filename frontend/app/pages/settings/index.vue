@@ -69,6 +69,33 @@ function clearSensitive() {
   termoFile.value = null
 }
 
+/** Labels operacionais acionáveis (sem jargão técnico). */
+function authorizationStatusLabel(status?: string | null) {
+  switch (status) {
+    case 'DRAFT': return 'Configure o Autor do Pedido'
+    case 'PENDING_TERM': return 'Envie o Termo assinado'
+    case 'TERM_VALID': return 'Termo válido localmente — autentique o procurador'
+    case 'TOKEN_ACTIVE': return 'Autorização ativa'
+    case 'ACTION_REQUIRED': return 'Ação necessária no Termo ou token'
+    case 'BLOCKED': return 'Autorização bloqueada'
+    case 'EXPIRED': return 'Autorização expirada — renove o Termo/token'
+    case 'REVOKED': return 'Autorização revogada'
+    default: return status || '—'
+  }
+}
+
+function termoStateLabel(state?: string | null) {
+  switch (state) {
+    case 'LOCAL_VALIDATED': return 'Validado localmente (ainda sem aceite SERPRO)'
+    case 'SERPRO_ACCEPTED': return 'Aceito pelo SERPRO'
+    case 'SIMULATED': return 'Simulado (desenvolvimento)'
+    case 'REJECTED': return 'Rejeitado — revise o Termo'
+    case 'PENDING': return 'Pendente de validação'
+    case 'EXPIRED': return 'Expirado'
+    default: return state || '—'
+  }
+}
+
 let loadSeq = 0
 
 async function load() {
@@ -242,7 +269,16 @@ onBeforeUnmount(clearSensitive)
                 Status
               </dt>
               <dd class="font-medium">
-                {{ auth.status }}
+                {{ authorizationStatusLabel(auth.status) }}
+                <span class="block text-xs text-muted font-normal">{{ auth.status }}</span>
+              </dd>
+            </div>
+            <div v-if="auth.termo_authorization_state || auth.authorization_state">
+              <dt class="text-muted">
+                Validação do Termo
+              </dt>
+              <dd class="font-medium">
+                {{ termoStateLabel(auth.termo_authorization_state || auth.authorization_state) }}
               </dd>
             </div>
             <div>

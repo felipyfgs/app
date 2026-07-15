@@ -44,8 +44,8 @@ const emit = defineEmits<{
   'update:submodule': [value: string]
   'update:deliveryStatus': [value: string]
   'update:clientId': [value: number | null]
-  refresh: []
-  export: []
+  'refresh': []
+  'export': []
 }>()
 
 const situationItems = fiscalSituationFilterItems(true)

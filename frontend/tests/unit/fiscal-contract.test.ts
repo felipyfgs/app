@@ -7,6 +7,8 @@ import {
   FISCAL_PORTFOLIO_MODULE_KEYS,
   isSyntheticFiscalOrigin
 } from '../../app/types/fiscal-modules'
+import type {
+  buildFiscalModuleClients } from '../e2e/support/fiscal-fixtures'
 import {
   assertClientRowEnvelope,
   assertClientsPageEnvelope,
@@ -19,7 +21,6 @@ import {
   buildFiscalCategories,
   buildFiscalFindings,
   buildFiscalModuleClientRow,
-  buildFiscalModuleClients,
   buildFiscalModuleOverview,
   buildFiscalPendingItems,
   buildFiscalRuns,

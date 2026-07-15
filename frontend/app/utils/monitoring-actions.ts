@@ -74,8 +74,8 @@ export function monitoringActionMatrix(user?: MeUser | null): MonitoringActionAv
         : isViewer
           ? 'VIEWER não executa mutações fiscais.'
           : !hasConfirmedAdminAccess(user)
-            ? 'ADMIN precisa de 2FA confirmado.'
-            : undefined
+              ? 'ADMIN precisa de 2FA confirmado.'
+              : undefined
     }
   ]
 }

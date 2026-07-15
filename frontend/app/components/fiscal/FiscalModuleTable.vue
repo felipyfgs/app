@@ -78,8 +78,8 @@ const emit = defineEmits<{
   'update:deliveryStatus': [value: string]
   'update:q': [value: string]
   'update:clientId': [value: number | null]
-  refresh: []
-  export: []
+  'refresh': []
+  'export': []
   'kpi-select': [key: FiscalKpiKey]
   'row-select': [row: T]
 }>()

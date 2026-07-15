@@ -22,7 +22,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: number | null]
   'update:query': [value: string]
-  select: [client: Client | null]
+  'select': [client: Client | null]
 }>()
 
 const api = useApi()

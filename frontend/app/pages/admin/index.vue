@@ -313,7 +313,12 @@ watch(allowed, (ok) => {
             description="Somente leitura. Restore e drill são comandos operacionais (CLI), não rotas da API."
           />
           <UPageCard variant="subtle" data-testid="admin-backup-card">
-            <div v-if="backupLoading" class="space-y-2" role="status" aria-label="Carregando status de backup">
+            <div
+              v-if="backupLoading"
+              class="space-y-2"
+              role="status"
+              aria-label="Carregando status de backup"
+            >
               <USkeleton class="h-4 w-1/2" />
               <USkeleton class="h-4 w-2/3" />
             </div>

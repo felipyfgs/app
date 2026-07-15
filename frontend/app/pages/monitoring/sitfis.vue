@@ -50,9 +50,21 @@ const sitfisMeta = ref<{
   ttl_seconds?: number | null
   is_within_ttl?: boolean
   expires_at?: string | null
+  next_refresh_at?: string | null
+  can_refresh?: boolean
+  block_reason?: string | null
+  source_provenance?: string | null
+  verification_state?: string | null
   disclaimer?: string | null
   coverage?: string | null
 } | null>(null)
+
+function provenanceLabel(value?: string | null) {
+  if (value === 'SERPRO_REAL') return 'Fonte SERPRO real'
+  if (value === 'SIMULATED') return 'Simulado (desenvolvimento)'
+  if (value === 'UNVERIFIED') return 'Não verificado (legado)'
+  return null
+}
 const detailLoading = ref(false)
 const detailError = ref<string | null>(null)
 const detailRefreshing = ref(false)
@@ -110,6 +122,15 @@ async function openDetail(row: SitfisClientRow) {
         ttl_seconds: (view.ttl_seconds as number | null) ?? d.ttl_seconds ?? null,
         is_within_ttl: view.is_within_ttl as boolean | undefined,
         expires_at: view.expires_at as string | null | undefined,
+        next_refresh_at: view.next_refresh_at as string | null | undefined,
+        can_refresh: view.can_refresh as boolean | undefined,
+        block_reason: view.block_reason as string | null | undefined,
+        source_provenance: (view.source_provenance as string | null | undefined)
+          || (view.snapshot as { source_provenance?: string } | undefined)?.source_provenance
+          || null,
+        verification_state: (view.verification_state as string | null | undefined)
+          || (view.snapshot as { verification_state?: string } | undefined)?.verification_state
+          || null,
         disclaimer: view.disclaimer as string | null | undefined,
         coverage: String(
           (view.snapshot as { coverage?: string } | undefined)?.coverage
@@ -319,8 +340,24 @@ const columns: TableColumn<SitfisClientRow>[] = [
                 Idade: {{ ageLabel(sitfisMeta?.age_seconds ?? (selected ? detailOf(selected).age_seconds : null)) }}
                 · TTL: {{ ageLabel(sitfisMeta?.ttl_seconds ?? (selected ? detailOf(selected).ttl_seconds : null)) }}
               </span>
+              <UBadge
+                v-if="provenanceLabel(sitfisMeta?.source_provenance)"
+                :color="sitfisMeta?.source_provenance === 'SERPRO_REAL' ? 'success' : 'warning'"
+                variant="subtle"
+                size="sm"
+              >
+                {{ provenanceLabel(sitfisMeta?.source_provenance) }}
+              </UBadge>
+              <UBadge
+                v-if="sitfisMeta?.block_reason === 'RUN_IN_PROGRESS'"
+                color="info"
+                variant="subtle"
+                size="sm"
+              >
+                Atualização em processamento
+              </UBadge>
               <UButton
-                v-if="canTriggerSync && selected"
+                v-if="canTriggerSync && selected && sitfisMeta?.can_refresh !== false"
                 size="xs"
                 color="neutral"
                 variant="outline"
@@ -329,6 +366,12 @@ const columns: TableColumn<SitfisClientRow>[] = [
                 :loading="detailRefreshing"
                 @click="refreshSelected(false)"
               />
+              <span
+                v-else-if="sitfisMeta?.block_reason === 'WITHIN_TTL' && sitfisMeta?.next_refresh_at"
+                class="text-xs text-muted"
+              >
+                Dados recentes · próxima atualização a partir de {{ formatDateTime(sitfisMeta.next_refresh_at) }}
+              </span>
               <UButton
                 v-if="selected"
                 size="xs"

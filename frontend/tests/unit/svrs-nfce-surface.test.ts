@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { SvrsNfceChannelSummary, SvrsNfceRecovery } from '../../app/types/api'
+import type { SvrsNfceChannelSummary, SvrsNfceRecovery, MeUser } from '../../app/types/api'
 import {
   canManageClients,
   canManageCredentials
 } from '../../app/utils/permissions'
-import type { MeUser } from '../../app/types/api'
 
 function user(partial: Partial<MeUser> & Pick<MeUser, 'role'>): MeUser {
   return {

@@ -30,7 +30,6 @@ const loading = ref(false)
 const triggeringId = ref<number | null>(null)
 const triggeredIds = ref<number[]>([])
 
-
 const establishments = computed(() => item.value?.establishments || [])
 
 const title = computed(() =>
@@ -209,7 +208,12 @@ watch(open, (value) => {
       </div>
 
       <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
-        <div v-if="loading && !item" class="space-y-4" role="status" aria-label="Carregando cliente">
+        <div
+          v-if="loading && !item"
+          class="space-y-4"
+          role="status"
+          aria-label="Carregando cliente"
+        >
           <USkeleton class="h-24 w-full" />
           <USkeleton class="h-40 w-full" />
           <USkeleton class="h-28 w-full" />
@@ -321,5 +325,4 @@ watch(open, (value) => {
       </div>
     </template>
   </UModal>
-
 </template>

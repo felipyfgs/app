@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import type { OutboundCaptureProfile, OutboundNumberState, OutboundSeriesCursor } from '../../app/types/api'
+import type { OutboundCaptureProfile, OutboundNumberState, OutboundSeriesCursor, MeUser } from '../../app/types/api'
 import {
   canManageClients,
   canManageCredentials,
   canTriggerSync,
   hasConfirmedAdminAccess
 } from '../../app/utils/permissions'
-import type { MeUser } from '../../app/types/api'
 
 function user(partial: Partial<MeUser> & Pick<MeUser, 'role'>): MeUser {
   return {

@@ -131,144 +131,144 @@ onMounted(load)
 
 <template>
   <div class="flex min-h-0 w-full flex-1">
-  <UDashboardPanel
-    id="mailbox-list"
-    :default-size="30"
-    :min-size="22"
-    :max-size="40"
-    resizable
-  >
-    <template #header>
-      <UDashboardNavbar
-        title="Caixas Postais"
-        data-testid="page-navbar"
-      >
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #trailing>
-          <UBadge
-            :label="String(total)"
-            variant="subtle"
-          />
-        </template>
-        <template #right>
-          <FiscalMonitoringPortfolioActions
-            module-key="mailbox"
-            :client-id="clientIdModel"
-            show-enqueue
-            :show-export="true"
-            @refreshed="load"
-          />
-        </template>
-      </UDashboardNavbar>
-      <UDashboardToolbar data-testid="page-toolbar">
-        <template #left>
-          <div class="flex min-w-0 flex-1 flex-col gap-2">
-            <MonitoringModuleNav active="mailbox" />
-            <div class="flex flex-wrap items-center gap-2 -ms-1">
-              <USelect
-                v-model="triage"
-                :items="[...MAILBOX_TRIAGE_FILTER_ITEMS]"
-                value-key="value"
-                class="w-40"
-                aria-label="Triagem interna"
-                data-testid="mailbox-triage-filter"
-              />
-              <FiscalClientPicker
-                v-model="clientIdModel"
-                class="w-52 sm:w-64"
-              />
-              <UButton
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-refresh-cw"
-                :loading="loading"
-                aria-label="Atualizar"
-                @click="load"
-              />
-            </div>
-          </div>
-        </template>
-      </UDashboardToolbar>
-    </template>
-
-    <template #body>
-      <UAlert
-        color="info"
-        icon="i-lucide-info"
-        title="Triagem ≠ leitura oficial"
-        description="NEW / IN_REVIEW / RESOLVED são internos. Não marcam ciência no canal da RFB."
-        class="mb-3"
-      />
-      <UAlert
-        v-if="loadError"
-        color="error"
-        icon="i-lucide-circle-x"
-        :title="loadError"
-        class="mb-3"
-      >
-        <template #actions>
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="outline"
-            label="Tentar de novo"
-            @click="load"
-          />
-        </template>
-      </UAlert>
-
-      <!-- Erro de lista não vira empty silencioso: alerta acima + lista só se houver dados ou sucesso -->
-      <MonitoringMailboxList
-        v-if="!loadError || rows.length"
-        ref="listRef"
-        :messages="rows"
-        :selected-id="selectedId"
-        :loading="loading"
-        @select="selectMessage"
-      />
-
-      <div
-        v-if="lastPage > 1"
-        class="mt-3 flex items-center justify-between border-t border-default pt-3"
-      >
-        <span class="text-xs text-muted">Pág. {{ page }}/{{ lastPage }}</span>
-        <UPagination
-          v-model="page"
-          :total="total"
-          :items-per-page="perPage"
-          size="sm"
-        />
-      </div>
-    </template>
-  </UDashboardPanel>
-
-  <!-- Desktop: detalhe adjacente via NuxtPage -->
-  <div class="hidden min-w-0 flex-1 lg:flex">
-    <NuxtPage
-      @close="closeDetail"
-      @triaged="onTriaged"
-    />
-  </div>
-
-  <!-- Mobile: slideover com detalhe -->
-  <ClientOnly>
-    <USlideover
-      v-if="isMobile"
-      v-model:open="mobileOpen"
-      :ui="{ content: 'max-w-full' }"
+    <UDashboardPanel
+      id="mailbox-list"
+      :default-size="30"
+      :min-size="22"
+      :max-size="40"
+      resizable
     >
-      <template #content>
-        <MonitoringMailboxMail
-          v-if="selectedId"
-          :message-id="selectedId"
-          show-close
-          @close="closeDetail"
-          @triaged="onTriaged"
-        />
+      <template #header>
+        <UDashboardNavbar
+          title="Caixas Postais"
+          data-testid="page-navbar"
+        >
+          <template #leading>
+            <UDashboardSidebarCollapse />
+          </template>
+          <template #trailing>
+            <UBadge
+              :label="String(total)"
+              variant="subtle"
+            />
+          </template>
+          <template #right>
+            <FiscalMonitoringPortfolioActions
+              module-key="mailbox"
+              :client-id="clientIdModel"
+              show-enqueue
+              :show-export="true"
+              @refreshed="load"
+            />
+          </template>
+        </UDashboardNavbar>
+        <UDashboardToolbar data-testid="page-toolbar">
+          <template #left>
+            <div class="flex min-w-0 flex-1 flex-col gap-2">
+              <MonitoringModuleNav active="mailbox" />
+              <div class="flex flex-wrap items-center gap-2 -ms-1">
+                <USelect
+                  v-model="triage"
+                  :items="[...MAILBOX_TRIAGE_FILTER_ITEMS]"
+                  value-key="value"
+                  class="w-40"
+                  aria-label="Triagem interna"
+                  data-testid="mailbox-triage-filter"
+                />
+                <FiscalClientPicker
+                  v-model="clientIdModel"
+                  class="w-52 sm:w-64"
+                />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-refresh-cw"
+                  :loading="loading"
+                  aria-label="Atualizar"
+                  @click="load"
+                />
+              </div>
+            </div>
+          </template>
+        </UDashboardToolbar>
       </template>
-    </USlideover>
-  </ClientOnly>
+
+      <template #body>
+        <UAlert
+          color="info"
+          icon="i-lucide-info"
+          title="Triagem ≠ leitura oficial"
+          description="NEW / IN_REVIEW / RESOLVED são internos. Não marcam ciência no canal da RFB."
+          class="mb-3"
+        />
+        <UAlert
+          v-if="loadError"
+          color="error"
+          icon="i-lucide-circle-x"
+          :title="loadError"
+          class="mb-3"
+        >
+          <template #actions>
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="outline"
+              label="Tentar de novo"
+              @click="load"
+            />
+          </template>
+        </UAlert>
+
+        <!-- Erro de lista não vira empty silencioso: alerta acima + lista só se houver dados ou sucesso -->
+        <MonitoringMailboxList
+          v-if="!loadError || rows.length"
+          ref="listRef"
+          :messages="rows"
+          :selected-id="selectedId"
+          :loading="loading"
+          @select="selectMessage"
+        />
+
+        <div
+          v-if="lastPage > 1"
+          class="mt-3 flex items-center justify-between border-t border-default pt-3"
+        >
+          <span class="text-xs text-muted">Pág. {{ page }}/{{ lastPage }}</span>
+          <UPagination
+            v-model="page"
+            :total="total"
+            :items-per-page="perPage"
+            size="sm"
+          />
+        </div>
+      </template>
+    </UDashboardPanel>
+
+    <!-- Desktop: detalhe adjacente via NuxtPage -->
+    <div class="hidden min-w-0 flex-1 lg:flex">
+      <NuxtPage
+        @close="closeDetail"
+        @triaged="onTriaged"
+      />
+    </div>
+
+    <!-- Mobile: slideover com detalhe -->
+    <ClientOnly>
+      <USlideover
+        v-if="isMobile"
+        v-model:open="mobileOpen"
+        :ui="{ content: 'max-w-full' }"
+      >
+        <template #content>
+          <MonitoringMailboxMail
+            v-if="selectedId"
+            :message-id="selectedId"
+            show-close
+            @close="closeDetail"
+            @triaged="onTriaged"
+          />
+        </template>
+      </USlideover>
+    </ClientOnly>
   </div>
 </template>

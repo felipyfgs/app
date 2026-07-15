@@ -123,7 +123,7 @@ async function loadSummary() {
       summary.value = raw as DeclarationSummaryRow[]
     } else if (raw && typeof raw === 'object') {
       // Contrato antigo/objeto — não stringify; extrai listas conhecidas ou vazio.
-      const maybe = (raw as { items?: unknown, data?: unknown })
+      const maybe = raw as { items?: unknown, data?: unknown }
       const list = Array.isArray(maybe.items)
         ? maybe.items
         : Array.isArray(maybe.data)

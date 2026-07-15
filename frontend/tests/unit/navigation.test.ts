@@ -65,7 +65,8 @@ describe('navigation', () => {
       'exports',
       'closing',
       'syncs',
-      'imports'
+      'imports',
+      'cte-onboarding'
     ])
     const flat = flattenDestinations(tree).map(d => d.id)
     expect(flat).toContain('home')
@@ -109,7 +110,7 @@ describe('navigation', () => {
     expect(docs?.to).toBeUndefined()
     const ops = items.find(i => i.label === 'Operações')
     expect(ops?.type).toBe('trigger')
-    expect(ops?.children?.length).toBe(5)
+    expect(ops?.children?.length).toBe(6)
     expect(ops?.to).toBeUndefined()
   })
 })

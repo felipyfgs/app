@@ -114,10 +114,20 @@ function field(value?: string | number | null): string {
           Observações
         </h3>
         <UFormField v-if="client.notes" label="Notas internas">
-          <UTextarea :model-value="client.notes" readonly class="w-full" :rows="3" />
+          <UTextarea
+            :model-value="client.notes"
+            readonly
+            class="w-full"
+            :rows="3"
+          />
         </UFormField>
         <UFormField v-if="!client.is_active && client.inactive_reason" label="Motivo de inativação">
-          <UTextarea :model-value="client.inactive_reason" readonly class="w-full" :rows="2" />
+          <UTextarea
+            :model-value="client.inactive_reason"
+            readonly
+            class="w-full"
+            :rows="2"
+          />
         </UFormField>
       </div>
     </template>

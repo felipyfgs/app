@@ -218,256 +218,261 @@ const displayName = computed(() =>
 
     <!-- Identidade / painéis (omitidos na página completa com header próprio) -->
     <template v-if="!wizardOnly">
-    <UPageCard
-      title="Identidade da raiz"
-      description="Dados do Cliente (CNPJ raiz) e estado no escritório."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
-      :class="showOnboarding ? 'mt-2' : undefined"
-    >
-      <div v-if="canManageClients" class="flex w-fit flex-wrap gap-2 lg:ms-auto">
-        <UButton
-          label="Editar cadastro"
-          color="primary"
-          variant="soft"
-          icon="i-lucide-pencil"
-          size="sm"
-          data-testid="client-onboarding-edit"
-          @click="() => { formOpen = true }"
-        />
-      </div>
-    </UPageCard>
-
-    <UPageCard variant="subtle">
-      <dl class="grid gap-4 sm:grid-cols-2">
-        <div class="sm:col-span-2">
-          <dt class="text-sm text-muted">
-            Razão social
-          </dt>
-          <dd class="text-highlighted font-medium">
-            {{ client.legal_name || client.name }}
-          </dd>
-        </div>
-        <div v-if="client.display_name">
-          <dt class="text-sm text-muted">
-            Nome interno
-          </dt>
-          <dd class="text-highlighted">
-            {{ client.display_name }}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm text-muted">
-            Raiz CNPJ
-          </dt>
-          <dd class="font-mono text-highlighted">
-            {{ client.root_cnpj }}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm text-muted">
-            Estado no escritório
-          </dt>
-          <dd>
-            <UBadge
-              :color="client.is_active ? 'success' : 'neutral'"
-              variant="subtle"
-              :icon="client.is_active ? 'i-lucide-check' : 'i-lucide-minus'"
-            >
-              {{ client.is_active ? 'Ativo' : 'Inativo' }}
-            </UBadge>
-          </dd>
-        </div>
-        <div>
-          <dt class="text-sm text-muted">
-            Fonte cadastral
-          </dt>
-          <dd class="flex flex-wrap items-center gap-2">
-            <UBadge color="neutral" variant="subtle" icon="i-lucide-database">
-              {{ registrationSourceLabel(client.registration_source) }}
-            </UBadge>
-            <span class="text-xs text-muted">
-              {{ formatSourceDate(client.registration_refreshed_at) }}
-              <template v-if="client.registration_source === 'CNPJ_WS'">
-                · pode estar defasado
-              </template>
-            </span>
-          </dd>
-        </div>
-        <div v-if="client.legal_nature_name || client.company_size_name" class="sm:col-span-2 grid gap-4 sm:grid-cols-2">
-          <div v-if="client.legal_nature_name">
-            <dt class="text-sm text-muted">
-              Natureza jurídica
-            </dt>
-            <dd class="text-highlighted text-sm">
-              <span v-if="client.legal_nature_code" class="font-mono text-muted">{{ client.legal_nature_code }} · </span>
-              {{ client.legal_nature_name }}
-            </dd>
-          </div>
-          <div v-if="client.company_size_name">
-            <dt class="text-sm text-muted">
-              Porte
-            </dt>
-            <dd class="text-highlighted text-sm">
-              <span v-if="client.company_size_code" class="font-mono text-muted">{{ client.company_size_code }} · </span>
-              {{ client.company_size_name }}
-            </dd>
-          </div>
-        </div>
-        <div v-if="client.notes" class="sm:col-span-2">
-          <dt class="text-sm text-muted">
-            Observações
-          </dt>
-          <dd class="text-highlighted text-sm whitespace-pre-wrap">
-            {{ client.notes }}
-          </dd>
-        </div>
-        <div v-if="!client.is_active && client.inactive_reason" class="sm:col-span-2">
-          <dt class="text-sm text-muted">
-            Motivo de inativação
-          </dt>
-          <dd class="text-highlighted text-sm">
-            {{ client.inactive_reason }}
-          </dd>
-        </div>
-      </dl>
-    </UPageCard>
-
-    <!-- CNPJ deste cliente (1:1) e captura -->
-    <UPageCard
-      title="CNPJ e captura"
-      description="Cada cliente é um CNPJ. Filiais = novo cadastro de cliente."
-      variant="naked"
-      class="mb-4 mt-2"
-    />
-
-    <UPageCard variant="subtle">
-      <div v-if="!establishments.length">
-        <UEmpty
-          icon="i-lucide-building-2"
-          title="CNPJ não encontrado"
-          description="O CNPJ nasce com o cadastro do cliente. Se faltar, edite ou recadastre."
-        />
-      </div>
-
-      <template v-else>
-        <div
-          v-for="est in establishments.slice(0, 1)"
-          :key="est.id"
-          class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-medium text-highlighted">
-                {{ est.trade_name || est.cnpj }}
-              </span>
-              <UBadge v-if="est.is_matrix" color="primary" variant="subtle" size="sm">
-                Matriz
-              </UBadge>
-              <UBadge
-                :color="est.capture_enabled !== false ? 'success' : 'warning'"
-                variant="subtle"
-                size="sm"
-                :icon="est.capture_enabled !== false ? 'i-lucide-radio' : 'i-lucide-radio-off'"
-              >
-                {{ est.capture_enabled !== false ? 'Captura on' : 'Captura off' }}
-              </UBadge>
-            </div>
-            <p class="font-mono text-sm text-muted">
-              {{ est.cnpj }}
-            </p>
-            <p
-              v-if="est.capture_eligibility && !est.capture_eligibility.eligible"
-              class="mt-1 text-xs text-warning"
-            >
-              {{ est.capture_eligibility.reasons[0] || 'Inelegível para captura.' }}
-            </p>
-          </div>
+      <UPageCard
+        title="Identidade da raiz"
+        description="Dados do Cliente (CNPJ raiz) e estado no escritório."
+        variant="naked"
+        orientation="horizontal"
+        class="mb-4"
+        :class="showOnboarding ? 'mt-2' : undefined"
+      >
+        <div v-if="canManageClients" class="flex w-fit flex-wrap gap-2 lg:ms-auto">
           <UButton
-            v-if="canManageClients"
+            label="Editar cadastro"
+            color="primary"
+            variant="soft"
+            icon="i-lucide-pencil"
             size="sm"
-            color="neutral"
-            variant="subtle"
-            icon="i-lucide-user-plus"
-            label="Cadastrar filial (novo cliente)"
-            @click="openClientCreate"
+            data-testid="client-onboarding-edit"
+            @click="() => { formOpen = true }"
           />
         </div>
-      </template>
-    </UPageCard>
-
-    <!-- Certificado e sync (atalhos) -->
-    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
-      <UPageCard
-        variant="subtle"
-        class="hover:ring-primary/30 transition-shadow cursor-pointer"
-        role="button"
-        tabindex="0"
-        @click="() => { if (inModal) goSection('certificado'); else void navigateTo(sectionTo('certificado')) }"
-        @keydown.enter="() => { if (inModal) goSection('certificado'); else void navigateTo(sectionTo('certificado')) }"
-      >
-        <div class="flex items-start gap-3">
-          <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 ring ring-inset ring-primary/25">
-            <UIcon name="i-lucide-badge-check" class="size-5 text-primary" />
-          </div>
-          <div class="min-w-0">
-            <p class="font-medium text-highlighted">
-              Certificado A1
-            </p>
-            <p class="text-sm text-muted">
-              <template v-if="!canManageCredentials">
-                Gerenciado por ADMIN — sem formulário sensível neste perfil.
-              </template>
-              <template v-else-if="credential">
-                Ativo até {{ formatDateTime(credential.valid_to) }}
-              </template>
-              <template v-else>
-                Nenhum certificado ativo. Envie o PFX na seção dedicada.
-              </template>
-            </p>
-          </div>
-        </div>
       </UPageCard>
 
-      <UPageCard
-        variant="subtle"
-        class="hover:ring-primary/30 transition-shadow cursor-pointer"
-        role="button"
-        tabindex="0"
-        @click="() => { if (inModal) goSection('sincronizacao'); else void navigateTo(sectionTo('sincronizacao')) }"
-        @keydown.enter="() => { if (inModal) goSection('sincronizacao'); else void navigateTo(sectionTo('sincronizacao')) }"
-      >
-        <div class="flex items-start gap-3">
-          <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 ring ring-inset ring-primary/25">
-            <UIcon name="i-lucide-refresh-cw" class="size-5 text-primary" />
+      <UPageCard variant="subtle">
+        <dl class="grid gap-4 sm:grid-cols-2">
+          <div class="sm:col-span-2">
+            <dt class="text-sm text-muted">
+              Razão social
+            </dt>
+            <dd class="text-highlighted font-medium">
+              {{ client.legal_name || client.name }}
+            </dd>
           </div>
-          <div class="min-w-0">
-            <p class="font-medium text-highlighted">
-              Sincronização ADN
-            </p>
-            <p class="text-sm text-muted">
-              <template v-if="!establishments.length">
-                CNPJ do cliente necessário para capturar.
-              </template>
-              <template v-else-if="canManageCredentials && !credential">
-                Ative o A1 antes da primeira captura.
-              </template>
-              <template v-else-if="captureReadyCount === 0">
-                CNPJ inelegível para captura no momento.
-              </template>
-              <template v-else>
-                Pronto para captura. NSU não é editável.
-              </template>
-            </p>
+          <div v-if="client.display_name">
+            <dt class="text-sm text-muted">
+              Nome interno
+            </dt>
+            <dd class="text-highlighted">
+              {{ client.display_name }}
+            </dd>
           </div>
-        </div>
+          <div>
+            <dt class="text-sm text-muted">
+              Raiz CNPJ
+            </dt>
+            <dd class="font-mono text-highlighted">
+              {{ client.root_cnpj }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-sm text-muted">
+              Estado no escritório
+            </dt>
+            <dd>
+              <UBadge
+                :color="client.is_active ? 'success' : 'neutral'"
+                variant="subtle"
+                :icon="client.is_active ? 'i-lucide-check' : 'i-lucide-minus'"
+              >
+                {{ client.is_active ? 'Ativo' : 'Inativo' }}
+              </UBadge>
+            </dd>
+          </div>
+          <div>
+            <dt class="text-sm text-muted">
+              Fonte cadastral
+            </dt>
+            <dd class="flex flex-wrap items-center gap-2">
+              <UBadge color="neutral" variant="subtle" icon="i-lucide-database">
+                {{ registrationSourceLabel(client.registration_source) }}
+              </UBadge>
+              <span class="text-xs text-muted">
+                {{ formatSourceDate(client.registration_refreshed_at) }}
+                <template v-if="client.registration_source === 'CNPJ_WS'">
+                  · pode estar defasado
+                </template>
+              </span>
+            </dd>
+          </div>
+          <div v-if="client.legal_nature_name || client.company_size_name" class="sm:col-span-2 grid gap-4 sm:grid-cols-2">
+            <div v-if="client.legal_nature_name">
+              <dt class="text-sm text-muted">
+                Natureza jurídica
+              </dt>
+              <dd class="text-highlighted text-sm">
+                <span v-if="client.legal_nature_code" class="font-mono text-muted">{{ client.legal_nature_code }} · </span>
+                {{ client.legal_nature_name }}
+              </dd>
+            </div>
+            <div v-if="client.company_size_name">
+              <dt class="text-sm text-muted">
+                Porte
+              </dt>
+              <dd class="text-highlighted text-sm">
+                <span v-if="client.company_size_code" class="font-mono text-muted">{{ client.company_size_code }} · </span>
+                {{ client.company_size_name }}
+              </dd>
+            </div>
+          </div>
+          <div v-if="client.notes" class="sm:col-span-2">
+            <dt class="text-sm text-muted">
+              Observações
+            </dt>
+            <dd class="text-highlighted text-sm whitespace-pre-wrap">
+              {{ client.notes }}
+            </dd>
+          </div>
+          <div v-if="!client.is_active && client.inactive_reason" class="sm:col-span-2">
+            <dt class="text-sm text-muted">
+              Motivo de inativação
+            </dt>
+            <dd class="text-highlighted text-sm">
+              {{ client.inactive_reason }}
+            </dd>
+          </div>
+        </dl>
       </UPageCard>
-    </div>
 
-    <p class="text-xs text-muted text-center sm:text-start">
-      Exibindo {{ displayName }} · seções disponíveis na barra acima.
-    </p>
+      <!-- CNPJ deste cliente (1:1) e captura -->
+      <UPageCard
+        title="CNPJ e captura"
+        description="Cada cliente é um CNPJ. Filiais = novo cadastro de cliente."
+        variant="naked"
+        class="mb-4 mt-2"
+      />
+
+      <UPageCard variant="subtle">
+        <div v-if="!establishments.length">
+          <UEmpty
+            icon="i-lucide-building-2"
+            title="CNPJ não encontrado"
+            description="O CNPJ nasce com o cadastro do cliente. Se faltar, edite ou recadastre."
+          />
+        </div>
+
+        <template v-else>
+          <div
+            v-for="est in establishments.slice(0, 1)"
+            :key="est.id"
+            class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-medium text-highlighted">
+                  {{ est.trade_name || est.cnpj }}
+                </span>
+                <UBadge
+                  v-if="est.is_matrix"
+                  color="primary"
+                  variant="subtle"
+                  size="sm"
+                >
+                  Matriz
+                </UBadge>
+                <UBadge
+                  :color="est.capture_enabled !== false ? 'success' : 'warning'"
+                  variant="subtle"
+                  size="sm"
+                  :icon="est.capture_enabled !== false ? 'i-lucide-radio' : 'i-lucide-radio-off'"
+                >
+                  {{ est.capture_enabled !== false ? 'Captura on' : 'Captura off' }}
+                </UBadge>
+              </div>
+              <p class="font-mono text-sm text-muted">
+                {{ est.cnpj }}
+              </p>
+              <p
+                v-if="est.capture_eligibility && !est.capture_eligibility.eligible"
+                class="mt-1 text-xs text-warning"
+              >
+                {{ est.capture_eligibility.reasons[0] || 'Inelegível para captura.' }}
+              </p>
+            </div>
+            <UButton
+              v-if="canManageClients"
+              size="sm"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-user-plus"
+              label="Cadastrar filial (novo cliente)"
+              @click="openClientCreate"
+            />
+          </div>
+        </template>
+      </UPageCard>
+
+      <!-- Certificado e sync (atalhos) -->
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
+        <UPageCard
+          variant="subtle"
+          class="hover:ring-primary/30 transition-shadow cursor-pointer"
+          role="button"
+          tabindex="0"
+          @click="() => { if (inModal) goSection('certificado'); else void navigateTo(sectionTo('certificado')) }"
+          @keydown.enter="() => { if (inModal) goSection('certificado'); else void navigateTo(sectionTo('certificado')) }"
+        >
+          <div class="flex items-start gap-3">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 ring ring-inset ring-primary/25">
+              <UIcon name="i-lucide-badge-check" class="size-5 text-primary" />
+            </div>
+            <div class="min-w-0">
+              <p class="font-medium text-highlighted">
+                Certificado A1
+              </p>
+              <p class="text-sm text-muted">
+                <template v-if="!canManageCredentials">
+                  Gerenciado por ADMIN — sem formulário sensível neste perfil.
+                </template>
+                <template v-else-if="credential">
+                  Ativo até {{ formatDateTime(credential.valid_to) }}
+                </template>
+                <template v-else>
+                  Nenhum certificado ativo. Envie o PFX na seção dedicada.
+                </template>
+              </p>
+            </div>
+          </div>
+        </UPageCard>
+
+        <UPageCard
+          variant="subtle"
+          class="hover:ring-primary/30 transition-shadow cursor-pointer"
+          role="button"
+          tabindex="0"
+          @click="() => { if (inModal) goSection('sincronizacao'); else void navigateTo(sectionTo('sincronizacao')) }"
+          @keydown.enter="() => { if (inModal) goSection('sincronizacao'); else void navigateTo(sectionTo('sincronizacao')) }"
+        >
+          <div class="flex items-start gap-3">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 ring ring-inset ring-primary/25">
+              <UIcon name="i-lucide-refresh-cw" class="size-5 text-primary" />
+            </div>
+            <div class="min-w-0">
+              <p class="font-medium text-highlighted">
+                Sincronização ADN
+              </p>
+              <p class="text-sm text-muted">
+                <template v-if="!establishments.length">
+                  CNPJ do cliente necessário para capturar.
+                </template>
+                <template v-else-if="canManageCredentials && !credential">
+                  Ative o A1 antes da primeira captura.
+                </template>
+                <template v-else-if="captureReadyCount === 0">
+                  CNPJ inelegível para captura no momento.
+                </template>
+                <template v-else>
+                  Pronto para captura. NSU não é editável.
+                </template>
+              </p>
+            </div>
+          </div>
+        </UPageCard>
+      </div>
+
+      <p class="text-xs text-muted text-center sm:text-start">
+        Exibindo {{ displayName }} · seções disponíveis na barra acima.
+      </p>
     </template>
 
     <!-- Mesmo formulário de criar/editar (modal padronizado) -->

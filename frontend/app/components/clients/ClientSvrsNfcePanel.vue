@@ -326,25 +326,33 @@ watch(
         </p>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <p class="text-xs text-muted uppercase mb-1">Master</p>
+            <p class="text-xs text-muted uppercase mb-1">
+              Master
+            </p>
             <UBadge :color="channel.retrieval_enabled ? 'success' : 'neutral'" variant="subtle">
               {{ channel.retrieval_enabled ? 'Habilitado' : 'Desligado' }}
             </UBadge>
           </div>
           <div>
-            <p class="text-xs text-muted uppercase mb-1">Auto-queue</p>
+            <p class="text-xs text-muted uppercase mb-1">
+              Auto-queue
+            </p>
             <UBadge :color="channel.auto_queue_enabled ? 'info' : 'neutral'" variant="subtle">
               {{ channel.auto_queue_enabled ? 'On' : 'Off' }}
             </UBadge>
           </div>
           <div>
-            <p class="text-xs text-muted uppercase mb-1">Backlog (escritório)</p>
+            <p class="text-xs text-muted uppercase mb-1">
+              Backlog (escritório)
+            </p>
             <p class="font-semibold text-highlighted" data-testid="svrs-nfce-backlog">
               {{ channel.backlog }}
             </p>
           </div>
           <div>
-            <p class="text-xs text-muted uppercase mb-1">Breaker</p>
+            <p class="text-xs text-muted uppercase mb-1">
+              Breaker
+            </p>
             <UBadge
               :color="channel.breaker_global?.state === 'open' ? 'error' : channel.breaker_global?.state === 'half_open' ? 'warning' : 'success'"
               variant="subtle"
@@ -356,23 +364,33 @@ watch(
 
         <div v-if="egress" class="grid gap-3 border-t border-default pt-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="svrs-egress-health">
           <div>
-            <p class="mb-1 text-xs uppercase text-muted">Coorte de saída</p>
+            <p class="mb-1 text-xs uppercase text-muted">
+              Coorte de saída
+            </p>
             <UBadge :color="cooldownActive ? 'error' : egress.state === 'half_open' ? 'warning' : 'success'" variant="subtle">
               {{ cooldownActive ? 'Cooldown' : egress.state }}
             </UBadge>
           </div>
           <div>
-            <p class="mb-1 text-xs uppercase text-muted">Próxima prova</p>
-            <p class="text-sm font-medium text-highlighted">{{ formatDateTime(egress.next_probe_at) }}</p>
+            <p class="mb-1 text-xs uppercase text-muted">
+              Próxima prova
+            </p>
+            <p class="text-sm font-medium text-highlighted">
+              {{ formatDateTime(egress.next_probe_at) }}
+            </p>
           </div>
           <div>
-            <p class="mb-1 text-xs uppercase text-muted">Exchanges restantes</p>
+            <p class="mb-1 text-xs uppercase text-muted">
+              Exchanges restantes
+            </p>
             <p class="text-sm font-medium text-highlighted">
               {{ egress.exchanges_hour_remaining }}/h · {{ egress.exchanges_day_remaining }}/dia
             </p>
           </div>
           <div>
-            <p class="mb-1 text-xs uppercase text-muted">Modelos</p>
+            <p class="mb-1 text-xs uppercase text-muted">
+              Modelos
+            </p>
             <p class="text-sm text-highlighted">
               55 {{ channel.nfe55_retrieval_enabled ? 'on' : 'off' }} · 65 {{ channel.retrieval_enabled ? 'on' : 'off' }}
             </p>
@@ -455,8 +473,19 @@ watch(
             data-testid="svrs-nfce-status-filter"
           />
         </UFormField>
-        <UButton color="neutral" variant="subtle" label="Filtrar" @click="applyFilter" />
-        <UButton color="neutral" variant="ghost" icon="i-lucide-refresh-cw" :loading="loading" @click="load" />
+        <UButton
+          color="neutral"
+          variant="subtle"
+          label="Filtrar"
+          @click="applyFilter"
+        />
+        <UButton
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-refresh-cw"
+          :loading="loading"
+          @click="load"
+        />
       </div>
 
       <UEmpty
@@ -582,7 +611,12 @@ watch(
       <div class="mt-4 grid gap-3 border-t border-default pt-4 lg:grid-cols-2">
         <div class="space-y-3">
           <UFormField label="Estender cooldown (segundos)" hint="Somente aumenta a janela">
-            <UInput v-model.number="cooldownSeconds" type="number" :min="60" :max="604800" />
+            <UInput
+              v-model.number="cooldownSeconds"
+              type="number"
+              :min="60"
+              :max="604800"
+            />
           </UFormField>
           <UFormField label="Motivo da extensão">
             <UInput v-model="cooldownReason" placeholder="Ex.: tráfego compartilhado ainda sob observação" />

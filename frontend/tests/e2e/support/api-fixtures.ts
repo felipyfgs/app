@@ -978,6 +978,11 @@ export async function installApiFixtures(
         }
       })
     }
+    if (/\/api\/v1\/clients\/\d+$/.test(pathname) && method === 'GET') {
+      const clientId = Number(pathname.match(/clients\/(\d+)$/)?.[1] || 1)
+      const client = clients.find(item => item.id === clientId) || clients[0]
+      return fulfill(route, { data: client })
+    }
     if (/\/api\/v1\/cnpj\/11222333000181\/lookup$/.test(pathname) && method === 'GET') {
       return fulfill(route, {
         data: {

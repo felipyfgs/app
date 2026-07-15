@@ -630,13 +630,30 @@ defineExpose({ reset, clearSensitive, saving })
         <USeparator label="Contato (opcional)" />
         <div class="grid gap-4 sm:grid-cols-2">
           <UFormField label="Nome do contato" name="contact_name" :error="fieldErrors['initial_contact.name']?.[0]">
-            <UInput v-model="state.contact_name" class="w-full" autocomplete="name" :disabled="fieldsLocked" />
+            <UInput
+              v-model="state.contact_name"
+              class="w-full"
+              autocomplete="name"
+              :disabled="fieldsLocked"
+            />
           </UFormField>
           <UFormField label="E-mail" name="contact_email" :error="fieldErrors['initial_contact.email']?.[0]">
-            <UInput v-model="state.contact_email" type="email" class="w-full" autocomplete="email" :disabled="fieldsLocked" />
+            <UInput
+              v-model="state.contact_email"
+              type="email"
+              class="w-full"
+              autocomplete="email"
+              :disabled="fieldsLocked"
+            />
           </UFormField>
           <UFormField label="Telefone / WhatsApp" name="contact_phone" :error="fieldErrors['initial_contact.phone']?.[0]">
-            <UInput v-model="state.contact_phone" type="tel" class="w-full" autocomplete="tel" :disabled="fieldsLocked" />
+            <UInput
+              v-model="state.contact_phone"
+              type="tel"
+              class="w-full"
+              autocomplete="tel"
+              :disabled="fieldsLocked"
+            />
           </UFormField>
           <UCheckbox
             v-model="state.contact_is_whatsapp"
@@ -659,7 +676,12 @@ defineExpose({ reset, clearSensitive, saving })
               label="Nome do campo"
               :error="fieldErrors[`custom_fields.${index}.label`]?.[0] || fieldErrors['custom_fields']?.[0]"
             >
-              <UInput v-model="field.label" class="w-full" placeholder="Ex.: Acesso prefeitura" :disabled="fieldsLocked" />
+              <UInput
+                v-model="field.label"
+                class="w-full"
+                placeholder="Ex.: Acesso prefeitura"
+                :disabled="fieldsLocked"
+              />
             </UFormField>
             <UFormField
               :name="`custom_fields.${index}.type`"
@@ -748,7 +770,12 @@ defineExpose({ reset, clearSensitive, saving })
         help="Informações gerais sem senhas, tokens ou material do certificado."
         :error="fieldErrors.notes?.[0]"
       >
-        <UTextarea v-model="state.notes" class="w-full" :rows="3" :disabled="fieldsLocked" />
+        <UTextarea
+          v-model="state.notes"
+          class="w-full"
+          :rows="3"
+          :disabled="fieldsLocked"
+        />
       </UFormField>
     </div>
 

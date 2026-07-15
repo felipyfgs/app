@@ -241,7 +241,12 @@ onMounted(async () => {
 
     <template #body>
       <div class="flex w-full flex-col gap-4 sm:gap-5">
-        <div v-if="loading && !item" class="space-y-4" role="status" aria-label="Carregando cliente">
+        <div
+          v-if="loading && !item"
+          class="space-y-4"
+          role="status"
+          aria-label="Carregando cliente"
+        >
           <USkeleton class="h-28 w-full rounded-lg" />
           <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
             <USkeleton class="h-96 w-full rounded-lg" />
@@ -296,7 +301,6 @@ onMounted(async () => {
               />
             </aside>
           </div>
-
         </template>
       </div>
     </template>

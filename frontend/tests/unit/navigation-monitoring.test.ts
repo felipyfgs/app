@@ -59,6 +59,7 @@ describe('navigation monitoramento (15.4)', () => {
     const settings = tree.find(d => d.id === 'settings')
     expect(settings?.children?.map(c => c.id)).toEqual([
       'settings-onboarding',
+      'settings-cte',
       'settings-usage',
       'admin'
     ])
