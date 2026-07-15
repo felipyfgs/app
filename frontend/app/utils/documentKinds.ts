@@ -20,8 +20,19 @@ export const DOCUMENT_KINDS: DocumentKindMeta[] = [
   { code: 'NFE', label: 'NF-e', sefazModel: '55', captureAvailable: true },
   // NFC-e: não entra DistDFe de entrada; saída via Captura de saídas / import / recovery SVRS.
   { code: 'NFCE', label: 'NFC-e', sefazModel: '65', captureAvailable: true },
-  { code: 'CTE', label: 'CT-e', sefazModel: '57', captureAvailable: false }
+  // CT-e: DistDFe cliente + autXML escritório + import XML/ZIP (flag SEFAZ_CTE_ENABLED no backend).
+  { code: 'CTE', label: 'CT-e', sefazModel: '57', captureAvailable: true }
 ]
+
+/** Rótulo amigável a partir do modelo SEFAZ (import batch / resultados mistos). */
+export function documentKindLabelFromModel(model?: string | number | null): string | null {
+  const m = String(model ?? '').trim()
+  if (m === '55') return 'NF-e'
+  if (m === '65') return 'NFC-e'
+  if (m === '57') return 'CT-e'
+  if (m === '67') return 'CT-e OS (não suportado no catálogo 57)'
+  return null
+}
 
 const byCode = Object.fromEntries(DOCUMENT_KINDS.map(k => [k.code, k])) as Record<DocumentKindCode, DocumentKindMeta>
 

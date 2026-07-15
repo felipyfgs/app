@@ -1,9 +1,12 @@
 import { createSharedComposable } from '@vueuse/core'
 import {
+  canAssociateCategories as userCanAssociateCategories,
   canCreateExport as userCanCreateExport,
+  canExecuteHighRiskMutation as userCanExecuteHighRiskMutation,
   canImportDocuments as userCanImportDocuments,
   canManageClients as userCanManageClients,
   canManageCredentials as userCanManageCredentials,
+  canTriageMailbox as userCanTriageMailbox,
   canTriggerSync as userCanTriggerSync,
   hasConfirmedAdminAccess,
   unwrapMeUser
@@ -29,6 +32,9 @@ const _useDashboard = () => {
   const canCreateExport = computed(() => userCanCreateExport(me.value))
   const canImportDocuments = computed(() => userCanImportDocuments(me.value))
   const canAccessAdministration = computed(() => hasConfirmedAdminAccess(me.value))
+  const canAssociateCategories = computed(() => userCanAssociateCategories(me.value))
+  const canTriageMailbox = computed(() => userCanTriageMailbox(me.value))
+  const canExecuteHighRiskMutation = computed(() => userCanExecuteHighRiskMutation(me.value))
 
   async function openClientCreate() {
     if (!canManageClients.value) return
@@ -48,6 +54,10 @@ const _useDashboard = () => {
     isExportFormOpen.value = true
   }
 
+  function bumpSessionEpoch() {
+    sessionEpoch.value += 1
+  }
+
   defineShortcuts({
     'g-h': () => router.push('/'),
     'g-c': () => router.push('/clients'),
@@ -57,6 +67,8 @@ const _useDashboard = () => {
     'g-f': () => router.push('/closing'),
     'g-s': () => router.push('/syncs'),
     'g-o': () => router.push('/health'),
+    'g-m': () => router.push('/monitoring'),
+    'g-u': () => router.push('/settings/usage'),
     'g-a': () => {
       if (canAccessAdministration.value) {
         router.push('/admin')
@@ -94,11 +106,15 @@ const _useDashboard = () => {
   )
 
   return {
+    bumpSessionEpoch,
     canAccessAdministration,
+    canAssociateCategories,
     canCreateExport,
+    canExecuteHighRiskMutation,
     canImportDocuments,
     canManageClients,
     canManageCredentials,
+    canTriageMailbox,
     canTriggerSync,
     clientFormCreateNonce,
     isClientFormOpen,

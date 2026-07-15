@@ -366,7 +366,23 @@ async function submitManifest() {
                 variant="outline"
                 size="sm"
               >
-                {{ note.acquisition_source }}
+                {{ note.acquisition_source_label || note.acquisition_source }}
+              </UBadge>
+              <UBadge
+                v-if="note.artifact_quality"
+                :color="note.is_autxml_redacted ? 'warning' : 'success'"
+                variant="subtle"
+                size="sm"
+              >
+                {{ note.artifact_quality_label || note.artifact_quality }}
+              </UBadge>
+              <UBadge
+                v-if="note.coverage_status"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              >
+                {{ note.coverage_status_label || note.coverage_status }}
               </UBadge>
               <UBadge color="info" variant="subtle" size="sm">
                 {{ statusLabel(note.fiscal_role) }}
@@ -412,6 +428,15 @@ async function submitManifest() {
           </div>
         </div>
       </UPageCard>
+
+      <UAlert
+        v-if="note.is_autxml_redacted"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-file-warning"
+        title="Visão oficial redigida via autXML"
+        :description="note.autxml_redacted_notice || 'Solicite o XML original ao emissor quando necessário.'"
+      />
 
       <!-- 2. Prestador × Tomador (estrutura clássica da NFS-e) -->
       <div class="grid gap-3 sm:grid-cols-2">

@@ -13,7 +13,45 @@ describe('notes-filters', () => {
     expect(filters.q).toBe('')
     expect(filters.kind).toBe('all')
     expect(filters.client_id).toBe('all')
+    expect(filters.acquisition_source).toBe('all')
+    expect(filters.artifact_quality).toBe('all')
+    expect(filters.coverage_status).toBe('all')
     expect(filters.competence).toBe('')
+  })
+
+  it('reconhece filtros específicos de CT-e como ativos', () => {
+    const filters = emptyNotesFilters()
+    filters.kind = 'CTE'
+    filters.fiscal_role = 'SENDER'
+    filters.acquisition_source = 'CTE_AUTXML_DIST_NSU'
+    filters.artifact_quality = 'AUTXML_REDACTED'
+    filters.coverage_status = 'PENDING_IMPORT'
+    expect(hasActiveCatalogFilters(filters)).toBe(true)
+  })
+
+  it('aceita estados de cobertura CT-e do backend (não legados)', () => {
+    const allowed = [
+      'CAPTURED_ORIGINAL',
+      'CAPTURED_AUTXML_REDACTED',
+      'PENDING_IMPORT',
+      'HISTORICAL_GAP',
+      'BLOCKED',
+      'NO_ACTIVITY'
+    ] as const
+    const legacy = [
+      'NO_ACTIVITY_CONFIRMED',
+      'NOT_COVERED_RETROACTIVE',
+      'DEGRADED_CHANNEL'
+    ] as const
+    for (const status of allowed) {
+      const filters = emptyNotesFilters()
+      filters.coverage_status = status
+      expect(hasActiveCatalogFilters(filters)).toBe(true)
+    }
+    for (const status of legacy) {
+      // Legados não devem ser o valor default do empty state.
+      expect(emptyNotesFilters().coverage_status).not.toBe(status)
+    }
   })
 
   it('catalogToExportFilters e hasExportableCatalogFilters', () => {

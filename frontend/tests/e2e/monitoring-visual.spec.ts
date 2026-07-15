@@ -1,0 +1,140 @@
+import { expect, test } from '@playwright/test'
+import { installApiFixtures, stabilizeVisualPage } from './support/api-fixtures'
+import { MAILBOX_MESSAGE_ID } from './support/monitoring-fixtures'
+// MAILBOX_MESSAGE_ID = FISCAL_MAILBOX_MESSAGE_ID (9001)
+
+/** Carteiras e superfícies críticas do hub de monitoramento. */
+const MONITORING_ROUTES = [
+  { path: '/monitoring', heading: 'Dashboard Fiscal', slug: 'monitoring-dashboard', zones: ['navbar', 'toolbar', 'kpis'] as const },
+  { path: '/monitoring/simples-mei', heading: 'Simples Nacional / MEI', slug: 'simples-mei', zones: ['navbar', 'toolbar', 'table'] as const },
+  { path: '/monitoring/dctfweb', heading: 'DCTFWeb / MIT', slug: 'dctfweb', zones: ['navbar', 'toolbar', 'table'] as const },
+  { path: '/monitoring/installments', heading: 'Parcelamentos', slug: 'installments', zones: ['navbar', 'toolbar', 'table'] as const },
+  { path: '/monitoring/sitfis', heading: 'Situação Fiscal', slug: 'sitfis', zones: ['navbar', 'toolbar', 'table'] as const },
+  { path: '/monitoring/mailbox', heading: 'Caixas Postais', slug: 'mailbox', zones: ['navbar', 'toolbar', 'list'] as const },
+  { path: '/monitoring/declarations', heading: 'Declarações', slug: 'declarations', zones: ['navbar', 'toolbar', 'table'] as const },
+  { path: '/monitoring/guides', heading: 'Guias', slug: 'guides', zones: ['navbar', 'toolbar', 'table'] as const },
+  { path: '/monitoring/fgts', heading: 'FGTS (parcial eSocial)', slug: 'fgts', zones: ['navbar', 'toolbar', 'banner', 'table'] as const },
+  { path: '/monitoring/clients/1', heading: 'Cliente Demonstração Segura', slug: 'client-detail', zones: ['panel'] as const }
+] as const
+
+async function openStable(
+  page: Parameters<typeof installApiFixtures>[0],
+  path: string,
+  heading: string
+) {
+  await page.goto(path)
+  await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible({ timeout: 20_000 })
+  await stabilizeVisualPage(page)
+}
+
+async function noDocumentOverflow(page: Parameters<typeof installApiFixtures>[0]) {
+  const overflow = await page.evaluate(() => {
+    const el = document.scrollingElement || document.documentElement
+    return el.scrollWidth > el.clientWidth + 1
+  })
+  expect(overflow).toBe(false)
+}
+
+test.describe('monitoramento — regressão visual por zonas', () => {
+  test.beforeEach(async ({ page }) => {
+    await installApiFixtures(page, 'ADMIN')
+  })
+
+  for (const route of MONITORING_ROUTES) {
+    test(`${route.slug}: zonas críticas`, async ({ page }, testInfo) => {
+      test.skip(
+        testInfo.project.name === 'minimum-360',
+        'Snapshots aprovados usam desktop-1440 e mobile-390; overflow em 9.8.'
+      )
+      await openStable(page, route.path, route.heading)
+
+      if (route.zones.includes('navbar')) {
+        await expect(page.getByTestId('page-navbar')).toHaveScreenshot(`${route.slug}-navbar.png`)
+      }
+      if (route.zones.includes('toolbar')) {
+        const toolbar = page.getByTestId('page-toolbar')
+        if (await toolbar.count()) {
+          await expect(toolbar.first()).toHaveScreenshot(`${route.slug}-toolbar.png`)
+        }
+      }
+      if (route.zones.includes('kpis')) {
+        await expect(page.getByTestId('fiscal-kpis')).toHaveScreenshot(`${route.slug}-kpis.png`)
+      }
+      if (route.zones.includes('banner')) {
+        const banner = page.getByTestId('fgts-partial-banner')
+        if (await banner.count()) {
+          await expect(banner).toHaveScreenshot(`${route.slug}-banner.png`)
+        }
+      }
+      if (route.zones.includes('table')) {
+        const table = page.getByTestId('fiscal-table')
+        if (await table.count()) {
+          await expect(table.first()).toHaveScreenshot(`${route.slug}-table.png`)
+        }
+      }
+      if (route.zones.includes('list')) {
+        await expect(page.getByTestId('mailbox-list')).toHaveScreenshot(`${route.slug}-list.png`)
+      }
+      if (route.zones.includes('panel')) {
+        await expect(page.getByTestId('settings-panel')).toHaveScreenshot(`${route.slug}-panel.png`)
+      }
+    })
+  }
+
+  test('mailbox detalhe e overlay mobile', async ({ page }, testInfo) => {
+    test.skip(
+      testInfo.project.name === 'minimum-360',
+      'Snapshots de detalhe em desktop e mobile-390.'
+    )
+    await openStable(page, `/monitoring/mailbox/${MAILBOX_MESSAGE_ID}`, 'Caixas Postais')
+    await expect(page.getByTestId('mailbox-detail')).toBeVisible()
+    await stabilizeVisualPage(page)
+    await expect(page.getByTestId('mailbox-detail')).toHaveScreenshot('mailbox-detail.png')
+  })
+
+  test('sitfis slideover de achados (desktop)', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop-1440', 'Overlay de achados validado no desktop.')
+    await openStable(page, '/monitoring/sitfis', 'Situação Fiscal')
+    const openBtn = page.getByRole('button', { name: /achados|detalhe|pendência|abrir/i }).first()
+    if (await openBtn.count()) {
+      await openBtn.click()
+    } else {
+      // Fallback: clica na primeira linha acionável da tabela
+      const rowAction = page.getByTestId('fiscal-table').getByRole('button').first()
+      await expect(rowAction).toBeVisible()
+      await rowAction.click()
+    }
+    const dialog = page.getByRole('dialog').or(page.locator('[data-slot="content"]')).first()
+    await expect(dialog).toBeVisible({ timeout: 10_000 })
+    await stabilizeVisualPage(page)
+    await expect(dialog).toHaveScreenshot('sitfis-findings-overlay.png')
+  })
+})
+
+test.describe('monitoramento — overflow 360px', () => {
+  test.beforeEach(async ({ page }) => {
+    await installApiFixtures(page, 'ADMIN')
+  })
+
+  for (const route of MONITORING_ROUTES) {
+    test(`${route.slug} sem overflow horizontal do documento`, async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name !== 'minimum-360', 'Inspeção dedicada ao projeto minimum-360.')
+      await page.goto(route.path)
+      await expect(page.getByRole('heading', { name: route.heading, exact: true })).toBeVisible({
+        timeout: 20_000
+      })
+      await stabilizeVisualPage(page)
+      await noDocumentOverflow(page)
+    })
+  }
+
+  test('mailbox detalhe sem overflow horizontal', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'minimum-360', 'Inspeção dedicada ao projeto minimum-360.')
+    await page.goto(`/monitoring/mailbox/${MAILBOX_MESSAGE_ID}`)
+    await expect(page.getByRole('heading', { name: 'Caixas Postais', exact: true })).toBeVisible({
+      timeout: 20_000
+    })
+    await stabilizeVisualPage(page)
+    await noDocumentOverflow(page)
+  })
+})

@@ -16,6 +16,8 @@ test.describe('SVRS NFC-e panel', () => {
     await expect(page.getByText('XML NFC-e via SVRS').first()).toBeVisible()
     await expect(page.getByText(/Sem RPA|HTML remoto/i).first()).toBeVisible()
     await expect(page.getByTestId('svrs-nfce-backlog')).toBeVisible()
+    await expect(page.getByTestId('svrs-egress-health')).toBeVisible()
+    await expect(page.getByText('Budgets internos preventivos')).toBeVisible()
     await expect(page.locator('iframe')).toHaveCount(0)
     const html = await page.content()
     expect(html).not.toMatch(/<nfeProc|BEGIN CERTIFICATE|downloadXml\(/i)

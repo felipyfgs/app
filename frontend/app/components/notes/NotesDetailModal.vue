@@ -97,7 +97,8 @@ async function downloadXml() {
       `/api/v1/documents/${encodeURIComponent(key)}/xml`,
       {
         method: 'GET',
-        responseType: 'blob',
+        // Sanctum client tipa responseType como json por padrão; blob é suportado em runtime.
+        responseType: 'blob' as 'json',
         headers: {
           Accept: 'application/xml, text/xml, application/octet-stream, */*'
         }

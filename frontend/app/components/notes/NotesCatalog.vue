@@ -369,6 +369,20 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
       }
     },
     {
+      id: 'cte_context',
+      accessorFn: row => row.kind === 'CTE'
+        ? `${row.fiscal_role || ''} ${row.direction || ''} ${row.artifact_quality || ''}`
+        : '',
+      header: 'Papel / origem',
+      enableSorting: false,
+      meta: {
+        class: {
+          th: 'hidden xl:table-cell w-44',
+          td: 'hidden xl:table-cell w-44'
+        }
+      }
+    },
+    {
       id: 'actions',
       header: '',
       enableHiding: false,
@@ -550,6 +564,26 @@ defineShortcuts({
             {{ xmlCompletenessHint(row.original) }}
           </p>
         </div>
+      </template>
+
+      <template #cte_context-cell="{ row }">
+        <div v-if="row.original.kind === 'CTE'" class="space-y-1 text-xs">
+          <p class="text-highlighted">
+            {{ statusLabel(row.original.fiscal_role) }} · {{ row.original.direction_label || row.original.direction }}
+          </p>
+          <p class="truncate text-muted" :title="row.original.acquisition_source_label || row.original.acquisition_source || undefined">
+            {{ row.original.acquisition_source_label || row.original.acquisition_source || 'Origem não informada' }}
+          </p>
+          <UBadge
+            v-if="row.original.artifact_quality"
+            :color="row.original.is_autxml_redacted ? 'warning' : 'success'"
+            variant="subtle"
+            size="sm"
+          >
+            {{ row.original.artifact_quality_label || row.original.artifact_quality }}
+          </UBadge>
+        </div>
+        <span v-else class="text-muted">—</span>
       </template>
     </UTable>
 

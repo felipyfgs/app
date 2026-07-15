@@ -69,6 +69,50 @@ const statusItems = [
   { label: 'Em revisão', value: 'UNKNOWN' }
 ]
 
+const roleItems = [
+  selectAllItem('Todos os papéis'),
+  { label: 'Emitente', value: 'ISSUER' },
+  { label: 'Tomador', value: 'TAKER' },
+  { label: 'Intermediário', value: 'INTERMEDIARY' },
+  { label: 'Remetente', value: 'SENDER' },
+  { label: 'Destinatário', value: 'RECIPIENT' },
+  { label: 'Expedidor', value: 'EXPEDITOR' },
+  { label: 'Recebedor', value: 'RECEIVER' }
+]
+
+const directionItems = [
+  selectAllItem('Todas as direções'),
+  { label: 'Entrada', value: 'IN' },
+  { label: 'Saída', value: 'OUT' }
+]
+
+const qualityItems = [
+  selectAllItem('Todas as qualidades'),
+  { label: 'Original', value: 'ORIGINAL' },
+  { label: 'Original via autXML', value: 'AUTXML_ORIGINAL' },
+  { label: 'Oficial redigido', value: 'AUTXML_REDACTED' }
+]
+
+const acquisitionSourceItems = [
+  selectAllItem('Todas as origens'),
+  { label: 'DistDFe CT-e do cliente', value: 'CTE_DIST_NSU' },
+  { label: 'DistDFe autXML do escritório', value: 'CTE_AUTXML_DIST_NSU' },
+  { label: 'Entrega autenticada do emissor', value: 'EMITTER_PUSH' },
+  { label: 'Importação XML', value: 'MANUAL_XML' },
+  { label: 'Importação ZIP', value: 'MANUAL_ZIP' }
+]
+
+/** Valores alinhados a App\Enums\CteCoverageStatus. */
+const coverageItems = [
+  selectAllItem('Todas as coberturas'),
+  { label: 'Capturado (original)', value: 'CAPTURED_ORIGINAL' },
+  { label: 'Capturado (autXML redigido)', value: 'CAPTURED_AUTXML_REDACTED' },
+  { label: 'Pendente de importação', value: 'PENDING_IMPORT' },
+  { label: 'Lacuna histórica', value: 'HISTORICAL_GAP' },
+  { label: 'Bloqueado', value: 'BLOCKED' },
+  { label: 'Sem atividade observada', value: 'NO_ACTIVITY' }
+]
+
 const hasClient = computed(() => filters.value.client_id !== FILTER_ALL && !!filters.value.client_id)
 
 const searchPlaceholder = computed(() =>
@@ -86,7 +130,11 @@ const activeCount = computed(() => {
     return n
   }
   if (f.kind && f.kind !== FILTER_ALL) n++
-  // direction / fiscal_role saíram da grade: recorte por CNPJ emit/dest (padrão leiaute)
+  if (f.direction && f.direction !== FILTER_ALL) n++
+  if (f.fiscal_role && f.fiscal_role !== FILTER_ALL) n++
+  if (f.acquisition_source && f.acquisition_source !== FILTER_ALL) n++
+  if (f.artifact_quality && f.artifact_quality !== FILTER_ALL) n++
+  if (f.coverage_status && f.coverage_status !== FILTER_ALL) n++
   if (f.client_id && f.client_id !== FILTER_ALL) n++
   if (f.establishment_id && f.establishment_id !== FILTER_ALL) n++
   if (f.status && f.status !== FILTER_ALL) n++
@@ -195,6 +243,45 @@ const activeCount = computed(() => {
       </UFormField>
       <UFormField label="Situação">
         <USelect v-model="filters.status" :items="statusItems" class="w-full" />
+      </UFormField>
+      <UFormField label="Papel fiscal">
+        <USelect v-model="filters.fiscal_role" :items="roleItems" class="w-full" />
+      </UFormField>
+      <UFormField label="Direção">
+        <USelect v-model="filters.direction" :items="directionItems" class="w-full" />
+      </UFormField>
+      <UFormField
+        v-if="filters.kind === 'CTE' || filters.kind === FILTER_ALL"
+        label="Origem CT-e"
+      >
+        <USelect
+          v-model="filters.acquisition_source"
+          :items="acquisitionSourceItems"
+          class="w-full"
+          aria-label="Filtrar por origem de aquisição do CT-e"
+        />
+      </UFormField>
+      <UFormField
+        v-if="filters.kind === 'CTE' || filters.kind === FILTER_ALL"
+        label="Qualidade CT-e"
+      >
+        <USelect
+          v-model="filters.artifact_quality"
+          :items="qualityItems"
+          class="w-full"
+          aria-label="Filtrar por qualidade do artefato CT-e"
+        />
+      </UFormField>
+      <UFormField
+        v-if="filters.kind === 'CTE' || filters.kind === FILTER_ALL"
+        label="Cobertura CT-e"
+      >
+        <USelect
+          v-model="filters.coverage_status"
+          :items="coverageItems"
+          class="w-full"
+          aria-label="Filtrar por cobertura CT-e"
+        />
       </UFormField>
       <UFormField
         label="CNPJ emitente / prestador"

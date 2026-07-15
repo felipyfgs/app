@@ -48,3 +48,21 @@ export function canCreateExport(user?: MeUser | null): boolean {
 export function canImportDocuments(user?: MeUser | null): boolean {
   return hasMutationAccess(user)
 }
+
+/** Associação de categorias fiscais (ADMIN/OPERATOR). */
+export function canAssociateCategories(user?: MeUser | null): boolean {
+  return hasMutationAccess(user)
+}
+
+/** Triagem interna da Caixa Postal (ADMIN/OPERATOR). */
+export function canTriageMailbox(user?: MeUser | null): boolean {
+  return hasMutationAccess(user)
+}
+
+/**
+ * Mutações fiscais de alto risco (emissão/transmissão).
+ * Somente ADMIN com 2FA confirmado — alinhado a OfficeRole::canMutateFiscal.
+ */
+export function canExecuteHighRiskMutation(user?: MeUser | null): boolean {
+  return hasConfirmedAdminAccess(user)
+}

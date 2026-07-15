@@ -1,5 +1,13 @@
 export type OfficeRole = 'ADMIN' | 'OPERATOR' | 'VIEWER'
-export type FiscalRole = 'ISSUER' | 'TAKER' | 'INTERMEDIARY'
+export type FiscalRole
+  = | 'ISSUER'
+    | 'TAKER'
+    | 'INTERMEDIARY'
+    | 'SENDER'
+    | 'RECIPIENT'
+    | 'EXPEDITOR'
+    | 'RECEIVER'
+    | 'AUTXML'
 
 /** Direção fiscal no catálogo: entrada / saída. */
 export type DocumentDirection = 'IN' | 'OUT' | 'UNKNOWN'
@@ -347,6 +355,17 @@ export interface FiscalDocument {
   purpose?: 'COMMERCIAL' | 'TECHNICAL' | string | null
   /** Proveniência (IMPORT, MA_OFFICIAL_PACKAGE, …). */
   acquisition_source?: string | null
+  acquisition_source_label?: string | null
+  /** Qualidade CT-e: original ou visão oficial redigida. */
+  artifact_quality?: string | null
+  artifact_quality_label?: string | null
+  signature_result?: string | null
+  signature_result_label?: string | null
+  is_autxml_redacted?: boolean
+  autxml_redacted_notice?: string | null
+  /** Cobertura CT-e honesta do cliente/período. */
+  coverage_status?: CteCoverageStatus | string | null
+  coverage_status_label?: string | null
   document?: DfeDocumentMetadata
 }
 
@@ -367,6 +386,8 @@ export interface NoteDetail {
   document: DfeDocumentMetadata | null
 }
 
+export type ExportScope = 'documents' | 'fiscal_portfolio'
+
 export interface ExportFilters {
   access_key?: string
   /** Seleção em lote (teto no backend, ex. 100). */
@@ -381,6 +402,16 @@ export interface ExportFilters {
   direction?: Exclude<DocumentDirection, 'UNKNOWN'> | ''
   client_id?: number
   establishment_id?: number
+  /** documents (default) | fiscal_portfolio — carteira sanitizada. */
+  export_scope?: ExportScope
+  /** Módulo da carteira (obrigatório se export_scope=fiscal_portfolio). */
+  module_key?: string
+  situation?: string
+  q?: string
+  submodule?: string
+  /** Marcação de demonstração (servidor também infere do office). */
+  is_demo?: boolean
+  data_origin?: 'DEMO' | 'SIMULATED' | 'LIVE' | string
 }
 
 /** Agregação por cliente do escritório (aba Clientes). */
@@ -438,6 +469,110 @@ export interface SyncRun {
   error_message?: string | null
   started_at?: string | null
   finished_at?: string | null
+  created_at?: string | null
+}
+
+/** Alinhado a App\Enums\CteCoverageStatus. */
+export type CteCoverageStatus
+  = | 'CAPTURED_ORIGINAL'
+    | 'CAPTURED_AUTXML_REDACTED'
+    | 'PENDING_IMPORT'
+    | 'HISTORICAL_GAP'
+    | 'BLOCKED'
+    | 'NO_ACTIVITY'
+
+export interface CtePublicIdentity {
+  id: number
+  cnpj: string
+  root_cnpj: string
+  status: string
+  legal_name?: string | null
+  activated_at?: string | null
+  deactivated_at?: string | null
+}
+
+export interface CtePublicCredential {
+  id: number
+  office_fiscal_identity_id: number
+  purpose: string
+  status: string
+  subject_name: string
+  holder_cnpj: string
+  fingerprint_sha256: string
+  valid_from?: string | null
+  valid_to?: string | null
+  activated_at?: string | null
+  last_used_at?: string | null
+  expires_alert_30: boolean
+  expires_alert_7: boolean
+  expires_alert_1: boolean
+}
+
+export interface CteOnboarding {
+  office_cnpj?: string | null
+  identity?: CtePublicIdentity | null
+  credential?: CtePublicCredential | null
+  enabled: boolean
+  instructions: {
+    include_before_authorization: boolean
+    not_retroactive: boolean
+    message: string
+    issuer_fallback: string
+  }
+}
+
+export interface CteChannelCursor {
+  id: number
+  channel: string
+  status: string
+  environment?: string | null
+  establishment_id?: number | null
+  client_id?: number | null
+  client_name?: string | null
+  interested_root_cnpj?: string | null
+  query_cnpj?: string | null
+  last_nsu: number
+  max_nsu_seen: number
+  last_cstat?: string | null
+  next_sync_at?: string | null
+  last_success_at?: string | null
+  retry_allowed?: boolean
+  circuit_open?: boolean
+}
+
+export interface CteHealth {
+  channels: Record<'CTE_DISTDFE' | 'CTE_AUTXML_DISTDFE', CteChannelCursor[]>
+  summary: { client_streams: number, office_streams: number, blocked: number }
+}
+
+export interface CteCoverageSnapshot {
+  client_id: number
+  client_name?: string | null
+  period: string
+  status: CteCoverageStatus | string
+  status_label: string
+  documents_count: number
+  original_count: number
+  autxml_redacted_count: number
+  pending_import_count: number
+  computed_at?: string | null
+}
+
+export interface CtePendingItem {
+  id: number
+  sha256: string
+  byte_size: number
+  access_key?: string | null
+  issuer_cnpj?: string | null
+  recipient_cnpj?: string | null
+  model?: string | null
+  schema_family?: string | null
+  reason: string
+  reason_label: string
+  source: string
+  channel?: string | null
+  nsu?: number | null
+  resolution_status: string
   created_at?: string | null
 }
 
@@ -544,16 +679,30 @@ export type InboxItemType
     | 'svrs_nfce_a1'
     | 'svrs_nfce_auth'
     | 'svrs_nfce_rate_limit'
+    | 'svrs_nfce_multiple_queries'
+    | 'svrs_nfce_budget'
     | 'svrs_nfce_contract_changed'
     | 'svrs_nfce_xml_signature'
     | 'svrs_nfce_divergent'
     | 'svrs_nfce_breaker'
     | 'svrs_nfce_exhausted'
+    | 'cte_a1_missing'
+    | 'cte_593'
+    | 'cte_656'
+    | 'cte_decode_failures'
+    | 'cte_heartbeat_stale'
+    | 'cte_external_consumer'
+    | 'cte_unexpected_own_issuer'
+    | 'cte_redaction'
+    | 'cte_conflict'
+    | 'cte_pending_import'
 
 /** Recovery SVRS NFC-e (DTOs sanitizados — sem HTML/XML/PFX). */
 export interface SvrsNfceChannelSummary {
   retrieval_enabled: boolean
   auto_queue_enabled: boolean
+  nfe55_retrieval_enabled?: boolean
+  nfe55_auto_queue_enabled?: boolean
   pilot_allowlist_only: boolean
   kill_switch: { active: boolean, source?: string | null }
   breaker_global: { state: string, open_until?: number | null, failures?: number }
@@ -561,11 +710,30 @@ export interface SvrsNfceChannelSummary {
   oldest_pending_at?: string | null
   parser_version?: string
   host?: string
+  egress_cohort?: SvrsEgressCohortHealth
+}
+
+export interface SvrsEgressCohortHealth {
+  cohort_id: string
+  state: string
+  cause?: string | null
+  tier?: number | null
+  opened_at?: string | null
+  next_probe_at?: string | null
+  canary_key_mask?: string | null
+  exchanges_hour?: number
+  exchanges_day?: number
+  exchanges_hour_remaining: number
+  exchanges_day_remaining: number
+  inflight: number
+  budgets_are_preventive: boolean
+  note?: string
 }
 
 export interface SvrsNfceRecovery {
   id: number
   profile_id: number
+  number_state_id?: number | null
   establishment_id: number
   environment: string
   model: string
@@ -665,19 +833,19 @@ export interface OperationsSummary {
 }
 
 /** Faixas de urgência do fechamento mensal de saídas (prazo ≠ falha técnica). */
-export type OutboundUrgencyBand =
-  | 'PLANNED'
-  | 'ATTENTION'
-  | 'CONTINGENCY'
-  | 'OVERDUE'
-  | 'CAPTURED'
-  | string
+export type OutboundUrgencyBand
+  = | 'PLANNED'
+    | 'ATTENTION'
+    | 'CONTINGENCY'
+    | 'OVERDUE'
+    | 'CAPTURED'
+    | string
 
-export type OutboundMonthlyReadinessStatus =
-  | 'COMPLETE_KNOWN'
-  | 'PARTIAL_CONFIRMED'
-  | 'NOT_READY'
-  | string
+export type OutboundMonthlyReadinessStatus
+  = | 'COMPLETE_KNOWN'
+    | 'PARTIAL_CONFIRMED'
+    | 'NOT_READY'
+    | string
 
 export interface OutboundMonthlyReadiness {
   competence: string
@@ -795,4 +963,348 @@ export interface TwoFactorQrCode {
 
 export interface LoginResponse {
   two_factor?: boolean
+}
+
+// ─── Tenancy / memberships ───────────────────────────────────────────────────
+
+export interface OfficeMembership {
+  office_id: number
+  office_name: string | null
+  office_slug: string | null
+  role: OfficeRole | string
+  is_current: boolean
+}
+
+export interface TenantMembershipsPayload {
+  current_office_id: number | null
+  memberships: OfficeMembership[]
+}
+
+export interface TenantSwitchResult {
+  office: Office
+  role: OfficeRole | string | null
+}
+
+// ─── Assinatura / Integra Contador (tenant) ──────────────────────────────────
+
+export interface OfficeSubscription {
+  id: number
+  office_id: number
+  plan: string
+  status: string
+  trial_ends_at?: string | null
+  starts_at?: string | null
+  ends_at?: string | null
+  current_period_starts_at?: string | null
+  current_period_ends_at?: string | null
+  limits: {
+    monthly_api_quota?: number | null
+    max_clients?: number | null
+    max_users?: number | null
+  }
+  allows_mutations: boolean
+  allows_external_calls: boolean
+}
+
+export interface OfficeSerproAuthorization {
+  id: number
+  office_id: number
+  environment: string
+  status: string
+  author_identity_type: string
+  author_identity_masked: string | null
+  author_name?: string | null
+  certificate_mode: string
+  managed_a1_consent?: boolean
+  managed_a1_consented_at?: string | null
+  has_managed_a1: boolean
+  author_fingerprint_sha256?: string | null
+  author_cert_valid_from?: string | null
+  author_cert_valid_to?: string | null
+  has_termo: boolean
+  termo_sha256?: string | null
+  termo_valid_from?: string | null
+  termo_valid_to?: string | null
+  termo_destination_cnpj_masked?: string | null
+  termo_signed_by_masked?: string | null
+  termo_uploaded_at?: string | null
+  has_procurador_token: boolean
+  procurador_token_expires_at?: string | null
+  last_token_refresh_at?: string | null
+  last_validation_result?: string | null
+  last_validation_message?: string | null
+  last_validated_at?: string | null
+  action_required_reason?: string | null
+  actions_required?: string[] | Array<{ code?: string, message?: string } | string>
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface TaxProxyPower {
+  id: number
+  office_id: number
+  client_id: number
+  author_identity_masked?: string | null
+  contributor_cnpj_masked?: string | null
+  system_code: string
+  service_code?: string | null
+  power_code: string
+  source: string
+  status: string
+  valid_from?: string | null
+  valid_to?: string | null
+  evidence_ref?: string | null
+  evidence_sha256?: string | null
+  verified_at?: string | null
+  last_check_result?: string | null
+  is_currently_valid?: boolean
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface SerproPlatformHealth {
+  environment?: string
+  status?: string
+  healthy?: boolean
+  message?: string | null
+  [key: string]: unknown
+}
+
+// ─── Consumo SERPRO (tenant) ─────────────────────────────────────────────────
+
+export interface OfficeUsageSummarySnapshot {
+  office_id?: number
+  period_year: number
+  period_month: number
+  used_quantity: number
+  reserved_open_quantity?: number
+  franchise_quota: number | null
+  remaining: number | null
+  franchise_ratio?: number | null
+  alert_threshold_reached?: boolean
+  /** Custo estimado do próprio tenant — UI NÃO exibe fatura global. */
+  estimated_cost_micros?: number | null
+  policy?: Record<string, unknown>
+}
+
+export interface OfficeUsageServiceAggregate {
+  scope?: string
+  period_year: number
+  period_month: number
+  system_code?: string | null
+  service_code?: string | null
+  consumption_class?: string | null
+  entry_count: number
+  total_quantity: number
+  total_estimated_cost_micros?: number | null
+  unknown_class_count?: number
+  billable_attempt_count?: number
+  recomputed_at?: string | null
+}
+
+export interface OfficeUsageSummary {
+  summary: OfficeUsageSummarySnapshot
+  by_service: OfficeUsageServiceAggregate[]
+}
+
+export interface OfficeUsageEntry {
+  id: number
+  office_id: number
+  client_id?: number | null
+  system_code?: string | null
+  service_code?: string | null
+  operation_code?: string | null
+  consumption_class?: string | null
+  quantity: number
+  result?: string | null
+  correlation_id?: string | null
+  estimated_cost_micros?: number | null
+  is_billable_attempt?: boolean
+  latency_ms?: number | null
+  occurred_at?: string | null
+}
+
+// ─── Monitoramento fiscal ────────────────────────────────────────────────────
+
+/** Vocabulário honesto de situação (FiscalSituation). */
+export type FiscalSituationCode
+  = | 'UP_TO_DATE'
+    | 'PENDING'
+    | 'PROCESSING'
+    | 'ATTENTION'
+    | 'ERROR'
+    | 'NOT_APPLICABLE'
+    | 'UNKNOWN'
+    | 'UNSUPPORTED'
+    | 'BLOCKED'
+    | string
+
+export interface FiscalCategory {
+  id: number
+  code: string
+  name: string
+  module_key?: string | null
+  default_coverage?: string | null
+  default_mutability?: string | null
+  system_code?: string | null
+  service_code?: string | null
+  is_active?: boolean
+  sort_order?: number
+  description?: string | null
+}
+
+export interface FiscalMonitoringRun {
+  id: number
+  office_id: number
+  client_id?: number | null
+  fiscal_category_id?: number | null
+  competence_id?: number | null
+  system_code?: string | null
+  service_code?: string | null
+  operation_code?: string | null
+  trigger?: string | null
+  status?: string | null
+  result?: string | null
+  situation?: FiscalSituationCode | null
+  coverage?: string | null
+  mutability?: string | null
+  attempt?: number
+  correlation_id?: string | null
+  items_processed?: number
+  pages_processed?: number
+  skip_reason?: string | null
+  error_code?: string | null
+  error_message?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  created_at?: string | null
+}
+
+export interface FiscalSnapshot {
+  id: number
+  office_id: number
+  run_id?: number | null
+  client_id?: number | null
+  competence_id?: number | null
+  evidence_artifact_id?: number | null
+  system_code?: string | null
+  service_code?: string | null
+  operation_code?: string | null
+  situation?: FiscalSituationCode | null
+  coverage?: string | null
+  version?: number | null
+  is_current?: boolean
+  normalized?: Record<string, unknown> | null
+  observed_at?: string | null
+  created_at?: string | null
+}
+
+export interface FiscalFinding {
+  id: number
+  office_id: number
+  snapshot_id?: number | null
+  run_id?: number | null
+  client_id?: number | null
+  code?: string | null
+  severity?: string | null
+  title?: string | null
+  detail?: string | null
+  situation?: FiscalSituationCode | null
+  is_active?: boolean
+  resolved_at?: string | null
+  created_at?: string | null
+}
+
+export interface FiscalPendingItem {
+  id: number
+  office_id: number
+  client_id?: number | null
+  snapshot_id?: number | null
+  run_id?: number | null
+  fiscal_category_id?: number | null
+  competence_id?: number | null
+  code?: string | null
+  title?: string | null
+  detail?: string | null
+  severity?: string | null
+  status?: string | null
+  situation?: FiscalSituationCode | null
+  due_at?: string | null
+  resolved_at?: string | null
+  logical_key?: string | null
+  created_at?: string | null
+}
+
+export interface FiscalEvidenceArtifact {
+  id: number
+  office_id: number
+  run_id?: number | null
+  content_sha256: string
+  content_type?: string | null
+  byte_size?: number | null
+  source?: string | null
+  source_version?: string | null
+  observed_at?: string | null
+  created_at?: string | null
+}
+
+export interface FgtsCoverageManifest {
+  module: string
+  coverage: string
+  coverage_label: string
+  system_code?: string
+  service_code?: string
+  supported_events?: Array<{ code: string, label: string }>
+  independent_states?: Record<string, string>
+  limitations?: string[] | Array<Record<string, unknown>>
+  declares_fgts_digital_debt: boolean
+  scraping_allowed: boolean
+  portal_fallback: boolean
+  totalizer_absence_window_hours?: number
+}
+
+export interface FiscalMutationPreflight {
+  eligible: boolean
+  preflight_token?: string | null
+  preflight_expires_at?: string | null
+  confirmation_phrase?: string | null
+  effect_summary?: string | null
+  cost_estimate?: Record<string, unknown> | string | null
+  estimated_cost_micros?: number | null
+  eligibility?: Record<string, unknown> | null
+  denial_code?: string | null
+  denial_message?: string | null
+  requires_totp?: boolean
+  client_id?: number
+  competence_period_key?: string | null
+  solution_code?: string
+  service_code?: string
+  operation_code?: string
+  [key: string]: unknown
+}
+
+export interface FiscalMutationOperation {
+  id: number
+  office_id: number
+  client_id: number
+  status: string
+  status_label?: string | null
+  environment?: string | null
+  solution_code?: string | null
+  service_code?: string | null
+  operation_code?: string | null
+  module_key?: string | null
+  competence_period_key?: string | null
+  effect_summary?: string | null
+  confirmation_phrase?: string | null
+  preflight_token?: string | null
+  cost_estimate?: Record<string, unknown> | string | null
+  estimated_cost_micros?: number | null
+  result_code?: string | null
+  result_message?: string | null
+  denial_code?: string | null
+  denial_message?: string | null
+  simulated?: boolean
+  created_at?: string | null
+  [key: string]: unknown
 }

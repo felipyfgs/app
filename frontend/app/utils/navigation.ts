@@ -33,6 +33,75 @@ export interface QuickAction {
  * Destinos principais do painel, no mesmo “ritmo” do template:
  * Home / Customers / Inbox + grupo colapsável (Settings) + secundários em outro menu.
  */
+/** Destinos do grupo Monitoramento fiscal (15.4). */
+export function monitoringDestinations(path = ''): NavDestination[] {
+  const monitoringOpen = !path || path === '/monitoring' || path.startsWith('/monitoring/')
+  return [{
+    id: 'monitoring',
+    label: 'Monitoramento',
+    icon: 'i-lucide-radar',
+    type: 'trigger',
+    defaultOpen: monitoringOpen,
+    children: [
+      {
+        id: 'monitoring-dashboard',
+        label: 'Dashboard Fiscal',
+        icon: 'i-lucide-gauge',
+        to: '/monitoring',
+        exact: true
+      },
+      {
+        id: 'monitoring-simples-mei',
+        label: 'Simples / MEI',
+        icon: 'i-lucide-badge-percent',
+        to: '/monitoring/simples-mei'
+      },
+      {
+        id: 'monitoring-dctfweb',
+        label: 'DCTFWeb / MIT',
+        icon: 'i-lucide-file-input',
+        to: '/monitoring/dctfweb'
+      },
+      {
+        id: 'monitoring-installments',
+        label: 'Parcelamentos',
+        icon: 'i-lucide-calendar-range',
+        to: '/monitoring/installments'
+      },
+      {
+        id: 'monitoring-sitfis',
+        label: 'Situação Fiscal',
+        icon: 'i-lucide-clipboard-check',
+        to: '/monitoring/sitfis'
+      },
+      {
+        id: 'monitoring-mailbox',
+        label: 'Caixas Postais',
+        icon: 'i-lucide-mail',
+        to: '/monitoring/mailbox'
+      },
+      {
+        id: 'monitoring-declarations',
+        label: 'Declarações',
+        icon: 'i-lucide-file-check-2',
+        to: '/monitoring/declarations'
+      },
+      {
+        id: 'monitoring-guides',
+        label: 'Guias',
+        icon: 'i-lucide-receipt',
+        to: '/monitoring/guides'
+      },
+      {
+        id: 'monitoring-fgts',
+        label: 'FGTS (parcial)',
+        icon: 'i-lucide-landmark',
+        to: '/monitoring/fgts'
+      }
+    ]
+  }]
+}
+
 export function mainDestinations(
   user?: MeUser | null,
   options?: { path?: string }
@@ -85,6 +154,7 @@ export function mainDestinations(
         }
       ]
     },
+    ...monitoringDestinations(path),
     {
       id: 'docs',
       label: 'Documentos',
@@ -145,6 +215,12 @@ export function mainDestinations(
           label: 'Importações',
           icon: 'i-lucide-upload',
           to: '/docs/imports'
+        },
+        {
+          id: 'cte-onboarding',
+          label: 'CT-e',
+          icon: 'i-lucide-truck',
+          to: '/settings/cte'
         }
       ]
     }
@@ -152,10 +228,37 @@ export function mainDestinations(
 
   if (hasConfirmedAdminAccess(user)) {
     items.push({
-      id: 'admin',
-      label: 'Administração',
-      icon: 'i-lucide-shield',
-      to: '/admin'
+      id: 'settings',
+      label: 'Configurações',
+      icon: 'i-lucide-sliders-horizontal',
+      type: 'trigger',
+      defaultOpen: path.startsWith('/settings') || path.startsWith('/admin'),
+      children: [
+        {
+          id: 'settings-onboarding',
+          label: 'Integra Contador',
+          icon: 'i-lucide-key-round',
+          to: '/settings'
+        },
+        {
+          id: 'settings-cte',
+          label: 'CT-e',
+          icon: 'i-lucide-truck',
+          to: '/settings/cte'
+        },
+        {
+          id: 'settings-usage',
+          label: 'Consumo',
+          icon: 'i-lucide-chart-pie',
+          to: '/settings/usage'
+        },
+        {
+          id: 'admin',
+          label: 'Administração',
+          icon: 'i-lucide-shield',
+          to: '/admin'
+        }
+      ]
     })
   }
 

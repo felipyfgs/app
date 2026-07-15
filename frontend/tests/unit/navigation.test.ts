@@ -35,21 +35,23 @@ describe('navigation', () => {
     expect(actions).toContain('new-export')
   })
 
-  it('ADMIN com 2FA vê Administração e ações rápidas', () => {
+  it('ADMIN com 2FA vê Administração/Configurações e ações rápidas', () => {
     const ids = flattenDestinations(mainDestinations(user('ADMIN', true))).map(d => d.id)
     expect(ids).toContain('admin')
+    expect(ids).toContain('settings-onboarding')
     expect(quickActions(user('ADMIN', true)).length).toBeGreaterThan(0)
   })
 
   it('ADMIN sem 2FA não vê Administração nem ações de mutação', () => {
     const ids = flattenDestinations(mainDestinations(user('ADMIN', false))).map(d => d.id)
     expect(ids).not.toContain('admin')
+    expect(ids).not.toContain('settings-onboarding')
     expect(quickActions(user('ADMIN', false))).toEqual([])
   })
 
-  it('destinos folha do operador batem com o produto (Clientes, Documentos e Operações em submenu)', () => {
+  it('destinos folha do operador batem com o produto (Clientes, Monitoramento, Documentos e Operações)', () => {
     const tree = mainDestinations(user('OPERATOR'))
-    expect(tree.map(d => d.id)).toEqual(['home', 'clients', 'docs', 'operations'])
+    expect(tree.map(d => d.id)).toEqual(['home', 'clients', 'monitoring', 'docs', 'operations'])
     expect(tree.find(d => d.id === 'clients')?.children?.map(c => c.id)).toEqual([
       'clients-list',
       'clients-dashboard'
@@ -65,18 +67,13 @@ describe('navigation', () => {
       'syncs',
       'imports'
     ])
-    expect(flattenDestinations(tree).map(d => d.id)).toEqual([
-      'home',
-      'clients-list',
-      'clients-dashboard',
-      'docs-by-client',
-      'docs-catalog',
-      'health',
-      'exports',
-      'closing',
-      'syncs',
-      'imports'
-    ])
+    const flat = flattenDestinations(tree).map(d => d.id)
+    expect(flat).toContain('home')
+    expect(flat).toContain('clients-list')
+    expect(flat).toContain('monitoring-dashboard')
+    expect(flat).toContain('monitoring-fgts')
+    expect(flat).toContain('docs-catalog')
+    expect(flat).toContain('health')
   })
 
   it('usa paths canônicos para as visões de Documentos', () => {

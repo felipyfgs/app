@@ -33,7 +33,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo('/')
   }
 
-  if (to.path.startsWith('/admin') && !hasConfirmedAdminAccess(identity)) {
+  if (
+    (to.path.startsWith('/admin')
+      || (to.path.startsWith('/settings') && to.path !== '/settings/cte'))
+    && !hasConfirmedAdminAccess(identity)
+  ) {
     return navigateTo('/')
   }
 })

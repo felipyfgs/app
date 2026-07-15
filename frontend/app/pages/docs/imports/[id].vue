@@ -4,6 +4,7 @@
  * Arquétipo: settings + customers table.
  */
 import type { TableColumn } from '@nuxt/ui'
+import { documentKindLabelFromModel } from '~/utils/documentKinds'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()
@@ -382,10 +383,19 @@ onBeforeUnmount(() => {
                 {{ row.original.source_name || row.original.entry_name || '—' }}
               </p>
               <p
-                v-if="row.original.model"
+                v-if="row.original.model || row.original.kind"
                 class="text-xs text-muted"
               >
-                modelo {{ row.original.model }}
+                <template v-if="documentKindLabelFromModel(row.original.model as string)">
+                  {{ documentKindLabelFromModel(row.original.model as string) }}
+                  · modelo {{ row.original.model }}
+                </template>
+                <template v-else-if="row.original.kind">
+                  {{ String(row.original.kind) }}
+                </template>
+                <template v-else>
+                  modelo {{ row.original.model }}
+                </template>
               </p>
             </div>
           </template>

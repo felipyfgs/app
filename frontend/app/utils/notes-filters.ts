@@ -13,6 +13,9 @@ export interface NotesFilterState {
   issuer_cnpj: string
   taker_cnpj: string
   fiscal_role: string
+  acquisition_source: string
+  artifact_quality: string
+  coverage_status: string
   competence: string
   issued_from: string
   issued_to: string
@@ -29,6 +32,9 @@ const SELECT_KEYS = new Set<keyof NotesFilterState>([
   'client_id',
   'establishment_id',
   'fiscal_role',
+  'acquisition_source',
+  'artifact_quality',
+  'coverage_status',
   'status'
 ])
 
@@ -42,6 +48,9 @@ export function emptyNotesFilters(): NotesFilterState {
     issuer_cnpj: '',
     taker_cnpj: '',
     fiscal_role: FILTER_ALL,
+    acquisition_source: FILTER_ALL,
+    artifact_quality: FILTER_ALL,
+    coverage_status: FILTER_ALL,
     competence: '',
     issued_from: '',
     issued_to: '',
@@ -64,6 +73,9 @@ const FILTER_KEYS: (keyof NotesFilterState)[] = [
   'issuer_cnpj',
   'taker_cnpj',
   'fiscal_role',
+  'acquisition_source',
+  'artifact_quality',
+  'coverage_status',
   'competence',
   'issued_from',
   'issued_to',

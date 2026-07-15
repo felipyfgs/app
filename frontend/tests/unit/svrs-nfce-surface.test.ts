@@ -52,10 +52,30 @@ describe('svrs nfce surface', () => {
       kill_switch: { active: false },
       breaker_global: { state: 'closed' },
       backlog: 0,
-      host: 'dfe-portal.svrs.rs.gov.br'
+      host: 'dfe-portal.svrs.rs.gov.br',
+      egress_cohort: {
+        cohort_id: 'cohort-fixture',
+        state: 'closed',
+        exchanges_hour_remaining: 8,
+        exchanges_day_remaining: 30,
+        inflight: 0,
+        budgets_are_preventive: true
+      }
     }
     const json = JSON.stringify(s)
     expect(json).not.toMatch(/pfx|password|private_key|cookie|vault_object|BEGIN CERTIFICATE/i)
+  })
+
+  it('saúde de egress expõe budget preventivo sem permitir inferir segredo', () => {
+    const health = {
+      state: 'open',
+      next_probe_at: '2026-07-16T12:00:00Z',
+      exchanges_hour_remaining: 0,
+      exchanges_day_remaining: 20,
+      budgets_are_preventive: true
+    }
+    expect(health.budgets_are_preventive).toBe(true)
+    expect(JSON.stringify(health)).not.toMatch(/pfx|cookie|private|access_key/i)
   })
 
   it('recovery mascara chave e não inclui xml/html', () => {

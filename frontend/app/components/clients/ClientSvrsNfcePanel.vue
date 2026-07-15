@@ -49,7 +49,22 @@ const killReason = ref('')
 const killBusy = ref(false)
 const breakerReason = ref('')
 const breakerBusy = ref(false)
+const cooldownSeconds = ref(3600)
+const cooldownReason = ref('')
+const cooldownBusy = ref(false)
+const canaryNumberStateId = ref<number | undefined>()
+const canaryReason = ref('')
+const canaryBusy = ref(false)
 const profilesReady = computed(() => props.profiles.length >= 0)
+
+const egress = computed(() => channel.value?.egress_cohort || null)
+const cooldownActive = computed(() => egress.value?.state === 'open')
+const canaryItems = computed(() => recoveries.value
+  .filter(row => row.number_state_id && reprocessable(row.recovery_status))
+  .map(row => ({
+    label: `${row.access_key_masked || 'chave mascarada'} · ${statusLabel(row.recovery_status)}`,
+    value: Number(row.number_state_id)
+  })))
 
 const profile65List = computed(() =>
   props.profiles.filter(p => p.model === '65')
@@ -82,6 +97,9 @@ const statusColor = (status?: string | null): 'success' | 'warning' | 'error' | 
       return 'neutral'
   }
 }
+
+const remoteRetryAllowed = (row: SvrsNfceRecovery) =>
+  reprocessable(row.recovery_status) && !cooldownActive.value
 
 const statusLabel = (status?: string | null): string => {
   const map: Record<string, string> = {
@@ -215,6 +233,52 @@ async function resetBreaker() {
   }
 }
 
+async function extendCooldown() {
+  if (!props.canAdmin || !cooldownReason.value.trim()) {
+    toast.add({ title: 'Informe o motivo da extensão', color: 'warning' })
+    return
+  }
+  cooldownBusy.value = true
+  try {
+    await api.outbound.svrsPortalEgress.extendCooldown({
+      additional_seconds: cooldownSeconds.value,
+      reason: cooldownReason.value.trim()
+    })
+    toast.add({ title: 'Cooldown estendido sem antecipar a prova', color: 'success' })
+    cooldownReason.value = ''
+    await load()
+  } catch (caught) {
+    toast.add({ title: 'Falha ao estender cooldown', description: apiErrorMessage(caught, 'Tente novamente.'), color: 'error' })
+  } finally {
+    cooldownBusy.value = false
+  }
+}
+
+async function selectCanary() {
+  if (!props.canAdmin || !canaryNumberStateId.value || !canaryReason.value.trim()) {
+    toast.add({ title: 'Selecione a chave e informe o motivo', color: 'warning' })
+    return
+  }
+  canaryBusy.value = true
+  try {
+    await api.outbound.svrsPortalEgress.selectCanary({
+      number_state_id: canaryNumberStateId.value,
+      reason: canaryReason.value.trim()
+    })
+    toast.add({ title: 'Canário selecionado para a próxima janela permitida', color: 'success' })
+    canaryReason.value = ''
+    await load()
+  } catch (caught) {
+    toast.add({
+      title: 'Canário recusado',
+      description: apiErrorMessage(caught, 'O cooldown ainda pode estar ativo.'),
+      color: 'warning'
+    })
+  } finally {
+    canaryBusy.value = false
+  }
+}
+
 // Aguarda perfis do parent (evita 1ª carga office-wide) e reage a mudanças
 watch(
   () => [props.clientId, props.profiles.map(p => p.id).join(',')] as const,
@@ -289,6 +353,49 @@ watch(
             </UBadge>
           </div>
         </div>
+
+        <div v-if="egress" class="grid gap-3 border-t border-default pt-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="svrs-egress-health">
+          <div>
+            <p class="mb-1 text-xs uppercase text-muted">Coorte de saída</p>
+            <UBadge :color="cooldownActive ? 'error' : egress.state === 'half_open' ? 'warning' : 'success'" variant="subtle">
+              {{ cooldownActive ? 'Cooldown' : egress.state }}
+            </UBadge>
+          </div>
+          <div>
+            <p class="mb-1 text-xs uppercase text-muted">Próxima prova</p>
+            <p class="text-sm font-medium text-highlighted">{{ formatDateTime(egress.next_probe_at) }}</p>
+          </div>
+          <div>
+            <p class="mb-1 text-xs uppercase text-muted">Exchanges restantes</p>
+            <p class="text-sm font-medium text-highlighted">
+              {{ egress.exchanges_hour_remaining }}/h · {{ egress.exchanges_day_remaining }}/dia
+            </p>
+          </div>
+          <div>
+            <p class="mb-1 text-xs uppercase text-muted">Modelos</p>
+            <p class="text-sm text-highlighted">
+              55 {{ channel.nfe55_retrieval_enabled ? 'on' : 'off' }} · 65 {{ channel.retrieval_enabled ? 'on' : 'off' }}
+            </p>
+          </div>
+        </div>
+
+        <UAlert
+          v-if="egress?.budgets_are_preventive"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-gauge"
+          title="Budgets internos preventivos"
+          description="Não representam limites oficiais publicados do NFESSL/NFCESSL e não são elevados por urgência."
+        />
+
+        <UAlert
+          v-if="cooldownActive"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-timer-off"
+          title="Retry remoto suspenso durante o cooldown"
+          description="Use XML/ZIP, pacote oficial ou aguarde next_probe_at. Dados já capturados permanecem visíveis."
+        />
 
         <div
           v-if="profileSummary"
@@ -386,7 +493,7 @@ watch(
           </div>
           <div class="flex gap-2 shrink-0">
             <UButton
-              v-if="canManage && reprocessable(row.recovery_status)"
+              v-if="canManage && remoteRetryAllowed(row)"
               size="sm"
               color="primary"
               variant="soft"
@@ -471,6 +578,44 @@ watch(
           data-testid="svrs-nfce-breaker-reset"
           @click="resetBreaker"
         />
+      </div>
+      <div class="mt-4 grid gap-3 border-t border-default pt-4 lg:grid-cols-2">
+        <div class="space-y-3">
+          <UFormField label="Estender cooldown (segundos)" hint="Somente aumenta a janela">
+            <UInput v-model.number="cooldownSeconds" type="number" :min="60" :max="604800" />
+          </UFormField>
+          <UFormField label="Motivo da extensão">
+            <UInput v-model="cooldownReason" placeholder="Ex.: tráfego compartilhado ainda sob observação" />
+          </UFormField>
+          <UButton
+            color="warning"
+            variant="soft"
+            label="Estender cooldown"
+            :loading="cooldownBusy"
+            @click="extendCooldown"
+          />
+        </div>
+        <div class="space-y-3">
+          <UFormField label="Canário elegível" hint="Nunca antecipa next_probe_at">
+            <USelect
+              v-model="canaryNumberStateId"
+              :items="canaryItems"
+              placeholder="Selecione uma chave mascarada"
+              :disabled="cooldownActive || !canaryItems.length"
+            />
+          </UFormField>
+          <UFormField label="Motivo do canário">
+            <UInput v-model="canaryReason" placeholder="Ex.: janela de smoke aprovada" />
+          </UFormField>
+          <UButton
+            color="primary"
+            variant="soft"
+            label="Selecionar canário"
+            :loading="canaryBusy"
+            :disabled="cooldownActive || !canaryNumberStateId"
+            @click="selectCanary"
+          />
+        </div>
       </div>
     </UPageCard>
   </div>

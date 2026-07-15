@@ -86,6 +86,18 @@ export function formatCurrency(value?: string | number | null): string {
   }).format(amount)
 }
 
+/** Valor monetário vindo da API em centavos (amount_cents). */
+export function formatAmountCents(cents?: string | number | null): string {
+  if (cents === null || cents === undefined || cents === '') {
+    return '—'
+  }
+  const n = Number(cents)
+  if (!Number.isFinite(n)) {
+    return '—'
+  }
+  return formatCurrency(n / 100)
+}
+
 export function formatBytes(value?: number | null): string {
   if (value === null || value === undefined || value < 0) {
     return '—'

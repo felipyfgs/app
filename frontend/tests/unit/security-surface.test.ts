@@ -58,4 +58,30 @@ describe('superfície sem material sensível', () => {
     expect(panel).toContain('credentialFile.value = null')
     expect(panel).toContain('state.password = \'\'')
   })
+
+  it('onboarding Integra não oferece recuperação de PFX/Termo/token', () => {
+    const onboarding = readFileSync(resolve(APP_ROOT, 'pages/settings/index.vue'), 'utf8')
+    expect(onboarding).toMatch(/sem recuperação|nunca é exibido|não há download/i)
+    expect(onboarding).toContain('clearSensitive')
+    // Sem rotas/ações de download de material sensível
+    expect(onboarding).not.toMatch(/href=.*\/(pfx|termo|token)/i)
+    expect(onboarding).not.toMatch(/label="Baixar (PFX|Termo|token)"/i)
+  })
+
+  it('FGTS é rotulado parcial e sem portal humano', () => {
+    const fgts = readFileSync(resolve(APP_ROOT, 'pages/monitoring/fgts.vue'), 'utf8')
+    expect(fgts).toMatch(/parcial/i)
+    expect(fgts).toMatch(/portal_fallback|sem API pública|Não suportado/i)
+    expect(fgts).toContain('fgts-partial-banner')
+    // Sem deep-link operacional a portal/CAPTCHA
+    expect(fgts).not.toMatch(/to="https?:\/\/.*gov\.br/i)
+    expect(fgts).not.toMatch(/label="Abrir portal/i)
+    expect(fgts).not.toMatch(/label="Resolver CAPTCHA"/i)
+  })
+
+  it('consumo tenant não menciona fatura global', () => {
+    const usage = readFileSync(resolve(APP_ROOT, 'pages/settings/usage.vue'), 'utf8')
+    expect(usage).toMatch(/sem fatura consolidada|não exibe fatura/i)
+    expect(usage).not.toMatch(/global_budget/)
+  })
 })

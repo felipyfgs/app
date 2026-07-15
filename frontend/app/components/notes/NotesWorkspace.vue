@@ -78,6 +78,21 @@ watch(sessionEpoch, () => {
   const empty = emptyNotesFilters()
   Object.assign(filters, empty)
   persistedFilters.value = empty
+  // Limpa dados tenant-scoped e recarrega (não só filtros).
+  notes.value = []
+  byClientRows.value = []
+  byClientTotal.value = 0
+  byClientLastPage.value = 1
+  byClientPage.value = 1
+  clients.value = []
+  establishments.value = []
+  insights.value = null
+  selectedKeys.value = []
+  nextCursor.value = null
+  listTotal.value = 0
+  loadError.value = null
+  void reloadActive()
+  void loadClients()
 })
 
 const selectedAccessKey = computed(() =>
@@ -111,7 +126,7 @@ const kindCaptureAvailable = computed(() => {
 const kindCaptureUnavailableHint = computed(() => {
   const kind = filters.kind
   if (kind === 'CTE') {
-    return 'CT-e DistDFe ainda não está ligado nesta instância (SEFAZ_CTE_ENABLED).'
+    return 'CT-e DistDFe/autXML ainda não está ligado nesta instância (SEFAZ_CTE_ENABLED). Você ainda pode importar XML/ZIP de CT-e 57.'
   }
   return 'A fonte SEFAZ correspondente ainda não está habilitada nesta instância.'
 })
@@ -121,6 +136,7 @@ const kindExportAvailable = computed(() =>
   || filters.kind === 'NFSE'
   || filters.kind === 'NFE'
   || filters.kind === 'NFCE'
+  || filters.kind === 'CTE'
 )
 
 function queryParams(cursor?: string | null): NoteListParams {
@@ -134,6 +150,9 @@ function queryParams(cursor?: string | null): NoteListParams {
     ...(isActiveFilterValue(filters.issuer_cnpj) ? { issuer_cnpj: filters.issuer_cnpj } : {}),
     ...(isActiveFilterValue(filters.taker_cnpj) ? { taker_cnpj: filters.taker_cnpj } : {}),
     ...(isActiveFilterValue(filters.fiscal_role) ? { fiscal_role: filters.fiscal_role as NoteListParams['fiscal_role'] } : {}),
+    ...(isActiveFilterValue(filters.acquisition_source) ? { acquisition_source: filters.acquisition_source } : {}),
+    ...(isActiveFilterValue(filters.artifact_quality) ? { artifact_quality: filters.artifact_quality } : {}),
+    ...(isActiveFilterValue(filters.coverage_status) ? { coverage_status: filters.coverage_status } : {}),
     ...(isActiveFilterValue(filters.competence) ? { competence: filters.competence } : {}),
     ...(isActiveFilterValue(filters.issued_from) ? { issued_from: filters.issued_from } : {}),
     ...(isActiveFilterValue(filters.issued_to) ? { issued_to: filters.issued_to } : {}),
@@ -191,9 +210,15 @@ async function onTriageSelect(queue: NotesTriageQueue) {
   await reloadActive()
 }
 
+/** Seq de geração para descartar respostas stale mid-request (troca de tenant). */
+let notesLoadSeq = 0
+let byClientLoadSeq = 0
+
 /** Carrega o próximo lote usando exatamente o cursor entregue pela API. */
 async function load(reset = false): Promise<void> {
   if (!reset && !nextCursor.value && notes.value.length) return
+  const seq = ++notesLoadSeq
+  const epoch = sessionEpoch.value
   if (reset) {
     resetPagination()
     notes.value = []
@@ -202,6 +227,7 @@ async function load(reset = false): Promise<void> {
   loading.value = true
   try {
     const response = await api.documents.list(queryParams(reset ? null : nextCursor.value))
+    if (seq !== notesLoadSeq || epoch !== sessionEpoch.value) return
     const merged = reset ? response.data : [...notes.value, ...response.data]
     notes.value = Array.from(new Map(merged.map(note => [note.access_key, note])).values())
     nextCursor.value = response.meta.next_cursor
@@ -209,10 +235,13 @@ async function load(reset = false): Promise<void> {
       ?? notes.value.length
     loadError.value = null
   } catch (caught) {
+    if (seq !== notesLoadSeq || epoch !== sessionEpoch.value) return
     loadError.value = apiErrorMessage(caught, 'Erro ao listar documentos.')
     toast.add({ title: loadError.value, color: 'error' })
   } finally {
-    loading.value = false
+    if (seq === notesLoadSeq && epoch === sessionEpoch.value) {
+      loading.value = false
+    }
   }
 }
 
@@ -225,6 +254,8 @@ async function onPageSizeChange(size: number) {
 }
 
 async function loadByClient() {
+  const seq = ++byClientLoadSeq
+  const epoch = sessionEpoch.value
   loading.value = true
   loadError.value = null
   try {
@@ -241,15 +272,19 @@ async function loadByClient() {
       sort: sortId,
       direction: sort?.desc ? 'desc' : 'asc'
     })
+    if (seq !== byClientLoadSeq || epoch !== sessionEpoch.value) return
     byClientRows.value = response.data
     byClientTotal.value = response.meta.total
     byClientLastPage.value = response.meta.last_page
   } catch (caught) {
+    if (seq !== byClientLoadSeq || epoch !== sessionEpoch.value) return
     loadError.value = apiErrorMessage(caught, 'Erro ao listar clientes.')
     toast.add({ title: loadError.value, color: 'error' })
     byClientRows.value = []
   } finally {
-    loading.value = false
+    if (seq === byClientLoadSeq && epoch === sessionEpoch.value) {
+      loading.value = false
+    }
   }
 }
 
@@ -575,7 +610,7 @@ onMounted(async () => {
           <UButton
             v-if="canImportDocuments && view === 'document'"
             icon="i-lucide-upload"
-            label="Importar saídas"
+            label="Importar XML/ZIP"
             color="neutral"
             variant="outline"
             aria-label="Importar XML ou ZIP de saídas"
@@ -595,14 +630,14 @@ onMounted(async () => {
 
       <UModal
         v-model:open="importOpen"
-        title="Importar XML de saídas"
-        description="NF-e 55 e NFC-e 65 · associação automática por emitente · lote assíncrono"
+        title="Importar documentos fiscais"
+        description="NF-e 55, NFC-e 65 e CT-e 57 · associação tenant-safe · lote assíncrono"
       >
         <template #body>
           <div class="space-y-4">
             <p id="import-limits-desc" class="text-sm text-muted">
-              Envie um ou mais XML/ZIP. Sem cliente, cada item associa pelo CNPJ do emitente.
-              Cliente selecionado só restringe (divergência = CLIENT_MISMATCH).
+              Envie XML/ZIP de NF-e, NFC-e ou CT-e. Sem cliente, cada item associa pelas partes
+              fiscais reconhecidas. Cliente selecionado só restringe (divergência = CLIENT_MISMATCH).
               Limites: até 50 arquivos e 20&nbsp;MiB compactados. Após o envio, o progresso
               sobrevive ao fechar este modal — use Importações.
             </p>

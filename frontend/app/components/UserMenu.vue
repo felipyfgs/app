@@ -39,6 +39,11 @@ const items = computed<DropdownMenuItem[][]>(() => {
   const middle: DropdownMenuItem[] = []
   if (canAccessAdministration.value) {
     middle.push({
+      label: 'Configurações',
+      icon: 'i-lucide-sliders-horizontal',
+      to: '/settings'
+    })
+    middle.push({
       label: 'Administração',
       icon: 'i-lucide-shield',
       to: '/admin'
