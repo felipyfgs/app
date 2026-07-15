@@ -541,6 +541,61 @@ export type InboxItemType
     | 'outbound_xml_divergent'
     | 'outbound_authorized_unexpected'
     | 'outbound_cancel_failed'
+    | 'svrs_nfce_a1'
+    | 'svrs_nfce_auth'
+    | 'svrs_nfce_rate_limit'
+    | 'svrs_nfce_contract_changed'
+    | 'svrs_nfce_xml_signature'
+    | 'svrs_nfce_divergent'
+    | 'svrs_nfce_breaker'
+    | 'svrs_nfce_exhausted'
+
+/** Recovery SVRS NFC-e (DTOs sanitizados — sem HTML/XML/PFX). */
+export interface SvrsNfceChannelSummary {
+  retrieval_enabled: boolean
+  auto_queue_enabled: boolean
+  pilot_allowlist_only: boolean
+  kill_switch: { active: boolean, source?: string | null }
+  breaker_global: { state: string, open_until?: number | null, failures?: number }
+  backlog: number
+  oldest_pending_at?: string | null
+  parser_version?: string
+  host?: string
+}
+
+export interface SvrsNfceRecovery {
+  id: number
+  profile_id: number
+  establishment_id: number
+  environment: string
+  model: string
+  origin?: string
+  access_key_masked?: string | null
+  recovery_status?: string | null
+  failure_reason?: string | null
+  failure_label?: string | null
+  attempt_count?: number
+  next_attempt_at?: string | null
+  correlation_id?: string | null
+  sha256?: string | null
+}
+
+export interface SvrsNfceProfileSummary {
+  profile_id: number
+  model: string
+  eligible_model: boolean
+  allowlisted: boolean
+  flags: {
+    retrieval_enabled: boolean
+    auto_queue_enabled: boolean
+    pilot_allowlist_only: boolean
+    kill_switch: boolean
+  }
+  breaker_root: { state: string, open_until?: number | null, failures?: number }
+  breaker_global: { state: string, open_until?: number | null, failures?: number }
+  recent: SvrsNfceRecovery[]
+  last_captured?: SvrsNfceRecovery | null
+}
 
 export interface InboxItemAction {
   type: 'open' | 'trigger_sync' | string
@@ -599,6 +654,13 @@ export interface OperationsSummary {
   inbox_high?: number
   inbox_total?: number
   backup?: BackupStatus
+  svrs_nfce?: {
+    retrieval_enabled: boolean
+    auto_queue_enabled: boolean
+    kill_switch: boolean
+    breaker_global: string
+    backlog: number
+  }
   generated_at: string
 }
 

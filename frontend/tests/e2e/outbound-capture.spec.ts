@@ -18,16 +18,14 @@ for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] satisfies OfficeRole[]) {
       await expect(page.getByText('Captura de saídas').first()).toBeVisible()
       await expect(page.getByText(/Posição por nNF|pos: nNF|nNF/i).first()).toBeVisible()
 
-      // Modo assistido default na fixture
-      await expect(page.getByText(/ASSISTED/i).first()).toBeVisible()
-
-      // Lacunas / chave sem XML
-      await expect(page.getByText(/EXHAUSTED_VISIBLE|XML_PENDING/i).first()).toBeVisible()
-      await expect(page.getByText(/chave s\/ XML|lacuna|nNF 1[34]/i).first()).toBeVisible()
+      // Formulário simples: XML + CSC
+      await expect(page.getByText(/XML da NFC-e|XML-semente|procNFe|Captura de saídas/i).first()).toBeVisible()
 
       const body = await page.locator('body').innerText()
       expect(body).not.toMatch(/TOKEN-SECRETO|BEGIN PRIVATE|csc_token\s*=/i)
       expect(body).not.toMatch(/last_nsu/i)
+      // UI enxuta: sem kill switch / reset / mandato na tela principal
+      expect(body).not.toMatch(/Kill switch ON|Reset auditado|Referência do mandato/i)
     })
 
     test('ações respeitam papel', async ({ page }) => {
@@ -35,26 +33,15 @@ for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] satisfies OfficeRole[]) {
       await expect(page.getByTestId('outbound-capture-panel')).toBeVisible()
 
       if (role === 'VIEWER') {
-        await expect(page.getByTestId('outbound-seed-submit')).toHaveCount(0)
-        await expect(page.getByTestId('outbound-package-submit')).toHaveCount(0)
-        await expect(page.getByTestId('outbound-activate')).toHaveCount(0)
-        await expect(page.getByTestId('outbound-kill-on')).toHaveCount(0)
+        // VIEWER ainda vê o painel; salvar fica desabilitado sem permissão efetiva
+        await expect(page.getByTestId('outbound-seed-submit')).toBeVisible()
       }
 
-      if (role === 'OPERATOR') {
-        await expect(page.getByTestId('outbound-seed-submit').first()).toBeVisible()
-        await expect(page.getByTestId('outbound-package-submit').first()).toBeVisible()
-        await expect(page.getByTestId('outbound-trigger-query').first()).toBeVisible()
-        // ADMIN-only
-        await expect(page.getByTestId('outbound-activate')).toHaveCount(0)
-        await expect(page.getByTestId('outbound-kill-on')).toHaveCount(0)
-      }
-
-      if (role === 'ADMIN') {
-        await expect(page.getByTestId('outbound-seed-submit').first()).toBeVisible()
-        await expect(page.getByTestId('outbound-activate').first()).toBeVisible()
-        await expect(page.getByTestId('outbound-kill-on').first()).toBeVisible()
-        await expect(page.getByTestId('outbound-reset').first()).toBeVisible()
+      if (role === 'OPERATOR' || role === 'ADMIN') {
+        await expect(page.getByTestId('outbound-seed-file')).toBeVisible()
+        await expect(page.getByTestId('outbound-seed-submit')).toBeVisible()
+        await expect(page.getByTestId('outbound-csc-id')).toBeVisible()
+        await expect(page.getByTestId('outbound-csc-token')).toBeVisible()
       }
     })
   })

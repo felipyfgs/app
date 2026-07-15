@@ -28,6 +28,9 @@ import type {
   OutboundNumberState,
   OutboundSeriesCursor,
   PageMeta,
+  SvrsNfceChannelSummary,
+  SvrsNfceProfileSummary,
+  SvrsNfceRecovery,
   SyncRun,
   TwoFactorQrCode
 } from '~/types/api'
@@ -303,11 +306,11 @@ export function useApi() {
         )
       },
       cscState: (profileId: number) =>
-        client<{ data: { configured: boolean, csc_id?: string | null, configured_at?: string | null } }>(
+        client<{ data: { configured: boolean, csc_id?: string | null, configured_at?: string | null, csc?: string | null } }>(
           `/api/v1/outbound/profiles/${profileId}/csc`
         ),
       storeCsc: (profileId: number, body: { csc: string, csc_id: string }) =>
-        client<{ data: { configured: boolean, csc_id?: string | null } }>(
+        client<{ data: { configured: boolean, csc_id?: string | null, configured_at?: string | null, csc?: string | null } }>(
           `/api/v1/outbound/profiles/${profileId}/csc`,
           { method: 'POST', body }
         ),
@@ -324,7 +327,49 @@ export function useApi() {
       killSwitchStatus: () =>
         client<{ data: OutboundKillSwitchStatus }>('/api/v1/outbound/kill-switch'),
       killSwitch: (body: { active: boolean, reason: string, profile_id?: number }) =>
-        client<{ data: unknown }>('/api/v1/outbound/kill-switch', { method: 'POST', body })
+        client<{ data: unknown }>('/api/v1/outbound/kill-switch', { method: 'POST', body }),
+      svrsNfce: {
+        summary: () =>
+          client<{ data: SvrsNfceChannelSummary }>('/api/v1/outbound/svrs-nfce/summary'),
+        recoveries: (params?: {
+          status?: string
+          profile_id?: number
+          client_id?: number
+          page?: number
+          per_page?: number
+        }) =>
+          client<{ data: SvrsNfceRecovery[], meta: { current_page: number, last_page: number, total: number } }>(
+            '/api/v1/outbound/svrs-nfce/recoveries',
+            { query: params }
+          ),
+        profileSummary: (profileId: number) =>
+          client<{ data: SvrsNfceProfileSummary }>(`/api/v1/outbound/svrs-nfce/profiles/${profileId}/summary`),
+        enqueue: (body: { number_state_id: number }) =>
+          client<{ data: SvrsNfceRecovery }>('/api/v1/outbound/svrs-nfce/recoveries', {
+            method: 'POST',
+            body
+          }),
+        retry: (recoveryId: number) =>
+          client<{ data: SvrsNfceRecovery }>(`/api/v1/outbound/svrs-nfce/recoveries/${recoveryId}/retry`, {
+            method: 'POST'
+          }),
+        killSwitchStatus: () =>
+          client<{ data: { active: boolean, source?: string | null } }>('/api/v1/outbound/svrs-nfce/kill-switch'),
+        killSwitch: (body: { active: boolean, reason: string }) =>
+          client<{ data: { active: boolean, source?: string | null } }>('/api/v1/outbound/svrs-nfce/kill-switch', {
+            method: 'POST',
+            body
+          }),
+        breakerStatus: () =>
+          client<{ data: { global: { state: string, open_until?: number | null, failures?: number } } }>(
+            '/api/v1/outbound/svrs-nfce/breaker'
+          ),
+        breakerReset: (body: { scope: 'global' | 'root', client_id?: number, reason: string }) =>
+          client<{ data: { global: { state: string } } }>('/api/v1/outbound/svrs-nfce/breaker/reset', {
+            method: 'POST',
+            body
+          })
+      }
     },
     twoFactor: {
       confirmPassword: (password: string) =>

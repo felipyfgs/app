@@ -591,6 +591,37 @@ export async function installApiFixtures(
         }
       })
     }
+    
+    // --- SVRS NFC-e XML recovery ---
+    if (pathname.endsWith('/api/v1/outbound/svrs-nfce/summary') && method === 'GET') {
+      return fulfill(route, {
+        data: {
+          retrieval_enabled: false,
+          auto_queue_enabled: false,
+          pilot_allowlist_only: false,
+          kill_switch: { active: false, source: null },
+          breaker_global: { state: 'closed', open_until: null, failures: 0 },
+          backlog: 0,
+          oldest_pending_at: null,
+          parser_version: '1',
+          host: 'dfe-portal.svrs.rs.gov.br'
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/outbound/svrs-nfce/recoveries') && method === 'GET') {
+      return fulfill(route, { data: [], meta: { current_page: 1, last_page: 1, total: 0 } })
+    }
+    if (pathname.endsWith('/api/v1/outbound/svrs-nfce/kill-switch') && method === 'GET') {
+      return fulfill(route, { data: { active: false, source: null } })
+    }
+    if (pathname.endsWith('/api/v1/outbound/svrs-nfce/breaker') && method === 'GET') {
+      return fulfill(route, { data: { global: { state: 'closed' } } })
+    }
+    if (pathname.endsWith('/api/v1/outbound/svrs-nfce/kill-switch') && method === 'POST') {
+      if (role !== 'ADMIN') return fulfill(route, { message: 'Forbidden' }, 403)
+      return fulfill(route, { data: { active: true, source: 'runtime' } })
+    }
+
     if (pathname.endsWith('/api/v1/outbound/runs') && method === 'GET') {
       return fulfill(route, {
         data: [{
