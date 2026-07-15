@@ -3,9 +3,7 @@
 ## Purpose
 
 Experiência do painel SPA Nuxt UI: shell, navegação, tabelas, filtros, mestre–detalhe, estados e acessibilidade.
-
 ## Requirements
-
 ### Requirement: Shell autenticado equivalente ao template de referência
 O sistema SHALL manter, em todas as rotas autenticadas, um shell composto por sidebar recolhível e redimensionável, navegação vertical, command palette, identidade do escritório ativo, menu do usuário e painel global de alertas, adaptado do template fixado no commit `0f30c09`.
 
@@ -132,7 +130,7 @@ O sistema SHALL apresentar Notas como catálogo mestre–detalhe, com painel de 
 - **THEN** o chip usa Autorizada, Cancelada ou Em revisão conforme o `status` granular da nota
 
 ### Requirement: Detalhe de Cliente organizado por seções
-O sistema SHALL apresentar o detalhe de Cliente em página dedicada no arquétipo Settings com subnavegação para `Resumo`, `Cadastro`, `Estabelecimentos`, `Certificado A1` e `Sincronização`, condicionando conteúdo e ações às permissões e mantendo a seção reproduzível na URL.
+O sistema SHALL apresentar o detalhe de Cliente em página dedicada no arquétipo Settings com subnavegação para `Resumo`, `Cadastro`, `Estabelecimentos`, `Certificado A1`, `Captura de saídas` e `Sincronização`, condicionando conteúdo e ações às permissões e mantendo a seção reproduzível na URL.
 
 #### Scenario: Abertura do cliente
 - **WHEN** o usuário abre `/clients/:id` sem seção especificada
@@ -146,8 +144,12 @@ O sistema SHALL apresentar o detalhe de Cliente em página dedicada no arquétip
 - **WHEN** um usuário que não pode gerir A1 visualiza o onboarding
 - **THEN** a etapa informa que o certificado é gerenciado por `ADMIN` sem expor formulário sensível nem representar falta de permissão como falha operacional
 
+#### Scenario: Seção Captura de saídas
+- **WHEN** o usuário abre a seção de captura de saídas
+- **THEN** a página lista somente estabelecimentos e séries do escritório ativo, com modo/estado e ações permitidas ao papel
+
 #### Scenario: Seção reproduzível
-- **WHEN** o usuário abre uma URL válida da seção Cadastro, Estabelecimentos, Certificado A1 ou Sincronização
+- **WHEN** o usuário abre uma URL válida da seção Cadastro, Estabelecimentos, Certificado A1, Captura de saídas ou Sincronização
 - **THEN** a toolbar destaca a seção e o corpo renderiza somente o conteúdo correspondente
 
 ### Requirement: Criação assistida permanece focada e transacional
@@ -387,7 +389,7 @@ O sistema SHALL apresentar o catálogo fiscal na rota canônica `/docs` com a me
 - **THEN** é redirecionado para `/docs` ou `/docs/:accessKey` preservando query string quando aplicável
 
 ### Requirement: Filtro e indicação de tipo DF-e
-O sistema SHALL permitir filtrar o catálogo por tipo e exibir o tipo de cada linha somente para `NFSE`, `NFE`, `NFCE` e `CTE`. Tipos com captura habilitada MUST listar dados reais; tipos sem captura MUST manter empty state informativo. MDF-e MUST NOT aparecer como opção operacional.
+O sistema SHALL permitir filtrar o catálogo por tipo e exibir o tipo de cada linha somente para `NFSE`, `NFE`, `NFCE` e `CTE`. Tipos com captura habilitada MUST listar dados reais; tipos sem captura MUST manter empty state informativo. NFC-e MA MUST distinguir canal assistido de automático, e MDF-e MUST NOT aparecer como opção operacional.
 
 #### Scenario: Tipo sem captura
 - **WHEN** o operador filtra por kind sem captura habilitada ou sem dados
@@ -398,8 +400,12 @@ O sistema SHALL permitir filtrar o catálogo por tipo e exibir o tipo de cada li
 - **THEN** a lista mostra documentos NFS-e com coluna/badge de tipo
 
 #### Scenario: NF-e com captura
-- **WHEN** a captura DistDFe está habilitada e há documentos
+- **WHEN** a captura DistDFe ou saída MA está habilitada e há documentos
 - **THEN** o filtro NF-e mostra linhas com badge NFE e não exibe “em breve” como único estado
+
+#### Scenario: NFC-e MA com dados
+- **WHEN** há XML modelo 65 de saída persistido para estabelecimento MA
+- **THEN** o filtro NFC-e mostra linhas NFCE com direção Saída e proveniência legível
 
 #### Scenario: MDF-e ausente
 - **WHEN** o operador abre os filtros e estados do catálogo
@@ -413,11 +419,19 @@ O sistema SHALL oferecer no detalhe de NF-e (quando pendente de manifestação) 
 - **THEN** a UI envia a ação, atualiza o estado e não exibe material de certificado
 
 ### Requirement: Sincronizações multi-canal
-O sistema SHALL apresentar status de cursors SEFAZ DistDFe e CT-e nas telas de sincronização e saúde de forma distinguível dos cursors ADN, sem apresentar canal MDF-e.
+O sistema SHALL apresentar status de cursors SEFAZ DistDFe e CT-e e de séries outbound MA nas telas de sincronização e saúde de forma distinguível dos cursors ADN, sem apresentar canal MDF-e. Canal baseado em NSU SHALL mostrar NSU; série outbound SHALL mostrar modelo, série e posição `nNF`, nunca rotulada como NSU.
 
 #### Scenario: Cursor DistDFe bloqueado
 - **WHEN** o cursor DistDFe está BLOCKED
 - **THEN** a UI de sync ou health mostra o canal e severidade sem dump SOAP bruto
+
+#### Scenario: Série outbound bloqueada
+- **WHEN** série NF-e/NFC-e MA está BLOCKED
+- **THEN** a UI mostra estabelecimento, modelo, série, `nNF`, motivo sanitizado e ação permitida sem editar a posição diretamente
+
+#### Scenario: Recuperação pendente
+- **WHEN** há chaves descobertas sem XML
+- **THEN** sincronização mostra contagem `XML_PENDING` separada da quantidade capturada
 
 #### Scenario: Superfície operacional sem MDF-e
 - **WHEN** o usuário abre sincronização ou saúde
@@ -635,3 +649,136 @@ O sistema SHALL, na UI de Documentos para NF-e, colocar como ação principal o 
 #### Scenario: Conclusivas
 - **WHEN** o usuário abre ações opcionais de MD-e
 - **THEN** confirmação/desconhecimento/não realizada exigem confirmação explícita e não são o fluxo default
+
+### Requirement: Card de recovery NFC-e via SVRS
+O detalhe de Sincronização do estabelecimento SHALL apresentar card “XML NFC-e via SVRS” com estado da integração, elegibilidade, modo manual/automático, backlog, última tentativa/captura, próximo retry, breaker e motivo sanitizado, seguindo o template de dashboard fixado.
+
+#### Scenario: Perfil elegível e saudável
+- **WHEN** o estabelecimento MA possui perfil 65 ativo, A1 válido e canal habilitado
+- **THEN** o card mostra integração disponível, progresso real e ações autorizadas sem exibir A1 ou chave completa
+
+#### Scenario: Modelo 55
+- **WHEN** o usuário visualiza uma série NF-e 55
+- **THEN** a interface não oferece download SVRS e explica que este canal atende somente NFC-e 65
+
+### Requirement: Lista de pendências e tentativas
+A interface SHALL oferecer lista server-side de recoveries com filtros de estado/motivo, paginação, estado vazio, erro, deep-link para estabelecimento e ações por registro coerentes com a API.
+
+#### Scenario: Pendência em retry
+- **WHEN** uma recuperação está `RETRY_SCHEDULED`
+- **THEN** a linha mostra tentativa, próximo horário e ação permitida sem simular captura concluída
+
+#### Scenario: Falha ao carregar
+- **WHEN** a API de recoveries falha
+- **THEN** a UI mantém dados válidos anteriores, informa erro sanitizado e oferece tentar novamente
+
+### Requirement: Ações por papel e 2FA
+A UI MUST ocultar e bloquear controles administrativos de flag, allowlist, kill switch e breaker para quem não é ADMIN com 2FA recente. OPERATOR SHALL receber retry e fallback somente quando elegíveis; VIEWER MUST permanecer somente leitura.
+
+#### Scenario: Operator com fallback disponível
+- **WHEN** o canal está bloqueado e o OPERATOR visualiza a pendência
+- **THEN** a interface oferece upload XML/ZIP existente e não oferece resetar breaker
+
+#### Scenario: Admin sem 2FA recente
+- **WHEN** ADMIN tenta alterar allowlist ou kill switch sem segundo fator vigente
+- **THEN** a interface conduz ao desafio e não envia a mutação
+
+### Requirement: Estados honestos de descoberta e captura
+A interface MUST distinguir `Chave descoberta`, `XML pendente`, `Em recuperação`, `XML capturado`, `Fallback necessário` e `Bloqueado`, sem usar sucesso de consulta de protocolo como sucesso de XML.
+
+#### Scenario: Chave descoberta sem XML
+- **WHEN** o número possui `KEY_DISCOVERED` e recovery ainda não concluído
+- **THEN** a UI mostra XML pendente e não habilita download do documento inexistente
+
+### Requirement: Conteúdo remoto e segredos nunca renderizados
+A interface MUST NOT receber ou renderizar HTML/JavaScript remoto, XML fiscal bruto, PFX, senha, PEM, cookie, token, `vault_object_id` ou mensagem remota não sanitizada. A chave, quando necessária à identificação autorizada, SHALL usar formato mascarado conforme política existente.
+
+#### Scenario: Parser retorna contrato alterado
+- **WHEN** a API informa `RESPONSE_CONTRACT_CHANGED`
+- **THEN** a UI exibe texto local sanitizado e não injeta o corpo retornado pela SVRS no DOM
+
+### Requirement: Fallback assistido integrado
+A experiência SHALL ligar uma recuperação indisponível ao upload em massa XML/ZIP existente, preservar o contexto do cliente/estabelecimento e atualizar o estado quando a mesma chave for ingerida.
+
+#### Scenario: Upload fecha pendência
+- **WHEN** o operador conclui upload válido da chave pendente
+- **THEN** o card e a lista atualizam para XML capturado por fallback, mantendo a proveniência correta
+
+### Requirement: Configuração de captura de saídas MA no arquétipo Settings
+O sistema SHALL apresentar no detalhe do cliente uma seção reproduzível de captura de saídas, organizada por estabelecimento, ambiente, modelo e série, mostrando modo `ASSISTED|AUTOMATIC`, estado do A1/CSC sem valores, semente, posição `nNF`, última execução, próxima tentativa, lacunas e bloqueios. A estrutura visual MUST seguir o template Nuxt UI fixado no repositório.
+
+#### Scenario: Série NF-e configurada
+- **WHEN** o usuário abre uma série modelo 55
+- **THEN** vê semente, número inicial/posição atual, captura e pendências sem campo ou estado de CSC
+
+#### Scenario: Série NFC-e configurada
+- **WHEN** o usuário abre uma série modelo 65
+- **THEN** vê estado do CSC somente como configurado/ausente quando aplicável, nunca seu valor
+
+#### Scenario: Modo assistido
+- **WHEN** não existe contrato M2M aprovado para a plataforma MA
+- **THEN** a UI rotula claramente `Assistido`, orienta obtenção/upload do pacote oficial e não usa texto de sincronização automática
+
+#### Scenario: Modo automático
+- **WHEN** contrato M2M, flag, perfil e allowlist estão válidos
+- **THEN** a UI mostra `Automático`, competência coberta, próxima execução e última recuperação concluída
+
+#### Scenario: Lacuna esgotada
+- **WHEN** um número chega a `EXHAUSTED_VISIBLE`
+- **THEN** a série exibe o `nNF`, dez tentativas, último resultado e ação de revisão permitida sem ocultar a lacuna
+
+### Requirement: Ações da captura MA respeitam papel e 2FA
+O sistema SHALL permitir upload de semente/pacote e consulta somente leitura a OPERATOR/ADMIN quando elegíveis, e MUST restringir cadastro de CSC, ativação de produção, mandato, allowlist, reset, fallback mutante e kill switch a ADMIN com 2FA recente e confirmação explícita.
+
+#### Scenario: Operador envia pacote oficial
+- **WHEN** OPERATOR autorizado seleciona estabelecimento/competência e envia ZIP oficial MA
+- **THEN** a UI mostra progresso e resultado por XML sem material de certificado ou payload bruto
+
+#### Scenario: Operador tenta ativar perfil
+- **WHEN** OPERATOR tenta habilitar produção, alterar mandato ou resetar sequência
+- **THEN** a ação não é oferecida ou retorna 403 sem alteração parcial
+
+#### Scenario: Admin reseta sequência
+- **WHEN** ADMIN com 2FA recente confirma posição e motivo do reset
+- **THEN** a UI envia a ação protegida, mantém histórico visível e informa que resultados fiscais anteriores não serão refeitos
+
+#### Scenario: Confirmação mutante
+- **WHEN** ADMIN autorizado abre ação de inutilização/sonda experimental
+- **THEN** a UI apresenta série/período, riscos fiscais, gates e efeito irreversível, exigindo confirmação específica; confirmação genérica de modal não basta
+
+### Requirement: Operação e catálogo distinguem chave de XML
+O sistema SHALL diferenciar visualmente lacuna, chave descoberta, XML pendente, XML capturado e incidente fiscal. Documento técnico autorizado MUST aparecer com finalidade e situação reais; chave sem XML MUST NOT oferecer download.
+
+#### Scenario: Chave descoberta
+- **WHEN** o número está `KEY_DISCOVERED` ou `XML_PENDING`
+- **THEN** a tela operacional mostra a chave e pendência de recuperação, enquanto o catálogo não apresenta download inexistente
+
+#### Scenario: Documento técnico cancelado
+- **WHEN** documento técnico possui autorização e evento de cancelamento
+- **THEN** Documentos mostra `Saída`, finalidade `Validação técnica` e situação `Cancelada`, sem ocultá-lo
+
+#### Scenario: Cancelamento falho
+- **WHEN** existe `FISCAL_INCIDENT`
+- **THEN** a interface destaca alerta crítico persistente e kill switch ativo até resolução humana
+
+### Requirement: Visualização de calendário e urgência
+A interface SHALL apresentar competência, `target_at`, `due_at`, faixa, conclusão estimada e fonte prevista com texto/ícone/cor acessíveis. Estados de prazo MUST permanecer distintos de falha técnica e bloqueio do canal.
+
+#### Scenario: Prazo saudável com canal bloqueado
+- **WHEN** uma pendência ainda está `PLANNED` mas o breaker SVRS está aberto
+- **THEN** a UI mostra simultaneamente prazo saudável, canal bloqueado e fontes alternativas, sem fundir os estados
+
+### Requirement: Operação calma como padrão
+A UI MUST impedir ações que aumentem frequência, furam ordem justa ou criem retry imediato. ADMIN com 2FA recente poderá antecipar a meta interna dentro da política, mas MUST NOT postergar além do dia 1 nem alterar budget pela interface.
+
+#### Scenario: ADMIN tenta postergar prazo
+- **WHEN** um ADMIN configura `due_at` depois do fim do dia 1 seguinte
+- **THEN** a interface/API recusa a alteração e preserva o SLA vigente
+
+### Requirement: Contingência progressiva
+Em `ATTENTION` a UI SHALL preparar ações/lotes; em `CONTINGENCY` SHALL destacar importação/pacote; em `OVERDUE` SHALL escalar a inbox. Nenhuma transição MUST iniciar rajada automática.
+
+#### Scenario: Mudança para contingência
+- **WHEN** a capacidade projetada deixa de atender a meta
+- **THEN** a tela atualiza risco e ações assistidas sem alterar limites ou enfileirar retries extras
+

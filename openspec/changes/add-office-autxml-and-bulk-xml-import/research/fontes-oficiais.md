@@ -1,6 +1,7 @@
 # Fontes oficiais — `autXML` do escritório e NFeDistribuicaoDFe
 
-Pesquisa consolidada em 14 de julho de 2026 para fundamentar a change `add-office-autxml-and-bulk-xml-import`. Esta nota separa regras publicadas pelo Fisco de decisões e inferências do produto.
+Pesquisa consolidada em **14 de julho de 2026** (URLs revalidáveis no Portal da NF-e) para fundamentar a change `add-office-autxml-and-bulk-xml-import`.  
+**Task 1.1:** fixa no repositório a NT 2014.002 v1.40, leiaute `autXML`, ausência de NSU retroativo e rejeição do modelo 65 (RV 618). Esta nota separa regras publicadas pelo Fisco de decisões e inferências do produto.
 
 ## Conclusões confirmadas em fontes oficiais
 

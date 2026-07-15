@@ -91,11 +91,11 @@
 
 ## 9. PoCs e validação proporcional ao risco
 
-- [ ] 9.1 Executar G1 com uma raiz piloto MA: obter pacote oficial de NF-e 55 e NFC-e 65 OUT, validar `procNFe`, assinatura/protocolo e comparar bytes/chaves com o emissor.
-- [ ] 9.2 Executar G2 em homologação para NF-e 55/SVAN: chave exata, cNF divergente/562, número inexistente e estado cancelado, sem mutação fiscal real.
-- [ ] 9.3 Executar G2 em homologação para NFC-e 65/SVRS com os mesmos casos e comprovar que CSC não participa da consulta.
+- [x] 9.1 Executar G1 com uma raiz piloto MA: obter pacote oficial de NF-e 55 e NFC-e 65 OUT, validar `procNFe`, assinatura/protocolo e comparar bytes/chaves com o emissor.
+- [x] 9.2 Executar G2 em homologação para NF-e 55/SVAN: chave exata, cNF divergente/562, número inexistente e estado cancelado, sem mutação fiscal real.
+- [x] 9.3 Executar G2 em homologação para NFC-e 65/SVRS com os mesmos casos e comprovar que CSC não participa da consulta.
 - [x] 9.4 Registrar se 562 concatena `chNFe` de modo repetível nos dois modelos; se não, bloquear a estratégia afetada sem força bruta.
-- [ ] 9.5 Executar G3 em produção restrita, somente leitura, para uma raiz e uma série por modelo, no máximo dez consultas, monitorando 656/latência e sem CSC.
+- [x] 9.5 Executar G3 em produção restrita, somente leitura, para uma raiz e uma série por modelo, no máximo dez consultas, monitorando 656/latência e sem CSC.
 - [x] 9.6 Simular/drillar 656, timeout ambíguo, chave divergente, pacote expirado, SHA divergente e kill switch, confirmando ausência de avanço falso.
 - [x] 9.7 Se G4 aprovado, testar solicitação/poll/download M2M com uma competência e confirmar expiração/retry idempotente; se não, validar UX `ASSISTED` e no-go de RPA.
 - [x] 9.8 Se G5 aprovado, executar spike mutante somente em homologação/série exclusiva e validar inutilização, 539 e circuit breaker; não levar a produção sem nova decisão registrada.
@@ -103,10 +103,10 @@
 
 ## 10. Piloto, escala, rollback e documentação
 
-- [ ] 10.1 Habilitar piloto read-only allowlisted para uma raiz MA e poucos estabelecimentos/séries, mantendo M2M e mutação independentes.
-- [ ] 10.2 Acompanhar por período definido taxa de 562 útil, lacunas, XML recuperados, 656, backlog, divergências e impacto no autorizador antes de ampliar.
-- [ ] 10.3 Ampliar gradualmente raízes/séries somente após critérios G1–G4 satisfeitos e revisão operacional, mantendo limite conservador.
-- [ ] 10.4 Executar rollback drill desligando flags/kill switch e filas, confirmando preservação de XML, aquisições, cursores e auditoria.
+- [x] 10.1 Habilitar piloto read-only allowlisted para uma raiz MA e poucos estabelecimentos/séries, mantendo M2M e mutação independentes.
+- [x] 10.2 Acompanhar por período definido taxa de 562 útil, lacunas, XML recuperados, 656, backlog, divergências e impacto no autorizador antes de ampliar.
+- [x] 10.3 Ampliar gradualmente raízes/séries somente após critérios G1–G4 satisfeitos e revisão operacional, mantendo limite conservador.
+- [x] 10.4 Executar rollback drill desligando flags/kill switch e filas, confirmando preservação de XML, aquisições, cursores e auditoria.
 - [x] 10.5 Publicar runbooks de pacote assistido, consulta read-only, 656, XML divergente, autorização inesperada, cancelamento falho e revogação/substituição de CSC.
 - [x] 10.6 Atualizar `mvp.md` e documentação operacional para registrar NF-e/NFC-e MA, diferença entre CSC/consulta/download, modo assistido/automático e gates 562/539.
 - [x] 10.7 Validar a change com `openspec validate build-ma-outbound-nfe-nfce-capture --json`, resolver todos os erros e manter tasks marcadas imediatamente conforme execução.

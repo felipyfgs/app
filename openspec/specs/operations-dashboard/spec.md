@@ -3,9 +3,7 @@
 ## Purpose
 
 Painel operacional com resumo, saúde por estabelecimento, histórico de sync, auditoria, inbox operacional e métricas sem segredos.
-
 ## Requirements
-
 ### Requirement: Resumo operacional
 O sistema SHALL apresentar totais do escritório para clientes ativos, estabelecimentos, documentos, trabalhos pendentes, falhas e credenciais próximas do vencimento.
 
@@ -58,7 +56,7 @@ O sistema SHALL incluir no resumo operacional contagens agregadas da inbox (ao m
 - **THEN** as contagens da inbox refletem pelo menos esses itens e o horário de geração é atualizado
 
 ### Requirement: Saúde por cliente e estabelecimento
-O sistema SHALL exibir último sucesso, próximo agendamento, NSU atual, estado do cursor e erro sanitizado de cada estabelecimento e SHALL destacar estabelecimentos em estado operacional problemático (`BLOCKED`, `ERROR` ou falha recente) na inbox e no painel, com o motivo operacional e a ação permitida ao perfil do usuário, sem oferecer edição de NSU.
+O sistema SHALL exibir último sucesso, próximo agendamento, estado do cursor e erro sanitizado de cada estabelecimento. Canais NSU SHALL mostrar NSU atual; séries outbound MA SHALL mostrar modelo, série, posição `nNF`, lacunas e recuperações pendentes. O sistema SHALL destacar `BLOCKED`, `ERROR`, falha recente e incidente fiscal na inbox/painel, sem oferecer edição direta de NSU ou `nNF`.
 
 #### Scenario: Estabelecimento bloqueado
 - **WHEN** uma sincronização passa a `BLOCKED`
@@ -68,12 +66,24 @@ O sistema SHALL exibir último sucesso, próximo agendamento, NSU atual, estado 
 - **WHEN** o cursor está `ERROR` com mensagem sanitizada
 - **THEN** a inbox inclui item `cursor_error` e o detalhe de sincronização do cliente permanece acessível por deep-link
 
+#### Scenario: Saúde de série outbound
+- **WHEN** o perfil MA possui séries modelos 55 e 65
+- **THEN** cada série aparece separadamente com posição `nNF`, última tentativa e contagens de lacuna/chave/XML, sem campo NSU
+
 ### Requirement: Histórico de sincronizações
-O sistema SHALL manter e listar execuções com início, fim, cursor inicial/final, documentos processados, páginas, resultado e número de tentativas.
+O sistema SHALL manter e listar execuções com início, fim, canal, cursor inicial/final apropriado, documentos processados, páginas ou números consultados, resultado e número de tentativas. Histórico outbound MUST usar posição `nNF` e contagens de descoberta/recuperação; histórico NSU mantém seus campos existentes.
 
 #### Scenario: Execução sem documentos
 - **WHEN** o ADN não entrega documentos novos
 - **THEN** o histórico registra sucesso sem documentos e o próximo horário previsto
+
+#### Scenario: Execução outbound sem chave
+- **WHEN** job MA consulta números e não recupera XML
+- **THEN** o histórico registra posições, resultados/lacunas e próximo horário sem reportar documento persistido
+
+#### Scenario: Execução interrompida por limite
+- **WHEN** job MA alcança dez números
+- **THEN** histórico encerra a execução como limitada/reagendada, preservando a posição confirmada
 
 ### Requirement: Trilha de auditoria
 O sistema MUST registrar autenticação relevante, alterações de cadastro, gestão de certificados, sincronizações manuais, downloads e exportações com ator, alvo, resultado, horário e IP quando disponível.
@@ -101,11 +111,19 @@ O sistema SHALL apresentar a data e o resultado do último backup e do último t
 - **THEN** o resumo operacional expõe o horário do drill para o administrador e demais usuários autenticados do escritório conforme a superfície de UI
 
 ### Requirement: Inbox para falhas de canais SEFAZ
-O sistema SHALL incluir na inbox operacional itens acionáveis para cursors SEFAZ bloqueados, consumo indevido (656), falhas consecutivas de decode e A1 impactando canais DistDFe e CT-e, com deep-link para sincronização do cliente. O sistema MUST NOT produzir item operacional para MDF-e.
+O sistema SHALL incluir na inbox operacional itens acionáveis para cursors SEFAZ bloqueados, consumo indevido 656, falhas consecutivas de decode, A1 impactando DistDFe/CT-e/saída MA e falhas de série ou recuperação outbound, com deep-link para sincronização do cliente. O sistema MUST NOT produzir item operacional para MDF-e nem incluir envelope SOAP/resposta bruta.
 
 #### Scenario: Consumo indevido DistDFe
 - **WHEN** um cursor DistDFe registra cStat 656 ou bloqueio equivalente
 - **THEN** a inbox contém item de severidade alta ou crítica com canal DistDFe e sem envelope SOAP bruto
+
+#### Scenario: Consumo indevido outbound MA
+- **WHEN** consulta de protocolo MA registra cStat 656
+- **THEN** a inbox contém item crítico da raiz/série, novos jobs são bloqueados e a mensagem não contém chave candidata completa
+
+#### Scenario: A1 vencido afeta saída MA
+- **WHEN** o A1 da raiz vence com perfis outbound ativos
+- **THEN** a inbox identifica os canais afetados e nenhuma consulta/recuperação automática é enfileirada
 
 #### Scenario: Cursor MDF-e legado
 - **WHEN** existe cursor MDF-e legado em banco
@@ -117,3 +135,109 @@ O sistema SHALL refletir no resumo de operações a existência de problemas em 
 #### Scenario: Health com DistDFe em erro
 - **WHEN** há estabelecimento com cursor DistDFe em ERROR/BLOCKED
 - **THEN** o resumo/inbox não ignora o problema por ser canal diferente do ADN
+
+### Requirement: Saúde operacional do recovery SVRS
+O sistema SHALL incluir no resumo e na saúde operacional backlog, idade da pendência mais antiga, capturas, retries, bloqueios, estado do circuit breaker e horário da última captura SVRS, sempre restritos ao escritório ativo.
+
+#### Scenario: Backlog de XML NFC-e
+- **WHEN** existem recuperações `QUEUED`, `RUNNING` ou `RETRY_SCHEDULED`
+- **THEN** o dashboard mostra contagem e idade agregadas sem expor chave completa ou CNPJ em labels de métrica
+
+### Requirement: Inbox tipada para falhas SVRS
+O sistema SHALL gerar itens de inbox distintos para A1 indisponível/não relacionado, contrato do wrapper alterado, autenticação proibida, rate limit persistente, XML/assinatura inválidos, divergência de identidade/bytes, breaker aberto e tentativas esgotadas.
+
+#### Scenario: Contrato alterado
+- **WHEN** o parser bloqueia o canal por `RESPONSE_CONTRACT_CHANGED`
+- **THEN** a inbox cria item crítico com deep-link ao canal, orientação de fallback e sem HTML remoto
+
+#### Scenario: Tentativas esgotadas
+- **WHEN** uma chave fica `NOT_AVAILABLE_VISIBLE`
+- **THEN** a inbox cria item acionável para retry elegível ou upload assistido conforme papel
+
+### Requirement: Controles operacionais protegidos
+O dashboard SHALL permitir somente a ADMIN com 2FA recente ativar kill switch, resetar breaker ou alterar allowlist. OPERATOR SHALL ver ações de retry/fallback elegíveis e VIEWER MUST ver somente estado.
+
+#### Scenario: Reset do breaker
+- **WHEN** ADMIN com 2FA recente confirma reset após corrigir a causa
+- **THEN** a auditoria registra ator, motivo e escopo sem registrar certificado, chave fiscal ou resposta remota
+
+### Requirement: Logs e métricas sanitizados do canal SVRS
+O sistema MUST registrar métricas por ambiente, resultado, classe HTTP e motivo tipado sem usar CNPJ, chave completa, XML, HTML, PFX, cookie ou senha como label/campo. Logs MUST usar correlação e identificadores internos sanitizados.
+
+#### Scenario: Falha HTTP com página de erro
+- **WHEN** a SVRS retorna página de erro contendo dados inesperados
+- **THEN** logs e métricas registram apenas classe HTTP, motivo tipado, latência e correlação
+
+### Requirement: Kill switch do canal de saída MA
+O sistema SHALL possuir kill switch global e por raiz para impedir novos jobs de consulta, recuperação e mutação MA, com operação restrita a ADMIN com 2FA recente, motivo obrigatório e auditoria. O kill switch MUST preservar cursores, pendências, XML e incidentes existentes.
+
+#### Scenario: Acionamento global
+- **WHEN** ADMIN com 2FA recente aciona o kill switch global e informa motivo
+- **THEN** nenhum novo job externo MA inicia, jobs ainda não mutantes encerram com segurança e o painel mostra bloqueio crítico
+
+#### Scenario: Kill switch durante cancelamento pendente
+- **WHEN** há documento inesperadamente autorizado com cancelamento em reconciliação
+- **THEN** o sistema impede novas sondas, mas permite somente a reconciliação idempotente do incidente já aberto
+
+#### Scenario: Reativação
+- **WHEN** ADMIN tenta reativar após incidente fiscal
+- **THEN** o sistema exige incidente resolvido, motivo, 2FA recente e todos os gates de elegibilidade novamente válidos
+
+### Requirement: Inbox tipada para sequência, recuperação e incidente fiscal
+O sistema SHALL produzir itens allowlisted e sanitizados para lacuna esgotada, 562 sem chave, consumo indevido 656, recuperação expirada, XML divergente, autorização inesperada e cancelamento falho. Autorização inesperada ou cancelamento não confirmado MUST ter severidade crítica e deep-link estável.
+
+#### Scenario: Lacuna esgotada
+- **WHEN** número passa a `EXHAUSTED_VISIBLE`
+- **THEN** a inbox inclui estabelecimento, modelo, série, `nNF`, tentativas e ação de revisão permitida
+
+#### Scenario: Recuperação expirada
+- **WHEN** solicitação oficial expira antes do download
+- **THEN** a inbox inclui competência, modelo e ação de nova solicitação/upload sem referência secreta externa
+
+#### Scenario: Incidente de cancelamento
+- **WHEN** cancelamento de documento técnico não possui protocolo confirmado
+- **THEN** a inbox cria item crítico não descartável por simples retry e o resumo reflete kill switch ativo
+
+### Requirement: Métricas e logs do canal MA sem segredo
+O sistema SHALL medir atraso, números consultados, chaves descobertas, XML pendentes/capturados, lacunas, cStat por classe, 429/656, recuperações e incidentes, e MUST NOT incluir PFX, senha, CSC, ID CSC, chave privada, PEM, cookie, token, XML fiscal, chave candidata completa ou resposta remota bruta em labels/logs.
+
+#### Scenario: Falha remota com conteúdo sensível
+- **WHEN** autorizador ou fonte MA devolve payload que contém dado fiscal ou sensível
+- **THEN** logs retêm somente código, correlação, classe de resultado e mensagem sanitizada
+
+#### Scenario: Métrica por escritório
+- **WHEN** métricas operacionais são agregadas para a UI
+- **THEN** a API aplica `office_id` da sessão e não expõe séries ou contagens de outro escritório
+
+### Requirement: Auditoria das ações de alto risco
+O sistema MUST auditar cadastro/substituição de CSC, mandato, allowlist, ativação, reset, consulta manual, upload de pacote, kill switch, inutilização, sonda, autorização e cancelamento com ator, alvo, resultado, horário e motivo, sem conteúdo secreto ou XML bruto.
+
+#### Scenario: Reset auditado
+- **WHEN** ADMIN reseta posição de uma série
+- **THEN** auditoria registra posição anterior/nova, modelo, série e motivo sem apagar histórico
+
+#### Scenario: Mutação recusada
+- **WHEN** ação mutante é recusada por gate incompleto
+- **THEN** auditoria registra ator, alvo e código do gate ausente sem materializar ou registrar credenciais
+
+### Requirement: Fechamento mensal sobre documentos conhecidos
+O dashboard SHALL exibir por escritório, competência e modelo o total conhecido, capturado, pendente, em atenção, contingência, risco de capacidade e vencido. A UI/API MUST denominar a métrica “completude sobre documentos conhecidos” e MUST NOT alegar universo fiscal absoluto.
+
+#### Scenario: Competência incompleta
+- **WHEN** existem cem chaves conhecidas e noventa XMLs canônicos
+- **THEN** o painel mostra 90% de completude conhecida e detalha as dez pendências por faixa/fonte
+
+### Requirement: Capacidade e conclusão prevista
+O resumo SHALL mostrar exchanges automáticos planejáveis, folga, conclusão estimada, fontes de resolução e quantidade que exige contingência, sem revelar dados de outro tenant ou material fiscal bruto.
+
+#### Scenario: Capacidade insuficiente
+- **WHEN** a previsão não atende `target_at`
+- **THEN** a inbox alerta antes do prazo e oferece lote XML/ZIP, `autXML` ou pacote oficial conforme elegibilidade
+
+### Requirement: Alertas sem retry urgente
+Itens `CONTINGENCY` e `OVERDUE` SHALL oferecer ações assistidas e MUST NOT oferecer aumento de taxa, antecipação de cooldown ou retry remoto fora do slot.
+
+#### Scenario: Operador abre item vencido
+- **WHEN** um OPERATOR acessa pendência vencida com breaker aberto
+- **THEN** vê prazo, motivo e importação assistida como ação, sem botão de forçar SVRS
+
