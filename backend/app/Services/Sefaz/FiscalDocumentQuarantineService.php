@@ -7,6 +7,7 @@ use App\Enums\QuarantineReason;
 use App\Enums\QuarantineResolutionStatus;
 use App\Models\FiscalDocumentQuarantine;
 use App\Models\User;
+use App\Support\CurrentOffice;
 use RuntimeException;
 
 /**
@@ -40,7 +41,7 @@ final class FiscalDocumentQuarantineService
         ?string $code = null,
         ?string $notes = null,
     ): FiscalDocumentQuarantine {
-        if ((int) $item->office_id !== (int) app(\App\Support\CurrentOffice::class)->id()) {
+        if ((int) $item->office_id !== (int) app(CurrentOffice::class)->id()) {
             throw new RuntimeException('Quarentena não pertence ao escritório da sessão.');
         }
 

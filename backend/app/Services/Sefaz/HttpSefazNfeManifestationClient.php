@@ -116,6 +116,7 @@ XML;
     {
         try {
             $cert = Certificate::readPfx($certificate['pfx'], $certificate['password']);
+
             // Assina infEvento (Id=...) — padrão MD-e SEFAZ
             return Signer::sign(
                 $cert,

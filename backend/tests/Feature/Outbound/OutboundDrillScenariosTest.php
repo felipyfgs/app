@@ -3,6 +3,7 @@
 namespace Tests\Feature\Outbound;
 
 use App\DTO\Outbound\ProtocolQueryResult;
+use App\Enums\AdnDocumentType;
 use App\Enums\DocumentAcquisitionSource;
 use App\Enums\OutboundCaptureMode;
 use App\Enums\OutboundFiscalModel;
@@ -126,7 +127,7 @@ class OutboundDrillScenariosTest extends TestCase
         $docA = DfeDocument::query()->create([
             'office_id' => $office->id,
             'sha256' => $shaA,
-            'document_type' => \App\Enums\AdnDocumentType::Nfe,
+            'document_type' => AdnDocumentType::Nfe,
             'schema_version' => 'procNFe_v4.00.xsd',
             'access_key' => $key,
             'vault_object_id' => 'obj-a',
@@ -136,7 +137,7 @@ class OutboundDrillScenariosTest extends TestCase
         $docB = DfeDocument::query()->create([
             'office_id' => $office->id,
             'sha256' => $shaB,
-            'document_type' => \App\Enums\AdnDocumentType::Nfe,
+            'document_type' => AdnDocumentType::Nfe,
             'schema_version' => 'procNFe_v4.00.xsd',
             'access_key' => $key,
             'vault_object_id' => 'obj-b',

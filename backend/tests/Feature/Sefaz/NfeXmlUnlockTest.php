@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Sefaz;
 
+use App\Contracts\SecureObjectStore;
 use App\Enums\AdnDocumentType;
 use App\Enums\DocumentDirection;
 use App\Enums\FiscalRole;
@@ -80,7 +81,7 @@ class NfeXmlUnlockTest extends TestCase
     {
         $xml = $summary ? '<resNFe/>' : '<nfeProc/>';
         $sha = hash('sha256', $xml.$accessKey.($summary ? 's' : 'f'));
-        $store = app(\App\Contracts\SecureObjectStore::class);
+        $store = app(SecureObjectStore::class);
         $objectId = $store->put($xml, ['office_id' => $officeId, 'sha256' => $sha]);
 
         $doc = DfeDocument::query()->create([

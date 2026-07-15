@@ -10,6 +10,7 @@ use App\Enums\OutboundNumberStatus;
 use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\OutboundRetrievalStatus;
 use App\Enums\OutboundSeriesStatus;
+use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\MaOutboundRetrievalRequest;
 use App\Models\OutboundCaptureProfile;
@@ -93,7 +94,7 @@ final class OutboundSequenceReconciler
 
             $client = $establishment->relationLoaded('client')
                 ? $establishment->client
-                : \App\Models\Client::query()->find($establishment->client_id);
+                : Client::query()->find($establishment->client_id);
             if ($client === null) {
                 throw new RuntimeException('Cliente da raiz ausente.');
             }
@@ -146,6 +147,7 @@ final class OutboundSequenceReconciler
                 }
                 if ($existing->status->isTerminalSuccess() || $existing->status === OutboundNumberStatus::ExhaustedVisible) {
                     $position++;
+
                     continue;
                 }
                 if (! in_array($existing, $toProcess, true)) {

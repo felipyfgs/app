@@ -13,6 +13,7 @@ use App\Models\OutboundCapacitySnapshot;
 use App\Models\OutboundCaptureRun;
 use App\Models\OutboundNumberState;
 use App\Models\OutboundSeriesCursor;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -44,11 +45,11 @@ final class OutboundMetrics
 
         $key = 'metrics.counter.'.$name;
         try {
-            \Illuminate\Support\Facades\Cache::increment($key, $by);
+            Cache::increment($key, $by);
         } catch (\Throwable) {
             // cache array driver may not support increment in all versions
-            $cur = (int) \Illuminate\Support\Facades\Cache::get($key, 0);
-            \Illuminate\Support\Facades\Cache::put($key, $cur + $by, 86400);
+            $cur = (int) Cache::get($key, 0);
+            Cache::put($key, $cur + $by, 86400);
         }
     }
 

@@ -3,6 +3,7 @@
 namespace App\Services\Adn;
 
 use App\Enums\FiscalRole;
+use App\Support\NfseNoteStatus;
 use Carbon\CarbonImmutable;
 
 final class NfseXmlParser
@@ -290,11 +291,11 @@ final class NfseXmlParser
      * 100 Gerada · 101 Substituta · 102 Decisão judicial · 103 Avulsa.
      * Cancelamento real vem de eventos (não do cStat 101).
      *
-     * @see \App\Support\NfseNoteStatus
+     * @see NfseNoteStatus
      */
     private function mapOfficialStatus(?string $cStat): string
     {
-        return \App\Support\NfseNoteStatus::fromCStat($cStat);
+        return NfseNoteStatus::fromCStat($cStat);
     }
 
     private function truncateName(?string $value, int $max = 255): ?string

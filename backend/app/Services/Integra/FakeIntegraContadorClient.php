@@ -47,21 +47,62 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
         $this->calls++;
         $this->history[] = $request;
 
-        $key = $this->key($request->solutionCode, $request->serviceCode, $request->operationCode);
+        $key = $this->key(
+            (string) ($request->solutionCode ?? ''),
+            (string) ($request->serviceCode ?? ''),
+            (string) ($request->operationCode ?? ''),
+        );
         if (! empty($this->queue[$key])) {
             $next = array_shift($this->queue[$key]);
+            $response = is_callable($next) ? $next($request) : $next;
 
-            return is_callable($next) ? $next($request) : $next;
+            return $this->withProvenance($response, $request);
         }
 
-        return $this->defaultResponse($request);
+        return $this->withProvenance($this->defaultResponse($request), $request);
+    }
+
+    private function withProvenance(IntegraResponse $response, IntegraRequest $request): IntegraResponse
+    {
+        if ($response->sourceProvenance !== null) {
+            return $response;
+        }
+
+        // Reconstroi com proveniência SIMULATED se o fake devolveu legado sem o campo
+        return new IntegraResponse(
+            success: $response->success,
+            httpStatus: $response->httpStatus,
+            body: $response->body,
+            headers: $response->headers,
+            errorCode: $response->errorCode,
+            errorMessage: $response->errorMessage,
+            simulated: $response->simulated || true,
+            retryAfterSeconds: $response->retryAfterSeconds,
+            correlationId: $response->correlationId ?? $request->correlationId,
+            latencyMs: $response->latencyMs,
+            etag: $response->etag,
+            expiresHeader: $response->expiresHeader,
+            businessStatus: $response->businessStatus,
+            mensagens: $response->mensagens,
+            dados: $response->dados,
+            operationKey: $response->operationKey ?? $request->operationKey,
+            requestTag: $response->requestTag ?? $request->resolvedRequestTag(),
+            functionalRoute: $response->functionalRoute,
+            sourceProvenance: $response->simulated || true
+                ? \App\Enums\FiscalSourceProvenance::Simulated->value
+                : \App\Enums\FiscalSourceProvenance::SerproReal->value,
+        );
     }
 
     private function defaultResponse(IntegraRequest $request): IntegraResponse
     {
-        $op = strtoupper($request->operationCode);
-        $svc = strtoupper($request->serviceCode);
-        $solution = strtoupper($request->solutionCode);
+        if (str_starts_with((string) $request->operationKey, 'sitfis.')) {
+            return $this->sitfisResponse($request);
+        }
+
+        $op = strtoupper((string) ($request->operationCode ?? ''));
+        $svc = strtoupper((string) ($request->serviceCode ?? ''));
+        $solution = strtoupper((string) ($request->solutionCode ?? ''));
         $period = (string) ($request->payload['competencia']
             ?? $request->payload['periodo']
             ?? $request->payload['ano']
@@ -155,6 +196,33 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
             correlationId: $request->correlationId,
             latencyMs: 1,
         );
+    }
+
+    private function sitfisResponse(IntegraRequest $request): IntegraResponse
+    {
+        $scenario = strtolower((string) ($request->businessData['__scenario'] ?? 'success'));
+        $base = ['simulated' => true, 'operation_key' => $request->operationKey];
+
+        if ($scenario === 'rate_limit') {
+            return new IntegraResponse(false, 429, $base, errorCode: 'RATE_LIMITED', errorMessage: 'Limite simulado.', simulated: true, retryAfterSeconds: 60, correlationId: $request->correlationId, operationKey: $request->operationKey);
+        }
+        if ($scenario === 'unavailable') {
+            return new IntegraResponse(false, 503, $base, errorCode: 'UPSTREAM_ERROR', errorMessage: 'Indisponibilidade simulada.', simulated: true, correlationId: $request->correlationId, operationKey: $request->operationKey);
+        }
+        if ($scenario === 'processing' || $scenario === 'cache') {
+            return new IntegraResponse(false, $scenario === 'cache' ? 304 : 204, $base + ['tempoEspera' => 30], errorCode: 'STILL_PROCESSING', errorMessage: 'Processamento simulado.', simulated: true, retryAfterSeconds: 30, correlationId: $request->correlationId, etag: 'tempoEspera=30', operationKey: $request->operationKey);
+        }
+        if ($request->operationKey === 'sitfis.solicitar_protocolo') {
+            return new IntegraResponse(true, 200, $base + [
+                'protocolo' => 'SIM-'.substr(hash('sha256', $request->resolvedRequestTag()), 0, 20),
+                'tempoEspera' => 30,
+            ], simulated: true, retryAfterSeconds: 30, correlationId: $request->correlationId, operationKey: $request->operationKey);
+        }
+
+        return new IntegraResponse(true, 200, $base + [
+            'status' => 'CONCLUIDO',
+            'dados' => ['versao' => '1.0', 'situacao' => 'REGULAR', 'itens' => []],
+        ], simulated: true, correlationId: $request->correlationId, operationKey: $request->operationKey);
     }
 
     /**

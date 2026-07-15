@@ -1,15 +1,16 @@
 <?php
 
+use App\Support\FeatureFlags;
+
 /**
  * Feature flags do hub de monitoramento fiscal (SaaS multi-escritório).
  *
  * TODAS as flags começam desabilitadas. Kill switch global vence qualquer enable.
  * Overrides por tenant usam allowlist (vazia = ninguém, salvo allow_all_offices).
  *
- * @see App\Support\FeatureFlags
+ * @see FeatureFlags
  * @see openspec/changes/build-complete-fiscal-monitoring-hub
  */
-
 $parseIdList = static function (?string $raw): array {
     if ($raw === null || trim($raw) === '') {
         return [];

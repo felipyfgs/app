@@ -20,6 +20,7 @@ use App\Models\FiscalSnapshot;
 use App\Models\Office;
 use App\Models\OfficeFiscalCategoryLink;
 use App\Models\User;
+use App\Services\FiscalMonitoring\ModulePortfolio\ModulePortfolioQueryService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -100,7 +101,7 @@ class FiscalPortfolioExportTest extends TestCase
 
         (new BuildExportZipJob($export->id))->handle(
             app(SecureObjectStore::class),
-            app(\App\Services\FiscalMonitoring\ModulePortfolio\ModulePortfolioQueryService::class),
+            app(ModulePortfolioQueryService::class),
         );
 
         $export->refresh();
@@ -173,7 +174,7 @@ class FiscalPortfolioExportTest extends TestCase
 
         (new BuildExportZipJob($export->id))->handle(
             app(SecureObjectStore::class),
-            app(\App\Services\FiscalMonitoring\ModulePortfolio\ModulePortfolioQueryService::class),
+            app(ModulePortfolioQueryService::class),
         );
 
         $export->refresh();
@@ -274,7 +275,7 @@ class FiscalPortfolioExportTest extends TestCase
 
         (new BuildExportZipJob($export->id))->handle(
             app(SecureObjectStore::class),
-            app(\App\Services\FiscalMonitoring\ModulePortfolio\ModulePortfolioQueryService::class),
+            app(ModulePortfolioQueryService::class),
         );
 
         $export->refresh();
@@ -319,7 +320,7 @@ class FiscalPortfolioExportTest extends TestCase
 
         (new BuildExportZipJob($export->id))->handle(
             app(SecureObjectStore::class),
-            app(\App\Services\FiscalMonitoring\ModulePortfolio\ModulePortfolioQueryService::class),
+            app(ModulePortfolioQueryService::class),
         );
 
         $export->refresh();

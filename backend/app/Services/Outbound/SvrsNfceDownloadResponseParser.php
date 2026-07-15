@@ -434,6 +434,7 @@ final class SvrsNfceDownloadResponseParser implements SvrsNfceDownloadResponsePa
             if ($ch !== '\\') {
                 $out .= $ch;
                 $i++;
+
                 continue;
             }
 

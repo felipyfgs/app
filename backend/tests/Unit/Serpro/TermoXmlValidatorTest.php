@@ -3,7 +3,10 @@
 namespace Tests\Unit\Serpro;
 
 use App\Services\Integra\TermoXmlValidator;
+use DOMDocument;
 use PHPUnit\Framework\TestCase;
+use RobRichards\XMLSecLibs\XMLSecurityDSig;
+use RobRichards\XMLSecLibs\XMLSecurityKey;
 
 class TermoXmlValidatorTest extends TestCase
 {
@@ -25,7 +28,7 @@ class TermoXmlValidatorTest extends TestCase
 
         $result = $this->validator->validate($xml, '12345678901', '11222333000181');
 
-        $this->assertTrue($result->valid);
+        $this->assertTrue($result->valid, ($result->errorCode ?? '').': '.($result->errorMessage ?? ''));
         $this->assertNotNull($result->sha256);
         $this->assertTrue($result->signatureChecked);
     }
@@ -96,19 +99,54 @@ XML;
         string $author,
         string $validTo = '2027-12-31',
     ): string {
-        return <<<XML
+        $xml = <<<XML
 <?xml version="1.0"?>
-<TermoAutorizacao>
+<TermoAutorizacao Id="termo-1">
   <assinadoPor>{$signedBy}</assinadoPor>
   <autorPedido>{$author}</autorPedido>
   <destinatario>{$destinario}</destinatario>
   <dataInicioVigencia>2026-01-01</dataInicioVigencia>
   <dataFimVigencia>{$validTo}</dataFimVigencia>
-  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
-    <SignedInfo><CanonicalizationMethod/><SignatureMethod/><Reference><DigestMethod/><DigestValue>abc</DigestValue></Reference></SignedInfo>
-    <SignatureValue>ZmFrZS1zaWduYXR1cmU=</SignatureValue>
-  </Signature>
 </TermoAutorizacao>
 XML;
+
+        return $this->sign($xml, $signedBy);
+    }
+
+    private function sign(string $xml, string $identity): string
+    {
+        $privateKey = openssl_pkey_new([
+            'private_key_bits' => 2048,
+            'private_key_type' => OPENSSL_KEYTYPE_RSA,
+            'digest_alg' => 'sha256',
+        ]);
+        $this->assertNotFalse($privateKey);
+        $csr = openssl_csr_new([
+            'commonName' => 'Autor Teste:'.$identity,
+            'serialNumber' => $identity,
+        ], $privateKey, ['digest_alg' => 'sha256']);
+        $this->assertNotFalse($csr);
+        $certificate = openssl_csr_sign($csr, null, $privateKey, 365, ['digest_alg' => 'sha256']);
+        $this->assertNotFalse($certificate);
+        openssl_pkey_export($privateKey, $privatePem);
+        openssl_x509_export($certificate, $certificatePem);
+
+        $dom = new DOMDocument;
+        $dom->loadXML($xml, LIBXML_NONET);
+        $signature = new XMLSecurityDSig;
+        $signature->setCanonicalMethod(XMLSecurityDSig::EXC_C14N);
+        $signature->addReference(
+            $dom->documentElement,
+            XMLSecurityDSig::SHA256,
+            ['http://www.w3.org/2000/09/xmldsig#enveloped-signature'],
+            ['id_name' => 'Id', 'overwrite' => false],
+        );
+        $key = new XMLSecurityKey(XMLSecurityKey::RSA_SHA256, ['type' => 'private']);
+        $key->loadKey($privatePem, false);
+        $signature->sign($key);
+        $signature->add509Cert($certificatePem, true, false);
+        $signature->appendSignature($dom->documentElement);
+
+        return $dom->saveXML() ?: '';
     }
 }

@@ -8,6 +8,7 @@ use App\Models\Office;
 use App\Models\User;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -101,11 +102,11 @@ class TenantIsolationNegativeTest extends TestCase
     public function test_platform_memberships_nao_tem_office_id(): void
     {
         $this->assertFalse(
-            \Illuminate\Support\Facades\Schema::hasColumn('platform_memberships', 'office_id'),
+            Schema::hasColumn('platform_memberships', 'office_id'),
             'platform_memberships deve ser global (sem office_id)',
         );
         $this->assertTrue(
-            \Illuminate\Support\Facades\Schema::hasColumn('office_subscriptions', 'office_id'),
+            Schema::hasColumn('office_subscriptions', 'office_id'),
             'office_subscriptions deve ser tenant-scoped (com office_id)',
         );
     }

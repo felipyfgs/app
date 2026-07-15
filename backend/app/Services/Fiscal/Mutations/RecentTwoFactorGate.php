@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use Illuminate\Contracts\Session\Session;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
 use RuntimeException;
 
@@ -107,7 +108,7 @@ final class RecentTwoFactorGate
 
         // Cache por usuário — cobre jobs e requests subsequentes no mesmo processo de teste
         // quando a sessão HTTP ainda não foi iniciada no momento do mark.
-        \Illuminate\Support\Facades\Cache::put(
+        Cache::put(
             $this->cacheKey($user),
             $now,
             now()->addMinutes($this->windowMinutes() + 1),
@@ -125,7 +126,7 @@ final class RecentTwoFactorGate
         request()?->attributes->remove(self::SESSION_KEY);
         $user ??= auth()->user();
         if ($user instanceof User) {
-            \Illuminate\Support\Facades\Cache::forget($this->cacheKey($user));
+            Cache::forget($this->cacheKey($user));
         }
     }
 
@@ -142,7 +143,7 @@ final class RecentTwoFactorGate
         request()?->attributes->set(self::SESSION_KEY, $past);
         $user ??= auth()->user();
         if ($user instanceof User) {
-            \Illuminate\Support\Facades\Cache::put(
+            Cache::put(
                 $this->cacheKey($user),
                 $past,
                 now()->addMinutes($this->windowMinutes() + 1),
@@ -184,7 +185,7 @@ final class RecentTwoFactorGate
 
         $user ??= auth()->user();
         if ($user instanceof User) {
-            $cached = \Illuminate\Support\Facades\Cache::get($this->cacheKey($user));
+            $cached = Cache::get($this->cacheKey($user));
             if (is_numeric($cached)) {
                 return (int) $cached;
             }

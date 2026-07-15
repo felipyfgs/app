@@ -12,7 +12,6 @@ use App\DTO\Fiscal\SimplesMei\PgmeiDto;
 use App\DTO\Fiscal\SimplesMei\RegimeApuracaoDto;
 use App\DTO\Fiscal\SimplesMei\SimplesMeiOperationDef;
 use App\DTO\Serpro\IntegraResponse;
-use App\Enums\FiscalCoverage;
 use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalSituation;

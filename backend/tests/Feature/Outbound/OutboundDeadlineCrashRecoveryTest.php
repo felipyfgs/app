@@ -6,6 +6,7 @@ use App\Contracts\SecureObjectStore;
 use App\Contracts\SvrsNfceOutboundXmlRetrievalClient;
 use App\DTO\Outbound\SvrsNfceRetrievalResult;
 use App\Enums\AdnDocumentType;
+use App\Enums\CredentialStatus;
 use App\Enums\OutboundCaptureMode;
 use App\Enums\OutboundFiscalModel;
 use App\Enums\OutboundNumberStatus;
@@ -18,6 +19,7 @@ use App\Enums\SvrsNfceTransportOutcome;
 use App\Jobs\PlanOutboundDeadlineScheduleJob;
 use App\Jobs\RecoverSvrsNfceXmlJob;
 use App\Models\Client;
+use App\Models\ClientCredential;
 use App\Models\DfeDocument;
 use App\Models\Establishment;
 use App\Models\MaOutboundRetrievalRequest;
@@ -185,10 +187,10 @@ class OutboundDeadlineCrashRecoveryTest extends TestCase
     {
         [$profile, $number] = $this->seedPending();
         // Credential ACTIVE existe para eligibility, mas vault_object_id inválido → materialize falha
-        \App\Models\ClientCredential::query()->create([
+        ClientCredential::query()->create([
             'office_id' => $profile->office_id,
             'client_id' => $profile->client_id,
-            'status' => \App\Enums\CredentialStatus::Active,
+            'status' => CredentialStatus::Active,
             'subject_name' => 'Fixture',
             'holder_cnpj' => '12345678000190',
             'fingerprint_sha256' => str_repeat('b', 64),
@@ -367,10 +369,10 @@ class OutboundDeadlineCrashRecoveryTest extends TestCase
             'client_id' => $profile->client_id,
             'fingerprint' => $fp,
         ]);
-        \App\Models\ClientCredential::query()->updateOrCreate(
+        ClientCredential::query()->updateOrCreate(
             ['client_id' => $profile->client_id, 'office_id' => $profile->office_id],
             [
-                'status' => \App\Enums\CredentialStatus::Active,
+                'status' => CredentialStatus::Active,
                 'subject_name' => 'Fixture',
                 'holder_cnpj' => '12345678000190',
                 'fingerprint_sha256' => $fp,

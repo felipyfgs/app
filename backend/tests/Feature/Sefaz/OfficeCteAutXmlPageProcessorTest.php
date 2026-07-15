@@ -10,9 +10,11 @@ use App\Enums\DocumentDirection;
 use App\Enums\FiscalRole;
 use App\Enums\QuarantineReason;
 use App\Enums\SyncCursorStatus;
+use App\Models\Client;
 use App\Models\CteDocument;
 use App\Models\DocumentAcquisition;
 use App\Models\DocumentInterest;
+use App\Models\Establishment;
 use App\Models\FiscalDocumentQuarantine;
 use App\Models\Office;
 use App\Models\OfficeDistributionCursor;
@@ -132,10 +134,10 @@ class OfficeCteAutXmlPageProcessorTest extends TestCase
             issuerCnpj: '11222333000181',
         );
         // Participante tomador/remetente do mesmo office (fixture roles_all usa 34194865000158 como tomador)
-        $client2 = \App\Models\Client::factory()->forOffice(
+        $client2 = Client::factory()->forOffice(
             Office::query()->findOrFail($cursor->office_id)
         )->create();
-        $takerEst = \App\Models\Establishment::factory()->forClient($client2)->create([
+        $takerEst = Establishment::factory()->forClient($client2)->create([
             'cnpj' => '34194865000158',
             'is_active' => true,
         ]);
@@ -160,8 +162,8 @@ class OfficeCteAutXmlPageProcessorTest extends TestCase
     public function test_office_divergente_nao_promove_emitente_de_outro_tenant(): void
     {
         $otherOffice = Office::factory()->create();
-        $otherClient = \App\Models\Client::factory()->forOffice($otherOffice)->create();
-        \App\Models\Establishment::factory()->forClient($otherClient)->create([
+        $otherClient = Client::factory()->forOffice($otherOffice)->create();
+        Establishment::factory()->forClient($otherClient)->create([
             'cnpj' => '11222333000181',
             'is_active' => true,
         ]);
@@ -219,14 +221,14 @@ class OfficeCteAutXmlPageProcessorTest extends TestCase
     }
 
     /**
-     * @return array{0: OfficeDistributionCursor, 1: \App\Models\Establishment}
+     * @return array{0: OfficeDistributionCursor, 1: Establishment}
      */
     private function seedCursorWithIssuer(string $officeCnpj, string $issuerCnpj): array
     {
         $office = Office::factory()->create();
         $identity = OfficeFiscalIdentity::factory()->forOffice($office)->withCnpj($officeCnpj)->create();
-        $client = \App\Models\Client::factory()->forOffice($office)->create();
-        $issuerEst = \App\Models\Establishment::factory()->forClient($client)->create([
+        $client = Client::factory()->forOffice($office)->create();
+        $issuerEst = Establishment::factory()->forClient($client)->create([
             'cnpj' => $issuerCnpj,
             'is_active' => true,
         ]);

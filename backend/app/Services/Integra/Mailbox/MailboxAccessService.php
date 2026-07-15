@@ -3,6 +3,7 @@
 namespace App\Services\Integra\Mailbox;
 
 use App\Enums\MailboxAccessAction;
+use App\Enums\MailboxTriageStatus;
 use App\Models\MailboxAccessEvent;
 use App\Models\MailboxAttachment;
 use App\Models\MailboxMessage;
@@ -39,11 +40,11 @@ final class MailboxAccessService
         $officialBefore = $message->official_read_indicator;
 
         if ($autoTriageInReview
-            && $message->triage_status === \App\Enums\MailboxTriageStatus::New
+            && $message->triage_status === MailboxTriageStatus::New
             && $actor !== null
         ) {
             $message->forceFill([
-                'triage_status' => \App\Enums\MailboxTriageStatus::InReview,
+                'triage_status' => MailboxTriageStatus::InReview,
                 'triage_by' => $actor->id,
                 'triage_at' => CarbonImmutable::now(),
             ])->save();

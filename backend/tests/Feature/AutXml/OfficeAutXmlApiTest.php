@@ -14,7 +14,6 @@ use App\Models\OfficeFiscalIdentity;
 use App\Models\User;
 use App\Support\CurrentOffice;
 use Carbon\CarbonImmutable;
-use Database\Factories\EstablishmentFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 

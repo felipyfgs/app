@@ -4,10 +4,10 @@ namespace App\Services\Esocial;
 
 use App\DTO\Esocial\FgtsCompetenceProjection;
 use App\Enums\EsocialEventCode;
+use App\Enums\FgtsIndependentState;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalSituation;
-use App\Enums\FgtsIndependentState;
 use App\Models\EsocialEventEvidence;
 use Carbon\CarbonImmutable;
 

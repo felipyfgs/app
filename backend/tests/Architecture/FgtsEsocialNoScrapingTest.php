@@ -159,6 +159,7 @@ class FgtsEsocialNoScrapingTest extends TestCase
                 if ($content !== false) {
                     $files[$path] = $content;
                 }
+
                 continue;
             }
             if (! is_dir($full)) {

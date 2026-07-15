@@ -3,15 +3,16 @@
 namespace App\Services\FiscalMonitoring;
 
 use App\DTO\Fiscal\FiscalPersistPayload;
+use App\Enums\FiscalCoverage;
 use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalPendingStatus;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
 use App\Models\FiscalFinding;
+use App\Models\FiscalMonitoringRun;
 use App\Models\FiscalPendingItem;
 use App\Models\FiscalSnapshot;
-use App\Models\FiscalMonitoringRun;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -147,7 +148,7 @@ final class FiscalSnapshotPersistence
     }
 
     /**
-     * @param  array{situation: FiscalSituation, coverage: \App\Enums\FiscalCoverage, normalized: array<string, mixed>}  $guarded
+     * @param  array{situation: FiscalSituation, coverage: FiscalCoverage, normalized: array<string, mixed>}  $guarded
      */
     private function createSnapshot(
         FiscalMonitoringRun $run,
@@ -201,7 +202,7 @@ final class FiscalSnapshotPersistence
     }
 
     /**
-     * @param  array{situation: FiscalSituation, coverage: \App\Enums\FiscalCoverage, normalized: array<string, mixed>}  $guarded
+     * @param  array{situation: FiscalSituation, coverage: FiscalCoverage, normalized: array<string, mixed>}  $guarded
      */
     private function finalizeRun(
         FiscalMonitoringRun $run,

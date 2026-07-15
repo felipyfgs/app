@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Outbound;
 
+use App\Enums\AdnDocumentType;
 use App\Enums\OfficeRole;
 use App\Enums\OutboundCaptureMode;
 use App\Enums\OutboundFiscalModel;
@@ -59,7 +60,7 @@ class OutboundDeadlineSatisfactionAndApiTest extends TestCase
         DfeDocument::query()->create([
             'office_id' => $office->id,
             'sha256' => hash('sha256', 'doc'),
-            'document_type' => \App\Enums\AdnDocumentType::Nfe,
+            'document_type' => AdnDocumentType::Nfe,
             'access_key' => $key,
             'vault_object_id' => '01TESTTESTTESTTESTTESTTESTTEST99',
             'byte_size' => 10,

@@ -7,8 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Jobs\Fiscal\SyncFgtsEsocialCompetenceJob;
 use App\Models\Client;
 use App\Models\Establishment;
+use App\Models\FiscalCategory;
 use App\Models\FiscalCompetence;
-use App\Models\FiscalMonitoringRun;
 use App\Services\Esocial\FgtsEsocialMonitoringService;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use App\Support\CurrentOffice;
@@ -170,7 +170,7 @@ class FgtsEsocialController extends Controller
         $run = null;
         if ($createRun) {
             try {
-                $category = \App\Models\FiscalCategory::query()->where('code', 'FGTS')->first();
+                $category = FiscalCategory::query()->where('code', 'FGTS')->first();
                 $competence = null;
                 if ($category !== null) {
                     [$year, $month] = array_map('intval', explode('-', $data['competence_period_key']));

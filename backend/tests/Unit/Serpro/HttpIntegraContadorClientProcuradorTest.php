@@ -24,7 +24,7 @@ use Mockery;
 use Tests\TestCase;
 
 /**
- * Garante que o client HTTP anexa jwt_token do procurador (cadeia Autor).
+ * Garante os headers distintos do contratante e do procurador (cadeia Autor).
  */
 class HttpIntegraContadorClientProcuradorTest extends TestCase
 {
@@ -102,6 +102,7 @@ class HttpIntegraContadorClientProcuradorTest extends TestCase
                 accessToken: 'contractor-bearer',
                 tokenType: 'Bearer',
                 expiresAt: CarbonImmutable::now()->addHour(),
+                jwtToken: 'contractor-jwt',
             ));
 
         $client = new HttpIntegraContadorClient(
@@ -129,7 +130,8 @@ class HttpIntegraContadorClientProcuradorTest extends TestCase
         $this->assertIsArray($transport->capturedHeaders);
         $joined = implode("\n", $transport->capturedHeaders);
         $this->assertStringContainsString('Authorization: Bearer contractor-bearer', $joined);
-        $this->assertStringContainsString('jwt_token: jwt-procurador-secret-test', $joined);
+        $this->assertStringContainsString('jwt_token: contractor-jwt', $joined);
+        $this->assertStringContainsString('autenticar_procurador_token: jwt-procurador-secret-test', $joined);
     }
 
     public function test_falha_closed_sem_token_procurador(): void

@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\AutXml;
 
-use App\Contracts\SefazDistDfeClient;
 use App\Contracts\SecureObjectStore;
+use App\Contracts\SefazDistDfeClient;
 use App\Domain\Sefaz\DistDfePageDto;
 use App\Enums\CaptureChannel;
 use App\Enums\SyncCursorStatus;

@@ -2,7 +2,6 @@
 
 namespace Tests\Unit\Serpro;
 
-use App\Contracts\SecureObjectStore;
 use App\Enums\SecureObjectPurpose;
 use App\Services\Vault\EnvelopeCrypto;
 use App\Services\Vault\FilesystemSecureObjectStore;

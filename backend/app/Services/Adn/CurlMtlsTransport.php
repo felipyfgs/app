@@ -4,6 +4,7 @@ namespace App\Services\Adn;
 
 use App\Exceptions\Adn\AdnPermanentException;
 use App\Exceptions\Adn\AdnRetryableException;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -124,7 +125,7 @@ class CurlMtlsTransport
         if ($errno !== 0) {
             $detail = $error !== '' ? $error : ('curl_errno='.$errno);
             // Log sanitizado: sem PFX/senha; útil para diagnosticar CA/TLS.
-            \Illuminate\Support\Facades\Log::warning('mtls.transport_failed', [
+            Log::warning('mtls.transport_failed', [
                 'errno' => $errno,
                 'error' => $detail,
                 'url_host' => parse_url($url, PHP_URL_HOST),

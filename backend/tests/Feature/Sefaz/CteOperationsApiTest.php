@@ -6,17 +6,17 @@ use App\Enums\CaptureChannel;
 use App\Enums\OfficeFiscalIdentityStatus;
 use App\Enums\OfficeRole;
 use App\Enums\SyncCursorStatus;
+use App\Jobs\RepairKnownCteNsuJob;
 use App\Models\ChannelSyncCursor;
 use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\Office;
 use App\Models\OfficeFiscalIdentity;
 use App\Models\User;
-use App\Jobs\RepairKnownCteNsuJob;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class CteOperationsApiTest extends TestCase
@@ -134,8 +134,7 @@ class CteOperationsApiTest extends TestCase
         ])->assertAccepted()
             ->assertJsonPath('data.cursor_last_nsu', 90)
             ->assertJsonPath('data.nsu', 42);
-        Queue::assertPushed(RepairKnownCteNsuJob::class, fn (RepairKnownCteNsuJob $job) =>
-            $job->channelSyncCursorId === $cursor->id && $job->knownNsu === 42
+        Queue::assertPushed(RepairKnownCteNsuJob::class, fn (RepairKnownCteNsuJob $job) => $job->channelSyncCursorId === $cursor->id && $job->knownNsu === 42
         );
 
         $cursor->update(['next_sync_at' => now()->addHour()]);

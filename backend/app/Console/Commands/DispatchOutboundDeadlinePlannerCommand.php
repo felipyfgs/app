@@ -3,12 +3,13 @@
 namespace App\Console\Commands;
 
 use App\Contracts\SvrsPortalEgressGovernor;
-use App\Jobs\PlanOutboundDeadlineScheduleJob;
-use App\Jobs\RecoverSvrsNfceXmlJob;
 use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\SvrsNfceRecoveryStatus;
+use App\Jobs\PlanOutboundDeadlineScheduleJob;
+use App\Jobs\RecoverSvrsNfceXmlJob;
 use App\Models\MaOutboundRetrievalRequest;
 use App\Services\Outbound\OutboundDeadlineFairQueue;
+use App\Services\Outbound\OutboundDeadlineSatisfactionService;
 use Illuminate\Console\Command;
 
 class DispatchOutboundDeadlinePlannerCommand extends Command
@@ -95,7 +96,7 @@ class DispatchOutboundDeadlinePlannerCommand extends Command
         $due = $fairQueue->fairSelect($fairQueue->order($candidates), $limit);
 
         $n = 0;
-        $satisfaction = app(\App\Services\Outbound\OutboundDeadlineSatisfactionService::class);
+        $satisfaction = app(OutboundDeadlineSatisfactionService::class);
         foreach ($due as $req) {
             // Revalidar: se vault/catálogo já tem full, cancela em vez de enfileirar
             if ($req->access_key) {

@@ -14,7 +14,9 @@ use Illuminate\Support\Facades\Cache;
 final class SvrsNfceCircuitBreaker
 {
     private const GLOBAL_KEY = 'sefaz.svrs_nfce_xml.breaker.global';
+
     private const ROOT_PREFIX = 'sefaz.svrs_nfce_xml.breaker.root.';
+
     private const PROBE_SLOT_KEY = 'sefaz.svrs_nfce_xml.breaker.probe_slot';
 
     public function __construct(

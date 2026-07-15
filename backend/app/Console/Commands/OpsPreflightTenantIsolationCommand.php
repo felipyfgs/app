@@ -404,7 +404,7 @@ class OpsPreflightTenantIsolationCommand extends Command
             );
             foreach ($names as $name) {
                 try {
-                    $cols = DB::select("PRAGMA table_info(".$this->quoteSqliteIdent($name).")");
+                    $cols = DB::select('PRAGMA table_info('.$this->quoteSqliteIdent($name).')');
                 } catch (\Throwable) {
                     continue;
                 }

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Sefaz;
 
+use App\Contracts\SefazDistDfeClient;
 use App\Domain\Sefaz\DistDfeDocumentDto;
 use App\Domain\Sefaz\DistDfePageDto;
 use App\Enums\CaptureChannel;
@@ -17,6 +18,7 @@ use App\Models\Establishment;
 use App\Models\NfeDocument;
 use App\Models\Office;
 use App\Models\User;
+use App\Services\Certificates\CredentialService;
 use App\Services\Sefaz\DistDfePageProcessor;
 use App\Support\AutXmlFeature;
 use App\Support\CurrentOffice;
@@ -60,9 +62,9 @@ class NfeDistDfeCharacterizationTest extends TestCase
 
         $cursor = $this->seedCursor();
         (new SyncSefazDistDfeJob($cursor->id, 'TEST'))->handle(
-            app(\App\Contracts\SefazDistDfeClient::class),
+            app(SefazDistDfeClient::class),
             app(DistDfePageProcessor::class),
-            app(\App\Services\Certificates\CredentialService::class),
+            app(CredentialService::class),
         );
 
         $this->assertSame(0, $cursor->fresh()->last_nsu);

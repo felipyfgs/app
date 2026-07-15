@@ -2,15 +2,22 @@
 
 namespace Tests\Feature\Sefaz;
 
+use App\Contracts\SecureObjectStore;
 use App\Enums\AdnDocumentType;
 use App\Enums\CaptureChannel;
+use App\Enums\DocumentAcquisitionSource;
+use App\Enums\DocumentArtifactQuality;
 use App\Enums\DocumentDirection;
 use App\Enums\FiscalRole;
 use App\Enums\OfficeRole;
 use App\Enums\SyncCursorStatus;
 use App\Models\ChannelSyncCursor;
+use App\Models\Client;
 use App\Models\CteDocument;
 use App\Models\DfeDocument;
+use App\Models\DocumentAcquisition;
+use App\Models\DocumentInterest;
+use App\Models\Establishment;
 use App\Models\Office;
 use App\Models\User;
 use App\Support\CurrentOffice;
@@ -63,8 +70,8 @@ class CteCatalogTest extends TestCase
         $this->actingAs($user);
         app(CurrentOffice::class)->resolve($user);
 
-        $client = \App\Models\Client::factory()->forOffice($office)->create(['legal_name' => 'Frete SA']);
-        $est = \App\Models\Establishment::factory()->forClient($client)->create();
+        $client = Client::factory()->forOffice($office)->create(['legal_name' => 'Frete SA']);
+        $est = Establishment::factory()->forClient($client)->create();
 
         ChannelSyncCursor::query()->create([
             'office_id' => $office->id,
@@ -93,16 +100,16 @@ class CteCatalogTest extends TestCase
         config(['sefaz.cte_enabled' => true]);
         [$officeA, $userA] = $this->seedOfficeUser();
         $officeB = Office::factory()->create();
-        $clientA = \App\Models\Client::factory()->forOffice($officeA)->create();
-        $clientB = \App\Models\Client::factory()->forOffice($officeA)->create();
-        $estA = \App\Models\Establishment::factory()->forClient($clientA)->create(['cnpj' => '34194865000158']);
-        $estB = \App\Models\Establishment::factory()->forClient($clientB)->create(['cnpj' => '22222222000122']);
+        $clientA = Client::factory()->forOffice($officeA)->create();
+        $clientB = Client::factory()->forOffice($officeA)->create();
+        $estA = Establishment::factory()->forClient($clientA)->create(['cnpj' => '34194865000158']);
+        $estB = Establishment::factory()->forClient($clientB)->create(['cnpj' => '22222222000122']);
 
         $cteA = $this->seedCte($officeA->id, '35260711222333000181570010000000011234567890', DocumentDirection::In);
         $cteB = $this->seedCte($officeA->id, '35260711222333000181570010000000011234567891', DocumentDirection::In);
         $this->seedCte($officeB->id, '35260711222333000181570010000000011234567892', DocumentDirection::In);
 
-        \App\Models\DocumentInterest::query()->create([
+        DocumentInterest::query()->create([
             'office_id' => $officeA->id,
             'dfe_document_id' => $cteA->dfe_document_id,
             'establishment_id' => $estA->id,
@@ -112,7 +119,7 @@ class CteCatalogTest extends TestCase
             'environment' => 'production',
             'nsu' => 1,
         ]);
-        \App\Models\DocumentInterest::query()->create([
+        DocumentInterest::query()->create([
             'office_id' => $officeA->id,
             'dfe_document_id' => $cteB->dfe_document_id,
             'establishment_id' => $estB->id,
@@ -122,24 +129,24 @@ class CteCatalogTest extends TestCase
             'environment' => 'production',
             'nsu' => 2,
         ]);
-        \App\Models\DocumentAcquisition::query()->create([
+        DocumentAcquisition::query()->create([
             'office_id' => $officeA->id,
             'dfe_document_id' => $cteA->dfe_document_id,
             'access_key' => $cteA->access_key,
-            'source' => \App\Enums\DocumentAcquisitionSource::CteDistNsu,
+            'source' => DocumentAcquisitionSource::CteDistNsu,
             'channel' => CaptureChannel::CteDistDfe,
             'sha256' => $cteA->document->sha256,
-            'artifact_quality' => \App\Enums\DocumentArtifactQuality::Original,
+            'artifact_quality' => DocumentArtifactQuality::Original,
             'is_canonical' => true,
         ]);
-        \App\Models\DocumentAcquisition::query()->create([
+        DocumentAcquisition::query()->create([
             'office_id' => $officeA->id,
             'dfe_document_id' => $cteB->dfe_document_id,
             'access_key' => $cteB->access_key,
-            'source' => \App\Enums\DocumentAcquisitionSource::CteAutXmlDistNsu,
+            'source' => DocumentAcquisitionSource::CteAutXmlDistNsu,
             'channel' => CaptureChannel::CteAutXmlDistDfe,
             'sha256' => $cteB->document->sha256,
-            'artifact_quality' => \App\Enums\DocumentArtifactQuality::AutXmlRedacted,
+            'artifact_quality' => DocumentArtifactQuality::AutXmlRedacted,
             'is_canonical' => true,
         ]);
 
@@ -174,14 +181,14 @@ class CteCatalogTest extends TestCase
         app(CurrentOffice::class)->resolve($user);
 
         $cte = $this->seedCte($office->id, '35260711222333000181570010000000011234567893', DocumentDirection::In);
-        \App\Models\DocumentAcquisition::query()->create([
+        DocumentAcquisition::query()->create([
             'office_id' => $office->id,
             'dfe_document_id' => $cte->dfe_document_id,
             'access_key' => $cte->access_key,
-            'source' => \App\Enums\DocumentAcquisitionSource::CteDistNsu,
+            'source' => DocumentAcquisitionSource::CteDistNsu,
             'channel' => CaptureChannel::CteDistDfe,
             'sha256' => $cte->document->sha256,
-            'artifact_quality' => \App\Enums\DocumentArtifactQuality::Original,
+            'artifact_quality' => DocumentArtifactQuality::Original,
             'is_canonical' => true,
         ]);
 
@@ -207,7 +214,7 @@ class CteCatalogTest extends TestCase
     {
         $xml = '<cteProc><chCTe>'.$accessKey.'</chCTe></cteProc>';
         $sha = hash('sha256', $xml.$accessKey);
-        $store = app(\App\Contracts\SecureObjectStore::class);
+        $store = app(SecureObjectStore::class);
         $objectId = $store->put($xml, ['office_id' => $officeId, 'sha256' => $sha]);
 
         $doc = DfeDocument::query()->create([

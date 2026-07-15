@@ -10,6 +10,7 @@ use App\Enums\SerproContractStatus;
 use App\Enums\SerproEnvironment;
 use App\Models\SerproContract;
 use App\Services\Audit\AuditLogger;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
@@ -312,7 +313,7 @@ final class SerproContractService
     }
 
     /**
-     * @return array{pfx: string, password: string, subject_name: string, cnpj: string, fingerprint_sha256: string, valid_from: \Carbon\CarbonImmutable, valid_to: \Carbon\CarbonImmutable}
+     * @return array{pfx: string, password: string, subject_name: string, cnpj: string, fingerprint_sha256: string, valid_from: CarbonImmutable, valid_to: CarbonImmutable}
      */
     private function validateAndReadPfx(string $pfxBinary, string $password): array
     {

@@ -108,7 +108,7 @@ class TenantControllersAvoidGlobalSerproTest extends TestCase
         $this->assertSame(
             [],
             $hits,
-            "Controllers tenant-scoped com dependência direta de recurso SERPRO global "
+            'Controllers tenant-scoped com dependência direta de recurso SERPRO global '
             .'(use service autorizado em App\\Services\\Serpro\\* ou similar): '
             .implode('; ', $hits)
         );

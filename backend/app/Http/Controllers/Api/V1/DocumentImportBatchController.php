@@ -10,6 +10,7 @@ use App\Services\Import\DocumentImportBatchService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -36,7 +37,7 @@ class DocumentImportBatchController extends Controller
         ]);
 
         $office = $currentOffice->office();
-        /** @var list<\Illuminate\Http\UploadedFile> $files */
+        /** @var list<UploadedFile> $files */
         $files = $request->file('files', []);
         if (! is_array($files)) {
             $files = [$files];

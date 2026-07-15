@@ -11,7 +11,8 @@ use RuntimeException;
 use Throwable;
 
 /**
- * OAuth2 client_credentials + mTLS (role-type TERCEIROS, e-CNPJ contratante).
+ * OAuth2 client_credentials + mTLS no endpoint oficial.
+ * Processa access_token e jwt_token; renova o par de forma coordenada.
  */
 final class HttpSerproContractAuthenticator implements SerproContractAuthenticator
 {
@@ -30,13 +31,25 @@ final class HttpSerproContractAuthenticator implements SerproContractAuthenticat
 
         $cached = $this->tokenCache->get($contract);
         if ($cached !== null) {
-            return $cached;
+            try {
+                $cached->assertComplete();
+
+                return $cached;
+            } catch (RuntimeException) {
+                $this->tokenCache->invalidate($contract);
+            }
         }
 
         return $this->tokenCache->withRefreshLock($contract, function () use ($contract): SerproAuthToken {
             $cached = $this->tokenCache->get($contract);
             if ($cached !== null) {
-                return $cached;
+                try {
+                    $cached->assertComplete();
+
+                    return $cached;
+                } catch (RuntimeException) {
+                    $this->tokenCache->invalidate($contract);
+                }
             }
 
             return $this->fetchAndStore($contract);
@@ -53,7 +66,6 @@ final class HttpSerproContractAuthenticator implements SerproContractAuthenticat
         $pfx = $this->contracts->loadPfxMaterial($contract);
         $oauth = $this->contracts->loadOauthSecrets($contract);
 
-        // Validar fingerprint/identidade antes da chamada
         if ($contract->fingerprint_sha256 === null || $contract->fingerprint_sha256 === '') {
             $this->blockContract($contract, 'Fingerprint do certificado ausente.');
             throw new RuntimeException('Contrato bloqueado: fingerprint ausente.');
@@ -73,7 +85,6 @@ final class HttpSerproContractAuthenticator implements SerproContractAuthenticat
             'Content-Type: application/x-www-form-urlencoded',
             'Accept: application/json',
             'role-type: '.$roleType,
-            'x-cnpj: '.$contract->contractor_cnpj,
         ];
 
         try {
@@ -108,10 +119,29 @@ final class HttpSerproContractAuthenticator implements SerproContractAuthenticat
             throw new RuntimeException('OAuth SERPRO retornou HTTP '.$response['status'].'.');
         }
 
-        /** @var array{access_token?: string, token_type?: string, expires_in?: int, jwt?: string} $json */
+        /** @var array{access_token?: string, jwt_token?: string, jwt?: string, token_type?: string, expires_in?: int} $json */
         $json = json_decode($response['body'], true);
         if (! is_array($json) || empty($json['access_token'])) {
-            throw new RuntimeException('Resposta OAuth SERPRO inválida.');
+            $this->markUnavailable($contract, 'Resposta OAuth sem access_token.');
+            throw new RuntimeException('Resposta OAuth SERPRO inválida (access_token).');
+        }
+
+        $jwtToken = null;
+        if (! empty($json['jwt_token'])) {
+            $jwtToken = (string) $json['jwt_token'];
+        } elseif (! empty($json['jwt'])) {
+            // Compat transitória com resposta legada
+            $jwtToken = (string) $json['jwt'];
+        }
+
+        $requireJwt = (bool) config('serpro.oauth.require_jwt_token', true);
+        if ($requireJwt && ($jwtToken === null || $jwtToken === '')) {
+            $this->markUnavailable($contract, 'Resposta OAuth sem jwt_token.');
+            $this->audit->record('serpro.oauth.token', 'FAILED', $contract, [
+                'message' => 'jwt_token ausente',
+                'correlation_id' => $correlationId,
+            ], null, null);
+            throw new RuntimeException('OAuth SERPRO sem jwt_token — contrato indisponível para chamadas de negócio.');
         }
 
         $expiresIn = (int) ($json['expires_in'] ?? 3600);
@@ -119,14 +149,15 @@ final class HttpSerproContractAuthenticator implements SerproContractAuthenticat
             accessToken: (string) $json['access_token'],
             tokenType: (string) ($json['token_type'] ?? 'Bearer'),
             expiresAt: CarbonImmutable::now()->addSeconds(max(60, $expiresIn)),
-            jwt: isset($json['jwt']) ? (string) $json['jwt'] : null,
+            jwtToken: $jwtToken,
             fromCache: false,
+            jwt: $jwtToken,
         );
 
         $this->tokenCache->put($contract, $token);
 
         $contract->health_status = 'OK';
-        $contract->health_message = 'OAuth ok.';
+        $contract->health_message = 'OAuth ok (access_token+jwt_token).';
         $contract->last_verified_at = now();
         $contract->save();
 
@@ -134,14 +165,21 @@ final class HttpSerproContractAuthenticator implements SerproContractAuthenticat
             'expires_at' => $token->expiresAt->toIso8601String(),
             'correlation_id' => $correlationId,
             'from_cache' => false,
+            'has_jwt_token' => true,
         ], null, null);
 
         return $token;
     }
 
-    /**
-     * Alinha com {@see SerproContractService::block}: marca BLOCKED + kill switch global.
-     */
+    private function markUnavailable(SerproContract $contract, string $reason): void
+    {
+        $contract->health_status = 'UNAVAILABLE';
+        $contract->health_message = $reason;
+        $contract->last_verified_at = now();
+        $contract->save();
+        $this->tokenCache->invalidate($contract);
+    }
+
     private function blockContract(SerproContract $contract, string $reason): void
     {
         $this->contracts->block($contract, $reason.' [source=oauth]', null);

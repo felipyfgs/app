@@ -2,17 +2,18 @@
 
 namespace Tests\Feature\FiscalMonitoring;
 
+use App\DTO\Esocial\EsocialEventDto;
 use App\Enums\EsocialEventCode;
+use App\Enums\FgtsIndependentState;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
-use App\Enums\FgtsIndependentState;
 use App\Enums\OfficeRole;
 use App\Models\Client;
 use App\Models\EsocialEventEvidence;
 use App\Models\Establishment;
-use App\Models\FiscalSnapshot;
 use App\Models\FgtsCompetenceStatus;
+use App\Models\FiscalSnapshot;
 use App\Models\Office;
 use App\Models\User;
 use App\Services\Esocial\FakeEsocialEventClient;
@@ -145,7 +146,7 @@ class FgtsEsocialMonitoringTest extends TestCase
             'simulated' => true,
         ], JSON_THROW_ON_ERROR);
 
-        $this->fakeClient->seed(new \App\DTO\Esocial\EsocialEventDto(
+        $this->fakeClient->seed(new EsocialEventDto(
             eventCode: EsocialEventCode::S1299,
             competencePeriodKey: $competence,
             payloadBytes: $payload,
@@ -182,7 +183,7 @@ class FgtsEsocialMonitoringTest extends TestCase
         $closureAt = CarbonImmutable::parse('2026-04-01 10:00:00');
         $now = $closureAt->addHours(10); // < 72h
 
-        $this->fakeClient->seed(new \App\DTO\Esocial\EsocialEventDto(
+        $this->fakeClient->seed(new EsocialEventDto(
             eventCode: EsocialEventCode::S1299,
             competencePeriodKey: $competence,
             payloadBytes: json_encode(['evento' => 'S-1299', 'competencia' => $competence], JSON_THROW_ON_ERROR),

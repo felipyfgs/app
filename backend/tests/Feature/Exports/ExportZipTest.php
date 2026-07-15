@@ -16,6 +16,7 @@ use App\Models\Export;
 use App\Models\NfseNote;
 use App\Models\Office;
 use App\Models\User;
+use App\Services\FiscalMonitoring\ModulePortfolio\ModulePortfolioQueryService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -60,7 +61,10 @@ class ExportZipTest extends TestCase
             'include_events' => false,
         ]);
 
-        (new BuildExportZipJob($export->id))->handle(app(SecureObjectStore::class));
+        (new BuildExportZipJob($export->id))->handle(
+            app(SecureObjectStore::class),
+            app(ModulePortfolioQueryService::class),
+        );
 
         $export->refresh();
         $this->assertSame('READY', $export->status);
@@ -141,7 +145,10 @@ class ExportZipTest extends TestCase
         $this->assertNotNull($export);
         $this->assertSame(['KEY-A', 'KEY-OTHER'], $export->filters['access_keys'] ?? null);
 
-        (new BuildExportZipJob($export->id))->handle(app(SecureObjectStore::class));
+        (new BuildExportZipJob($export->id))->handle(
+            app(SecureObjectStore::class),
+            app(ModulePortfolioQueryService::class),
+        );
         $export->refresh();
         $this->assertSame('READY', $export->status);
         // KEY-OTHER de outro office não entra (scope + where office_id no job).
@@ -170,7 +177,10 @@ class ExportZipTest extends TestCase
             'include_events' => false,
         ]);
 
-        (new BuildExportZipJob($export->id))->handle(app(SecureObjectStore::class));
+        (new BuildExportZipJob($export->id))->handle(
+            app(SecureObjectStore::class),
+            app(ModulePortfolioQueryService::class),
+        );
         $export->refresh();
         $this->assertSame('READY', $export->status);
         $this->assertSame(1, $export->files_count);

@@ -43,12 +43,20 @@ final class SerproTokenCache
                 return null;
             }
 
+            $jwt = null;
+            if (! empty($data['jwt_token'])) {
+                $jwt = (string) $data['jwt_token'];
+            } elseif (! empty($data['jwt'])) {
+                $jwt = (string) $data['jwt'];
+            }
+
             return new SerproAuthToken(
                 accessToken: (string) $data['access_token'],
                 tokenType: (string) ($data['token_type'] ?? 'Bearer'),
                 expiresAt: $expiresAt,
-                jwt: isset($data['jwt']) ? (string) $data['jwt'] : null,
+                jwtToken: $jwt,
                 fromCache: true,
+                jwt: $jwt,
             );
         } catch (Throwable) {
             return null;
@@ -58,11 +66,13 @@ final class SerproTokenCache
     public function put(SerproContract $contract, SerproAuthToken $token): void
     {
         $aad = $this->aad($contract);
+        $jwt = $token->officialJwt();
         $payload = json_encode([
             'access_token' => $token->accessToken,
             'token_type' => $token->tokenType,
             'expires_at' => $token->expiresAt->toIso8601String(),
-            'jwt' => $token->jwt,
+            'jwt_token' => $jwt,
+            'jwt' => $jwt, // legado de leitura
         ], JSON_THROW_ON_ERROR);
 
         $previous = $contract->token_vault_object_id;

@@ -74,7 +74,7 @@ class RemapNfseNoteStatusesCommand extends Command
             $this->line(($dry ? '[dry-run] ' : '')."REPLACED → SUPERSEDED: {$replacedCount}");
         }
 
-        $this->info("Concluído. ".($dry ? 'Dry-run: ' : '')."atualizados={$updated} ignorados={$skipped} replaced_legacy={$replacedCount}");
+        $this->info('Concluído. '.($dry ? 'Dry-run: ' : '')."atualizados={$updated} ignorados={$skipped} replaced_legacy={$replacedCount}");
 
         return self::SUCCESS;
     }

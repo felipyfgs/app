@@ -19,6 +19,10 @@ final class UsageReserveRequest
         public readonly ?string $contributorRef = null,
         public readonly ?string $correlationId = null,
         public readonly ?bool $forceEssential = null,
+        public readonly ?string $operationKey = null,
+        public readonly bool $isSimulated = false,
+        public readonly ?string $functionalRoute = null,
+        public readonly ?string $requestTag = null,
     ) {
         if ($this->officeId <= 0) {
             throw new \InvalidArgumentException('office_id obrigatório para reserva de uso SERPRO.');

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Import;
 
+use App\Enums\CaptureChannel;
 use App\Enums\DocumentArtifactQuality;
 use App\Enums\FiscalRole;
 use App\Enums\OfficeRole;
@@ -12,8 +13,9 @@ use App\Models\DocumentInterest;
 use App\Models\Establishment;
 use App\Models\Office;
 use App\Models\User;
-use App\Services\Import\OutboundXmlIngestionService;
 use App\Services\Import\ImportFiscalValidator;
+use App\Services\Import\ImportXmlClassifier;
+use App\Services\Import\OutboundXmlIngestionService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -88,13 +90,13 @@ class CteXmlImportTest extends TestCase
             2,
             DocumentInterest::query()
                 ->where('fiscal_role', FiscalRole::Issuer)
-                ->where('channel', \App\Enums\CaptureChannel::ImportXml->value)
+                ->where('channel', CaptureChannel::ImportXml->value)
                 ->count()
         );
         $this->assertTrue(
             DocumentInterest::query()
                 ->where('fiscal_role', FiscalRole::Issuer)
-                ->where('channel', \App\Enums\CaptureChannel::ImportXml->value)
+                ->where('channel', CaptureChannel::ImportXml->value)
                 ->whereNull('nsu')
                 ->count() === 2
         );
@@ -144,12 +146,12 @@ class CteXmlImportTest extends TestCase
     public function test_classificador_reconhece_cte_por_conteudo(): void
     {
         $xml = file_get_contents(base_path('tests/fixtures/cte/procCTe_57_roles_all.xml'));
-        $classified = app(\App\Services\Import\ImportXmlClassifier::class)->classify($xml);
+        $classified = app(ImportXmlClassifier::class)->classify($xml);
         $this->assertSame('procCTe', $classified['kind']);
         $this->assertSame('57', $classified['model']);
 
         $evt = file_get_contents(base_path('tests/fixtures/cte/procEventoCTe_cancel.xml'));
-        $c2 = app(\App\Services\Import\ImportXmlClassifier::class)->classify($evt);
+        $c2 = app(ImportXmlClassifier::class)->classify($evt);
         $this->assertSame('procEventoCTe', $c2['kind']);
     }
 

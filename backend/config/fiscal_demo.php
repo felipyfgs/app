@@ -1,13 +1,16 @@
 <?php
 
+use App\Services\Fiscal\Demo\DemoEnvironmentGuard;
+use Database\Seeders\FiscalMonitoringDemoSeeder;
+
 /**
  * Fixtures fiscais demonstrativas (office demo only, local/testing).
  *
  * NUNCA habilita seeder, origem sintética ou fallback em production —
  * o guard de ambiente prevalece sobre qualquer variável DEMO_*.
  *
- * @see App\Services\Fiscal\Demo\DemoEnvironmentGuard
- * @see Database\Seeders\FiscalMonitoringDemoSeeder
+ * @see DemoEnvironmentGuard
+ * @see FiscalMonitoringDemoSeeder
  */
 
 return [

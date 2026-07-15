@@ -2,8 +2,13 @@
 
 namespace Tests\Feature\Import;
 
+use App\Contracts\SecureObjectStore;
+use App\Enums\AdnDocumentType;
+use App\Enums\DocumentDirection;
+use App\Enums\FiscalRole;
 use App\Enums\OfficeRole;
 use App\Models\Client;
+use App\Models\DfeDocument;
 use App\Models\Establishment;
 use App\Models\NfeDocument;
 use App\Models\Office;
@@ -139,13 +144,13 @@ class OutboundXmlImportTest extends TestCase
     private function seedNfeProjection(int $officeId, string $accessKey, string $xml, bool $summary): void
     {
         $sha = hash('sha256', $xml.($summary ? 's' : 'f'));
-        $store = app(\App\Contracts\SecureObjectStore::class);
+        $store = app(SecureObjectStore::class);
         $objectId = $store->put($xml, ['office_id' => $officeId, 'sha256' => $sha]);
 
-        $doc = \App\Models\DfeDocument::query()->create([
+        $doc = DfeDocument::query()->create([
             'office_id' => $officeId,
             'sha256' => $sha,
-            'document_type' => \App\Enums\AdnDocumentType::Nfe,
+            'document_type' => AdnDocumentType::Nfe,
             'schema_version' => $summary ? 'resNFe_v1.01.xsd' : 'procNFe_v4.00.xsd',
             'access_key' => $accessKey,
             'vault_object_id' => $objectId,
@@ -161,8 +166,8 @@ class OutboundXmlImportTest extends TestCase
             'model' => '55',
             'issuer_cnpj' => '11222333000181',
             'recipient_cnpj' => '99888777000166',
-            'fiscal_role' => \App\Enums\FiscalRole::Taker,
-            'direction' => \App\Enums\DocumentDirection::In,
+            'fiscal_role' => FiscalRole::Taker,
+            'direction' => DocumentDirection::In,
             'issued_at' => '2026-07-01',
             'total_amount' => '10.00',
             'status' => $summary ? 'SUMMARY' : 'ACTIVE',

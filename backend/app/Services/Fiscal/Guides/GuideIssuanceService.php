@@ -6,7 +6,6 @@ use App\Contracts\GuideEmissionClient;
 use App\Enums\SerproUsageResult;
 use App\Enums\TaxGuideEmissionStatus;
 use App\Enums\TaxGuidePaymentStatus;
-use App\Enums\TaxGuideRiskLevel;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\TaxGuide;

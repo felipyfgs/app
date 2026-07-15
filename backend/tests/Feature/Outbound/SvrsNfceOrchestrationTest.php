@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Outbound;
 
+use App\Contracts\SecureObjectStore;
 use App\Contracts\SvrsNfceOutboundXmlRetrievalClient;
 use App\DTO\Outbound\SvrsNfceRetrievalResult;
+use App\Enums\CredentialStatus;
 use App\Enums\OutboundCaptureMode;
 use App\Enums\OutboundFiscalModel;
 use App\Enums\OutboundNumberStatus;
@@ -14,15 +16,18 @@ use App\Enums\SvrsNfceRecoveryStatus;
 use App\Enums\SvrsNfceTransportOutcome;
 use App\Jobs\RecoverSvrsNfceXmlJob;
 use App\Models\Client;
+use App\Models\ClientCredential;
 use App\Models\Establishment;
 use App\Models\MaOutboundRetrievalRequest;
 use App\Models\Office;
 use App\Models\OutboundCaptureProfile;
 use App\Models\OutboundNumberState;
 use App\Models\OutboundSeriesCursor;
+use App\Models\User;
 use App\Services\Outbound\FakeSvrsNfceOutboundXmlRetrievalClient;
 use App\Services\Outbound\OutboundXmlRecoveryOrchestrator;
 use App\Services\Outbound\SvrsNfceKillSwitchService;
+use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
@@ -137,7 +142,7 @@ class SvrsNfceOrchestrationTest extends TestCase
         // userId null evita FK em audit_logs
         $ks->activate('drill backlog', 0, $profile->office_id);
         // force cache even if audit fails with user 0
-        \Illuminate\Support\Facades\Cache::forever('sefaz.svrs_nfce_xml.kill_switch.runtime', true);
+        Cache::forever('sefaz.svrs_nfce_xml.kill_switch.runtime', true);
 
         app(OutboundXmlRecoveryOrchestrator::class)->runAttempt($req->id);
 
@@ -148,7 +153,7 @@ class SvrsNfceOrchestrationTest extends TestCase
         $this->assertSame(1, OutboundNumberState::withoutGlobalScopes()->where('id', $number->id)->count());
         $this->assertTrue(MaOutboundRetrievalRequest::withoutGlobalScopes()->whereKey($req->id)->exists());
 
-        \Illuminate\Support\Facades\Cache::forget('sefaz.svrs_nfce_xml.kill_switch.runtime');
+        Cache::forget('sefaz.svrs_nfce_xml.kill_switch.runtime');
     }
 
     public function test_run_attempt_remote_not_found_agenda_retry(): void
@@ -238,11 +243,11 @@ class SvrsNfceOrchestrationTest extends TestCase
             'recovery_status' => SvrsNfceRecoveryStatus::Queued,
         ]);
 
-        $userA = \App\Models\User::factory()->forOffice(
+        $userA = User::factory()->forOffice(
             Office::withoutGlobalScopes()->find($profileA->office_id)
         )->withTwoFactorConfirmed()->create();
         $this->actingAs($userA);
-        app(\App\Support\CurrentOffice::class)->resolve($userA);
+        app(CurrentOffice::class)->resolve($userA);
 
         $this->assertSame(1, MaOutboundRetrievalRequest::query()->count());
         $this->getJson('/api/v1/outbound/svrs-nfce/recoveries')
@@ -300,10 +305,10 @@ class SvrsNfceOrchestrationTest extends TestCase
     {
         // activeFor só precisa de linha ACTIVE (hasA1)
         $fp = str_repeat('a', 64);
-        \App\Models\ClientCredential::query()->create([
+        ClientCredential::query()->create([
             'office_id' => $profile->office_id,
             'client_id' => $profile->client_id,
-            'status' => \App\Enums\CredentialStatus::Active,
+            'status' => CredentialStatus::Active,
             'subject_name' => 'Test Fixture',
             'holder_cnpj' => '12345678000190',
             'fingerprint_sha256' => $fp,
@@ -317,7 +322,7 @@ class SvrsNfceOrchestrationTest extends TestCase
     private function seedVaultPfxForProfile(OutboundCaptureProfile $profile): void
     {
         $fp = str_repeat('a', 64);
-        $store = app(\App\Contracts\SecureObjectStore::class);
+        $store = app(SecureObjectStore::class);
         $payload = json_encode([
             'pfx' => base64_encode('fake-pfx-bytes-for-fake-client'),
             'password' => 'test-only',
@@ -327,7 +332,7 @@ class SvrsNfceOrchestrationTest extends TestCase
             'client_id' => $profile->client_id,
             'fingerprint' => $fp,
         ]);
-        \App\Models\ClientCredential::query()
+        ClientCredential::query()
             ->where('client_id', $profile->client_id)
             ->update(['vault_object_id' => $objectId, 'fingerprint_sha256' => $fp]);
     }

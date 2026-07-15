@@ -6,6 +6,7 @@ use App\Domain\Adn\DistributionPageDto;
 use App\Enums\AdnDocumentType;
 use App\Exceptions\Adn\AdnInvalidResponseException;
 use App\Exceptions\Adn\AdnPermanentException;
+use App\Exceptions\Adn\AdnRetryableException;
 use App\Services\Adn\CurlMtlsTransport;
 use App\Services\Adn\HttpAdnContributorClient;
 use PHPUnit\Framework\TestCase;
@@ -133,7 +134,7 @@ class HttpAdnContributorClientTest extends TestCase
     {
         $client = $this->clientWithBody('{"message":"not found"}', httpStatus: 404);
 
-        $this->expectException(\App\Exceptions\Adn\AdnRetryableException::class);
+        $this->expectException(AdnRetryableException::class);
         $client->distribution(['pfx' => 'x', 'password' => 'y'], '11222333000181', 0);
     }
 

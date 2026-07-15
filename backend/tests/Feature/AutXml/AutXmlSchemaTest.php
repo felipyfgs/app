@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\AutXml;
 
+use App\Enums\AdnDocumentType;
 use App\Enums\CaptureChannel;
 use App\Enums\CredentialStatus;
 use App\Enums\DocumentAcquisitionSource;
@@ -17,6 +18,7 @@ use App\Enums\QuarantineReason;
 use App\Enums\QuarantineResolutionStatus;
 use App\Enums\SyncCursorStatus;
 use App\Models\Client;
+use App\Models\DfeDocument;
 use App\Models\DocumentImportBatch;
 use App\Models\DocumentImportBatchItem;
 use App\Models\DocumentInterest;
@@ -141,10 +143,10 @@ class AutXmlSchemaTest extends TestCase
         $estabA = Establishment::factory()->forClient($clientA)->create();
         $estabB = Establishment::factory()->forClient($clientB)->create();
 
-        $dfe = \App\Models\DfeDocument::query()->create([
+        $dfe = DfeDocument::query()->create([
             'office_id' => $office->id,
             'sha256' => hash('sha256', 'doc-in-out'),
-            'document_type' => \App\Enums\AdnDocumentType::Nfe,
+            'document_type' => AdnDocumentType::Nfe,
             'schema_version' => 'procNFe_v4.00.xsd',
             'access_key' => '35260711222333000181550010000000011234567999',
             'vault_object_id' => '01TESTTESTTESTTESTTESTTESTTESTXX',

@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\Outbound;
 
-use App\Contracts\SefazOutboundProtocolQueryClient;
 use App\Contracts\SecureObjectStore;
+use App\Contracts\SefazOutboundProtocolQueryClient;
 use App\DTO\Outbound\ProtocolQueryResult;
 use App\Enums\CredentialStatus;
 use App\Enums\OutboundCaptureMode;

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Sefaz;
 
+use App\Contracts\SecureObjectStore;
 use App\Contracts\SefazNfeManifestationClient;
 use App\Domain\Sefaz\ManifestationResultDto;
 use App\Enums\AdnDocumentType;
@@ -12,6 +13,7 @@ use App\Enums\FiscalRole;
 use App\Enums\NfeManifestationType;
 use App\Enums\OfficeRole;
 use App\Jobs\ReconsultNfeAfterManifestationJob;
+use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\ClientCredential;
 use App\Models\DfeDocument;
@@ -314,7 +316,7 @@ class NfeManifestationTest extends TestCase
         $this->assertArrayNotHasKey('password', $json['data'] ?? []);
         $this->assertArrayNotHasKey('private_key', $json['data'] ?? []);
 
-        $log = \App\Models\AuditLog::query()
+        $log = AuditLog::query()
             ->where('action', 'nfe.manifestation')
             ->where('office_id', $office->id)
             ->latest('id')
@@ -348,7 +350,7 @@ class NfeManifestationTest extends TestCase
             ->forClient($client, EstablishmentFactory::cnpjWithRoot('99888777'))
             ->create();
 
-        $store = app(\App\Contracts\SecureObjectStore::class);
+        $store = app(SecureObjectStore::class);
         $payload = json_encode([
             'pfx' => base64_encode('fake-pfx-binary-not-used'),
             'password' => 'secret',
@@ -380,7 +382,7 @@ class NfeManifestationTest extends TestCase
     {
         $xml = '<resNFe><chNFe>'.$accessKey.'</chNFe></resNFe>';
         $sha = hash('sha256', $xml.$accessKey);
-        $store = app(\App\Contracts\SecureObjectStore::class);
+        $store = app(SecureObjectStore::class);
         $objectId = $store->put($xml, ['office_id' => $office->id, 'sha256' => $sha]);
 
         $doc = DfeDocument::query()->create([

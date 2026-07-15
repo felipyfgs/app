@@ -2,9 +2,9 @@
 
 namespace App\Contracts;
 
+use App\DTO\Outbound\MaRetrievalDownloadResult;
 use App\DTO\Outbound\MaRetrievalPollResult;
 use App\DTO\Outbound\MaRetrievalRequestResult;
-use App\DTO\Outbound\MaRetrievalDownloadResult;
 
 /**
  * Recuperação oficial de XML de saída MA.

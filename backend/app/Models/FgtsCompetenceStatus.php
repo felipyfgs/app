@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\FgtsIndependentState;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalSituation;
-use App\Enums\FgtsIndependentState;
 use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;

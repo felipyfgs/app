@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Serpro;
 
+use App\Enums\AuthorCertificateMode;
 use App\Enums\AuthorIdentityType;
 use App\Enums\OfficeRole;
 use App\Enums\SerproAuthorizationStatus;
@@ -95,7 +96,7 @@ class OfficeSerproAuthorizationTest extends TestCase
             AuthorIdentityType::Cpf,
             '12345678901',
             'A3 User',
-            \App\Enums\AuthorCertificateMode::InteractiveA3,
+            AuthorCertificateMode::InteractiveA3,
             $admin->id,
         );
 
@@ -123,7 +124,7 @@ class OfficeSerproAuthorizationTest extends TestCase
             AuthorIdentityType::Cpf,
             '12345678901',
             null,
-            \App\Enums\AuthorCertificateMode::ExternalSignature,
+            AuthorCertificateMode::ExternalSignature,
             $admin->id,
         );
         $svc->uploadTermo($office, SerproEnvironment::Trial, $this->validTermoXml('12345678901', '11222333000181'), $admin->id);

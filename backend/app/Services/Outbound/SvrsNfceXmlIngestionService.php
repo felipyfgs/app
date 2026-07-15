@@ -10,6 +10,8 @@ use App\Enums\DocumentDirection;
 use App\Enums\DocumentPurpose;
 use App\Enums\FiscalRole;
 use App\Enums\OutboundNumberStatus;
+use App\Enums\OutboundRetrievalStatus;
+use App\Enums\OutboundUrgencyBand;
 use App\Enums\SvrsNfceFailureReason;
 use App\Enums\SvrsNfceRecoveryStatus;
 use App\Models\DfeDocument;
@@ -285,13 +287,13 @@ final class SvrsNfceXmlIngestionService
 
         $request->forceFill([
             'recovery_status' => SvrsNfceRecoveryStatus::Captured,
-            'status' => \App\Enums\OutboundRetrievalStatus::Ingested,
+            'status' => OutboundRetrievalStatus::Ingested,
             'sha256' => $sha,
             'dfe_document_id' => $dfeId,
             'ingested_at' => now(),
             'captured_at' => now(),
             'capture_source' => 'SVRS_NFCE',
-            'urgency_band' => \App\Enums\OutboundUrgencyBand::Captured,
+            'urgency_band' => OutboundUrgencyBand::Captured,
             'failure_reason' => null,
             'last_error' => null,
             'next_attempt_at' => null,

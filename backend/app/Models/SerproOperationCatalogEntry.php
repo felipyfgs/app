@@ -11,6 +11,7 @@ use Illuminate\Support\Carbon;
  * Classificação versionada de operação SERPRO por vigência.
  */
 #[Fillable([
+    'operation_key',
     'system_code',
     'service_code',
     'operation_code',

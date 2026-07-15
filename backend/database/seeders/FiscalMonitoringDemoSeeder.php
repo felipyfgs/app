@@ -41,8 +41,8 @@ use App\Models\ClientTaxRegimePeriod;
 use App\Models\DctfwebDarfDocument;
 use App\Models\DctfwebDeclaration;
 use App\Models\DctfwebEvidenceVersion;
-use App\Models\Establishment;
 use App\Models\EsocialEventEvidence;
+use App\Models\Establishment;
 use App\Models\FgtsCompetenceStatus;
 use App\Models\FiscalCategory;
 use App\Models\FiscalCompetence;
@@ -1016,8 +1016,7 @@ class FiscalMonitoringDemoSeeder extends Seeder
                     $code === 'DEFIS' && $regime->isMeiFamily() => TaxObligationApplicability::NotApplicable,
                     $code === 'DASN_SIMEI' && $regime->isMeiFamily() => TaxObligationApplicability::Applicable,
                     $code === 'DASN_SIMEI' && $regime->isSimplesFamily() => TaxObligationApplicability::NotApplicable,
-                    $code === 'DCTFWEB' && in_array($regime, [TaxRegimeCode::LucroPresumido, TaxRegimeCode::LucroReal], true)
-                        => TaxObligationApplicability::Applicable,
+                    $code === 'DCTFWEB' && in_array($regime, [TaxRegimeCode::LucroPresumido, TaxRegimeCode::LucroReal], true) => TaxObligationApplicability::Applicable,
                     $code === 'DCTFWEB' && $regime->isMeiFamily() => TaxObligationApplicability::NotApplicable,
                     $code === 'DCTFWEB' => TaxObligationApplicability::Unknown,
                     default => TaxObligationApplicability::NotApplicable,

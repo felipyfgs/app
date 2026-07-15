@@ -13,7 +13,6 @@ use App\Enums\FiscalMutability;
 use App\Enums\SerproEnvironment;
 use App\Enums\SerproUsageResult;
 use App\Models\Client;
-use App\Models\Office;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\OfficeSerproAuthorizationService;
 use App\Services\Serpro\SerproContractService;

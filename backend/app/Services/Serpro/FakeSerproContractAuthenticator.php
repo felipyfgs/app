@@ -8,7 +8,7 @@ use App\Models\SerproContract;
 use Carbon\CarbonImmutable;
 
 /**
- * Authenticator de trial/CI — não chama SERPRO real.
+ * Authenticator de trial/CI — emite o par access_token + jwt_token (simulado).
  */
 final class FakeSerproContractAuthenticator implements SerproContractAuthenticator
 {
@@ -20,37 +20,45 @@ final class FakeSerproContractAuthenticator implements SerproContractAuthenticat
     {
         $cached = $this->tokenCache->get($contract);
         if ($cached !== null) {
-            return $cached;
+            try {
+                $cached->assertComplete();
+
+                return $cached;
+            } catch (\RuntimeException) {
+                $this->tokenCache->invalidate($contract);
+            }
         }
 
         return $this->tokenCache->withRefreshLock($contract, function () use ($contract): SerproAuthToken {
             $cached = $this->tokenCache->get($contract);
             if ($cached !== null) {
-                return $cached;
+                try {
+                    $cached->assertComplete();
+
+                    return $cached;
+                } catch (\RuntimeException) {
+                    $this->tokenCache->invalidate($contract);
+                }
             }
 
+            $jwt = 'fake-jwt-'.$contract->id.'-'.bin2hex(random_bytes(12));
             $token = new SerproAuthToken(
                 accessToken: 'fake-serpro-token-'.$contract->id.'-'.bin2hex(random_bytes(8)),
                 tokenType: 'Bearer',
                 expiresAt: CarbonImmutable::now()->addHour(),
-                jwt: null,
+                jwtToken: $jwt,
                 fromCache: false,
+                jwt: $jwt,
             );
 
             $this->tokenCache->put($contract, $token);
 
             $contract->health_status = 'OK';
-            $contract->health_message = 'Auth simulada (trial).';
+            $contract->health_message = 'Auth simulada (trial) com jwt_token.';
             $contract->last_verified_at = now();
             $contract->save();
 
-            return new SerproAuthToken(
-                accessToken: $token->accessToken,
-                tokenType: $token->tokenType,
-                expiresAt: $token->expiresAt,
-                jwt: $token->jwt,
-                fromCache: false,
-            );
+            return $token;
         });
     }
 

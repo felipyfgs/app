@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Fiscal\SimplesMei;
 
+use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\Enums\FiscalGuidePaymentStatus;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
+use App\Enums\FiscalTrigger;
 use App\Enums\OfficeRole;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproContractStatus;
@@ -26,8 +28,10 @@ use App\Models\SerproContract;
 use App\Models\TaxProxyPower;
 use App\Models\User;
 use App\Services\Fiscal\SimplesMei\RegimeApplicabilityService;
+use App\Services\Fiscal\SimplesMei\SimplesMeiAdapter;
 use App\Services\Fiscal\SimplesMei\SimplesMeiCatalog;
 use App\Services\Fiscal\SimplesMei\SimplesMeiQueryService;
+use App\Services\FiscalMonitoring\FiscalAdapterRegistry;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -306,10 +310,10 @@ class SimplesMeiMonitoringTest extends TestCase
 
     public function test_adapters_registrados_no_registry(): void
     {
-        $registry = app(\App\Services\FiscalMonitoring\FiscalAdapterRegistry::class);
+        $registry = app(FiscalAdapterRegistry::class);
         $count = 0;
         foreach (SimplesMeiCatalog::all() as $def) {
-            $req = new \App\DTO\Fiscal\FiscalAdapterRequest(
+            $req = new FiscalAdapterRequest(
                 office: $this->office,
                 client: $this->client,
                 run: new FiscalMonitoringRun([
@@ -322,10 +326,10 @@ class SimplesMeiMonitoringTest extends TestCase
                 systemCode: $def->systemCode,
                 serviceCode: $def->serviceCode,
                 operationCode: $def->operationCode,
-                trigger: \App\Enums\FiscalTrigger::Manual,
+                trigger: FiscalTrigger::Manual,
             );
             $adapter = $registry->resolve($req);
-            $this->assertInstanceOf(\App\Services\Fiscal\SimplesMei\SimplesMeiAdapter::class, $adapter);
+            $this->assertInstanceOf(SimplesMeiAdapter::class, $adapter);
             $count++;
         }
         $this->assertGreaterThanOrEqual(15, $count);

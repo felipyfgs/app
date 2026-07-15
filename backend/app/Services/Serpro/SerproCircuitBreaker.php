@@ -3,6 +3,7 @@
 namespace App\Services\Serpro;
 
 use App\Services\Audit\AuditLogger;
+use App\Services\Operations\OperationsMetrics;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -65,7 +66,7 @@ final class SerproCircuitBreaker
         ], $userId, null);
 
         try {
-            app(\App\Services\Operations\OperationsMetrics::class)->increment(
+            app(OperationsMetrics::class)->increment(
                 'serpro.breaker.trip',
                 1,
                 ['breaker_state' => 'open', 'channel' => 'serpro'],

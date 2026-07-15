@@ -2,6 +2,8 @@
 
 namespace Tests\Support;
 
+use PHPUnit\Framework\AssertionFailedError;
+
 /**
  * Varredura automática de marcadores de segredo em payloads de API.
  * Usar em testes Feature de Operations e superfícies tenant.
@@ -106,7 +108,7 @@ final class ApiSecretScanner
     {
         $hits = self::findLeaks($payload);
         if ($hits !== []) {
-            throw new \PHPUnit\Framework\AssertionFailedError(
+            throw new AssertionFailedError(
                 "Marcadores sensíveis em {$context}: ".implode(', ', $hits)
             );
         }

@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Sefaz;
 
+use App\Services\Adn\CurlMtlsTransport;
 use App\Services\Sefaz\HttpSefazNfeManifestationClient;
 use App\Services\Sefaz\ManifestationResponseParser;
 use ReflectionClass;
@@ -74,7 +75,7 @@ XML;
         $this->assertStringNotContainsString('sys_get_temp_dir', $source);
         $this->assertStringNotContainsString('file_put_contents', $source);
         $this->assertStringContainsString('CURLOPT_SSLCERT_BLOB', file_get_contents(
-            (new ReflectionClass(\App\Services\Adn\CurlMtlsTransport::class))->getFileName()
+            (new ReflectionClass(CurlMtlsTransport::class))->getFileName()
         ));
     }
 }

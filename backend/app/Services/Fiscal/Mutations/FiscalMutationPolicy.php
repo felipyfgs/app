@@ -9,7 +9,9 @@ use App\Enums\SerproEnvironment;
 use App\Models\Client;
 use App\Models\FiscalMutationOperation;
 use App\Models\Office;
+use App\Models\OfficeSerproAuthorization;
 use App\Models\SerproServiceCatalogEntry;
+use App\Models\TaxProxyPower;
 use App\Models\User;
 use App\Services\Fiscal\Demo\FiscalDataOriginResolver;
 use App\Services\Integra\IntegraEligibilityService;
@@ -166,7 +168,7 @@ final class FiscalMutationPolicy
             // 8. Procuração / poder (revalidação pontual)
             $requiredPower = $catalog->required_proxy_power;
             if ($requiredPower !== null && $requiredPower !== '') {
-                $auth = \App\Models\OfficeSerproAuthorization::query()
+                $auth = OfficeSerproAuthorization::query()
                     ->where('office_id', $office->id)
                     ->where('environment', $environment->value)
                     ->first();
@@ -182,7 +184,7 @@ final class FiscalMutationPolicy
 
                 if ($power === null) {
                     // Distinguir revogado vs ausente se existir registro
-                    $any = \App\Models\TaxProxyPower::query()
+                    $any = TaxProxyPower::query()
                         ->where('office_id', $office->id)
                         ->where('client_id', $client->id)
                         ->where('power_code', strtoupper($requiredPower))

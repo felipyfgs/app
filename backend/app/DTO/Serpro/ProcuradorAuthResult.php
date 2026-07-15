@@ -14,6 +14,8 @@ final class ProcuradorAuthResult
         public readonly ?string $errorMessage = null,
         public readonly bool $simulated = false,
         public readonly bool $requiresNewSignature = false,
+        public readonly ?string $authorizationState = null,
+        public readonly ?string $etag = null,
     ) {}
 
     /**
@@ -29,6 +31,8 @@ final class ProcuradorAuthResult
             'error_message' => $this->errorMessage,
             'simulated' => $this->simulated,
             'requires_new_signature' => $this->requiresNewSignature,
+            'authorization_state' => $this->authorizationState,
+            'has_etag' => $this->etag !== null && $this->etag !== '',
         ];
     }
 }

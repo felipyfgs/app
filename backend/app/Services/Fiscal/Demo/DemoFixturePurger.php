@@ -43,7 +43,6 @@ use App\Models\TaxInstallmentOrder;
 use App\Models\TaxInstallmentParcel;
 use App\Models\TaxInstallmentPayment;
 use App\Models\TaxObligationProjection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -332,7 +331,6 @@ final class DemoFixturePurger
     /**
      * @param  class-string  $model
      * @param  list<int>|null  $clientIds
-     * @param  callable|null  $extra
      */
     private function deleteWhereOffice(string $model, int $officeId, ?array $clientIds = null, ?callable $extra = null): void
     {

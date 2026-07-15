@@ -7,6 +7,7 @@ use App\Http\Middleware\EnsureAdminTwoFactor;
 use App\Http\Middleware\EnsureOfficeContext;
 use App\Models\Office;
 use App\Models\User;
+use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -141,7 +142,7 @@ class AdminTwoFactorTest extends TestCase
 
         // Inverso: selected = VIEWER (primeira membership ADMIN) → não deve forçar setup
         $user->forceFill(['selected_office_id' => $officeViewer->id])->save();
-        app(\App\Support\CurrentOffice::class)->clear();
+        app(CurrentOffice::class)->clear();
 
         $this->actingAs($user)
             ->getJson('/api/v1/me')

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\FiscalMonitoring;
 
+use App\DTO\Serpro\IntegraResponse;
 use App\Enums\DctfwebArtifactKind;
 use App\Enums\DctfwebMutationStatus;
 use App\Enums\DctfwebTransmissionStatus;
@@ -16,6 +17,7 @@ use App\Enums\SerproEnvironment;
 use App\Enums\TaxProxyPowerSource;
 use App\Enums\TaxProxyPowerStatus;
 use App\Models\Client;
+use App\Models\DctfwebDarfDocument;
 use App\Models\DctfwebDeclaration;
 use App\Models\DctfwebEvidenceVersion;
 use App\Models\DctfwebMutationAttempt;
@@ -27,10 +29,13 @@ use App\Models\MitApuracao;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\SerproContract;
+use App\Models\SerproServiceCatalogEntry;
 use App\Models\TaxProxyPower;
 use App\Models\User;
+use App\Services\Fiscal\Mutations\RecentTwoFactorGate;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
+use App\Services\Integra\Dctfweb\DctfwebCompetenceResolver;
 use App\Services\Integra\Dctfweb\DctfwebEventIngestionService;
 use App\Services\Integra\Dctfweb\DctfwebMutationGuard;
 use App\Services\Integra\Dctfweb\MitApuracaoService;
@@ -201,7 +206,7 @@ class DctfwebMitMonitoringTest extends TestCase
             FakeIntegraContadorClient::productiveRecibo($period, 'REC-ORIG', retificadora: false),
         );
 
-        $competence = app(\App\Services\Integra\Dctfweb\DctfwebCompetenceResolver::class)
+        $competence = app(DctfwebCompetenceResolver::class)
             ->resolve($this->office, $this->client, $period);
 
         $run1 = $runs->enqueueManual(
@@ -342,7 +347,7 @@ class DctfwebMitMonitoringTest extends TestCase
             FakeIntegraContadorClient::productiveMitEncerrado($period),
         );
 
-        $competence = app(\App\Services\Integra\Dctfweb\DctfwebCompetenceResolver::class)
+        $competence = app(DctfwebCompetenceResolver::class)
             ->resolve($this->office, $this->client, $period, DctfwebCodes::CATEGORY_MIT);
 
         $run = $runs->enqueueManual(
@@ -411,7 +416,7 @@ class DctfwebMitMonitoringTest extends TestCase
         // Adapter mutante também bloqueado no núcleo
         config(['fiscal_monitoring.mutating_enabled' => false]);
         $runs = app(FiscalMonitoringRunService::class);
-        $competence = app(\App\Services\Integra\Dctfweb\DctfwebCompetenceResolver::class)
+        $competence = app(DctfwebCompetenceResolver::class)
             ->resolve($this->office, $this->client, '2026-04');
         $run = $runs->enqueueManual(
             $this->office,
@@ -439,7 +444,7 @@ class DctfwebMitMonitoringTest extends TestCase
         ]);
 
         // Catálogo mutante OFF por default — habilita para o path de timeout.
-        \App\Models\SerproServiceCatalogEntry::query()
+        SerproServiceCatalogEntry::query()
             ->where('solution_code', DctfwebCodes::SYSTEM_DCTFWEB)
             ->where('service_code', DctfwebCodes::SERVICE_DCTFWEB)
             ->where('operation_code', DctfwebCodes::OP_TRANSMITIR)
@@ -448,9 +453,9 @@ class DctfwebMitMonitoringTest extends TestCase
         // Actor + 2FA recente obrigatórios (fail-closed no guard)
         $this->actingAs($this->admin);
         app(CurrentOffice::class)->resolve($this->admin);
-        app(\App\Services\Fiscal\Mutations\RecentTwoFactorGate::class)->markConfirmed($this->admin);
+        app(RecentTwoFactorGate::class)->markConfirmed($this->admin);
         $this->withSession([
-            \App\Services\Fiscal\Mutations\RecentTwoFactorGate::SESSION_KEY => time(),
+            RecentTwoFactorGate::SESSION_KEY => time(),
         ]);
 
         $period = '2026-05';
@@ -462,7 +467,7 @@ class DctfwebMitMonitoringTest extends TestCase
         );
 
         $runs = app(FiscalMonitoringRunService::class);
-        $competence = app(\App\Services\Integra\Dctfweb\DctfwebCompetenceResolver::class)
+        $competence = app(DctfwebCompetenceResolver::class)
             ->resolve($this->office, $this->client, $period);
 
         $run = $runs->enqueueManual(
@@ -547,7 +552,7 @@ class DctfwebMitMonitoringTest extends TestCase
             DctfwebCodes::SYSTEM_DCTFWEB,
             DctfwebCodes::SERVICE_DCTFWEB,
             DctfwebCodes::OP_EMITIR_DARF,
-            new \App\DTO\Serpro\IntegraResponse(
+            new IntegraResponse(
                 success: true,
                 httpStatus: 200,
                 body: [
@@ -561,7 +566,7 @@ class DctfwebMitMonitoringTest extends TestCase
         );
 
         $runs = app(FiscalMonitoringRunService::class);
-        $competence = app(\App\Services\Integra\Dctfweb\DctfwebCompetenceResolver::class)
+        $competence = app(DctfwebCompetenceResolver::class)
             ->resolve($this->office, $this->client, $period);
         $run = $runs->enqueueManual(
             $this->office,
@@ -575,7 +580,7 @@ class DctfwebMitMonitoringTest extends TestCase
         );
         $runs->execute($run->id);
 
-        $darf = \App\Models\DctfwebDarfDocument::query()->withoutGlobalScopes()
+        $darf = DctfwebDarfDocument::query()->withoutGlobalScopes()
             ->where('office_id', $this->office->id)->first();
         $this->assertNotNull($darf);
         $this->assertSame(FiscalPaymentStatus::Unknown, $darf->payment_status);

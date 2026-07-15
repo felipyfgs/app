@@ -25,6 +25,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'system_code',
     'service_code',
     'operation_code',
+    'operation_key',
+    'source_provenance',
+    'verification_state',
     'trigger',
     'idempotency_key',
     'status',
@@ -62,6 +65,8 @@ class FiscalMonitoringRun extends Model
             'situation' => FiscalSituation::class,
             'coverage' => FiscalCoverage::class,
             'mutability' => FiscalMutability::class,
+            'source_provenance' => \App\Enums\FiscalSourceProvenance::class,
+            'verification_state' => \App\Enums\FiscalVerificationState::class,
             'attempt' => 'integer',
             'progress' => 'array',
             'items_processed' => 'integer',
@@ -138,6 +143,13 @@ class FiscalMonitoringRun extends Model
             'system_code' => $this->system_code,
             'service_code' => $this->service_code,
             'operation_code' => $this->operation_code,
+            'operation_key' => $this->operation_key,
+            'source_provenance' => $this->source_provenance instanceof \BackedEnum
+                ? $this->source_provenance->value
+                : $this->source_provenance,
+            'verification_state' => $this->verification_state instanceof \BackedEnum
+                ? $this->verification_state->value
+                : $this->verification_state,
             'trigger' => $this->trigger?->value,
             'idempotency_key' => $this->idempotency_key,
             'status' => $this->status?->value,

@@ -10,6 +10,7 @@ use App\Models\MaOutboundRetrievalRequest;
 use App\Models\NfeDocument;
 use App\Models\OutboundMonthlyReadiness;
 use App\Services\Audit\AuditLogger;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -48,7 +49,7 @@ final class OutboundMonthlyReadinessService
             ->get()
             ->filter(function (NfeDocument $n) use ($competence): bool {
                 try {
-                    return \Carbon\CarbonImmutable::parse($n->issued_at)->format('Y-m') === $competence;
+                    return CarbonImmutable::parse($n->issued_at)->format('Y-m') === $competence;
                 } catch (\Throwable) {
                     return false;
                 }

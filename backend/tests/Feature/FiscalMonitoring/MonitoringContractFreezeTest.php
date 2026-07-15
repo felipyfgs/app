@@ -3,6 +3,7 @@
 namespace Tests\Feature\FiscalMonitoring;
 
 use App\Enums\DctfwebTransmissionStatus;
+use App\Enums\FgtsIndependentState;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalPaymentStatus;
@@ -10,7 +11,6 @@ use App\Enums\FiscalPendingStatus;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
 use App\Enums\FiscalTrigger;
-use App\Enums\FgtsIndependentState;
 use App\Enums\MailboxSource;
 use App\Enums\MailboxTriageStatus;
 use App\Enums\OfficeRole;

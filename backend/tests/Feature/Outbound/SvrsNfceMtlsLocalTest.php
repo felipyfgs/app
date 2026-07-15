@@ -2,13 +2,13 @@
 
 namespace Tests\Feature\Outbound;
 
-use App\Contracts\SvrsNfceOutboundXmlRetrievalClient;
 use App\DTO\Outbound\SvrsNfceRetrievalRequest;
 use App\Enums\SvrsNfceTransportOutcome;
 use App\Services\Outbound\HttpSvrsNfceOutboundXmlRetrievalClient;
 use App\Services\Outbound\SvrsNfceConfig;
 use App\Services\Outbound\SvrsNfceDownloadResponseParser;
 use App\Services\Outbound\SvrsNfceKillSwitchService;
+use Illuminate\Support\Facades\Cache;
 use ReflectionClass;
 use Tests\TestCase;
 
@@ -87,7 +87,7 @@ class SvrsNfceMtlsLocalTest extends TestCase
         $this->assertSame(SvrsNfceTransportOutcome::ChannelDisabled, $r->outcome);
 
         config(['sefaz.svrs_nfce_xml.retrieval_enabled' => true]);
-        \Illuminate\Support\Facades\Cache::forever('sefaz.svrs_nfce_xml.kill_switch.runtime', true);
+        Cache::forever('sefaz.svrs_nfce_xml.kill_switch.runtime', true);
         $client2 = new HttpSvrsNfceOutboundXmlRetrievalClient(
             new SvrsNfceConfig,
             app(SvrsNfceDownloadResponseParser::class),
@@ -95,7 +95,7 @@ class SvrsNfceMtlsLocalTest extends TestCase
         );
         $r2 = $client2->retrieve($req, ['pfx' => 'dummy', 'password' => 'x']);
         $this->assertSame(SvrsNfceTransportOutcome::KillSwitch, $r2->outcome);
-        \Illuminate\Support\Facades\Cache::forget('sefaz.svrs_nfce_xml.kill_switch.runtime');
+        Cache::forget('sefaz.svrs_nfce_xml.kill_switch.runtime');
     }
 
     public function test_servidor_mtls_local_openssl_quando_disponivel(): void

@@ -10,6 +10,7 @@ use App\Models\CteDocument;
 use App\Models\CteEvent;
 use App\Models\DocumentAcquisition;
 use App\Models\DocumentInterest;
+use App\Models\Establishment;
 use App\Models\FiscalDocumentQuarantine;
 use Illuminate\Support\Facades\DB;
 
@@ -68,7 +69,7 @@ final class CteReconciliationService
                         ->where('document_interests.dfe_document_id', $parent->dfe_document_id)
                         ->where('establishments.cnpj', strtoupper($issuer))
                         ->exists()
-                        || \App\Models\Establishment::query()
+                        || Establishment::query()
                             ->where('office_id', $officeId)
                             ->where('cnpj', strtoupper($issuer))
                             ->where('is_active', true)

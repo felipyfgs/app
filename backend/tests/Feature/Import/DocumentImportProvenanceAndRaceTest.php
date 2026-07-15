@@ -14,7 +14,6 @@ use App\Models\Client;
 use App\Models\DocumentAcquisition;
 use App\Models\DocumentInterest;
 use App\Models\Establishment;
-use App\Models\FiscalDocumentQuarantine;
 use App\Models\NfeDocument;
 use App\Models\Office;
 use App\Models\OfficeAutXmlEnrollment;

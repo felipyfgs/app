@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Outbound;
 
+use App\Contracts\SvrsPortalEgressGovernor;
 use App\Domain\Outbound\Competence;
 use App\Enums\OutboundCaptureMode;
 use App\Enums\OutboundFiscalModel;
@@ -14,14 +15,15 @@ use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\MaOutboundRetrievalRequest;
 use App\Models\Office;
-use App\Models\OutboundCaptureProfile;
 use App\Models\OutboundCapacitySnapshot;
+use App\Models\OutboundCaptureProfile;
 use App\Services\Outbound\OutboundDeadlineCalculator;
 use App\Services\Outbound\OutboundDeadlineFairQueue;
 use App\Services\Outbound\OutboundDeadlinePlannerService;
 use App\Services\Outbound\OutboundDeadlineSatisfactionService;
 use App\Services\Outbound\OutboundMetrics;
 use App\Services\Outbound\OutboundXmlCaptureCapacityPlanner;
+use App\Services\Outbound\SvrsPortalEgressConfig;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -65,14 +67,14 @@ class OutboundDeadlinePolicyAndMetricsTest extends TestCase
             'sefaz.svrs_portal_egress.max_exchanges_per_day' => 50,
             'sefaz.svrs_portal_egress.exchanges_per_download' => 2,
         ]);
-        $gov = \Mockery::mock(\App\Contracts\SvrsPortalEgressGovernor::class);
+        $gov = \Mockery::mock(SvrsPortalEgressGovernor::class);
         $gov->shouldReceive('isCallAllowed')->andReturn(true);
         $gov->shouldReceive('cohortHealth')->andReturn([
             'state' => 'closed',
             'exchanges_day' => 0,
             'exchanges_day_remaining' => 50,
         ]);
-        $planner = new OutboundXmlCaptureCapacityPlanner($gov, app(\App\Services\Outbound\SvrsPortalEgressConfig::class));
+        $planner = new OutboundXmlCaptureCapacityPlanner($gov, app(SvrsPortalEgressConfig::class));
         $comp = Competence::fromString('2026-07');
         $now = CarbonImmutable::parse('2026-07-01 12:00:00', 'UTC');
         $target = CarbonImmutable::parse('2026-07-31 02:59:59', 'UTC');

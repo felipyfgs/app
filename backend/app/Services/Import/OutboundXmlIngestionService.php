@@ -21,9 +21,10 @@ use App\Models\DocumentInterest;
 use App\Models\Establishment;
 use App\Models\FiscalDocumentQuarantine;
 use App\Models\NfeDocument;
+use App\Services\Outbound\OutboundDeadlineSatisfactionService;
 use App\Services\Sefaz\CteArtifactQualityClassifier;
-use App\Services\Sefaz\CteXmlProjectionParser;
 use App\Services\Sefaz\CteReconciliationService;
+use App\Services\Sefaz\CteXmlProjectionParser;
 use App\Services\Sefaz\NfeXmlProjectionParser;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -517,7 +518,7 @@ final class OutboundXmlIngestionService
 
             // Satisfaz prazo e cancela recoveries SVRS pendentes (fonte preferencial)
             try {
-                app(\App\Services\Outbound\OutboundDeadlineSatisfactionService::class)
+                app(OutboundDeadlineSatisfactionService::class)
                     ->markCapturedBySource($officeId, $accessKey, 'MANUAL_XML', $sha);
             } catch (\Throwable) {
             }

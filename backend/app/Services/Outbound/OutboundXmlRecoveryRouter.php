@@ -4,6 +4,7 @@ namespace App\Services\Outbound;
 
 use App\Enums\OutboundNumberStatus;
 use App\Models\DfeDocument;
+use App\Models\MaOutboundRetrievalRequest;
 use App\Models\OutboundCaptureProfile;
 use App\Models\OutboundNumberState;
 use Illuminate\Support\Facades\Log;
@@ -17,8 +18,11 @@ use Illuminate\Support\Facades\Log;
 final class OutboundXmlRecoveryRouter
 {
     public const SOURCE_VAULT = 'VAULT';
+
     public const SOURCE_OTHER_INGESTION = 'OTHER_INGESTION';
+
     public const SOURCE_SVRS = 'SVRS_PORTAL';
+
     public const SOURCE_ASSISTED = 'ASSISTED_FALLBACK';
 
     public function __construct(
@@ -84,7 +88,7 @@ final class OutboundXmlRecoveryRouter
         }
 
         // Acomodação: se recovery ainda na janela, não chama SVRS
-        $pending = \App\Models\MaOutboundRetrievalRequest::query()
+        $pending = MaOutboundRetrievalRequest::query()
             ->where('office_id', $number->office_id)
             ->where('access_key', $key)
             ->whereNotNull('accommodation_until')

@@ -3,7 +3,7 @@
 namespace App\Services\Outbound;
 
 use App\Enums\OutboundDeadlineStatus;
-use App\Enums\OutboundNumberStatus;
+use App\Enums\OutboundFiscalModel;
 use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\OutboundUrgencyBand;
 use App\Enums\SvrsNfceFailureReason;
@@ -11,7 +11,6 @@ use App\Enums\SvrsNfceRecoveryStatus;
 use App\Models\DfeDocument;
 use App\Models\MaOutboundRetrievalRequest;
 use App\Models\NfeDocument;
-use App\Models\OutboundNumberState;
 use App\Services\Audit\AuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
@@ -239,7 +238,7 @@ final class OutboundDeadlineSatisfactionService
             return [
                 'id' => $r->id,
                 'competence' => $r->competence,
-                'model' => $r->model instanceof \App\Enums\OutboundFiscalModel ? $r->model->value : $r->model,
+                'model' => $r->model instanceof OutboundFiscalModel ? $r->model->value : $r->model,
                 'root_cnpj' => $r->root_cnpj,
                 'urgency_band' => $r->urgency_band?->value,
                 'due_at' => $r->due_at?->toIso8601String(),

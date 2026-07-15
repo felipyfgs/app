@@ -3,7 +3,9 @@
 namespace Database\Factories;
 
 use App\Enums\OfficeRole;
+use App\Enums\PlatformRole;
 use App\Models\Office;
+use App\Models\PlatformMembership;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -61,14 +63,13 @@ class UserFactory extends Factory
     public function asPlatformAdmin(): static
     {
         return $this->withTwoFactorConfirmed()->afterCreating(function (User $user): void {
-            \App\Models\PlatformMembership::query()->firstOrCreate(
+            PlatformMembership::query()->firstOrCreate(
                 [
                     'user_id' => $user->id,
-                    'role' => \App\Enums\PlatformRole::PlatformAdmin->value,
+                    'role' => PlatformRole::PlatformAdmin->value,
                 ],
                 ['is_active' => true],
             );
         });
     }
 }
-

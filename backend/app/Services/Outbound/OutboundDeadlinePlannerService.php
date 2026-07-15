@@ -3,6 +3,8 @@
 namespace App\Services\Outbound;
 
 use App\Domain\Outbound\Competence;
+use App\Domain\Outbound\DeadlinePlan;
+use App\Domain\Outbound\OperationalSla;
 use App\Enums\OutboundDeadlineSource;
 use App\Enums\OutboundDeadlineStatus;
 use App\Enums\OutboundRetrievalOrigin;
@@ -11,6 +13,7 @@ use App\Enums\SvrsNfceRecoveryStatus;
 use App\Models\MaOutboundRetrievalRequest;
 use App\Models\OutboundCapacitySnapshot;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -175,9 +178,9 @@ final class OutboundDeadlinePlannerService
         if ($plan === null && $row->competence) {
             try {
                 $comp = Competence::fromString((string) $row->competence);
-                $sla = \App\Domain\Outbound\OperationalSla::fromConfig();
+                $sla = OperationalSla::fromConfig();
                 $d = $sla->deadlinesFor($comp);
-                $plan = new \App\Domain\Outbound\DeadlinePlan(
+                $plan = new DeadlinePlan(
                     competence: $comp,
                     dueAt: $d['due_at'],
                     targetAt: $d['target_at'],
@@ -233,11 +236,11 @@ final class OutboundDeadlinePlannerService
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, MaOutboundRetrievalRequest>  $rows
+     * @param  Collection<int, MaOutboundRetrievalRequest>  $rows
      */
     private function scheduleAttempts($rows, CarbonImmutable $now): void
     {
-        $candidates = $rows->filter(function (MaOutboundRetrievalRequest $r) use ($now) {
+        $candidates = $rows->filter(function (MaOutboundRetrievalRequest $r) {
             if ($r->urgency_band === OutboundUrgencyBand::Captured) {
                 return false;
             }

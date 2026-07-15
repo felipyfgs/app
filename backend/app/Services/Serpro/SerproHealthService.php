@@ -3,7 +3,6 @@
 namespace App\Services\Serpro;
 
 use App\Enums\SerproEnvironment;
-use App\Models\SerproContract;
 
 final class SerproHealthService
 {

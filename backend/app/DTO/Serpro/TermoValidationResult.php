@@ -19,5 +19,7 @@ final class TermoValidationResult
         public readonly bool $signatureChecked = false,
         public readonly bool $signatureValid = false,
         public readonly array $limits = [],
+        /** LOCAL_VALIDATED | SERPRO_ACCEPTED | SIMULATED | REJECTED */
+        public readonly ?string $authorizationState = null,
     ) {}
 }

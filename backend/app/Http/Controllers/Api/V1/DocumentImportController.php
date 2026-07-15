@@ -11,6 +11,7 @@ use App\Services\Import\OutboundXmlIngestionService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use RuntimeException;
 use Throwable;
 
@@ -56,7 +57,7 @@ class DocumentImportController extends Controller
             }
         }
 
-        /** @var list<\Illuminate\Http\UploadedFile> $files */
+        /** @var list<UploadedFile> $files */
         $files = $request->file('files', []);
         if (! is_array($files)) {
             $files = [$files];
@@ -124,4 +125,3 @@ class DocumentImportController extends Controller
         ], $report['imported'] > 0 || $report['skipped'] > 0 ? 200 : 422);
     }
 }
-

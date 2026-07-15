@@ -9,6 +9,7 @@ use App\Enums\FiscalMutationStatus;
 use App\Enums\SerproEnvironment;
 use App\Models\Client;
 use App\Models\FiscalMutationOperation;
+use App\Models\FiscalMutationOperationEvent;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\User;
@@ -152,7 +153,7 @@ final class FiscalMutationService
 
         // transition no-op se same status — garantir evento de preflight
         if ($operation->events()->count() === 0) {
-            \App\Models\FiscalMutationOperationEvent::query()->create([
+            FiscalMutationOperationEvent::query()->create([
                 'office_id' => $office->id,
                 'fiscal_mutation_operation_id' => $operation->id,
                 'from_status' => null,
@@ -755,5 +756,4 @@ final class FiscalMutationService
 
         return substr($cnpj, 0, 2).str_repeat('*', max(0, strlen($cnpj) - 6)).substr($cnpj, -4);
     }
-
 }

@@ -20,6 +20,9 @@ use LogicException;
     'byte_size',
     'source',
     'source_version',
+    'source_provenance',
+    'verification_state',
+    'operation_key',
     'observed_at',
     'retention_until',
     'is_immutable',
@@ -36,6 +39,8 @@ class FiscalEvidenceArtifact extends Model
     {
         return [
             'byte_size' => 'integer',
+            'source_provenance' => \App\Enums\FiscalSourceProvenance::class,
+            'verification_state' => \App\Enums\FiscalVerificationState::class,
             'observed_at' => 'immutable_datetime',
             'retention_until' => 'immutable_datetime',
             'is_immutable' => 'boolean',

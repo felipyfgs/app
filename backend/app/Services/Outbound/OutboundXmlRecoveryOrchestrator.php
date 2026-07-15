@@ -11,14 +11,17 @@ use App\DTO\Outbound\SvrsNfceRetrievalRequest;
 use App\Enums\DocumentAcquisitionSource;
 use App\Enums\OutboundCaptureMode;
 use App\Enums\OutboundFiscalModel;
-use App\Enums\SvrsEgressBlockCause;
 use App\Enums\OutboundNumberStatus;
 use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\OutboundRetrievalStatus;
+use App\Enums\OutboundUrgencyBand;
+use App\Enums\SvrsEgressBlockCause;
 use App\Enums\SvrsNfceFailureReason;
 use App\Enums\SvrsNfceRecoveryStatus;
 use App\Enums\SvrsNfceTransportOutcome;
 use App\Jobs\RecoverSvrsNfceXmlJob;
+use App\Models\Client;
+use App\Models\Establishment;
 use App\Models\MaOutboundRetrievalRequest;
 use App\Models\OutboundCaptureProfile;
 use App\Models\OutboundNumberState;
@@ -309,9 +312,9 @@ final class OutboundXmlRecoveryOrchestrator
         }
 
         $establishmentForRoot = $profile->establishment()->withoutGlobalScopes()->first()
-            ?? \App\Models\Establishment::withoutGlobalScopes()->find($profile->establishment_id);
+            ?? Establishment::withoutGlobalScopes()->find($profile->establishment_id);
         $rootCnpj = $establishmentForRoot?->cnpj
-            ?? \App\Models\Client::withoutGlobalScopes()->find($profile->client_id)?->root_cnpj
+            ?? Client::withoutGlobalScopes()->find($profile->client_id)?->root_cnpj
             ?? ('CLIENT'.$profile->client_id);
 
         $rate = $this->rateLimiter->acquire(
@@ -390,7 +393,7 @@ final class OutboundXmlRecoveryOrchestrator
 
                 if ($result->isSuccess()) {
                     $establishment = $profile->establishment()->withoutGlobalScopes()->first()
-                        ?? \App\Models\Establishment::withoutGlobalScopes()->find($profile->establishment_id);
+                        ?? Establishment::withoutGlobalScopes()->find($profile->establishment_id);
 
                     if ($establishment === null) {
                         $failure = SvrsNfceFailureReason::NotEligible;
@@ -550,7 +553,7 @@ final class OutboundXmlRecoveryOrchestrator
                 'failure_reason' => SvrsNfceFailureReason::CapturedByOther->value,
                 'last_error' => 'Resolvido por '.$sourceLabel,
                 'next_attempt_at' => null,
-                'urgency_band' => \App\Enums\OutboundUrgencyBand::Captured->value,
+                'urgency_band' => OutboundUrgencyBand::Captured->value,
                 'capture_source' => mb_substr($sourceLabel, 0, 40),
                 'captured_at' => now(),
             ]);
@@ -702,7 +705,7 @@ final class OutboundXmlRecoveryOrchestrator
 
     private function hasA1(int $clientId): bool
     {
-        $client = \App\Models\Client::withoutGlobalScopes()->find($clientId);
+        $client = Client::withoutGlobalScopes()->find($clientId);
         if ($client === null) {
             return false;
         }
@@ -715,7 +718,7 @@ final class OutboundXmlRecoveryOrchestrator
      */
     private function materializeA1(int $clientId): ?array
     {
-        $client = \App\Models\Client::withoutGlobalScopes()->find($clientId);
+        $client = Client::withoutGlobalScopes()->find($clientId);
         if ($client === null) {
             return null;
         }

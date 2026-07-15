@@ -10,6 +10,8 @@ use App\Models\FiscalMonitoringSchedule;
 use App\Models\OfficeSubscription;
 use App\Support\FeatureFlags;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -125,7 +127,7 @@ final class FiscalMonitoringScheduler
                     continue;
                 }
 
-                /** @var \Illuminate\Support\Collection<int, FiscalMonitoringSchedule> $schedules */
+                /** @var Collection<int, FiscalMonitoringSchedule> $schedules */
                 $schedules = $byOffice[$officeId];
                 $idx = $pointers[$officeId];
                 if ($idx >= $schedules->count()) {
@@ -308,7 +310,7 @@ final class FiscalMonitoringScheduler
 
                 return ['global' => $globalKey, 'tenant' => $tenantKey];
             });
-        } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+        } catch (LockTimeoutException) {
             return null;
         }
     }

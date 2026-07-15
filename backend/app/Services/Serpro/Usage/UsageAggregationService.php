@@ -60,7 +60,7 @@ final class UsageAggregationService
             $delete->where('scope', SerproUsageMonthlyAggregate::SCOPE_TENANT)
                 ->where('office_id', $officeId);
         } else {
-            $delete->where(function ($q) use ($year, $month): void {
+            $delete->where(function ($q): void {
                 $q->where('scope', SerproUsageMonthlyAggregate::SCOPE_TENANT)
                     ->orWhere('scope', SerproUsageMonthlyAggregate::SCOPE_GLOBAL);
             });

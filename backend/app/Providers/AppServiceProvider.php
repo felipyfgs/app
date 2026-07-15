@@ -5,8 +5,8 @@ namespace App\Providers;
 use App\Contracts\AdnContributorClient;
 use App\Contracts\AutenticarProcuradorClient;
 use App\Contracts\CaixaPostalClient;
-use App\Contracts\CteXmlSignatureValidator;
 use App\Contracts\CnpjRegistrationLookup;
+use App\Contracts\CteXmlSignatureValidator;
 use App\Contracts\DteIndicatorClient;
 use App\Contracts\EsocialEventClient;
 use App\Contracts\FiscalMutationTransport;
@@ -17,17 +17,18 @@ use App\Contracts\MaOutboundXmlRetrievalClient;
 use App\Contracts\OutboundXmlCaptureCapacityPlanner;
 use App\Contracts\PfxReaderInterface;
 use App\Contracts\SecureObjectStore;
-use App\Contracts\SerproContractAuthenticator;
-use App\Contracts\SvrsNfceDownloadResponseParser as SvrsNfceDownloadResponseParserContract;
-use App\Contracts\SvrsNfceOutboundXmlRetrievalClient;
-use App\Contracts\SvrsNfe55OutboundXmlRetrievalClient;
-use App\Contracts\SvrsPortalEgressGovernor;
 use App\Contracts\SefazCteDistDfeClient;
 use App\Contracts\SefazDistDfeClient;
 use App\Contracts\SefazNfeManifestationClient;
 use App\Contracts\SefazOutboundInutilizationClient;
 use App\Contracts\SefazOutboundMutatingProbeClient;
 use App\Contracts\SefazOutboundProtocolQueryClient;
+use App\Contracts\SerproContractAuthenticator;
+use App\Contracts\SvrsNfceDownloadResponseParser as SvrsNfceDownloadResponseParserContract;
+use App\Contracts\SvrsNfceOutboundXmlRetrievalClient;
+use App\Contracts\SvrsNfe55OutboundXmlRetrievalClient;
+use App\Contracts\SvrsPortalEgressGovernor;
+use App\Contracts\TaxGuideEnrollment;
 use App\Models\Client;
 use App\Models\ClientContact;
 use App\Models\ClientCredential;
@@ -35,6 +36,7 @@ use App\Models\Establishment;
 use App\Models\OfficeCredential;
 use App\Models\OfficeFiscalIdentity;
 use App\Models\OutboundCaptureProfile;
+use App\Models\User;
 use App\Policies\ClientContactPolicy;
 use App\Policies\ClientCredentialPolicy;
 use App\Policies\ClientPolicy;
@@ -44,60 +46,74 @@ use App\Policies\OutboundCaptureProfilePolicy;
 use App\Services\Adn\CurlMtlsTransport;
 use App\Services\Adn\HttpAdnContributorClient;
 use App\Services\Certificates\PfxReader;
+use App\Services\Clients\CnpjWsRegistrationLookup;
+use App\Services\Esocial\FakeEsocialEventClient;
+use App\Services\Esocial\FgtsEsocialSourceAdapter;
+use App\Services\Fiscal\Guides\FakeGuideEmissionClient;
+use App\Services\Fiscal\Mutations\FakeFiscalMutationTransport;
+use App\Services\Fiscal\Mutations\IntegraFiscalMutationTransport;
+use App\Services\Fiscal\SimplesMei\DasGuideHookService;
+use App\Services\Fiscal\SimplesMei\RegimeApplicabilityService;
+use App\Services\Fiscal\SimplesMei\SimplesMeiAdapter;
+use App\Services\Fiscal\SimplesMei\SimplesMeiCatalog;
+use App\Services\Fiscal\SimplesMei\SimplesMeiResponseMapper;
+use App\Services\FiscalMonitoring\FiscalAdapterRegistry;
+use App\Services\Integra\Dctfweb\DctfwebAdapterRegistrar;
+use App\Enums\SerproCapabilityDriver;
+use App\Services\Integra\CapabilityAwareIntegraContadorClient;
+use App\Services\Integra\DisabledAutenticarProcuradorClient;
+use App\Services\Integra\FakeAutenticarProcuradorClient;
+use App\Services\Integra\FakeIntegraContadorClient;
+use App\Services\Integra\FakeIntegraProcuracoesClient;
+use App\Services\Integra\HttpIntegraContadorClient;
+use App\Services\Integra\IntegraEligibilityService;
+use App\Services\Integra\SimulatedIntegraContadorClient;
+use App\Services\Integra\Mailbox\CaixaPostalDetailAdapter;
+use App\Services\Integra\Mailbox\CaixaPostalListAdapter;
+use App\Services\Integra\Mailbox\DteIndicatorAdapter;
+use App\Services\Integra\Mailbox\FakeCaixaPostalClient;
+use App\Services\Integra\Mailbox\FakeDteIndicatorClient;
+use App\Services\Integra\OfficeSerproAuthorizationService;
+use App\Services\Integra\Parcelamento\FakeParcelamentoSource;
+use App\Services\Integra\Parcelamento\ParcelamentoEmitDocumentAdapter;
+use App\Services\Integra\Parcelamento\ParcelamentoMutatingAdapter;
+use App\Services\Integra\Parcelamento\ParcelamentoReadAdapter;
+use App\Services\Integra\Parcelamento\StubTaxGuideEnrollment;
+use App\Services\Integra\Sitfis\SitfisSourceAdapter;
 use App\Services\Outbound\DisabledMaOutboundXmlRetrievalClient;
 use App\Services\Outbound\DisabledSefazOutboundInutilizationClient;
 use App\Services\Outbound\DisabledSefazOutboundMutatingProbeClient;
 use App\Services\Outbound\DisabledSvrsNfceOutboundXmlRetrievalClient;
 use App\Services\Outbound\DisabledSvrsNfe55OutboundXmlRetrievalClient;
-use App\Services\Outbound\HttpSvrsNfe55OutboundXmlRetrievalClient;
-use App\Services\Outbound\SvrsNfe55KillSwitchService;
 use App\Services\Outbound\HttpSefazOutboundProtocolQueryClient;
 use App\Services\Outbound\HttpSvrsNfceOutboundXmlRetrievalClient;
+use App\Services\Outbound\HttpSvrsNfe55OutboundXmlRetrievalClient;
 use App\Services\Outbound\ProtocolQueryResponseParser;
 use App\Services\Outbound\RedisSvrsPortalEgressGovernor;
 use App\Services\Outbound\SvrsNfceConfig;
 use App\Services\Outbound\SvrsNfceDownloadResponseParser;
 use App\Services\Outbound\SvrsNfceKillSwitchService;
 use App\Services\Outbound\SvrsNfe55Config;
+use App\Services\Outbound\SvrsNfe55KillSwitchService;
 use App\Services\Outbound\SvrsPortalEgressConfig;
+use App\Services\Platform\OfficeSubscriptionGate;
 use App\Services\Sefaz\DistDfeResponseParser;
 use App\Services\Sefaz\HttpSefazCteDistDfeClient;
 use App\Services\Sefaz\HttpSefazDistDfeClient;
 use App\Services\Sefaz\HttpSefazNfeManifestationClient;
 use App\Services\Sefaz\ManifestationResponseParser;
 use App\Services\Sefaz\SpedCommonCteXmlSignatureValidator;
-use App\Services\Clients\CnpjWsRegistrationLookup;
-use App\Services\Fiscal\Guides\FakeGuideEmissionClient;
-use App\Services\Fiscal\Mutations\FakeFiscalMutationTransport;
-use App\Services\Fiscal\Mutations\IntegraFiscalMutationTransport;
-use App\Services\Integra\FakeAutenticarProcuradorClient;
-use App\Services\Integra\FakeIntegraContadorClient;
-use App\Services\Integra\FakeIntegraProcuracoesClient;
-use App\Services\Integra\HttpIntegraContadorClient;
+use App\Services\Serpro\CapabilityDriverResolver;
+use App\Services\Serpro\Catalog\OfficialServiceCatalogImporter;
+use App\Services\Serpro\Catalog\OfficialServiceCatalogManifest;
+use App\Services\Serpro\Catalog\OperationCoordinateResolver;
 use App\Services\Serpro\FakeSerproContractAuthenticator;
 use App\Services\Serpro\HttpSerproContractAuthenticator;
+use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproHttpTransport;
+use App\Services\Serpro\Usage\UsageLedgerService;
 use App\Services\Vault\EnvelopeCrypto;
 use App\Services\Vault\FilesystemSecureObjectStore;
-use App\Models\User;
-use App\Services\Platform\OfficeSubscriptionGate;
-use App\Services\Esocial\FakeEsocialEventClient;
-use App\Services\Esocial\FgtsEsocialSourceAdapter;
-use App\Services\Fiscal\SimplesMei\SimplesMeiAdapter;
-use App\Services\Fiscal\SimplesMei\SimplesMeiCatalog;
-use App\Services\FiscalMonitoring\FiscalAdapterRegistry;
-use App\Services\Integra\Mailbox\CaixaPostalDetailAdapter;
-use App\Services\Integra\Mailbox\CaixaPostalListAdapter;
-use App\Services\Integra\Mailbox\DteIndicatorAdapter;
-use App\Services\Integra\Mailbox\FakeCaixaPostalClient;
-use App\Services\Integra\Mailbox\FakeDteIndicatorClient;
-use App\Services\Integra\Sitfis\SitfisSourceAdapter;
-use App\Contracts\TaxGuideEnrollment;
-use App\Services\Integra\Parcelamento\FakeParcelamentoSource;
-use App\Services\Integra\Parcelamento\ParcelamentoEmitDocumentAdapter;
-use App\Services\Integra\Parcelamento\ParcelamentoMutatingAdapter;
-use App\Services\Integra\Parcelamento\ParcelamentoReadAdapter;
-use App\Services\Integra\Parcelamento\StubTaxGuideEnrollment;
 use App\Support\CurrentOffice;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -218,7 +234,7 @@ class AppServiceProvider extends ServiceProvider
             return $app->make(HttpSvrsNfe55OutboundXmlRetrievalClient::class);
         });
 
-        // SERPRO / Integra Contador — fakes em testing e quando SERPRO_USE_FAKE_CLIENTS=true
+        // SERPRO / Integra Contador — catálogo, drivers e transporte oficial
         $this->app->singleton(SerproHttpTransport::class, function () {
             return new SerproHttpTransport(
                 timeoutSeconds: (int) config('serpro.api.timeout_seconds', 60),
@@ -226,6 +242,12 @@ class AppServiceProvider extends ServiceProvider
                 verifyTls: (bool) config('serpro.api.verify_tls', true),
             );
         });
+
+        $this->app->singleton(OfficialServiceCatalogManifest::class);
+        $this->app->singleton(OfficialServiceCatalogImporter::class);
+        $this->app->singleton(OperationCoordinateResolver::class);
+        $this->app->singleton(CapabilityDriverResolver::class);
+        $this->app->singleton(SimulatedIntegraContadorClient::class);
 
         $this->app->bind(SerproContractAuthenticator::class, function ($app) {
             $useFake = $app->environment('testing')
@@ -236,19 +258,32 @@ class AppServiceProvider extends ServiceProvider
                 : $app->make(HttpSerproContractAuthenticator::class);
         });
 
-        // Fake Integra como singleton para testes enfileirarem respostas produtivas
+        // Fake Integra como singleton para testes enfileirarem respostas
         $this->app->singleton(FakeIntegraContadorClient::class);
 
         $this->app->bind(IntegraContadorClient::class, function ($app) {
-            $useFake = $app->environment('testing')
-                || (bool) config('serpro.trial.use_fake_clients', true);
+            if ($app->environment('testing')) {
+                return $app->make(FakeIntegraContadorClient::class);
+            }
 
-            return $useFake
-                ? $app->make(FakeIntegraContadorClient::class)
-                : $app->make(HttpIntegraContadorClient::class);
+            return $app->make(CapabilityAwareIntegraContadorClient::class);
         });
 
-        $this->app->bind(AutenticarProcuradorClient::class, FakeAutenticarProcuradorClient::class);
+        $this->app->bind(AutenticarProcuradorClient::class, function ($app) {
+            $useFake = $app->environment('testing')
+                || (bool) config('serpro.trial.use_fake_clients', true);
+            if ($useFake) {
+                return $app->make(FakeAutenticarProcuradorClient::class);
+            }
+
+            $driver = $app->make(CapabilityDriverResolver::class)->forCapability('autentica_procurador');
+
+            return match ($driver) {
+                SerproCapabilityDriver::Disabled => $app->make(DisabledAutenticarProcuradorClient::class),
+                SerproCapabilityDriver::Simulated => $app->make(FakeAutenticarProcuradorClient::class),
+                SerproCapabilityDriver::Real => $app->make(\App\Services\Integra\HttpAutenticarProcuradorClient::class),
+            };
+        });
         $this->app->bind(IntegraProcuracoesClient::class, FakeIntegraProcuracoesClient::class);
 
         // Núcleo fiscal — registry de adapters (módulos filhos registram em boot de seus providers)
@@ -288,6 +323,16 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Preflight: simulated proibido em production
+        if ($this->app->environment('production')) {
+            try {
+                $this->app->make(CapabilityDriverResolver::class)->assertProductionSafe();
+            } catch (\Throwable $e) {
+                // Fail-closed no boot de produção
+                throw $e;
+            }
+        }
+
         Gate::policy(Client::class, ClientPolicy::class);
         Gate::policy(Establishment::class, EstablishmentPolicy::class);
         Gate::policy(ClientCredential::class, ClientCredentialPolicy::class);
@@ -331,18 +376,18 @@ class AppServiceProvider extends ServiceProvider
         foreach (SimplesMeiCatalog::all() as $def) {
             $registry->register(new SimplesMeiAdapter(
                 definition: $def,
-                eligibility: $this->app->make(\App\Services\Integra\IntegraEligibilityService::class),
-                ledger: $this->app->make(\App\Services\Serpro\Usage\UsageLedgerService::class),
-                mapper: $this->app->make(\App\Services\Fiscal\SimplesMei\SimplesMeiResponseMapper::class),
-                contracts: $this->app->make(\App\Services\Serpro\SerproContractService::class),
-                authorizations: $this->app->make(\App\Services\Integra\OfficeSerproAuthorizationService::class),
-                regimeApplicability: $this->app->make(\App\Services\Fiscal\SimplesMei\RegimeApplicabilityService::class),
-                dasGuideHook: $this->app->make(\App\Services\Fiscal\SimplesMei\DasGuideHookService::class),
+                eligibility: $this->app->make(IntegraEligibilityService::class),
+                ledger: $this->app->make(UsageLedgerService::class),
+                mapper: $this->app->make(SimplesMeiResponseMapper::class),
+                contracts: $this->app->make(SerproContractService::class),
+                authorizations: $this->app->make(OfficeSerproAuthorizationService::class),
+                regimeApplicability: $this->app->make(RegimeApplicabilityService::class),
+                dasGuideHook: $this->app->make(DasGuideHookService::class),
             ));
         }
 
         // Integra-DCTFWeb / MIT (adapters somente-leitura + mutantes atrás de flags OFF)
-        $this->app->make(\App\Services\Integra\Dctfweb\DctfwebAdapterRegistrar::class)
+        $this->app->make(DctfwebAdapterRegistrar::class)
             ->register($registry);
 
         // Integra-Parcelamento — modalidades SN/MEI (leitura + emissão assistida + mutantes OFF)

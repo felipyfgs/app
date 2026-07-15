@@ -12,7 +12,6 @@ use App\Models\SvrsEgressCohortState;
 use App\Services\Audit\AuditLogger;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
@@ -373,6 +372,7 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
             if ($row->state === 'open') {
                 return false;
             }
+
             // half_open: somente canário
             return $isCanary;
         } catch (Throwable) {
@@ -393,10 +393,12 @@ final class RedisSvrsPortalEgressGovernor implements SvrsPortalEgressGovernor
 
         if ($row->state === 'open') {
             $this->metric('svrs_egress_canary_selection', 1, ['decision' => 'denied_cooldown']);
+
             return ['ok' => false, 'reason' => 'cooldown_active'];
         }
         if ($row->state !== 'half_open' && $row->state !== 'closed') {
             $this->metric('svrs_egress_canary_selection', 1, ['decision' => 'denied_state']);
+
             return ['ok' => false, 'reason' => 'invalid_state'];
         }
 

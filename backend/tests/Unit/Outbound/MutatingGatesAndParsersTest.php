@@ -8,10 +8,10 @@ use App\Enums\OutboundProfileStatus;
 use App\Enums\OutboundSeriesStatus;
 use App\Models\OutboundCaptureProfile;
 use App\Models\OutboundSeriesCursor;
+use App\Services\Outbound\AccessKeyCandidateBuilder;
 use App\Services\Outbound\InutilizationResponseParser;
 use App\Services\Outbound\MutatingProbeGateEvaluator;
 use App\Services\Outbound\Rejection539Parser;
-use App\Services\Outbound\AccessKeyCandidateBuilder;
 use Tests\TestCase;
 
 class MutatingGatesAndParsersTest extends TestCase

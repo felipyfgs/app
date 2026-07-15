@@ -11,7 +11,9 @@ use App\Enums\FiscalCoverage;
 use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalSituation;
+use App\Enums\SerproEnvironment;
 use App\Enums\SerproUsageResult;
+use App\Models\SerproContract;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Serpro\Usage\UsageLedgerService;
 use App\Services\Serpro\Usage\UsageReserveRequest;
@@ -47,7 +49,7 @@ final class SitfisFlowService
             return FiscalAdapterResult::blocked($e->getMessage(), 'SITFIS_IDENTITY');
         }
 
-        // Fase 1: solicitar protocolo se ainda não houver
+        // Fase 1: solicitar protocolo se ainda não houver (SITFIS 2.0 /Apoiar)
         if (! $state->hasProtocol()) {
             return $this->solicit($request, $ids, $cfg, $now);
         }
@@ -73,25 +75,21 @@ final class SitfisFlowService
     }
 
     /**
-     * @param  array{environment: \App\Enums\SerproEnvironment, contract: \App\Models\SerproContract, contractor_cnpj: string, author_identity: string, contributor_cnpj: string}  $ids
+     * @param  array{environment: SerproEnvironment, contract: SerproContract, contractor_cnpj: string, author_identity: string, contributor_cnpj: string}  $ids
      * @param  array<string, mixed>  $cfg
      */
     private function solicit(FiscalAdapterRequest $request, array $ids, array $cfg, CarbonImmutable $now): FiscalAdapterResult
     {
         $correlation = $request->run->correlation_id ?? (string) Str::uuid();
+        // Oficial: SOLICITARPROTOCOLO91 em /Apoiar com dados vazio
         $response = $this->call(
             $request,
             $ids,
-            (string) $cfg['solicit_operation'],
-            [
-                'idSistema' => 'SITFIS',
-                'idServico' => (string) $cfg['solicit_operation'],
-                'versaoSistema' => '1.0',
-                'dados' => json_encode([
-                    'contribuinte' => $ids['contributor_cnpj'],
-                ], JSON_THROW_ON_ERROR),
-            ],
-            $correlation,
+            (string) ($cfg['solicit_operation_key'] ?? 'sitfis.solicitar_protocolo'),
+            (string) ($cfg['solicit_operation'] ?? 'SOLICITARPROTOCOLO91'),
+            businessData: [],
+            dadosMode: 'EMPTY',
+            correlation: $correlation,
         );
 
         if (! $response->success) {
@@ -142,7 +140,7 @@ final class SitfisFlowService
     }
 
     /**
-     * @param  array{environment: \App\Enums\SerproEnvironment, contract: \App\Models\SerproContract, contractor_cnpj: string, author_identity: string, contributor_cnpj: string}  $ids
+     * @param  array{environment: SerproEnvironment, contract: SerproContract, contractor_cnpj: string, author_identity: string, contributor_cnpj: string}  $ids
      * @param  array<string, mixed>  $cfg
      */
     private function emit(
@@ -174,20 +172,17 @@ final class SitfisFlowService
         }
 
         $correlation = $state->correlationId ?? $request->run->correlation_id ?? (string) Str::uuid();
+        // Oficial: RELATORIOSITFIS92 em /Emitir com protocolo no JSON de dados; poder 00002
         $response = $this->call(
             $request,
             $ids,
-            (string) $cfg['emit_operation'],
-            [
-                'idSistema' => 'SITFIS',
-                'idServico' => (string) $cfg['emit_operation'],
-                'versaoSistema' => '1.0',
-                'dados' => json_encode([
-                    'protocolo' => $state->protocol,
-                    'contribuinte' => $ids['contributor_cnpj'],
-                ], JSON_THROW_ON_ERROR),
+            (string) ($cfg['emit_operation_key'] ?? 'sitfis.emitir_relatorio'),
+            (string) ($cfg['emit_operation'] ?? 'RELATORIOSITFIS92'),
+            businessData: [
+                'protocolo' => $state->protocol,
             ],
-            $correlation,
+            dadosMode: 'JSON_STRING',
+            correlation: $correlation,
         );
 
         $pollCount = $state->pollCount + 1;
@@ -290,27 +285,36 @@ final class SitfisFlowService
     }
 
     /**
-     * @param  array{environment: \App\Enums\SerproEnvironment, contract: \App\Models\SerproContract, contractor_cnpj: string, author_identity: string, contributor_cnpj: string}  $ids
-     * @param  array<string, mixed>  $payload
+     * @param  array{environment: SerproEnvironment, contract: SerproContract, contractor_cnpj: string, author_identity: string, contributor_cnpj: string}  $ids
+     * @param  array<string, mixed>  $businessData
      */
     private function call(
         FiscalAdapterRequest $request,
         array $ids,
-        string $operation,
-        array $payload,
+        string $operationKey,
+        string $legacyOperationCode,
+        array $businessData,
+        string $dadosMode,
         string $correlation,
     ): IntegraResponse {
         $cfg = $this->config();
-        $system = (string) $cfg['system_code'];
-        $service = (string) $cfg['service_code'];
+        // Domínio/catálogo financeiro: INTEGRA_SITFIS + códigos de domínio
+        $domainSystem = (string) ($cfg['system_code'] ?? 'INTEGRA_SITFIS');
+        $service = (string) ($cfg['service_code'] ?? 'SITFIS');
+        // Elegibilidade/catálogo seed ainda usa códigos de domínio legados no banco
+        $catalogOperation = match ($operationKey) {
+            'sitfis.solicitar_protocolo' => 'SOLICITAR_RELATORIO',
+            'sitfis.emitir_relatorio' => 'EMITIR_RELATORIO',
+            default => $legacyOperationCode,
+        };
         $env = $ids['environment'];
 
         $elig = $this->eligibility->evaluate(
             $request->office,
             $request->client,
-            $system,
+            $domainSystem,
             $service,
-            $operation,
+            $catalogOperation,
             $env,
             null,
             'sitfis',
@@ -326,22 +330,26 @@ final class SitfisFlowService
                 errorCode: $code,
                 errorMessage: 'Elegibilidade Integra negada: '.$code,
                 correlationId: $correlation,
+                operationKey: $operationKey,
             );
         }
 
         $this->eligibility->touchRateLimit((int) $request->office->id);
 
-        $idempotencyKey = $request->run->idempotency_key.':'.$operation.':'.($request->progressCursor ?? '0');
+        $idempotencyKey = $request->run->idempotency_key.':'.$operationKey.':'.($request->progressCursor ?? '0');
         $reserve = $this->ledger->reserve(new UsageReserveRequest(
             officeId: (int) $request->office->id,
             idempotencyKey: $idempotencyKey,
-            systemCode: $system,
+            systemCode: $domainSystem,
             serviceCode: $service,
-            operationCode: $operation,
+            operationCode: $catalogOperation,
             quantity: 1,
             clientId: (int) $request->client->id,
             contributorRef: substr(hash('sha256', $ids['contributor_cnpj']), 0, 16),
             correlationId: $correlation,
+            operationKey: $operationKey,
+            isSimulated: false,
+            functionalRoute: str_contains($operationKey, 'solicitar') ? 'Apoiar' : 'Emitir',
         ));
 
         if (! $reserve->allowed) {
@@ -352,19 +360,26 @@ final class SitfisFlowService
                 errorCode: 'BUDGET_EXCEEDED',
                 errorMessage: 'Orçamento SERPRO bloqueou a operação.',
                 correlationId: $correlation,
+                operationKey: $operationKey,
             );
         }
+
+        $payload = $dadosMode === 'EMPTY'
+            ? ['dados' => '']
+            : ['dados' => json_encode($businessData, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)];
 
         $integraRequest = new IntegraRequest(
             officeId: (int) $request->office->id,
             clientId: (int) $request->client->id,
             environment: $env->value,
-            solutionCode: $system,
-            serviceCode: $service,
-            operationCode: $operation,
             contractorCnpj: $ids['contractor_cnpj'],
             authorIdentity: $ids['author_identity'],
             contributorCnpj: $ids['contributor_cnpj'],
+            operationKey: $operationKey,
+            solutionCode: $domainSystem,
+            serviceCode: $service,
+            operationCode: $legacyOperationCode,
+            businessData: $businessData,
             payload: $payload,
             idempotencyKey: $idempotencyKey,
             correlationId: $correlation,
@@ -376,7 +391,7 @@ final class SitfisFlowService
             $this->ledger->finalize(
                 $reserve->reservation,
                 SerproUsageResult::TransportError,
-                possiblyBillable: true,
+                possiblyBillable: false,
             );
 
             return new IntegraResponse(
@@ -386,14 +401,20 @@ final class SitfisFlowService
                 errorCode: 'SITFIS_TRANSPORT',
                 errorMessage: $e->getMessage(),
                 correlationId: $correlation,
+                operationKey: $operationKey,
             );
         }
+
+        $possiblyBillable = ! $response->simulated
+            && ! in_array($response->httpStatus, [204, 304, 400, 401, 404, 429, 500, 503], true)
+            && ($response->functionalRoute === null || ! in_array($response->functionalRoute, ['Apoiar', 'Monitorar'], true));
 
         $this->ledger->finalize(
             $reserve->reservation,
             $this->ledger->mapIntegraResponse($response),
             latencyMs: $response->latencyMs,
             httpStatus: $response->httpStatus > 0 ? $response->httpStatus : null,
+            possiblyBillable: $possiblyBillable,
         );
 
         return $response;

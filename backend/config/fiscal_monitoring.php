@@ -79,20 +79,26 @@ return [
      * Polling respeitoso: nunca mais agressivo que poll_interval; espera min_wait antes da 1ª emissão.
      */
     'sitfis' => [
+        /** Código de domínio do adapter/run (não confundir com idSistema oficial SERPRO). */
         'system_code' => 'INTEGRA_SITFIS',
+        'id_sistema' => 'SITFIS',
         'service_code' => 'SITFIS',
         'operation_code' => 'MONITOR',
-        'solicit_operation' => 'SOLICITAR_RELATORIO',
-        'emit_operation' => 'EMITIR_RELATORIO',
+        'solicit_operation_key' => 'sitfis.solicitar_protocolo',
+        'emit_operation_key' => 'sitfis.emitir_relatorio',
+        'solicit_operation' => 'SOLICITARPROTOCOLO91',
+        'emit_operation' => 'RELATORIOSITFIS92',
+        'required_proxy_power' => '00002',
+        'versao_sistema' => '2.0',
         /** Espera mínima oficial (s) entre solicitação e primeira tentativa de emissão. */
         'min_wait_seconds' => (int) env('SITFIS_MIN_WAIT_SECONDS', 30),
         /** Intervalo mínimo entre polls de emissão (s). */
         'poll_interval_seconds' => (int) env('SITFIS_POLL_INTERVAL_SECONDS', 60),
         /** Máximo de tentativas de emissão após o min_wait. */
         'max_polls' => (int) env('SITFIS_MAX_POLLS', 20),
-        /** TTL do snapshot (s) — alinhado ao catálogo SERPRO (86400). */
+        /** TTL do snapshot (s) — 24h; refresh manual reutiliza dentro do TTL. */
         'snapshot_ttl_seconds' => (int) env('SITFIS_SNAPSHOT_TTL_SECONDS', 86400),
-        'parser_version' => '1.0',
+        'parser_version' => '2.0',
     ],
 
     /**

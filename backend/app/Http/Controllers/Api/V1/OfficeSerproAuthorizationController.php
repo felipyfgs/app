@@ -8,6 +8,7 @@ use App\Enums\OfficeRole;
 use App\Enums\SerproEnvironment;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
+use App\Models\TaxProxyPower;
 use App\Services\Audit\AuditLogger;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\OfficeSerproAuthorizationService;
@@ -185,7 +186,7 @@ class OfficeSerproAuthorizationController extends Controller
         $this->assertAdminOrOperator();
         $office = $this->currentOffice->office();
 
-        $query = \App\Models\TaxProxyPower::query()
+        $query = TaxProxyPower::query()
             ->where('office_id', $office->id)
             ->orderByDesc('id');
 

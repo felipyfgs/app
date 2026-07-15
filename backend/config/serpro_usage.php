@@ -1,5 +1,7 @@
 <?php
 
+use App\Services\Serpro\Usage\UsageLedgerService;
+
 /**
  * Ledger de consumo SERPRO / Integra Contador.
  *
@@ -7,7 +9,7 @@
  * e evidência formal de precificação.
  *
  * @see openspec/changes/build-complete-fiscal-monitoring-hub/specs/serpro-api-usage-ledger
- * @see App\Services\Serpro\Usage\UsageLedgerService
+ * @see UsageLedgerService
  */
 
 return [

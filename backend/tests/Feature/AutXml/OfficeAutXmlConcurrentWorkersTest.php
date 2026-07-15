@@ -2,12 +2,16 @@
 
 namespace Tests\Feature\AutXml;
 
+use App\Contracts\SefazDistDfeClient;
 use App\Enums\CaptureChannel;
 use App\Enums\SyncCursorStatus;
 use App\Jobs\SyncOfficeAutXmlDistDfeJob;
 use App\Models\Office;
 use App\Models\OfficeDistributionCursor;
+use App\Models\OfficeDistributionRun;
 use App\Models\OfficeFiscalIdentity;
+use App\Services\Certificates\OfficeCredentialResolver;
+use App\Services\Sefaz\OfficeAutXmlPageProcessor;
 use App\Services\Sefaz\OfficeDistributionCursorService;
 use App\Support\AutXmlFeature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -50,15 +54,15 @@ class OfficeAutXmlConcurrentWorkersTest extends TestCase
         // Worker B: handle retorna sem avançar NSU / sem segundo run
         $jobB = new SyncOfficeAutXmlDistDfeJob($cursor->id, 'MANUAL');
         $jobB->handle(
-            app(\App\Contracts\SefazDistDfeClient::class),
-            app(\App\Services\Sefaz\OfficeAutXmlPageProcessor::class),
-            app(\App\Services\Certificates\OfficeCredentialResolver::class),
+            app(SefazDistDfeClient::class),
+            app(OfficeAutXmlPageProcessor::class),
+            app(OfficeCredentialResolver::class),
         );
 
         $cursor->refresh();
         $this->assertSame(42, (int) $cursor->last_nsu);
         $this->assertSame(SyncCursorStatus::Idle, $cursor->status);
-        $this->assertSame(0, \App\Models\OfficeDistributionRun::query()
+        $this->assertSame(0, OfficeDistributionRun::query()
             ->where('office_distribution_cursor_id', $cursor->id)
             ->count());
 
@@ -99,9 +103,9 @@ class OfficeAutXmlConcurrentWorkersTest extends TestCase
 
         $job = new SyncOfficeAutXmlDistDfeJob($cursor->id, 'SCHEDULED');
         $job->handle(
-            app(\App\Contracts\SefazDistDfeClient::class),
-            app(\App\Services\Sefaz\OfficeAutXmlPageProcessor::class),
-            app(\App\Services\Certificates\OfficeCredentialResolver::class),
+            app(SefazDistDfeClient::class),
+            app(OfficeAutXmlPageProcessor::class),
+            app(OfficeCredentialResolver::class),
         );
 
         $cursor->refresh();

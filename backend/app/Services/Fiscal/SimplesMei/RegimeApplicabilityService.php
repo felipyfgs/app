@@ -5,6 +5,8 @@ namespace App\Services\Fiscal\SimplesMei;
 use App\DTO\Fiscal\FiscalAdapterResult;
 use App\DTO\Fiscal\SimplesMei\SimplesMeiOperationDef;
 use App\Enums\FiscalCoverage;
+use App\Enums\FiscalFindingSeverity;
+use App\Enums\FiscalRunResult;
 use App\Enums\FiscalSituation;
 use App\Enums\TaxRegimeCode;
 use App\Models\Client;
@@ -47,7 +49,7 @@ final class RegimeApplicabilityService
 
         if (! $regimeAt->compatibleWith($def->regimeFamily)) {
             return new FiscalAdapterResult(
-                result: \App\Enums\FiscalRunResult::Success,
+                result: FiscalRunResult::Success,
                 situation: FiscalSituation::NotApplicable,
                 coverage: FiscalCoverage::NotApplicable,
                 evidenceBytes: json_encode([
@@ -65,7 +67,7 @@ final class RegimeApplicabilityService
                 ],
                 findings: [[
                     'code' => 'REGIME_MISMATCH',
-                    'severity' => \App\Enums\FiscalFindingSeverity::Info->value,
+                    'severity' => FiscalFindingSeverity::Info->value,
                     'title' => 'Operação não aplicável ao regime da competência',
                     'detail' => "Regime {$regimeAt->value} ≠ família {$def->regimeFamily->value}",
                     'situation' => FiscalSituation::NotApplicable->value,

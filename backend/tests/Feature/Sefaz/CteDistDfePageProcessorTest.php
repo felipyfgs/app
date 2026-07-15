@@ -10,8 +10,11 @@ use App\Enums\QuarantineReason;
 use App\Enums\SyncCursorStatus;
 use App\Exceptions\Adn\DocumentDecodeException;
 use App\Models\ChannelSyncCursor;
+use App\Models\Client;
 use App\Models\CteDocument;
+use App\Models\CteEvent;
 use App\Models\DocumentInterest;
+use App\Models\Establishment;
 use App\Models\FiscalDocumentQuarantine;
 use App\Models\Office;
 use App\Services\Sefaz\CteDistDfePageProcessor;
@@ -313,18 +316,18 @@ class CteDistDfePageProcessorTest extends TestCase
         $this->assertSame(1, CteDocument::query()->count());
         $this->assertSame(0, FiscalDocumentQuarantine::query()
             ->where('reason', QuarantineReason::OrphanEvent->value)->count());
-        $this->assertSame(1, \App\Models\CteEvent::query()->whereNotNull('cte_document_id')->count());
+        $this->assertSame(1, CteEvent::query()->whereNotNull('cte_document_id')->count());
         $this->assertSame('CANCELLED', CteDocument::query()->first()->status);
     }
 
     /**
-     * @return array{0: ChannelSyncCursor, 1: \App\Models\Establishment}
+     * @return array{0: ChannelSyncCursor, 1: Establishment}
      */
     private function seedCursor(string $cnpj): array
     {
         $office = Office::factory()->create();
-        $client = \App\Models\Client::factory()->forOffice($office)->create();
-        $est = \App\Models\Establishment::factory()->forClient($client)->create(['cnpj' => $cnpj]);
+        $client = Client::factory()->forOffice($office)->create();
+        $est = Establishment::factory()->forClient($client)->create(['cnpj' => $cnpj]);
 
         $cursor = ChannelSyncCursor::query()->create([
             'office_id' => $office->id,

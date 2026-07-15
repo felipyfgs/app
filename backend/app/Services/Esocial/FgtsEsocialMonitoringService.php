@@ -5,9 +5,9 @@ namespace App\Services\Esocial;
 use App\Contracts\EsocialEventClient;
 use App\DTO\Esocial\EsocialFetchRequest;
 use App\DTO\Esocial\FgtsCompetenceProjection;
-use App\Enums\FiscalCoverage;
-use App\Enums\FiscalSituation;
+use App\Enums\EsocialEventCode;
 use App\Enums\FgtsIndependentState;
+use App\Enums\FiscalCoverage;
 use App\Models\Client;
 use App\Models\EsocialEventEvidence;
 use App\Models\Establishment;
@@ -49,7 +49,7 @@ final class FgtsEsocialMonitoringService
             'service_code' => (string) config('fgts_esocial.service_code', 'FGTS'),
             'supported_events' => array_map(
                 static fn ($c) => ['code' => $c->value, 'label' => $c->label()],
-                \App\Enums\EsocialEventCode::supported(),
+                EsocialEventCode::supported(),
             ),
             'independent_states' => [
                 'closure' => 'Fechamento eSocial (S-1299) — independente de guia/pagamento',

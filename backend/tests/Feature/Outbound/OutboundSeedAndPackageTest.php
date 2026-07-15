@@ -8,11 +8,11 @@ use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\Office;
 use App\Models\OutboundCaptureProfile;
-use App\Models\OutboundSeriesCursor;
 use App\Models\User;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class OutboundSeedAndPackageTest extends TestCase
@@ -44,7 +44,7 @@ class OutboundSeedAndPackageTest extends TestCase
             'discovery_position' => 2,
         ]);
         $this->assertFalse(
-            \Illuminate\Support\Facades\Schema::hasColumn('outbound_series_cursors', 'last_nsu'),
+            Schema::hasColumn('outbound_series_cursors', 'last_nsu'),
             'Cursor de série não deve ter last_nsu (posição é nNF).'
         );
     }

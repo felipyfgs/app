@@ -231,7 +231,7 @@ final class HttpSvrsNfceOutboundXmlRetrievalClient implements SvrsNfceOutboundXm
                 $abs = $this->resolveLocation($url, $location);
                 try {
                     $this->config->assertUrlAllowed($abs);
-                } catch (\Throwable) {
+                } catch (Throwable) {
                     throw new \RuntimeException('redirect rejected');
                 }
             }

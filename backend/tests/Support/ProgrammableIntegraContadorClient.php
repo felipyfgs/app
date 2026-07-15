@@ -129,11 +129,17 @@ final class ProgrammableIntegraContadorClient implements IntegraContadorClient
      */
     public function operations(): array
     {
-        return array_map(fn (IntegraRequest $r) => $r->operationCode, $this->requests);
+        return array_map(
+            fn (IntegraRequest $r) => (string) ($r->operationCode ?? $r->operationKey ?? ''),
+            $this->requests,
+        );
     }
 
     private function lastProtocol(IntegraRequest $req): string
     {
+        if (! empty($req->businessData['protocolo'])) {
+            return (string) $req->businessData['protocolo'];
+        }
         $dados = $req->payload['dados'] ?? null;
         if (is_string($dados)) {
             $decoded = json_decode($dados, true);

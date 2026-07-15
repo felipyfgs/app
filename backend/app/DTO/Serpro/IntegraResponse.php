@@ -3,7 +3,7 @@
 namespace App\DTO\Serpro;
 
 /**
- * Resposta de domínio — sem envelope HTTP bruto.
+ * Resposta normalizada Integra Contador (HTTP + negócio), sem vazar payload fiscal em logs.
  *
  * @phpstan-type Body array<string, mixed>
  */
@@ -12,6 +12,7 @@ final class IntegraResponse
     /**
      * @param  array<string, mixed>  $body
      * @param  array<string, string>  $headers
+     * @param  list<array{codigo?: string, texto?: string}>  $mensagens
      */
     public function __construct(
         public readonly bool $success,
@@ -24,14 +25,57 @@ final class IntegraResponse
         public readonly ?int $retryAfterSeconds = null,
         public readonly ?string $correlationId = null,
         public readonly ?int $latencyMs = null,
+        public readonly ?string $etag = null,
+        public readonly ?string $expiresHeader = null,
+        public readonly ?string $businessStatus = null,
+        public readonly array $mensagens = [],
+        /** @var array<string, mixed>|string|null dados parseados (pedidoDados.dados / resposta) */
+        public readonly mixed $dados = null,
+        public readonly ?string $operationKey = null,
+        public readonly ?string $requestTag = null,
+        public readonly ?string $functionalRoute = null,
+        public readonly ?string $sourceProvenance = null,
     ) {}
 
-    /**
-     * Resultados SIMULATED não devem virar evidência fiscal produtiva.
-     */
     public function isProductiveEvidence(): bool
     {
-        return $this->success && ! $this->simulated;
+        return $this->success && ! $this->simulated && $this->sourceProvenance !== 'SIMULATED';
+    }
+
+    public function isStillProcessing(): bool
+    {
+        if (in_array($this->httpStatus, [202, 204], true)) {
+            return true;
+        }
+        if ($this->errorCode === 'STILL_PROCESSING') {
+            return true;
+        }
+        $status = strtoupper((string) ($this->businessStatus ?? ''));
+
+        return in_array($status, ['PROCESSING', 'PROCESSANDO', 'PENDENTE', 'EM_PROCESSAMENTO', 'AGUARDANDO'], true);
+    }
+
+    public function waitSeconds(): ?int
+    {
+        if ($this->retryAfterSeconds !== null && $this->retryAfterSeconds > 0) {
+            return $this->retryAfterSeconds;
+        }
+
+        foreach (['tempoEspera', 'tempo_espera', 'waitSeconds'] as $key) {
+            if (isset($this->body[$key]) && is_numeric($this->body[$key])) {
+                return max(1, (int) $this->body[$key]);
+            }
+            if (is_array($this->dados) && isset($this->dados[$key]) && is_numeric($this->dados[$key])) {
+                return max(1, (int) $this->dados[$key]);
+            }
+        }
+
+        // ETag pode carregar tempoEspera em alguns fluxos SITFIS
+        if ($this->etag !== null && preg_match('/tempoEspera[=:](\d+)/i', $this->etag, $m)) {
+            return max(1, (int) $m[1]);
+        }
+
+        return null;
     }
 
     /**
@@ -48,6 +92,15 @@ final class IntegraResponse
             'retry_after_seconds' => $this->retryAfterSeconds,
             'correlation_id' => $this->correlationId,
             'latency_ms' => $this->latencyMs,
+            'etag' => $this->etag,
+            'expires' => $this->expiresHeader,
+            'business_status' => $this->businessStatus,
+            'mensagens_count' => count($this->mensagens),
+            'has_dados' => $this->dados !== null,
+            'operation_key' => $this->operationKey,
+            'request_tag' => $this->requestTag,
+            'functional_route' => $this->functionalRoute,
+            'source_provenance' => $this->sourceProvenance,
             'body_keys' => array_keys($this->body),
         ];
     }

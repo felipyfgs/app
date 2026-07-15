@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Sefaz;
 
+use App\Contracts\SecureObjectStore;
 use App\Contracts\SefazNfeManifestationClient;
 use App\Domain\Sefaz\ManifestationResultDto;
 use App\Enums\AdnDocumentType;
@@ -19,7 +20,6 @@ use App\Models\DocumentInterest;
 use App\Models\Establishment;
 use App\Models\NfeDocument;
 use App\Models\Office;
-use App\Contracts\SecureObjectStore;
 use App\Services\Sefaz\AutoCienciaScheduler;
 use App\Services\Sefaz\NfeManifestationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -216,5 +216,4 @@ class AutoCienciaTest extends TestCase
             'manifestation_status' => null,
         ]);
     }
-
 }

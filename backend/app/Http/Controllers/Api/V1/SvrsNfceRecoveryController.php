@@ -2,15 +2,16 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Contracts\SvrsPortalEgressGovernor;
 use App\Enums\OfficeRole;
 use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\SvrsNfceRecoveryStatus;
 use App\Http\Controllers\Controller;
+use App\Models\Client;
 use App\Models\MaOutboundRetrievalRequest;
 use App\Models\OutboundCaptureProfile;
 use App\Models\OutboundNumberState;
 use App\Models\OutboundXmlRecoveryAttempt;
-use App\Contracts\SvrsPortalEgressGovernor;
 use App\Services\Outbound\OutboundXmlRecoveryOrchestrator;
 use App\Services\Outbound\SvrsNfceCircuitBreaker;
 use App\Services\Outbound\SvrsNfceConfig;
@@ -356,7 +357,7 @@ class SvrsNfceRecoveryController extends Controller
                 return response()->json(['message' => 'client_id obrigatório para scope root.'], 422);
             }
             // Tenancy: client deve pertencer ao escritório da sessão
-            $client = \App\Models\Client::query()
+            $client = Client::query()
                 ->where('id', $clientId)
                 ->where('office_id', $this->currentOffice->id())
                 ->first();

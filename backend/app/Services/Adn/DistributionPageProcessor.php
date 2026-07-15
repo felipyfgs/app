@@ -17,6 +17,7 @@ use App\Models\Establishment;
 use App\Models\NfseEvent;
 use App\Models\NfseNote;
 use App\Models\SyncCursor;
+use App\Support\NfseNoteStatus;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -270,7 +271,7 @@ final class DistributionPageProcessor
     /**
      * Eventos de cancelamento/substituição atualizam a projeção da nota (sem apagar XML).
      *
-     * @see \App\Support\NfseNoteStatus::fromEventType
+     * @see NfseNoteStatus::fromEventType
      */
     private function applyDerivedNoteStatus(int $officeId, string $accessKey, ?string $eventType): void
     {
@@ -278,7 +279,7 @@ final class DistributionPageProcessor
             return;
         }
 
-        $status = \App\Support\NfseNoteStatus::fromEventType($eventType);
+        $status = NfseNoteStatus::fromEventType($eventType);
         if ($status === null) {
             return;
         }

@@ -10,6 +10,8 @@ use App\Enums\FiscalSituation;
 use App\Models\Client;
 use App\Models\DctfwebDarfDocument;
 use App\Models\DctfwebDeclaration;
+use App\Models\DctfwebEvidenceVersion;
+use App\Models\FiscalEvidenceArtifact;
 use App\Models\FiscalMonitoringRun;
 use App\Models\Office;
 use Carbon\CarbonImmutable;
@@ -69,9 +71,9 @@ final class DctfwebDeclarationService
      * @param  array<string, mixed>  $body
      * @return array{
      *     declaration: DctfwebDeclaration,
-     *     version: ?\App\Models\DctfwebEvidenceVersion,
+     *     version: ?DctfwebEvidenceVersion,
      *     retification: bool,
-     *     artifact: ?\App\Models\FiscalEvidenceArtifact
+     *     artifact: ?FiscalEvidenceArtifact
      * }
      */
     public function projectFromRecibo(
@@ -150,7 +152,7 @@ final class DctfwebDeclarationService
 
     /**
      * @param  array<string, mixed>  $body
-     * @return array{declaration: DctfwebDeclaration, version: \App\Models\DctfwebEvidenceVersion, retification: bool, artifact: \App\Models\FiscalEvidenceArtifact}
+     * @return array{declaration: DctfwebDeclaration, version: DctfwebEvidenceVersion, retification: bool, artifact: FiscalEvidenceArtifact}
      */
     public function projectArtifact(
         FiscalMonitoringRun $run,

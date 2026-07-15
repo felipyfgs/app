@@ -3,7 +3,9 @@
 namespace App\Services\FiscalMonitoring;
 
 use App\DTO\Fiscal\FiscalAdapterRequest;
+use App\DTO\Fiscal\FiscalAdapterResult;
 use App\DTO\Fiscal\FiscalPersistPayload;
+use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutability;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalRunStatus;
@@ -13,6 +15,7 @@ use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
 use App\Models\Client;
 use App\Models\FiscalCompetence;
 use App\Models\FiscalMonitoringRun;
+use App\Models\FiscalMonitoringSchedule;
 use App\Models\Office;
 use App\Services\Audit\AuditLogger;
 use App\Services\Operations\OperationsMetrics;
@@ -221,7 +224,7 @@ final class FiscalMonitoringRunService
 
             // Mutações desabilitadas por padrão
             if ($adapter->mutability()->isMutating() && ! (bool) config('fiscal_monitoring.mutating_enabled', false)) {
-                $result = \App\DTO\Fiscal\FiscalAdapterResult::blocked(
+                $result = FiscalAdapterResult::blocked(
                     'Operações mutantes desabilitadas no núcleo fiscal.',
                     'MUTATING_DISABLED',
                 );
@@ -229,7 +232,7 @@ final class FiscalMonitoringRunService
                 $module = $adapter->moduleKey();
                 if ($module !== null && ! FeatureFlags::isModuleEnabled($module, $office->id)
                     && ! (bool) config('fiscal_monitoring.enabled', false)) {
-                    $result = \App\DTO\Fiscal\FiscalAdapterResult::blocked(
+                    $result = FiscalAdapterResult::blocked(
                         "Módulo {$module} desabilitado.",
                         'FEATURE_DISABLED',
                     );
@@ -301,7 +304,7 @@ final class FiscalMonitoringRunService
             }
 
             if ($fresh->schedule_id && $fresh->result === FiscalRunResult::Success) {
-                \App\Models\FiscalMonitoringSchedule::query()
+                FiscalMonitoringSchedule::query()
                     ->withoutGlobalScopes()
                     ->whereKey($fresh->schedule_id)
                     ->update([
@@ -411,7 +414,7 @@ final class FiscalMonitoringRunService
             run: $run,
             result: FiscalRunResult::Blocked,
             situation: FiscalSituation::Blocked,
-            coverage: $run->coverage ?? \App\Enums\FiscalCoverage::Unknown,
+            coverage: $run->coverage ?? FiscalCoverage::Unknown,
             skipReason: $code,
             errorCode: $code,
             errorMessage: $message,

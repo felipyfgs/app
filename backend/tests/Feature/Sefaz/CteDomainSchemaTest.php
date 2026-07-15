@@ -2,24 +2,28 @@
 
 namespace Tests\Feature\Sefaz;
 
+use App\Contracts\SecureObjectStore;
+use App\Enums\AdnDocumentType;
 use App\Enums\CaptureChannel;
 use App\Enums\CteCoverageStatus;
 use App\Enums\DocumentAcquisitionSource;
 use App\Enums\DocumentArtifactQuality;
 use App\Enums\DocumentDirection;
 use App\Enums\FiscalRole;
+use App\Enums\OfficeFiscalIdentityStatus;
 use App\Enums\SignatureVerificationResult;
+use App\Models\Client;
 use App\Models\CteCoverageSnapshot;
 use App\Models\CteDocument;
 use App\Models\CteEvent;
 use App\Models\DfeDocument;
 use App\Models\DocumentAcquisition;
 use App\Models\DocumentInterest;
+use App\Models\Establishment;
 use App\Models\Office;
 use App\Models\OfficeDistributionCursor;
 use App\Models\OfficeFiscalIdentity;
-use App\Enums\AdnDocumentType;
-use App\Enums\OfficeFiscalIdentityStatus;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -65,8 +69,8 @@ class CteDomainSchemaTest extends TestCase
     public function test_multiplos_papeis_mesmo_documento_estabelecimento(): void
     {
         $office = Office::factory()->create();
-        $client = \App\Models\Client::factory()->forOffice($office)->create();
-        $est = \App\Models\Establishment::factory()->forClient($client)->create([
+        $client = Client::factory()->forOffice($office)->create();
+        $est = Establishment::factory()->forClient($client)->create([
             'cnpj' => '11111111000111',
         ]);
 
@@ -168,7 +172,7 @@ class CteDomainSchemaTest extends TestCase
             ->where('interested_root_cnpj', '55666777')
             ->count());
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         OfficeDistributionCursor::factory()->create([
             'office_id' => $office->id,
             'office_fiscal_identity_id' => $identity->id,
@@ -183,7 +187,7 @@ class CteDomainSchemaTest extends TestCase
     public function test_projecao_cte_e_evento_e_cobertura(): void
     {
         $office = Office::factory()->create();
-        $client = \App\Models\Client::factory()->forOffice($office)->create();
+        $client = Client::factory()->forOffice($office)->create();
         $dfe = $this->seedDfe($office->id, '35260711222333000181570010000000421234567892');
         $dfeEvent = $this->seedDfe($office->id, 'evt-35260711222333000181570010000000421234567892', AdnDocumentType::Unknown);
 
@@ -241,7 +245,7 @@ class CteDomainSchemaTest extends TestCase
     ): DfeDocument {
         $xml = '<cte>'.$accessKey.'</cte>';
         $sha = hash('sha256', $xml);
-        $store = app(\App\Contracts\SecureObjectStore::class);
+        $store = app(SecureObjectStore::class);
         $objectId = $store->put($xml, ['office_id' => $officeId, 'sha256' => $sha]);
 
         return DfeDocument::query()->create([

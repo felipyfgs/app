@@ -4,6 +4,7 @@ namespace App\Services\Fiscal\Declarations;
 
 use App\Models\Office;
 use App\Models\TaxDeliveryEvidence;
+use App\Models\TaxObligationDefinition;
 use App\Models\TaxObligationProjection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -133,7 +134,7 @@ final class DeclarationHubQueryService
         }
 
         $rows = $q->get();
-        $defs = \App\Models\TaxObligationDefinition::query()
+        $defs = TaxObligationDefinition::query()
             ->whereIn('id', $rows->pluck('obligation_definition_id')->unique()->all())
             ->get()
             ->keyBy('id');

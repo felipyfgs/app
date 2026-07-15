@@ -115,7 +115,18 @@ final class UsageLedgerService
                 ? SerproUsageReservationStatus::Reserved
                 : SerproUsageReservationStatus::Blocked;
 
-            $reservation = SerproApiUsageReservation::query()->create([
+            // Simulação nunca reserva orçamento/franquia
+            if ($request->isSimulated) {
+                $allowed = true;
+                $status = SerproUsageReservationStatus::Reserved;
+            }
+
+            // Rotas oficiais não faturáveis
+            if (in_array($request->functionalRoute, ['Apoiar', 'Monitorar'], true)) {
+                $class = \App\Enums\SerproConsumptionClass::NaoFaturavel;
+            }
+
+            $create = [
                 'office_id' => $request->officeId,
                 'idempotency_key' => $request->idempotencyKey,
                 'client_id' => $request->clientId,
@@ -128,15 +139,21 @@ final class UsageLedgerService
                 'is_essential' => $isEssential,
                 'status' => $status,
                 'correlation_id' => $correlationId,
-                'price_version_id' => $estimate['price_version_id'],
-                'estimated_cost_micros' => $estimate['estimated_cost_micros'],
+                'price_version_id' => $request->isSimulated ? null : $estimate['price_version_id'],
+                'estimated_cost_micros' => $request->isSimulated ? null : $estimate['estimated_cost_micros'],
                 'shadow_mode' => $shadow,
-                'would_block' => (bool) $budgetEval['would_block'],
+                'would_block' => $request->isSimulated ? false : (bool) $budgetEval['would_block'],
                 'block_reason' => $allowed ? null : ($budgetEval['block_reason'] ?? null),
                 'result' => $allowed ? null : SerproUsageResult::BlockedByBudget,
                 'reserved_at' => now(),
                 'finalized_at' => $allowed ? null : now(),
-            ]);
+            ];
+            if (\Illuminate\Support\Facades\Schema::hasColumn('serpro_api_usage_reservations', 'operation_key')) {
+                $create['operation_key'] = $request->operationKey;
+                $create['is_simulated'] = $request->isSimulated;
+            }
+
+            $reservation = SerproApiUsageReservation::query()->create($create);
 
             return [
                 'reservation' => $reservation,
@@ -332,6 +349,7 @@ final class UsageLedgerService
      * Caso contrário, Success se não lançar.
      *
      * @template T
+     *
      * @param  callable(): T  $call
      * @return array{outcome: UsageReserveOutcome, result: T|null, entry: SerproApiUsageEntry|null, error: \Throwable|null}
      */

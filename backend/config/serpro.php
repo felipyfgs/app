@@ -19,17 +19,20 @@ return [
     |--------------------------------------------------------------------------
     */
     'oauth' => [
+        /** Endpoint oficial de autenticação (mTLS + client_credentials + role-type TERCEIROS). */
         'token_url' => env(
             'SERPRO_OAUTH_TOKEN_URL',
-            'https://gateway.apiserpro.serpro.gov.br/token',
+            'https://autenticacao.sapi.serpro.gov.br/authenticate',
         ),
         'role_type' => env('SERPRO_OAUTH_ROLE_TYPE', 'TERCEIROS'),
         'timeout_seconds' => (int) env('SERPRO_OAUTH_TIMEOUT_SECONDS', 30),
         'connect_timeout_seconds' => (int) env('SERPRO_OAUTH_CONNECT_TIMEOUT_SECONDS', 10),
-        /** Margem (segundos) antes da expiração para renovar o token. */
+        /** Margem (segundos) antes da expiração para renovar o par access_token+jwt_token. */
         'expiry_skew_seconds' => (int) env('SERPRO_OAUTH_EXPIRY_SKEW_SECONDS', 120),
         'lock_seconds' => (int) env('SERPRO_OAUTH_LOCK_SECONDS', 30),
         'lock_wait_seconds' => (int) env('SERPRO_OAUTH_LOCK_WAIT_SECONDS', 20),
+        /** Exige jwt_token na resposta OAuth (protocolo oficial). */
+        'require_jwt_token' => filter_var(env('SERPRO_OAUTH_REQUIRE_JWT_TOKEN', true), FILTER_VALIDATE_BOOL),
     ],
 
     'api' => [
@@ -41,6 +44,18 @@ return [
         'connect_timeout_seconds' => (int) env('SERPRO_API_CONNECT_TIMEOUT_SECONDS', 10),
         'verify_tls' => true,
         'min_tls' => '1.2',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Drivers por capacidade (disabled | simulated | real) — sem fallback
+    |--------------------------------------------------------------------------
+    | simulated é rejeitado em APP_ENV=production no preflight.
+    */
+    'capabilities' => [
+        'sitfis' => env('SERPRO_CAPABILITY_SITFIS', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
+        'autentica_procurador' => env('SERPRO_CAPABILITY_AUTENTICA_PROCURADOR', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
+        'default' => env('SERPRO_CAPABILITY_DEFAULT', 'disabled'),
     ],
 
     /*

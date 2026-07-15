@@ -9,12 +9,12 @@ use App\DTO\Fiscal\SimplesMei\DefisDto;
 use App\DTO\Fiscal\SimplesMei\PgdasdDeclarationDto;
 use App\DTO\Fiscal\SimplesMei\PgmeiDto;
 use App\DTO\Fiscal\SimplesMei\RegimeApuracaoDto;
+use App\DTO\Serpro\IntegraResponse;
 use App\Enums\FiscalGuidePaymentStatus;
 use App\Enums\FiscalSituation;
 use App\Enums\TaxRegimeCode;
 use App\Services\Fiscal\SimplesMei\SimplesMeiCatalog;
 use App\Services\Fiscal\SimplesMei\SimplesMeiResponseMapper;
-use App\DTO\Serpro\IntegraResponse;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 

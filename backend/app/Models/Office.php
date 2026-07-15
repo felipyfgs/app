@@ -41,4 +41,3 @@ class Office extends Model
         return $this->hasOne(OfficeSubscription::class);
     }
 }
-

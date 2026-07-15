@@ -2,8 +2,8 @@
 
 namespace App\Services\Sefaz;
 
-use App\Contracts\SecureObjectStore;
 use App\Contracts\CteXmlSignatureValidator;
+use App\Contracts\SecureObjectStore;
 use App\Domain\Sefaz\DistDfeDocumentDto;
 use App\Domain\Sefaz\DistDfePageDto;
 use App\Enums\AdnDocumentType;
@@ -18,6 +18,7 @@ use App\Enums\SignatureVerificationResult;
 use App\Enums\SyncCursorStatus;
 use App\Exceptions\Adn\DocumentDecodeException;
 use App\Models\ChannelSyncCursor;
+use App\Models\ChannelSyncCursorTransition;
 use App\Models\CteDocument;
 use App\Models\CteEvent;
 use App\Models\DfeDocument;
@@ -66,7 +67,7 @@ final class CteDistDfePageProcessor
             $cursor->last_error = 'Consumo indevido SEFAZ CT-e (cStat 656). Aguardar ≥1h.';
             $cursor->next_sync_at = now()->addHours((float) config('sefaz.quiet_hours_after_empty', 1));
             $cursor->save();
-            \App\Models\ChannelSyncCursorTransition::record(
+            ChannelSyncCursorTransition::record(
                 $cursor,
                 'cstat_656_circuit',
                 $from,
@@ -85,7 +86,7 @@ final class CteDistDfePageProcessor
             $cursor->last_error = 'Certificado/CNPJ divergente SEFAZ CT-e (cStat 593).';
             $cursor->next_sync_at = now()->addHours(1);
             $cursor->save();
-            \App\Models\ChannelSyncCursorTransition::record(
+            ChannelSyncCursorTransition::record(
                 $cursor,
                 'cstat_593_auth',
                 $from,

@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Serpro\Usage;
 
+use App\DTO\Serpro\IntegraResponse;
 use App\Enums\SerproConsumptionClass;
 use App\Enums\SerproUsageReservationStatus;
 use App\Enums\SerproUsageResult;
@@ -387,7 +388,7 @@ class UsageLedgerServiceTest extends TestCase
 
     public function test_around_mapeia_integra_response_falha_http(): void
     {
-        $response = new \App\DTO\Serpro\IntegraResponse(
+        $response = new IntegraResponse(
             success: false,
             httpStatus: 422,
             body: [],

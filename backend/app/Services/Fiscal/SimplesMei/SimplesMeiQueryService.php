@@ -2,6 +2,8 @@
 
 namespace App\Services\Fiscal\SimplesMei;
 
+use App\Enums\FiscalCoverage;
+use App\Enums\FiscalSituation;
 use App\Models\Client;
 use App\Models\FiscalCompetence;
 use App\Models\FiscalGuideStub;
@@ -56,8 +58,8 @@ final class SimplesMeiQueryService
                 $client,
                 $def,
                 $periodKey,
-                \App\Enums\FiscalSituation::Unknown,
-                \App\Enums\FiscalCoverage::Unknown,
+                FiscalSituation::Unknown,
+                FiscalCoverage::Unknown,
             );
         }
 

@@ -3,7 +3,6 @@
 namespace Tests\Feature\Outbound;
 
 use App\Enums\OutboundUrgencyBand;
-use App\Models\MaOutboundRetrievalRequest;
 use App\Models\Office;
 use App\Models\OutboundCapacitySnapshot;
 use App\Models\OutboundMonthlyReadiness;

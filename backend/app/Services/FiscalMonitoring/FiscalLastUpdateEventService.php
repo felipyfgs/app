@@ -53,7 +53,7 @@ final class FiscalLastUpdateEventService
 
         $event = DB::transaction(function () use (
             $office, $client, $systemCode, $serviceCode, $eventType, $externalId,
-            $payloadDigest, $occurredAt, $metadata, $hash, $enqueue, $operationCode,
+            $payloadDigest, $occurredAt, $metadata, $hash, $operationCode,
             &$duplicate, &$run
         ) {
             $existing = FiscalLastUpdateEvent::query()

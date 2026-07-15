@@ -23,10 +23,8 @@ use App\Models\OutboundSeriesCursor;
 use App\Models\OutboundXmlRecoveryAttempt;
 use App\Models\User;
 use App\Services\Outbound\OutboundXmlRecoveryOrchestrator;
-use App\Services\Outbound\SvrsNfceKillSwitchService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 /**
@@ -115,6 +113,7 @@ class SvrsNfceAntiSecretAndKillDrillTest extends TestCase
                 if (in_array(strtolower($marker), ['password'], true)) {
                     // palavra "password" não deve aparecer como campo
                     $this->assertStringNotContainsString('"password"', $lower);
+
                     continue;
                 }
                 $this->assertStringNotContainsString(

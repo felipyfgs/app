@@ -2,18 +2,19 @@
 
 namespace Tests\Unit\Serpro;
 
+use App\Enums\OfficeRole;
 use App\Enums\SerproAuthorizationStatus;
+use App\Enums\SerproContractStatus;
 use App\Enums\SerproEnvironment;
 use App\Enums\TaxProxyPowerSource;
 use App\Enums\TaxProxyPowerStatus;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
+use App\Models\OfficeSubscription;
 use App\Models\SerproContract;
 use App\Models\TaxProxyPower;
 use App\Models\User;
-use App\Enums\OfficeRole;
-use App\Enums\SerproContractStatus;
 use App\Services\Integra\IntegraEligibilityService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -146,7 +147,7 @@ class IntegraEligibilityServiceTest extends TestCase
         $user = User::factory()->forOffice($office, OfficeRole::Admin)->create();
         $client = Client::factory()->forOffice($office)->create();
 
-        \App\Models\OfficeSubscription::query()->where('office_id', $office->id)->update([
+        OfficeSubscription::query()->where('office_id', $office->id)->update([
             'monthly_api_quota' => 0,
         ]);
 

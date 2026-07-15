@@ -2,8 +2,8 @@
 
 namespace App\Services\Sefaz;
 
-use App\Contracts\SecureObjectStore;
 use App\Contracts\CteXmlSignatureValidator;
+use App\Contracts\SecureObjectStore;
 use App\Domain\Sefaz\DistDfeDocumentDto;
 use App\Domain\Sefaz\DistDfePageDto;
 use App\Enums\AdnDocumentType;
@@ -14,8 +14,8 @@ use App\Enums\DocumentDirection;
 use App\Enums\FiscalRole;
 use App\Enums\QuarantineReason;
 use App\Enums\QuarantineResolutionStatus;
-use App\Enums\SyncCursorStatus;
 use App\Enums\SignatureVerificationResult;
+use App\Enums\SyncCursorStatus;
 use App\Exceptions\Adn\DocumentDecodeException;
 use App\Models\CteDocument;
 use App\Models\CteEvent;

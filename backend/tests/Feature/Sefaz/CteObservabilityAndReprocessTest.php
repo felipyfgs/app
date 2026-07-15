@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Sefaz;
 
+use App\Contracts\SecureObjectStore;
 use App\Enums\AdnDocumentType;
 use App\Enums\CaptureChannel;
+use App\Enums\DocumentAcquisitionSource;
 use App\Enums\DocumentDirection;
 use App\Enums\FiscalRole;
 use App\Enums\OfficeRole;
@@ -11,17 +13,17 @@ use App\Enums\QuarantineReason;
 use App\Enums\QuarantineResolutionStatus;
 use App\Enums\SyncCursorStatus;
 use App\Models\ChannelSyncCursor;
+use App\Models\Client;
 use App\Models\CteDocument;
 use App\Models\CteEvent;
 use App\Models\DfeDocument;
-use App\Models\DocumentAcquisition;
+use App\Models\Establishment;
 use App\Models\FiscalDocumentQuarantine;
 use App\Models\Office;
 use App\Models\User;
 use App\Support\CurrentOffice;
 use App\Support\LogSanitizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Log;
 use Tests\Support\ApiSecretScanner;
 use Tests\TestCase;
 
@@ -35,8 +37,8 @@ class CteObservabilityAndReprocessTest extends TestCase
             ->assertSuccessful();
 
         $office = Office::factory()->create();
-        $client = \App\Models\Client::factory()->forOffice($office)->create();
-        $est = \App\Models\Establishment::factory()->forClient($client)->create();
+        $client = Client::factory()->forOffice($office)->create();
+        $est = Establishment::factory()->forClient($client)->create();
         ChannelSyncCursor::query()->create([
             'office_id' => $office->id,
             'establishment_id' => $est->id,
@@ -57,7 +59,7 @@ class CteObservabilityAndReprocessTest extends TestCase
         $office = Office::factory()->create();
         $xml = '<cteProc><chCTe>35260711222333000181570010000000011234567999</chCTe></cteProc>';
         $sha = hash('sha256', $xml);
-        $store = app(\App\Contracts\SecureObjectStore::class);
+        $store = app(SecureObjectStore::class);
         $objectId = $store->put($xml, ['office_id' => $office->id, 'sha256' => $sha]);
 
         $dfe = DfeDocument::query()->create([
@@ -112,7 +114,7 @@ class CteObservabilityAndReprocessTest extends TestCase
             'model' => '57',
             'schema_family' => 'cteProc',
             'reason' => QuarantineReason::PendingImport,
-            'source' => \App\Enums\DocumentAcquisitionSource::ManualXml,
+            'source' => DocumentAcquisitionSource::ManualXml,
             'resolution_status' => QuarantineResolutionStatus::Open,
         ]);
 
@@ -171,8 +173,8 @@ class CteObservabilityAndReprocessTest extends TestCase
     public function test_repair_command_recusa_quiet_period(): void
     {
         $office = Office::factory()->create();
-        $client = \App\Models\Client::factory()->forOffice($office)->create();
-        $est = \App\Models\Establishment::factory()->forClient($client)->create();
+        $client = Client::factory()->forOffice($office)->create();
+        $est = Establishment::factory()->forClient($client)->create();
         $cursor = ChannelSyncCursor::query()->create([
             'office_id' => $office->id,
             'establishment_id' => $est->id,

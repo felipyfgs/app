@@ -327,6 +327,7 @@ final class SvrsNfceXmlValidator
         if (! preg_match('/^[A-Z0-9]{44}$/', $key)) {
             return false;
         }
+
         // Alfanuméricas (NT2025): builder cobre; se contiver letra, validateDv do builder.
         return app(AccessKeyCandidateBuilder::class)->validateDv($key);
     }

@@ -23,6 +23,9 @@ use LogicException;
     'system_code',
     'service_code',
     'operation_code',
+    'operation_key',
+    'source_provenance',
+    'verification_state',
     'situation',
     'coverage',
     'version',
@@ -42,12 +45,30 @@ class FiscalSnapshot extends Model
         return [
             'situation' => FiscalSituation::class,
             'coverage' => FiscalCoverage::class,
+            'source_provenance' => \App\Enums\FiscalSourceProvenance::class,
+            'verification_state' => \App\Enums\FiscalVerificationState::class,
             'version' => 'integer',
             'is_current' => 'boolean',
             'normalized' => 'array',
             'observed_at' => 'immutable_datetime',
             'created_at' => 'immutable_datetime',
         ];
+    }
+
+    /**
+     * Snapshot pode representar "estado atual" fiscal oficial?
+     */
+    public function representsOfficialCurrentState(): bool
+    {
+        $provenance = $this->source_provenance;
+        if ($provenance === null) {
+            return false;
+        }
+        if ($provenance instanceof \App\Enums\FiscalSourceProvenance) {
+            return $provenance->isOfficialFiscalState() && (bool) $this->is_current;
+        }
+
+        return $provenance === 'SERPRO_REAL' && (bool) $this->is_current;
     }
 
     protected static function booted(): void
@@ -111,6 +132,13 @@ class FiscalSnapshot extends Model
             'system_code' => $this->system_code,
             'service_code' => $this->service_code,
             'operation_code' => $this->operation_code,
+            'operation_key' => $this->operation_key,
+            'source_provenance' => $this->source_provenance instanceof \BackedEnum
+                ? $this->source_provenance->value
+                : $this->source_provenance,
+            'verification_state' => $this->verification_state instanceof \BackedEnum
+                ? $this->verification_state->value
+                : $this->verification_state,
             'situation' => $this->situation?->value,
             'coverage' => $this->coverage?->value,
             'version' => $this->version,

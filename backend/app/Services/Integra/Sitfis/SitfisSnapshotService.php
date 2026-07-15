@@ -44,16 +44,45 @@ final class SitfisSnapshotService
         $system = $this->systemCode();
         $service = $this->serviceCode();
 
-        $snapshot = FiscalSnapshot::query()
+        // Estado atual: apenas proveniência verificável (exclui UNVERIFIED legado e não mistura tenants)
+        $snapshotQuery = FiscalSnapshot::query()
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
             ->where('system_code', $system)
             ->where('service_code', $service)
             ->where('is_current', true)
-            ->whereNotNull('evidence_artifact_id')
-            ->orderByDesc('id')
-            ->first();
+            ->whereNotNull('evidence_artifact_id');
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('fiscal_snapshots', 'source_provenance')) {
+            $snapshotQuery->where(function ($q): void {
+                $q->whereIn('source_provenance', ['SERPRO_REAL', 'SIMULATED'])
+                    ->orWhereNull('source_provenance'); // pré-migration
+            })->where(function ($q): void {
+                $q->where('source_provenance', '!=', 'UNVERIFIED')
+                    ->orWhereNull('source_provenance');
+            });
+        }
+
+        $snapshot = $snapshotQuery->orderByDesc('id')->first();
+
+        // Preferir SERPRO_REAL/SIMULATED explícitos sobre legado nulo se ambos existirem
+        if ($snapshot !== null
+            && \Illuminate\Support\Facades\Schema::hasColumn('fiscal_snapshots', 'source_provenance')
+            && $snapshot->source_provenance === null) {
+            $verified = FiscalSnapshot::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $office->id)
+                ->where('client_id', $client->id)
+                ->where('system_code', $system)
+                ->where('service_code', $service)
+                ->whereIn('source_provenance', ['SERPRO_REAL', 'SIMULATED'])
+                ->orderByDesc('id')
+                ->first();
+            if ($verified !== null) {
+                $snapshot = $verified;
+            }
+        }
 
         $now = CarbonImmutable::now();
         $age = null;
@@ -131,7 +160,8 @@ final class SitfisSnapshotService
 
         $view = $this->current($office, $client);
 
-        if (! $force && $view['is_within_ttl'] && $view['snapshot'] !== null) {
+        // Nesta change: force não cria chamada externa se ainda dentro do TTL
+        if ($view['is_within_ttl'] && $view['snapshot'] !== null) {
             return [
                 'run' => null,
                 'reused_snapshot' => true,
@@ -187,13 +217,39 @@ final class SitfisSnapshotService
         /** @var ?FiscalSnapshot $snapshot */
         $snapshot = $view['snapshot'];
 
+        $provenance = null;
+        $verification = null;
+        if ($snapshot !== null) {
+            $provenance = $snapshot->source_provenance instanceof \BackedEnum
+                ? $snapshot->source_provenance->value
+                : $snapshot->source_provenance;
+            $verification = $snapshot->verification_state instanceof \BackedEnum
+                ? $snapshot->verification_state->value
+                : $snapshot->verification_state;
+        }
+
+        $nextRefreshAt = $view['expires_at'] ?? null;
+        $canRefresh = ! $view['is_within_ttl'] || $view['snapshot'] === null;
+        $blockReason = null;
+        if ($view['active_run'] !== null) {
+            $blockReason = 'RUN_IN_PROGRESS';
+            $canRefresh = false;
+        } elseif ($view['is_within_ttl'] && $view['snapshot'] !== null) {
+            $blockReason = 'WITHIN_TTL';
+        }
+
         return [
             'snapshot' => $snapshot?->toPublicArray(),
             'age_seconds' => $view['age_seconds'],
             'observed_at' => $view['observed_at'],
             'expires_at' => $view['expires_at'],
+            'next_refresh_at' => $nextRefreshAt,
             'ttl_seconds' => $view['ttl_seconds'],
             'is_within_ttl' => $view['is_within_ttl'],
+            'can_refresh' => $canRefresh,
+            'block_reason' => $blockReason,
+            'source_provenance' => $provenance,
+            'verification_state' => $verification,
             'is_negative_certificate' => false, // hard rule: API nunca afirma certidão
             'disclaimer' => $view['disclaimer'] ?? 'Ausência de pendência reconhecida não equivale a certidão negativa.',
             'active_run' => $view['active_run'],

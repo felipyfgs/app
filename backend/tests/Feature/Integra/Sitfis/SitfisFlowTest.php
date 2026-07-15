@@ -23,8 +23,12 @@ use App\Models\SerproApiUsageReservation;
 use App\Models\SerproContract;
 use App\Models\TaxProxyPower;
 use App\Models\User;
+use App\Services\FiscalMonitoring\FiscalAdapterRegistry;
+use App\Services\FiscalMonitoring\FiscalEvidenceStore;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
+use App\Services\Integra\Sitfis\SitfisFlowService;
 use App\Services\Integra\Sitfis\SitfisSnapshotService;
+use App\Services\Integra\Sitfis\SitfisSourceAdapter;
 use App\Support\CurrentOffice;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -108,7 +112,7 @@ class SitfisFlowTest extends TestCase
             'contributor_cnpj' => '11222333000181',
             'system_code' => 'INTEGRA_SITFIS',
             'service_code' => 'SITFIS',
-            'power_code' => 'SITFIS',
+            'power_code' => '00002',
             'source' => TaxProxyPowerSource::ManualOfficialEvidence,
             'status' => TaxProxyPowerStatus::Active,
             'valid_from' => now()->subDay(),
@@ -119,11 +123,11 @@ class SitfisFlowTest extends TestCase
         $this->app->instance(IntegraContadorClient::class, $this->integra);
 
         // Rebind flow/adapter to pick up programmable client
-        $this->app->forgetInstance(\App\Services\Integra\Sitfis\SitfisFlowService::class);
-        $this->app->forgetInstance(\App\Services\Integra\Sitfis\SitfisSourceAdapter::class);
+        $this->app->forgetInstance(SitfisFlowService::class);
+        $this->app->forgetInstance(SitfisSourceAdapter::class);
 
         // Re-register adapter with fresh dependencies
-        $registry = $this->app->make(\App\Services\FiscalMonitoring\FiscalAdapterRegistry::class);
+        $registry = $this->app->make(FiscalAdapterRegistry::class);
         // Clear and re-register only Sitfis (others may exist)
         $ref = new \ReflectionClass($registry);
         $prop = $ref->getProperty('adapters');
@@ -131,10 +135,10 @@ class SitfisFlowTest extends TestCase
         $existing = $prop->getValue($registry);
         $filtered = array_values(array_filter(
             $existing,
-            fn ($a) => ! $a instanceof \App\Services\Integra\Sitfis\SitfisSourceAdapter,
+            fn ($a) => ! $a instanceof SitfisSourceAdapter,
         ));
         $prop->setValue($registry, $filtered);
-        $registry->register($this->app->make(\App\Services\Integra\Sitfis\SitfisSourceAdapter::class));
+        $registry->register($this->app->make(SitfisSourceAdapter::class));
     }
 
     public function test_fluxo_processando_nao_faz_polling_antes_do_prazo_minimo(): void
@@ -160,7 +164,7 @@ class SitfisFlowTest extends TestCase
         $this->assertSame(FiscalSituation::Processing, $done->situation);
         $this->assertSame('PROT-WAIT-1', $done->progress['protocol'] ?? null);
         $this->assertSame('WAITING_MIN_PERIOD', $done->progress['phase'] ?? null);
-        $this->assertSame(['SOLICITAR_RELATORIO'], $this->integra->operations());
+        $this->assertSame(['SOLICITARPROTOCOLO91'], $this->integra->operations());
 
         // Ledger: solicitação registrou reserva (eligibility + usage gate)
         $this->assertGreaterThanOrEqual(
@@ -185,7 +189,7 @@ class SitfisFlowTest extends TestCase
         $this->assertSame(FiscalRunStatus::Requeued, $done2->status);
         $this->assertSame(FiscalSituation::Processing, $done2->situation);
         // Ainda só a solicitação — sem EMITIR durante a espera
-        $this->assertSame(['SOLICITAR_RELATORIO'], $this->integra->operations());
+        $this->assertSame(['SOLICITARPROTOCOLO91'], $this->integra->operations());
         $this->assertSame(0, FiscalEvidenceArtifact::query()->withoutGlobalScopes()
             ->where('office_id', $this->office->id)->count());
     }
@@ -234,12 +238,12 @@ class SitfisFlowTest extends TestCase
 
         $this->assertSame(FiscalRunStatus::Completed, $done->status);
         $this->assertSame(FiscalSituation::Pending, $done->situation);
-        $this->assertContains('EMITIR_RELATORIO', $this->integra->operations());
+        $this->assertContains('RELATORIOSITFIS92', $this->integra->operations());
 
         $evidence = FiscalEvidenceArtifact::query()->withoutGlobalScopes()
             ->where('run_id', $done->id)->first();
         $this->assertNotNull($evidence);
-        $this->assertStringContainsString('DEBITO_1', app(\App\Services\FiscalMonitoring\FiscalEvidenceStore::class)
+        $this->assertStringContainsString('DEBITO_1', app(FiscalEvidenceStore::class)
             ->readAuthorized($evidence, (int) $this->office->id));
 
         $snapshot = FiscalSnapshot::query()->withoutGlobalScopes()
@@ -356,6 +360,8 @@ class SitfisFlowTest extends TestCase
             'system_code' => 'INTEGRA_SITFIS',
             'service_code' => 'SITFIS',
             'operation_code' => 'MONITOR',
+            'source_provenance' => 'SERPRO_REAL',
+            'verification_state' => 'VERIFIED',
             'situation' => FiscalSituation::Unknown,
             'coverage' => 'FULL',
             'version' => 1,
@@ -477,7 +483,7 @@ class SitfisFlowTest extends TestCase
         $this->assertSame('POLLING_EMIT', $polling->progress['phase'] ?? null);
         $this->assertSame(1, (int) ($polling->progress['poll_count'] ?? 0));
         $this->assertGreaterThanOrEqual(60, (int) ($polling->progress['requeue_after_seconds'] ?? 0));
-        $this->assertSame(['SOLICITAR_RELATORIO', 'EMITIR_RELATORIO'], $this->integra->operations());
+        $this->assertSame(['SOLICITARPROTOCOLO91', 'RELATORIOSITFIS92'], $this->integra->operations());
     }
 
     public function test_snapshot_service_refresh_forca_quando_ttl_expirado(): void

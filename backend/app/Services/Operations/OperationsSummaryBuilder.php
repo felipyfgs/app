@@ -7,8 +7,11 @@ use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutationStatus;
 use App\Enums\FiscalPendingStatus;
 use App\Enums\FiscalSituation;
+use App\Enums\OfficeRole;
+use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproEnvironment;
+use App\Enums\SvrsNfceRecoveryStatus;
 use App\Enums\SyncCursorStatus;
 use App\Enums\TaxGuidePaymentStatus;
 use App\Enums\TaxProxyPowerStatus;
@@ -20,6 +23,7 @@ use App\Models\FiscalCompetence;
 use App\Models\FiscalMutationOperation;
 use App\Models\FiscalPendingItem;
 use App\Models\InstanceBackupRun;
+use App\Models\MaOutboundRetrievalRequest;
 use App\Models\NfseNote;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\OfficeSubscription;
@@ -27,16 +31,12 @@ use App\Models\SyncCursor;
 use App\Models\SyncRun;
 use App\Models\TaxGuide;
 use App\Models\TaxProxyPower;
-use App\Enums\OutboundRetrievalOrigin;
-use App\Enums\SvrsNfceRecoveryStatus;
-use App\Models\MaOutboundRetrievalRequest;
 use App\Services\Integra\TenantIntegraHealthService;
 use App\Services\Outbound\SvrsNfceCircuitBreaker;
 use App\Services\Outbound\SvrsNfceConfig;
 use App\Services\Outbound\SvrsNfceKillSwitchService;
 use App\Services\Usage\OfficeUsageQueryService;
 use App\Support\FeatureFlags;
-use App\Enums\OfficeRole;
 
 /**
  * Resumo operacional do escritório ativo — agregados sanitizados.

@@ -2,9 +2,9 @@
 
 namespace App\DTO\Esocial;
 
+use App\Enums\FgtsIndependentState;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalSituation;
-use App\Enums\FgtsIndependentState;
 
 /**
  * Projeção de estados independentes FGTS/eSocial para uma competência.

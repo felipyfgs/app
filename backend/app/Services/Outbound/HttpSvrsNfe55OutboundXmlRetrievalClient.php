@@ -231,7 +231,7 @@ final class HttpSvrsNfe55OutboundXmlRetrievalClient implements SvrsNfe55Outbound
                 $abs = $this->resolveLocation($url, $location);
                 try {
                     $this->config->assertUrlAllowed($abs);
-                } catch (\Throwable) {
+                } catch (Throwable) {
                     throw new \RuntimeException('redirect rejected');
                 }
             }

@@ -18,8 +18,8 @@ use App\Models\Office;
 use App\Models\OfficeAutXmlEnrollment;
 use App\Models\OfficeDistributionCursor;
 use App\Models\OfficeFiscalIdentity;
-use App\Services\Sefaz\OfficeAutXmlPageProcessor;
 use App\Services\Sefaz\NfeXmlProjectionParser;
+use App\Services\Sefaz\OfficeAutXmlPageProcessor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 

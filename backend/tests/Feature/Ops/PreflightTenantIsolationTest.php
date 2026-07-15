@@ -5,6 +5,7 @@ namespace Tests\Feature\Ops;
 use App\Models\Office;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -23,8 +24,8 @@ class PreflightTenantIsolationTest extends TestCase
         $this->artisan('ops:preflight-tenant-isolation', ['--json' => true])
             ->assertSuccessful();
 
-        \Illuminate\Support\Facades\Artisan::call('ops:preflight-tenant-isolation', ['--json' => true]);
-        $payload = json_decode(\Illuminate\Support\Facades\Artisan::output(), true);
+        Artisan::call('ops:preflight-tenant-isolation', ['--json' => true]);
+        $payload = json_decode(Artisan::output(), true);
 
         $this->assertIsArray($payload);
         $this->assertArrayHasKey('can_proceed', $payload);

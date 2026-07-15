@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Demo;
 
+use App\Contracts\SecureObjectStore;
 use App\Enums\FiscalSituation;
+use App\Enums\SecureObjectPurpose;
 use App\Enums\SyncCursorStatus;
 use App\Models\Client;
 use App\Models\DctfwebDeclaration;
@@ -251,9 +253,9 @@ class FiscalMonitoringDemoSeederTest extends TestCase
         $this->assertNotNull($guideVer);
 
         // Conteúdo com marca d'água
-        $bytes = app(\App\Contracts\SecureObjectStore::class)->get(
+        $bytes = app(SecureObjectStore::class)->get(
             $artifact->vault_object_id,
-            \App\Enums\SecureObjectPurpose::FiscalEvidence->aadBase([
+            SecureObjectPurpose::FiscalEvidence->aadBase([
                 'office_id' => (int) $artifact->office_id,
                 'sha256' => $artifact->content_sha256,
                 'demo' => true,

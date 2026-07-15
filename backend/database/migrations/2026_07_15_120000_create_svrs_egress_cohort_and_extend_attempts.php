@@ -89,11 +89,11 @@ return new class extends Migration
             Schema::table('outbound_xml_recovery_attempts', function (Blueprint $table) {
                 try {
                     $table->dropIndex('outbound_xml_attempt_office_origin_result_idx');
-                } catch (\Throwable) {
+                } catch (Throwable) {
                 }
                 try {
                     $table->dropIndex('outbound_xml_attempt_cohort_created_idx');
-                } catch (\Throwable) {
+                } catch (Throwable) {
                 }
                 foreach (['model', 'origin', 'cohort_id', 'exchanges_reserved', 'exchanges_consumed', 'reservation_id'] as $col) {
                     if (Schema::hasColumn('outbound_xml_recovery_attempts', $col)) {

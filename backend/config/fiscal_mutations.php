@@ -1,14 +1,15 @@
 <?php
 
+use App\Services\Fiscal\Mutations;
+
 /**
  * Operações fiscais mutantes e reconciliação (tasks 13.1–13.8).
  *
  * Defaults seguros: tudo OFF. Liberar por solução/operação/coorte após aprovação.
  *
- * @see App\Services\Fiscal\Mutations
+ * @see Mutations
  * @see openspec/changes/build-complete-fiscal-monitoring-hub (design decisão 10)
  */
-
 $parseIdList = static function (?string $raw): array {
     if ($raw === null || trim($raw) === '') {
         return [];

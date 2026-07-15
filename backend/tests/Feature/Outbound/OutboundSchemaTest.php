@@ -15,6 +15,7 @@ use App\Models\OutboundNumberState;
 use App\Models\OutboundSeriesCursor;
 use App\Models\User;
 use App\Support\CurrentOffice;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -148,7 +149,7 @@ class OutboundSchemaTest extends TestCase
             'status' => OutboundNumberStatus::ConsultQueued,
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         OutboundNumberState::query()->create([
             'office_id' => $office->id,
             'outbound_capture_profile_id' => $profile->id,

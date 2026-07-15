@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Contracts\SecureObjectStore;
+use App\Enums\CaptureChannel;
 use App\Enums\DocumentArtifactQuality;
 use App\Enums\DocumentDirection;
 use App\Enums\DocumentKind;
@@ -723,7 +724,7 @@ class NoteController extends Controller
             );
 
             $quality = $preferredAcq?->artifact_quality;
-            $qualityValue = $quality instanceof \App\Enums\DocumentArtifactQuality
+            $qualityValue = $quality instanceof DocumentArtifactQuality
                 ? $quality->value
                 : (string) ($quality ?? 'UNKNOWN');
 
@@ -1016,7 +1017,7 @@ class NoteController extends Controller
                 'establishment_id' => $i->establishment_id,
                 'fiscal_role' => $i->fiscal_role instanceof FiscalRole ? $i->fiscal_role->value : $i->fiscal_role,
                 'direction' => $i->direction instanceof DocumentDirection ? $i->direction->value : $i->direction,
-                'channel' => $i->channel instanceof \App\Enums\CaptureChannel
+                'channel' => $i->channel instanceof CaptureChannel
                     ? $i->channel->value
                     : $i->channel,
                 'nsu' => $i->nsu,

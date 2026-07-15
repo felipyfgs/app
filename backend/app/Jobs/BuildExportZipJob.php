@@ -37,8 +37,10 @@ class BuildExportZipJob implements ShouldQueue
 
     public function __construct(public int $exportId) {}
 
-    public function handle(SecureObjectStore $store, ModulePortfolioQueryService $portfolio): void
-    {
+    public function handle(
+        SecureObjectStore $store,
+        ?ModulePortfolioQueryService $portfolio = null,
+    ): void {
         $export = Export::query()->find($this->exportId);
         if ($export === null) {
             return;
@@ -61,6 +63,7 @@ class BuildExportZipJob implements ShouldQueue
 
             if (($filters['export_scope'] ?? null) === 'fiscal_portfolio') {
                 // Sempre gera manifesto + CSV/JSON (mesmo com 0 clientes no filtro).
+                $portfolio ??= app(ModulePortfolioQueryService::class);
                 $count = $this->addFiscalPortfolioEntries($zip, $export, $filters, $portfolio);
                 $zip->close();
                 $this->markReady($export, $path, $count);

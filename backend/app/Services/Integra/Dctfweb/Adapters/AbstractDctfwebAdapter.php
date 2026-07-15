@@ -5,6 +5,7 @@ namespace App\Services\Integra\Dctfweb\Adapters;
 use App\Contracts\FiscalSourceAdapter;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
+use App\DTO\Serpro\IntegraResponse;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalMutability;
@@ -77,7 +78,7 @@ abstract class AbstractDctfwebAdapter implements FiscalSourceAdapter
     /**
      * @param  array<string, mixed>  $payload
      */
-    protected function callUpstream(FiscalAdapterRequest $request, array $payload = []): \App\DTO\Serpro\IntegraResponse
+    protected function callUpstream(FiscalAdapterRequest $request, array $payload = []): IntegraResponse
     {
         return $this->caller->call(
             request: $request,
@@ -88,7 +89,7 @@ abstract class AbstractDctfwebAdapter implements FiscalSourceAdapter
         );
     }
 
-    protected function failedFromResponse(\App\DTO\Serpro\IntegraResponse $response): FiscalAdapterResult
+    protected function failedFromResponse(IntegraResponse $response): FiscalAdapterResult
     {
         $code = $response->errorCode ?? 'UPSTREAM_ERROR';
 

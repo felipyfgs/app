@@ -3,9 +3,7 @@
 namespace Tests\Feature\FiscalMonitoring;
 
 use App\Enums\FiscalCoverage;
-use App\Enums\FiscalEventStatus;
 use App\Enums\FiscalPendingStatus;
-use App\Enums\FiscalRunResult;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
 use App\Enums\FiscalTrigger;

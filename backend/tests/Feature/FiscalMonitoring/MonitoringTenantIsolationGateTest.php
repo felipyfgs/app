@@ -15,6 +15,7 @@ use App\Enums\TaxGuidePaymentStatus;
 use App\Enums\TaxInstallmentModality;
 use App\Models\Client;
 use App\Models\DctfwebDeclaration;
+use App\Models\FiscalCategory;
 use App\Models\FiscalMonitoringRun;
 use App\Models\FiscalSnapshot;
 use App\Models\MailboxMessage;
@@ -146,7 +147,7 @@ class MonitoringTenantIsolationGateTest extends TestCase
 
         // Mesmo com office_id de B no body, o middleware remove o campo;
         // a associação (se categories existirem) usa office da membership.
-        $category = \App\Models\FiscalCategory::query()->first();
+        $category = FiscalCategory::query()->first();
         if ($category === null) {
             $this->markTestSkipped('FiscalCategory seed ausente neste ambiente de teste.');
         }
