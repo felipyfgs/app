@@ -128,8 +128,8 @@ XML;
         $this->assertNotFalse($csr);
         $certificate = openssl_csr_sign($csr, null, $privateKey, 365, ['digest_alg' => 'sha256']);
         $this->assertNotFalse($certificate);
-        openssl_pkey_export($privateKey, $privatePem);
-        openssl_x509_export($certificate, $certificatePem);
+        $this->assertTrue(openssl_pkey_export($privateKey, $privatePem));
+        $this->assertTrue(openssl_x509_export($certificate, $certificatePem));
 
         $dom = new DOMDocument;
         $dom->loadXML($xml, LIBXML_NONET);
@@ -147,6 +147,9 @@ XML;
         $signature->add509Cert($certificatePem, true, false);
         $signature->appendSignature($dom->documentElement);
 
-        return $dom->saveXML() ?: '';
+        $signed = $dom->saveXML() ?: '';
+        $this->assertStringContainsString('X509Certificate', $signed);
+
+        return $signed;
     }
 }
