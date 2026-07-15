@@ -77,13 +77,13 @@ Clientes Alpha/Beta/Gamma do `DemoCatalogSeeder` são **fake** — não usar par
 | `SEFAZ_DISTDFE_ENABLED` | NF-e DistDFe |
 | `SEFAZ_MANIFEST_ENABLED` | RecepcaoEvento4 (ciência/conclusivas) |
 | `SEFAZ_CTE_ENABLED` | CT-e DistDFe |
-| `SEFAZ_MDFE_ENABLED` | MDF-e DistDFe |
 | `SEFAZ_NFCE_ENABLED` | NFC-e (gap — não habilitar sem canal real) |
+| ~~`SEFAZ_MDFE_ENABLED`~~ | **MDF-e fora do escopo escritural** — flag ignorada / sempre off |
 
 - **Saídas NF-e/NFC-e:** DistDFe **não** entrega a própria nota ao emitente → importar XML do ERP.
 - **Entradas NF-e:** DistDFe; se só resumo, download rotula “Somente resumo” e prefere full quando existir.
 - Smoke unlock client 8: `SEFAZ_MANIFEST_ENABLED=true` → “Obter XML completo” no detalhe (ciência 210210 + job reconsulta); **não** smoke de desconhecimento em nota comercial real.
-- Filas Horizon: `sync-sefaz-nfe`, `manifest-nfe`, `sync-sefaz-cte`, `sync-sefaz-mdfe` (não competir com ADN).
+- Filas Horizon: `sync-sefaz-nfe`, `manifest-nfe`, `sync-sefaz-cte` (sem fila MDF-e; canal fora do escopo escritural).
 
 ### Smoke B.3 — unlock XML (client 8) quando houver só-resumo
 

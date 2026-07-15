@@ -23,7 +23,18 @@
 2. Canal oficial (consulta por chave / outro WS) com contrato estável e rate limit.
 3. Feature flag `SEFAZ_NFCE_ENABLED` + processor dedicado — **sem** reutilizar DistDFe NF-e fingindo modelo 65.
 
+## Atualização MA outbound (2026-07)
+
+Para estabelecimentos **UF=MA**, a change `build-ma-outbound-nfe-nfce-capture` introduz:
+
+- captura de **NFC-e 65 OUT** via pacote oficial assistido + reconciliação por `nNF`;
+- consulta de protocolo (sem CSC);
+- **sem** DistDFe de NFC-e e **sem** RPA.
+
+Ver `docs/ops/ma-outbound-g0-decision.md` e `docs/ops/ma-outbound-runbooks.md`.
+
 ## Referência
 
 - Change: `capture-multi-dfe-sefaz` · design D4 · task 6.1
+- Change: `build-ma-outbound-nfe-nfce-capture`
 - Spec: `fiscal-document-catalog` / `multi-dfe-catalog-projection` (MAY NFC-e)
