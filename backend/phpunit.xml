@@ -38,6 +38,13 @@
         <server name="VAULT_MASTER_KEY_VERSION" value="1"/>
         <server name="VAULT_DISK_ROOT" value="/tmp/nfse-vault-test"/>
         <server name="LOG_CHANNEL" value="stderr"/>
+        <!-- Canal MA: $_SERVER precisa vencer as flags do piloto injetadas pelo Docker -->
+        <server name="SEFAZ_MA_OUTBOUND_ENABLED" value="false"/>
+        <server name="SEFAZ_MA_PROTOCOL_QUERY_ENABLED" value="false"/>
+        <server name="SEFAZ_MA_M2M_RETRIEVAL_ENABLED" value="false"/>
+        <server name="SEFAZ_MA_MUTATING_PROBE_ENABLED" value="false"/>
+        <server name="SEFAZ_MA_OUTBOUND_KILL_SWITCH" value="false"/>
+        <server name="SEFAZ_MA_M2M_STATUS" value="NO_GO_M2M"/>
         <server name="SEFAZ_SVRS_NFCE_XML_REQUIRE_SIGNATURE" value="false"/>
         <server name="SEFAZ_SVRS_NFCE_XML_RETRIEVAL_ENABLED" value="false"/>
         <server name="SEFAZ_SVRS_NFCE_XML_AUTO_QUEUE_ENABLED" value="false"/>

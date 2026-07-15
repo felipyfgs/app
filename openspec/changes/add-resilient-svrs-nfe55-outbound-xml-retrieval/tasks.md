@@ -53,7 +53,7 @@
 
 ## 5. Fake portal e fixtures antes do mTLS real
 
-- [ ] 5.1 Criar fake server local com GET do formulário e POST de download sem acesso externo.
+- [x] 5.1 Criar fake server local com GET do formulário e POST de download sem acesso externo.
 - [x] 5.2 Criar fixture sanitizada de sucesso NF-e 55 com literal e escapes aceitos.
 - [x] 5.3 Criar fixtures de bloqueio HTTP 200, 403, 429, 503, redirect e timeout.
 - [x] 5.4 Criar fixtures de não encontrado, autenticação negada e contrato alterado.
@@ -147,9 +147,9 @@
 - [ ] 12.3 Criar itens de inbox para bloqueio múltiplas consultas, contrato, A1, assinatura, divergência e budget.
 - [ ] 12.4 Garantir cardinalidade limitada e mascaramento de chave/CNPJ em logs e tracing.
 - [x] 12.5 Executar testes unitários do governador, janelas, relógio, escalonamento e fail-closed.
-- [ ] 12.6 Executar testes de integração do fake portal, mTLS simulado, parser e ingestão.
+- [x] 12.6 Executar testes de integração do fake portal, mTLS simulado, parser e ingestão.
 - [ ] 12.7 Executar testes de concorrência NF-e/NFC-e em múltiplos workers e tenants.
-- [ ] 12.8 Executar testes de segurança para SSRF, XXE, redirect, template malicioso e exposição de segredo.
+- [x] 12.8 Executar testes de segurança para SSRF, XXE, redirect, template malicioso e exposição de segredo.
 - [ ] 12.9 Executar suíte backend/frontend, análise estática e testes de migrations/rollback.
 - [x] 12.10 Produzir runbook de bloqueio com kill switch, cooldown, canário, fallback e contato SVRS.
 - [x] 12.11 Executar drill de kill switch e rollback sem apagar backlog, hashes ou documentos.

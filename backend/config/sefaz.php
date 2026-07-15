@@ -351,6 +351,7 @@ return [
 
         'scheme' => 'https',
         'host' => env('SEFAZ_SVRS_NFE55_XML_HOST', env('SEFAZ_SVRS_PORTAL_HOST', 'dfe-portal.svrs.rs.gov.br')),
+        'port' => env('SEFAZ_SVRS_NFE55_XML_PORT'),
         'allowed_hosts' => array_values(array_filter(array_map(
             static fn (string $h): string => strtolower(trim($h)),
             explode(',', (string) env(

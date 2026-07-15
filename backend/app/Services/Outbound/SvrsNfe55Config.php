@@ -33,6 +33,23 @@ final class SvrsNfe55Config
         return $host;
     }
 
+    public function port(): ?int
+    {
+        $configured = config('sefaz.svrs_nfe55_xml.port');
+        if ($configured === null || $configured === '') {
+            return null;
+        }
+
+        $port = filter_var($configured, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 65535],
+        ]);
+        if ($port === false) {
+            throw new InvalidArgumentException('Porta SVRS NF-e 55 inválida.');
+        }
+
+        return (int) $port;
+    }
+
     /**
      * @return list<string>
      */
@@ -147,11 +164,19 @@ final class SvrsNfe55Config
             throw new InvalidArgumentException('Somente HTTPS é permitido.');
         }
         $this->assertAllowedHost((string) ($parts['host'] ?? ''));
+
+        $expectedPort = $this->port() ?? 443;
+        $actualPort = (int) ($parts['port'] ?? 443);
+        if ($actualPort !== $expectedPort) {
+            throw new InvalidArgumentException('Porta SVRS NF-e 55 não allowlisted.');
+        }
     }
 
     private function buildUrl(string $path): string
     {
-        $url = 'https://'.$this->host().$path;
+        $port = $this->port();
+        $authority = $this->host().($port === null ? '' : ':'.$port);
+        $url = 'https://'.$authority.$path;
         $this->assertUrlAllowed($url);
 
         return $url;
