@@ -387,15 +387,41 @@ O sistema SHALL apresentar o catálogo fiscal na rota canônica `/docs` com a me
 - **THEN** é redirecionado para `/docs` ou `/docs/:accessKey` preservando query string quando aplicável
 
 ### Requirement: Filtro e indicação de tipo DF-e
-O sistema SHALL permitir filtrar o catálogo por tipo de documento (`kind`) e exibir o tipo de cada linha (badge/label). Tipos sem captura implementada MUST mostrar empty state informativo, sem erro.
+O sistema SHALL permitir filtrar o catálogo por tipo e exibir o tipo de cada linha somente para `NFSE`, `NFE`, `NFCE` e `CTE`. Tipos com captura habilitada MUST listar dados reais; tipos sem captura MUST manter empty state informativo. MDF-e MUST NOT aparecer como opção operacional.
 
 #### Scenario: Tipo sem captura
-- **WHEN** o operador filtra por NF-e (ou outro kind sem dados)
-- **THEN** a UI explica que a captura deste tipo ainda não está disponível
+- **WHEN** o operador filtra por kind sem captura habilitada ou sem dados
+- **THEN** a UI explica a indisponibilidade sem erro
 
 #### Scenario: NFS-e com dados
 - **WHEN** o operador filtra por NFS-e (ou Todos, com apenas NFS-e populado)
 - **THEN** a lista mostra documentos NFS-e com coluna/badge de tipo
+
+#### Scenario: NF-e com captura
+- **WHEN** a captura DistDFe está habilitada e há documentos
+- **THEN** o filtro NF-e mostra linhas com badge NFE e não exibe “em breve” como único estado
+
+#### Scenario: MDF-e ausente
+- **WHEN** o operador abre os filtros e estados do catálogo
+- **THEN** MDF-e não é apresentado como opção disponível ou futura
+
+### Requirement: Manifestação no detalhe do documento
+O sistema SHALL oferecer no detalhe de NF-e (quando pendente de manifestação) ações de ciência/confirmação/desconhecimento/não realizada para perfis autorizados, com confirmação e feedback de sucesso/erro sanitizado.
+
+#### Scenario: Operador manifesta ciência
+- **WHEN** o operador confirma ciência em uma NF-e resumo
+- **THEN** a UI envia a ação, atualiza o estado e não exibe material de certificado
+
+### Requirement: Sincronizações multi-canal
+O sistema SHALL apresentar status de cursors SEFAZ DistDFe e CT-e nas telas de sincronização e saúde de forma distinguível dos cursors ADN, sem apresentar canal MDF-e.
+
+#### Scenario: Cursor DistDFe bloqueado
+- **WHEN** o cursor DistDFe está BLOCKED
+- **THEN** a UI de sync ou health mostra o canal e severidade sem dump SOAP bruto
+
+#### Scenario: Superfície operacional sem MDF-e
+- **WHEN** o usuário abre sincronização ou saúde
+- **THEN** não existe filtro, status ou ação para MDF-e
 
 ### Requirement: Catálogo de notas como posto fiscal escaneável
 O sistema SHALL apresentar Notas fiscais em layout de alta densidade (tabela administrativa full-width com detalhe adjacente ou drawer, ou mestre–detalhe com painel mestre de largura mínima efetiva ≥ 36% no desktop), de modo que o operador leia número, papel, contraparte, competência e valor sem abrir o XML.
@@ -573,3 +599,39 @@ O sistema SHALL, no modal/painel de detalhe da nota, exibir o badge de situaçã
 #### Scenario: Detalhe supersedida
 - **WHEN** o usuário abre o detalhe de uma nota `SUPERSEDED`
 - **THEN** vê badge **Cancelada** e texto legível de que a nota foi substituída (quando a API fornecer dados)
+
+### Requirement: Filtros Entrada e Saída
+O sistema SHALL expor na UI Documentos filtro de direção (Todas / Entradas / Saídas) além do tipo (NFS-e, NF-e, …).
+
+#### Scenario: Filtro só entradas
+- **WHEN** o operador seleciona Entradas no catálogo Documentos
+- **THEN** a listagem restringe a direction=IN
+
+### Requirement: Import de saídas
+O sistema SHALL oferecer a OPERATOR upload de XML/ZIP para saídas, com resultado (importados / duplicados / erros) e sem exigir manifestação SEFAZ.
+
+#### Scenario: Upload ZIP de saídas
+- **WHEN** o operador envia um ZIP com XML de NF-e emitida
+- **THEN** a UI mostra contagem de importados/duplicados/erros sem material de certificado
+
+### Requirement: Entrega prioritária
+O sistema SHALL manter o download como ação principal; ciência de unlock e MD-e opcional permanecem secundários (conforme change de manifestação/entrega).
+
+#### Scenario: CTA principal no detalhe
+- **WHEN** o operador abre o detalhe de um documento com XML no vault
+- **THEN** a ação principal de download/export fica em evidência em relação a manifestação opcional
+
+### Requirement: Documentos prioriza entrega de XML
+O sistema SHALL, na UI de Documentos para NF-e, colocar como ação principal o **download** (e export quando couber). Ações de manifestação (ciência de unlock e conclusivas) MUST ser secundárias ou em seção “opcional/avançado”.
+
+#### Scenario: Detalhe NF-e com full
+- **WHEN** o full está no vault
+- **THEN** o botão primário é baixar XML; não há bloqueio pedindo manifestação
+
+#### Scenario: Detalhe só resumo com flag on
+- **WHEN** só há resumo e o usuário pode desbloquear
+- **THEN** existe ação secundária do tipo “Obter XML completo” com texto de que não confirma a operação
+
+#### Scenario: Conclusivas
+- **WHEN** o usuário abre ações opcionais de MD-e
+- **THEN** confirmação/desconhecimento/não realizada exigem confirmação explícita e não são o fluxo default

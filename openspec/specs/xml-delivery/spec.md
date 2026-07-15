@@ -62,15 +62,30 @@ O sistema SHALL marcar uma exportação como `FAILED` com mensagem sanitizada qu
 - **THEN** o job remove o ZIP parcial, registra a falha e não oferece link de download
 
 ### Requirement: Download e export no catálogo de documentos
-O sistema SHALL permitir download de XML e exportação ZIP a partir da identidade de documento do catálogo (chave de acesso), incluindo a superfície Documentos (`/docs`). Enquanto apenas NFS-e tiver captura no export, o sistema SHOULD recusar ou avisar quando o filtro de tipo excluir NFS-e.
+O sistema SHALL permitir download de XML e exportação ZIP a partir da identidade do documento no catálogo somente para kinds capturados no escopo escritural (NFS-e, NF-e, CT-e e NFC-e se habilitada). O sistema MUST NOT baixar nem exportar MDF-e.
 
 #### Scenario: Download XML via documents
 - **WHEN** um usuário autorizado solicita o XML de um documento existente via API de documents
 - **THEN** o sistema entrega o XML original do vault sem expor material de certificado
 
-#### Scenario: Export com filtro de tipo sem NFS-e
-- **WHEN** o operador tenta exportar com filtro de kind que não inclui NFS-e
-- **THEN** o sistema não gera ZIP vazio silencioso: desabilita a ação ou informa que export multi-tipo ainda não está disponível
+#### Scenario: Download XML de NF-e
+- **WHEN** um usuário autorizado solicita o XML de uma NF-e persistida
+- **THEN** o sistema entrega os bytes do vault (procNFe ou resumo, conforme o que estiver armazenado como principal) sem expor certificado
+
+#### Scenario: Tentativa de download MDF-e
+- **WHEN** um cliente antigo solicita download usando uma identidade MDF-e
+- **THEN** o sistema não localiza o documento no catálogo operacional e não acessa o vault
+
+### Requirement: Export multi-tipo
+O sistema SHALL suportar filtros de export por `kind` e, quando múltiplos kinds forem selecionados, organizar o ZIP de forma que cada arquivo seja identificável por kind e chave (prefixo de pasta ou nome de arquivo).
+
+#### Scenario: Export só NFE
+- **WHEN** o operador exporta com `kind=NFE` e chaves existentes
+- **THEN** o ZIP contém apenas XML desse kind
+
+#### Scenario: Export misto
+- **WHEN** o operador exporta sem filtro de kind com NFS-e e NF-e no escopo
+- **THEN** o ZIP inclui ambos sem colisão de nomes
 
 ### Requirement: Ponte de exportação a partir do catálogo
 O sistema SHALL permitir que a interface de Notas dispare a mesma exportação ZIP assíncrona usada em Exportações, reutilizando o job e a auditoria existentes, sem embutir bytes XML na resposta JSON da solicitação.
@@ -82,3 +97,21 @@ O sistema SHALL permitir que a interface de Notas dispare a mesma exportação Z
 #### Scenario: Sem material sensível na resposta
 - **WHEN** a criação da exportação retorna 202
 - **THEN** o payload público não contém XML, caminhos internos de vault nem PEM
+
+### Requirement: Export por direção
+O sistema SHALL permitir export ZIP filtrando por direction e kind, organizando arquivos de forma identificável (ex.: pastas entrada/ e saida/ ou prefixo no nome).
+
+#### Scenario: Export só entradas
+- **WHEN** o operador exporta direction=IN
+- **THEN** o ZIP não inclui documentos OUT do mesmo filtro de kind
+
+### Requirement: Preferir XML completo na entrega
+O sistema SHALL, no download e na exportação de NF-e, preferir o documento `procNFe` (completo) quando existir no vault; se só houver resumo, entregar o resumo e indicar na API/UI que o full ainda não está disponível (e, se a flag permitir, apontar a ação de obter XML completo).
+
+#### Scenario: Download com full
+- **WHEN** o usuário autorizado baixa uma NF-e que tem procNFe
+- **THEN** o stream é o XML completo, não o resumo
+
+#### Scenario: Download só resumo
+- **WHEN** só existe resNFe
+- **THEN** o download do resumo é permitido e a resposta/UI sinaliza limitação

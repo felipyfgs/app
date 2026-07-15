@@ -43,7 +43,7 @@ O sistema SHALL registrar o resultado da validação por versão de XSD e SHALL 
 - **THEN** o sistema armazena o original, marca a projeção para revisão e permite o avanço seguro da página
 
 ### Requirement: Consulta paginada e filtrável
-O sistema SHALL listar notas com paginação por cursor e filtros combináveis por cliente, estabelecimento, papel, situação (incluindo **grupo operacional** Autorizada/Cancelada/Em revisão), competência e data de emissão.
+O sistema SHALL listar documentos fiscais do catálogo com paginação por cursor e filtros combináveis por tipo (`kind`), cliente, estabelecimento, papel, situação (incluindo **grupo operacional** Autorizada/Cancelada/Em revisão), competência e data de emissão, incluindo documentos capturados de fontes ADN e SEFAZ.
 
 #### Scenario: Competência diferente da emissão
 - **WHEN** o usuário filtra por competência sem informar data de emissão
@@ -53,8 +53,12 @@ O sistema SHALL listar notas com paginação por cursor e filtros combináveis p
 - **WHEN** o cliente solicita o catálogo com `kind=NFSE` (ou omite kind)
 - **THEN** o sistema retorna projeções NFS-e com `kind` e `source` preenchidos
 
+#### Scenario: Filtro por tipo com captura SEFAZ
+- **WHEN** o cliente solicita `kind=NFE` e existem NF-e capturadas via DistDFe
+- **THEN** o sistema retorna as projeções NFE com `source=SEFAZ`
+
 #### Scenario: Filtro por tipo sem captura
-- **WHEN** o cliente solicita o catálogo com `kind` de tipo ainda sem fonte implementada (ex.: `NFE` sem captura)
+- **WHEN** o cliente solicita um kind ainda sem fonte habilitada
 - **THEN** o sistema retorna lista vazia sem erro
 
 #### Scenario: Busca textual de triagem
@@ -73,11 +77,26 @@ O sistema MUST aplicar o escritório e o perfil do usuário em toda consulta e v
 - **THEN** o sistema não retorna metadados nem conteúdo do documento
 
 ### Requirement: Identidade de tipo no catálogo
-O sistema SHALL identificar cada item do catálogo com um `kind` de DF-e dos tipos mais comuns (`NFSE`, `NFE`, `NFCE`, `CTE`, `MDFE`) e um `source` de captura quando conhecido (`ADN`, `SEFAZ`, etc.).
+O sistema SHALL identificar cada item do catálogo com um `kind` de DF-e pertencente ao escopo escritural (`NFSE`, `NFE`, `NFCE`, `CTE`) e um `source` de captura quando conhecido (`ADN`, `SEFAZ`, etc.). O sistema MUST NOT listar MDF-e no catálogo operacional.
 
 #### Scenario: Item NFS-e serializado
 - **WHEN** uma projeção NFS-e é listada ou detalhada
 - **THEN** a resposta inclui `kind=NFSE`, `kind_label` legível e `source=ADN`
+
+#### Scenario: Item NF-e serializado
+- **WHEN** uma projeção NF-e é listada ou detalhada
+- **THEN** a resposta inclui `kind=NFE`, `kind_label` legível e `source=SEFAZ`
+
+#### Scenario: Compatibilidade com filtro MDF-e legado
+- **WHEN** o cliente solicita o catálogo com `kind=MDFE`
+- **THEN** a API retorna coleção vazia e cursor nulo sem consultar tabela ou projeção MDF-e
+
+### Requirement: Índice de catálogo multi-fonte
+O sistema SHALL permitir consulta unificada de documentos de múltiplas fontes (ADN e SEFAZ) na API canônica `/api/v1/documents` sem exigir que o cliente conheça a tabela de projeção interna.
+
+#### Scenario: Mescla de kinds na listagem
+- **WHEN** o escritório possui NFS-e e NF-e capturadas
+- **THEN** a listagem sem filtro de kind inclui ambas as famílias ordenadas de forma estável (ex.: por id ou issued_at desc)
 
 ### Requirement: API canônica de documentos
 O sistema SHALL expor o catálogo em `/api/v1/documents` (listagem, by-client, insights, detalhe, XML) e MAY manter `/api/v1/notes` como alias compatível com o mesmo comportamento.
@@ -198,3 +217,25 @@ O sistema SHALL, no detalhe da nota, permitir apresentar em conjunto: label oper
 #### Scenario: Detalhe de nota supersedida
 - **WHEN** o usuário abre o detalhe de uma nota com `status=SUPERSEDED`
 - **THEN** a resposta/UI permite mostrar label **Cancelada** e texto de que a nota foi substituída (não apenas “cancelamento genérico”), quando a projeção/eventos contiverem essa informação
+
+### Requirement: Catálogo unificado entrada e saída
+O sistema SHALL listar documentos de todas as fontes habilitadas (ADN, DistDFe, import) com kind, direction, source e disponibilidade de XML completo, filtráveis por kind e direction.
+
+#### Scenario: Filtro combinação
+- **WHEN** kind=NFE e direction=OUT
+- **THEN** retorna apenas saídas NF-e (import ou papel emitente)
+
+### Requirement: Projeção NF-e orientada a entrega
+O sistema SHALL expor em listagem/detalhe de NF-e se o XML completo está disponível (`is_summary` / `has_full_xml`), status de obtenção do full e, se houver, status de manifestação opcional — sem exigir conclusiva para a nota ser “válida” no catálogo.
+
+#### Scenario: Lista NFE
+- **WHEN** GET `/documents?kind=NFE`
+- **THEN** cada item indica se é resumo ou full e se o download completo é possível
+
+
+### Requirement: MDF-e fora do escopo escritural
+O sistema MUST NOT capturar, sincronizar, listar, detalhar, baixar ou exportar MDF-e e MUST manter qualquer estrutura legada correspondente inerte.
+
+#### Scenario: Catálogo sem MDF-e
+- **WHEN** o catálogo é solicitado sem filtro de tipo
+- **THEN** nenhum item MDF-e integra a consulta ou a resposta
