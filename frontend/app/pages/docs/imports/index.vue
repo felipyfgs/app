@@ -4,6 +4,7 @@
  * Arquétipo: customers.vue (lista + tabela) — adaptado a batches.
  */
 import type { TableColumn, TableRow } from '@nuxt/ui'
+import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()
 const router = useRouter()
@@ -133,19 +134,13 @@ onMounted(() => {
       />
 
       <UTable
+        v-if="loading || items.length"
         data-testid="data-table"
         :data="items"
         :loading="loading"
         :columns="columns"
         class="shrink-0"
-        :ui="{
-          base: 'table-fixed border-separate border-spacing-0',
-          thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-          tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'border-b border-default',
-          separator: 'h-0'
-        }"
+        :ui="DASHBOARD_TABLE_UI"
         @select="selectRow"
       >
         <template #id-cell="{ row }">
@@ -156,7 +151,7 @@ onMounted(() => {
         <template #status-cell="{ row }">
           <div class="flex flex-wrap items-center gap-1">
             <UBadge :color="statusColor(String(row.original.status))" variant="subtle">
-              {{ row.original.status }}
+              {{ statusLabel(String(row.original.status)) }}
             </UBadge>
             <UBadge
               v-if="row.original.upload_complete && !row.original.processing_complete"
@@ -164,7 +159,7 @@ onMounted(() => {
               variant="outline"
               size="sm"
             >
-              processando
+              Processando
             </UBadge>
           </div>
         </template>

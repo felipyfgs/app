@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { SyncRun } from '~/types/api'
+import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()
 const items = ref<SyncRun[]>([])
@@ -114,19 +115,13 @@ onMounted(() => load(true))
       />
 
       <UTable
+        v-if="loading || items.length"
         data-testid="data-table"
         :data="items"
         :loading="loading"
         :columns="columns"
         class="shrink-0"
-        :ui="{
-          base: 'table-fixed border-separate border-spacing-0',
-          thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-          tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'border-b border-default',
-          separator: 'h-0'
-        }"
+        :ui="DASHBOARD_TABLE_UI"
         @select="selectRow"
       >
         <template #status-cell="{ row }">

@@ -53,6 +53,9 @@ export interface ClientListParams {
   per_page?: number
   /** Filtro de estado no escritório (true/false) */
   is_active?: boolean | 0 | 1
+  operational_filter?: 'with_credential' | 'without_credential' | 'expiring' | 'capture_problem'
+  sort?: 'legal_name' | 'cnpj' | 'is_active'
+  direction?: 'asc' | 'desc'
 }
 
 export interface NoteListParams {
@@ -77,6 +80,8 @@ export interface NoteListParams {
   missing_party_name?: boolean | 0 | 1
   cursor?: string
   limit?: number
+  page?: number
+  per_page?: number
 }
 
 export function useApi() {
@@ -144,7 +149,7 @@ export function useApi() {
       list: (params?: NoteListParams) =>
         client<{ data: NfseNote[], meta: CursorMeta }>('/api/v1/documents', { query: params }),
       byClient: (params?: NoteListParams) =>
-        client<{ data: NoteClientAggregate[], meta: { total_clients: number } }>(
+        client<{ data: NoteClientAggregate[], meta: PageMeta & { total_clients: number } }>(
           '/api/v1/documents/by-client',
           { query: params }
         ),
@@ -353,7 +358,7 @@ export function useApi() {
       list: (params?: NoteListParams) =>
         client<{ data: NfseNote[], meta: CursorMeta }>('/api/v1/documents', { query: params }),
       byClient: (params?: NoteListParams) =>
-        client<{ data: NoteClientAggregate[], meta: { total_clients: number } }>(
+        client<{ data: NoteClientAggregate[], meta: PageMeta & { total_clients: number } }>(
           '/api/v1/documents/by-client',
           { query: params }
         ),
@@ -384,7 +389,8 @@ export function useApi() {
         })
     },
     exports: {
-      list: () => client<{ data: ExportJob[] }>('/api/v1/exports'),
+      list: (params?: { page?: number, per_page?: number }) =>
+        client<{ data: ExportJob[], meta: PageMeta }>('/api/v1/exports', { query: params }),
       create: (body: { filters?: ExportFilters, include_events?: boolean }) =>
         client<{ data: ExportJob }>('/api/v1/exports', { method: 'POST', body }),
       downloadUrl: (id: number) => apiUrl(`/api/v1/exports/${id}/download`)
@@ -516,9 +522,10 @@ export function useApi() {
           root_cnpj?: string
           client_id?: number
           source?: string
-          limit?: number
+          page?: number
+          per_page?: number
         }) =>
-          client<{ data: OutboundDeadlinePendingItem[] }>('/api/v1/outbound/deadline/pending', {
+          client<{ data: OutboundDeadlinePendingItem[], meta: PageMeta }>('/api/v1/outbound/deadline/pending', {
             query: params
           }),
         contingencyBatch: (competence?: string) =>

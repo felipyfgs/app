@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import type { OperationsSummary } from '~/types/api'
+import { COMPACT_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const props = defineProps<{
   summary: OperationsSummary | null
@@ -50,13 +51,7 @@ const columns: TableColumn<TotalRow>[] = [{
     :columns="columns"
     :loading="loading"
     class="shrink-0"
-    :ui="{
-      base: 'table-fixed border-separate border-spacing-0',
-      thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-      tbody: '[&>tr]:last:[&>td]:border-b-0',
-      th: 'first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-      td: 'border-b border-default'
-    }"
+    :ui="COMPACT_DASHBOARD_TABLE_UI"
   >
     <template #label-cell="{ row }">
       <span class="font-medium text-highlighted">{{ row.original.label }}</span>

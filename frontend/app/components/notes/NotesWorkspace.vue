@@ -1,11 +1,12 @@
 <script setup lang="ts">
 /**
- * Posto operacional Documentos (`/docs`) — tabela densa (customers) + tabs
- * + detalhe em NotesDetailModal + export. Base da antiga tela de notas.
- * Fonte: .reference/nuxt-dashboard-template/app/pages/customers.vue + settings.vue
+ * Posto operacional Documentos (`/docs`) — tabela densa (customers)
+ * + detalhe mestre–detalhe no desktop/slideover no mobile + export. Views
+ * ficam no submenu do sidebar (`navigation.ts`), não em tabs da página.
+ * Fonte: .reference/nuxt-dashboard-template/app/pages/customers.vue
  */
 import { documentKindLabel, isDocumentKindCaptureAvailable } from '~/utils/documentKinds'
-import type { NavigationMenuItem } from '@nuxt/ui'
+import { breakpointsTailwind } from '@vueuse/core'
 import type { Client, Establishment, ExportFilters, NfseNote, NoteClientAggregate, NotesInsights } from '~/types/api'
 import type { NoteListParams } from '~/composables/useApi'
 import {
@@ -34,6 +35,10 @@ const { canCreateExport, canImportDocuments } = useDashboard()
 
 const notes = ref<NfseNote[]>([])
 const byClientRows = ref<NoteClientAggregate[]>([])
+const byClientPage = ref(1)
+const byClientPerPage = 20
+const byClientTotal = ref(0)
+const byClientLastPage = ref(1)
 const clients = ref<Client[]>([])
 const establishments = ref<Establishment[]>([])
 const insights = ref<NotesInsights | null>(null)
@@ -41,15 +46,8 @@ const insightsLoading = ref(false)
 const nextCursor = ref<string | null>(null)
 /** Total no escopo dos filtros (meta.total da API). */
 const listTotal = ref(0)
-/** Linhas por página (enviado como `limit`; API 1–100). */
+/** Tamanho do lote incremental (enviado como `limit`; API 1–100). */
 const pageSize = ref(25)
-/** Página atual (1-based) — UPagination do template. */
-const currentPage = ref(1)
-/**
- * Cursor de início de cada página conhecida.
- * Página 1 = null; página N+1 = next_cursor retornado ao carregar N.
- */
-const pageCursors = ref<Record<number, string | null>>({ 1: null })
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const loadingFilters = ref(false)
@@ -75,29 +73,22 @@ const selectedPreview = computed(() =>
   notes.value.find(n => n.access_key === selectedAccessKey.value) || null
 )
 
-/** Modal de detalhe (substitui painel lateral / slideover). */
+const breakpoints = useBreakpoints(breakpointsTailwind)
+const isMobile = breakpoints.smaller('lg')
+const detailTitle = computed(() => {
+  if (selectedPreview.value?.number) {
+    return `${selectedPreview.value.kind_label || documentKindLabel(selectedPreview.value.kind)} nº ${selectedPreview.value.number}`
+  }
+  return 'Detalhe do documento'
+})
+
+/** Controla o detalhe canônico pela rota. */
 const isDetailOpen = computed({
   get: () => !!selectedAccessKey.value,
   set: (open: boolean) => {
     if (!open) closeDetail()
   }
 })
-
-/** Tabs: 1º Clientes · 2º NFS-e nacional (default = Clientes). */
-const viewLinks = computed((): NavigationMenuItem[][] => [[
-  {
-    label: 'Clientes',
-    icon: 'i-lucide-building-2',
-    active: view.value === 'client',
-    onSelect: () => setView('client')
-  },
-  {
-    label: 'Documentos',
-    icon: 'i-lucide-file-stack',
-    active: view.value === 'document',
-    onSelect: () => setView('document')
-  }
-]])
 
 /**
  * Disponibilidade de captura do tipo filtrado.
@@ -147,8 +138,6 @@ function queryParams(cursor?: string | null): NoteListParams {
 }
 
 function resetPagination() {
-  currentPage.value = 1
-  pageCursors.value = { 1: null }
   nextCursor.value = null
   listTotal.value = 0
 }
@@ -167,20 +156,35 @@ async function syncRouteQuery() {
   await router.replace({ path, query })
 }
 
-async function setView(next: NotesViewMode) {
-  if (view.value === next) return
-  view.value = next
-  selectedKeys.value = []
-  await syncRouteQuery()
-  await reloadActive()
-}
-
 async function reloadActive() {
   await Promise.all([
     view.value === 'client' ? loadByClient() : load(true),
     loadInsights()
   ])
 }
+
+/**
+ * Sidebar Documentos (Por cliente | Catálogo) navega por query `view`.
+ * Mantém o estado local alinhado sem as tabs da página.
+ */
+watch(
+  () => [
+    route.path,
+    typeof route.query.view === 'string' ? route.query.view : ''
+  ] as const,
+  async ([, viewRaw], previous) => {
+    if (!previous) return
+    const next: NotesViewMode = selectedAccessKey.value
+      || viewRaw === 'document'
+      || viewRaw === 'nfs'
+      ? 'document'
+      : 'client'
+    if (view.value === next) return
+    view.value = next
+    selectedKeys.value = []
+    await reloadActive()
+  }
+)
 
 async function loadInsights() {
   insightsLoading.value = true
@@ -200,70 +204,30 @@ async function onTriageSelect(queue: NotesTriageQueue) {
   const label = insights.value?.competence_current_label
   Object.assign(filters, applyTriageQueue(filters, nextQueue, label))
   selectedKeys.value = []
-  // Fila de documento força aba NFS-e (exceto "all" na aba clientes)
+  // Fila de documento força view catálogo (exceto "all" em por cliente)
   if (nextQueue !== 'all' && view.value !== 'document') {
     view.value = 'document'
   }
+  await syncRouteQuery()
   await reloadActive()
 }
 
-/**
- * Carrega uma página do catálogo (substitui a grade — não acumula).
- * API é cursor-based; ao pular páginas, descobre cursores intermediários.
- */
-async function loadPage(page: number): Promise<void> {
-  const target = Math.max(1, page)
+/** Carrega o próximo lote usando exatamente o cursor entregue pela API. */
+async function load(reset = false): Promise<void> {
+  if (!reset && !nextCursor.value && notes.value.length) return
+  if (reset) {
+    resetPagination()
+    notes.value = []
+    selectedKeys.value = []
+  }
   loading.value = true
   try {
-    // Preenche pageCursors até a página alvo (salto na UPagination).
-    let guard = 0
-    while (pageCursors.value[target] === undefined && guard < 200) {
-      guard += 1
-      const known = Object.keys(pageCursors.value).map(Number).sort((a, b) => a - b)
-      const last = known[known.length - 1] ?? 1
-      if (last >= target) break
-      if (pageCursors.value[last + 1] !== undefined) continue
-
-      const startCursor = last === 1 ? null : pageCursors.value[last]
-      if (last !== 1 && !startCursor) break
-
-      const probe = await api.documents.list(queryParams(startCursor))
-      listTotal.value = probe.meta.total ?? listTotal.value
-      if (probe.meta.next_cursor) {
-        pageCursors.value = { ...pageCursors.value, [last + 1]: probe.meta.next_cursor }
-      } else {
-        notes.value = probe.data
-        nextCursor.value = null
-        currentPage.value = last
-        loadError.value = null
-        await syncRouteQuery()
-        return
-      }
-    }
-
-    const cursorForRequest = target === 1 ? null : pageCursors.value[target]
-    if (target !== 1 && !cursorForRequest) {
-      // Página fora do alcance — recua para a última conhecida.
-      const known = Object.keys(pageCursors.value).map(Number)
-      const fallback = known.length ? Math.max(...known) : 1
-      if (fallback !== target) {
-        await loadPage(fallback)
-      }
-      return
-    }
-
-    const response = await api.documents.list(queryParams(cursorForRequest))
-    notes.value = response.data
+    const response = await api.documents.list(queryParams(reset ? null : nextCursor.value))
+    const merged = reset ? response.data : [...notes.value, ...response.data]
+    notes.value = Array.from(new Map(merged.map(note => [note.access_key, note])).values())
     nextCursor.value = response.meta.next_cursor
     listTotal.value = response.meta.total
-      ?? ((target - 1) * pageSize.value + response.data.length)
-    if (response.meta.next_cursor) {
-      pageCursors.value = {
-        ...pageCursors.value,
-        [target + 1]: response.meta.next_cursor
-      }
-    }
-    currentPage.value = target
+      ?? notes.value.length
     loadError.value = null
     await syncRouteQuery()
   } catch (caught) {
@@ -272,20 +236,6 @@ async function loadPage(page: number): Promise<void> {
   } finally {
     loading.value = false
   }
-}
-
-async function load(reset = false) {
-  if (reset) {
-    resetPagination()
-    selectedKeys.value = []
-  }
-  await loadPage(reset ? 1 : currentPage.value)
-}
-
-async function onPageChange(page: number) {
-  if (page === currentPage.value || loading.value) return
-  selectedKeys.value = []
-  await loadPage(page)
 }
 
 async function onPageSizeChange(size: number) {
@@ -300,8 +250,14 @@ async function loadByClient() {
   loading.value = true
   loadError.value = null
   try {
-    const response = await api.documents.byClient(queryParams())
+    const response = await api.documents.byClient({
+      ...insightsParams(),
+      page: byClientPage.value,
+      per_page: byClientPerPage
+    })
     byClientRows.value = response.data
+    byClientTotal.value = response.meta.total
+    byClientLastPage.value = response.meta.last_page
     await syncRouteQuery()
   } catch (caught) {
     loadError.value = apiErrorMessage(caught, 'Erro ao agregar por empresa.')
@@ -338,12 +294,20 @@ function resetFilters() {
   Object.assign(filters, emptyNotesFilters())
   establishments.value = []
   selectedKeys.value = []
+  byClientPage.value = 1
   reloadActive()
 }
 
 async function applyFilters() {
   selectedKeys.value = []
+  byClientPage.value = 1
   await reloadActive()
+}
+
+async function onByClientPageChange(page: number) {
+  if (page === byClientPage.value || loading.value) return
+  byClientPage.value = page
+  await loadByClient()
 }
 
 async function selectNote(note: NfseNote) {
@@ -565,10 +529,17 @@ onMounted(async () => {
 
 <template>
   <!--
-    Arquétipo customers.vue + tabs settings (clients.vue).
-    Tabs: 1º Clientes · 2º NFS-e nacional. Tabelas com :ui do template.
+    Arquétipo customers.vue. Views por cliente | catálogo no sidebar (Documentos).
+    Tabelas com :ui do template.
   -->
-  <UDashboardPanel id="docs" class="min-w-0">
+  <UDashboardPanel
+    id="docs"
+    :default-size="60"
+    :min-size="36"
+    :max-size="75"
+    class="min-w-0"
+    resizable
+  >
     <template #header>
       <UDashboardNavbar data-testid="page-navbar" title="Documentos">
         <template #leading>
@@ -728,14 +699,6 @@ onMounted(async () => {
           </div>
         </template>
       </UModal>
-
-      <UDashboardToolbar data-testid="docs-view-tabs">
-        <UNavigationMenu
-          :items="viewLinks"
-          highlight
-          class="-mx-1 flex-1"
-        />
-      </UDashboardToolbar>
     </template>
 
     <template #body>
@@ -770,7 +733,12 @@ onMounted(async () => {
           :rows="byClientRows"
           :loading="loading"
           :error="loadError"
+          :page="byClientPage"
+          :per-page="byClientPerPage"
+          :total="byClientTotal"
+          :last-page="byClientLastPage"
           @open-client="openClientNotes"
+          @update:page="onByClientPageChange"
           @retry="loadByClient"
         />
 
@@ -791,12 +759,12 @@ onMounted(async () => {
             :loading="loading"
             :error="loadError"
             :selected-access-key="selectedAccessKey"
-            :page="currentPage"
             :page-size="pageSize"
             :total="listTotal"
+            :has-more="!!nextCursor"
             :selectable="canCreateExport && kindExportAvailable"
             @select="selectNote"
-            @update:page="onPageChange"
+            @load-more="load(false)"
             @update:page-size="onPageSizeChange"
             @retry="load(true)"
           />
@@ -805,13 +773,53 @@ onMounted(async () => {
     </template>
   </UDashboardPanel>
 
-  <!--
-    Detalhe em NotesDetailModal (slots canônicos UModal + footer de ações).
-    URL canônica /docs/:accessKey; /notes redireciona.
-  -->
-  <NotesDetailModal
-    v-model:open="isDetailOpen"
-    :access-key="selectedAccessKey"
-    :preview="selectedPreview"
-  />
+  <UDashboardPanel
+    v-if="selectedAccessKey"
+    id="docs-detail"
+    class="hidden min-w-0 lg:flex"
+  >
+    <template #header>
+      <UDashboardNavbar :title="detailTitle">
+        <template #right>
+          <UButton
+            icon="i-lucide-x"
+            color="neutral"
+            variant="ghost"
+            square
+            aria-label="Fechar detalhe do documento"
+            @click="closeDetail"
+          />
+        </template>
+      </UDashboardNavbar>
+    </template>
+    <template #body>
+      <NotesDetail
+        :access-key="selectedAccessKey"
+        :preview="selectedPreview"
+        embedded
+      />
+    </template>
+  </UDashboardPanel>
+
+  <div v-else class="hidden flex-1 items-center justify-center lg:flex">
+    <UIcon name="i-lucide-files" class="size-28 text-dimmed" />
+  </div>
+
+  <ClientOnly>
+    <USlideover
+      v-if="isMobile"
+      v-model:open="isDetailOpen"
+      :title="detailTitle"
+      description="Documento fiscal eletrônico"
+    >
+      <template #body>
+        <NotesDetail
+          v-if="selectedAccessKey"
+          :access-key="selectedAccessKey"
+          :preview="selectedPreview"
+          embedded
+        />
+      </template>
+    </USlideover>
+  </ClientOnly>
 </template>

@@ -5,17 +5,22 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { NoteClientAggregate } from '~/types/api'
-import { NOTES_TABLE_UI } from '~/utils/notes-filters'
+import { DENSE_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 defineProps<{
   rows: NoteClientAggregate[]
   loading?: boolean
   error?: string | null
+  page: number
+  perPage: number
+  total: number
+  lastPage: number
 }>()
 
 const emit = defineEmits<{
   openClient: [row: NoteClientAggregate]
   retry: []
+  'update:page': [page: number]
 }>()
 
 const columns: TableColumn<NoteClientAggregate>[] = [
@@ -70,11 +75,12 @@ const columns: TableColumn<NoteClientAggregate>[] = [
     />
 
     <UTable
+      v-if="loading || rows.length"
       :data="rows"
       :columns="columns"
       :loading="loading && !rows.length"
       class="shrink-0"
-      :ui="NOTES_TABLE_UI"
+      :ui="DENSE_DASHBOARD_TABLE_UI"
     >
       <template #legal_name-cell="{ row }">
         <div class="min-w-0">
@@ -158,8 +164,16 @@ const columns: TableColumn<NoteClientAggregate>[] = [
 
     <div class="mt-auto flex items-center justify-between gap-3 border-t border-default pt-4">
       <div class="text-sm text-muted">
-        {{ rows.length }} cliente(s) com notas no filtro
+        {{ total }} cliente(s) com notas · página {{ page }} de {{ lastPage }}
       </div>
+      <UPagination
+        v-if="lastPage > 1"
+        :page="page"
+        :items-per-page="perPage"
+        :total="total"
+        :disabled="loading"
+        @update:page="(value: number) => emit('update:page', value)"
+      />
     </div>
 
     <UEmpty

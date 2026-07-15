@@ -10,10 +10,12 @@ export interface NavDestination {
   id: string
   label: string
   icon: string
-  to?: string
+  to?: string | { path: string, query?: Record<string, string> }
   target?: string
   external?: boolean
   exact?: boolean
+  /** Força estado ativo (útil com query string, ex. /docs?view=document). */
+  active?: boolean
   /** Grupo colapsável no estilo Settings do template (UNavigationMenu type=trigger). */
   type?: 'trigger'
   defaultOpen?: boolean
@@ -27,23 +29,60 @@ export interface QuickAction {
   to: string
 }
 
+/** Query de filtros de /docs a preservar ao trocar a view no sidebar. */
+function docsPreservedQuery(
+  path: string,
+  query?: Record<string, unknown>
+): Record<string, string> {
+  if (!query) return {}
+  const onDocsCatalog = path === '/docs'
+    || (path.startsWith('/docs/') && !path.startsWith('/docs/imports'))
+  if (!onDocsCatalog) return {}
+
+  const out: Record<string, string> = {}
+  for (const [key, raw] of Object.entries(query)) {
+    if (key === 'view') continue
+    if (typeof raw === 'string' && raw) {
+      out[key] = raw
+    }
+  }
+  return out
+}
+
 /**
  * Destinos principais do painel, no mesmo “ritmo” do template:
  * Home / Customers / Inbox + grupo colapsável (Settings) + secundários em outro menu.
  */
 export function mainDestinations(
   user?: MeUser | null,
-  options?: { path?: string }
+  options?: { path?: string, query?: Record<string, unknown> }
 ): NavDestination[] {
   const path = options?.path || ''
+  const query = options?.query || {}
   // Mantém o grupo expandido quando a rota atual está dentro do módulo.
   const clientsOpen = !path || path === '/clients' || path.startsWith('/clients/')
+  const docsDetail = path.startsWith('/docs/') && !path.startsWith('/docs/imports')
+  const docsOpen = !path || path === '/docs' || docsDetail
   const operationsOpen = !path
     || path.startsWith('/exports')
     || path.startsWith('/closing')
     || path.startsWith('/syncs')
     || path.startsWith('/health')
     || path.startsWith('/docs/imports')
+
+  // Tabs legadas Clientes | Documentos → submenu do sidebar (query view=document).
+  const viewParam = typeof query.view === 'string' ? query.view : ''
+  const isDocsDocumentView = docsDetail
+    || path === '/docs' && (viewParam === 'document' || viewParam === 'nfs')
+  const isDocsClientView = path === '/docs' && !isDocsDocumentView
+  const docsFilters = docsPreservedQuery(path, query)
+  const docsClientTo = Object.keys(docsFilters).length
+    ? { path: '/docs', query: docsFilters }
+    : '/docs'
+  const docsDocumentTo = {
+    path: '/docs',
+    query: { ...docsFilters, view: 'document' }
+  }
 
   const items: NavDestination[] = [
     {
@@ -79,7 +118,25 @@ export function mainDestinations(
       id: 'docs',
       label: 'Documentos',
       icon: 'i-lucide-file-stack',
-      to: '/docs'
+      type: 'trigger',
+      defaultOpen: docsOpen,
+      children: [
+        {
+          id: 'docs-by-client',
+          label: 'Por cliente',
+          icon: 'i-lucide-building-2',
+          to: docsClientTo,
+          exact: true,
+          active: isDocsClientView
+        },
+        {
+          id: 'docs-catalog',
+          label: 'Catálogo',
+          icon: 'i-lucide-file-stack',
+          to: docsDocumentTo,
+          active: isDocsDocumentView
+        }
+      ]
     },
     {
       id: 'operations',
@@ -202,6 +259,7 @@ export function toNavigationItems(
       to: item.to,
       target: item.target,
       exact: item.exact,
+      ...(item.active !== undefined ? { active: item.active } : {}),
       onSelect: item.to && !item.external
         ? onSelect
         : item.external

@@ -9,6 +9,7 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 const route = useRoute()
+const { canManageClients } = useDashboard()
 
 /** Lista e Dashboard compartilham o shell; detalhe do cliente não. */
 const isCatalog = computed(() => {
@@ -45,6 +46,14 @@ const links = [[{
       >
         <template #leading>
           <UDashboardSidebarCollapse />
+        </template>
+        <template #right>
+          <UButton
+            v-if="canManageClients"
+            to="/clients?new=1"
+            icon="i-lucide-plus"
+            label="Novo cliente"
+          />
         </template>
       </UDashboardNavbar>
 

@@ -5,6 +5,7 @@
  * Cobertura: NF-e 55 apenas; NFC-e 65 → import XML/ZIP.
  */
 import type { TableColumn } from '@nuxt/ui'
+import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()
 const toast = useToast()
@@ -211,19 +212,12 @@ onMounted(() => {
     </div>
 
     <UTable
-      v-else
+      v-else-if="rows.length"
       data-testid="autxml-enrollment-table"
       :data="rows"
       :columns="columns"
       class="shrink-0"
-      :ui="{
-        base: 'table-fixed border-separate border-spacing-0',
-        thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-        tbody: '[&>tr]:last:[&>td]:border-b-0',
-        th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-        td: 'border-b border-default',
-        separator: 'h-0'
-      }"
+      :ui="DASHBOARD_TABLE_UI"
     >
       <template #establishment_cnpj-cell="{ row }">
         <div class="min-w-0">

@@ -17,7 +17,7 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { NfseEvent, NfseNote, NoteDetail } from '~/types/api'
 import { documentKindLabel } from '~/utils/documentKinds'
-import { NOTES_TABLE_UI } from '~/utils/notes-filters'
+import { DENSE_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const props = defineProps<{
   accessKey: string
@@ -162,9 +162,9 @@ const eventColumns: TableColumn<NfseEvent>[] = [
 ]
 
 const tableUi = {
-  ...NOTES_TABLE_UI,
-  th: `${NOTES_TABLE_UI.th} px-2 text-xs`,
-  td: `${NOTES_TABLE_UI.td} px-2 py-1.5 text-sm`
+  ...DENSE_DASHBOARD_TABLE_UI,
+  th: `${DENSE_DASHBOARD_TABLE_UI.th} px-2 text-xs`,
+  td: `${DENSE_DASHBOARD_TABLE_UI.td} px-2 py-1.5 text-sm`
 }
 
 async function copyText(label: string, value?: string | null) {

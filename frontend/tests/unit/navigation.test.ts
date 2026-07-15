@@ -47,27 +47,50 @@ describe('navigation', () => {
     expect(quickActions(user('ADMIN', false))).toEqual([])
   })
 
-  it('destinos folha do operador batem com o produto (Clientes e Operações em submenu)', () => {
+  it('destinos folha do operador batem com o produto (Clientes, Documentos e Operações em submenu)', () => {
     const tree = mainDestinations(user('OPERATOR'))
     expect(tree.map(d => d.id)).toEqual(['home', 'clients', 'docs', 'operations'])
     expect(tree.find(d => d.id === 'clients')?.children?.map(c => c.id)).toEqual([
       'clients-list',
       'clients-dashboard'
     ])
+    expect(tree.find(d => d.id === 'docs')?.children?.map(c => c.id)).toEqual([
+      'docs-by-client',
+      'docs-catalog'
+    ])
     expect(tree.find(d => d.id === 'operations')?.children?.map(c => c.id)).toEqual([
       'health',
       'exports',
-      'syncs'
+      'closing',
+      'syncs',
+      'imports'
     ])
     expect(flattenDestinations(tree).map(d => d.id)).toEqual([
       'home',
       'clients-list',
       'clients-dashboard',
-      'docs',
+      'docs-by-client',
+      'docs-catalog',
       'health',
       'exports',
-      'syncs'
+      'closing',
+      'syncs',
+      'imports'
     ])
+  })
+
+  it('marca Catálogo ativo em /docs?view=document e preserva filtros na query', () => {
+    const tree = mainDestinations(user('OPERATOR'), {
+      path: '/docs',
+      query: { view: 'document', kind: 'NFE' }
+    })
+    const docs = tree.find(d => d.id === 'docs')
+    const byClient = docs?.children?.find(c => c.id === 'docs-by-client')
+    const catalog = docs?.children?.find(c => c.id === 'docs-catalog')
+    expect(byClient?.active).toBe(false)
+    expect(catalog?.active).toBe(true)
+    expect(catalog?.to).toEqual({ path: '/docs', query: { kind: 'NFE', view: 'document' } })
+    expect(byClient?.to).toEqual({ path: '/docs', query: { kind: 'NFE' } })
   })
 
   it('inclui destino Saúde para todos os papéis autenticados do escritório', () => {
@@ -83,9 +106,13 @@ describe('navigation', () => {
     expect(clients?.type).toBe('trigger')
     expect(clients?.children?.length).toBe(2)
     expect(clients?.to).toBeUndefined()
+    const docs = items.find(i => i.label === 'Documentos')
+    expect(docs?.type).toBe('trigger')
+    expect(docs?.children?.length).toBe(2)
+    expect(docs?.to).toBeUndefined()
     const ops = items.find(i => i.label === 'Operações')
     expect(ops?.type).toBe('trigger')
-    expect(ops?.children?.length).toBe(3)
+    expect(ops?.children?.length).toBe(5)
     expect(ops?.to).toBeUndefined()
   })
 })

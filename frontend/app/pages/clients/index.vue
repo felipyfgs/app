@@ -4,36 +4,33 @@
  * Fonte: .reference/nuxt-dashboard-template/app/pages/customers.vue
  * + https://dashboard-template.nuxt.dev/customers
  *
- * Busca/filtro: columnFilters na UTable (local, instantâneo) — sem debounce/API a cada tecla.
- * Paginação: getPaginationRowModel (client-side), como o demo.
- * Dados: carrega a lista completa do escritório uma vez (API); recarrega só no botão/atualizar.
+ * Busca, filtros, ordenação e paginação são server-side e reproduzíveis pela URL.
  */
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
-import { getPaginationRowModel } from '@tanstack/table-core'
-import type { Row } from '@tanstack/table-core'
 import type { Client, ClientListStats } from '~/types/api'
 import { upperFirst } from 'scule'
+import { DENSE_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const UButton = resolveComponent('UButton')
 
 const api = useApi()
 const route = useRoute()
+const router = useRouter()
 const { canManageClients, canManageCredentials } = useDashboard()
 const toast = useToast()
 
 const table = useTemplateRef('table')
 
-/** Igual ao template: filtro de coluna na memória */
-const columnFilters = ref([{
-  id: 'legal_name',
-  value: '' as string
-}])
 const columnVisibility = ref()
-const sorting = ref<{ id: string, desc: boolean }[]>([])
-const pagination = ref({
-  pageIndex: 0,
-  pageSize: 10
-})
+const sorting = ref<{ id: string, desc: boolean }[]>([{
+  id: typeof route.query.sort === 'string' ? route.query.sort : 'legal_name',
+  desc: route.query.direction === 'desc'
+}])
+const page = ref(Math.max(1, Number(route.query.page) || 1))
+const perPage = ref(Math.min(100, Math.max(10, Number(route.query.per_page) || 20)))
+const total = ref(0)
+const lastPage = ref(1)
+const search = ref(typeof route.query.q === 'string' ? route.query.q : '')
 
 const clients = ref<Client[]>([])
 const stats = ref<ClientListStats>({
@@ -70,24 +67,26 @@ const emptyStats: ClientListStats = {
 }
 
 /**
- * Espelho do `email` do template: get/set no columnFilter da UTable.
- * Sem spinner, sem API — só filtra as linhas já carregadas.
+ * Espelho do campo de busca do template, com consulta server-side.
  */
 const filter = computed({
-  get: (): string => {
-    return (table.value?.tableApi?.getColumn('legal_name')?.getFilterValue() as string) || ''
-  },
+  get: (): string => search.value,
   set: (value: string) => {
-    table.value?.tableApi?.getColumn('legal_name')?.setFilterValue(value || undefined)
-    table.value?.tableApi?.setPageIndex(0)
+    search.value = value
+    page.value = 1
   }
 })
 
 type KpiFilter = 'total' | 'with_credential' | 'without_credential' | 'expiring' | 'capture_problem'
 
 /** Filtro dos cards KPI (clique = filtra a tabela pelo conteúdo do card). */
-const kpiFilter = ref<KpiFilter>('total')
-const statusFilter = ref('all')
+const routeKpi = typeof route.query.operational_filter === 'string' ? route.query.operational_filter : 'total'
+const kpiFilter = ref<KpiFilter>(
+  ['total', 'with_credential', 'without_credential', 'expiring', 'capture_problem'].includes(routeKpi)
+    ? routeKpi as KpiFilter
+    : 'total'
+)
+const statusFilter = ref(['active', 'inactive'].includes(String(route.query.status)) ? String(route.query.status) : 'all')
 
 function isCredentialExpired(client: Client): boolean {
   const summary = client.credential_summary
@@ -103,56 +102,13 @@ function isCredentialExpiring(client: Client): boolean {
   return !!(summary.expires_alert_1 || summary.expires_alert_7 || summary.expires_alert_30)
 }
 
-function isCaptureProblem(client: Client): boolean {
-  const status = client.sync_summary?.status
-  return status === 'BLOCKED' || status === 'ERROR'
-}
-
-/** Dados da tabela após o filtro do card (busca/estado da toolbar continuam na UTable). */
-const tableData = computed(() => {
-  const list = clients.value
-  switch (kpiFilter.value) {
-    case 'with_credential':
-      return list.filter(c => !!c.credential_summary && !isCredentialExpired(c))
-    case 'without_credential':
-      return list.filter(c => !c.credential_summary)
-    case 'expiring':
-      return list.filter(c => isCredentialExpiring(c))
-    case 'capture_problem':
-      return list.filter(c => isCaptureProblem(c))
-    default:
-      return list
-  }
-})
-
 function applyKpiFilter(key: KpiFilter) {
   // segundo clique no mesmo card limpa (volta ao total)
   kpiFilter.value = kpiFilter.value === key && key !== 'total' ? 'total' : key
   statusFilter.value = 'all'
 
-  nextTick(() => {
-    syncStatusColumnFilter()
-    table.value?.tableApi?.setPageIndex(0)
-  })
+  page.value = 1
 }
-
-function syncStatusColumnFilter() {
-  if (!table.value?.tableApi) return
-  const statusColumn = table.value.tableApi.getColumn('is_active')
-  if (!statusColumn) return
-  if (statusFilter.value === 'all') {
-    statusColumn.setFilterValue(undefined)
-  } else if (statusFilter.value === 'active') {
-    statusColumn.setFilterValue(true)
-  } else {
-    statusColumn.setFilterValue(false)
-  }
-}
-
-watch(() => statusFilter.value, () => {
-  syncStatusColumnFilter()
-  table.value?.tableApi?.setPageIndex(0)
-})
 
 /**
  * KPIs operacionais (contagens reais da API):
@@ -205,26 +161,6 @@ function sortHeader(label: string, column: { getIsSorted: () => false | 'asc' | 
   })
 }
 
-/** Busca por nome, display_name ou CNPJ (equivalente ao filter de email do template). */
-function clientSearchFilter(row: Row<Client>, _columnId: string, filterValue: unknown): boolean {
-  const raw = String(filterValue ?? '').trim().toLowerCase()
-  if (!raw) return true
-  const c = row.original
-  const hay = [
-    c.legal_name,
-    c.display_name,
-    c.name,
-    c.cnpj,
-    c.root_cnpj,
-    c.tax_regime
-  ].filter(Boolean).join(' ').toLowerCase()
-  const digits = raw.replace(/[^a-z0-9]/gi, '')
-  if (digits && (c.cnpj || c.root_cnpj || '').toLowerCase().includes(digits)) {
-    return true
-  }
-  return hay.includes(raw)
-}
-
 /**
  * Posto de captura — colunas P0:
  * Razão · CNPJ · A1 · Captura · Sync · Ações
@@ -235,7 +171,6 @@ const columns: TableColumn<Client>[] = [
     accessorKey: 'legal_name',
     header: ({ column }) => sortHeader('Razão social', column),
     enableHiding: false,
-    filterFn: clientSearchFilter,
     meta: {
       class: {
         th: 'w-[28%] min-w-36',
@@ -257,8 +192,8 @@ const columns: TableColumn<Client>[] = [
   {
     id: 'credential',
     accessorFn: row => row.credential_summary?.valid_to || '',
-    header: ({ column }) => sortHeader('A1', column),
-    enableSorting: true,
+    header: 'A1',
+    enableSorting: false,
     enableHiding: false,
     meta: {
       class: {
@@ -270,7 +205,8 @@ const columns: TableColumn<Client>[] = [
   {
     id: 'capture',
     accessorFn: row => row.capture_summary?.status || '',
-    header: ({ column }) => sortHeader('Captura', column),
+    header: 'Captura',
+    enableSorting: false,
     meta: {
       class: {
         th: 'hidden md:table-cell w-[12%]',
@@ -281,7 +217,8 @@ const columns: TableColumn<Client>[] = [
   {
     id: 'sync',
     accessorFn: row => row.sync_summary?.status || '',
-    header: ({ column }) => sortHeader('Sync', column),
+    header: 'Sync',
+    enableSorting: false,
     meta: {
       class: {
         th: 'hidden lg:table-cell w-[12%]',
@@ -292,7 +229,6 @@ const columns: TableColumn<Client>[] = [
   {
     accessorKey: 'is_active',
     header: ({ column }) => sortHeader('Estado', column),
-    filterFn: 'equals',
     meta: {
       class: {
         th: 'hidden xl:table-cell w-[8%]',
@@ -602,34 +538,56 @@ async function reactivateClient(client: Client) {
   }
 }
 
-/** Carrega todos os clientes do escritório (como o useFetch do template com a lista completa). */
+let loadSequence = 0
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+async function syncRouteQuery() {
+  const sort = sorting.value[0]
+  await router.replace({
+    query: {
+      ...route.query,
+      q: search.value.trim() || undefined,
+      status: statusFilter.value === 'all' ? undefined : statusFilter.value,
+      operational_filter: kpiFilter.value === 'total' ? undefined : kpiFilter.value,
+      sort: sort?.id && sort.id !== 'legal_name' ? sort.id : undefined,
+      direction: sort?.desc ? 'desc' : undefined,
+      page: page.value > 1 ? String(page.value) : undefined,
+      per_page: perPage.value !== 20 ? String(perPage.value) : undefined
+    }
+  })
+}
+
+/** Carrega somente o recorte solicitado; filtros e ordenação são aplicados pela API. */
 async function load() {
+  const sequence = ++loadSequence
   loading.value = true
   loadError.value = null
   try {
-    const perPage = 100
-    const first = await api.clients.list({ page: 1, per_page: perPage })
-    let all = [...first.data]
-    const lastPage = first.meta.last_page || 1
-    for (let p = 2; p <= lastPage; p++) {
-      const pageRes = await api.clients.list({ page: p, per_page: perPage })
-      all = all.concat(pageRes.data)
-    }
-    clients.value = all
-    stats.value = first.meta.stats || {
+    await syncRouteQuery()
+    const sort = sorting.value[0]
+    const response = await api.clients.list({
+      page: page.value,
+      per_page: perPage.value,
+      q: search.value.trim() || undefined,
+      is_active: statusFilter.value === 'all' ? undefined : statusFilter.value === 'active',
+      operational_filter: kpiFilter.value === 'total' ? undefined : kpiFilter.value,
+      sort: sort?.id || 'legal_name',
+      direction: sort?.desc ? 'desc' : 'asc'
+    })
+    if (sequence !== loadSequence) return
+    clients.value = response.data
+    total.value = response.meta.total
+    lastPage.value = response.meta.last_page
+    stats.value = response.meta.stats || {
       ...emptyStats,
-      total: first.meta.total ?? all.length
-    }
-    // se stats.total veio sem o filtro completo, alinha ao tamanho real
-    if (!first.meta.stats) {
-      stats.value.total = all.length
-      stats.value.active = all.filter(c => c.is_active).length
+      total: response.meta.total
     }
   } catch (caught) {
+    if (sequence !== loadSequence) return
     loadError.value = apiErrorMessage(caught, 'Erro ao listar clientes.')
     toast.add({ title: loadError.value, color: 'error' })
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
   }
 }
 
@@ -652,15 +610,36 @@ async function onFormSaved(payload: { id: number, mode: 'create' | 'edit', secti
   }
 }
 
+watch(search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => void load(), 350)
+})
+
+watch([statusFilter, kpiFilter, page, perPage], () => {
+  void load()
+})
+
+watch(sorting, () => {
+  if (page.value !== 1) {
+    page.value = 1
+    return
+  }
+  void load()
+}, { deep: true })
+
 onMounted(() => {
   if (canManageClients.value && route.query.new === '1') {
     openCreateForm()
   }
-  // seed filter da URL (opcional), sem debounce
-  if (typeof route.query.q === 'string' && route.query.q) {
-    columnFilters.value = [{ id: 'legal_name', value: route.query.q }]
-  }
-  load()
+  void load()
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
+
+watch(() => route.query.new, (value) => {
+  if (canManageClients.value && value === '1') openCreateForm()
 })
 </script>
 
@@ -778,13 +757,6 @@ onMounted(() => {
               :loading="loading"
               @click="load"
             />
-            <UButton
-              v-if="canManageClients"
-              icon="i-lucide-plus"
-              label="Novo cliente"
-              color="primary"
-              @click="openCreateForm"
-            />
           </div>
         </div>
 
@@ -799,29 +771,16 @@ onMounted(() => {
         />
 
         <UTable
+          v-if="loading || clients.length"
           ref="table"
           data-testid="data-table"
-          v-model:column-filters="columnFilters"
           v-model:column-visibility="columnVisibility"
           v-model:sorting="sorting"
-          v-model:pagination="pagination"
-          :pagination-options="{
-            getPaginationRowModel: getPaginationRowModel()
-          }"
           class="shrink-0"
-          :data="tableData"
+          :data="clients"
           :columns="columns"
           :loading="loading"
-          :ui="{
-            base: 'table-fixed border-separate border-spacing-0',
-            thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-            tbody: '[&>tr]:last:[&>td]:border-b-0',
-            // HubStrom: padding interno menor que o default Nuxt (td p-4) —
-            // conteúdo mais próximo da borda, linha mais densa e legível.
-            th: 'px-3 py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-            td: 'border-b border-default px-3 py-2',
-            separator: 'h-0'
-          }"
+          :ui="DENSE_DASHBOARD_TABLE_UI"
         >
           <template #legal_name-cell="{ row }">
             <div class="min-w-0">
@@ -1010,15 +969,25 @@ onMounted(() => {
         <!-- Footer idêntico ao template -->
         <div class="flex items-center justify-between gap-3 border-t border-default pt-4 mt-auto">
           <div class="text-sm text-muted">
-            {{ table?.tableApi?.getFilteredRowModel().rows.length || 0 }} cliente(s)
+            {{ total }} cliente(s) · página {{ page }} de {{ lastPage }}
           </div>
 
-          <div class="flex items-center gap-1.5">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <USelect
+              v-model="perPage"
+              :items="[
+                { label: '10 por página', value: 10 },
+                { label: '20 por página', value: 20 },
+                { label: '50 por página', value: 50 }
+              ]"
+              value-key="value"
+              class="w-36"
+              aria-label="Clientes por página"
+            />
             <UPagination
-              :default-page="(table?.tableApi?.getState().pagination.pageIndex || 0) + 1"
-              :items-per-page="table?.tableApi?.getState().pagination.pageSize"
-              :total="table?.tableApi?.getFilteredRowModel().rows.length || 0"
-              @update:page="(p: number) => table?.tableApi?.setPageIndex(p - 1)"
+              v-model:page="page"
+              :items-per-page="perPage"
+              :total="total"
             />
           </div>
         </div>

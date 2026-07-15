@@ -6,13 +6,13 @@
  *
  * Seleção nativa TanStack (rowSelection + getRowId = access_key).
  * Ordenação: client-side na página atual (getSortedRowModel), headers com botão.
- * Paginação: UPagination + seletor de linhas/página (server-side cursor + meta.total).
+ * Navegação: lotes incrementais por cursor (`next_cursor`), sem simular offset.
  */
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { Row } from '@tanstack/table-core'
 import type { NfseNote } from '~/types/api'
 import { documentKindLabel } from '~/utils/documentKinds'
-import { NOTES_TABLE_UI } from '~/utils/notes-filters'
+import { DENSE_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 /** Opções de linhas por página (API aceita limit 1–100). */
 const NOTES_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
@@ -23,21 +23,21 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   error?: string | null
   selectedAccessKey?: string | null
-  page?: number
   pageSize?: number
   total?: number
+  hasMore?: boolean
   selectable?: boolean
   selectedKeys?: string[]
 }>(), {
-  page: 1,
   pageSize: 25,
-  total: 0
+  total: 0,
+  hasMore: false
 })
 
 const emit = defineEmits<{
   'select': [note: NfseNote]
-  'update:page': [page: number]
   'update:pageSize': [size: number]
+  'loadMore': []
   'retry': []
   'update:selectedKeys': [keys: string[]]
 }>()
@@ -410,7 +410,6 @@ const selectedCount = computed(() =>
   Object.values(rowSelection.value).filter(Boolean).length
 )
 
-const showPagination = computed(() => props.total > props.pageSize)
 
 defineShortcuts({
   arrowdown: () => {
@@ -442,6 +441,7 @@ defineShortcuts({
     />
 
     <UTable
+      v-if="loading || notes.length"
       ref="table"
       v-model:row-selection="rowSelection"
       v-model:sorting="sorting"
@@ -450,7 +450,7 @@ defineShortcuts({
       :loading="!!loading"
       :get-row-id="(row: NfseNote) => row.access_key"
       class="shrink-0"
-      :ui="NOTES_TABLE_UI"
+      :ui="DENSE_DASHBOARD_TABLE_UI"
     >
       <template #kind-cell="{ row }">
         <UBadge
@@ -554,21 +554,18 @@ defineShortcuts({
       </template>
     </UTable>
 
-    <!-- Footer: contagem · linhas/página · UPagination (server-side) -->
+    <!-- Footer: contagem carregada · tamanho do lote · próximo cursor -->
     <div class="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4">
       <div class="text-sm text-muted">
         <template v-if="selectable && selectedCount">
-          {{ selectedCount }} de {{ notes.length }} nesta página selecionada(s)
+          {{ selectedCount }} de {{ notes.length }} carregado(s) selecionado(s)
           <span v-if="total"> · {{ total }} no total</span>.
         </template>
         <template v-else-if="total">
-          {{ total }} documento(s)
-          <span v-if="notes.length && total > notes.length">
-            · página {{ page }} de {{ Math.max(1, Math.ceil(total / pageSize)) }}
-          </span>.
+          {{ notes.length }} de {{ total }} documento(s) carregados.
         </template>
         <template v-else>
-          {{ notes.length }} documento(s) nesta página.
+          {{ notes.length }} documento(s) carregado(s).
         </template>
       </div>
       <div class="flex flex-wrap items-center gap-2">
@@ -581,13 +578,15 @@ defineShortcuts({
           aria-label="Linhas por página"
           :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
         />
-        <UPagination
-          v-if="showPagination"
-          :page="page"
-          :items-per-page="pageSize"
-          :total="total"
+        <UButton
+          v-if="hasMore"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-chevrons-down"
+          label="Carregar mais"
           :disabled="loading"
-          @update:page="(p: number) => emit('update:page', p)"
+          :loading="loading"
+          @click="emit('loadMore')"
         />
       </div>
     </div>

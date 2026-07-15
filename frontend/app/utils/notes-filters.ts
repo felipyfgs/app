@@ -167,20 +167,6 @@ export function filtersToQuery(
   return query
 }
 
-/**
- * `:ui` canônico do UTable — base customers.vue do template + padding denso
- * alinhado a `pages/clients/index.vue` (produto).
- * Fonte: .reference/nuxt-dashboard-template/app/pages/customers.vue
- */
-export const NOTES_TABLE_UI = {
-  base: 'table-fixed border-separate border-spacing-0',
-  thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-  tbody: '[&>tr]:last:[&>td]:border-b-0',
-  th: 'px-3 py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-  td: 'border-b border-default px-3 py-2',
-  separator: 'h-0'
-} as const
-
 /** Export filters espelhando o catálogo (campos que o ZIP job entende). */
 export function catalogToExportFilters(filters: NotesFilterState): {
   access_key?: string

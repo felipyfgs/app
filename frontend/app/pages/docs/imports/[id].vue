@@ -4,6 +4,7 @@
  * Arquétipo: settings + customers table.
  */
 import type { TableColumn } from '@nuxt/ui'
+import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()
 const route = useRoute()
@@ -367,19 +368,13 @@ onBeforeUnmount(() => {
         </div>
 
         <UTable
+          v-if="itemsLoading || items.length"
           data-testid="batch-items-table"
           :data="items"
           :loading="itemsLoading"
           :columns="columns"
           class="shrink-0"
-          :ui="{
-            base: 'table-fixed border-separate border-spacing-0',
-            thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-            tbody: '[&>tr]:last:[&>td]:border-b-0',
-            th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-            td: 'border-b border-default',
-            separator: 'h-0'
-          }"
+          :ui="DASHBOARD_TABLE_UI"
         >
           <template #source_name-cell="{ row }">
             <div class="min-w-0">
@@ -396,7 +391,7 @@ onBeforeUnmount(() => {
           </template>
           <template #status-cell="{ row }">
             <UBadge :color="statusColor(String(row.original.status))" variant="subtle">
-              {{ row.original.status }}
+              {{ statusLabel(String(row.original.status)) }}
             </UBadge>
           </template>
           <template #access_key-cell="{ row }">
@@ -415,9 +410,9 @@ onBeforeUnmount(() => {
               size="xs"
               color="primary"
               variant="subtle"
-              label="Retry"
+              label="Tentar novamente"
               :loading="retrying === Number(row.original.id)"
-              :aria-label="`Retentar item ${row.original.item_index} (UNMATCHED/transitório)`"
+              :aria-label="`Tentar novamente o item ${row.original.item_index} sem vínculo ou com falha transitória`"
               @click="retryItem(row.original)"
             />
             <UTooltip
@@ -431,11 +426,18 @@ onBeforeUnmount(() => {
                 icon="i-lucide-ban"
                 square
                 disabled
-                aria-label="Retry indisponível para este resultado"
+                aria-label="Nova tentativa indisponível para este resultado"
               />
             </UTooltip>
           </template>
         </UTable>
+
+        <UEmpty
+          v-if="!itemsLoading && !items.length"
+          icon="i-lucide-file-x-2"
+          title="Nenhum item neste resultado"
+          description="Altere o filtro ou aguarde o processamento do lote."
+        />
 
         <div
           v-if="lastPage > 1"

@@ -6,6 +6,7 @@
 import * as z from 'zod'
 import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
 import type { ExportFilters, ExportJob } from '~/types/api'
+import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()
 const route = useRoute()
@@ -14,6 +15,10 @@ const { canCreateExport } = useDashboard()
 const toast = useToast()
 
 const items = ref<ExportJob[]>([])
+const page = ref(Math.max(1, Number(route.query.page) || 1))
+const perPage = 20
+const total = ref(0)
+const lastPage = ref(1)
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const creating = ref(false)
@@ -331,7 +336,13 @@ function applyPreset(next: ExportPreset) {
 async function load(silent = false) {
   if (!silent) loading.value = true
   try {
-    items.value = (await api.exports.list()).data
+    const response = await api.exports.list({ page: page.value, per_page: perPage })
+    items.value = response.data
+    total.value = response.meta.total
+    lastPage.value = response.meta.last_page
+    await router.replace({
+      query: { ...route.query, page: page.value > 1 ? String(page.value) : undefined }
+    })
     loadError.value = null
   } catch (caught) {
     loadError.value = apiErrorMessage(caught, 'Erro ao listar exportações.')
@@ -429,7 +440,11 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
       description: 'O ZIP está na fila. Quando ficar Disponível, o botão Baixar aparece na lista.',
       color: 'success'
     })
-    await load()
+    if (page.value !== 1) {
+      page.value = 1
+    } else {
+      await load()
+    }
   } catch (caught) {
     toast.add({ title: apiErrorMessage(caught, 'Falha ao solicitar exportação.'), color: 'error' })
   } finally {
@@ -446,6 +461,7 @@ const { pause, resume } = useIntervalFn(() => {
 }, 8000, { immediate: false })
 
 watch(hasPending, pending => (pending ? resume() : pause()), { immediate: true })
+watch(page, () => void load())
 watch(createOpen, (open) => {
   if (!open) resetForm()
 })
@@ -598,20 +614,13 @@ onBeforeUnmount(pause)
       />
 
       <UTable
+        v-if="loading || items.length"
         data-testid="data-table"
         :data="items"
         :loading="loading"
         :columns="columns"
         class="shrink-0"
-        empty=" "
-        :ui="{
-          base: 'table-fixed border-separate border-spacing-0',
-          thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-          tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'border-b border-default align-top',
-          separator: 'h-0'
-        }"
+        :ui="{ ...DASHBOARD_TABLE_UI, td: `${DASHBOARD_TABLE_UI.td} align-top` }"
       >
         <template #when-cell="{ row }">
           <div class="text-sm">
@@ -731,6 +740,21 @@ onBeforeUnmount(pause)
           />
         </div>
       </UEmpty>
+
+      <div
+        v-if="total"
+        class="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4"
+      >
+        <p class="text-sm text-muted">
+          {{ total }} exportação(ões) · página {{ page }} de {{ lastPage }}
+        </p>
+        <UPagination
+          v-if="lastPage > 1"
+          v-model:page="page"
+          :total="total"
+          :items-per-page="perPage"
+        />
+      </div>
 
       <UModal
         v-if="canCreateExport"

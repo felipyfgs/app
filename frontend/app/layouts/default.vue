@@ -23,8 +23,12 @@ const closeSidebar = () => {
 
 /** Dois menus verticais: primário + secundário (mt-auto), como no template. */
 const links = computed(() => {
+  const navOptions = {
+    path: route.path,
+    query: route.query as Record<string, unknown>
+  }
   const primary = toNavigationItems(
-    mainDestinations(me.value, { path: route.path }),
+    mainDestinations(me.value, navOptions),
     closeSidebar
   )
   const secondary = toNavigationItems(
@@ -36,7 +40,10 @@ const links = computed(() => {
 
 const groups = computed(() => {
   const destinations = [
-    ...flattenDestinations(mainDestinations(me.value, { path: route.path })),
+    ...flattenDestinations(mainDestinations(me.value, {
+      path: route.path,
+      query: route.query as Record<string, unknown>
+    })),
     ...secondaryDestinations()
   ]
 

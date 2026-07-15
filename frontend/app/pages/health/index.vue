@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { InboxItem, InboxItemType, InboxSeverity } from '~/types/api'
+import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()
 const route = useRoute()
@@ -127,6 +128,10 @@ const columns: TableColumn<InboxItem>[] = [
 
 function severityColor(severity: string): 'error' | 'warning' | 'info' | 'neutral' {
   return inboxSeverityColor(severity)
+}
+
+function severityLabel(severity: string): string {
+  return severityItems.find(item => item.value === severity)?.label || severity
 }
 
 function typeLabel(type: string): string {
@@ -320,14 +325,7 @@ watch(
         :loading="loading"
         :columns="columns"
         class="shrink-0 min-w-0 w-full"
-        :ui="{
-          base: 'table-fixed border-separate border-spacing-0',
-          thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-          tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'border-b border-default',
-          separator: 'h-0'
-        }"
+        :ui="DASHBOARD_TABLE_UI"
         @select="selectRow"
       >
         <template #severity-cell="{ row }">
@@ -336,7 +334,7 @@ watch(
             variant="subtle"
             class="capitalize"
           >
-            {{ row.original.severity }}
+            {{ severityLabel(row.original.severity) }}
           </UBadge>
         </template>
         <template #type-cell="{ row }">

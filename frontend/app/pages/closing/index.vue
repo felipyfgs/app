@@ -12,6 +12,7 @@ import type {
   OutboundDeadlinePendingItem,
   OutboundUrgencyBand
 } from '~/types/api'
+import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()
 const route = useRoute()
@@ -20,6 +21,10 @@ const toast = useToast()
 const { canCreateExport, canAccessAdministration, canImportDocuments, me } = useDashboard()
 
 const FILTER_ALL = 'all'
+const pendingPage = ref(1)
+const pendingPerPage = 50
+const pendingTotal = ref(0)
+const pendingLastPage = ref(1)
 
 function defaultCompetence(): string {
   const d = new Date()
@@ -284,7 +289,8 @@ async function load() {
         root_cnpj: root,
         source,
         client_id: clientId && clientId > 0 ? clientId : undefined,
-        limit: 100
+        page: pendingPage.value,
+        per_page: pendingPerPage
       }),
       api.outbound.deadline.metrics(comp)
     ])
@@ -300,6 +306,8 @@ async function load() {
     }
     if (pendRes.status === 'fulfilled') {
       items.value = pendRes.value.data
+      pendingTotal.value = pendRes.value.meta.total
+      pendingLastPage.value = pendRes.value.meta.last_page
     }
     if (metRes.status === 'fulfilled') {
       metrics.value = metRes.value.data
@@ -402,9 +410,12 @@ watch(
     route.query.client_id
   ],
   () => {
+    pendingPage.value = 1
     void load()
   }
 )
+
+watch(pendingPage, () => void load())
 
 onMounted(() => {
   void load()
@@ -697,6 +708,7 @@ onMounted(() => {
         :columns="columns"
         empty="Nenhuma pendência para os filtros."
         class="w-full"
+        :ui="DASHBOARD_TABLE_UI"
       >
         <template #urgency_band-cell="{ row }">
           <div class="flex items-center gap-2">
@@ -716,7 +728,7 @@ onMounted(() => {
               variant="outline"
               size="sm"
             >
-              CAPACITY_AT_RISK
+              Capacidade em risco
             </UBadge>
           </div>
         </template>
@@ -749,6 +761,21 @@ onMounted(() => {
           </div>
         </template>
       </UTable>
+
+      <div
+        v-if="pendingTotal"
+        class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4"
+      >
+        <p class="text-sm text-muted">
+          {{ pendingTotal }} pendência(s) · página {{ pendingPage }} de {{ pendingLastPage }}
+        </p>
+        <UPagination
+          v-if="pendingLastPage > 1"
+          v-model:page="pendingPage"
+          :total="pendingTotal"
+          :items-per-page="pendingPerPage"
+        />
+      </div>
 
       <p class="text-xs text-muted mt-3">
         Escopo: {{ summary?.completeness_scope || 'known_documents_only' }}.
