@@ -10,14 +10,19 @@ Fontes: NT 2015.002 (CTeDistribuicaoDFe), leiautes públicos de distribuição e
 | Item | Valor suportado | Notas |
 |------|-----------------|-------|
 | Serviço | `CTeDistribuicaoDFe` / `cteDistDFeInteresse` | SOAP 1.2 |
-| Namespace WSDL | `http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe` | config `sefaz.cte.namespace` |
-| Layout distribuição | **1.00** | `sefaz.cte.layout_version` |
+| Namespace WSDL | `http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe` | config `sefaz.cte.namespace` · env `SEFAZ_CTE_NAMESPACE` |
+| SOAPAction | `…/CTeDistribuicaoDFe/cteDistDFeInteresse` | `sefaz.cte.soap_action` · `SEFAZ_CTE_SOAP_ACTION` |
+| Endpoint produção (default) | `https://www1.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx` | `sefaz.cte.production` · `SEFAZ_CTE_DISTDFE_URL` |
+| Endpoint homologação (default) | `https://hom1.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx` | `sefaz.cte.homologation` · `SEFAZ_CTE_DISTDFE_URL_HOM` |
+| Layout distribuição | **1.00** | `sefaz.cte.layout_version` · `SEFAZ_CTE_LAYOUT_VERSION` |
 | Consulta sequencial | `distNSU` / `ultNSU` (15 dígitos) | fluxo do Scheduler |
 | Consulta pontual | `consNSU` / `NSU` (15 dígitos) | **somente reparo de NSU conhecido** |
 | Consulta por chave | **não existe** (`consChCTe`) | proibido no produto |
 | Identidade | CNPJ completo 14 (numérico ou alfanumérico uppercase) | CPF se aplicável no contrato |
 | Ambiente | `tpAmb` 1 produção / 2 homologação | |
 | cUFAutor | UF do autor da consulta (padrão config) | |
+| Runtime | Cliente próprio mTLS (`HttpSefazCteDistDfeClient`) | **sem** lib comunitária de CT-e como transporte |
+| Confirmação live | Smoke/readiness task **3.9** | `docs/ops/cte-prod-smoke-runbook.md` — **PENDING** até execução humana |
 
 ### cStat de resposta (canal)
 

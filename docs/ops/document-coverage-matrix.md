@@ -10,7 +10,8 @@ Documento operacional: o que cada **kind** e **direction** usa para obter XML no
 | **NF-e** | OUT (emitente) | **Import XML** / pacote MA assistido (UF=MA) | Consulta protocolo por `nNF` (só chave); M2M MA se G4; autXML escritório (change própria) | DistDFe **não** entrega nota própria ao emitente (cStat 641). Ver `ma-outbound-xml-auto-discovery.md` |
 | **NFC-e** | OUT | **Import XML** / pacote MA assistido (UF=MA); **SVRS DownloadXMLDFe por chave** (piloto, flags off) | Consulta protocolo por `nNF` (só chave); ERP/PDV | Sem DistDFe nacional de 65 (cStat 618). Canal SVRS: `SEFAZ_SVRS_NFCE_XML_*` — só modelo 65/MA; **NF-e 55 sem este canal**. Ver `svrs-nfce-enablement-matrix.md` |
 | **NFC-e** | IN | Raro / import se necessário | — | MVP: não capturar via DistDFe genérico |
-| **CT-e** | IN / OUT | CTeDistribuicaoDFe (opt-in) | Import se emitente | `SEFAZ_CTE_ENABLED` + cursor próprio |
+| **CT-e** | IN (5 papéis) | `CTE_DISTDFE` cliente (opt-in) | — | `SEFAZ_CTE_ENABLED`; ver `cte-coverage-and-channels-runbook.md` |
+| **CT-e** | OUT (emitente) | `CTE_AUTXML_DISTDFE` office | Import / `EMITTER_PUSH` | `SEFAZ_CTE_AUTXML_*` allowlist; DistDFe do próprio emitente **não** entrega o principal |
 | **MDF-e** | — | **Fora do escopo** desta entrega | — | Flag existe no config mas sem client/projeção |
 
 ## Direção (`direction`)

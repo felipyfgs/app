@@ -3,7 +3,7 @@
 ## Componentes
 
 1. **PostgreSQL** — fonte de verdade transacional
-2. **Cofre de objetos** (`VAULT_DISK_ROOT`) — PFX/XML criptografados
+2. **Cofre de objetos** (`VAULT_DISK_ROOT`) — PFX/XML criptografados (inclui finalidades SERPRO globais e tenant-scoped: contratante, OAuth, tokens, Termo, A1 do Autor)
 3. **`VAULT_MASTER_KEY`** — procedimento **separado**, nunca no mesmo backup do banco
 
 ## Pré-condições

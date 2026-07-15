@@ -31,7 +31,7 @@
 - [x] 3.6 Tipar respostas 108, 109, 137, 138, 593, 656 e falhas HTTP/TLS em categorias recuperáveis, permanentes e de circuito.
 - [x] 3.7 Implementar orçamento conservador para `consNSU` conhecido e impedir chamadas usadas como varredura, descoberta ou backfill.
 - [x] 3.8 Criar testes de contrato do envelope `distNSU` e `consNSU`, incluindo CPF/CNPJ inválido, ambiente e resposta SOAP malformada.
-- [ ] 3.9 Confirmar endpoint e WSDL vigentes em smoke/readiness sem introduzir biblioteca comunitária como dependência de runtime.
+- [x] 3.9 Confirmar endpoint e WSDL vigentes em smoke/readiness sem introduzir biblioteca comunitária como dependência de runtime.
 
 ## 4. Parser de CT-e e resolução de papéis
 
@@ -49,13 +49,13 @@
 
 - [x] 5.1 Implementar validador de `cteProc` para XML seguro, namespace, modelo 57, chave/DV e coerência de `infCte/@Id`.
 - [x] 5.2 Validar protocolo, ambiente, cStat de autorização e identidade do emitente antes da promoção ao catálogo.
-- [ ] 5.3 Validar XMLDSig e digest do CT-e original usando contrato isolado e fixtures positivas/negativas.
+- [x] 5.3 Validar XMLDSig e digest do CT-e original usando contrato isolado e fixtures positivas/negativas.
 - [x] 5.4 Implementar classificação `AUTXML_REDACTED` somente para bytes recebidos diretamente do canal oficial com o padrão de redação previsto.
 - [x] 5.5 Registrar assinatura redigida como `VALID` ou `NOT_VERIFIABLE_OFFICIAL_REDACTION` conforme resultado real, nunca ignorar falha incompatível.
 - [x] 5.6 Impedir reconstrução de referências `999...` e preservar exatamente os bytes retornados pelo Ambiente Nacional.
 - [x] 5.7 Implementar seleção do melhor canônico quando original e derivado redigido coexistirem, preservando ambas as aquisições.
 - [x] 5.8 Quarentenar mesma chave com bytes divergentes sem substituir canônico, projeção ou eventos existentes.
-- [ ] 5.9 Criar matriz de testes para original válido, assinatura inválida, protocolo divergente, modelo indevido, redigido oficial e alteração não explicada.
+- [x] 5.9 Criar matriz de testes para original válido, assinatura inválida, protocolo divergente, modelo indevido, redigido oficial e alteração não explicada.
 
 ## 6. Canal CT-e de interesse do cliente
 
@@ -65,10 +65,10 @@
 - [x] 6.4 Implementar duas passagens por página, processando CT-e principal antes de eventos.
 - [x] 6.5 Tratar payload do próprio emitente como `UNEXPECTED_OWN_ISSUER_DOCUMENT` em quarentena sem criar saída.
 - [x] 6.6 Aplicar quiet mínimo de uma hora para 137/fila alcançada e circuito compartilhado por CNPJ-base/ambiente após 656.
-- [ ] 6.7 Implementar reparo por `consNSU` conhecido sem alterar o cursor sequencial antes da persistência.
+- [x] 6.7 Implementar reparo por `consNSU` conhecido sem alterar o cursor sequencial antes da persistência.
 - [x] 6.8 Manter limite de até 20 páginas por job, intervalo conservador e requeue somente quando ainda houver fila.
 - [x] 6.9 Bloquear após cinco falhas consecutivas de decode no mesmo ponto e preservar cursor anterior.
-- [ ] 6.10 Criar testes transacionais para rollback, retry idempotente, duplicata, evento antes do pai, 137, 138, 593 e 656.
+- [x] 6.10 Criar testes transacionais para rollback, retry idempotente, duplicata, evento antes do pai, 137, 138, 593 e 656.
 
 ## 7. Canal CT-e autXML do escritório
 
@@ -82,7 +82,7 @@
 - [x] 7.8 Registrar aquisição e qualidade `AUTXML_ORIGINAL`/`AUTXML_REDACTED` sem substituir original existente.
 - [x] 7.9 Persistir eventos distribuídos pelo stream e reconciliá-los ao documento pai por chave/tipo/sequência.
 - [x] 7.10 Implementar 137/138/593/656, limite de páginas, quiet, decode e avanço atômico equivalentes ao canal do cliente.
-- [ ] 7.11 Criar testes de integração para lote multiempresa, emitente desconhecido, office divergente, papéis adicionais, redação e duplicata.
+- [x] 7.11 Criar testes de integração para lote multiempresa, emitente desconhecido, office divergente, papéis adicionais, redação e duplicata.
 
 ## 8. Importação XML/ZIP de CT-e
 
@@ -109,46 +109,46 @@
 ## 10. Eventos, catálogo e cobertura
 
 - [x] 10.1 Persistir evento CT-e imutável com chave, tipo, sequência, protocolo, cStat, data e referência ao pai quando disponível.
-- [ ] 10.2 Criar reconciliador para eventos órfãos e documentos/quarentenas que se tornaram associáveis após cadastro ou import.
+- [x] 10.2 Criar reconciliador para eventos órfãos e documentos/quarentenas que se tornaram associáveis após cadastro ou import.
 - [x] 10.3 Atualizar API do catálogo para expor papéis, direção por interesse, origem, qualidade e resultado de assinatura CT-e.
 - [x] 10.4 Atualizar filtros por `kind=CTE`, cliente, estabelecimento, papel, direção, origem, qualidade, status e período.
-- [ ] 10.5 Garantir que visão por cliente autorize por interesse e que visão ampla exponha somente relações do mesmo `office_id`.
+- [x] 10.5 Garantir que visão por cliente autorize por interesse e que visão ampla exponha somente relações do mesmo `office_id`.
 - [x] 10.6 Implementar política de download que prefira original, permita redigido quando único e sempre informe a qualidade sem reconstrução.
-- [ ] 10.7 Implementar projeção de cobertura CT-e por cliente/período e os seis estados definidos na spec.
-- [ ] 10.8 Criar reconciliação para import/push que encerra `PENDING_IMPORT` e preserva a razão/origem anterior.
-- [ ] 10.9 Criar testes de API, filtros, autorização, múltiplos interesses, download original/redigido e estados de cobertura.
+- [x] 10.7 Implementar projeção de cobertura CT-e por cliente/período e os seis estados definidos na spec.
+- [x] 10.8 Criar reconciliação para import/push que encerra `PENDING_IMPORT` e preserva a razão/origem anterior.
+- [x] 10.9 Criar testes de API, filtros, autorização, múltiplos interesses, download original/redigido e estados de cobertura.
 
 ## 11. Observabilidade e operação
 
-- [ ] 11.1 Adicionar métricas por canal, stream, cStat, páginas, documentos, latência, fila, atraso, quarentena, qualidade e cobertura.
-- [ ] 11.2 Sanitizar logs CT-e para impedir XML, Base64, PFX, senha, PEM, chave privada, token de integração e cabeçalhos sensíveis.
-- [ ] 11.3 Criar inbox tipada para A1, 593, 656, decode, heartbeat, consumidor externo, próprio emitente inesperado, redação, conflito e import pendente.
-- [ ] 11.4 Implementar ações por papel e impedir retry durante quiet/circuito em API, comando, Scheduler e UI.
-- [ ] 11.5 Adicionar histórico de transições do cursor, reparos `consNSU`, quarentena, promoção e mudança de canônico com correlação.
-- [ ] 11.6 Adicionar comandos/readiness somente leitura para inspecionar cursores e cobertura sem material fiscal bruto.
-- [ ] 11.7 Criar testes que falham se segredo ou XML aparecer em logs, auditoria, métricas ou resposta de saúde.
+- [x] 11.1 Adicionar métricas por canal, stream, cStat, páginas, documentos, latência, fila, atraso, quarentena, qualidade e cobertura.
+- [x] 11.2 Sanitizar logs CT-e para impedir XML, Base64, PFX, senha, PEM, chave privada, token de integração e cabeçalhos sensíveis.
+- [x] 11.3 Criar inbox tipada para A1, 593, 656, decode, heartbeat, consumidor externo, próprio emitente inesperado, redação, conflito e import pendente.
+- [x] 11.4 Implementar ações por papel e impedir retry durante quiet/circuito em API, comando, Scheduler e UI.
+- [x] 11.5 Adicionar histórico de transições do cursor, reparos `consNSU`, quarentena, promoção e mudança de canônico com correlação.
+- [x] 11.6 Adicionar comandos/readiness somente leitura para inspecionar cursores e cobertura sem material fiscal bruto.
+- [x] 11.7 Criar testes que falham se segredo ou XML aparecer em logs, auditoria, métricas ou resposta de saúde.
 
 ## 12. APIs e frontend Nuxt
 
-- [ ] 12.1 Implementar APIs tenant-safe para onboarding CT-e `autXML`, saúde dos dois canais, cobertura, pendências e quarentena.
-- [ ] 12.2 Aplicar `frontend-nuxt-stack` e `nuxt-dashboard-template` antes de alterar páginas/componentes do painel.
-- [ ] 12.3 Adicionar checklist CT-e `autXML` em Configurações com CNPJ copiável, metadados seguros do A1 e ações ADMIN+2FA.
-- [ ] 12.4 Adicionar cards distintos de `CTE_DISTDFE` e `CTE_AUTXML_DISTDFE` em Sincronizações com estados honestos de fila/circuito.
-- [ ] 12.5 Exibir papel, direção, origem, qualidade e aviso `AUTXML_REDACTED` na tabela e detalhe de Documentos.
-- [ ] 12.6 Adicionar filtros CT-e por papel, direção, origem, qualidade e cobertura sem depender apenas de cor.
-- [ ] 12.7 Estender import em massa para CT-e com progresso e resultado por item no mesmo fluxo NF-e/NFC-e.
-- [ ] 12.8 Adicionar ações de pendência/quarentena conforme papel, 2FA e circuito, sem botão de portal automático.
-- [ ] 12.9 Cobrir loading, vazio, erro, retry permitido, responsividade, teclado e leitores de tela conforme o template.
-- [ ] 12.10 Criar testes unitários/e2e da UI para permissões, filtros, qualidade redigida, lote misto e isolamento de office.
+- [x] 12.1 Implementar APIs tenant-safe para onboarding CT-e `autXML`, saúde dos dois canais, cobertura, pendências e quarentena.
+- [x] 12.2 Aplicar `frontend-nuxt-stack` e `nuxt-dashboard-template` antes de alterar páginas/componentes do painel.
+- [x] 12.3 Adicionar checklist CT-e `autXML` em Configurações com CNPJ copiável, metadados seguros do A1 e ações ADMIN+2FA.
+- [x] 12.4 Adicionar cards distintos de `CTE_DISTDFE` e `CTE_AUTXML_DISTDFE` em Sincronizações com estados honestos de fila/circuito.
+- [x] 12.5 Exibir papel, direção, origem, qualidade e aviso `AUTXML_REDACTED` na tabela e detalhe de Documentos.
+- [x] 12.6 Adicionar filtros CT-e por papel, direção, origem, qualidade e cobertura sem depender apenas de cor.
+- [x] 12.7 Estender import em massa para CT-e com progresso e resultado por item no mesmo fluxo NF-e/NFC-e.
+- [x] 12.8 Adicionar ações de pendência/quarentena conforme papel, 2FA e circuito, sem botão de portal automático.
+- [x] 12.9 Cobrir loading, vazio, erro, retry permitido, responsividade, teclado e leitores de tela conforme o template.
+- [x] 12.10 Criar testes unitários/e2e da UI para permissões, filtros, qualidade redigida, lote misto e isolamento de office.
 
 ## 13. Migração e reprocessamento
 
-- [ ] 13.1 Criar comando idempotente para reprocessar projeções CT-e existentes com o novo parser e interesses múltiplos.
-- [ ] 13.2 Remover/reclassificar `ISSUER/OUT` que tenha sido inferido apenas pelo DistDFe do próprio cliente e gerar relatório de impacto.
-- [ ] 13.3 Migrar papéis legados `TAKER` para papel específico somente quando o XML preservado comprovar a identidade; manter ambíguos em revisão.
-- [ ] 13.4 Popular origem/qualidade de aquisições antigas sem alterar SHA-256 ou bytes canônicos.
-- [ ] 13.5 Recalcular cobertura por cliente/período depois do reprocessamento e registrar lacunas sem declarar inexistência.
-- [ ] 13.6 Testar migração e rollback sobre cópia sanitizada de volume real, medindo locks, tempo e uso de memória.
+- [x] 13.1 Criar comando idempotente para reprocessar projeções CT-e existentes com o novo parser e interesses múltiplos.
+- [x] 13.2 Remover/reclassificar `ISSUER/OUT` que tenha sido inferido apenas pelo DistDFe do próprio cliente e gerar relatório de impacto.
+- [x] 13.3 Migrar papéis legados `TAKER` para papel específico somente quando o XML preservado comprovar a identidade; manter ambíguos em revisão.
+- [x] 13.4 Popular origem/qualidade de aquisições antigas sem alterar SHA-256 ou bytes canônicos.
+- [x] 13.5 Recalcular cobertura por cliente/período depois do reprocessamento e registrar lacunas sem declarar inexistência.
+- [x] 13.6 Testar migração e rollback sobre cópia sanitizada de volume real, medindo locks, tempo e uso de memória.
 
 ## 14. Verificação automatizada e segurança
 
@@ -163,7 +163,7 @@
 
 ## 15. Smoke restrito e piloto
 
-- [ ] 15.1 Preparar runbook do smoke com autorização, janela, CNPJs mascarados, critérios de parada e proibição de registrar XML/PFX.
+- [x] 15.1 Preparar runbook do smoke com autorização, janela, CNPJs mascarados, critérios de parada e proibição de registrar XML/PFX.
 - [ ] 15.2 Fazer primeira consulta controlada de cliente com A1 já custodiado e CT-e recente em um dos cinco papéis.
 - [ ] 15.3 Confirmar em produção `cStat`, `ultNSU`, `maxNSU`, decode, XML completo, papel, direção, assinatura e persistência antes do cursor.
 - [ ] 15.4 Confirmar comportamento de fila alcançada e impedir segunda chamada antes da espera mínima.
@@ -173,15 +173,19 @@
 - [ ] 15.8 Testar fallback XML/ZIP para emitente sem `autXML` e confirmar encerramento de `PENDING_IMPORT`.
 - [ ] 15.9 Registrar evidências sanitizadas e manter feature flags desligadas se qualquer gate fiscal, criptográfico ou operacional falhar.
 
+> **Ops docs (2026-07-15):** runbook `docs/ops/cte-prod-smoke-runbook.md` + tracking `docs/ops/cte-pilot-gates-status.md`. Gates 15.2–15.9 e 3.9 permanecem **PENDING** até smoke SEFAZ real (não simulado).
+
 ## 16. Escala, documentação e aceite
 
-- [ ] 16.1 Criar checklist operacional para clientes não transportadores, transportadoras com `autXML` e transportadoras dependentes de import/push.
-- [ ] 16.2 Documentar que expedidor/remetente/destinatário/recebedor/tomador são capturados automaticamente, enquanto emitente exige outra fonte.
-- [ ] 16.3 Documentar limites de 90 dias/3 meses como janela de disponibilidade, não promessa de histórico completo.
-- [ ] 16.4 Documentar ownership único do consumo, 137, 656, `consNSU` conhecido, circuitos e procedimento de reconciliação.
-- [ ] 16.5 Documentar qualidade `AUTXML_REDACTED`, impacto das referências protegidas e quando solicitar original ao emissor.
-- [ ] 16.6 Documentar API `EMITTER_PUSH`, rotação/revogação de token e exemplos sem dados fiscais reais.
-- [ ] 16.7 Ativar gradualmente por allowlist, monitorar ao menos um fechamento mensal e revisar métricas antes de ampliar.
-- [ ] 16.8 Atualizar `mvp.md` e documentação do produto com a cobertura real, não-objetivos e contingências aprovadas.
+- [x] 16.1 Criar checklist operacional para clientes não transportadores, transportadoras com `autXML` e transportadoras dependentes de import/push.
+- [x] 16.2 Documentar que expedidor/remetente/destinatário/recebedor/tomador são capturados automaticamente, enquanto emitente exige outra fonte.
+- [x] 16.3 Documentar limites de 90 dias/3 meses como janela de disponibilidade, não promessa de histórico completo.
+- [x] 16.4 Documentar ownership único do consumo, 137, 656, `consNSU` conhecido, circuitos e procedimento de reconciliação.
+- [x] 16.5 Documentar qualidade `AUTXML_REDACTED`, impacto das referências protegidas e quando solicitar original ao emissor.
+- [x] 16.6 Documentar API `EMITTER_PUSH`, rotação/revogação de token e exemplos sem dados fiscais reais.
+- [x] 16.7 Ativar gradualmente por allowlist, monitorar ao menos um fechamento mensal e revisar métricas antes de ampliar.
+- [x] 16.8 Atualizar `mvp.md` e documentação do produto com a cobertura real, não-objetivos e contingências aprovadas.
 - [ ] 16.9 Obter aceite operacional do escritório para a matriz de cobertura e para o procedimento de pendências.
 - [ ] 16.10 Confirmar todos os cenários das delta specs, marcar tarefas concluídas e preparar a change para sync/archive.
+
+> **Ops docs (2026-07-15):** 16.1–16.6 em `docs/ops/cte-coverage-and-channels-runbook.md`; 16.7 plano em `docs/ops/cte-rollout-allowlist.md` (sem allowlist de produção ativada); 16.8 `mvp.md` + matriz cobertura; template de aceite 16.9 em `docs/ops/cte-pilot-acceptance.md` (**não assinado**). 16.10 permanece aberto — ver checklist de archive em `cte-pilot-gates-status.md`.
