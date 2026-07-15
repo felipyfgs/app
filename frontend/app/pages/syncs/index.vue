@@ -99,7 +99,7 @@ onMounted(() => load(true))
       <UAlert
         icon="i-lucide-info"
         title="Sincronização por NSU (multi-canal)"
-        description="O cursor só avança após a persistência integral da página. Canais independentes: ADN (NFS-e), DistDFe NF-e, CT-e e MDF-e — cada um com NSU próprio. Não há salto manual. Bloqueios SEFAZ (ex. cStat 656) aparecem na inbox de operações e não param o ADN."
+        description="O cursor só avança após a persistência integral da página. Canais independentes: ADN (NFS-e), DistDFe NF-e e CT-e — cada um com NSU próprio. Não há salto manual. Bloqueios SEFAZ (ex. cStat 656) aparecem na inbox de operações e não param o ADN."
       />
 
       <UAlert
