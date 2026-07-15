@@ -72,3 +72,21 @@ Vocabulário e decisões estáveis do domínio. Detalhes de implementação em `
 - `docs/adr/001-adn-api-client.md`
 - `docs/adr/002-same-origin-architecture.md`
 - `docs/adr/003-secure-object-vault.md`
+
+## SaaS multi-escritório e Integra Contador
+
+### Escritório cliente
+Tenant comercial e de segurança da plataforma: o escritório contábil assinante que opera o painel e isola seus contribuintes por `office_id`.
+_Avoid_: tenant genérico, customer, conta, firm (sem qualificar), "cliente da plataforma" (ambíguo com contribuinte)
+
+### Operação de domínio
+Identidade estável e interna de uma capacidade Integra Contador no produto (`operation_key`), independente de códigos SERPRO mutáveis.
+_Avoid_: serviço SERPRO, endpoint, rota, idServico (como identidade de domínio)
+
+### Coordenadas SERPRO
+Tupla oficial versionada de transporte: rota funcional (`/Apoiar`, `/Consultar`, `/Declarar`, `/Emitir`, `/Monitorar`), `idSistema`, `idServico`, `versaoSistema` e poder e-CAC quando aplicável.
+_Avoid_: operation_key, código interno, solution/service/operation legados como fonte de verdade de fio
+
+### Proveniência fiscal
+Origem verificável de runs, evidências e snapshots: `SIMULATED`, `SERPRO_REAL` ou `UNVERIFIED`. Definida pelo driver no início da execução; nunca promovida por payload ou frontend.
+_Avoid_: data_origin de demo UI como prova SERPRO, "fonte real" sem estado de verificação, origem inferida do body
