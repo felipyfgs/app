@@ -52,15 +52,15 @@ O sistema SHALL posicionar ação primária na navbar, filtros globais ou subnav
 - **THEN** um modal identifica alvo e consequência e exige confirmação em ação de cor semântica `error`
 
 ### Requirement: Tabelas administrativas consistentes e server-side
-O sistema SHALL apresentar Clientes, Notas, Exportações e Sincronizações com cabeçalho, bordas, densidade, alinhamento, estado de carregamento e paginação visualmente consistentes com a tabela do template, preservando o modelo server-side de cada API.
+O sistema SHALL apresentar Clientes, Notas, Exportações e Sincronizações com cabeçalho, bordas, densidade e paginação consistentes com o template, preservando o modelo server-side de cada API. Em Notas, chips de situação MUST usar o vocabulário NFS-e Nacional após o alinhamento de status.
 
 #### Scenario: Lista de clientes paginada
 - **WHEN** o usuário muda a página da lista de Clientes
 - **THEN** o sistema solicita a página à API, mantém busca e filtros e não pagina localmente apenas os registros já recebidos
 
 #### Scenario: Lista paginada por cursor
-- **WHEN** o usuário carrega mais Notas ou Sincronizações
-- **THEN** o sistema usa o cursor fornecido pela API, mantém os registros anteriores e não converte o fluxo em paginação offset fictícia
+- **WHEN** o usuário carrega mais Notas
+- **THEN** o sistema usa o cursor da API e mantém filtros, inclusive filtro de situação operacional
 
 #### Scenario: Coluna secundária no mobile
 - **WHEN** uma tabela é exibida em viewport móvel
@@ -69,6 +69,10 @@ O sistema SHALL apresentar Clientes, Notas, Exportações e Sincronizações com
 #### Scenario: Controle sem função real
 - **WHEN** uma lista não possui ação em massa ou preferência de colunas funcional
 - **THEN** o sistema não exibe seleção em massa ou seletor de colunas apenas para imitar o template
+
+#### Scenario: Seleção em Notas com export
+- **WHEN** o usuário autorizado pode exportar a partir do catálogo de Notas
+- **THEN** a seleção em massa é permitida e cada seleção leva a exportação de filtro ou de chaves, nunca a um estado sem ação
 
 ### Requirement: Filtros reproduzíveis e retorno de contexto
 O sistema SHALL refletir na URL os filtros, busca, seção e seleção que precisem sobreviver a recarga, link compartilhado ou retorno do detalhe, sem persistir cursor quando a API não permitir retomada segura.
@@ -101,7 +105,7 @@ O sistema SHALL apresentar o resumo operacional em grade contínua de indicadore
 - **THEN** o sistema mantém o resumo anterior, informa a falha sanitizada e preserva o horário da última atualização válida
 
 ### Requirement: Catálogo de Notas em mestre–detalhe responsivo
-O sistema SHALL apresentar Notas como catálogo mestre–detalhe, com painel de lista e painel adjacente redimensionável em desktop e detalhe em slideover em viewport menor que `lg`, mantendo `/notes/:accessKey` como rota canônica da seleção.
+O sistema SHALL apresentar Notas como catálogo mestre–detalhe, com painel de lista e painel adjacente redimensionável em desktop e detalhe em slideover/modal em viewport menor que `lg` (ou padrão já adotado no painel), mantendo `/notes/:accessKey` como rota canônica da seleção. Chips de situação na lista MUST usar o vocabulário operacional Autorizada/Cancelada/Em revisão.
 
 #### Scenario: Seleção de nota em desktop
 - **WHEN** o usuário seleciona uma nota em viewport `lg` ou maior
@@ -109,7 +113,7 @@ O sistema SHALL apresentar Notas como catálogo mestre–detalhe, com painel de 
 
 #### Scenario: Seleção de nota no mobile
 - **WHEN** o usuário seleciona uma nota em viewport menor que `lg`
-- **THEN** a rota muda para `/notes/:accessKey` e o detalhe abre em slideover que pode ser fechado por teclado ou controle visível
+- **THEN** a rota muda para `/notes/:accessKey` e o detalhe abre em slideover/modal que pode ser fechado por teclado ou controle visível
 
 #### Scenario: Catálogo sem seleção no desktop
 - **WHEN** nenhuma nota está selecionada em viewport `lg` ou maior
@@ -122,6 +126,10 @@ O sistema SHALL apresentar Notas como catálogo mestre–detalhe, com painel de 
 #### Scenario: Abertura direta do detalhe
 - **WHEN** o usuário abre diretamente `/notes/:accessKey`
 - **THEN** o sistema carrega o detalhe autorizado e disponibiliza retorno ao catálogo sem revelar existência de nota de outro escritório
+
+#### Scenario: Chip operacional na grade
+- **WHEN** a grade de notas renderiza a coluna de situação
+- **THEN** o chip usa Autorizada, Cancelada ou Em revisão conforme o `status` granular da nota
 
 ### Requirement: Detalhe de Cliente organizado por seções
 O sistema SHALL apresentar o detalhe de Cliente em página dedicada no arquétipo Settings com subnavegação para `Resumo`, `Cadastro`, `Estabelecimentos`, `Certificado A1` e `Sincronização`, condicionando conteúdo e ações às permissões e mantendo a seção reproduzível na URL.
@@ -366,3 +374,202 @@ O sistema SHALL possuir lint, typecheck, testes de componentes e Playwright cobr
 #### Scenario: Ausência de conteúdo proibido
 - **WHEN** testes exercitam erros, alertas, histórico e gestão de A1
 - **THEN** asserções confirmam que material criptográfico, senha, XML bruto e resposta remota não sanitizada não aparecem na interface
+
+### Requirement: Superfície Documentos em /docs
+O sistema SHALL apresentar o catálogo fiscal na rota canônica `/docs` com a mesma base operacional da antiga tela de notas (lista, filtros, insights, detalhe, export), sob o rótulo de navegação **Documentos**.
+
+#### Scenario: Navegação principal
+- **WHEN** o usuário autenticado abre o menu principal
+- **THEN** existe o destino Documentos apontando para `/docs`
+
+#### Scenario: Redirect de /notes
+- **WHEN** o usuário acessa `/notes` ou `/notes/:accessKey`
+- **THEN** é redirecionado para `/docs` ou `/docs/:accessKey` preservando query string quando aplicável
+
+### Requirement: Filtro e indicação de tipo DF-e
+O sistema SHALL permitir filtrar o catálogo por tipo de documento (`kind`) e exibir o tipo de cada linha (badge/label). Tipos sem captura implementada MUST mostrar empty state informativo, sem erro.
+
+#### Scenario: Tipo sem captura
+- **WHEN** o operador filtra por NF-e (ou outro kind sem dados)
+- **THEN** a UI explica que a captura deste tipo ainda não está disponível
+
+#### Scenario: NFS-e com dados
+- **WHEN** o operador filtra por NFS-e (ou Todos, com apenas NFS-e populado)
+- **THEN** a lista mostra documentos NFS-e com coluna/badge de tipo
+
+### Requirement: Catálogo de notas como posto fiscal escaneável
+O sistema SHALL apresentar Notas fiscais em layout de alta densidade (tabela administrativa full-width com detalhe adjacente ou drawer, ou mestre–detalhe com painel mestre de largura mínima efetiva ≥ 36% no desktop), de modo que o operador leia número, papel, contraparte, competência e valor sem abrir o XML.
+
+#### Scenario: Linha de nota no desktop
+- **WHEN** o catálogo devolve notas com projeção enriquecida
+- **THEN** cada linha exibe ao menos número da NFS-e (ou fallback de chave curta), papel fiscal legível, identificação da contraparte (nome quando existir), competência e valor formatado em BRL
+
+#### Scenario: Detalhe da nota
+- **WHEN** o usuário seleciona uma nota
+- **THEN** o detalhe mostra emitente e tomador com nome e CNPJ mascarado visualmente, locais quando existirem, situação e chave completa copiável, sem renderizar o XML bruto
+
+#### Scenario: Mobile
+- **WHEN** o viewport é móvel
+- **THEN** identidade da nota, valor e status permanecem visíveis na lista e o detalhe usa slideover ou rota dedicada sem perda dos filtros na URL
+
+### Requirement: Lista de clientes como posto de captura
+O sistema SHALL apresentar Clientes em tabela ou lista densa com indicadores de certificado A1 e de captura/sincronização na própria linha, e SHALL exibir no topo contagens agregadas reais do escritório ativo relevantes à operação (ao menos total e situação de certificado).
+
+#### Scenario: Triagem de A1 na lista
+- **WHEN** a listagem inclui clientes com e sem credencial ACTIVE
+- **THEN** o operador distingue visualmente A1 válido, ausente e em alerta de vencimento sem abrir o detalhe
+
+#### Scenario: KPI de carteira
+- **WHEN** o usuário abre a lista de Clientes
+- **THEN** vê contagens derivadas dos dados do escritório (não inventadas) e pode usar busca por nome ou CNPJ
+
+#### Scenario: Hierarquia de ações em Clientes
+- **WHEN** o usuário AUTHORIZED abre Clientes
+- **THEN** a navbar mantém no máximo uma ação primária de criação e as ações por linha permanecem no fim da linha ou menu de linha
+
+### Requirement: Tipografia e ênfase semântica operacional
+O sistema SHALL usar tipografia monoespaçada apenas para identificadores técnicos (CNPJ, chave de acesso, fingerprint) e SHALL apresentar nomes empresariais e números de nota em tipografia de leitura corrente, com chips de status em cores semânticas do tema.
+
+#### Scenario: Nome vs CNPJ
+- **WHEN** uma nota ou cliente possui nome e CNPJ
+- **THEN** o nome é o texto principal e o CNPJ aparece formatado como secundário ou mono, não o contrário
+
+### Requirement: Notas como posto operacional em tabela densa
+O sistema SHALL apresentar o catálogo de Notas em tabela administrativa densa alinhada visualmente a Clientes (cabeçalho, densidade, bordas, estados de loading/vazio), com colunas prioritárias legíveis ao operador (número ou chave curta, papel, contraparte por nome, competência, valor, situação), tipografia mono apenas em CNPJ/chave, e paginação por cursor da API (carregar mais), sem baixar o catálogo inteiro no cliente.
+
+#### Scenario: Linha de nota no desktop
+- **WHEN** o catálogo devolve notas com projeção enriquecida
+- **THEN** cada linha exibe ao menos número (ou fallback de chave curta), papel fiscal legível, contraparte (nome quando existir; CNPJ mono secundário), competência, valor em BRL e status
+
+#### Scenario: Cursor preservado
+- **WHEN** o usuário carrega mais páginas do catálogo
+- **THEN** o sistema usa `next_cursor`, acumula linhas e não simula offset client-side sobre o universo do escritório
+
+#### Scenario: Mobile
+- **WHEN** o viewport é móvel
+- **THEN** identidade da nota, valor e status permanecem visíveis; colunas secundárias somem ou vão ao detalhe
+
+### Requirement: Tabs de visualização Por documento e Por empresa
+O sistema SHALL oferecer no shell de Notas abas de visualização **Por documento** e **Por empresa**, refletidas na URL, sem inventar métricas.
+
+#### Scenario: Por documento
+- **WHEN** o usuário está na aba Por documento
+- **THEN** vê a tabela de notas com os filtros ativos da URL
+
+#### Scenario: Por empresa
+- **WHEN** o usuário está na aba Por empresa
+- **THEN** vê linhas agregadas por cliente do escritório ativo (identidade + contagem de notas no filtro) derivadas da API, não de um agrupamento incompleto só no browser
+
+#### Scenario: Drill-down
+- **WHEN** o usuário abre uma empresa a partir da aba Por empresa
+- **THEN** o sistema navega para Por documento com `client_id` (e filtros compatíveis) na URL
+
+### Requirement: Seleção em massa com exportação a partir de Notas
+O sistema SHALL permitir multi-seleção de notas **já carregadas** somente quando o usuário tiver permissão de exportar, e SHALL oferecer ações reais: exportar seleção (lista limitada de chaves) e exportar filtro atual. O sistema MUST NOT exibir checkboxes cosméticos sem ação.
+
+#### Scenario: Exportar filtro
+- **WHEN** um usuário ADMIN ou OPERATOR solicita exportar com os filtros atuais do catálogo
+- **THEN** o sistema cria uma exportação assíncrona com esses filtros e informa o resultado de forma observável (toast e/ou link para Exportações)
+
+#### Scenario: Exportar seleção
+- **WHEN** o usuário seleciona N notas carregadas (N ≤ teto configurado) e solicita exportar seleção
+- **THEN** o sistema envia as chaves de acesso como escopo da exportação e não inclui chaves de outro escritório
+
+#### Scenario: VIEWER
+- **WHEN** o usuário é VIEWER
+- **THEN** não vê multi-select de exportação nem botão de criar export a partir de Notas
+
+#### Scenario: Acima do teto
+- **WHEN** a seleção excede o teto de chaves permitido
+- **THEN** o sistema impede a solicitação e explica o limite sem iniciar job
+
+### Requirement: Detalhe de nota sem abandonar o posto
+O sistema SHALL manter a rota canônica `/notes/:accessKey` e o detalhe legível (partes, locais, cStat, chave copiável, download XML auditado) em painel adjacente, drawer ou slideover, de modo que a tabela e os filtros permaneçam utilizáveis ao fechar o detalhe.
+
+#### Scenario: Seleção a partir da tabela
+- **WHEN** o usuário abre uma nota na tabela em desktop
+- **THEN** a URL atualiza para `/notes/:accessKey` com query de filtros e o detalhe fica acessível sem perder o contexto da lista
+
+#### Scenario: Mobile
+- **WHEN** o viewport é menor que `lg`
+- **THEN** o detalhe usa slideover e o fechamento restaura a lista com os mesmos filtros
+
+### Requirement: Situações de NFS-e legíveis na UI
+O sistema SHALL apresentar a situação da nota com labels do domínio NFS-e Nacional (Gerada, Substituta, Cancelada, Substituída, Decisão judicial, Em revisão), cores semânticas e, no detalhe, o cStat oficial quando existir.
+
+#### Scenario: Chip na lista
+- **WHEN** a listagem exibe uma nota com `status=SUBSTITUTE`
+- **THEN** o chip mostra “Substituta” (ou equivalente pt-BR) e não “Cancelada”
+
+#### Scenario: Detalhe modal
+- **WHEN** o usuário abre o detalhe de uma nota com cStat 100
+- **THEN** vê situação Gerada/Ativa e indicação `cStat 100` (ou texto oficial curto)
+
+#### Scenario: Filtros e export
+- **WHEN** o usuário filtra por situação no catálogo ou na exportação
+- **THEN** as opções refletem situações NFS-e (sem “Autorizada” como sinônimo de nota de serviço nacional)
+
+### Requirement: Triagem não confunde parse com situação fiscal
+O sistema SHALL tratar a fila “Em revisão” como notas com situação indefinida ou parse problemático (`UNKNOWN`), e MUST NOT contar `AUTHORIZED` como revisão de NFS-e nacional.
+
+#### Scenario: Chip Em revisão
+- **WHEN** o insights calcula contagem de revisão
+- **THEN** inclui apenas notas `UNKNOWN` (e critérios de parse documentados), não status de NF-e de mercadoria
+
+### Requirement: Situação operacional Autorizada/Cancelada/Em revisão na UI de Notas
+O sistema SHALL apresentar a situação da NFS-e no catálogo, chips, insights e exportação com **apenas** os labels operacionais **Autorizada**, **Cancelada** e **Em revisão**, conforme o agrupamento de domínio:
+
+- **Autorizada** ← `ACTIVE`, `SUBSTITUTE`, `JUDICIAL`
+- **Cancelada** ← `CANCELLED`, `SUPERSEDED`
+- **Em revisão** ← `UNKNOWN`
+
+O sistema MUST NOT exibir como chip principal da grade os labels por enum “Gerada”, “Substituta”, “Substituída” ou “Decisão judicial”. Essas nuances MUST aparecer no detalhe da nota (cStat, eventos, textos oficiais).
+
+#### Scenario: Chip na lista para nota válida
+- **WHEN** a listagem exibe uma nota com `status=ACTIVE` ou `status=SUBSTITUTE`
+- **THEN** o chip mostra **Autorizada** (tom de sucesso) e não “Gerada” nem “Substituta”
+
+#### Scenario: Chip na lista para nota inválida
+- **WHEN** a listagem exibe uma nota com `status=CANCELLED` ou `status=SUPERSEDED`
+- **THEN** o chip mostra **Cancelada** (tom de erro)
+
+#### Scenario: Chip Em revisão
+- **WHEN** a listagem exibe uma nota com `status=UNKNOWN`
+- **THEN** o chip mostra **Em revisão** (tom de alerta)
+
+### Requirement: Filtros e export usam grupos operacionais
+O sistema SHALL oferecer no filtro de situação do catálogo de Notas e na tela de Exportações as opções **Autorizada**, **Cancelada** e **Em revisão** (além de “todas”), e MUST acionar a API com o grupo ou com a expansão de enums correspondente.
+
+#### Scenario: Filtro Autorizada
+- **WHEN** o usuário seleciona situação Autorizada e aplica o filtro
+- **THEN** a consulta reinicia a paginação e retorna apenas notas do grupo autorizado
+
+#### Scenario: Export com situação Cancelada
+- **WHEN** o usuário gera export com filtro de situação Cancelada
+- **THEN** o escopo inclui notas canceladas e supersedidas conforme o grupo
+
+### Requirement: Insights de triagem por grupo operacional
+O sistema SHALL calcular cards de triagem de notas por grupo operacional (autorizadas/válidas, canceladas, em revisão), sem contar `AUTHORIZED` de vocabulário de NF-e de mercadoria e sem exigir cards separados para Substituta/Substituída.
+
+#### Scenario: Contagem de canceladas
+- **WHEN** o insights é calculado
+- **THEN** o card de canceladas inclui `CANCELLED` e `SUPERSEDED`
+
+#### Scenario: Contagem de revisão
+- **WHEN** o insights é calculado
+- **THEN** o card de revisão inclui apenas `UNKNOWN` (e critérios de parse documentados no backend), não `ACTIVE` nem `SUBSTITUTE`
+
+### Requirement: Detalhe da nota mostra operacional e oficial
+O sistema SHALL, no modal/painel de detalhe da nota, exibir o badge de situação **operacional** e, em seção ou linha de situação fiscal, o **cStat** e a descrição oficial curta quando existirem, além de eventos e indicação de substituição quando aplicável.
+
+#### Scenario: Detalhe cStat 100
+- **WHEN** o usuário abre o detalhe de uma nota com cStat 100
+- **THEN** vê badge **Autorizada** e indicação de situação oficial Gerada / cStat 100
+
+#### Scenario: Detalhe cStat 101
+- **WHEN** o usuário abre o detalhe de uma nota com cStat 101 e `status=SUBSTITUTE`
+- **THEN** vê badge **Autorizada** e indicação de que se trata de NFS-e de substituição (cStat 101)
+
+#### Scenario: Detalhe supersedida
+- **WHEN** o usuário abre o detalhe de uma nota `SUPERSEDED`
+- **THEN** vê badge **Cancelada** e texto legível de que a nota foi substituída (quando a API fornecer dados)
