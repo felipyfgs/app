@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture sanitizada: NF-e 55 OUT MA (cUF=21). Sem certificado real. -->
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <NFe>
+    <infNFe Id="NFe21260712345678000190550010000000011234567890" versao="4.00">
+      <ide>
+        <cUF>21</cUF>
+        <cNF>12345678</cNF>
+        <natOp>Venda</natOp>
+        <mod>55</mod>
+        <serie>1</serie>
+        <nNF>1</nNF>
+        <dhEmi>2026-07-01T10:00:00-03:00</dhEmi>
+        <tpNF>1</tpNF>
+        <idDest>1</idDest>
+        <cMunFG>2111300</cMunFG>
+        <tpImp>1</tpImp>
+        <tpEmis>1</tpEmis>
+        <cDV>0</cDV>
+        <tpAmb>2</tpAmb>
+        <finNFe>1</finNFe>
+        <indFinal>1</indFinal>
+        <indPres>1</indPres>
+        <procEmi>0</procEmi>
+        <verProc>fixture-1.0</verProc>
+      </ide>
+      <emit>
+        <CNPJ>12345678000190</CNPJ>
+        <xNome>Emitente MA Fixture</xNome>
+        <enderEmit>
+          <UF>MA</UF>
+          <cMun>2111300</cMun>
+          <xMun>Sao Luis</xMun>
+        </enderEmit>
+      </emit>
+      <dest>
+        <CNPJ>99888777000166</CNPJ>
+        <xNome>Destinatario Fixture</xNome>
+      </dest>
+      <total>
+        <ICMSTot>
+          <vNF>100.00</vNF>
+        </ICMSTot>
+      </total>
+    </infNFe>
+  </NFe>
+  <protNFe versao="4.00">
+    <infProt>
+      <tpAmb>2</tpAmb>
+      <chNFe>21260712345678000190550010000000011234567890</chNFe>
+      <dhRecbto>2026-07-01T10:01:00-03:00</dhRecbto>
+      <nProt>121260000000001</nProt>
+      <digVal>fixtureDigestValueNotReal==</digVal>
+      <cStat>100</cStat>
+      <xMotivo>Autorizado o uso da NF-e</xMotivo>
+    </infProt>
+  </protNFe>
+</nfeProc>

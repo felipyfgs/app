@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\DocumentImportController;
 use App\Http\Controllers\Api\V1\NoteController;
 use App\Http\Controllers\Api\V1\OperationsInboxController;
 use App\Http\Controllers\Api\V1\OperationsSummaryController;
+use App\Http\Controllers\Api\V1\OutboundCaptureController;
 use App\Http\Controllers\Api\V1\SyncController;
 use App\Http\Middleware\EnsureActiveUser;
 use App\Http\Middleware\EnsureAdminTwoFactor;
@@ -65,6 +66,22 @@ Route::prefix('v1')->group(function (): void {
 
             Route::get('/operations/summary', OperationsSummaryController::class);
             Route::get('/operations/inbox', OperationsInboxController::class);
+
+            // Captura de saídas MA (nNF — nunca NSU)
+            Route::get('/outbound/profiles', [OutboundCaptureController::class, 'indexProfiles']);
+            Route::get('/outbound/profiles/{profile}', [OutboundCaptureController::class, 'showProfile']);
+            Route::post('/outbound/establishments/{establishment}/seed', [OutboundCaptureController::class, 'storeSeed']);
+            Route::get('/outbound/profiles/{profile}/csc', [OutboundCaptureController::class, 'showCsc']);
+            Route::post('/outbound/profiles/{profile}/csc', [OutboundCaptureController::class, 'storeCsc']);
+            Route::post('/outbound/profiles/{profile}/activate', [OutboundCaptureController::class, 'activate']);
+            Route::post('/outbound/profiles/{profile}/package', [OutboundCaptureController::class, 'uploadPackage']);
+            Route::get('/outbound/profiles/{profile}/series', [OutboundCaptureController::class, 'listSeries']);
+            Route::get('/outbound/series/{series}/numbers', [OutboundCaptureController::class, 'listNumbers']);
+            Route::post('/outbound/series/{series}/reset', [OutboundCaptureController::class, 'resetSeries']);
+            Route::post('/outbound/series/{series}/trigger-query', [OutboundCaptureController::class, 'triggerQuery']);
+            Route::get('/outbound/runs', [OutboundCaptureController::class, 'listRuns']);
+            Route::get('/outbound/kill-switch', [OutboundCaptureController::class, 'killSwitchStatus']);
+            Route::post('/outbound/kill-switch', [OutboundCaptureController::class, 'killSwitch']);
         });
     });
 });

@@ -10,6 +10,7 @@ use App\Models\SyncRun;
 use App\Services\Adn\SyncDispatchService;
 use App\Services\Audit\AuditLogger;
 use App\Services\Clients\CaptureEligibilityService;
+use App\Services\Sefaz\ChannelSyncCursorService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,6 +40,7 @@ class SyncController extends Controller
         Request $request,
         CurrentOffice $currentOffice,
         SyncDispatchService $dispatcher,
+        ChannelSyncCursorService $channelCursors,
         AuditLogger $audit,
         CaptureEligibilityService $eligibility,
     ): JsonResponse {
@@ -92,7 +94,11 @@ class SyncController extends Controller
             auth()->id(),
         );
 
-        if (! $dispatched) {
+        // NF-e / CT-e DistDFe: canais independentes do ADN (NSU e cursor próprios).
+        $sefazChannels = $channelCursors->dispatchManualForEstablishment($establishment);
+        $sefazDispatched = collect($sefazChannels)->contains(fn (array $row) => $row['dispatched']);
+
+        if (! $dispatched && ! $sefazDispatched) {
             $audit->record('sync.trigger', 'FAILED', $cursor, [
                 'establishment_id' => $establishment->id,
                 'reason' => 'already_running',
@@ -104,8 +110,16 @@ class SyncController extends Controller
         $audit->record('sync.trigger', 'SUCCESS', $cursor, [
             'establishment_id' => $establishment->id,
             'last_nsu' => $cursor->last_nsu,
+            'adn_dispatched' => $dispatched,
+            'sefaz_channels' => $sefazChannels,
         ]);
 
-        return response()->json(['data' => ['sync_cursor_id' => $cursor->id]], 202);
+        return response()->json([
+            'data' => [
+                'sync_cursor_id' => $cursor->id,
+                'adn_dispatched' => $dispatched,
+                'sefaz_channels' => $sefazChannels,
+            ],
+        ], 202);
     }
 }

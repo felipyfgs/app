@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 562 sem chNFe utilizável — não iniciar força bruta de cNF. -->
+<retConsSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <tpAmb>2</tpAmb>
+  <verAplic>fixture</verAplic>
+  <cStat>562</cStat>
+  <xMotivo>Rejeicao: Codigo Numerico informado na Chave de Acesso difere do Codigo Numerico da NF-e</xMotivo>
+  <cUF>21</cUF>
+</retConsSitNFe>

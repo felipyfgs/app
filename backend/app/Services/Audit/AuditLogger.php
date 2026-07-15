@@ -19,6 +19,7 @@ final class AuditLogger
         'password', 'pfx', 'private_key', 'privateKey', 'pem', 'certificate',
         'token', 'secret', 'authorization', 'cookie', 'vault_object_id',
         'master_key', 'VAULT_MASTER_KEY',
+        'csc', 'csc_token', 'cscToken', 'xml', 'raw_xml', 'soap',
     ];
 
     public function __construct(
@@ -115,7 +116,21 @@ final class AuditLogger
     private function isSensitiveKey(string $lower): bool
     {
         foreach (self::REDACT_KEYS as $key) {
-            if ($lower === strtolower($key) || str_contains($lower, strtolower($key))) {
+            $needle = strtolower($key);
+            // Chaves curtas (ex.: csc) só por igualdade — evita redigir csc_id (metadado público).
+            if (strlen($needle) <= 3) {
+                if ($lower === $needle || str_starts_with($lower, $needle.'_') || str_ends_with($lower, '_'.$needle)) {
+                    // csc_id e csc_configured são metadados não secretos
+                    if (in_array($lower, ['csc_id', 'csc_configured', 'csc_configured_at'], true)) {
+                        return false;
+                    }
+
+                    return true;
+                }
+
+                continue;
+            }
+            if ($lower === $needle || str_contains($lower, $needle)) {
                 return true;
             }
         }

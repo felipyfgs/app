@@ -61,7 +61,10 @@ class NfeManifestationTest extends TestCase
 
     public function test_flag_off_retorna_422(): void
     {
-        config(['sefaz.manifest_enabled' => false]);
+        config([
+            'sefaz.manifest_enabled' => false,
+            'sefaz.auto_ciencia_enabled' => false,
+        ]);
         [$office, $user] = $this->seedOperator();
         $this->actingAs($user);
         app(CurrentOffice::class)->resolve($user);
@@ -174,6 +177,153 @@ class NfeManifestationTest extends TestCase
         $this->postJson('/api/v1/documents/'.$key.'/unlock-xml')
             ->assertOk()
             ->assertJsonPath('data.status', 'accepted');
+    }
+
+    public function test_ciencia_apos_conclusiva_rejeitada_localmente(): void
+    {
+        config(['sefaz.manifest_enabled' => true]);
+        Queue::fake();
+
+        [$office, $user, $establishment] = $this->seedOperatorWithCredential();
+        $this->actingAs($user);
+        app(CurrentOffice::class)->resolve($user);
+
+        $key = '35260711222333000181550010000000010000000001';
+        $nfe = $this->seedSummary($office, $key, $establishment);
+        $nfe->update(['manifestation_status' => 'DESCONHECIDA']);
+
+        $mock = Mockery::mock(SefazNfeManifestationClient::class);
+        $mock->shouldNotReceive('register');
+        $this->app->instance(SefazNfeManifestationClient::class, $mock);
+
+        $this->postJson('/api/v1/documents/'.$key.'/manifestations', [
+            'type' => 'CIENCIA',
+            'purpose' => 'UNLOCK_XML',
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('data.status', 'rejected_local')
+            ->assertJsonPath('data.manifestation_status', 'DESCONHECIDA');
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_ordem_ciencia_depois_desconhecimento(): void
+    {
+        config(['sefaz.manifest_enabled' => true]);
+        Queue::fake();
+
+        [$office, $user, $establishment] = $this->seedOperatorWithCredential();
+        $this->actingAs($user);
+        app(CurrentOffice::class)->resolve($user);
+
+        $key = '35260711222333000181550010000000010000000002';
+        $this->seedSummary($office, $key, $establishment);
+
+        $mock = Mockery::mock(SefazNfeManifestationClient::class);
+        $mock->shouldReceive('register')
+            ->once()
+            ->withArgs(function (array $cert, string $cnpj, string $accessKey, NfeManifestationType $type) use ($key) {
+                return $accessKey === $key && $type === NfeManifestationType::Ciencia;
+            })
+            ->andReturn(new ManifestationResultDto(
+                cStat: '128',
+                xMotivo: 'ok',
+                protocol: '193333333333333',
+                tpEvento: '210210',
+                eventCStat: '135',
+                eventXMotivo: 'ok',
+            ));
+        $mock->shouldReceive('register')
+            ->once()
+            ->withArgs(function (array $cert, string $cnpj, string $accessKey, NfeManifestationType $type) use ($key) {
+                return $accessKey === $key && $type === NfeManifestationType::Desconhecimento;
+            })
+            ->andReturn(new ManifestationResultDto(
+                cStat: '128',
+                xMotivo: 'ok',
+                protocol: '194444444444444',
+                tpEvento: '210220',
+                eventCStat: '135',
+                eventXMotivo: 'ok',
+            ));
+        $this->app->instance(SefazNfeManifestationClient::class, $mock);
+
+        $this->postJson('/api/v1/documents/'.$key.'/manifestations', [
+            'type' => 'CIENCIA',
+            'purpose' => 'UNLOCK_XML',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.manifestation_status', 'CIENCIA_REGISTRADA');
+
+        $this->postJson('/api/v1/documents/'.$key.'/manifestations', [
+            'type' => 'DESCONHECIMENTO',
+            'purpose' => 'FISCAL',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'accepted')
+            ->assertJsonPath('data.manifestation_status', 'DESCONHECIDA')
+            ->assertJsonMissingPath('data.pfx')
+            ->assertJsonMissingPath('data.password');
+
+        $this->assertDatabaseHas('nfe_documents', [
+            'access_key' => $key,
+            'manifestation_status' => 'DESCONHECIDA',
+        ]);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'nfe.manifestation',
+        ]);
+    }
+
+    public function test_resposta_e_audit_sem_material_de_certificado(): void
+    {
+        config(['sefaz.manifest_enabled' => true]);
+        Queue::fake();
+
+        [$office, $user, $establishment] = $this->seedOperatorWithCredential();
+        $this->actingAs($user);
+        app(CurrentOffice::class)->resolve($user);
+
+        $key = '35260711222333000181550010000000010000000003';
+        $this->seedSummary($office, $key, $establishment);
+
+        $mock = Mockery::mock(SefazNfeManifestationClient::class);
+        $mock->shouldReceive('register')
+            ->once()
+            ->andReturn(new ManifestationResultDto(
+                cStat: '128',
+                xMotivo: 'ok',
+                protocol: '195555555555555',
+                tpEvento: '210200',
+                eventCStat: '135',
+                eventXMotivo: 'ok',
+            ));
+        $this->app->instance(SefazNfeManifestationClient::class, $mock);
+
+        $response = $this->postJson('/api/v1/documents/'.$key.'/manifestations', [
+            'type' => 'CONFIRMACAO',
+            'purpose' => 'FISCAL',
+        ])->assertOk();
+
+        $json = $response->json();
+        $encoded = json_encode($json, JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('BEGIN PRIVATE', $encoded);
+        $this->assertStringNotContainsString('fake-pfx', $encoded);
+        $this->assertStringNotContainsString('secret', $encoded);
+        $this->assertArrayNotHasKey('pfx', $json['data'] ?? []);
+        $this->assertArrayNotHasKey('password', $json['data'] ?? []);
+        $this->assertArrayNotHasKey('private_key', $json['data'] ?? []);
+
+        $log = \App\Models\AuditLog::query()
+            ->where('action', 'nfe.manifestation')
+            ->where('office_id', $office->id)
+            ->latest('id')
+            ->first();
+        $this->assertNotNull($log);
+        $ctx = json_encode($log->context ?? [], JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('BEGIN PRIVATE', $ctx);
+        $this->assertStringNotContainsString('fake-pfx', $ctx);
+        $this->assertStringNotContainsString('"password"', $ctx);
     }
 
     /**

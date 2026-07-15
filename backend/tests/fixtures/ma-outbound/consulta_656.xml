@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Consumo indevido — circuit breaker, sem retry imediato. -->
+<retConsSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <tpAmb>2</tpAmb>
+  <verAplic>fixture</verAplic>
+  <cStat>656</cStat>
+  <xMotivo>Rejeicao: Consumo Indevido</xMotivo>
+  <cUF>21</cUF>
+</retConsSitNFe>

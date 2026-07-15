@@ -2,9 +2,11 @@
 
 namespace App\Enums;
 
+use Illuminate\Http\Request;
+
 /**
- * Tipos DF-e mais comuns no catálogo Documentos.
- * Capture disponível hoje: apenas NFS-e via ADN.
+ * Tipos DF-e reconhecidos pelo domínio.
+ * MDF-e permanece apenas para compatibilidade com valores legados persistidos.
  */
 enum DocumentKind: string
 {
@@ -39,7 +41,7 @@ enum DocumentKind: string
 
     /**
      * Captura habilitada na instância (feature flag + implementação).
-     * NFS-e: sempre via ADN. Demais: config sefaz.*_enabled.
+     * NFS-e: sempre via ADN. MDF-e: invariavelmente fora do escopo escritural.
      */
     public function captureAvailable(): bool
     {
@@ -47,7 +49,7 @@ enum DocumentKind: string
             self::Nfse => true,
             self::Nfe => (bool) config('sefaz.distdfe_enabled', false),
             self::Cte => (bool) config('sefaz.cte_enabled', false),
-            self::Mdfe => (bool) config('sefaz.mdfe_enabled', false),
+            self::Mdfe => false,
             self::Nfce => (bool) config('sefaz.nfce_enabled', false),
         };
     }
@@ -70,7 +72,6 @@ enum DocumentKind: string
             self::Nfe,
             self::Nfce,
             self::Cte,
-            self::Mdfe,
         ];
     }
 
@@ -98,7 +99,7 @@ enum DocumentKind: string
      *
      * @return list<self>
      */
-    public static function listFromRequest(\Illuminate\Http\Request $request): array
+    public static function listFromRequest(Request $request): array
     {
         $raw = $request->input('kind');
         if ($raw === null || $raw === '' || $raw === 'all') {

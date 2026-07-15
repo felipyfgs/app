@@ -31,6 +31,7 @@ final class DistDfePageProcessor
         private readonly NfeXmlProjectionParser $parser,
         private readonly SecureObjectStore $store,
         private readonly DistDfeResponseParser $schemaHelper,
+        private readonly AutoCienciaScheduler $autoCiencia,
     ) {}
 
     /**
@@ -53,14 +54,16 @@ final class DistDfePageProcessor
         }
 
         $storedObjectIds = [];
+        /** @var list<string> $summaryKeysForCiencia */
+        $summaryKeysForCiencia = [];
 
         try {
-            return DB::transaction(function () use ($cursor, $establishment, $page, &$storedObjectIds) {
+            $result = DB::transaction(function () use ($cursor, $establishment, $page, &$storedObjectIds, &$summaryKeysForCiencia) {
                 $cursor = ChannelSyncCursor::query()->whereKey($cursor->id)->lockForUpdate()->firstOrFail();
                 $persisted = 0;
 
                 foreach ($page->documents as $doc) {
-                    $this->persistDocument($cursor, $establishment, $doc, $storedObjectIds);
+                    $this->persistDocument($cursor, $establishment, $doc, $storedObjectIds, $summaryKeysForCiencia);
                     $persisted++;
                 }
 
@@ -87,6 +90,11 @@ final class DistDfePageProcessor
 
                 return ['documents' => $persisted, 'advanced_to' => $newNsu];
             });
+
+            // Fora da transação: SEFAZ RecepcaoEvento não pode travar o commit do lote DistDFe.
+            $this->autoCiencia->enqueueForKeys((int) $cursor->office_id, $summaryKeysForCiencia);
+
+            return $result;
         } catch (Throwable $e) {
             $this->deleteStoredObjects($storedObjectIds);
             if ($e instanceof DocumentDecodeException) {
@@ -121,17 +129,23 @@ final class DistDfePageProcessor
         }
 
         $storedObjectIds = [];
+        /** @var list<string> $summaryKeysForCiencia */
+        $summaryKeysForCiencia = [];
 
         try {
-            return DB::transaction(function () use ($cursor, $establishment, $page, &$storedObjectIds) {
+            $result = DB::transaction(function () use ($cursor, $establishment, $page, &$storedObjectIds, &$summaryKeysForCiencia) {
                 $persisted = 0;
                 foreach ($page->documents as $doc) {
-                    $this->persistDocument($cursor, $establishment, $doc, $storedObjectIds);
+                    $this->persistDocument($cursor, $establishment, $doc, $storedObjectIds, $summaryKeysForCiencia);
                     $persisted++;
                 }
 
                 return ['documents' => $persisted];
             });
+
+            $this->autoCiencia->enqueueForKeys((int) $cursor->office_id, $summaryKeysForCiencia);
+
+            return $result;
         } catch (Throwable $e) {
             $this->deleteStoredObjects($storedObjectIds);
             throw $e;
@@ -140,12 +154,14 @@ final class DistDfePageProcessor
 
     /**
      * @param  list<string>  $storedObjectIds
+     * @param  list<string>  $summaryKeysForCiencia
      */
     private function persistDocument(
         ChannelSyncCursor $cursor,
         Establishment $establishment,
         DistDfeDocumentDto $doc,
         array &$storedObjectIds,
+        array &$summaryKeysForCiencia = [],
     ): void {
         $decoded = $this->decoder->decodeBase64Gzip($doc->contentBase64);
         $family = $doc->schemaFamily !== 'unknown'
@@ -209,6 +225,25 @@ final class DistDfePageProcessor
         }
 
         $isSummary = (bool) ($parsed['is_summary'] ?? false);
+        $existing = NfeDocument::query()
+            ->where('office_id', $cursor->office_id)
+            ->where('access_key', $accessKey)
+            ->where('is_summary', $isSummary)
+            ->first();
+
+        // Não rebaixar CIENCIA_REGISTRADA / conclusiva ao reprocessar o mesmo resumo.
+        $manifestationStatus = $parsed['manifestation_status'] ?? null;
+        if ($manifestationStatus === null) {
+            if ($isSummary) {
+                $current = (string) ($existing?->manifestation_status ?? '');
+                $manifestationStatus = in_array($current, [
+                    'CIENCIA_REGISTRADA', 'CONFIRMADA', 'DESCONHECIDA', 'NAO_REALIZADA',
+                ], true)
+                    ? $current
+                    : 'PENDING_MANIFESTATION';
+            }
+        }
+
         NfeDocument::query()->updateOrCreate(
             [
                 'office_id' => $cursor->office_id,
@@ -231,10 +266,21 @@ final class DistDfePageProcessor
                 'total_amount' => $parsed['total_amount'] ?? null,
                 'status' => $parsed['status'] ?? 'UNKNOWN',
                 'official_status_code' => $parsed['official_status_code'] ?? null,
-                'manifestation_status' => $parsed['manifestation_status'] ?? ($isSummary ? 'PENDING_MANIFESTATION' : null),
+                'manifestation_status' => $manifestationStatus,
                 'schema_hint' => $doc->schema,
             ]
         );
+
+        if ($isSummary) {
+            $hasFull = NfeDocument::query()
+                ->where('office_id', $cursor->office_id)
+                ->where('access_key', $accessKey)
+                ->where('is_summary', false)
+                ->exists();
+            if (! $hasFull) {
+                $summaryKeysForCiencia[] = $accessKey;
+            }
+        }
     }
 
     /**

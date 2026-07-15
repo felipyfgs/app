@@ -3,14 +3,22 @@
 namespace App\Services\Operations;
 
 use App\Enums\CredentialStatus;
+use App\Enums\DocumentAcquisitionSource;
 use App\Enums\OfficeRole;
+use App\Enums\OutboundNumberStatus;
+use App\Enums\OutboundRetrievalStatus;
+use App\Enums\OutboundSeriesStatus;
 use App\Enums\SyncCursorStatus;
 use App\Enums\CaptureChannel;
 use App\Models\ChannelSyncCursor;
 use App\Models\Client;
 use App\Models\ClientCredential;
+use App\Models\DocumentAcquisition;
 use App\Models\Establishment;
 use App\Models\InstanceBackupRun;
+use App\Models\MaOutboundRetrievalRequest;
+use App\Models\OutboundNumberState;
+use App\Models\OutboundSeriesCursor;
 use App\Models\SyncCursor;
 use App\Models\SyncRun;
 use App\Services\Clients\CaptureEligibilityService;
@@ -31,6 +39,14 @@ final class OperationsInboxBuilder
         'credential_expiring_30d',
         'backup_stale',
         'backup_never',
+        // Canal MA outbound (nNF)
+        'outbound_gap_exhausted',
+        'outbound_562_no_key',
+        'outbound_656',
+        'outbound_retrieval_expired',
+        'outbound_xml_divergent',
+        'outbound_authorized_unexpected',
+        'outbound_cancel_failed',
     ];
 
     public const SEVERITIES = [
@@ -49,6 +65,13 @@ final class OperationsInboxBuilder
         'credential_expiring_30d' => 'medium',
         'backup_stale' => 'high',
         'backup_never' => 'critical',
+        'outbound_gap_exhausted' => 'high',
+        'outbound_562_no_key' => 'medium',
+        'outbound_656' => 'critical',
+        'outbound_retrieval_expired' => 'high',
+        'outbound_xml_divergent' => 'high',
+        'outbound_authorized_unexpected' => 'critical',
+        'outbound_cancel_failed' => 'critical',
     ];
 
     private const SEVERITY_RANK = [
@@ -153,6 +176,216 @@ final class OperationsInboxBuilder
         $items = $items->merge($this->syncFailedItems($officeId, $role));
         $items = $items->merge($this->credentialItems($officeId));
         $items = $items->merge($this->backupItems());
+        $items = $items->merge($this->outboundMaItems($officeId, $role));
+
+        return $items->values();
+    }
+
+    /**
+     * Itens allowlisted do canal de saídas MA (posição nNF, sem last_nsu).
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function outboundMaItems(int $officeId, ?OfficeRole $role): Collection
+    {
+        $items = collect();
+
+        // Lacunas esgotadas
+        $exhausted = OutboundNumberState::query()
+            ->where('office_id', $officeId)
+            ->where('status', OutboundNumberStatus::ExhaustedVisible)
+            ->with(['seriesCursor.establishment.client'])
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get();
+
+        foreach ($exhausted as $state) {
+            $series = $state->seriesCursor;
+            $establishment = $series?->establishment;
+            $client = $establishment?->client;
+            if ($establishment === null || $client === null) {
+                continue;
+            }
+            $item = $this->item(
+                type: 'outbound_gap_exhausted',
+                title: 'Lacuna esgotada (nNF '.$state->nnf.'): '.$this->clientLabel($client),
+                body: 'Série '.$state->series.' esgotou tentativas de consulta. Posição nNF — não é NSU. Requer revisão humana.',
+                reasons: ['outbound_gap_exhausted', 'nnf:'.$state->nnf],
+                clientId: $client->id,
+                establishmentId: $establishment->id,
+                occurredAt: $state->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+                role: $role,
+                establishment: $establishment,
+                cursor: null,
+            );
+            $item['id'] = substr(hash('sha256', 'out:gap:'.$state->id), 0, 32);
+            $items->push($item);
+        }
+
+        // 562 sem chave
+        $noKey = OutboundNumberState::query()
+            ->where('office_id', $officeId)
+            ->where('status', OutboundNumberStatus::LimitedNoKey)
+            ->with(['seriesCursor.establishment.client'])
+            ->orderByDesc('id')
+            ->limit(30)
+            ->get();
+
+        foreach ($noKey as $state) {
+            $series = $state->seriesCursor;
+            $establishment = $series?->establishment;
+            $client = $establishment?->client;
+            if ($establishment === null || $client === null) {
+                continue;
+            }
+            $item = $this->item(
+                type: 'outbound_562_no_key',
+                title: '562 sem chave (nNF '.$state->nnf.'): '.$this->clientLabel($client),
+                body: 'Consulta retornou limitação sem chNFe. Força bruta de cNF bloqueada. Use pacote oficial assistido.',
+                reasons: ['outbound_562_no_key'],
+                clientId: $client->id,
+                establishmentId: $establishment->id,
+                occurredAt: $state->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+                role: $role,
+                establishment: $establishment,
+                cursor: null,
+            );
+            $item['id'] = substr(hash('sha256', 'out:562:'.$state->id), 0, 32);
+            $items->push($item);
+        }
+
+        // 656 / séries bloqueadas
+        $blocked = OutboundSeriesCursor::query()
+            ->where('office_id', $officeId)
+            ->whereIn('status', [OutboundSeriesStatus::Blocked, OutboundSeriesStatus::FiscalIncident])
+            ->with(['establishment.client'])
+            ->orderByDesc('id')
+            ->limit(30)
+            ->get();
+
+        foreach ($blocked as $series) {
+            $establishment = $series->establishment;
+            $client = $establishment?->client;
+            if ($establishment === null || $client === null) {
+                continue;
+            }
+            $type = $series->status === OutboundSeriesStatus::FiscalIncident
+                ? 'outbound_authorized_unexpected'
+                : 'outbound_656';
+            $item = $this->item(
+                type: $type,
+                title: ($type === 'outbound_656' ? 'Bloqueio MA (cStat 656/série)' : 'Incidente fiscal MA').': '.$this->clientLabel($client),
+                body: 'Série '.$series->series.' modelo '.$series->model->value.'. '.($this->sanitizeText($series->last_error) ?? 'Intervenção necessária. Kill switch pode estar ativo.'),
+                reasons: [$type, 'series:'.$series->id],
+                clientId: $client->id,
+                establishmentId: $establishment->id,
+                occurredAt: $series->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+                role: $role,
+                establishment: $establishment,
+                cursor: null,
+            );
+            $item['id'] = substr(hash('sha256', 'out:series:'.$series->id.':'.$type), 0, 32);
+            $items->push($item);
+        }
+
+        // Recuperação expirada
+        $expired = MaOutboundRetrievalRequest::query()
+            ->where('office_id', $officeId)
+            ->where('status', OutboundRetrievalStatus::Expired)
+            ->with(['establishment.client'])
+            ->orderByDesc('id')
+            ->limit(20)
+            ->get();
+
+        foreach ($expired as $req) {
+            $establishment = $req->establishment;
+            $client = $establishment?->client;
+            if ($establishment === null || $client === null) {
+                continue;
+            }
+            $item = $this->item(
+                type: 'outbound_retrieval_expired',
+                title: 'Recuperação MA expirada ('.$req->competence.'): '.$this->clientLabel($client),
+                body: 'Solicitação de pacote OUT modelo '.$req->model->value.' expirou. Reenvie em modo assistido se necessário.',
+                reasons: ['outbound_retrieval_expired'],
+                clientId: $client->id,
+                establishmentId: $establishment->id,
+                occurredAt: $req->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+                role: $role,
+                establishment: $establishment,
+                cursor: null,
+            );
+            $item['id'] = substr(hash('sha256', 'out:ret:'.$req->id), 0, 32);
+            $items->push($item);
+        }
+
+        // XML divergente (quarentena)
+        $divergent = DocumentAcquisition::query()
+            ->where('office_id', $officeId)
+            ->where('bytes_diverge_from_canonical', true)
+            ->whereIn('source', [
+                DocumentAcquisitionSource::MaOfficialPackage->value,
+                DocumentAcquisitionSource::MaAssistedUpload->value,
+                DocumentAcquisitionSource::MaM2mRetrieval->value,
+            ])
+            ->orderByDesc('id')
+            ->limit(20)
+            ->get();
+
+        foreach ($divergent as $acq) {
+            $item = $this->item(
+                type: 'outbound_xml_divergent',
+                title: 'XML divergente MA: chave '.substr((string) $acq->access_key, 0, 10).'…',
+                body: 'Mesma chave com bytes diferentes — quarentena. Canônico preservado. '.$this->sanitizeText($acq->quarantine_reason),
+                reasons: ['outbound_xml_divergent'],
+                clientId: null,
+                establishmentId: $acq->establishment_id,
+                occurredAt: $acq->created_at?->toIso8601String() ?? now()->toIso8601String(),
+                role: $role,
+                establishment: null,
+                cursor: null,
+            );
+            $item['id'] = substr(hash('sha256', 'out:div:'.$acq->id), 0, 32);
+            $items->push($item);
+        }
+
+        // Cancelamento falho / incidente
+        $cancelFailed = OutboundNumberState::query()
+            ->where('office_id', $officeId)
+            ->whereIn('status', [
+                OutboundNumberStatus::FiscalIncident,
+                OutboundNumberStatus::CancelPending,
+            ])
+            ->with(['seriesCursor.establishment.client'])
+            ->orderByDesc('id')
+            ->limit(20)
+            ->get();
+
+        foreach ($cancelFailed as $state) {
+            $series = $state->seriesCursor;
+            $establishment = $series?->establishment;
+            $client = $establishment?->client;
+            if ($establishment === null || $client === null) {
+                continue;
+            }
+            $type = $state->status === OutboundNumberStatus::FiscalIncident
+                ? 'outbound_authorized_unexpected'
+                : 'outbound_cancel_failed';
+            $item = $this->item(
+                type: $type,
+                title: 'Incidente mutante MA (nNF '.$state->nnf.'): '.$this->clientLabel($client),
+                body: 'Estado '.$state->status->value.'. Canal bloqueado até intervenção humana. Documento/evento preservados.',
+                reasons: [$type],
+                clientId: $client->id,
+                establishmentId: $establishment->id,
+                occurredAt: $state->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+                role: $role,
+                establishment: $establishment,
+                cursor: null,
+            );
+            $item['id'] = substr(hash('sha256', 'out:mut:'.$state->id), 0, 32);
+            $items->push($item);
+        }
 
         return $items->values();
     }

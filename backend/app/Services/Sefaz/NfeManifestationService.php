@@ -46,11 +46,15 @@ final class NfeManifestationService
         ?string $justification = null,
         string $purpose = 'UNLOCK_XML',
     ): array {
-        if (! config('sefaz.manifest_enabled', false)) {
+        if (! $this->isAllowed($type, $purpose)) {
+            $flagHint = $type->isConclusive()
+                ? 'SEFAZ_MANIFEST_ENABLED'
+                : 'SEFAZ_AUTO_CIENCIA_ENABLED ou SEFAZ_MANIFEST_ENABLED';
+
             return [
                 'status' => 'flag_off',
                 'has_full_xml' => $this->hasFull($officeId, $accessKey),
-                'message' => 'Manifestação SEFAZ desabilitada (SEFAZ_MANIFEST_ENABLED).',
+                'message' => "Manifestação SEFAZ desabilitada ({$flagHint}).",
                 'type' => $type->value,
             ];
         }
@@ -205,6 +209,28 @@ final class NfeManifestationService
             ->where('access_key', $accessKey)
             ->where('is_summary', false)
             ->exists();
+    }
+
+    /**
+     * Conclusivas: só SEFAZ_MANIFEST_ENABLED.
+     * Ciência (unlock/auto): AUTO_CIENCIA ou MANIFEST.
+     */
+    private function isAllowed(NfeManifestationType $type, string $purpose): bool
+    {
+        if ($type->isConclusive()) {
+            return (bool) config('sefaz.manifest_enabled', false);
+        }
+
+        if (config('sefaz.manifest_enabled', false)) {
+            return true;
+        }
+
+        if (! config('sefaz.auto_ciencia_enabled', false)) {
+            return false;
+        }
+
+        // Ciência automática ou unlock técnico (UI) — nunca conclusiva por este caminho.
+        return in_array($purpose, ['UNLOCK_XML', 'AUTO_UNLOCK'], true);
     }
 
     /**

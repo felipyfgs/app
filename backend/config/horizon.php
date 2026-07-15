@@ -204,7 +204,7 @@ return [
                 env('SEFAZ_QUEUE_NFE', 'sync-sefaz-nfe'),
                 env('SEFAZ_QUEUE_MANIFEST', 'manifest-nfe'),
                 env('SEFAZ_QUEUE_CTE', 'sync-sefaz-cte'),
-                env('SEFAZ_QUEUE_MDFE', 'sync-sefaz-mdfe'),
+                env('SEFAZ_MA_OUTBOUND_QUEUE', 'capture-outbound-ma'),
             ],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',

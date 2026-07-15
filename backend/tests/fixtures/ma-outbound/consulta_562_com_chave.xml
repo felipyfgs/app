@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Resposta sanitizada: cStat 562 com chNFe concatenada (sem envelope SOAP bruto em produção). -->
+<retConsSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <tpAmb>2</tpAmb>
+  <verAplic>fixture</verAplic>
+  <cStat>562</cStat>
+  <xMotivo>Rejeicao: Codigo Numerico informado na Chave de Acesso difere do Codigo Numerico da NF-e [chNFe:21260712345678000190550010000000019876543210]</xMotivo>
+  <cUF>21</cUF>
+  <chNFe>21260712345678000190550010000000019876543210</chNFe>
+</retConsSitNFe>

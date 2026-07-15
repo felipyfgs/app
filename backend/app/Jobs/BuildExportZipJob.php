@@ -9,9 +9,11 @@ use App\Models\Export;
 use App\Models\NfeDocument;
 use App\Models\NfseEvent;
 use App\Models\NfseNote;
+use App\Support\NfseNoteStatus;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\File;
 use Throwable;
 use ZipArchive;
@@ -200,7 +202,7 @@ class BuildExportZipJob implements ShouldQueue
                 });
             }
 
-            // MDF-e deliberadamente fora do escopo de export.
+            // MDF-e legado nunca entra nos ramos de consulta ou no vault.
 
             $zip->close();
 
@@ -246,7 +248,7 @@ class BuildExportZipJob implements ShouldQueue
     }
 
     /**
-     * @param  Builder<\Illuminate\Database\Eloquent\Model>  $query
+     * @param  Builder<Model>  $query
      * @param  array<string, mixed>  $filters
      */
     private function applySharedFilters(Builder $query, array $filters, bool $nfse): void
@@ -277,7 +279,7 @@ class BuildExportZipJob implements ShouldQueue
             $query->where('direction', strtoupper((string) $filters['direction']));
         }
         if ($nfse && ! empty($filters['status'])) {
-            $statuses = \App\Support\NfseNoteStatus::statusesForFilter((string) $filters['status']);
+            $statuses = NfseNoteStatus::statusesForFilter((string) $filters['status']);
             if (count($statuses) === 1) {
                 $query->where('status', $statuses[0]);
             } elseif (count($statuses) > 1) {

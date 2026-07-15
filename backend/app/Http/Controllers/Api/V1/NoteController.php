@@ -23,6 +23,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -36,9 +37,9 @@ class NoteController extends Controller
         $wantNfe = DocumentKind::includes($kinds, DocumentKind::Nfe);
         $wantNfce = DocumentKind::includes($kinds, DocumentKind::Nfce);
         $wantCte = DocumentKind::includes($kinds, DocumentKind::Cte);
-        // MDF-e fora do escopo operacional (kind=MDFE retorna vazio).
+        // MDF-e é reconhecido apenas como filtro legado: não há query/projeção operacional.
         $wantSefazProjection = $wantNfe || $wantNfce;
-        // kind exclusivo sem implementação/fonte → vazio
+        // Kind exclusivo sem implementação/fonte (incluindo MDFE legado) → vazio sem tocar no banco.
         if (! $wantNfse && ! $wantSefazProjection && ! $wantCte) {
             return response()->json([
                 'data' => [],
@@ -961,7 +962,7 @@ class NoteController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, NfeDocument>  $models
+     * @param  Collection<int, NfeDocument>  $models
      * @return array<string, true>
      */
     private function fullAccessKeysForNfe($models): array
@@ -983,7 +984,7 @@ class NoteController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, CteDocument>  $models
+     * @param  Collection<int, CteDocument>  $models
      * @return array<string, true>
      */
     private function fullAccessKeysForCte($models): array

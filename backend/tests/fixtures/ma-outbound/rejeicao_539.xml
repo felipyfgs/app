@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Rejeição 539 com chave revelada (fallback mutante — só em homologação/gates). -->
+<retEnviNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <tpAmb>2</tpAmb>
+  <cUF>21</cUF>
+  <cStat>539</cStat>
+  <xMotivo>Rejeicao: Duplicidade de NF-e com diferenca na Chave de Acesso [chNFe:21260712345678000190550010000000019876543210]</xMotivo>
+  <chNFe>21260712345678000190550010000000019876543210</chNFe>
+</retEnviNFe>

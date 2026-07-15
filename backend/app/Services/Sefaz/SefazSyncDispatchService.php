@@ -15,8 +15,18 @@ use Illuminate\Support\Facades\Log;
  */
 final class SefazSyncDispatchService
 {
+    public function __construct(
+        private readonly ChannelSyncCursorService $channelCursors,
+    ) {}
+
     public function dispatchDue(int $limit = 50): int
     {
+        // Clientes elegíveis sem cursor NFE/CTE nunca entrariam no loop só com SELECT de cursores.
+        $provisioned = $this->channelCursors->ensureMissingForEligible($limit);
+        if ($provisioned > 0) {
+            Log::info('sefaz.channel_cursor.bootstrap', ['created' => $provisioned]);
+        }
+
         $n = 0;
         $n += $this->dispatchChannel(
             CaptureChannel::NfeDistDfe,

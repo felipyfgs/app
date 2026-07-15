@@ -4,22 +4,33 @@ namespace App\Providers;
 
 use App\Contracts\AdnContributorClient;
 use App\Contracts\CnpjRegistrationLookup;
+use App\Contracts\MaOutboundXmlRetrievalClient;
 use App\Contracts\PfxReaderInterface;
 use App\Contracts\SecureObjectStore;
 use App\Contracts\SefazCteDistDfeClient;
 use App\Contracts\SefazDistDfeClient;
 use App\Contracts\SefazNfeManifestationClient;
+use App\Contracts\SefazOutboundInutilizationClient;
+use App\Contracts\SefazOutboundMutatingProbeClient;
+use App\Contracts\SefazOutboundProtocolQueryClient;
 use App\Models\Client;
 use App\Models\ClientContact;
 use App\Models\ClientCredential;
 use App\Models\Establishment;
+use App\Models\OutboundCaptureProfile;
 use App\Policies\ClientContactPolicy;
 use App\Policies\ClientCredentialPolicy;
 use App\Policies\ClientPolicy;
 use App\Policies\EstablishmentPolicy;
+use App\Policies\OutboundCaptureProfilePolicy;
 use App\Services\Adn\CurlMtlsTransport;
 use App\Services\Adn\HttpAdnContributorClient;
 use App\Services\Certificates\PfxReader;
+use App\Services\Outbound\DisabledMaOutboundXmlRetrievalClient;
+use App\Services\Outbound\DisabledSefazOutboundInutilizationClient;
+use App\Services\Outbound\DisabledSefazOutboundMutatingProbeClient;
+use App\Services\Outbound\HttpSefazOutboundProtocolQueryClient;
+use App\Services\Outbound\ProtocolQueryResponseParser;
 use App\Services\Sefaz\DistDfeResponseParser;
 use App\Services\Sefaz\HttpSefazCteDistDfeClient;
 use App\Services\Sefaz\HttpSefazDistDfeClient;
@@ -102,6 +113,18 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(PfxReaderInterface::class, PfxReader::class);
         $this->app->singleton(CnpjRegistrationLookup::class, CnpjWsRegistrationLookup::class);
         $this->app->singleton(CnpjWsRegistrationLookup::class);
+
+        // MA outbound — defaults seguros (M2M/mutação desabilitados; consulta HTTP real)
+        $this->app->singleton(ProtocolQueryResponseParser::class);
+        $this->app->singleton(SefazOutboundProtocolQueryClient::class, function ($app) {
+            return new HttpSefazOutboundProtocolQueryClient(
+                $app->make(CurlMtlsTransport::class),
+                $app->make(ProtocolQueryResponseParser::class),
+            );
+        });
+        $this->app->singleton(MaOutboundXmlRetrievalClient::class, DisabledMaOutboundXmlRetrievalClient::class);
+        $this->app->singleton(SefazOutboundInutilizationClient::class, DisabledSefazOutboundInutilizationClient::class);
+        $this->app->singleton(SefazOutboundMutatingProbeClient::class, DisabledSefazOutboundMutatingProbeClient::class);
     }
 
     public function boot(): void
@@ -110,5 +133,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Establishment::class, EstablishmentPolicy::class);
         Gate::policy(ClientCredential::class, ClientCredentialPolicy::class);
         Gate::policy(ClientContact::class, ClientContactPolicy::class);
+        Gate::policy(OutboundCaptureProfile::class, OutboundCaptureProfilePolicy::class);
     }
 }

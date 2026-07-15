@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Apenas NFe sem protNFe — rejeitar como semente. -->
+<NFe xmlns="http://www.portalfiscal.inf.br/nfe">
+  <infNFe Id="NFe21260712345678000190550010000000011234567890" versao="4.00">
+    <ide>
+      <cUF>21</cUF>
+      <mod>55</mod>
+      <serie>1</serie>
+      <nNF>1</nNF>
+      <tpNF>1</tpNF>
+      <tpEmis>1</tpEmis>
+      <tpAmb>2</tpAmb>
+    </ide>
+    <emit>
+      <CNPJ>12345678000190</CNPJ>
+    </emit>
+  </infNFe>
+</NFe>
