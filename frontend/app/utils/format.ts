@@ -35,6 +35,22 @@ export function formatCnpj(value?: string | null): string {
   return `${clean.slice(0, 2)}.${clean.slice(2, 5)}.${clean.slice(5, 8)}/${clean.slice(8, 12)}-${clean.slice(12, 14)}`
 }
 
+/**
+ * Trunca nomes longos (razão social) para tabela densa.
+ * Ex.: "MEDCENTRO TO DISTRIBUIDORA DE PRODUTOS FARMACEUTICOS LTDA MA" → "MEDCENTRO TO DISTRIBUIDORA DE..."
+ */
+export function truncateText(value?: string | null, max = 34): string {
+  const text = String(value || '').trim()
+  if (!text) {
+    return ''
+  }
+  if (text.length <= max) {
+    return text
+  }
+  const cut = Math.max(1, max - 3)
+  return `${text.slice(0, cut).trimEnd()}...`
+}
+
 export function formatCurrency(value?: string | number | null): string {
   if (value === null || value === undefined || value === '') {
     return '—'

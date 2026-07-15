@@ -53,8 +53,59 @@ const typeItems = [
   { label: 'Certificado (7d)', value: 'credential_expiring_7d' },
   { label: 'Certificado (30d)', value: 'credential_expiring_30d' },
   { label: 'Backup atrasado', value: 'backup_stale' },
-  { label: 'Backup nunca executado', value: 'backup_never' }
+  { label: 'Backup nunca executado', value: 'backup_never' },
+  { label: 'Lacuna esgotada (nNF)', value: 'outbound_gap_exhausted' },
+  { label: '562 sem chave', value: 'outbound_562_no_key' },
+  { label: 'Bloqueio 656 / série MA', value: 'outbound_656' },
+  { label: 'Recuperação MA expirada', value: 'outbound_retrieval_expired' },
+  { label: 'XML divergente MA', value: 'outbound_xml_divergent' },
+  { label: 'Autorização inesperada MA', value: 'outbound_authorized_unexpected' },
+  { label: 'Cancelamento falho MA', value: 'outbound_cancel_failed' }
 ]
+
+const killSwitch = ref<{
+  global_active: boolean
+  m2m_status: string
+  enabled: boolean
+  protocol_query_enabled?: boolean
+  mutating_probe_enabled?: boolean
+}>({
+  global_active: false,
+  m2m_status: 'NO_GO_M2M',
+  enabled: false
+})
+const killReason = ref('')
+const killLoading = ref(false)
+const { canManageCredentials } = useDashboard()
+
+async function loadKillSwitch() {
+  try {
+    killSwitch.value = (await api.outbound.killSwitchStatus()).data
+  } catch {
+    // Mantém defaults seguros (flags off / NO_GO_M2M) se a API não responder.
+  }
+}
+
+async function toggleKill(active: boolean) {
+  if (!canManageCredentials.value || !killReason.value.trim()) {
+    toast.add({ title: 'Informe o motivo do kill switch.', color: 'warning' })
+    return
+  }
+  killLoading.value = true
+  try {
+    await api.outbound.killSwitch({ active, reason: killReason.value.trim() })
+    toast.add({ title: active ? 'Kill switch global MA ligado.' : 'Kill switch desligado.', color: 'warning' })
+    await loadKillSwitch()
+  } catch (caught) {
+    toast.add({ title: apiErrorMessage(caught, 'Falha no kill switch.'), color: 'error' })
+  } finally {
+    killLoading.value = false
+  }
+}
+
+onMounted(() => {
+  void loadKillSwitch()
+})
 
 const columns: TableColumn<InboxItem>[] = [
   { accessorKey: 'severity', header: 'Severidade' },
@@ -200,9 +251,44 @@ watch(
       <UAlert
         icon="i-lucide-info"
         title="Fila acionável do escritório"
-        description="Itens derivados de cursores, certificados e backup da instância. Não há restore nem avanço de NSU por esta tela."
+        description="Itens de cursores ADN/DistDFe (NSU) e canal MA outbound (nNF). Não há restore nem avanço silencioso de cursor por esta tela."
         class="mb-4"
       />
+
+      <div data-testid="ma-kill-switch-card" class="mb-4">
+        <UPageCard
+          title="Kill switch — saídas MA"
+          description="Bloqueia novos jobs de consulta/sonda. Não apaga XML, cursores nNF nem auditoria."
+          variant="subtle"
+        >
+          <div class="flex flex-wrap items-center gap-3 text-sm">
+            <UBadge :color="killSwitch.global_active ? 'error' : 'success'" variant="subtle">
+              {{ killSwitch.global_active ? 'GLOBAL ATIVO' : 'Global off' }}
+            </UBadge>
+            <span class="text-muted">Canal {{ killSwitch.enabled ? 'enabled' : 'disabled' }}</span>
+            <span class="text-muted">M2M: {{ killSwitch.m2m_status }}</span>
+          </div>
+          <div v-if="canManageCredentials" class="mt-3 flex flex-wrap items-end gap-2">
+            <UFormField label="Motivo" class="min-w-[16rem] flex-1">
+              <UInput v-model="killReason" class="w-full" placeholder="Motivo auditável…" />
+            </UFormField>
+            <UButton
+              color="error"
+              variant="soft"
+              label="Ligar"
+              :loading="killLoading"
+              data-testid="ma-kill-on"
+              @click="toggleKill(true)"
+            />
+            <UButton
+              variant="ghost"
+              label="Desligar"
+              :loading="killLoading"
+              @click="toggleKill(false)"
+            />
+          </div>
+        </UPageCard>
+      </div>
 
       <UAlert
         v-if="loadError"

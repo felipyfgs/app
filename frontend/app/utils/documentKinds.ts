@@ -1,6 +1,6 @@
 /** Tipos DF-e mais comuns do catálogo Documentos (alinhado a App\Enums\DocumentKind). */
 
-export type DocumentKindCode = 'NFSE' | 'NFE' | 'NFCE' | 'CTE' | 'MDFE'
+export type DocumentKindCode = 'NFSE' | 'NFE' | 'NFCE' | 'CTE'
 
 export interface DocumentKindMeta {
   code: DocumentKindCode
@@ -16,10 +16,10 @@ export interface DocumentKindMeta {
  */
 export const DOCUMENT_KINDS: DocumentKindMeta[] = [
   { code: 'NFSE', label: 'NFS-e', captureAvailable: true },
-  { code: 'NFE', label: 'NF-e', sefazModel: '55', captureAvailable: false },
+  // NF-e DistDFe operacional (flag SEFAZ_DISTDFE_ENABLED no backend).
+  { code: 'NFE', label: 'NF-e', sefazModel: '55', captureAvailable: true },
   { code: 'NFCE', label: 'NFC-e', sefazModel: '65', captureAvailable: false },
   { code: 'CTE', label: 'CT-e', sefazModel: '57', captureAvailable: false }
-  // MDF-e deliberadamente fora do escopo do catálogo
 ]
 
 const byCode = Object.fromEntries(DOCUMENT_KINDS.map(k => [k.code, k])) as Record<DocumentKindCode, DocumentKindMeta>

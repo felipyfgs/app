@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatCnpj, nfseOperationalLabel, normalizeCnpj, statusLabel } from '../../app/utils/format'
+import { formatCnpj, nfseOperationalLabel, normalizeCnpj, statusLabel, truncateText } from '../../app/utils/format'
 
 describe('normalizeCnpj / formatCnpj', () => {
   it('normaliza removendo máscara e colocando maiúsculas', () => {
@@ -24,5 +24,15 @@ describe('labels de status por contexto', () => {
   it('não trata credencial ACTIVE como situação fiscal', () => {
     expect(statusLabel('ACTIVE')).toBe('Ativa')
     expect(nfseOperationalLabel('ACTIVE')).toBe('Autorizada')
+  })
+})
+
+describe('truncateText', () => {
+  it('trunca razão social longa com reticências', () => {
+    const long = 'MEDCENTRO TO DISTRIBUIDORA DE PRODUTOS FARMACEUTICOS LTDA MA'
+    expect(truncateText(long, 34)).toBe('MEDCENTRO TO DISTRIBUIDORA DE P...')
+    expect(truncateText(long, 34).endsWith('...')).toBe(true)
+    expect(truncateText('CURTO LTDA', 34)).toBe('CURTO LTDA')
+    expect(truncateText(null)).toBe('')
   })
 })

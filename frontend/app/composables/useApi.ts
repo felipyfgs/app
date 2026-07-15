@@ -22,6 +22,11 @@ import type {
   NoteClientAggregate,
   NotesInsights,
   OperationsSummary,
+  OutboundCaptureProfile,
+  OutboundCaptureRun,
+  OutboundKillSwitchStatus,
+  OutboundNumberState,
+  OutboundSeriesCursor,
   PageMeta,
   SyncRun,
   TwoFactorQrCode
@@ -255,6 +260,71 @@ export function useApi() {
       summary: () => client<{ data: OperationsSummary }>('/api/v1/operations/summary'),
       inbox: (params?: InboxListParams) =>
         client<{ data: InboxItem[], meta: InboxMeta }>('/api/v1/operations/inbox', { query: params })
+    },
+    outbound: {
+      profiles: (params?: { client_id?: number, establishment_id?: number }) =>
+        client<{ data: OutboundCaptureProfile[] }>('/api/v1/outbound/profiles', { query: params }),
+      profile: (id: number) =>
+        client<{ data: OutboundCaptureProfile }>(`/api/v1/outbound/profiles/${id}`),
+      seed: (establishmentId: number, body: { environment: string, xml?: string, file?: File }) => {
+        if (body.file) {
+          const fd = new FormData()
+          fd.append('environment', body.environment)
+          fd.append('file', body.file)
+          return client<{ data: { profile: OutboundCaptureProfile, series: OutboundSeriesCursor } }>(
+            `/api/v1/outbound/establishments/${establishmentId}/seed`,
+            { method: 'POST', body: fd }
+          )
+        }
+        return client<{ data: { profile: OutboundCaptureProfile, series: OutboundSeriesCursor } }>(
+          `/api/v1/outbound/establishments/${establishmentId}/seed`,
+          { method: 'POST', body: { environment: body.environment, xml: body.xml } }
+        )
+      },
+      series: (profileId: number) =>
+        client<{ data: OutboundSeriesCursor[] }>(`/api/v1/outbound/profiles/${profileId}/series`),
+      numbers: (seriesId: number, gapsOnly?: boolean) =>
+        client<{ data: OutboundNumberState[] }>(`/api/v1/outbound/series/${seriesId}/numbers`, {
+          query: gapsOnly ? { gaps_only: 1 } : undefined
+        }),
+      runs: (params?: { series_cursor_id?: number }) =>
+        client<{ data: OutboundCaptureRun[] }>('/api/v1/outbound/runs', { query: params }),
+      activate: (profileId: number, body: { mandate_reference: string, allowlisted?: boolean }) =>
+        client<{ data: OutboundCaptureProfile }>(`/api/v1/outbound/profiles/${profileId}/activate`, {
+          method: 'POST',
+          body
+        }),
+      uploadPackage: (profileId: number, files: File[]) => {
+        const fd = new FormData()
+        files.forEach(f => fd.append('files[]', f))
+        return client<{ data: { imported: number, skipped: number, quarantined: number, errors: number } }>(
+          `/api/v1/outbound/profiles/${profileId}/package`,
+          { method: 'POST', body: fd }
+        )
+      },
+      cscState: (profileId: number) =>
+        client<{ data: { configured: boolean, csc_id?: string | null, configured_at?: string | null } }>(
+          `/api/v1/outbound/profiles/${profileId}/csc`
+        ),
+      storeCsc: (profileId: number, body: { csc: string, csc_id: string }) =>
+        client<{ data: { configured: boolean, csc_id?: string | null } }>(
+          `/api/v1/outbound/profiles/${profileId}/csc`,
+          { method: 'POST', body }
+        ),
+      triggerQuery: (seriesId: number) =>
+        client<{ data: { queued: boolean, series_id: number } }>(
+          `/api/v1/outbound/series/${seriesId}/trigger-query`,
+          { method: 'POST' }
+        ),
+      resetSeries: (seriesId: number, body: { reason: string, discovery_position: number, confirm: boolean }) =>
+        client<{ data: OutboundSeriesCursor }>(`/api/v1/outbound/series/${seriesId}/reset`, {
+          method: 'POST',
+          body
+        }),
+      killSwitchStatus: () =>
+        client<{ data: OutboundKillSwitchStatus }>('/api/v1/outbound/kill-switch'),
+      killSwitch: (body: { active: boolean, reason: string, profile_id?: number }) =>
+        client<{ data: unknown }>('/api/v1/outbound/kill-switch', { method: 'POST', body })
     },
     twoFactor: {
       confirmPassword: (password: string) =>

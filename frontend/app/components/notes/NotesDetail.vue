@@ -347,6 +347,22 @@ async function submitManifest() {
               >
                 {{ note.direction_label || note.direction }}
               </UBadge>
+              <UBadge
+                v-if="note.purpose === 'TECHNICAL'"
+                color="warning"
+                variant="subtle"
+                size="sm"
+              >
+                Finalidade técnica
+              </UBadge>
+              <UBadge
+                v-if="note.acquisition_source"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              >
+                {{ note.acquisition_source }}
+              </UBadge>
               <UBadge color="info" variant="subtle" size="sm">
                 {{ statusLabel(note.fiscal_role) }}
               </UBadge>

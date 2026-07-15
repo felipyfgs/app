@@ -48,12 +48,17 @@ const clients: Client[] = [{
     id: 11,
     client_id: 1,
     cnpj: '12ABC345678900',
-    trade_name: 'Matriz',
+    trade_name: 'Matriz MA',
     is_matrix: true,
     is_active: true,
     capture_enabled: true,
     registration_status: 'UNKNOWN',
     registration_source: 'LEGACY',
+    address: {
+      state: 'MA',
+      city: 'Sao Luis',
+      country: 'BR'
+    },
     capture_eligibility: {
       eligible: true,
       reasons: [],
@@ -62,7 +67,7 @@ const clients: Client[] = [{
         NFSE_ADN: { label: 'NFS-e ADN', enabled: true, eligible: true },
         NFE_DISTDFE: { label: 'NF-e DistDFe', enabled: false, eligible: false },
         CTE_DISTDFE: { label: 'CT-e DistDFe', enabled: false, eligible: false },
-        MDFE_DISTDFE: { label: 'MDF-e DistDFe', enabled: false, eligible: false }
+        MA_OUTBOUND: { label: 'Saídas MA (NF-e/NFC-e)', enabled: false, eligible: false }
       }
     }
   }, {
@@ -75,6 +80,11 @@ const clients: Client[] = [{
     capture_enabled: false,
     registration_status: 'SUSPENDED',
     registration_source: 'MANUAL',
+    address: {
+      state: 'SP',
+      city: 'São Paulo',
+      country: 'BR'
+    },
     capture_eligibility: {
       eligible: false,
       reasons: ['Captura desabilitada para este estabelecimento.'],
@@ -83,7 +93,7 @@ const clients: Client[] = [{
         NFSE_ADN: { label: 'NFS-e ADN', enabled: true, eligible: false },
         NFE_DISTDFE: { label: 'NF-e DistDFe', enabled: false, eligible: false },
         CTE_DISTDFE: { label: 'CT-e DistDFe', enabled: false, eligible: false },
-        MDFE_DISTDFE: { label: 'MDF-e DistDFe', enabled: false, eligible: false }
+        MA_OUTBOUND: { label: 'Saídas MA (NF-e/NFC-e)', enabled: false, eligible: false }
       }
     }
   }],
@@ -370,8 +380,238 @@ export async function installApiFixtures(
             credential: '/clients/1/certificado'
           },
           actions: [{ type: 'open', label: 'Abrir' }]
+        }, {
+          id: 'inbox-fixture-outbound-gap',
+          type: 'outbound_gap_exhausted',
+          severity: 'high',
+          title: 'Lacuna esgotada (nNF 42): Cliente Fixture',
+          body: 'Série 1 esgotou tentativas. Posição nNF — não é NSU.',
+          reasons: ['outbound_gap_exhausted'],
+          client_id: 1,
+          establishment_id: 11,
+          occurred_at: FIXED_NOW,
+          links: { client: '/clients/1', sync: '/clients/1/saidas' },
+          actions: [{ type: 'open', label: 'Abrir' }]
+        }, {
+          id: 'inbox-fixture-outbound-incident',
+          type: 'outbound_authorized_unexpected',
+          severity: 'critical',
+          title: 'Incidente fiscal MA: Cliente Fixture',
+          body: 'Autorização inesperada — canal bloqueado. Documento preservado.',
+          reasons: ['outbound_authorized_unexpected'],
+          client_id: 1,
+          establishment_id: 11,
+          occurred_at: FIXED_NOW,
+          links: { client: '/clients/1' },
+          actions: [{ type: 'open', label: 'Abrir' }]
         }],
-        meta: { next_cursor: null, total_estimate: 1, generated_at: FIXED_NOW }
+        meta: { next_cursor: null, total_estimate: 3, generated_at: FIXED_NOW }
+      })
+    }
+
+    // --- Captura de saídas MA (nNF) ---
+    if (pathname.endsWith('/api/v1/outbound/kill-switch') && method === 'GET') {
+      return fulfill(route, {
+        data: {
+          global_active: false,
+          config_flag: false,
+          enabled: false,
+          protocol_query_enabled: false,
+          m2m_status: 'NO_GO_M2M',
+          mutating_probe_enabled: false
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/outbound/kill-switch') && method === 'POST') {
+      if (role === 'VIEWER' || role === 'OPERATOR') {
+        return fulfill(route, { message: 'Forbidden' }, 403)
+      }
+      return fulfill(route, {
+        data: { global_active: true, position_kind: 'nNF' }
+      })
+    }
+    if (pathname.endsWith('/api/v1/outbound/profiles') && method === 'GET') {
+      return fulfill(route, {
+        data: [{
+          id: 501,
+          client_id: 1,
+          establishment_id: 11,
+          uf: 'MA',
+          environment: 'homologation',
+          model: '55',
+          mode: 'ASSISTED',
+          status: 'SEED_READY',
+          consent_recorded: false,
+          mandate_reference: null,
+          allowlisted: false,
+          kill_switch: false,
+          csc: { configured: false, csc_id: null, configured_at: null },
+          activated_at: null
+        }, {
+          id: 502,
+          client_id: 1,
+          establishment_id: 11,
+          uf: 'MA',
+          environment: 'homologation',
+          model: '65',
+          mode: 'ASSISTED',
+          status: 'ACTIVE',
+          consent_recorded: true,
+          mandate_reference: 'CONTRATO-FIXTURE',
+          allowlisted: true,
+          kill_switch: false,
+          csc: { configured: false, csc_id: null, configured_at: null },
+          activated_at: FIXED_NOW
+        }]
+      })
+    }
+    if (/\/api\/v1\/outbound\/profiles\/\d+\/series$/.test(pathname) && method === 'GET') {
+      const profileId = Number(pathname.match(/profiles\/(\d+)/)?.[1] || 501)
+      return fulfill(route, {
+        data: [{
+          id: profileId === 502 ? 602 : 601,
+          profile_id: profileId,
+          establishment_id: 11,
+          environment: 'homologation',
+          model: profileId === 502 ? '65' : '55',
+          series: 1,
+          seed_nnf: 10,
+          discovery_position: 15,
+          position_kind: 'nNF',
+          highest_confirmed_nnf: 12,
+          status: profileId === 502 ? 'IDLE' : 'SEED_READY',
+          tp_emis: '1',
+          seed_access_key: '21260712ABC345678900550010000000101234567890',
+          seed_issued_at: FIXED_NOW,
+          next_run_at: FIXED_NOW,
+          last_run_at: null,
+          series_closed_for_mutation: false
+        }]
+      })
+    }
+    if (/\/api\/v1\/outbound\/series\/\d+\/numbers/.test(pathname) && method === 'GET') {
+      return fulfill(route, {
+        data: [{
+          id: 701,
+          series: 1,
+          nnf: 13,
+          status: 'EXHAUSTED_VISIBLE',
+          candidate_access_key: '21260712ABC345678900550010000000131234567890',
+          discovered_access_key: null,
+          last_cstat: '217',
+          attempts: 10,
+          next_attempt_at: null,
+          key_discovered_at: null,
+          xml_captured_at: null,
+          has_full_xml: false
+        }, {
+          id: 702,
+          series: 1,
+          nnf: 14,
+          status: 'XML_PENDING',
+          candidate_access_key: '21260712ABC345678900550010000000141234567890',
+          discovered_access_key: '21260712ABC345678900550010000000149876543210',
+          last_cstat: '562',
+          attempts: 1,
+          next_attempt_at: null,
+          key_discovered_at: FIXED_NOW,
+          xml_captured_at: null,
+          has_full_xml: false
+        }]
+      })
+    }
+    if (/\/api\/v1\/outbound\/establishments\/\d+\/seed$/.test(pathname) && method === 'POST') {
+      if (role === 'VIEWER') return fulfill(route, { message: 'Forbidden' }, 403)
+      return fulfill(route, {
+        data: {
+          profile: {
+            id: 501,
+            client_id: 1,
+            establishment_id: 11,
+            uf: 'MA',
+            environment: 'homologation',
+            model: '55',
+            mode: 'ASSISTED',
+            status: 'SEED_READY',
+            consent_recorded: false,
+            allowlisted: false,
+            kill_switch: false,
+            csc: { configured: false }
+          },
+          series: {
+            id: 601,
+            profile_id: 501,
+            series: 1,
+            seed_nnf: 10,
+            discovery_position: 11,
+            position_kind: 'nNF',
+            status: 'SEED_READY'
+          }
+        }
+      }, 201)
+    }
+    if (/\/api\/v1\/outbound\/profiles\/\d+\/package$/.test(pathname) && method === 'POST') {
+      if (role === 'VIEWER') return fulfill(route, { message: 'Forbidden' }, 403)
+      return fulfill(route, { data: { imported: 1, skipped: 0, quarantined: 0, errors: 0 } })
+    }
+    if (/\/api\/v1\/outbound\/profiles\/\d+\/csc$/.test(pathname) && method === 'GET') {
+      if (role !== 'ADMIN') return fulfill(route, { message: 'Forbidden' }, 403)
+      return fulfill(route, { data: { configured: false, csc_id: null, configured_at: null } })
+    }
+    if (/\/api\/v1\/outbound\/profiles\/\d+\/csc$/.test(pathname) && method === 'POST') {
+      if (role !== 'ADMIN') return fulfill(route, { message: 'Forbidden' }, 403)
+      // Nunca ecoar o valor do CSC
+      return fulfill(route, { data: { configured: true, csc_id: '000001', configured_at: FIXED_NOW } })
+    }
+    if (/\/api\/v1\/outbound\/profiles\/\d+\/activate$/.test(pathname) && method === 'POST') {
+      if (role !== 'ADMIN') return fulfill(route, { message: 'Forbidden' }, 403)
+      return fulfill(route, {
+        data: {
+          id: 501,
+          status: 'ACTIVE',
+          allowlisted: true,
+          consent_recorded: true,
+          mandate_reference: 'CONTRATO-FIXTURE',
+          mode: 'ASSISTED'
+        }
+      })
+    }
+    if (/\/api\/v1\/outbound\/series\/\d+\/trigger-query$/.test(pathname) && method === 'POST') {
+      if (role === 'VIEWER') return fulfill(route, { message: 'Forbidden' }, 403)
+      return fulfill(route, { data: { queued: true, series_id: 601 } })
+    }
+    if (/\/api\/v1\/outbound\/series\/\d+\/reset$/.test(pathname) && method === 'POST') {
+      if (role !== 'ADMIN') return fulfill(route, { message: 'Forbidden' }, 403)
+      return fulfill(route, {
+        data: {
+          id: 601,
+          discovery_position: 20,
+          position_kind: 'nNF',
+          status: 'IDLE'
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/outbound/runs') && method === 'GET') {
+      return fulfill(route, {
+        data: [{
+          id: 801,
+          profile_id: 501,
+          series_cursor_id: 601,
+          run_type: 'SEQUENCE_QUERY',
+          status: 'COMPLETED',
+          position_kind: 'nNF',
+          nnf_start: 11,
+          nnf_end: 15,
+          numbers_consulted: 5,
+          keys_discovered: 1,
+          xml_persisted: 0,
+          gaps_open: 2,
+          attempts_total: 5,
+          result_summary: 'consulted=5 discovered=1 gaps=2',
+          started_at: FIXED_NOW,
+          finished_at: FIXED_NOW,
+          triggered_by: 'operator'
+        }]
       })
     }
     if (pathname.endsWith('/api/v1/clients') && method === 'GET') {

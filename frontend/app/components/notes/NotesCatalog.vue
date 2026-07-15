@@ -121,7 +121,7 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
     {
       id: 'counterparty',
       header: 'Contraparte',
-      meta: { class: { th: 'min-w-44', td: 'min-w-44' } }
+      meta: { class: { th: 'max-w-56 min-w-40 w-56', td: 'max-w-56 min-w-40 w-56' } }
     },
     {
       accessorKey: 'competence',
@@ -236,13 +236,21 @@ defineShortcuts({
       </template>
 
       <template #counterparty-cell="{ row }">
-        <div class="min-w-0">
-          <p class="truncate font-medium text-highlighted">
-            {{ counterpartyName(row.original) || formatCnpj(counterpartyCnpj(row.original)) || '—' }}
+        <div class="min-w-0 max-w-full">
+          <p
+            class="truncate font-medium text-highlighted"
+            :title="counterpartyName(row.original) || formatCnpj(counterpartyCnpj(row.original)) || undefined"
+          >
+            {{
+              truncateText(counterpartyName(row.original), 34)
+                || formatCnpj(counterpartyCnpj(row.original))
+                || '—'
+            }}
           </p>
           <p
             v-if="counterpartyName(row.original) && counterpartyCnpj(row.original)"
             class="truncate font-mono text-sm text-muted"
+            :title="formatCnpj(counterpartyCnpj(row.original)) || undefined"
           >
             {{ formatCnpj(counterpartyCnpj(row.original)) }}
           </p>

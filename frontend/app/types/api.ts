@@ -296,8 +296,8 @@ export interface DfeDocumentMetadata {
   parse_alert?: string | null
 }
 
-/** Tipos DF-e mais comuns (Path B: só NFSE capturado). */
-export type DocumentKind = 'NFSE' | 'NFE' | 'NFCE' | 'CTE' | 'MDFE'
+/** Tipos DF-e pertencentes ao catálogo escritural. */
+export type DocumentKind = 'NFSE' | 'NFE' | 'NFCE' | 'CTE'
 
 export type DocumentSource = 'ADN' | 'SEFAZ' | string
 
@@ -343,6 +343,10 @@ export interface FiscalDocument {
   /** FULL | SUMMARY_ONLY */
   xml_completeness?: string | null
   manifestation_status?: string | null
+  /** COMMERCIAL | TECHNICAL (sonda/autorização inesperada). */
+  purpose?: 'COMMERCIAL' | 'TECHNICAL' | string | null
+  /** Proveniência (IMPORT, MA_OFFICIAL_PACKAGE, …). */
+  acquisition_source?: string | null
   document?: DfeDocumentMetadata
 }
 
@@ -438,6 +442,89 @@ export interface SyncRun {
 }
 
 export type InboxSeverity = 'critical' | 'high' | 'medium' | 'low'
+
+/** Captura de saídas MA (posição nNF). */
+export interface OutboundCaptureProfile {
+  id: number
+  client_id: number
+  establishment_id: number
+  uf: string
+  environment: string
+  model: string
+  mode: string
+  status: string
+  consent_recorded: boolean
+  mandate_reference?: string | null
+  allowlisted: boolean
+  kill_switch: boolean
+  csc: { configured: boolean, csc_id?: string | null, configured_at?: string | null }
+  activated_at?: string | null
+}
+
+export interface OutboundSeriesCursor {
+  id: number
+  profile_id: number
+  establishment_id: number
+  environment: string
+  model: string
+  series: number
+  seed_nnf: number
+  discovery_position: number
+  position_kind: 'nNF'
+  highest_confirmed_nnf?: number | null
+  status: string
+  tp_emis?: string
+  seed_access_key?: string | null
+  seed_issued_at?: string | null
+  next_run_at?: string | null
+  last_run_at?: string | null
+  series_closed_for_mutation?: boolean
+}
+
+export interface OutboundNumberState {
+  id: number
+  series: number
+  nnf: number
+  status: string
+  candidate_access_key?: string | null
+  discovered_access_key?: string | null
+  last_cstat?: string | null
+  attempts: number
+  next_attempt_at?: string | null
+  key_discovered_at?: string | null
+  xml_captured_at?: string | null
+  has_full_xml: boolean
+}
+
+export interface OutboundCaptureRun {
+  id: number
+  profile_id: number
+  series_cursor_id?: number | null
+  run_type: string
+  status: string
+  position_kind: 'nNF'
+  nnf_start?: number | null
+  nnf_end?: number | null
+  numbers_consulted: number
+  keys_discovered: number
+  xml_persisted: number
+  gaps_open: number
+  attempts_total: number
+  result_summary?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  triggered_by?: string
+}
+
+export interface OutboundKillSwitchStatus {
+  global_active: boolean
+  config_flag: boolean
+  enabled: boolean
+  protocol_query_enabled: boolean
+  m2m_status: string
+  mutating_probe_enabled: boolean
+}
+
 export type InboxItemType
   = | 'cursor_blocked'
     | 'cursor_error'
@@ -447,6 +534,13 @@ export type InboxItemType
     | 'credential_expiring_30d'
     | 'backup_stale'
     | 'backup_never'
+    | 'outbound_gap_exhausted'
+    | 'outbound_562_no_key'
+    | 'outbound_656'
+    | 'outbound_retrieval_expired'
+    | 'outbound_xml_divergent'
+    | 'outbound_authorized_unexpected'
+    | 'outbound_cancel_failed'
 
 export interface InboxItemAction {
   type: 'open' | 'trigger_sync' | string

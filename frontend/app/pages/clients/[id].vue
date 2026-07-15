@@ -59,6 +59,11 @@ const sectionLinks = computed<NavigationMenuItem[]>(() => {
     icon: 'i-lucide-refresh-cw',
     to: `${base}/sincronizacao`,
     active: path.endsWith('/sincronizacao')
+  }, {
+    label: 'Captura de saídas',
+    icon: 'i-lucide-arrow-up-from-line',
+    to: `${base}/saidas`,
+    active: path.endsWith('/saidas')
   }]
 })
 

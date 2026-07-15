@@ -88,12 +88,31 @@ const viewLinks = computed((): NavigationMenuItem[][] => [[
   }
 ]])
 
+/**
+ * Disponibilidade de captura do tipo filtrado.
+ * - NFSE / NFE: operacionais nesta instância (não mostrar aviso de “em breve”).
+ * - Linha da API só confirma true; `false`/ausente não deve sobrescrever o stack local
+ *   (evita alerta falso quando a flag SEFAZ ainda não veio no payload).
+ */
 const kindCaptureAvailable = computed(() => {
   if (filters.kind === FILTER_ALL) return true
+  if (isDocumentKindCaptureAvailable(filters.kind)) return true
   const runtimeValue = notes.value.find(note => note.kind === filters.kind)?.capture_available
-  return runtimeValue ?? isDocumentKindCaptureAvailable(filters.kind)
+  return runtimeValue === true
 })
-const kindExportAvailable = computed(() => filters.kind === FILTER_ALL || filters.kind === 'NFSE')
+
+const kindCaptureUnavailableHint = computed(() => {
+  const kind = filters.kind
+  if (kind === 'NFCE') {
+    return 'NFC-e não entra na captura DistDFe de entrada do escritório (modelo 65). Use importação de XML se precisar de saídas.'
+  }
+  if (kind === 'CTE') {
+    return 'CT-e DistDFe ainda não está ligado nesta instância (SEFAZ_CTE_ENABLED).'
+  }
+  return 'A fonte SEFAZ correspondente ainda não está habilitada nesta instância.'
+})
+
+const kindExportAvailable = computed(() => filters.kind === FILTER_ALL || filters.kind === 'NFSE' || filters.kind === 'NFE')
 
 function queryParams(cursor?: string | null): NoteListParams {
   return {
@@ -558,7 +577,7 @@ onMounted(async () => {
             variant="subtle"
             icon="i-lucide-info"
             :title="`Captura de ${documentKindLabel(filters.kind)} ainda não disponível`"
-            description="Hoje o catálogo captura NFS-e via ADN. NF-e, NFC-e, CT-e e MDF-e entram na mesma tela quando a fonte SEFAZ for ligada."
+            :description="kindCaptureUnavailableHint"
             class="shrink-0"
           />
 
