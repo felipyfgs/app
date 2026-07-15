@@ -133,3 +133,10 @@ O sistema SHALL persistir XML bem-formado mesmo quando o cStat for desconhecido,
 #### Scenario: cStat não mapeado
 - **WHEN** o XML é bem-formado mas o cStat não está na tabela de mapeamento
 - **THEN** o documento e a projeção são persistidos com status UNKNOWN e official_status_code igual ao valor encontrado
+
+### Requirement: Coexistência ADN e SEFAZ
+O sistema SHALL manter a captura ADN de NFS-e independente dos canais SEFAZ: falha ou bloqueio em DistDFe MUST NOT interromper cursors ADN do mesmo estabelecimento, e vice-versa.
+
+#### Scenario: DistDFe bloqueado, ADN segue
+- **WHEN** o cursor DistDFe está BLOCKED e o cursor ADN está IDLE com captura ligada
+- **THEN** o scheduler continua elegendo o estabelecimento para jobs ADN
