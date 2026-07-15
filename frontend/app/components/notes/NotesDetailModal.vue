@@ -16,8 +16,9 @@ const props = defineProps<{
   preview?: NfseNote | null
 }>()
 
-const api = useApi()
+const sanctum = useSanctumClient()
 const toast = useToast()
+const downloading = ref(false)
 
 const title = computed(() => {
   const n = props.preview
@@ -48,6 +49,66 @@ async function copyAccessKey() {
     toast.add({ title: 'Chave copiada', color: 'success' })
   } catch {
     toast.add({ title: 'Não foi possível copiar a chave', color: 'error' })
+  }
+}
+
+/**
+ * Download via client Sanctum (mesmo baseUrl/proxy das demais APIs) + blob .xml.
+ * Não usa fetch(apiUrl) cru — evita path errado e salva sempre como .xml.
+ */
+async function downloadXml() {
+  const key = (props.accessKey || '').trim()
+  if (!key || downloading.value) return
+
+  downloading.value = true
+  try {
+    const blob = await sanctum<Blob>(
+      `/api/v1/documents/${encodeURIComponent(key)}/xml`,
+      {
+        method: 'GET',
+        responseType: 'blob',
+        headers: {
+          Accept: 'application/xml, text/xml, application/octet-stream, */*'
+        }
+      }
+    )
+
+    if (!(blob instanceof Blob)) {
+      toast.add({ title: 'Resposta inválida ao baixar XML', color: 'error' })
+      return
+    }
+
+    // Rejeita corpo JSON de erro (ex.: 422 serializado como blob)
+    const head = await blob.slice(0, 64).text()
+    const trimmed = head.trimStart()
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      let msg = 'XML indisponível no cofre.'
+      try {
+        const err = JSON.parse(await blob.text()) as { message?: string }
+        if (err?.message) msg = err.message
+      } catch {
+        // ignore
+      }
+      toast.add({ title: msg, color: 'error' })
+      return
+    }
+
+    const filename = `${key}.xml`
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.rel = 'noopener'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    toast.add({ title: 'XML baixado', color: 'success' })
+  } catch (caught: unknown) {
+    const msg = apiErrorMessage(caught, 'Falha ao baixar o XML. Verifique a sessão e tente de novo.')
+    toast.add({ title: msg, color: 'error' })
+  } finally {
+    downloading.value = false
   }
 }
 </script>
@@ -119,9 +180,9 @@ async function copyAccessKey() {
             size="sm"
             icon="i-lucide-download"
             label="Baixar XML"
-            :href="api.documents.xmlUrl(accessKey)"
-            external
-            download
+            :loading="downloading"
+            :disabled="downloading"
+            @click="downloadXml"
           />
           <UButton
             color="neutral"

@@ -664,8 +664,111 @@ export interface OperationsSummary {
   generated_at: string
 }
 
+/** Faixas de urgência do fechamento mensal de saídas (prazo ≠ falha técnica). */
+export type OutboundUrgencyBand =
+  | 'PLANNED'
+  | 'ATTENTION'
+  | 'CONTINGENCY'
+  | 'OVERDUE'
+  | 'CAPTURED'
+  | string
+
+export type OutboundMonthlyReadinessStatus =
+  | 'COMPLETE_KNOWN'
+  | 'PARTIAL_CONFIRMED'
+  | 'NOT_READY'
+  | string
+
+export interface OutboundMonthlyReadiness {
+  competence: string
+  status: OutboundMonthlyReadinessStatus
+  status_label?: string
+  known_total: number
+  captured_total: number
+  pending_total: number
+  export_id?: number | null
+  confirmed_at?: string | null
+  summary?: Record<string, unknown> | null
+  completeness_scope: 'known_documents_only' | string
+}
+
+export interface OutboundCompetenceSummary {
+  competence: string
+  known_total: number
+  captured_total: number
+  pending_total: number
+  by_band: Record<string, number>
+  by_capture_source?: Record<string, number>
+  readiness: OutboundMonthlyReadiness
+  completeness_scope: string
+  sla_note?: string
+}
+
+export interface OutboundCapacityProjection {
+  demand_exchanges: number
+  safe_capacity_exchanges: number
+  nominal_capacity_exchanges: number
+  slack_exchanges: number
+  at_risk: boolean
+  items_capacity_at_risk: number
+  safe_daily_exchanges?: number
+  auto_queue_fraction: number
+  estimated_completion_at?: string | null
+  target_at?: string | null
+  due_at?: string | null
+}
+
+export interface OutboundCapacityForecast {
+  competence: string
+  projection: OutboundCapacityProjection
+  latest_snapshot?: Record<string, unknown> | null
+}
+
+export interface OutboundDeadlinePendingItem {
+  id: number
+  access_key_masked?: string | null
+  competence?: string | null
+  model?: string | null
+  urgency_band?: OutboundUrgencyBand | null
+  deadline_status?: string | null
+  recovery_status?: string | null
+  failure_reason?: string | null
+  failure_label?: string | null
+  capacity_at_risk?: boolean
+  due_at?: string | null
+  target_at?: string | null
+  next_attempt_at?: string | null
+  next_step?: string | null
+  capture_source?: string | null
+  svrs_transaction_count?: number
+  root_cnpj?: string | null
+}
+
+export interface OutboundDeadlineMetrics {
+  known_total: number
+  captured_total: number
+  pending_total: number
+  by_band: Record<string, number>
+  overdue: number
+  contingency: number
+  slots_due: number
+  by_capture_source?: Record<string, number>
+  capacity?: {
+    demand_exchanges?: number
+    safe_capacity_exchanges?: number
+    slack_exchanges?: number
+    at_risk?: boolean
+    items_capacity_at_risk?: number
+  } | null
+  completeness_scope: string
+  alerts: Array<{ code: string, severity: string, message: string }>
+}
+
 export interface CursorMeta {
   next_cursor: string | null
+  /** Total no escopo dos filtros (catálogo de documentos). */
+  total?: number
+  per_page?: number
 }
 
 export interface PageMeta {

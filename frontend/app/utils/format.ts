@@ -12,6 +12,27 @@ export function formatDateTime(value?: string | null): string {
   }).format(date)
 }
 
+/** Data de emissão/calendário (sem hora) — colunas densas do catálogo. */
+export function formatDate(value?: string | null): string {
+  if (!value) {
+    return '—'
+  }
+  // YYYY-MM-DD ou ISO: preferir partes locais da data para evitar -1 dia em TZ
+  const dayOnly = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value))
+  if (dayOnly) {
+    return `${dayOnly[3]}/${dayOnly[2]}/${dayOnly[1]}`
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return '—'
+  }
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).format(date)
+}
+
 /**
  * CNPJ limpo para armazenamento/clipboard: maiúsculo, sem máscara.
  * Aceita numérico ou alfanumérico (14 chars no domínio).
@@ -88,11 +109,15 @@ export function formatBytes(value?: number | null): string {
  * (ver `nfseOperationalLabel` / `officialStatusDescription`).
  */
 const labels: Record<string, string> = {
-  ACTIVE: 'Ativa',
+  // Situação fiscal (documento) — padrão operacional do escritório
+  ACTIVE: 'Autorizada',
   AUTHORIZED: 'Autorizada',
   BLOCKED: 'Bloqueada',
   CANCELLED: 'Cancelada',
+  CANCELED: 'Cancelada',
   COMPLETED: 'Concluída',
+  DENIED: 'Denegada',
+  DENEGADA: 'Denegada',
   ERROR: 'Erro',
   EXPIRED: 'Expirada',
   FAILED: 'Falhou',
@@ -180,9 +205,11 @@ export function noteOfficialSituation(
 
 export function statusLabel(value?: string | null): string {
   if (!value) return '—'
-  // Enums de NFS-e → label operacional (mesmo mapa do backend)
-  if (['SUBSTITUTE', 'JUDICIAL', 'CANCELLED', 'SUPERSEDED', 'REPLACED', 'UNKNOWN', 'AUTHORIZED', 'REVIEW'].includes(value.toUpperCase())) {
+  const upper = value.toUpperCase()
+  // Situação fiscal unificada (NFS-e / NF-e / CT-e): Autorizada · Cancelada · Em revisão
+  if (['ACTIVE', 'SUBSTITUTE', 'JUDICIAL', 'CANCELLED', 'CANCELED', 'SUPERSEDED', 'REPLACED', 'UNKNOWN', 'AUTHORIZED', 'REVIEW', 'DENIED', 'DENEGADA'].includes(upper)) {
+    if (upper === 'DENIED' || upper === 'DENEGADA') return 'Denegada'
     return nfseOperationalLabel(value)
   }
-  return labels[value] || value
+  return labels[value] || labels[upper] || value
 }

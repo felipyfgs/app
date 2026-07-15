@@ -1,151 +1,416 @@
 <script setup lang="ts">
 /**
- * Catálogo de documentos fiscais — UTable no padrão customers.vue do template.
- * Fonte: .reference/nuxt-dashboard-template/app/pages/customers.vue (:ui + footer)
+ * Catálogo de documentos — UTable no arquétipo lista admin (customers.vue).
+ * Fonte: .reference/nuxt-dashboard-template/app/pages/customers.vue
+ * + adaptação produto em frontend/app/pages/clients/index.vue
+ *
+ * Seleção nativa TanStack (rowSelection + getRowId = access_key).
+ * Ordenação: client-side na página atual (getSortedRowModel), headers com botão.
+ * Paginação: UPagination + seletor de linhas/página (server-side cursor + meta.total).
  */
-import type { TableColumn } from '@nuxt/ui'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+import type { Row } from '@tanstack/table-core'
 import type { NfseNote } from '~/types/api'
 import { documentKindLabel } from '~/utils/documentKinds'
 import { NOTES_TABLE_UI } from '~/utils/notes-filters'
 
-const props = defineProps<{
+/** Opções de linhas por página (API aceita limit 1–100). */
+const NOTES_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
+type NotesPageSize = typeof NOTES_PAGE_SIZE_OPTIONS[number]
+
+const props = withDefaults(defineProps<{
   notes: NfseNote[]
   loading?: boolean
   error?: string | null
   selectedAccessKey?: string | null
-  nextCursor?: string | null
+  page?: number
+  pageSize?: number
+  total?: number
   selectable?: boolean
   selectedKeys?: string[]
-}>()
+}>(), {
+  page: 1,
+  pageSize: 25,
+  total: 0
+})
 
 const emit = defineEmits<{
   'select': [note: NfseNote]
-  'loadMore': []
+  'update:page': [page: number]
+  'update:pageSize': [size: number]
   'retry': []
   'update:selectedKeys': [keys: string[]]
 }>()
 
 const UCheckbox = resolveComponent('UCheckbox')
+const UButton = resolveComponent('UButton')
+const UDropdownMenu = resolveComponent('UDropdownMenu')
 
-const selectedSet = computed({
-  get: () => new Set(props.selectedKeys || []),
-  set: (set: Set<string>) => emit('update:selectedKeys', [...set])
+const table = useTemplateRef('table')
+const toast = useToast()
+
+/** Seleção nativa UTable (id da linha = access_key). */
+const rowSelection = ref<Record<string, boolean>>({})
+
+/** Ordenação TanStack na página carregada (UTable já injeta getSortedRowModel). */
+const sorting = ref<{ id: string, desc: boolean }[]>([])
+
+const pageSizeItems = NOTES_PAGE_SIZE_OPTIONS.map(n => ({
+  label: `${n} / página`,
+  value: n as NotesPageSize
+}))
+
+function isNotesPageSize(value: number): value is NotesPageSize {
+  return (NOTES_PAGE_SIZE_OPTIONS as readonly number[]).includes(value)
+}
+
+const pageSizeModel = computed({
+  get: (): NotesPageSize => {
+    return isNotesPageSize(props.pageSize) ? props.pageSize : 25
+  },
+  set: (value: NotesPageSize | number | string) => {
+    const next = Number(value)
+    if (!Number.isFinite(next) || next === props.pageSize) return
+    if (!isNotesPageSize(next)) return
+    emit('update:pageSize', next)
+  }
 })
+
+function sortHeader(
+  label: string,
+  column: { getIsSorted: () => false | 'asc' | 'desc', toggleSorting: (desc?: boolean) => void }
+) {
+  const isSorted = column.getIsSorted()
+  return h(UButton, {
+    color: 'neutral',
+    variant: 'ghost',
+    label,
+    icon: isSorted
+      ? (isSorted === 'asc' ? 'i-lucide-arrow-up-narrow-wide' : 'i-lucide-arrow-down-wide-narrow')
+      : 'i-lucide-arrow-up-down',
+    class: '-mx-2.5',
+    onClick: () => column.toggleSorting(column.getIsSorted() === 'asc')
+  })
+}
+
+watch(
+  () => props.selectedKeys,
+  (keys) => {
+    const next: Record<string, boolean> = {}
+    for (const k of keys || []) {
+      next[k] = true
+    }
+    const prev = rowSelection.value
+    const same
+      = Object.keys(prev).length === Object.keys(next).length
+      && Object.keys(next).every(k => prev[k] === true)
+    if (!same) {
+      rowSelection.value = next
+    }
+  },
+  { immediate: true, deep: true }
+)
+
+watch(
+  rowSelection,
+  (sel) => {
+    if (!props.selectable) return
+    const keys = Object.entries(sel)
+      .filter(([, on]) => !!on)
+      .map(([k]) => k)
+    const current = props.selectedKeys || []
+    if (
+      keys.length === current.length
+      && keys.every(k => current.includes(k))
+    ) {
+      return
+    }
+    emit('update:selectedKeys', keys)
+  },
+  { deep: true }
+)
 
 function shortKey(accessKey: string) {
   if (accessKey.length <= 18) return accessKey
   return `${accessKey.slice(0, 8)}…${accessKey.slice(-6)}`
 }
 
+/** Rótulo acessível completo (tipo + número). */
 function noteTitle(note: NfseNote) {
   const kind = documentKindLabel(note.kind || 'NFSE')
   if (note.number) return `${kind} nº ${note.number}`
   return shortKey(note.access_key)
 }
 
-function counterpartyName(note: NfseNote): string | null {
-  if (note.fiscal_role === 'ISSUER') return note.taker_name || null
-  if (note.fiscal_role === 'TAKER' || note.fiscal_role === 'INTERMEDIARY') return note.issuer_name || null
-  return note.issuer_name || note.taker_name || null
+/** Célula Documento: só número (ou chave curta). */
+function documentCellLabel(note: NfseNote) {
+  if (note.number) return String(note.number)
+  return shortKey(note.access_key)
 }
 
-function counterpartyCnpj(note: NfseNote): string | null {
-  if (note.fiscal_role === 'ISSUER') return note.taker_cnpj || null
-  if (note.fiscal_role === 'TAKER' || note.fiscal_role === 'INTERMEDIARY') return note.issuer_cnpj || null
-  return note.issuer_cnpj || note.taker_cnpj || null
-}
-
-function toggleKey(key: string, on: boolean) {
-  const next = new Set(selectedSet.value)
-  if (on) next.add(key)
-  else next.delete(key)
-  selectedSet.value = next
-}
-
-function toggleAllPage(on: boolean) {
-  const next = new Set(selectedSet.value)
-  for (const n of props.notes) {
-    if (on) next.add(n.access_key)
-    else next.delete(n.access_key)
+function partyCell(name?: string | null, cnpj?: string | null): { name: string, cnpj: string | null } {
+  return {
+    name: truncateText(name, 34) || formatCnpj(cnpj) || '—',
+    cnpj: name && cnpj ? formatCnpj(cnpj) : null
   }
-  selectedSet.value = next
 }
 
-const allPageSelected = computed(() =>
-  props.notes.length > 0 && props.notes.every(n => selectedSet.value.has(n.access_key))
-)
-const somePageSelected = computed(() =>
-  props.notes.some(n => selectedSet.value.has(n.access_key)) && !allPageSelected.value
-)
+/** Situação fiscal na grade — nunca usar “XML completo” como situação. */
+function documentSituationLabel(note: NfseNote): string {
+  const raw = (note.status_label || '').trim()
+  if (raw && !/^XML\b/i.test(raw) && !/resumo/i.test(raw) && !/completo/i.test(raw)) {
+    return raw
+  }
+  return statusLabel(note.status)
+}
 
-const selectedCount = computed(() => selectedSet.value.size)
+function xmlCompletenessHint(note: NfseNote): string | null {
+  if (note.has_full_xml === false || note.is_summary === true || note.xml_completeness === 'SUMMARY_ONLY') {
+    return 'Somente resumo'
+  }
+  return null
+}
+
+async function copyAccessKey(note: NfseNote) {
+  try {
+    await navigator.clipboard.writeText(note.access_key)
+    toast.add({
+      title: 'Chave copiada',
+      description: shortKey(note.access_key),
+      color: 'success'
+    })
+  } catch {
+    toast.add({
+      title: 'Não foi possível copiar a chave',
+      color: 'error'
+    })
+  }
+}
+
+function getRowItems(row: Row<NfseNote>): DropdownMenuItem[][] {
+  const note = row.original
+  return [
+    [
+      {
+        type: 'label',
+        label: noteTitle(note)
+      },
+      {
+        label: 'Abrir detalhe',
+        icon: 'i-lucide-panel-right-open',
+        onSelect: () => emit('select', note)
+      },
+      {
+        label: 'Copiar chave de acesso',
+        icon: 'i-lucide-copy',
+        onSelect: () => {
+          void copyAccessKey(note)
+        }
+      }
+    ]
+  ]
+}
 
 const columns = computed<TableColumn<NfseNote>[]>(() => {
   const cols: TableColumn<NfseNote>[] = []
+
   if (props.selectable) {
     cols.push({
       id: 'select',
-      header: () => h(UCheckbox, {
-        'modelValue': allPageSelected.value ? true : (somePageSelected.value ? 'indeterminate' : false),
-        'ariaLabel': 'Selecionar notas carregadas',
-        'onUpdate:modelValue': (v: boolean | 'indeterminate') => toggleAllPage(!!v)
-      }),
-      meta: { class: { th: 'w-10', td: 'w-10' } }
+      enableHiding: false,
+      enableSorting: false,
+      header: ({ table: t }) =>
+        h(UCheckbox, {
+          'modelValue': t.getIsSomePageRowsSelected()
+            ? 'indeterminate'
+            : t.getIsAllPageRowsSelected(),
+          'onUpdate:modelValue': (value: boolean | 'indeterminate') =>
+            t.toggleAllPageRowsSelected(!!value),
+          'ariaLabel': 'Selecionar todas as notas carregadas'
+        }),
+      cell: ({ row }) =>
+        h(UCheckbox, {
+          'modelValue': row.getIsSelected(),
+          'onUpdate:modelValue': (value: boolean | 'indeterminate') =>
+            row.toggleSelected(!!value),
+          'ariaLabel': `Selecionar ${noteTitle(row.original)}`,
+          'onClick': (e: Event) => e.stopPropagation()
+        }),
+      meta: {
+        class: {
+          th: 'w-10',
+          td: 'w-10'
+        }
+      }
     })
   }
+
   cols.push(
     {
       id: 'kind',
       accessorFn: row => row.kind_label || documentKindLabel(row.kind || 'NFSE'),
-      header: 'Tipo',
-      meta: { class: { th: 'w-24', td: 'w-24' } }
-    },
-    {
-      id: 'direction',
-      accessorFn: row => row.direction_label || row.direction || '—',
-      header: 'Direção',
-      meta: { class: { th: 'hidden sm:table-cell w-24', td: 'hidden sm:table-cell w-24' } }
+      header: ({ column }) => sortHeader('Tipo', column),
+      enableSorting: true,
+      meta: {
+        class: {
+          th: 'w-24',
+          td: 'w-24'
+        }
+      }
     },
     {
       id: 'number',
       accessorFn: row => row.number || row.access_key,
-      header: 'Número',
-      meta: { class: { th: 'min-w-32', td: 'min-w-32' } }
+      header: ({ column }) => sortHeader('Documento', column),
+      enableHiding: false,
+      enableSorting: true,
+      sortingFn: (a, b) => {
+        const na = a.original.number
+        const nb = b.original.number
+        if (na != null && nb != null) {
+          const diff = Number(na) - Number(nb)
+          if (Number.isFinite(diff) && diff !== 0) return diff
+        }
+        return String(na ?? a.original.access_key).localeCompare(
+          String(nb ?? b.original.access_key),
+          'pt-BR',
+          { numeric: true, sensitivity: 'base' }
+        )
+      },
+      meta: {
+        class: {
+          th: 'min-w-28 w-[10%]',
+          td: 'min-w-28 w-[10%]'
+        }
+      }
     },
     {
-      id: 'fiscal_role',
-      accessorKey: 'fiscal_role',
-      header: 'Papel',
-      meta: { class: { th: 'hidden lg:table-cell w-28', td: 'hidden lg:table-cell w-28' } }
-    },
-    {
-      id: 'counterparty',
-      header: 'Contraparte',
-      meta: { class: { th: 'max-w-56 min-w-40 w-56', td: 'max-w-56 min-w-40 w-56' } }
+      id: 'issued_at',
+      accessorFn: row => row.issued_at || '',
+      header: ({ column }) => sortHeader('Emissão', column),
+      enableSorting: true,
+      meta: {
+        class: {
+          th: 'w-32',
+          td: 'w-32'
+        }
+      }
     },
     {
       accessorKey: 'competence',
-      header: 'Competência',
-      meta: { class: { th: 'hidden md:table-cell w-28', td: 'hidden md:table-cell w-28' } }
+      header: ({ column }) => sortHeader('Competência', column),
+      enableSorting: true,
+      meta: {
+        class: {
+          th: 'hidden md:table-cell w-32',
+          td: 'hidden md:table-cell w-32'
+        }
+      }
     },
     {
+      id: 'issuer',
+      accessorFn: row => row.issuer_name || row.issuer_cnpj || '',
+      // NF-e/NFC-e: emit · NFS-e: prestador
+      header: ({ column }) => sortHeader('Emitente / Prestador', column),
+      enableSorting: true,
+      meta: {
+        class: {
+          th: 'max-w-52 min-w-36 w-[18%]',
+          td: 'max-w-52 min-w-36 w-[18%]'
+        }
+      }
+    },
+    {
+      id: 'recipient',
+      accessorFn: row => row.taker_name || row.taker_cnpj || '',
+      // NF-e/NFC-e: dest · NFS-e: tomador
+      header: ({ column }) => sortHeader('Destinatário / Tomador', column),
+      enableSorting: true,
+      meta: {
+        class: {
+          th: 'max-w-52 min-w-36 w-[18%] hidden sm:table-cell',
+          td: 'max-w-52 min-w-36 w-[18%] hidden sm:table-cell'
+        }
+      }
+    },
+    {
+      id: 'service_amount',
       accessorKey: 'service_amount',
-      header: 'Valor',
-      meta: { class: { th: 'w-28', td: 'w-28' } }
+      header: ({ column }) => sortHeader('Valor', column),
+      enableSorting: true,
+      sortingFn: (a, b) => {
+        const va = Number(a.original.service_amount ?? 0)
+        const vb = Number(b.original.service_amount ?? 0)
+        return va - vb
+      },
+      meta: {
+        class: {
+          th: 'w-32',
+          td: 'w-32'
+        }
+      }
     },
     {
+      id: 'status',
       accessorKey: 'status',
-      header: 'Situação',
-      meta: { class: { th: 'w-28', td: 'w-28' } }
+      header: ({ column }) => sortHeader('Situação', column),
+      enableSorting: true,
+      sortingFn: (a, b) =>
+        documentSituationLabel(a.original).localeCompare(
+          documentSituationLabel(b.original),
+          'pt-BR',
+          { sensitivity: 'base' }
+        ),
+      meta: {
+        class: {
+          th: 'w-36',
+          td: 'w-36'
+        }
+      }
     },
     {
       id: 'actions',
       header: '',
-      meta: { class: { th: 'w-12', td: 'w-12' } }
+      enableHiding: false,
+      enableSorting: false,
+      cell: ({ row }) =>
+        h(
+          'div',
+          { class: 'text-right' },
+          h(
+            UDropdownMenu,
+            {
+              content: { align: 'end' },
+              items: getRowItems(row)
+            },
+            () =>
+              h(UButton, {
+                icon: 'i-lucide-ellipsis-vertical',
+                color: 'neutral',
+                variant: 'ghost',
+                square: true,
+                class: 'ml-auto',
+                'aria-label': `Ações de ${noteTitle(row.original)}`
+              })
+          )
+        ),
+      meta: {
+        class: {
+          th: 'w-12',
+          td: 'w-12'
+        }
+      }
     }
   )
+
   return cols
 })
+
+const selectedCount = computed(() =>
+  Object.values(rowSelection.value).filter(Boolean).length
+)
+
+const showPagination = computed(() => props.total > props.pageSize)
 
 defineShortcuts({
   arrowdown: () => {
@@ -168,6 +433,7 @@ defineShortcuts({
     <UAlert
       v-if="error"
       :color="notes.length ? 'warning' : 'error'"
+      variant="subtle"
       icon="i-lucide-wifi-off"
       :title="notes.length ? 'Falha ao atualizar documentos' : 'Não foi possível carregar documentos'"
       :description="error"
@@ -175,90 +441,94 @@ defineShortcuts({
       :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: () => emit('retry') }]"
     />
 
-    <!-- :ui idêntico a customers.vue do template -->
     <UTable
+      ref="table"
+      v-model:row-selection="rowSelection"
+      v-model:sorting="sorting"
       :data="notes"
       :columns="columns"
-      :loading="loading && !notes.length"
+      :loading="!!loading"
+      :get-row-id="(row: NfseNote) => row.access_key"
       class="shrink-0"
       :ui="NOTES_TABLE_UI"
     >
-      <template v-if="selectable" #select-cell="{ row }">
-        <UCheckbox
-          :model-value="selectedSet.has(row.original.access_key)"
-          :aria-label="`Selecionar ${noteTitle(row.original)}`"
-          @update:model-value="(v: boolean | 'indeterminate') => toggleKey(row.original.access_key, !!v)"
-          @click.stop
-        />
-      </template>
-
       <template #kind-cell="{ row }">
-        <UBadge color="neutral" variant="subtle" size="sm">
-          {{ row.original.kind_label || documentKindLabel(row.original.kind || 'NFSE') }}
-        </UBadge>
-      </template>
-
-      <template #direction-cell="{ row }">
         <UBadge
-          :color="row.original.direction === 'OUT' ? 'primary' : row.original.direction === 'IN' ? 'info' : 'neutral'"
-          variant="subtle"
+          color="neutral"
+          variant="soft"
           size="sm"
+          class="font-normal"
         >
-          {{ row.original.direction_label || row.original.direction || '—' }}
+          {{ row.original.kind_label || documentKindLabel(row.original.kind || 'NFSE') }}
         </UBadge>
       </template>
 
       <template #number-cell="{ row }">
         <button
           type="button"
-          class="block w-full truncate text-left font-medium text-highlighted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          class="block w-full truncate text-left font-medium tabular-nums text-highlighted hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           :class="selectedAccessKey === row.original.access_key ? 'text-primary' : ''"
-          :aria-label="row.original.access_key"
+          :title="row.original.access_key"
+          :aria-label="noteTitle(row.original)"
           :aria-current="selectedAccessKey === row.original.access_key ? 'true' : undefined"
           @click="emit('select', row.original)"
         >
-          {{ noteTitle(row.original) }}
+          {{ documentCellLabel(row.original) }}
         </button>
-        <p class="mt-0.5 text-xs text-muted sm:hidden">
-          {{ statusLabel(row.original.fiscal_role) }}
-        </p>
       </template>
 
-      <template #fiscal_role-cell="{ row }">
-        <UBadge
-          color="neutral"
-          variant="subtle"
-          size="sm"
-          class="capitalize"
-        >
-          {{ statusLabel(row.original.fiscal_role) }}
-        </UBadge>
+      <template #issued_at-cell="{ row }">
+        <span class="tabular-nums text-default">
+          {{ formatDate(row.original.issued_at) }}
+        </span>
       </template>
 
-      <template #counterparty-cell="{ row }">
+      <template #competence-cell="{ row }">
+        <span class="tabular-nums text-muted">
+          {{ row.original.competence || '—' }}
+        </span>
+      </template>
+
+      <template #issuer-cell="{ row }">
         <div class="min-w-0 max-w-full">
           <p
             class="truncate font-medium text-highlighted"
-            :title="counterpartyName(row.original) || formatCnpj(counterpartyCnpj(row.original)) || undefined"
+            :title="row.original.issuer_name || formatCnpj(row.original.issuer_cnpj) || undefined"
           >
-            {{
-              truncateText(counterpartyName(row.original), 34)
-                || formatCnpj(counterpartyCnpj(row.original))
-                || '—'
-            }}
+            {{ partyCell(row.original.issuer_name, row.original.issuer_cnpj).name }}
           </p>
           <p
-            v-if="counterpartyName(row.original) && counterpartyCnpj(row.original)"
-            class="truncate font-mono text-sm text-muted"
-            :title="formatCnpj(counterpartyCnpj(row.original)) || undefined"
+            v-if="partyCell(row.original.issuer_name, row.original.issuer_cnpj).cnpj"
+            class="truncate font-mono text-xs text-muted"
           >
-            {{ formatCnpj(counterpartyCnpj(row.original)) }}
+            {{ partyCell(row.original.issuer_name, row.original.issuer_cnpj).cnpj }}
+          </p>
+          <!-- Destinatário/Tomador sob o emitente no mobile (coluna some em xs) -->
+          <p
+            v-if="partyCell(row.original.taker_name, row.original.taker_cnpj).name !== '—'"
+            class="mt-0.5 truncate text-xs text-dimmed sm:hidden"
+            :title="row.original.taker_name || formatCnpj(row.original.taker_cnpj) || undefined"
+          >
+            → {{ partyCell(row.original.taker_name, row.original.taker_cnpj).name }}
           </p>
         </div>
       </template>
 
-      <template #competence-cell="{ row }">
-        <span class="tabular-nums">{{ row.original.competence || '—' }}</span>
+      <template #recipient-cell="{ row }">
+        <div class="min-w-0 max-w-full">
+          <p
+            class="truncate font-medium text-highlighted"
+            :title="row.original.taker_name || formatCnpj(row.original.taker_cnpj) || undefined"
+          >
+            {{ partyCell(row.original.taker_name, row.original.taker_cnpj).name }}
+          </p>
+          <p
+            v-if="partyCell(row.original.taker_name, row.original.taker_cnpj).cnpj"
+            class="truncate font-mono text-xs text-muted"
+          >
+            {{ partyCell(row.original.taker_name, row.original.taker_cnpj).cnpj }}
+          </p>
+        </div>
       </template>
 
       <template #service_amount-cell="{ row }">
@@ -268,46 +538,56 @@ defineShortcuts({
       </template>
 
       <template #status-cell="{ row }">
-        <AppStatusBadge
-          :status="row.original.status"
-          :label="row.original.status_label"
-        />
-      </template>
-
-      <template #actions-cell="{ row }">
-        <div class="text-right">
-          <UButton
-            icon="i-lucide-ellipsis-vertical"
-            color="neutral"
-            variant="ghost"
-            square
-            class="ml-auto"
-            :aria-label="`Abrir ${noteTitle(row.original)}`"
-            @click="emit('select', row.original)"
+        <div class="min-w-0">
+          <AppStatusBadge
+            :status="row.original.status"
+            :label="documentSituationLabel(row.original)"
           />
+          <p
+            v-if="xmlCompletenessHint(row.original)"
+            class="mt-0.5 truncate text-xs text-muted"
+            :title="xmlCompletenessHint(row.original) || undefined"
+          >
+            {{ xmlCompletenessHint(row.original) }}
+          </p>
         </div>
       </template>
     </UTable>
 
-    <!-- Footer customers.vue: contagem esquerda · ação direita -->
-    <div class="mt-auto flex items-center justify-between gap-3 border-t border-default pt-4">
+    <!-- Footer: contagem · linhas/página · UPagination (server-side) -->
+    <div class="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4">
       <div class="text-sm text-muted">
-        <template v-if="selectable">
-          {{ selectedCount }} de {{ notes.length }} linha(s) selecionada(s)
+        <template v-if="selectable && selectedCount">
+          {{ selectedCount }} de {{ notes.length }} nesta página selecionada(s)
+          <span v-if="total"> · {{ total }} no total</span>.
+        </template>
+        <template v-else-if="total">
+          {{ total }} documento(s)
+          <span v-if="notes.length && total > notes.length">
+            · página {{ page }} de {{ Math.max(1, Math.ceil(total / pageSize)) }}
+          </span>.
         </template>
         <template v-else>
-          {{ notes.length }} nota(s) carregada(s)
+          {{ notes.length }} documento(s) nesta página.
         </template>
       </div>
-      <div class="flex items-center gap-1.5">
-        <UButton
-          v-if="nextCursor"
-          :loading="loading"
-          color="neutral"
-          variant="outline"
-          size="sm"
-          label="Carregar mais"
-          @click="emit('loadMore')"
+      <div class="flex flex-wrap items-center gap-2">
+        <USelect
+          v-model="pageSizeModel"
+          :items="pageSizeItems"
+          value-key="value"
+          :disabled="loading"
+          class="w-36"
+          aria-label="Linhas por página"
+          :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
+        />
+        <UPagination
+          v-if="showPagination"
+          :page="page"
+          :items-per-page="pageSize"
+          :total="total"
+          :disabled="loading"
+          @update:page="(p: number) => emit('update:page', p)"
         />
       </div>
     </div>
@@ -315,7 +595,7 @@ defineShortcuts({
     <UEmpty
       v-if="!loading && !error && !notes.length"
       icon="i-lucide-file-search"
-      title="Nenhuma nota encontrada"
+      title="Nenhum documento encontrado"
       description="Revise os filtros ou aguarde a próxima sincronização do ADN."
     />
   </div>

@@ -24,7 +24,12 @@ import type {
   OperationsSummary,
   OutboundCaptureProfile,
   OutboundCaptureRun,
+  OutboundCapacityForecast,
+  OutboundCompetenceSummary,
+  OutboundDeadlineMetrics,
+  OutboundDeadlinePendingItem,
   OutboundKillSwitchStatus,
+  OutboundMonthlyReadiness,
   OutboundNumberState,
   OutboundSeriesCursor,
   PageMeta,
@@ -192,7 +197,7 @@ export function useApi() {
           method: 'POST',
           body
         }),
-      /** Import multipart de XML/ZIP de saídas (NF-e / NFC-e). */
+      /** Import multipart de XML/ZIP de saídas (NF-e / NFC-e) — síncrono legado. */
       import: (files: File[], clientId?: number | null) => {
         const body = new FormData()
         for (const file of files) {
@@ -216,7 +221,132 @@ export function useApi() {
             }>
           }
         }>('/api/v1/documents/import', { method: 'POST', body })
-      }
+      },
+      /** Lote assíncrono (ou síncrono se flag off) — preferir este caminho. */
+      importBatch: (files: File[], opts?: { clientId?: number | null, establishmentId?: number | null, idempotencyKey?: string }) => {
+        const body = new FormData()
+        for (const file of files) {
+          body.append('files[]', file)
+        }
+        if (opts?.clientId != null && opts.clientId > 0) {
+          body.append('client_id', String(opts.clientId))
+        }
+        if (opts?.establishmentId != null && opts.establishmentId > 0) {
+          body.append('establishment_id', String(opts.establishmentId))
+        }
+        if (opts?.idempotencyKey) {
+          body.append('idempotency_key', opts.idempotencyKey)
+        }
+        return client<{
+          data: {
+            public_id: string
+            status: string
+            imported_count?: number
+            duplicate_count?: number
+            failed_count?: number
+            unmatched_count?: number
+            item_count?: number
+            file_count?: number
+            created?: boolean
+          }
+        }>('/api/v1/documents/import-batches', { method: 'POST', body })
+      },
+      importBatches: (params?: { page?: number, per_page?: number }) =>
+        client<{ data: Array<Record<string, unknown>>, meta?: PageMeta }>('/api/v1/documents/import-batches', { query: params }),
+      importBatchGet: (publicId: string) =>
+        client<{ data: Record<string, unknown> }>(`/api/v1/documents/import-batches/${encodeURIComponent(publicId)}`),
+      importBatchItems: (publicId: string, params?: { page?: number, per_page?: number, status?: string }) =>
+        client<{ data: Array<Record<string, unknown>>, meta?: PageMeta }>(
+          `/api/v1/documents/import-batches/${encodeURIComponent(publicId)}/items`,
+          { query: params }
+        ),
+      importBatchRetryItem: (publicId: string, itemId: number) =>
+        client<{ data: Record<string, unknown> }>(
+          `/api/v1/documents/import-batches/${encodeURIComponent(publicId)}/items/${itemId}/retry`,
+          { method: 'POST' }
+        ),
+      importBatchCsvUrl: (publicId: string) =>
+        apiUrl(`/api/v1/documents/import-batches/${encodeURIComponent(publicId)}/export.csv`)
+    },
+    officeFiscal: {
+      get: () =>
+        client<{ data: { identity: Record<string, unknown> | null, credential: Record<string, unknown> | null } }>(
+          '/api/v1/office/fiscal-identity'
+        ),
+      upsertIdentity: (body: { cnpj: string, legal_name?: string }) =>
+        client<{ data: Record<string, unknown> }>('/api/v1/office/fiscal-identity', { method: 'POST', body }),
+      uploadCredential: (pfx: File, password: string) => {
+        const body = new FormData()
+        body.append('pfx', pfx)
+        body.append('password', password)
+        return client<{ data: Record<string, unknown> }>('/api/v1/office/fiscal-identity/credential', {
+          method: 'POST',
+          body
+        })
+      },
+      revokeCredential: (id: number) =>
+        client<{ data: Record<string, unknown> }>(`/api/v1/office/fiscal-identity/credentials/${id}/revoke`, {
+          method: 'POST'
+        })
+    },
+    quarantine: {
+      list: (params?: { reason?: string, limit?: number }) =>
+        client<{ data: Array<Record<string, unknown>> }>('/api/v1/operations/quarantine', { query: params }),
+      resolve: (id: number, body: { resolution_status: 'RESOLVED' | 'DISMISSED', resolution_code?: string, resolution_notes?: string }) =>
+        client<{ data: Record<string, unknown> }>(`/api/v1/operations/quarantine/${id}/resolve`, {
+          method: 'POST',
+          body
+        })
+    },
+    officeAutXml: {
+      overview: () =>
+        client<{
+          data: {
+            identity: Record<string, unknown> | null
+            office_cnpj: string | null
+            cursor: Record<string, unknown> | null
+            stream: {
+              stream_ready: boolean
+              stream_reason: string | null
+              quiet_hours: number
+              activated_at: string | null
+              ready_at: string | null
+            }
+            coverage: Record<string, unknown>
+            enrollments: Array<Record<string, unknown>>
+            checklist?: Record<string, unknown>
+          }
+        }>('/api/v1/office/autxml'),
+      cursor: () =>
+        client<{
+          data: {
+            cursor: Record<string, unknown> | null
+            cursors?: Array<Record<string, unknown>>
+            stream: {
+              stream_ready: boolean
+              stream_reason: string | null
+              quiet_hours: number
+              activated_at: string | null
+              ready_at: string | null
+            }
+            recent_runs: Array<Record<string, unknown>>
+          }
+        }>('/api/v1/office/autxml/cursor'),
+      enroll: (establishmentId: number) =>
+        client<{ data: Record<string, unknown> }>('/api/v1/office/autxml/enrollments', {
+          method: 'POST',
+          body: { establishment_id: establishmentId }
+        }),
+      confirm: (enrollmentId: number) =>
+        client<{ data: Record<string, unknown> }>(
+          `/api/v1/office/autxml/enrollments/${enrollmentId}/confirm`,
+          { method: 'POST' }
+        ),
+      inactivate: (enrollmentId: number) =>
+        client<{ data: Record<string, unknown> }>(
+          `/api/v1/office/autxml/enrollments/${enrollmentId}/inactivate`,
+          { method: 'POST' }
+        )
     },
     /** @deprecated Preferir `documents` — alias de compat. */
     notes: {
@@ -369,6 +499,55 @@ export function useApi() {
             method: 'POST',
             body
           })
+      },
+      deadline: {
+        competence: (competence: string) =>
+          client<{ data: OutboundCompetenceSummary }>('/api/v1/outbound/deadline/competence', {
+            query: { competence }
+          }),
+        capacity: (competence: string) =>
+          client<{ data: OutboundCapacityForecast }>('/api/v1/outbound/deadline/capacity', {
+            query: { competence }
+          }),
+        pending: (params?: {
+          competence?: string
+          urgency_band?: string
+          model?: string
+          root_cnpj?: string
+          client_id?: number
+          source?: string
+          limit?: number
+        }) =>
+          client<{ data: OutboundDeadlinePendingItem[] }>('/api/v1/outbound/deadline/pending', {
+            query: params
+          }),
+        contingencyBatch: (competence?: string) =>
+          client<{ data: Array<Record<string, unknown>> }>('/api/v1/outbound/deadline/contingency-batch', {
+            query: competence ? { competence } : undefined
+          }),
+        metrics: (competence?: string) =>
+          client<{ data: OutboundDeadlineMetrics }>('/api/v1/outbound/deadline/metrics', {
+            query: competence ? { competence } : undefined
+          }),
+        confirmPartial: (body: { competence: string, notes?: string }) =>
+          client<{ data: OutboundMonthlyReadiness }>('/api/v1/outbound/deadline/confirm-partial', {
+            method: 'POST',
+            body
+          }),
+        exportMonthly: (body: { competence: string, include_events?: boolean, notes?: string }) =>
+          client<{
+            data: {
+              export: ExportJob
+              readiness: OutboundMonthlyReadiness
+              has_manifest: boolean
+              completeness_scope: string
+            }
+          }>('/api/v1/outbound/deadline/export', { method: 'POST', body }),
+        advanceTarget: (body: { competence: string, target_at: string }) =>
+          client<{ data: { competence: string, target_at: string, due_at: string, updated_rows: number } }>(
+            '/api/v1/outbound/deadline/advance-target',
+            { method: 'POST', body }
+          )
       }
     },
     twoFactor: {

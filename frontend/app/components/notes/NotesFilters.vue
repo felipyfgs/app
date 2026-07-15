@@ -53,19 +53,6 @@ const establishmentItems = computed(() => [
 
 const kindItems = documentKindFilterItems('Todos os tipos')
 
-const roleItems = [
-  selectAllItem('Papel'),
-  { label: 'Emitente', value: 'ISSUER' },
-  { label: 'Tomador', value: 'TAKER' },
-  { label: 'Intermediário', value: 'INTERMEDIARY' }
-]
-
-const directionItems = [
-  selectAllItem('Todas'),
-  { label: 'Entradas', value: 'IN' },
-  { label: 'Saídas', value: 'OUT' }
-]
-
 /** Grupos operacionais — API expande CANCELLED/AUTHORIZED/UNKNOWN. */
 const statusItems = [
   selectAllItem('Situação'),
@@ -79,7 +66,7 @@ const hasClient = computed(() => filters.value.client_id !== FILTER_ALL && !!fil
 const searchPlaceholder = computed(() =>
   props.view === 'client'
     ? 'Filtrar por cliente, CNPJ…'
-    : 'Filtrar por número, nome, CNPJ ou chave…'
+    : 'Buscar número, emitente, destinatário, CNPJ ou chave…'
 )
 
 const activeCount = computed(() => {
@@ -87,10 +74,9 @@ const activeCount = computed(() => {
   const f = filters.value
   if (f.q) n++
   if (f.kind && f.kind !== FILTER_ALL) n++
-  if (f.direction && f.direction !== FILTER_ALL) n++
+  // direction / fiscal_role saíram da grade: recorte por CNPJ emit/dest (padrão leiaute)
   if (f.client_id && f.client_id !== FILTER_ALL) n++
   if (f.establishment_id && f.establishment_id !== FILTER_ALL) n++
-  if (f.fiscal_role && f.fiscal_role !== FILTER_ALL) n++
   if (f.status && f.status !== FILTER_ALL) n++
   if (f.issuer_cnpj) n++
   if (f.taker_cnpj) n++
@@ -157,14 +143,6 @@ const activeCount = computed(() => {
           aria-label="Filtrar por tipo de documento"
         />
       </UFormField>
-      <UFormField label="Direção">
-        <USelect
-          v-model="filters.direction"
-          :items="directionItems"
-          class="w-full"
-          aria-label="Filtrar por entrada ou saída"
-        />
-      </UFormField>
       <UFormField label="Cliente">
         <USelect
           v-model="filters.client_id"
@@ -184,17 +162,30 @@ const activeCount = computed(() => {
           aria-label="Filtrar por estabelecimento"
         />
       </UFormField>
-      <UFormField label="Papel">
-        <USelect v-model="filters.fiscal_role" :items="roleItems" class="w-full" />
-      </UFormField>
       <UFormField label="Situação">
         <USelect v-model="filters.status" :items="statusItems" class="w-full" />
       </UFormField>
-      <UFormField label="Emitente">
-        <UInput v-model="filters.issuer_cnpj" class="w-full font-mono" />
+      <UFormField
+        label="CNPJ emitente / prestador"
+        hint="NF-e/NFC-e: emit · NFS-e: prestador"
+      >
+        <UInput
+          v-model="filters.issuer_cnpj"
+          class="w-full font-mono"
+          placeholder="Somente dígitos ou formatado"
+          aria-label="Filtrar por CNPJ do emitente ou prestador"
+        />
       </UFormField>
-      <UFormField label="Tomador">
-        <UInput v-model="filters.taker_cnpj" class="w-full font-mono" />
+      <UFormField
+        label="CNPJ destinatário / tomador"
+        hint="NF-e/NFC-e: dest · NFS-e: tomador (toma)"
+      >
+        <UInput
+          v-model="filters.taker_cnpj"
+          class="w-full font-mono"
+          placeholder="Somente dígitos ou formatado"
+          aria-label="Filtrar por CNPJ do destinatário ou tomador"
+        />
       </UFormField>
       <UFormField label="Competência">
         <UInput v-model="filters.competence" class="w-full" placeholder="AAAA-MM" />

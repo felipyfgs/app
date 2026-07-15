@@ -23,14 +23,33 @@ const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 
+/** Sentinela USelect — Reka UI proíbe SelectItem com value "". */
+const STATUS_ALL = 'all'
+
 const loading = ref(true)
 const error = ref<string | null>(null)
 const channel = ref<SvrsNfceChannelSummary | null>(null)
 const profileSummary = ref<SvrsNfceProfileSummary | null>(null)
 const recoveries = ref<SvrsNfceRecovery[]>([])
 const meta = ref({ current_page: 1, last_page: 1, total: 0 })
-const statusFilter = ref<string>((route.query.svrs_status as string) || '')
+const statusFilter = ref<string>(
+  (typeof route.query.svrs_status === 'string' && route.query.svrs_status)
+    ? route.query.svrs_status
+    : STATUS_ALL
+)
 const busyId = ref<number | null>(null)
+
+const statusFilterItems = [
+  { label: 'Todos', value: STATUS_ALL },
+  { label: 'Elegível', value: 'ELIGIBLE' },
+  { label: 'Na fila', value: 'QUEUED' },
+  { label: 'Em recuperação', value: 'RUNNING' },
+  { label: 'Retry', value: 'RETRY_SCHEDULED' },
+  { label: 'Capturado', value: 'CAPTURED' },
+  { label: 'Bloqueado', value: 'BLOCKED' },
+  { label: 'Indisponível', value: 'NOT_AVAILABLE_VISIBLE' },
+  { label: 'Fallback', value: 'RESOLVED_BY_OTHER_SOURCE' }
+] as const
 const killReason = ref('')
 const killBusy = ref(false)
 const breakerReason = ref('')
@@ -96,7 +115,9 @@ async function load() {
     const [sum, list] = await Promise.all([
       api.outbound.svrsNfce.summary(),
       api.outbound.svrsNfce.recoveries({
-        status: statusFilter.value || undefined,
+        status: statusFilter.value && statusFilter.value !== STATUS_ALL
+          ? statusFilter.value
+          : undefined,
         client_id: props.clientId,
         profile_id: profile65.value?.id,
         page,
@@ -131,7 +152,9 @@ async function applyFilter() {
   await router.replace({
     query: {
       ...route.query,
-      svrs_status: statusFilter.value || undefined,
+      svrs_status: statusFilter.value && statusFilter.value !== STATUS_ALL
+        ? statusFilter.value
+        : undefined,
       svrs_page: undefined
     }
   })
@@ -337,17 +360,7 @@ watch(
         <UFormField label="Status" class="min-w-48">
           <USelect
             v-model="statusFilter"
-            :items="[
-              { label: 'Todos', value: '' },
-              { label: 'Elegível', value: 'ELIGIBLE' },
-              { label: 'Na fila', value: 'QUEUED' },
-              { label: 'Em recuperação', value: 'RUNNING' },
-              { label: 'Retry', value: 'RETRY_SCHEDULED' },
-              { label: 'Capturado', value: 'CAPTURED' },
-              { label: 'Bloqueado', value: 'BLOCKED' },
-              { label: 'Indisponível', value: 'NOT_AVAILABLE_VISIBLE' },
-              { label: 'Fallback', value: 'RESOLVED_BY_OTHER_SOURCE' }
-            ]"
+            :items="[...statusFilterItems]"
             data-testid="svrs-nfce-status-filter"
           />
         </UFormField>

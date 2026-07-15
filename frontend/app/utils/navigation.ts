@@ -40,8 +40,10 @@ export function mainDestinations(
   const clientsOpen = !path || path === '/clients' || path.startsWith('/clients/')
   const operationsOpen = !path
     || path.startsWith('/exports')
+    || path.startsWith('/closing')
     || path.startsWith('/syncs')
     || path.startsWith('/health')
+    || path.startsWith('/docs/imports')
 
   const items: NavDestination[] = [
     {
@@ -99,10 +101,22 @@ export function mainDestinations(
           to: '/exports'
         },
         {
+          id: 'closing',
+          label: 'Fechamento',
+          icon: 'i-lucide-calendar-clock',
+          to: '/closing'
+        },
+        {
           id: 'syncs',
           label: 'Sincronizações',
           icon: 'i-lucide-refresh-cw',
           to: '/syncs'
+        },
+        {
+          id: 'imports',
+          label: 'Importações',
+          icon: 'i-lucide-upload',
+          to: '/docs/imports'
         }
       ]
     }

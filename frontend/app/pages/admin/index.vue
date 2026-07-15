@@ -11,6 +11,17 @@ const backup = ref<BackupStatus | null>(null)
 const backupLoading = ref(false)
 const backupError = ref<string | null>(null)
 
+const fiscalIdentity = ref<Record<string, unknown> | null>(null)
+const fiscalCredential = ref<Record<string, unknown> | null>(null)
+const fiscalLoading = ref(false)
+const fiscalError = ref<string | null>(null)
+const fiscalCnpj = ref('')
+const fiscalLegalName = ref('')
+const fiscalPfx = ref<File | null>(null)
+const fiscalPassword = ref('')
+const fiscalSaving = ref(false)
+const toast = useToast()
+
 async function loadBackup() {
   if (!allowed.value) {
     backup.value = null
@@ -28,9 +39,81 @@ async function loadBackup() {
   }
 }
 
+async function loadFiscal() {
+  if (!allowed.value) {
+    fiscalIdentity.value = null
+    fiscalCredential.value = null
+    return
+  }
+  fiscalLoading.value = true
+  try {
+    const res = await api.officeFiscal.get()
+    fiscalIdentity.value = res.data.identity
+    fiscalCredential.value = res.data.credential
+    fiscalError.value = null
+    if (res.data.identity?.cnpj) {
+      fiscalCnpj.value = String(res.data.identity.cnpj)
+    }
+    if (res.data.identity?.legal_name) {
+      fiscalLegalName.value = String(res.data.identity.legal_name)
+    }
+  } catch (caught) {
+    fiscalError.value = apiErrorMessage(caught, 'Não foi possível carregar a identidade fiscal do escritório.')
+  } finally {
+    fiscalLoading.value = false
+  }
+}
+
+async function saveIdentity() {
+  if (fiscalSaving.value) return
+  fiscalSaving.value = true
+  try {
+    const res = await api.officeFiscal.upsertIdentity({
+      cnpj: fiscalCnpj.value,
+      legal_name: fiscalLegalName.value || undefined
+    })
+    fiscalIdentity.value = res.data
+    toast.add({ title: 'Identidade fiscal salva', color: 'success' })
+    await loadFiscal()
+  } catch (caught) {
+    toast.add({ title: apiErrorMessage(caught, 'Falha ao salvar identidade.'), color: 'error' })
+  } finally {
+    fiscalSaving.value = false
+  }
+}
+
+async function uploadOfficeA1() {
+  if (fiscalSaving.value || !fiscalPfx.value) return
+  fiscalSaving.value = true
+  try {
+    await api.officeFiscal.uploadCredential(fiscalPfx.value, fiscalPassword.value)
+    fiscalPassword.value = ''
+    fiscalPfx.value = null
+    toast.add({ title: 'A1 do escritório atualizado (sem recuperação de PFX)', color: 'success' })
+    await loadFiscal()
+  } catch (caught) {
+    toast.add({ title: apiErrorMessage(caught, 'Falha ao enviar A1.'), color: 'error' })
+  } finally {
+    fiscalSaving.value = false
+  }
+}
+
+function onPfxChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  fiscalPfx.value = input.files?.[0] ?? null
+}
+
+function copyCnpj() {
+  const c = String(fiscalIdentity.value?.cnpj || fiscalCnpj.value || '')
+  if (!c) return
+  void navigator.clipboard.writeText(c)
+  toast.add({ title: 'CNPJ copiado', color: 'success' })
+}
+
 watch(allowed, (ok) => {
   if (ok) {
     void loadBackup()
+    void loadFiscal()
   }
 }, { immediate: true })
 </script>
@@ -109,7 +192,112 @@ watch(allowed, (ok) => {
 
           <UPageCard
             variant="naked"
-            title="Certificados A1"
+            title="Identidade fiscal do escritório"
+            description="CNPJ do contador para autXML DistDFe e A1 do escritório (ADMIN + 2FA)."
+            data-testid="admin-office-fiscal"
+          />
+          <UPageCard variant="subtle">
+            <div v-if="fiscalLoading" class="space-y-2" role="status">
+              <USkeleton class="h-4 w-1/2" />
+              <USkeleton class="h-4 w-2/3" />
+            </div>
+            <UAlert
+              v-else-if="fiscalError"
+              color="warning"
+              icon="i-lucide-wifi-off"
+              title="Identidade indisponível"
+              :description="fiscalError"
+              :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: loadFiscal }]"
+            />
+            <div v-else class="space-y-4 text-sm">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-muted">CNPJ ativo:</span>
+                <code class="rounded bg-elevated px-2 py-0.5 text-highlighted">
+                  {{ fiscalIdentity?.cnpj || '—' }}
+                </code>
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-copy"
+                  label="Copiar"
+                  :disabled="!fiscalIdentity?.cnpj"
+                  @click="copyCnpj"
+                />
+              </div>
+              <p class="text-muted">
+                A1 do escritório:
+                <UBadge
+                  class="ml-1"
+                  :color="fiscalCredential ? 'success' : 'neutral'"
+                  variant="subtle"
+                >
+                  {{ fiscalCredential ? 'Configurado' : 'Ausente' }}
+                </UBadge>
+                <span v-if="fiscalCredential?.valid_to" class="ml-2 text-xs">
+                  válido até {{ formatDateTime(String(fiscalCredential.valid_to)) }}
+                </span>
+              </p>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <UFormField label="CNPJ do escritório">
+                  <UInput v-model="fiscalCnpj" placeholder="14 caracteres" autocomplete="off" />
+                </UFormField>
+                <UFormField label="Razão social (opcional)">
+                  <UInput v-model="fiscalLegalName" autocomplete="organization" />
+                </UFormField>
+              </div>
+              <UButton
+                color="primary"
+                label="Salvar identidade"
+                :loading="fiscalSaving"
+                :disabled="!fiscalCnpj"
+                @click="saveIdentity"
+              />
+              <USeparator />
+              <p class="text-xs text-muted">
+                Upload de A1: a senha só trafega nesta requisição; não há download nem recuperação de PFX/PEM.
+              </p>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <UFormField label="Arquivo PFX/P12">
+                  <input
+                    type="file"
+                    accept=".pfx,.p12,application/x-pkcs12"
+                    class="block w-full text-sm"
+                    @change="onPfxChange"
+                  >
+                </UFormField>
+                <UFormField label="Senha do PFX">
+                  <UInput
+                    v-model="fiscalPassword"
+                    type="password"
+                    autocomplete="new-password"
+                  />
+                </UFormField>
+              </div>
+              <UButton
+                color="neutral"
+                variant="outline"
+                label="Substituir A1 do escritório"
+                :loading="fiscalSaving"
+                :disabled="!fiscalPfx || !fiscalPassword"
+                @click="uploadOfficeA1"
+              />
+            </div>
+          </UPageCard>
+
+          <UPageCard
+            variant="naked"
+            title="Onboarding autXML por estabelecimento"
+            description="Checklist PENDING / CONFIRMED / INACTIVE · CNPJ do escritório no ERP · NF-e 55 · não retroativo · quiet mínimo."
+            data-testid="admin-autxml-onboarding"
+          />
+          <UPageCard variant="subtle" data-testid="admin-autxml-card">
+            <OfficeAutXmlOnboardingChecklist />
+          </UPageCard>
+
+          <UPageCard
+            variant="naked"
+            title="Certificados A1 dos clientes"
             description="Gerenciados no detalhe de cada cliente."
           />
           <UPageCard variant="subtle">

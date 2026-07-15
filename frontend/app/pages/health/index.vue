@@ -60,7 +60,13 @@ const typeItems = [
   { label: 'Recuperação MA expirada', value: 'outbound_retrieval_expired' },
   { label: 'XML divergente MA', value: 'outbound_xml_divergent' },
   { label: 'Autorização inesperada MA', value: 'outbound_authorized_unexpected' },
-  { label: 'Cancelamento falho MA', value: 'outbound_cancel_failed' }
+  { label: 'Cancelamento falho MA', value: 'outbound_cancel_failed' },
+  { label: 'Quarentena: emitente sem vínculo', value: 'quarantine_unmatched_issuer' },
+  { label: 'Quarentena: tag autXML', value: 'quarantine_autxml_tag' },
+  { label: 'Quarentena: evento órfão', value: 'quarantine_orphan_event' },
+  { label: 'Quarentena: bytes conflitantes', value: 'quarantine_bytes_diverge' },
+  { label: 'Quarentena: schema incompleto', value: 'quarantine_schema' },
+  { label: 'Quarentena: outros', value: 'quarantine_other' }
 ]
 
 const killSwitch = ref<{

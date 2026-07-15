@@ -32,6 +32,7 @@ const _useDashboard = () => {
     'g-n': () => router.push('/docs'),
     'g-d': () => router.push('/docs'),
     'g-e': () => router.push('/exports'),
+    'g-f': () => router.push('/closing'),
     'g-s': () => router.push('/syncs'),
     'g-o': () => router.push('/health'),
     'g-a': () => {

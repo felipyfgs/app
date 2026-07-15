@@ -18,7 +18,8 @@ export const DOCUMENT_KINDS: DocumentKindMeta[] = [
   { code: 'NFSE', label: 'NFS-e', captureAvailable: true },
   // NF-e DistDFe operacional (flag SEFAZ_DISTDFE_ENABLED no backend).
   { code: 'NFE', label: 'NF-e', sefazModel: '55', captureAvailable: true },
-  { code: 'NFCE', label: 'NFC-e', sefazModel: '65', captureAvailable: false },
+  // NFC-e: não entra DistDFe de entrada; saída via Captura de saídas / import / recovery SVRS.
+  { code: 'NFCE', label: 'NFC-e', sefazModel: '65', captureAvailable: true },
   { code: 'CTE', label: 'CT-e', sefazModel: '57', captureAvailable: false }
 ]
 
@@ -44,9 +45,7 @@ export function documentKindFilterItems(allLabel = 'Todos os tipos') {
   return [
     { label: allLabel, value: 'all' },
     ...DOCUMENT_KINDS.map(k => ({
-      label: k.code === 'NFCE'
-        ? `${k.label} (não aplicável)`
-        : (k.captureAvailable ? k.label : `${k.label} (em breve)`),
+      label: k.captureAvailable ? k.label : `${k.label} (em breve)`,
       value: k.code
     }))
   ]

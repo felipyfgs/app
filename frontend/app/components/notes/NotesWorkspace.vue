@@ -39,6 +39,17 @@ const establishments = ref<Establishment[]>([])
 const insights = ref<NotesInsights | null>(null)
 const insightsLoading = ref(false)
 const nextCursor = ref<string | null>(null)
+/** Total no escopo dos filtros (meta.total da API). */
+const listTotal = ref(0)
+/** Linhas por página (enviado como `limit`; API 1–100). */
+const pageSize = ref(25)
+/** Página atual (1-based) — UPagination do template. */
+const currentPage = ref(1)
+/**
+ * Cursor de início de cada página conhecida.
+ * Página 1 = null; página N+1 = next_cursor retornado ao carregar N.
+ */
+const pageCursors = ref<Record<number, string | null>>({ 1: null })
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const loadingFilters = ref(false)
@@ -90,9 +101,8 @@ const viewLinks = computed((): NavigationMenuItem[][] => [[
 
 /**
  * Disponibilidade de captura do tipo filtrado.
- * - NFSE / NFE: operacionais nesta instância (não mostrar aviso de “em breve”).
- * - Linha da API só confirma true; `false`/ausente não deve sobrescrever o stack local
- *   (evita alerta falso quando a flag SEFAZ ainda não veio no payload).
+ * - NFSE / NFE / NFCE: operacionais (NFC-e = saída/import, não DistDFe entrada).
+ * - Linha da API só confirma true; `false`/ausente não deve sobrescrever o stack local.
  */
 const kindCaptureAvailable = computed(() => {
   if (filters.kind === FILTER_ALL) return true
@@ -103,20 +113,22 @@ const kindCaptureAvailable = computed(() => {
 
 const kindCaptureUnavailableHint = computed(() => {
   const kind = filters.kind
-  if (kind === 'NFCE') {
-    return 'NFC-e não entra na captura DistDFe de entrada do escritório (modelo 65). Use importação de XML se precisar de saídas.'
-  }
   if (kind === 'CTE') {
     return 'CT-e DistDFe ainda não está ligado nesta instância (SEFAZ_CTE_ENABLED).'
   }
   return 'A fonte SEFAZ correspondente ainda não está habilitada nesta instância.'
 })
 
-const kindExportAvailable = computed(() => filters.kind === FILTER_ALL || filters.kind === 'NFSE' || filters.kind === 'NFE')
+const kindExportAvailable = computed(() =>
+  filters.kind === FILTER_ALL
+  || filters.kind === 'NFSE'
+  || filters.kind === 'NFE'
+  || filters.kind === 'NFCE'
+)
 
 function queryParams(cursor?: string | null): NoteListParams {
   return {
-    limit: 25,
+    limit: pageSize.value,
     ...(isActiveFilterValue(filters.q) ? { q: filters.q } : {}),
     ...(isActiveFilterValue(filters.kind) ? { kind: filters.kind } : {}),
     ...(isActiveFilterValue(filters.direction) ? { direction: filters.direction as NoteListParams['direction'] } : {}),
@@ -132,6 +144,13 @@ function queryParams(cursor?: string | null): NoteListParams {
     ...(filters.missing_party_name === '1' ? { missing_party_name: 1 } : {}),
     ...(cursor ? { cursor } : {})
   }
+}
+
+function resetPagination() {
+  currentPage.value = 1
+  pageCursors.value = { 1: null }
+  nextCursor.value = null
+  listTotal.value = 0
 }
 
 /** Params de insights: sem cursor/limit; mantém escopo de filtro. */
@@ -188,17 +207,63 @@ async function onTriageSelect(queue: NotesTriageQueue) {
   await reloadActive()
 }
 
-async function load(reset = false) {
-  const cursorForRequest = reset ? null : nextCursor.value
-  if (reset) {
-    nextCursor.value = null
-    selectedKeys.value = []
-  }
+/**
+ * Carrega uma página do catálogo (substitui a grade — não acumula).
+ * API é cursor-based; ao pular páginas, descobre cursores intermediários.
+ */
+async function loadPage(page: number): Promise<void> {
+  const target = Math.max(1, page)
   loading.value = true
   try {
+    // Preenche pageCursors até a página alvo (salto na UPagination).
+    let guard = 0
+    while (pageCursors.value[target] === undefined && guard < 200) {
+      guard += 1
+      const known = Object.keys(pageCursors.value).map(Number).sort((a, b) => a - b)
+      const last = known[known.length - 1] ?? 1
+      if (last >= target) break
+      if (pageCursors.value[last + 1] !== undefined) continue
+
+      const startCursor = last === 1 ? null : pageCursors.value[last]
+      if (last !== 1 && !startCursor) break
+
+      const probe = await api.documents.list(queryParams(startCursor))
+      listTotal.value = probe.meta.total ?? listTotal.value
+      if (probe.meta.next_cursor) {
+        pageCursors.value = { ...pageCursors.value, [last + 1]: probe.meta.next_cursor }
+      } else {
+        notes.value = probe.data
+        nextCursor.value = null
+        currentPage.value = last
+        loadError.value = null
+        await syncRouteQuery()
+        return
+      }
+    }
+
+    const cursorForRequest = target === 1 ? null : pageCursors.value[target]
+    if (target !== 1 && !cursorForRequest) {
+      // Página fora do alcance — recua para a última conhecida.
+      const known = Object.keys(pageCursors.value).map(Number)
+      const fallback = known.length ? Math.max(...known) : 1
+      if (fallback !== target) {
+        await loadPage(fallback)
+      }
+      return
+    }
+
     const response = await api.documents.list(queryParams(cursorForRequest))
-    notes.value = reset ? response.data : [...notes.value, ...response.data]
+    notes.value = response.data
     nextCursor.value = response.meta.next_cursor
+    listTotal.value = response.meta.total
+      ?? ((target - 1) * pageSize.value + response.data.length)
+    if (response.meta.next_cursor) {
+      pageCursors.value = {
+        ...pageCursors.value,
+        [target + 1]: response.meta.next_cursor
+      }
+    }
+    currentPage.value = target
     loadError.value = null
     await syncRouteQuery()
   } catch (caught) {
@@ -209,18 +274,26 @@ async function load(reset = false) {
   }
 }
 
-async function loadMore() {
-  if (!nextCursor.value) return
-  loading.value = true
-  try {
-    const response = await api.documents.list(queryParams(nextCursor.value))
-    notes.value = [...notes.value, ...response.data]
-    nextCursor.value = response.meta.next_cursor
-  } catch (caught) {
-    toast.add({ title: apiErrorMessage(caught, 'Erro ao carregar mais documentos.'), color: 'error' })
-  } finally {
-    loading.value = false
+async function load(reset = false) {
+  if (reset) {
+    resetPagination()
+    selectedKeys.value = []
   }
+  await loadPage(reset ? 1 : currentPage.value)
+}
+
+async function onPageChange(page: number) {
+  if (page === currentPage.value || loading.value) return
+  selectedKeys.value = []
+  await loadPage(page)
+}
+
+async function onPageSizeChange(size: number) {
+  const next = Math.min(100, Math.max(1, Math.floor(size)))
+  if (next === pageSize.value || loading.value) return
+  pageSize.value = next
+  selectedKeys.value = []
+  await load(true)
 }
 
 async function loadByClient() {
@@ -296,10 +369,48 @@ function buildExportFiltersFromCatalog(): ExportFilters {
   return catalogToExportFilters(filters) as ExportFilters
 }
 
+const importDragOver = ref(false)
+const importTotalBytes = computed(() => importFiles.value.reduce((s, f) => s + f.size, 0))
+const importLimitExceeded = computed(() =>
+  importFiles.value.length > 50 || importTotalBytes.value > 20 * 1024 * 1024
+)
+
+function setImportFiles(list: File[]) {
+  importFiles.value = list.slice(0, 50)
+}
+
+function onImportFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  setImportFiles(input.files ? Array.from(input.files) : [])
+}
+
+function onImportDrop(event: DragEvent) {
+  event.preventDefault()
+  importDragOver.value = false
+  const files = event.dataTransfer?.files
+  if (!files?.length) return
+  setImportFiles(Array.from(files).filter(f =>
+    /\.(xml|zip)$/i.test(f.name) || f.type.includes('xml') || f.type.includes('zip')
+  ))
+}
+
+function removeImportFile(index: number) {
+  importFiles.value = importFiles.value.filter((_, i) => i !== index)
+}
+
 async function submitImport() {
   if (!canImportDocuments.value || importing.value) return
   if (!importFiles.value.length) {
     toast.add({ title: 'Selecione ao menos um XML ou ZIP', color: 'warning' })
+    return
+  }
+  if (importLimitExceeded.value) {
+    toast.add({
+      title: importFiles.value.length > 50
+        ? 'Máximo de 50 arquivos por lote'
+        : 'Total compactado excede 20 MiB',
+      color: 'warning'
+    })
     return
   }
   importing.value = true
@@ -307,25 +418,54 @@ async function submitImport() {
     const clientId = isActiveFilterValue(importClientId.value)
       ? Number(importClientId.value)
       : (isActiveFilterValue(filters.client_id) ? Number(filters.client_id) : null)
-    const res = await api.documents.import(importFiles.value, clientId)
-    const r = res.data
+    const res = await api.documents.importBatch(importFiles.value, { clientId })
+    const r = res.data as Record<string, unknown>
+    const status = String(r.status || '')
+    const batchId = String(r.public_id || r.id || '')
+    const imported = Number(r.imported_count ?? 0)
+    const failed = Number(r.failed_count ?? 0) + Number(r.unmatched_count ?? 0)
     toast.add({
-      title: `Importação: ${r.imported} ok, ${r.skipped} duplicados, ${r.errors} erros`,
-      color: r.errors && !r.imported ? 'error' : 'success'
+      title: status
+        ? `Lote ${batchId.slice(0, 8)}… · ${status}`
+        : `Importação: ${imported} ok, ${failed} falhas`,
+      description: 'Progresso continua após fechar este modal. Acompanhe em Importações.',
+      color: failed && !imported ? 'error' : 'success',
+      actions: batchId
+        ? [{
+            label: 'Abrir lote',
+            onClick: async () => {
+              await navigateTo(`/docs/imports/${encodeURIComponent(batchId)}`)
+            }
+          }]
+        : undefined
     })
     importOpen.value = false
     importFiles.value = []
-    await reloadActive()
+    if (batchId && !r.is_terminal) {
+      await navigateTo(`/docs/imports/${encodeURIComponent(batchId)}`)
+    } else {
+      await reloadActive()
+    }
   } catch (caught) {
-    toast.add({ title: apiErrorMessage(caught, 'Falha ao importar XML.'), color: 'error' })
+    try {
+      const clientId = isActiveFilterValue(importClientId.value)
+        ? Number(importClientId.value)
+        : (isActiveFilterValue(filters.client_id) ? Number(filters.client_id) : null)
+      const res = await api.documents.import(importFiles.value, clientId)
+      const r = res.data
+      toast.add({
+        title: `Importação: ${r.imported} ok, ${r.skipped} duplicados, ${r.errors} erros`,
+        color: r.errors && !r.imported ? 'error' : 'success'
+      })
+      importOpen.value = false
+      importFiles.value = []
+      await reloadActive()
+    } catch {
+      toast.add({ title: apiErrorMessage(caught, 'Falha ao importar XML.'), color: 'error' })
+    }
   } finally {
     importing.value = false
   }
-}
-
-function onImportFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  importFiles.value = input.files ? Array.from(input.files) : []
 }
 
 async function exportCurrentFilter() {
@@ -453,11 +593,21 @@ onMounted(async () => {
             />
           </UTooltip>
           <UButton
+            to="/docs/imports"
+            icon="i-lucide-history"
+            label="Histórico"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            aria-label="Histórico de lotes de importação"
+          />
+          <UButton
             v-if="canImportDocuments && view === 'document'"
             icon="i-lucide-upload"
             label="Importar saídas"
             color="neutral"
             variant="outline"
+            aria-label="Importar XML ou ZIP de saídas"
             @click="() => { importOpen = true }"
           />
           <UButton
@@ -472,38 +622,91 @@ onMounted(async () => {
         </template>
       </UDashboardNavbar>
 
-      <UModal v-model:open="importOpen" title="Importar XML de saídas">
+      <UModal
+        v-model:open="importOpen"
+        title="Importar XML de saídas"
+        description="NF-e 55 e NFC-e 65 · associação automática por emitente · lote assíncrono"
+      >
         <template #body>
           <div class="space-y-4">
-            <p class="text-sm text-muted">
-              Envie XML (procNFe) ou ZIP de NF-e/NFC-e emitidas pelo cliente.
-              O DistDFe não entrega a própria nota ao emitente — o import fecha essa lacuna.
+            <p id="import-limits-desc" class="text-sm text-muted">
+              Envie um ou mais XML/ZIP. Sem cliente, cada item associa pelo CNPJ do emitente.
+              Cliente selecionado só restringe (divergência = CLIENT_MISMATCH).
+              Limites: até 50 arquivos e 20&nbsp;MiB compactados. Após o envio, o progresso
+              sobrevive ao fechar este modal — use Importações.
             </p>
-            <UFormField label="Cliente (opcional, valida emitente)">
+            <UFormField label="Cliente (restrição opcional)">
               <USelect
                 v-model="importClientId"
                 :items="[
-                  { label: 'Sem vínculo de cliente', value: FILTER_ALL },
+                  { label: 'Associação automática por emitente', value: FILTER_ALL },
                   ...clients.map(c => ({
                     label: c.display_name || c.legal_name || c.name,
                     value: String(c.id)
                   }))
                 ]"
                 class="w-full"
+                aria-label="Restringir lote a um cliente (opcional)"
               />
             </UFormField>
-            <UFormField label="Arquivos XML ou ZIP">
+            <div
+              class="rounded-lg border border-dashed p-4 transition-colors"
+              :class="importDragOver ? 'border-primary bg-primary/5' : 'border-default'"
+              role="group"
+              aria-labelledby="import-drop-label"
+              aria-describedby="import-limits-desc"
+              @dragover.prevent="importDragOver = true"
+              @dragleave.prevent="importDragOver = false"
+              @drop="onImportDrop"
+            >
+              <p id="import-drop-label" class="mb-2 text-sm font-medium text-highlighted">
+                Arraste XML/ZIP ou selecione pelo teclado
+              </p>
               <input
                 type="file"
                 multiple
                 accept=".xml,.zip,application/xml,application/zip"
                 class="block w-full text-sm"
+                aria-label="Selecionar arquivos XML ou ZIP para importar"
                 @change="onImportFileChange"
               >
-            </UFormField>
-            <p v-if="importFiles.length" class="text-xs text-muted">
-              {{ importFiles.length }} arquivo(s) selecionado(s)
+            </div>
+            <ul
+              v-if="importFiles.length"
+              class="max-h-32 space-y-1 overflow-y-auto text-xs text-muted"
+              aria-live="polite"
+              aria-label="Arquivos selecionados"
+            >
+              <li
+                v-for="(file, idx) in importFiles"
+                :key="`${file.name}-${idx}`"
+                class="flex items-center justify-between gap-2"
+              >
+                <span class="truncate">{{ file.name }} ({{ Math.round(file.size / 1024) }} KiB)</span>
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-x"
+                  square
+                  :aria-label="`Remover ${file.name}`"
+                  @click="removeImportFile(idx)"
+                />
+              </li>
+            </ul>
+            <p class="text-xs" :class="importLimitExceeded ? 'text-error' : 'text-muted'">
+              {{ importFiles.length }} arquivo(s) ·
+              {{ (importTotalBytes / (1024 * 1024)).toFixed(2) }} MiB
+              <span v-if="importLimitExceeded"> — limite excedido</span>
             </p>
+            <UButton
+              to="/docs/imports"
+              color="neutral"
+              variant="link"
+              size="sm"
+              label="Histórico de lotes"
+              class="px-0"
+            />
           </div>
         </template>
         <template #footer>
@@ -516,9 +719,10 @@ onMounted(async () => {
             />
             <UButton
               color="primary"
-              label="Importar"
+              label="Enviar lote"
               :loading="importing"
-              :disabled="!importFiles.length"
+              :disabled="!importFiles.length || importLimitExceeded"
+              aria-label="Enviar lote de importação"
               @click="submitImport"
             />
           </div>
@@ -587,10 +791,13 @@ onMounted(async () => {
             :loading="loading"
             :error="loadError"
             :selected-access-key="selectedAccessKey"
-            :next-cursor="nextCursor"
+            :page="currentPage"
+            :page-size="pageSize"
+            :total="listTotal"
             :selectable="canCreateExport && kindExportAvailable"
             @select="selectNote"
-            @load-more="loadMore"
+            @update:page="onPageChange"
+            @update:page-size="onPageSizeChange"
             @retry="load(true)"
           />
         </template>

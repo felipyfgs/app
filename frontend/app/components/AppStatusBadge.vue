@@ -10,7 +10,7 @@ const color = computed(() => {
   if (['ACTIVE', 'SUBSTITUTE', 'JUDICIAL', 'AUTHORIZED'].includes(s)) {
     return 'success' as const
   }
-  if (['CANCELLED', 'SUPERSEDED', 'REPLACED'].includes(s)) {
+  if (['CANCELLED', 'CANCELED', 'SUPERSEDED', 'REPLACED', 'DENIED', 'DENEGADA'].includes(s)) {
     return 'error' as const
   }
   if (['UNKNOWN', 'REVIEW'].includes(s)) {
@@ -31,7 +31,7 @@ const color = computed(() => {
 </script>
 
 <template>
-  <UBadge :color="color" variant="subtle">
+  <UBadge :color="color" variant="soft" class="font-normal">
     {{ label || statusLabel(status) }}
   </UBadge>
 </template>
