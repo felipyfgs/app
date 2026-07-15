@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Resumo CT-e — is_summary=true; não equivale a XML completo. -->
+<resCTe xmlns="http://www.portalfiscal.inf.br/cte" versao="4.00">
+  <chCTe>35260711222333000181570010000000421234567890</chCTe>
+  <CNPJ>11222333000181</CNPJ>
+  <xNome>Transportadora Fixture LTDA</xNome>
+  <dhEmi>2026-07-01T10:00:00-03:00</dhEmi>
+  <tpEvento/>
+  <vTPrest>250.50</vTPrest>
+  <cSitNFe>1</cSitNFe>
+  <cSitConf/>
+</resCTe>

@@ -6,6 +6,7 @@ use App\Enums\OutboundProfileStatus;
 use App\Enums\OutboundSeriesStatus;
 use App\Jobs\QueryOutboundSequenceJob;
 use App\Models\OutboundSeriesCursor;
+use App\Services\Outbound\OutboundKillSwitchService;
 use Illuminate\Console\Command;
 
 /**
@@ -17,7 +18,7 @@ class DispatchMaOutboundDueSyncsCommand extends Command
 
     protected $description = 'Enfileira reconciliação de saídas MA (nNF) elegíveis';
 
-    public function handle(): int
+    public function handle(OutboundKillSwitchService $killSwitch): int
     {
         if (! (bool) config('sefaz.ma_outbound.enabled', false)) {
             return self::SUCCESS;
@@ -25,7 +26,8 @@ class DispatchMaOutboundDueSyncsCommand extends Command
         if (! (bool) config('sefaz.ma_outbound.protocol_query_enabled', false)) {
             return self::SUCCESS;
         }
-        if ((bool) config('sefaz.ma_outbound.kill_switch', false)) {
+        // Config env + kill switch runtime (cache/API)
+        if ($killSwitch->isGlobalActive()) {
             return self::SUCCESS;
         }
 

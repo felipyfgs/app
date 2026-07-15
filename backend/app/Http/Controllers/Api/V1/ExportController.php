@@ -111,9 +111,10 @@ class ExportController extends Controller
         return $out;
     }
 
-    public function download(Export $export, AuditLogger $audit): BinaryFileResponse
+    public function download(Export $export, AuditLogger $audit, CurrentOffice $currentOffice): BinaryFileResponse
     {
-        if ($export->user_id !== auth()->id()) {
+        // Isolamento por escritório + dono — paths privados sob storage/app/private/exports/{office_id}
+        if ((int) $export->office_id !== (int) $currentOffice->id() || $export->user_id !== auth()->id()) {
             abort(404);
         }
         if ($export->status !== 'READY' || ! $export->storage_path || ! is_file($export->storage_path)) {
@@ -121,6 +122,14 @@ class ExportController extends Controller
         }
         if ($export->expires_at && $export->expires_at->isPast()) {
             abort(410, 'Exportação expirada.');
+        }
+
+        // Recusa path fora do diretório privado do office
+        $root = realpath(storage_path('app/private/exports/'.$export->office_id));
+        $real = realpath($export->storage_path);
+        if ($root === false || $real === false
+            || (! str_starts_with($real, $root.DIRECTORY_SEPARATOR) && $real !== $root)) {
+            abort(404);
         }
 
         $audit->record('export.download', 'SUCCESS', $export, [

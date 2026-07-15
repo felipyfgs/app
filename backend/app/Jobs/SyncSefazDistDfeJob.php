@@ -45,6 +45,11 @@ class SyncSefazDistDfeJob implements ShouldQueue
         CredentialService $credentials,
     ): void {
         if (! config('sefaz.distdfe_enabled')) {
+            Log::notice('sefaz.distdfe.job.skipped', [
+                'cursor_id' => $this->channelSyncCursorId,
+                'reason' => 'feature_disabled',
+            ]);
+
             return;
         }
 
@@ -53,6 +58,11 @@ class SyncSefazDistDfeJob implements ShouldQueue
             ->find($this->channelSyncCursorId);
 
         if ($cursor === null || $cursor->channel !== CaptureChannel::NfeDistDfe) {
+            Log::warning('sefaz.distdfe.job.skipped', [
+                'cursor_id' => $this->channelSyncCursorId,
+                'reason' => $cursor === null ? 'cursor_not_found' : 'channel_mismatch',
+            ]);
+
             return;
         }
 
@@ -61,6 +71,11 @@ class SyncSefazDistDfeJob implements ShouldQueue
             (int) config('sefaz.lock_ttl_seconds', 960)
         );
         if (! $lock->get()) {
+            Log::info('sefaz.distdfe.job.skipped', [
+                'cursor_id' => $cursor->id,
+                'reason' => 'establishment_lock_busy',
+            ]);
+
             return;
         }
 
@@ -121,8 +136,6 @@ class SyncSefazDistDfeJob implements ShouldQueue
 
             if ($cursor->status === SyncCursorStatus::Running) {
                 $cursor->status = SyncCursorStatus::Idle;
-                $cursor->locked_at = null;
-                $cursor->lock_owner = null;
                 if ($cursor->next_sync_at === null || $cursor->next_sync_at->isPast()) {
                     $stillBehind = $cursor->max_nsu_seen !== null
                         && (int) $cursor->last_nsu < (int) $cursor->max_nsu_seen;
@@ -130,8 +143,13 @@ class SyncSefazDistDfeJob implements ShouldQueue
                         ? now()->addSeconds(30)
                         : now()->addHours((float) config('sefaz.quiet_hours_after_empty', 1));
                 }
-                $cursor->save();
             }
+
+            // O processor pode trocar RUNNING por IDLE/BLOCKED ao fechar a página.
+            // O lease do banco deve ser liberado independentemente desse estado final.
+            $cursor->locked_at = null;
+            $cursor->lock_owner = null;
+            $cursor->save();
 
             Log::info('sefaz.distdfe.job.done', [
                 'cursor_id' => $cursor->id,

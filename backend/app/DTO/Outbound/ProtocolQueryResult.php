@@ -31,16 +31,37 @@ final readonly class ProtocolQueryResult
 
     public function is562WithKey(): bool
     {
-        return $this->cStat === '562' && $this->returnedAccessKey !== null && strlen($this->returnedAccessKey) >= 44;
+        return $this->cStat === '562' && $this->hasReturnedKey();
     }
 
     public function is562WithoutKey(): bool
     {
-        return $this->cStat === '562' && ($this->returnedAccessKey === null || strlen($this->returnedAccessKey) < 44);
+        return $this->cStat === '562' && ! $this->hasReturnedKey();
+    }
+
+    /**
+     * SEFAZ revelou chave (562, 613 com chNFe no xMotivo, ou chNFe no XML).
+     */
+    public function hasReturnedKey(): bool
+    {
+        return $this->returnedAccessKey !== null && strlen($this->returnedAccessKey) >= 44;
+    }
+
+    /**
+     * cStat de rejeição de chave/cNF com chave verdadeira utilizável (descoberta).
+     */
+    public function isKeyRevealReject(): bool
+    {
+        return $this->hasReturnedKey()
+            && in_array($this->cStat, ['562', '613'], true);
     }
 
     public function isLimitedWithoutKey(): bool
     {
+        if ($this->hasReturnedKey()) {
+            return false;
+        }
+
         return in_array($this->cStat, ['561', '613', '526'], true)
             || $this->is562WithoutKey();
     }

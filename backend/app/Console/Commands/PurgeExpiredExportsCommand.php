@@ -24,6 +24,19 @@ class PurgeExpiredExportsCommand extends Command
                     if ($export->storage_path && is_file($export->storage_path)) {
                         @unlink($export->storage_path);
                     }
+                    // Manifesto de ausências (export mensal) — só se sob o office do export
+                    $manifest = is_array($export->filters)
+                        ? ($export->filters['absence_manifest_path'] ?? null)
+                        : null;
+                    if (is_string($manifest) && $manifest !== '') {
+                        $root = realpath(storage_path('app/private/exports/'.$export->office_id));
+                        $real = realpath($manifest);
+                        if ($root !== false && $real !== false
+                            && (str_starts_with($real, $root.DIRECTORY_SEPARATOR) || $real === $root)
+                            && is_file($real)) {
+                            @unlink($real);
+                        }
+                    }
                     $export->status = 'EXPIRED';
                     $export->storage_path = null;
                     $export->save();

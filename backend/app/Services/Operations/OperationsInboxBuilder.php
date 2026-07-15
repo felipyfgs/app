@@ -16,11 +16,14 @@ use App\Enums\CaptureChannel;
 use App\Services\Outbound\SvrsNfceCircuitBreaker;
 use App\Services\Outbound\SvrsNfceConfig;
 use App\Services\Outbound\SvrsNfceKillSwitchService;
+use App\Enums\QuarantineReason;
+use App\Enums\QuarantineResolutionStatus;
 use App\Models\ChannelSyncCursor;
 use App\Models\Client;
 use App\Models\ClientCredential;
 use App\Models\DocumentAcquisition;
 use App\Models\Establishment;
+use App\Models\FiscalDocumentQuarantine;
 use App\Models\InstanceBackupRun;
 use App\Models\MaOutboundRetrievalRequest;
 use App\Models\OutboundNumberState;
@@ -62,6 +65,13 @@ final class OperationsInboxBuilder
         'svrs_nfce_divergent',
         'svrs_nfce_breaker',
         'svrs_nfce_exhausted',
+        // Quarentena autXML / import
+        'quarantine_unmatched_issuer',
+        'quarantine_autxml_tag',
+        'quarantine_orphan_event',
+        'quarantine_bytes_diverge',
+        'quarantine_schema',
+        'quarantine_other',
     ];
 
     public const SEVERITIES = [
@@ -95,6 +105,12 @@ final class OperationsInboxBuilder
         'svrs_nfce_divergent' => 'high',
         'svrs_nfce_breaker' => 'critical',
         'svrs_nfce_exhausted' => 'high',
+        'quarantine_unmatched_issuer' => 'high',
+        'quarantine_autxml_tag' => 'high',
+        'quarantine_orphan_event' => 'medium',
+        'quarantine_bytes_diverge' => 'critical',
+        'quarantine_schema' => 'medium',
+        'quarantine_other' => 'medium',
     ];
 
     private const SEVERITY_RANK = [
@@ -201,8 +217,77 @@ final class OperationsInboxBuilder
         $items = $items->merge($this->backupItems());
         $items = $items->merge($this->outboundMaItems($officeId, $role));
         $items = $items->merge($this->svrsNfceItems($officeId, $role));
+        $items = $items->merge($this->quarantineItems($officeId, $role));
 
         return $items->values();
+    }
+
+    /**
+     * Itens de quarentena abertos — sem XML, vault ou caminho.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function quarantineItems(int $officeId, ?OfficeRole $role): Collection
+    {
+        $rows = FiscalDocumentQuarantine::query()
+            ->where('office_id', $officeId)
+            ->where('resolution_status', QuarantineResolutionStatus::Open)
+            ->orderByDesc('id')
+            ->limit(40)
+            ->get();
+
+        return $rows->map(function (FiscalDocumentQuarantine $q) use ($role) {
+            $type = match ($q->reason) {
+                QuarantineReason::UnmatchedIssuer, QuarantineReason::EnrollmentMissing => 'quarantine_unmatched_issuer',
+                QuarantineReason::AutXmlTagMissing, QuarantineReason::AutXmlTagDivergent => 'quarantine_autxml_tag',
+                QuarantineReason::OrphanEvent => 'quarantine_orphan_event',
+                QuarantineReason::BytesDiverge => 'quarantine_bytes_diverge',
+                QuarantineReason::SchemaIncomplete, QuarantineReason::UnknownSchema => 'quarantine_schema',
+                default => 'quarantine_other',
+            };
+
+            $keyHint = $q->access_key
+                ? mb_substr($q->access_key, 0, 8).'…'
+                : 'sem chave';
+            $issuer = $q->issuer_cnpj ? 'emit '.$q->issuer_cnpj : 'emitente desconhecido';
+
+            $actions = [
+                ['type' => 'open', 'label' => 'Revisar'],
+            ];
+            if ($role !== null && $role->canManageClients()) {
+                $actions[] = [
+                    'type' => 'resolve_quarantine',
+                    'label' => 'Resolver',
+                    'quarantine_id' => $q->id,
+                ];
+            }
+
+            $severity = self::TYPE_SEVERITY[$type] ?? 'medium';
+            $subject = implode(':', ['q', (string) $q->id, $type]);
+            $id = substr(hash('sha256', $subject), 0, 32);
+
+            return [
+                'id' => $id,
+                'type' => $type,
+                'severity' => $severity,
+                'title' => $q->reason->label(),
+                'body' => $this->sanitizeText(
+                    $issuer.' · '.$keyHint.' · '.$q->reason->label().'. Sem XML no painel.'
+                ) ?? $q->reason->label(),
+                'reasons' => array_values(array_filter([
+                    $q->reason->value,
+                    $q->model ? 'model:'.$q->model : null,
+                    $q->channel?->value,
+                ])),
+                'client_id' => null,
+                'establishment_id' => null,
+                'occurred_at' => $q->created_at?->toIso8601String() ?? now()->toIso8601String(),
+                'links' => [
+                    'quarantine' => '/health?type='.$type,
+                ],
+                'actions' => $actions,
+            ];
+        })->values();
     }
 
     /**

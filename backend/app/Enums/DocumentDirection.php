@@ -25,14 +25,19 @@ enum DocumentDirection: string
 
     /**
      * Deriva direção a partir do papel fiscal no estabelecimento.
-     * ISSUER → OUT; TAKER/INTERMEDIARY → IN; null → UNKNOWN.
+     * ISSUER → OUT; papéis de interesse CT-e/NFS-e → IN; AUTXML não define; null → UNKNOWN.
      */
     public static function fromFiscalRole(?FiscalRole $role): self
     {
         return match ($role) {
             FiscalRole::Issuer => self::Out,
-            FiscalRole::Taker, FiscalRole::Intermediary => self::In,
-            null => self::Unknown,
+            FiscalRole::Taker,
+            FiscalRole::Intermediary,
+            FiscalRole::Sender,
+            FiscalRole::Recipient,
+            FiscalRole::Expeditor,
+            FiscalRole::Receiver => self::In,
+            FiscalRole::AutXml, null => self::Unknown,
         };
     }
 

@@ -12,9 +12,13 @@ use App\Http\Controllers\Api\V1\DocumentImportController;
 use App\Http\Controllers\Api\V1\NoteController;
 use App\Http\Controllers\Api\V1\OperationsInboxController;
 use App\Http\Controllers\Api\V1\OperationsSummaryController;
+use App\Http\Controllers\Api\V1\FiscalDocumentQuarantineController;
+use App\Http\Controllers\Api\V1\OfficeAutXmlController;
 use App\Http\Controllers\Api\V1\OfficeFiscalCredentialController;
 use App\Http\Controllers\Api\V1\OutboundCaptureController;
+use App\Http\Controllers\Api\V1\OutboundDeadlineController;
 use App\Http\Controllers\Api\V1\SvrsNfceRecoveryController;
+use App\Http\Controllers\Api\V1\CteEmitterPushController;
 use App\Http\Controllers\Api\V1\SyncController;
 use App\Http\Middleware\EnsureActiveUser;
 use App\Http\Middleware\EnsureAdminTwoFactor;
@@ -22,6 +26,10 @@ use App\Http\Middleware\EnsureOfficeContext;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
+    // EMITTER_PUSH — autenticação por token de integração (sem sessão)
+    Route::post('/integrations/cte/push', [CteEmitterPushController::class, 'push'])
+        ->middleware('throttle:'.(int) config('sefaz.cte_emitter_push.rate_limit_per_minute', 30).',1');
+
     Route::middleware(['auth:sanctum', EnsureActiveUser::class])->group(function (): void {
         Route::get('/me', MeController::class);
 
@@ -48,6 +56,20 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/office/fiscal-identity', [OfficeFiscalCredentialController::class, 'storeIdentity']);
             Route::post('/office/fiscal-identity/credential', [OfficeFiscalCredentialController::class, 'storeCredential']);
             Route::post('/office/fiscal-identity/credentials/{credential}/revoke', [OfficeFiscalCredentialController::class, 'revokeCredential']);
+
+            // Onboarding autXML + cursor central (sem reset de NSU)
+            Route::get('/office/autxml', [OfficeAutXmlController::class, 'overview']);
+            Route::get('/office/autxml/cursor', [OfficeAutXmlController::class, 'cursor']);
+            Route::post('/office/autxml/enrollments', [OfficeAutXmlController::class, 'enroll']);
+            Route::post('/office/autxml/enrollments/{enrollment}/confirm', [OfficeAutXmlController::class, 'confirm']);
+            Route::post('/office/autxml/enrollments/{enrollment}/inactivate', [OfficeAutXmlController::class, 'inactivate']);
+
+            // Tokens de integração CT-e (EMITTER_PUSH) — ADMIN+2FA emite/revoga; sem recuperação
+            Route::get('/office/integration-tokens', [CteEmitterPushController::class, 'listTokens']);
+            Route::post('/office/integration-tokens', [CteEmitterPushController::class, 'issueToken'])
+                ->middleware('throttle:'.(int) config('sefaz.cte_emitter_push.admin_token_rate_limit_per_minute', 10).',1');
+            Route::post('/office/integration-tokens/{token}/revoke', [CteEmitterPushController::class, 'revokeToken'])
+                ->middleware('throttle:'.(int) config('sefaz.cte_emitter_push.admin_token_rate_limit_per_minute', 10).',1');
 
             // Catálogo unificado Documentos (canônico)
             Route::get('/documents', [NoteController::class, 'index']);
@@ -82,6 +104,10 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/operations/summary', OperationsSummaryController::class);
             Route::get('/operations/inbox', OperationsInboxController::class);
 
+            // Quarentena fiscal (sem XML bruto)
+            Route::get('/operations/quarantine', [FiscalDocumentQuarantineController::class, 'index']);
+            Route::post('/operations/quarantine/{quarantine}/resolve', [FiscalDocumentQuarantineController::class, 'resolve']);
+
             // Captura de saídas MA (nNF — nunca NSU)
             Route::get('/outbound/profiles', [OutboundCaptureController::class, 'indexProfiles']);
             Route::get('/outbound/profiles/{profile}', [OutboundCaptureController::class, 'showProfile']);
@@ -98,8 +124,22 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/outbound/kill-switch', [OutboundCaptureController::class, 'killSwitchStatus']);
             Route::post('/outbound/kill-switch', [OutboundCaptureController::class, 'killSwitch']);
 
+            // Fechamento mensal / capacidade (prazo operacional — dispatch off por default)
+            Route::get('/outbound/deadline/competence', [OutboundDeadlineController::class, 'competenceSummary']);
+            Route::get('/outbound/deadline/capacity', [OutboundDeadlineController::class, 'capacityForecast']);
+            Route::get('/outbound/deadline/pending', [OutboundDeadlineController::class, 'pendingItems']);
+            Route::get('/outbound/deadline/contingency-batch', [OutboundDeadlineController::class, 'contingencyBatch']);
+            Route::get('/outbound/deadline/metrics', [OutboundDeadlineController::class, 'metrics']);
+            Route::post('/outbound/deadline/confirm-partial', [OutboundDeadlineController::class, 'confirmPartialExport']);
+            Route::post('/outbound/deadline/export', [OutboundDeadlineController::class, 'exportMonthly']);
+            Route::post('/outbound/deadline/advance-target', [OutboundDeadlineController::class, 'advanceTarget']);
+
             // Canal SVRS NFC-e XML (flags off por padrão)
             Route::get('/outbound/svrs-nfce/summary', [SvrsNfceRecoveryController::class, 'channelSummary']);
+            Route::get('/outbound/svrs-portal/egress', [SvrsNfceRecoveryController::class, 'egressCohortHealth']);
+            Route::post('/outbound/svrs-portal/egress/extend-cooldown', [SvrsNfceRecoveryController::class, 'extendEgressCooldown']);
+            Route::post('/outbound/svrs-portal/egress/select-canary', [SvrsNfceRecoveryController::class, 'selectEgressCanary']);
+            Route::post('/outbound/svrs-portal/egress/elevate-budget', [SvrsNfceRecoveryController::class, 'refuseBudgetElevation']);
             Route::get('/outbound/svrs-nfce/recoveries', [SvrsNfceRecoveryController::class, 'index']);
             Route::post('/outbound/svrs-nfce/recoveries', [SvrsNfceRecoveryController::class, 'enqueue']);
             Route::get('/outbound/svrs-nfce/recoveries/{recovery}', [SvrsNfceRecoveryController::class, 'attempts']);

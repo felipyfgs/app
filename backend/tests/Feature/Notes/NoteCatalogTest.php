@@ -166,6 +166,8 @@ class NoteCatalogTest extends TestCase
         $cursor = $first->json('meta.next_cursor');
         $this->assertIsString($cursor);
         $this->assertNotSame('', $cursor);
+        $this->assertSame(5, $first->json('meta.total'));
+        $this->assertSame(2, $first->json('meta.per_page'));
 
         $second = $this->getJson('/api/v1/documents?kind=NFSE&limit=2&cursor='.urlencode($cursor))->assertOk();
         $firstKeys = collect($first->json('data'))->pluck('access_key');

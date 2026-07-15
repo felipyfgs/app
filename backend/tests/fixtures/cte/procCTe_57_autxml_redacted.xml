@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Cópia autXML com chave de DF-e substituída por 44 noves (AUTXML_REDACTED). -->
+<cteProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
+  <CTe>
+    <infCte versao="4.00" Id="CTe35260711222333000181570010000000701234567890">
+      <ide>
+        <mod>57</mod>
+        <serie>2</serie>
+        <nCT>70</nCT>
+        <dhEmi>2026-07-03T10:00:00-03:00</dhEmi>
+        <tpAmb>1</tpAmb>
+      </ide>
+      <emit>
+        <CNPJ>11222333000181</CNPJ>
+        <xNome>Transportadora Cliente do Escritorio</xNome>
+      </emit>
+      <rem>
+        <CNPJ>11111111000111</CNPJ>
+        <xNome>Remetente</xNome>
+      </rem>
+      <dest>
+        <CNPJ>22222222000122</CNPJ>
+        <xNome>Destinatario</xNome>
+      </dest>
+      <toma4>
+        <toma>4</toma>
+        <CNPJ>34194865000158</CNPJ>
+        <xNome>Tomador</xNome>
+      </toma4>
+      <vPrest><vTPrest>310.00</vTPrest></vPrest>
+      <infCTeNorm>
+        <infDoc>
+          <infNFe>
+            <chave>99999999999999999999999999999999999999999999</chave>
+          </infNFe>
+        </infDoc>
+      </infCTeNorm>
+      <autXML>
+        <CNPJ>55666777000155</CNPJ>
+      </autXML>
+    </infCte>
+  </CTe>
+  <protCTe>
+    <infProt>
+      <chCTe>35260711222333000181570010000000701234567890</chCTe>
+      <cStat>100</cStat>
+      <nProt>135260000000005</nProt>
+    </infProt>
+  </protCTe>
+</cteProc>

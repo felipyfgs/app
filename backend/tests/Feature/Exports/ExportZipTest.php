@@ -4,6 +4,7 @@ namespace Tests\Feature\Exports;
 
 use App\Contracts\SecureObjectStore;
 use App\Enums\AdnDocumentType;
+use App\Enums\DocumentDirection;
 use App\Enums\FiscalRole;
 use App\Enums\OfficeRole;
 use App\Jobs\BuildExportZipJob;
@@ -76,9 +77,17 @@ class ExportZipTest extends TestCase
         $zip->close();
 
         $this->assertCount(1, $names);
-        $this->assertStringContainsString('2026-07', $names[0]);
+        // saida|entrada / kind / cnpj / YYYYMM / chave.xml — sem pasta ISSUER/TAKER
+        $this->assertStringContainsString('202607', $names[0]);
+        $this->assertStringNotContainsString('2026-07', $names[0]);
         $this->assertStringContainsString('CHAVE1', $names[0]);
+        $this->assertStringNotContainsString('/ISSUER/', $names[0]);
+        $this->assertStringNotContainsString('/TAKER/', $names[0]);
         $this->assertStringNotContainsString('..', $names[0]);
+        $this->assertMatchesRegularExpression(
+            '#^(entrada|saida)/nfse/[A-Z0-9]+/202607/CHAVE1\.xml$#',
+            $names[0]
+        );
     }
 
     public function test_viewer_nao_exporta_e_outro_usuario_nao_baixa(): void
@@ -209,6 +218,7 @@ class ExportZipTest extends TestCase
             'access_key' => $key,
             'issuer_cnpj' => '11222333000181',
             'fiscal_role' => $role,
+            'direction' => DocumentDirection::fromFiscalRole($role),
             'competence' => $comp,
             'issued_at' => $comp.'-01',
             'status' => 'ACTIVE',

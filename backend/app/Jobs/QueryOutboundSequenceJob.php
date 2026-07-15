@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\OutboundCaptureRunStatus;
 use App\Models\OutboundCaptureRun;
 use App\Models\OutboundSeriesCursor;
+use App\Services\Outbound\OutboundKillSwitchService;
 use App\Services\Outbound\OutboundSequenceReconciler;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -29,20 +30,25 @@ class QueryOutboundSequenceJob implements ShouldQueue
         $this->timeout = (int) config('sefaz.ma_outbound.job_timeout_seconds', 900);
     }
 
-    public function handle(OutboundSequenceReconciler $reconciler): void
-    {
+    public function handle(
+        OutboundSequenceReconciler $reconciler,
+        OutboundKillSwitchService $killSwitch,
+    ): void {
         if (! (bool) config('sefaz.ma_outbound.enabled', false)) {
             return;
         }
         if (! (bool) config('sefaz.ma_outbound.protocol_query_enabled', false)) {
             return;
         }
-        if ((bool) config('sefaz.ma_outbound.kill_switch', false)) {
+        if ($killSwitch->isGlobalActive()) {
             return;
         }
 
-        $series = OutboundSeriesCursor::query()->find($this->seriesCursorId);
+        $series = OutboundSeriesCursor::query()->with('profile')->find($this->seriesCursorId);
         if ($series === null) {
+            return;
+        }
+        if ($killSwitch->isBlocked($series->profile)) {
             return;
         }
 

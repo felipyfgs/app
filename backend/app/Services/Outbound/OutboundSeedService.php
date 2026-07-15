@@ -58,9 +58,9 @@ final class OutboundSeedService
             );
 
             $sha = hash('sha256', $xml);
+            // AAD canônico: office_id + sha256 (export/download usam o mesmo par).
             $objectId = $this->store->put($xml, [
                 'office_id' => $establishment->office_id,
-                'kind' => 'outbound_seed',
                 'sha256' => $sha,
             ]);
 

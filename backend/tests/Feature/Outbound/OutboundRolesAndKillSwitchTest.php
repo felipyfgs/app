@@ -81,11 +81,17 @@ class OutboundRolesAndKillSwitchTest extends TestCase
         $this->actingAs($admin);
         app(CurrentOffice::class)->resolve($admin);
 
+        // allowlisted default false (G0) — inclusão deve ser explícita
+        $this->postJson('/api/v1/outbound/profiles/'.$profile->id.'/activate', [
+            'mandate_reference' => 'CONTRATO-2026-001',
+        ])->assertOk()
+            ->assertJsonPath('data.status', 'ACTIVE')
+            ->assertJsonPath('data.allowlisted', false);
+
         $this->postJson('/api/v1/outbound/profiles/'.$profile->id.'/activate', [
             'mandate_reference' => 'CONTRATO-2026-001',
             'allowlisted' => true,
         ])->assertOk()
-            ->assertJsonPath('data.status', 'ACTIVE')
             ->assertJsonPath('data.allowlisted', true);
     }
 

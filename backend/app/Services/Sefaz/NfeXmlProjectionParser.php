@@ -17,10 +17,13 @@ final class NfeXmlProjectionParser
      *   number: ?string,
      *   series: ?string,
      *   model: string,
+     *   tp_nf: ?string,
+     *   tp_amb: ?string,
      *   issuer_cnpj: ?string,
      *   issuer_name: ?string,
      *   recipient_cnpj: ?string,
      *   recipient_name: ?string,
+     *   aut_xml_cnpjs: list<string>,
      *   issued_at: ?CarbonImmutable,
      *   total_amount: ?string,
      *   status: string,
@@ -42,10 +45,13 @@ final class NfeXmlProjectionParser
             'number' => null,
             'series' => null,
             'model' => '55',
+            'tp_nf' => null,
+            'tp_amb' => null,
             'issuer_cnpj' => null,
             'issuer_name' => null,
             'recipient_cnpj' => null,
             'recipient_name' => null,
+            'aut_xml_cnpjs' => [],
             'issued_at' => null,
             'total_amount' => null,
             'status' => 'UNKNOWN',
@@ -116,6 +122,11 @@ final class NfeXmlProjectionParser
             'number' => $this->first($doc, ['//*[local-name()="ide"]/*[local-name()="nNF"]']),
             'series' => $this->first($doc, ['//*[local-name()="ide"]/*[local-name()="serie"]']),
             'model' => $this->first($doc, ['//*[local-name()="ide"]/*[local-name()="mod"]']) ?? '55',
+            'tp_nf' => $this->first($doc, ['//*[local-name()="ide"]/*[local-name()="tpNF"]']),
+            'tp_amb' => $this->first($doc, [
+                '//*[local-name()="ide"]/*[local-name()="tpAmb"]',
+                '//*[local-name()="protNFe"]//*[local-name()="tpAmb"]',
+            ]),
             'issuer_cnpj' => $this->cnpj($doc, [
                 '//*[local-name()="emit"]//*[local-name()="CNPJ"]',
                 '//*[local-name()="emit"]//*[local-name()="CPF"]',
@@ -126,6 +137,7 @@ final class NfeXmlProjectionParser
                 '//*[local-name()="dest"]//*[local-name()="CPF"]',
             ]),
             'recipient_name' => $this->first($doc, ['//*[local-name()="dest"]/*[local-name()="xNome"]']),
+            'aut_xml_cnpjs' => $this->allAutXmlCnpjs($doc),
             'issued_at' => $this->date($this->first($doc, ['//*[local-name()="ide"]/*[local-name()="dhEmi"]'])),
             'total_amount' => $this->first($doc, ['//*[local-name()="ICMSTot"]/*[local-name()="vNF"]', '//*[local-name()="vNF"]']),
             'status' => $status,
@@ -133,6 +145,30 @@ final class NfeXmlProjectionParser
             'is_summary' => false,
             'manifestation_status' => null,
         ];
+    }
+
+    /**
+     * Todas as ocorrências autXML/CNPJ (ou CPF) normalizadas uppercase.
+     *
+     * @return list<string>
+     */
+    public function allAutXmlCnpjs(\DOMDocument $doc): array
+    {
+        $xp = new \DOMXPath($doc);
+        $nodes = $xp->query('//*[local-name()="autXML"]/*[local-name()="CNPJ" or local-name()="CPF"]');
+        if (! $nodes || $nodes->length === 0) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($nodes as $node) {
+            $raw = strtoupper(preg_replace('/[^A-Z0-9]/i', '', trim($node->textContent ?? '')) ?? '');
+            if ($raw !== '' && ! in_array($raw, $out, true)) {
+                $out[] = $raw;
+            }
+        }
+
+        return $out;
     }
 
     /** @return array<string, mixed> */

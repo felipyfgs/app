@@ -13,6 +13,11 @@ class DocumentDirectionTest extends TestCase
         $this->assertSame(DocumentDirection::Out, DocumentDirection::fromFiscalRole(FiscalRole::Issuer));
         $this->assertSame(DocumentDirection::In, DocumentDirection::fromFiscalRole(FiscalRole::Taker));
         $this->assertSame(DocumentDirection::In, DocumentDirection::fromFiscalRole(FiscalRole::Intermediary));
+        $this->assertSame(DocumentDirection::In, DocumentDirection::fromFiscalRole(FiscalRole::Sender));
+        $this->assertSame(DocumentDirection::In, DocumentDirection::fromFiscalRole(FiscalRole::Recipient));
+        $this->assertSame(DocumentDirection::In, DocumentDirection::fromFiscalRole(FiscalRole::Expeditor));
+        $this->assertSame(DocumentDirection::In, DocumentDirection::fromFiscalRole(FiscalRole::Receiver));
+        $this->assertSame(DocumentDirection::Unknown, DocumentDirection::fromFiscalRole(FiscalRole::AutXml));
         $this->assertSame(DocumentDirection::Unknown, DocumentDirection::fromFiscalRole(null));
     }
 

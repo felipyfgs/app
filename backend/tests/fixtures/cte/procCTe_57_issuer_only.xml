@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CT-e do próprio emitente — DistDFe do cliente NÃO deve criar ISSUER/OUT. -->
+<cteProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
+  <CTe>
+    <infCte versao="4.00" Id="CTe35260799888777000166570010000000019999999999">
+      <ide>
+        <mod>57</mod>
+        <serie>1</serie>
+        <nCT>1</nCT>
+        <dhEmi>2026-07-02T12:00:00-03:00</dhEmi>
+        <tpAmb>1</tpAmb>
+      </ide>
+      <emit>
+        <CNPJ>99888777000166</CNPJ>
+        <xNome>Eu Emito Fixture</xNome>
+      </emit>
+      <dest>
+        <CNPJ>11111111000111</CNPJ>
+        <xNome>Cliente Terceiro</xNome>
+      </dest>
+      <vPrest><vTPrest>50.00</vTPrest></vPrest>
+    </infCte>
+  </CTe>
+  <protCTe>
+    <infProt>
+      <chCTe>35260799888777000166570010000000019999999999</chCTe>
+      <cStat>100</cStat>
+      <nProt>135260000000003</nProt>
+    </infProt>
+  </protCTe>
+</cteProc>

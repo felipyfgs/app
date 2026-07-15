@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Envelope SOAP sanitizado cStat 138 — docZip omitido (usar fixtures XML + gzip/base64 nos testes). -->
+<soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
+  <soap12:Body>
+    <cteDistDFeInteresseResponse xmlns="http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe">
+      <cteDistDFeInteresseResult>
+        <retDistDFeInt xmlns="http://www.portalfiscal.inf.br/cte" versao="1.00">
+          <tpAmb>1</tpAmb>
+          <verAplic>TEST</verAplic>
+          <cStat>138</cStat>
+          <xMotivo>Documento(s) localizado(s)</xMotivo>
+          <dhResp>2026-07-15T05:00:00-03:00</dhResp>
+          <ultNSU>000000000000100</ultNSU>
+          <maxNSU>000000000000250</maxNSU>
+          <!-- loteDistDFeInt/docZip preenchidos dinamicamente nos testes de contrato -->
+        </retDistDFeInt>
+      </cteDistDFeInteresseResult>
+    </cteDistDFeInteresseResponse>
+  </soap12:Body>
+</soap12:Envelope>

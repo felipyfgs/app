@@ -32,6 +32,11 @@ class DfeDocument extends Model
         return $this->hasMany(DocumentInterest::class);
     }
 
+    public function acquisitions(): HasMany
+    {
+        return $this->hasMany(DocumentAcquisition::class);
+    }
+
     public function note(): HasOne
     {
         return $this->hasOne(NfseNote::class);

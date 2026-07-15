@@ -42,6 +42,18 @@ class SvrsNfceDownloadResponseParserTest extends TestCase
         $this->assertSame(hash('sha256', $r->xmlBytes), hash('sha256', $r2->xmlBytes));
     }
 
+    public function test_post_success_with_object_property_blob_contract(): void
+    {
+        $html = file_get_contents($this->fixtures.'/post_success_object_property.html');
+        $r = $this->parser->parseDownloadPage($html);
+
+        $this->assertTrue($r->isSuccess());
+        $this->assertNotNull($r->xmlBytes);
+        $this->assertStringStartsWith('<nfeProc', $r->xmlBytes);
+        $this->assertStringContainsString('<nNF>1</nNF>', $r->xmlBytes);
+        $this->assertStringContainsString('21260712345678000190650010000000011234567892', $r->xmlBytes);
+    }
+
     public function test_post_not_available(): void
     {
         $html = file_get_contents($this->fixtures.'/post_not_available.html');

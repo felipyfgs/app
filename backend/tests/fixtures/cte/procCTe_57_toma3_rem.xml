@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- toma3: tomador = remetente (código 0). -->
+<cteProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
+  <CTe>
+    <infCte versao="4.00" Id="CTe35260711222333000181570010000000501234567890">
+      <ide>
+        <mod>57</mod>
+        <serie>1</serie>
+        <nCT>50</nCT>
+        <dhEmi>2026-07-02T11:00:00-03:00</dhEmi>
+        <tpAmb>1</tpAmb>
+      </ide>
+      <emit>
+        <CNPJ>11222333000181</CNPJ>
+        <xNome>Transportadora Fixture LTDA</xNome>
+      </emit>
+      <rem>
+        <CNPJ>11111111000111</CNPJ>
+        <xNome>Remetente Tomador</xNome>
+      </rem>
+      <dest>
+        <CNPJ>22222222000122</CNPJ>
+        <xNome>Destinatario Fixture</xNome>
+      </dest>
+      <toma3>
+        <toma>0</toma>
+      </toma3>
+      <vPrest><vTPrest>100.00</vTPrest></vPrest>
+    </infCte>
+  </CTe>
+  <protCTe>
+    <infProt>
+      <chCTe>35260711222333000181570010000000501234567890</chCTe>
+      <cStat>100</cStat>
+      <nProt>135260000000002</nProt>
+    </infProt>
+  </protCTe>
+</cteProc>

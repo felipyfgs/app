@@ -54,12 +54,21 @@ final class SvrsNfceXmlIngestionService
         string $xmlBytes,
         string $expectedAccessKey,
         string $correlationId,
+        ?DocumentAcquisitionSource $source = null,
+        string $expectedModel = '65',
     ): array {
+        $source = $source ?? DocumentAcquisitionSource::SvrsNfceDownloadXmlDfe;
+        $expectedModel = $expectedModel === '55' ? '55' : '65';
+        if ($source === DocumentAcquisitionSource::SvrsNfe55DownloadXmlDfe) {
+            $expectedModel = '55';
+        }
+
         $validated = $this->validator->validate(
             $xmlBytes,
             $expectedAccessKey,
             $establishment,
             (string) $profile->environment,
+            $expectedModel,
         );
 
         if ($validated['failure_reason'] !== null) {
@@ -76,7 +85,8 @@ final class SvrsNfceXmlIngestionService
         $officeId = (int) $profile->office_id;
 
         return DB::transaction(function () use (
-            $profile, $establishment, $number, $request, $xmlBytes, $sha, $key, $officeId, $validated, $correlationId
+            $profile, $establishment, $number, $request, $xmlBytes, $sha, $key, $officeId, $validated, $correlationId,
+            $source, $expectedModel,
         ) {
             // Idempotência: mesma chave+hash
             $existingSame = DfeDocument::query()
@@ -89,7 +99,7 @@ final class SvrsNfceXmlIngestionService
                 DocumentAcquisition::query()->firstOrCreate(
                     [
                         'dfe_document_id' => $existingSame->id,
-                        'source' => DocumentAcquisitionSource::SvrsNfceDownloadXmlDfe->value,
+                        'source' => $source->value,
                         'sha256' => $sha,
                     ],
                     [
@@ -103,6 +113,7 @@ final class SvrsNfceXmlIngestionService
                         'metadata' => [
                             'correlation_id' => $correlationId,
                             'signer_fingerprint' => $validated['signer_fingerprint'],
+                            'model' => $expectedModel,
                         ],
                     ]
                 );
@@ -124,10 +135,10 @@ final class SvrsNfceXmlIngestionService
                 ->first();
 
             // Vault primeiro
+            // AAD canônico de DF-e: office_id + sha256 (mesma chave do export/download).
             $objectId = $this->store->put($xmlBytes, [
                 'office_id' => $officeId,
                 'sha256' => $sha,
-                'kind' => 'svrs_nfce_xml',
             ]);
 
             $doc = DfeDocument::query()->create([
@@ -148,7 +159,7 @@ final class SvrsNfceXmlIngestionService
                 'office_id' => $officeId,
                 'dfe_document_id' => $doc->id,
                 'access_key' => $key,
-                'source' => DocumentAcquisitionSource::SvrsNfceDownloadXmlDfe,
+                'source' => $source,
                 'channel' => CaptureChannel::MaOutbound,
                 'sha256' => $sha,
                 'is_canonical' => $isCanonical,
@@ -160,6 +171,7 @@ final class SvrsNfceXmlIngestionService
                 'metadata' => [
                     'correlation_id' => $correlationId,
                     'environment' => $validated['environment'],
+                    'model' => $expectedModel,
                     'signer_fingerprint' => $validated['signer_fingerprint'],
                     'signer_not_before' => $validated['signer_not_before'],
                     'signer_not_after' => $validated['signer_not_after'],
@@ -202,7 +214,7 @@ final class SvrsNfceXmlIngestionService
                     'dfe_document_id' => $doc->id,
                     'number' => $parsed['number'] ?? (string) $number->nnf,
                     'series' => $parsed['series'] ?? (string) $number->series,
-                    'model' => '65',
+                    'model' => $expectedModel,
                     'issuer_cnpj' => $validated['issuer_cnpj'],
                     'issuer_name' => $parsed['issuer_name'] ?? null,
                     'recipient_cnpj' => $parsed['recipient_cnpj'] ?? null,
@@ -210,7 +222,7 @@ final class SvrsNfceXmlIngestionService
                     'fiscal_role' => FiscalRole::Issuer,
                     'direction' => DocumentDirection::Out,
                     'purpose' => DocumentPurpose::Commercial,
-                    'acquisition_source' => DocumentAcquisitionSource::SvrsNfceDownloadXmlDfe,
+                    'acquisition_source' => $source,
                     'issued_at' => $parsed['issued_at'] ?? null,
                     'total_amount' => $parsed['total_amount'] ?? null,
                     'status' => $parsed['status'] ?? 'ACTIVE',
@@ -221,6 +233,19 @@ final class SvrsNfceXmlIngestionService
             );
 
             $this->markCaptured($number, $request, $key, $sha, $doc->id);
+
+            // Prazo + cancelamento de slots concorrentes (fonte SVRS)
+            try {
+                app(OutboundDeadlineSatisfactionService::class)->markCapturedBySource(
+                    $officeId,
+                    $key,
+                    $expectedModel === '55' ? 'SVRS_NFE55' : 'SVRS_NFCE',
+                    $sha,
+                    $doc->id,
+                );
+            } catch (\Throwable) {
+                // não derruba ingestão canônica
+            }
 
             $this->audit->record('svrs_nfce.ingest.captured', 'SUCCESS', $request, [
                 'profile_id' => $profile->id,
@@ -264,6 +289,9 @@ final class SvrsNfceXmlIngestionService
             'sha256' => $sha,
             'dfe_document_id' => $dfeId,
             'ingested_at' => now(),
+            'captured_at' => now(),
+            'capture_source' => 'SVRS_NFCE',
+            'urgency_band' => \App\Enums\OutboundUrgencyBand::Captured,
             'failure_reason' => null,
             'last_error' => null,
             'next_attempt_at' => null,

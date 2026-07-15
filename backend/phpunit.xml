@@ -41,6 +41,12 @@
         <server name="SEFAZ_SVRS_NFCE_XML_REQUIRE_SIGNATURE" value="false"/>
         <server name="SEFAZ_SVRS_NFCE_XML_RETRIEVAL_ENABLED" value="false"/>
         <server name="SEFAZ_SVRS_NFCE_XML_AUTO_QUEUE_ENABLED" value="false"/>
+        <server name="SEFAZ_SVRS_NFCE_XML_KILL_SWITCH" value="false"/>
+        <server name="SEFAZ_SVRS_NFCE_XML_PILOT_ALLOWLIST_ONLY" value="false"/>
+        <server name="SEFAZ_SVRS_NFE55_XML_RETRIEVAL_ENABLED" value="false"/>
+        <server name="SEFAZ_SVRS_NFE55_XML_AUTO_QUEUE_ENABLED" value="false"/>
+        <server name="SEFAZ_SVRS_NFE55_XML_KILL_SWITCH" value="false"/>
+        <server name="SVRS_EGRESS_COHORT_ID" value="test-cohort"/>
 
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="AUTH_TWO_FACTOR_REQUIRED" value="true" force="true"/>
@@ -74,5 +80,23 @@
         <env name="SEFAZ_AUTXML_OFFICE_ALLOWLIST" value="" force="true"/>
         <env name="SEFAZ_AUTXML_ALLOW_ALL_OFFICES" value="false" force="true"/>
         <env name="IMPORT_ASYNC_BATCHES_ENABLED" value="false" force="true"/>
+        <env name="OUTBOUND_DEADLINE_SCHEDULING_ENABLED" value="false" force="true"/>
+        <env name="OUTBOUND_DEADLINE_PLANNER_ENABLED" value="false" force="true"/>
+        <env name="OUTBOUND_DEADLINE_DISPATCH_ENABLED" value="false" force="true"/>
+        <env name="OUTBOUND_DEADLINE_SHADOW_MODE" value="true" force="true"/>
+        <env name="OUTBOUND_DEADLINE_RETRY_POLICY" value="false" force="true"/>
+        <!-- Portal SVRS: defaults off no CI mesmo com kill switch de piloto no .env -->
+        <env name="SEFAZ_SVRS_NFCE_XML_RETRIEVAL_ENABLED" value="false" force="true"/>
+        <env name="SEFAZ_SVRS_NFCE_XML_AUTO_QUEUE_ENABLED" value="false" force="true"/>
+        <env name="SEFAZ_SVRS_NFCE_XML_PILOT_ALLOWLIST_ONLY" value="false" force="true"/>
+        <env name="SEFAZ_SVRS_NFCE_XML_KILL_SWITCH" value="false" force="true"/>
+        <env name="SEFAZ_SVRS_NFCE_XML_REQUIRE_SIGNATURE" value="false" force="true"/>
+        <env name="SEFAZ_SVRS_NFE55_XML_RETRIEVAL_ENABLED" value="false" force="true"/>
+        <env name="SEFAZ_SVRS_NFE55_XML_AUTO_QUEUE_ENABLED" value="false" force="true"/>
+        <env name="SEFAZ_SVRS_NFE55_XML_KILL_SWITCH" value="false" force="true"/>
+        <env name="SVRS_EGRESS_COHORT_ID" value="test-cohort" force="true"/>
+        <env name="SVRS_EGRESS_MIN_INTERVAL_GLOBAL" value="120" force="true"/>
+        <env name="SVRS_EGRESS_MIN_INTERVAL_ROOT" value="900" force="true"/>
+        <env name="SVRS_EGRESS_MAX_KEYS_PER_JOB" value="1" force="true"/>
     </php>
 </phpunit>

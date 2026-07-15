@@ -225,10 +225,53 @@ return [
     ],
 
     /**
+     * Governador compartilhado de egress do portal SVRS (NF-e 55 + NFC-e 65).
+     * Budgets PREVENTIVOS — não são limites oficiais do NFESSL/NFCESSL.
+     * Master/auto-queue desligados por padrão; sem override por request de API.
+     *
+     * @see openspec/changes/add-resilient-svrs-nfe55-outbound-xml-retrieval design D3
+     * @see docs/adr/004-distdfe-vs-nfessl-limits.md
+     */
+    'svrs_portal_egress' => [
+        'cohort_id' => env('SVRS_EGRESS_COHORT_ID', 'default'),
+        // true = permite apenas uma implantação ativa na coorte sem coordenador Redis compartilhado documentado
+        'require_shared_coordinator' => filter_var(env('SVRS_EGRESS_REQUIRE_SHARED_COORDINATOR', true), FILTER_VALIDATE_BOOL),
+        'deployment_id' => env('SVRS_EGRESS_DEPLOYMENT_ID', env('HOSTNAME', 'local')),
+        'host' => env('SEFAZ_SVRS_PORTAL_HOST', 'dfe-portal.svrs.rs.gov.br'),
+        'allowed_hosts' => array_values(array_filter(array_map(
+            static fn (string $h): string => strtolower(trim($h)),
+            explode(',', (string) env(
+                'SEFAZ_SVRS_PORTAL_ALLOWED_HOSTS',
+                'dfe-portal.svrs.rs.gov.br'
+            ))
+        ), static fn (string $h): bool => $h !== '')),
+
+        // Uma transação lógica em voo; GET+POST = 2 exchanges reservados atomicamente
+        'max_inflight_transactions' => (int) env('SVRS_EGRESS_MAX_INFLIGHT', 1),
+        'exchanges_per_download' => (int) env('SVRS_EGRESS_EXCHANGES_PER_DOWNLOAD', 2),
+        'min_interval_global_seconds' => (float) env('SVRS_EGRESS_MIN_INTERVAL_GLOBAL', 120),
+        'min_interval_root_seconds' => (float) env('SVRS_EGRESS_MIN_INTERVAL_ROOT', 900), // 15 min
+        'max_exchanges_per_hour' => (int) env('SVRS_EGRESS_MAX_EXCHANGES_HOUR', 10),
+        'max_exchanges_per_day' => (int) env('SVRS_EGRESS_MAX_EXCHANGES_DAY', 50),
+        'max_keys_per_root_per_day' => (int) env('SVRS_EGRESS_MAX_KEYS_ROOT_DAY', 6),
+        'max_keys_per_job' => (int) env('SVRS_EGRESS_MAX_KEYS_PER_JOB', 1),
+        'retry_jitter_ratio' => (float) env('SVRS_EGRESS_RETRY_JITTER', 0.1),
+
+        // Cooldown bloqueio múltiplas consultas (segundos): 24h, 48h, 96h, 168h
+        'block_cooldown_ladder_seconds' => [86400, 172800, 345600, 604800],
+        'canary_only_after_block' => true,
+
+        'lock_ttl_seconds' => (int) env('SVRS_EGRESS_LOCK_TTL', 180),
+        'reservation_ttl_seconds' => (int) env('SVRS_EGRESS_RESERVATION_TTL', 120),
+    ],
+
+    /**
      * Canal SVRS — recuperação de nfeProc de NFC-e 65 por chave + A1 (portal oficial).
      * Defaults off; hosts/paths allowlisted; sem override por request de API.
+     * Taxa/orçamento: governador compartilhado (svrs_portal_egress) — não 5s/30s/20.
      *
      * @see openspec/changes/add-svrs-nfce-outbound-xml-retrieval
+     * @see openspec/changes/add-resilient-svrs-nfe55-outbound-xml-retrieval
      * @see docs/ops/svrs-nfce-enablement-matrix.md
      */
     'svrs_nfce_xml' => [
@@ -242,12 +285,12 @@ return [
 
         // Host e paths HTTPS allowlisted (sem override por request)
         'scheme' => 'https',
-        'host' => env('SEFAZ_SVRS_NFCE_XML_HOST', 'dfe-portal.svrs.rs.gov.br'),
+        'host' => env('SEFAZ_SVRS_NFCE_XML_HOST', env('SEFAZ_SVRS_PORTAL_HOST', 'dfe-portal.svrs.rs.gov.br')),
         'allowed_hosts' => array_values(array_filter(array_map(
             static fn (string $h): string => strtolower(trim($h)),
             explode(',', (string) env(
                 'SEFAZ_SVRS_NFCE_XML_ALLOWED_HOSTS',
-                'dfe-portal.svrs.rs.gov.br'
+                env('SEFAZ_SVRS_PORTAL_ALLOWED_HOSTS', 'dfe-portal.svrs.rs.gov.br')
             ))
         ), static fn (string $h): bool => $h !== '')),
         'get_path' => env('SEFAZ_SVRS_NFCE_XML_GET_PATH', '/NFCESSL/DownloadXMLDFe'),
@@ -263,18 +306,18 @@ return [
         'max_literal_bytes' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_LITERAL_BYTES', 262144), // 256 KiB
         'max_xml_bytes' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_XML_BYTES', 262144),
 
-        // Rate limit / batch (conservadores — design D6)
-        'max_inflight_global' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_INFLIGHT', 1),
-        'min_interval_global_seconds' => (float) env('SEFAZ_SVRS_NFCE_XML_MIN_INTERVAL_GLOBAL', 5),
-        'min_interval_root_seconds' => (float) env('SEFAZ_SVRS_NFCE_XML_MIN_INTERVAL_ROOT', 30),
-        'max_keys_per_run' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_KEYS_PER_RUN', 20),
+        // Rate limit / batch — DELEGADOS ao governador; defaults defensivos (não 5/30/20)
+        'max_inflight_global' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_INFLIGHT', env('SVRS_EGRESS_MAX_INFLIGHT', 1)),
+        'min_interval_global_seconds' => (float) env('SEFAZ_SVRS_NFCE_XML_MIN_INTERVAL_GLOBAL', env('SVRS_EGRESS_MIN_INTERVAL_GLOBAL', 120)),
+        'min_interval_root_seconds' => (float) env('SEFAZ_SVRS_NFCE_XML_MIN_INTERVAL_ROOT', env('SVRS_EGRESS_MIN_INTERVAL_ROOT', 900)),
+        'max_keys_per_run' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_KEYS_PER_RUN', env('SVRS_EGRESS_MAX_KEYS_PER_JOB', 1)),
         'max_recoverable_attempts' => (int) env('SEFAZ_SVRS_NFCE_XML_MAX_ATTEMPTS', 5),
         // Backoff em segundos: 15m, 1h, 6h, 12h
         'retry_backoff_seconds' => [900, 3600, 21600, 43200],
-        'retry_jitter_ratio' => (float) env('SEFAZ_SVRS_NFCE_XML_RETRY_JITTER', 0.1),
+        'retry_jitter_ratio' => (float) env('SEFAZ_SVRS_NFCE_XML_RETRY_JITTER', env('SVRS_EGRESS_RETRY_JITTER', 0.1)),
 
-        // Circuit breaker
-        'breaker_open_seconds' => (int) env('SEFAZ_SVRS_NFCE_XML_BREAKER_OPEN_SECONDS', 3600),
+        // Circuit breaker (cache legado; coorte durável no governador)
+        'breaker_open_seconds' => (int) env('SEFAZ_SVRS_NFCE_XML_BREAKER_OPEN_SECONDS', 86400),
         'breaker_failure_threshold' => (int) env('SEFAZ_SVRS_NFCE_XML_BREAKER_THRESHOLD', 3),
 
         'queue' => env('SEFAZ_SVRS_NFCE_XML_QUEUE', env('SEFAZ_MA_OUTBOUND_QUEUE', 'capture-outbound-ma')),
@@ -282,7 +325,7 @@ return [
         'lock_ttl_seconds' => (int) env('SEFAZ_SVRS_NFCE_XML_LOCK_TTL', 180),
 
         // Parser versionado (bump quando fixture/contrato muda de forma compatível)
-        'wrapper_parser_version' => env('SEFAZ_SVRS_NFCE_XML_PARSER_VERSION', '1'),
+        'wrapper_parser_version' => env('SEFAZ_SVRS_NFCE_XML_PARSER_VERSION', '2'),
         // Exigir XMLDSig em produção; em testing fixtures sem Signature são aceitas se false
         'require_signature' => filter_var(env('SEFAZ_SVRS_NFCE_XML_REQUIRE_SIGNATURE', true), FILTER_VALIDATE_BOOL),
 
@@ -291,6 +334,55 @@ return [
             'sistema' => 'Nfce',
             'OrigemSite' => '0',
             // Ambiente e ChaveAcessoDfe preenchidos em runtime
+        ],
+    ],
+
+    /**
+     * Canal SVRS — recuperação de nfeProc de NF-e 55 por chave + A1 (portal NFESSL).
+     * Defaults off; orçamento no governador compartilhado.
+     *
+     * @see openspec/changes/add-resilient-svrs-nfe55-outbound-xml-retrieval
+     */
+    'svrs_nfe55_xml' => [
+        'retrieval_enabled' => filter_var(env('SEFAZ_SVRS_NFE55_XML_RETRIEVAL_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'auto_queue_enabled' => filter_var(env('SEFAZ_SVRS_NFE55_XML_AUTO_QUEUE_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'pilot_allowlist_only' => filter_var(env('SEFAZ_SVRS_NFE55_XML_PILOT_ALLOWLIST_ONLY', false), FILTER_VALIDATE_BOOL),
+        'kill_switch' => filter_var(env('SEFAZ_SVRS_NFE55_XML_KILL_SWITCH', false), FILTER_VALIDATE_BOOL),
+
+        'scheme' => 'https',
+        'host' => env('SEFAZ_SVRS_NFE55_XML_HOST', env('SEFAZ_SVRS_PORTAL_HOST', 'dfe-portal.svrs.rs.gov.br')),
+        'allowed_hosts' => array_values(array_filter(array_map(
+            static fn (string $h): string => strtolower(trim($h)),
+            explode(',', (string) env(
+                'SEFAZ_SVRS_NFE55_XML_ALLOWED_HOSTS',
+                env('SEFAZ_SVRS_PORTAL_ALLOWED_HOSTS', 'dfe-portal.svrs.rs.gov.br')
+            ))
+        ), static fn (string $h): bool => $h !== '')),
+        'get_path' => env('SEFAZ_SVRS_NFE55_XML_GET_PATH', '/NFESSL/DownloadXMLDFe'),
+        'post_path' => env('SEFAZ_SVRS_NFE55_XML_POST_PATH', '/NfeSSL/DownloadXmlDfe'),
+        'min_tls_version' => '1.2',
+        'verify_tls' => true,
+        'verify_hostname' => true,
+
+        'timeout_seconds' => (int) env('SEFAZ_SVRS_NFE55_XML_TIMEOUT_SECONDS', 30),
+        'connect_timeout_seconds' => (int) env('SEFAZ_SVRS_NFE55_XML_CONNECT_TIMEOUT_SECONDS', 10),
+        'max_html_bytes' => (int) env('SEFAZ_SVRS_NFE55_XML_MAX_HTML_BYTES', 524288),
+        'max_literal_bytes' => (int) env('SEFAZ_SVRS_NFE55_XML_MAX_LITERAL_BYTES', 262144),
+        'max_xml_bytes' => (int) env('SEFAZ_SVRS_NFE55_XML_MAX_XML_BYTES', 262144),
+
+        'max_recoverable_attempts' => (int) env('SEFAZ_SVRS_NFE55_XML_MAX_ATTEMPTS', 5),
+        'retry_backoff_seconds' => [900, 3600, 21600, 43200],
+        'retry_jitter_ratio' => (float) env('SEFAZ_SVRS_NFE55_XML_RETRY_JITTER', 0.1),
+
+        'queue' => env('SEFAZ_SVRS_NFE55_XML_QUEUE', env('SEFAZ_MA_OUTBOUND_QUEUE', 'capture-outbound-ma')),
+        'job_timeout_seconds' => (int) env('SEFAZ_SVRS_NFE55_XML_JOB_TIMEOUT', 120),
+        'lock_ttl_seconds' => (int) env('SEFAZ_SVRS_NFE55_XML_LOCK_TTL', 180),
+        'wrapper_parser_version' => env('SEFAZ_SVRS_NFE55_XML_PARSER_VERSION', '2'),
+        'require_signature' => filter_var(env('SEFAZ_SVRS_NFE55_XML_REQUIRE_SIGNATURE', true), FILTER_VALIDATE_BOOL),
+
+        'post_fields' => [
+            'sistema' => 'Nfe',
+            'OrigemSite' => '0',
         ],
     ],
 
@@ -321,8 +413,45 @@ return [
         'max_pages_per_job' => (int) env('SEFAZ_AUTXML_MAX_PAGES_PER_JOB', 20),
         'page_sleep_seconds' => (float) env('SEFAZ_AUTXML_PAGE_SLEEP_SECONDS', 2),
         'quiet_hours_after_empty' => (float) env('SEFAZ_AUTXML_QUIET_HOURS', 1),
+        /** Cooldown mínimo após cStat 656 (horas). */
+        'circuit_breaker_hours' => (float) env('SEFAZ_AUTXML_CIRCUIT_BREAKER_HOURS', 1),
         'decode_failure_threshold' => (int) env('SEFAZ_AUTXML_DECODE_FAILURE_THRESHOLD', 5),
         'job_timeout_seconds' => (int) env('SEFAZ_AUTXML_JOB_TIMEOUT_SECONDS', 900),
         'lock_ttl_seconds' => (int) env('SEFAZ_AUTXML_LOCK_TTL_SECONDS', 960),
+    ],
+
+    /**
+     * Canal CT-e autXML do escritório (CTeDistribuicaoDFe com A1 do office).
+     * Default off; reutiliza identidade/credencial do office (finalidade NFE_AUTXML_DISTDFE).
+     *
+     * @see openspec/changes/complete-cte-capture-with-distdfe-autxml-and-import
+     */
+    'cte_autxml' => [
+        'enabled' => filter_var(env('SEFAZ_CTE_AUTXML_DISTDFE_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'kill_switch' => filter_var(env('SEFAZ_CTE_AUTXML_KILL_SWITCH', false), FILTER_VALIDATE_BOOL),
+        'office_allowlist' => array_values(array_filter(array_map(
+            static fn (string $id): int => (int) trim($id),
+            explode(',', (string) env('SEFAZ_CTE_AUTXML_OFFICE_ALLOWLIST', ''))
+        ), static fn (int $id): bool => $id > 0)),
+        'allow_all_offices' => filter_var(env('SEFAZ_CTE_AUTXML_ALLOW_ALL_OFFICES', false), FILTER_VALIDATE_BOOL),
+        'queue' => env('SEFAZ_CTE_AUTXML_QUEUE', 'sync-sefaz-cte-autxml'),
+        'max_pages_per_job' => (int) env('SEFAZ_CTE_AUTXML_MAX_PAGES_PER_JOB', 20),
+        'page_sleep_seconds' => (float) env('SEFAZ_CTE_AUTXML_PAGE_SLEEP_SECONDS', 2),
+        'quiet_hours_after_empty' => (float) env('SEFAZ_CTE_AUTXML_QUIET_HOURS', 1),
+        'circuit_breaker_hours' => (float) env('SEFAZ_CTE_AUTXML_CIRCUIT_BREAKER_HOURS', 1),
+        'decode_failure_threshold' => (int) env('SEFAZ_CTE_AUTXML_DECODE_FAILURE_THRESHOLD', 5),
+        'job_timeout_seconds' => (int) env('SEFAZ_CTE_AUTXML_JOB_TIMEOUT_SECONDS', 900),
+        'lock_ttl_seconds' => (int) env('SEFAZ_CTE_AUTXML_LOCK_TTL_SECONDS', 960),
+        /** Orçamento conservador de consNSU por job (reparo de NSU conhecido). */
+        'cons_nsu_budget_per_job' => (int) env('SEFAZ_CTE_CONS_NSU_BUDGET_PER_JOB', 3),
+    ],
+
+    /** Entrega autenticada de CT-e pelo emissor (token hash, escopo cte:ingest). */
+    'cte_emitter_push' => [
+        'enabled' => filter_var(env('SEFAZ_CTE_EMITTER_PUSH_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'rate_limit_per_minute' => (int) env('SEFAZ_CTE_EMITTER_PUSH_RATE_LIMIT', 30),
+        /** Issue/revoke de token de integração (ADMIN) — mais restrito que o push público. */
+        'admin_token_rate_limit_per_minute' => (int) env('SEFAZ_CTE_EMITTER_PUSH_ADMIN_TOKEN_RATE_LIMIT', 10),
+        'max_payload_bytes' => (int) env('SEFAZ_CTE_EMITTER_PUSH_MAX_BYTES', 5_242_880), // 5 MiB
     ],
 ];

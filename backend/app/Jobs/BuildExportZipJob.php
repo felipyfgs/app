@@ -3,18 +3,22 @@
 namespace App\Jobs;
 
 use App\Contracts\SecureObjectStore;
+use App\Enums\DocumentDirection;
 use App\Enums\DocumentKind;
+use App\Enums\FiscalRole;
 use App\Models\CteDocument;
 use App\Models\Export;
 use App\Models\NfeDocument;
 use App\Models\NfseEvent;
 use App\Models\NfseNote;
+use App\Services\Vault\DocumentVaultReader;
 use App\Support\NfseNoteStatus;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 use ZipArchive;
 
@@ -51,27 +55,34 @@ class BuildExportZipJob implements ShouldQueue
             $kinds = $this->resolveKinds($filters);
             $count = 0;
             $seen = [];
+            /** @var list<array{kind: string, access_key: string, reason: string}> $skipped */
+            $skipped = [];
 
             if ($kinds === [] || in_array(DocumentKind::Nfse, $kinds, true)) {
                 $query = NfseNote::query()->where('office_id', $export->office_id)->with('document');
                 $this->applySharedFilters($query, $filters, nfse: true);
-                $query->orderBy('id')->chunkById(100, function ($notes) use ($store, $zip, &$count, &$seen, $export): void {
+                $query->orderBy('id')->chunkById(100, function ($notes) use ($store, $zip, &$count, &$seen, &$skipped, $export): void {
                     foreach ($notes as $note) {
                         if (isset($seen['NFSE:'.$note->access_key])) {
                             continue;
                         }
                         $seen['NFSE:'.$note->access_key] = true;
                         $doc = $note->document;
-                        $bytes = $store->get($doc->vault_object_id, [
-                            'office_id' => $doc->office_id,
-                            'sha256' => $doc->sha256,
-                        ]);
+                        if ($doc === null) {
+                            $skipped[] = ['kind' => 'nfse', 'access_key' => $note->access_key, 'reason' => 'sem_documento'];
+
+                            continue;
+                        }
+                        $bytes = $this->readVaultXml($store, $doc->vault_object_id, (int) $doc->office_id, (string) $doc->sha256, $skipped, 'nfse', $note->access_key);
+                        if ($bytes === null) {
+                            continue;
+                        }
+                        $dirValue = $this->resolveDirectionValue($note->direction, $note->fiscal_role);
                         $entry = $this->zipEntryPath(
-                            $note->direction?->value,
+                            $dirValue,
                             'nfse',
-                            $note->issuer_cnpj,
+                            $this->partyCnpjForPath($dirValue, $note->issuer_cnpj, $note->taker_cnpj),
                             $note->competence,
-                            $note->fiscal_role?->value,
                             $note->access_key,
                         );
                         $zip->addFromString($entry, $bytes);
@@ -85,17 +96,27 @@ class BuildExportZipJob implements ShouldQueue
                                 ->get();
                             foreach ($events as $i => $event) {
                                 $edoc = $event->document;
-                                $ebytes = $store->get($edoc->vault_object_id, [
-                                    'office_id' => $edoc->office_id,
-                                    'sha256' => $edoc->sha256,
-                                ]);
+                                if ($edoc === null) {
+                                    continue;
+                                }
+                                $ebytes = $this->readVaultXml(
+                                    $store,
+                                    $edoc->vault_object_id,
+                                    (int) $edoc->office_id,
+                                    (string) $edoc->sha256,
+                                    $skipped,
+                                    'nfse-event',
+                                    $note->access_key,
+                                );
+                                if ($ebytes === null) {
+                                    continue;
+                                }
                                 $zip->addFromString(
                                     $this->zipEntryPath(
-                                        $note->direction?->value,
+                                        $dirValue,
                                         'nfse',
-                                        $note->issuer_cnpj,
+                                        $this->partyCnpjForPath($dirValue, $note->issuer_cnpj, $note->taker_cnpj),
                                         $note->competence,
-                                        $note->fiscal_role?->value,
                                         $note->access_key,
                                         'event-'.($i + 1),
                                     ),
@@ -129,7 +150,7 @@ class BuildExportZipJob implements ShouldQueue
                     $query->where('model', '65');
                 }
                 $this->applySharedFilters($query, $filters, nfse: false);
-                $query->orderBy('id')->chunkById(100, function ($rows) use ($store, $zip, &$count, &$seen): void {
+                $query->orderBy('id')->chunkById(100, function ($rows) use ($store, $zip, &$count, &$seen, &$skipped): void {
                     foreach ($rows as $row) {
                         $kindSeg = ($row->model === '65') ? 'nfce' : 'nfe';
                         $dedupe = strtoupper($kindSeg).':'.$row->access_key;
@@ -138,17 +159,34 @@ class BuildExportZipJob implements ShouldQueue
                         }
                         $seen[$dedupe] = true;
                         $doc = $row->document;
-                        $bytes = $store->get($doc->vault_object_id, [
-                            'office_id' => $doc->office_id,
-                            'sha256' => $doc->sha256,
-                        ]);
-                        $comp = $row->issued_at?->format('Y-m') ?? 'sem-competencia';
-                        $entry = $this->zipEntryPath(
-                            $row->direction?->value,
+                        if ($doc === null) {
+                            $skipped[] = ['kind' => $kindSeg, 'access_key' => $row->access_key, 'reason' => 'sem_documento'];
+
+                            continue;
+                        }
+                        $bytes = $this->readVaultXml(
+                            $store,
+                            $doc->vault_object_id,
+                            (int) $doc->office_id,
+                            (string) $doc->sha256,
+                            $skipped,
                             $kindSeg,
-                            $row->issuer_cnpj,
+                            $row->access_key,
+                        );
+                        if ($bytes === null) {
+                            continue;
+                        }
+                        $comp = $row->issued_at?->format('Y-m') ?? 'sem-competencia';
+                        $dirValue = $this->resolveDirectionValue($row->direction, $row->fiscal_role);
+                        $entry = $this->zipEntryPath(
+                            $dirValue,
+                            $kindSeg,
+                            $this->partyCnpjForPath(
+                                $dirValue,
+                                $row->issuer_cnpj,
+                                $row->recipient_cnpj ?? null,
+                            ),
                             $comp,
-                            $row->fiscal_role?->value,
                             $row->access_key,
                             $row->is_summary ? 'resumo' : null,
                         );
@@ -172,7 +210,7 @@ class BuildExportZipJob implements ShouldQueue
                         });
                 });
                 $this->applySharedFilters($query, $filters, nfse: false);
-                $query->orderBy('id')->chunkById(100, function ($rows) use ($store, $zip, &$count, &$seen): void {
+                $query->orderBy('id')->chunkById(100, function ($rows) use ($store, $zip, &$count, &$seen, &$skipped): void {
                     foreach ($rows as $row) {
                         if (isset($seen['CTE:'.$row->access_key])) {
                             continue;
@@ -180,19 +218,33 @@ class BuildExportZipJob implements ShouldQueue
                         $seen['CTE:'.$row->access_key] = true;
                         $doc = $row->document;
                         if ($doc === null) {
+                            $skipped[] = ['kind' => 'cte', 'access_key' => $row->access_key, 'reason' => 'sem_documento'];
+
                             continue;
                         }
-                        $bytes = $store->get($doc->vault_object_id, [
-                            'office_id' => $doc->office_id,
-                            'sha256' => $doc->sha256,
-                        ]);
-                        $comp = $row->issued_at?->format('Y-m') ?? 'sem-competencia';
-                        $entry = $this->zipEntryPath(
-                            $row->direction?->value,
+                        $bytes = $this->readVaultXml(
+                            $store,
+                            $doc->vault_object_id,
+                            (int) $doc->office_id,
+                            (string) $doc->sha256,
+                            $skipped,
                             'cte',
-                            $row->issuer_cnpj,
+                            $row->access_key,
+                        );
+                        if ($bytes === null) {
+                            continue;
+                        }
+                        $comp = $row->issued_at?->format('Y-m') ?? 'sem-competencia';
+                        $dirValue = $this->resolveDirectionValue($row->direction, $row->fiscal_role);
+                        $entry = $this->zipEntryPath(
+                            $dirValue,
+                            'cte',
+                            $this->partyCnpjForPath(
+                                $dirValue,
+                                $row->issuer_cnpj,
+                                $row->taker_cnpj ?? $row->recipient_cnpj ?? null,
+                            ),
                             $comp,
-                            $row->fiscal_role?->value,
                             $row->access_key,
                             $row->is_summary ? 'resumo' : null,
                         );
@@ -204,7 +256,50 @@ class BuildExportZipJob implements ShouldQueue
 
             // MDF-e legado nunca entra nos ramos de consulta ou no vault.
 
+            // Manifesto de ausências (exportação mensal parcial) — nunca inventa XML.
+            $manifestPath = is_string($filters['absence_manifest_path'] ?? null)
+                ? (string) $filters['absence_manifest_path']
+                : null;
+            if ($manifestPath !== null && $manifestPath !== '' && is_file($manifestPath)) {
+                $root = realpath(storage_path('app/private/exports/'.$export->office_id));
+                $real = realpath($manifestPath);
+                if ($root !== false && $real !== false
+                    && (str_starts_with($real, $root.DIRECTORY_SEPARATOR) || $real === $root)) {
+                    $zip->addFromString(
+                        'manifesto-ausencias-'.$this->safeSegment((string) ($filters['competence'] ?? 'competencia')).'.json',
+                        (string) file_get_contents($real)
+                    );
+                    $count++;
+                }
+            }
+
+            // Relatório de itens sem XML legível (não substitui o XML).
+            if ($skipped !== []) {
+                $zip->addFromString(
+                    'export-skipped.json',
+                    (string) json_encode([
+                        'skipped_count' => count($skipped),
+                        'items' => $skipped,
+                    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+                );
+            }
+
             $zip->close();
+
+            if ($count === 0) {
+                if (is_file($path)) {
+                    @unlink($path);
+                }
+                $export->status = 'FAILED';
+                $export->error_message = $skipped !== []
+                    ? 'Nenhum XML legível no cofre para os filtros (objetos inacessíveis ou ausentes).'
+                    : 'Nenhum documento encontrado para os filtros informados.';
+                $export->storage_path = null;
+                $export->files_count = 0;
+                $export->save();
+
+                return;
+            }
 
             $export->status = 'READY';
             $export->storage_path = $path;
@@ -222,6 +317,50 @@ class BuildExportZipJob implements ShouldQueue
             $export->storage_path = null;
             $export->save();
             report($e);
+        }
+    }
+
+    /**
+     * Lê XML do vault; em falha registra skip e não aborta o ZIP inteiro.
+     *
+     * @param  list<array{kind: string, access_key: string, reason: string}>  $skipped
+     */
+    private function readVaultXml(
+        SecureObjectStore $store,
+        ?string $objectId,
+        int $officeId,
+        string $sha256,
+        array &$skipped,
+        string $kind,
+        string $accessKey,
+    ): ?string {
+        if ($objectId === null || $objectId === '' || $sha256 === '') {
+            $skipped[] = ['kind' => $kind, 'access_key' => $accessKey, 'reason' => 'sem_vault'];
+
+            return null;
+        }
+
+        try {
+            $bytes = DocumentVaultReader::get($store, $objectId, $officeId, $sha256);
+            // Nunca embutir envelope JSON do cofre no ZIP — só XML/texto fiscal.
+            $trim = ltrim($bytes);
+            if ($trim !== '' && ($trim[0] === '{' || $trim[0] === '[')) {
+                $skipped[] = ['kind' => $kind, 'access_key' => $accessKey, 'reason' => 'conteudo_nao_xml'];
+                Log::warning('export.vault_not_xml', ['kind' => $kind, 'access_key' => $accessKey]);
+
+                return null;
+            }
+
+            return $bytes;
+        } catch (Throwable $e) {
+            $skipped[] = ['kind' => $kind, 'access_key' => $accessKey, 'reason' => 'vault_inacessivel'];
+            Log::warning('export.vault_read_failed', [
+                'kind' => $kind,
+                'access_key' => $accessKey,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
         }
     }
 
@@ -308,12 +447,38 @@ class BuildExportZipJob implements ShouldQueue
         }
     }
 
+    /**
+     * Direção efetiva no ZIP: usa a coluna direction; se nula, deriva do papel fiscal.
+     */
+    private function resolveDirectionValue(mixed $direction, mixed $fiscalRole): ?string
+    {
+        if ($direction instanceof DocumentDirection) {
+            return $direction === DocumentDirection::Unknown ? null : $direction->value;
+        }
+        if (is_string($direction) && $direction !== '' && strtoupper($direction) !== 'UNKNOWN') {
+            return strtoupper($direction);
+        }
+
+        $role = $fiscalRole instanceof FiscalRole
+            ? $fiscalRole
+            : (is_string($fiscalRole) ? FiscalRole::tryFrom($fiscalRole) : null);
+        $derived = DocumentDirection::fromFiscalRole($role);
+
+        return $derived === DocumentDirection::Unknown ? null : $derived->value;
+    }
+
+    /**
+     * Layout do ZIP (padrão operacional):
+     * {entrada|saida}/{nfse|nfe|nfce|cte}/{cnpj}/{YYYYMM}/{chave}.xml
+     *
+     * Sem pasta de papel (ISSUER/TAKER) — recorte por CNPJ + chave basta.
+     * Competência no caminho: 202607 (não 2026-07).
+     */
     private function zipEntryPath(
         ?string $directionValue,
         string $kind,
         ?string $cnpj,
         ?string $competence,
-        ?string $role,
         string $accessKey,
         ?string $suffix = null,
     ): string {
@@ -322,23 +487,52 @@ class BuildExportZipJob implements ShouldQueue
             'IN' => 'entrada',
             default => 'indefinida',
         };
-        $comp = preg_match('/^\d{4}-\d{2}$/', (string) $competence)
-            ? $competence
-            : 'sem-competencia';
-        $base = sprintf(
-            '%s/%s/%s/%s/%s/%s',
-            $direction,
-            $kind,
-            $this->safeSegment($cnpj ?: 'sem-cnpj'),
-            $comp,
-            $this->safeSegment($role ?: 'sem-papel'),
-            $this->safeSegment($accessKey),
-        );
+        $comp = $this->competenceFolder($competence);
+        $fileBase = $this->safeSegment($accessKey);
         if ($suffix) {
-            return $base.'-'.$this->safeSegment($suffix).'.xml';
+            $fileBase .= '-'.$this->safeSegment($suffix);
         }
 
-        return $base.'.xml';
+        return sprintf(
+            '%s/%s/%s/%s/%s.xml',
+            $direction,
+            $kind,
+            $this->safeSegment($this->normalizeIdentifier($cnpj ?: '') ?: 'sem-cnpj'),
+            $comp,
+            $fileBase,
+        );
+    }
+
+    /**
+     * Pasta de competência no ZIP: YYYYMM.
+     */
+    private function competenceFolder(?string $competence): string
+    {
+        $raw = trim((string) $competence);
+        if (preg_match('/^(\d{4})-(\d{2})$/', $raw, $m)) {
+            return $m[1].$m[2];
+        }
+        if (preg_match('/^\d{6}$/', $raw)) {
+            return $raw;
+        }
+        if (preg_match('/^(\d{4})(\d{2})/', preg_replace('/\D/', '', $raw) ?? '', $m) && strlen(preg_replace('/\D/', '', $raw) ?? '') >= 6) {
+            return substr(preg_replace('/\D/', '', $raw) ?? '', 0, 6);
+        }
+
+        return 'sem-competencia';
+    }
+
+    /**
+     * CNPJ da pasta: na saída o emitente/prestador; na entrada o destinatário/tomador
+     * (CNPJ do interessado do escritório no documento).
+     */
+    private function partyCnpjForPath(?string $directionValue, ?string $issuerCnpj, ?string $takerOrRecipientCnpj): string
+    {
+        if ($directionValue === 'IN') {
+            return $this->normalizeIdentifier((string) ($takerOrRecipientCnpj ?: $issuerCnpj ?: ''));
+        }
+
+        return $this->normalizeIdentifier((string) ($issuerCnpj ?: $takerOrRecipientCnpj ?: ''));
     }
 
     private function normalizeIdentifier(string $value): string

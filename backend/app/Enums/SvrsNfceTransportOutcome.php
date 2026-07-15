@@ -12,6 +12,8 @@ enum SvrsNfceTransportOutcome: string
     case RemoteNotFound = 'REMOTE_NOT_FOUND';
     case AuthForbidden = 'AUTH_FORBIDDEN';
     case RateLimited = 'RATE_LIMITED';
+    /** Bloqueio textual "múltiplas consultas" mesmo com HTTP 200 */
+    case EgressBlockedMultipleQueries = 'SVRS_EGRESS_BLOCKED_MULTIPLE_QUERIES';
     case HttpTransient = 'HTTP_TRANSIENT';
     case ResponseContractChanged = 'RESPONSE_CONTRACT_CHANGED';
     case TlsOrHostRejected = 'TLS_OR_HOST_REJECTED';
@@ -29,6 +31,7 @@ enum SvrsNfceTransportOutcome: string
             self::RemoteNotFound => SvrsNfceFailureReason::RemoteNotFound,
             self::AuthForbidden => SvrsNfceFailureReason::AuthForbidden,
             self::RateLimited => SvrsNfceFailureReason::RateLimited,
+            self::EgressBlockedMultipleQueries => SvrsNfceFailureReason::EgressBlockedMultipleQueries,
             self::HttpTransient, self::NetworkError => SvrsNfceFailureReason::HttpTransient,
             self::ResponseContractChanged => SvrsNfceFailureReason::ResponseContractChanged,
             self::TlsOrHostRejected, self::RedirectRejected => SvrsNfceFailureReason::HttpTransient,

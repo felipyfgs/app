@@ -10,24 +10,28 @@ use App\Models\MaOutboundRetrievalRequest;
 use App\Models\OutboundCaptureProfile;
 use App\Models\OutboundNumberState;
 use App\Models\OutboundXmlRecoveryAttempt;
+use App\Contracts\SvrsPortalEgressGovernor;
 use App\Services\Outbound\OutboundXmlRecoveryOrchestrator;
 use App\Services\Outbound\SvrsNfceCircuitBreaker;
 use App\Services\Outbound\SvrsNfceConfig;
 use App\Services\Outbound\SvrsNfceKillSwitchService;
+use App\Services\Outbound\SvrsNfe55Config;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * API same-origin do canal SVRS NFC-e — DTOs sanitizados; office_id do servidor.
+ * API same-origin do canal SVRS NFC-e / saúde de coorte — DTOs sanitizados; office_id do servidor.
  */
 class SvrsNfceRecoveryController extends Controller
 {
     public function __construct(
         private readonly CurrentOffice $currentOffice,
         private readonly SvrsNfceConfig $config,
+        private readonly SvrsNfe55Config $nfe55Config,
         private readonly SvrsNfceKillSwitchService $killSwitch,
         private readonly SvrsNfceCircuitBreaker $breaker,
+        private readonly SvrsPortalEgressGovernor $egressGovernor,
         private readonly OutboundXmlRecoveryOrchestrator $orchestrator,
     ) {}
 
@@ -58,18 +62,62 @@ class SvrsNfceRecoveryController extends Controller
             ->orderBy('created_at')
             ->value('created_at');
 
+        $egress = $this->egressGovernor->cohortHealth();
+
         return response()->json([
             'data' => [
                 'retrieval_enabled' => $this->config->retrievalEnabled(),
                 'auto_queue_enabled' => $this->config->autoQueueEnabled(),
+                'nfe55_retrieval_enabled' => $this->nfe55Config->retrievalEnabled(),
+                'nfe55_auto_queue_enabled' => $this->nfe55Config->autoQueueEnabled(),
                 'pilot_allowlist_only' => $this->config->pilotAllowlistOnly(),
                 'kill_switch' => $this->killSwitch->status(),
                 'breaker_global' => $this->breaker->globalStatus(),
+                'egress_cohort' => [
+                    'cohort_id' => $egress['cohort_id'],
+                    'state' => $egress['state'],
+                    'cause' => $egress['cause'],
+                    'tier' => $egress['tier'],
+                    'next_probe_at' => $egress['next_probe_at'],
+                    'exchanges_hour_remaining' => $egress['exchanges_hour_remaining'],
+                    'exchanges_day_remaining' => $egress['exchanges_day_remaining'],
+                    'inflight' => $egress['inflight'],
+                    // budgets preventivos — não limites oficiais NFESSL
+                    'budgets_are_preventive' => true,
+                ],
                 'backlog' => $backlog,
                 'oldest_pending_at' => $oldest?->toIso8601String(),
                 'parser_version' => $this->config->parserVersion(),
                 'host' => $this->config->host(),
-                // sem cookie, PFX, URL arbitraria
+                // sem cookie, PFX, URL arbitraria, chave completa, CNPJ
+            ],
+        ]);
+    }
+
+    /**
+     * Saúde da coorte de egress (sem dados privados de outros escritórios).
+     */
+    public function egressCohortHealth(): JsonResponse
+    {
+        $this->authorizeView();
+        $egress = $this->egressGovernor->cohortHealth();
+
+        return response()->json([
+            'data' => [
+                'cohort_id' => $egress['cohort_id'],
+                'state' => $egress['state'],
+                'cause' => $egress['cause'],
+                'tier' => $egress['tier'],
+                'opened_at' => $egress['opened_at'],
+                'next_probe_at' => $egress['next_probe_at'],
+                'canary_key_mask' => $egress['canary_key_mask'],
+                'exchanges_hour' => $egress['exchanges_hour'],
+                'exchanges_day' => $egress['exchanges_day'],
+                'exchanges_hour_remaining' => $egress['exchanges_hour_remaining'],
+                'exchanges_day_remaining' => $egress['exchanges_day_remaining'],
+                'inflight' => $egress['inflight'],
+                'budgets_are_preventive' => true,
+                'note' => 'Limites internos preventivos; não são limites oficiais publicados do NFESSL/NFCESSL.',
             ],
         ]);
     }
@@ -323,6 +371,105 @@ class SvrsNfceRecoveryController extends Controller
                 'global' => $this->breaker->globalStatus(),
             ],
         ]);
+    }
+
+    /**
+     * Estende cooldown da coorte (nunca antecipa next_probe_at).
+     */
+    public function extendEgressCooldown(Request $request): JsonResponse
+    {
+        $this->authorizeAdmin2fa();
+        // Recusar campos de elevação de orçamento / URL / proxy
+        foreach (['min_interval', 'max_exchanges', 'url', 'host', 'headers', 'cookie', 'proxy', 'next_probe_at'] as $forbidden) {
+            $request->request->remove($forbidden);
+        }
+
+        $data = $request->validate([
+            'additional_seconds' => ['required', 'integer', 'min:60', 'max:604800'],
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        $this->egressGovernor->extendCooldown(
+            (int) $data['additional_seconds'],
+            (int) $request->user()->id,
+            $this->currentOffice->id(),
+        );
+
+        return response()->json([
+            'data' => $this->egressGovernor->cohortHealth(),
+            'meta' => ['reason' => mb_substr($data['reason'], 0, 200)],
+        ]);
+    }
+
+    /**
+     * Seleciona canário elegível após next_probe_at (half-open). Não antecipa prova.
+     */
+    public function selectEgressCanary(Request $request): JsonResponse
+    {
+        $this->authorizeAdmin2fa();
+        foreach (['url', 'host', 'headers', 'cookie', 'proxy', 'next_probe_at', 'min_interval'] as $forbidden) {
+            $request->request->remove($forbidden);
+        }
+
+        $data = $request->validate([
+            'number_state_id' => ['required', 'integer'],
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        $number = OutboundNumberState::query()->find((int) $data['number_state_id']);
+        if ($number === null || (int) $number->office_id !== (int) $this->currentOffice->id()) {
+            abort(404);
+        }
+
+        $key = strtoupper(trim((string) ($number->discovered_access_key ?: $number->candidate_access_key)));
+        if (strlen($key) !== 44) {
+            return response()->json(['message' => 'Número sem chave válida para canário.'], 422);
+        }
+
+        $health = $this->egressGovernor->cohortHealth();
+        if ($health['state'] === 'open') {
+            return response()->json([
+                'message' => 'Cooldown ativo — não é possível canário antes de next_probe_at.',
+                'data' => $health,
+            ], 422);
+        }
+
+        $mask = substr($key, 0, 6).'…'.substr($key, -4);
+        $result = $this->egressGovernor->selectCanary(
+            $mask,
+            hash('sha256', $key),
+            (int) $request->user()->id,
+            $this->currentOffice->id(),
+        );
+
+        if (! $result['ok']) {
+            return response()->json([
+                'message' => 'Canário recusado: '.$result['reason'],
+                'data' => $this->egressGovernor->cohortHealth(),
+            ], 422);
+        }
+
+        return response()->json([
+            'data' => $this->egressGovernor->cohortHealth(),
+            'meta' => ['reason' => mb_substr($data['reason'], 0, 200), 'key_mask' => $mask],
+        ]);
+    }
+
+    /**
+     * Recusa explícita de elevação de limites / bypass de cooldown / URL arbitrária.
+     */
+    public function refuseBudgetElevation(Request $request): JsonResponse
+    {
+        $this->authorizeAdmin2fa();
+
+        return response()->json([
+            'message' => 'Elevação de orçamento, antecipação de next_probe_at, URL/host/proxy/cookie arbitrários não são permitidos via API.',
+            'data' => [
+                'allowed' => false,
+                'budgets_are_preventive' => true,
+                'cohort' => $this->egressGovernor->cohortHealth(),
+            ],
+        ], 422);
     }
 
     private function authorizeView(): void

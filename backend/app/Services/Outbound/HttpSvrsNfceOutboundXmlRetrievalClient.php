@@ -54,7 +54,9 @@ final class HttpSvrsNfceOutboundXmlRetrievalClient implements SvrsNfceOutboundXm
             // GET formulário
             $getStarted = hrtime(true);
             $get = $this->perform($ch, 'GET', $this->config->getUrl(), null, [
+                'User-Agent: Mozilla/5.0 (compatible; NfseAdnCapture/1.0; internal-accounting-office)',
                 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language: pt-BR,pt;q=0.9',
             ]);
             $getMs = (int) ((hrtime(true) - $getStarted) / 1_000_000);
 
@@ -84,8 +86,11 @@ final class HttpSvrsNfceOutboundXmlRetrievalClient implements SvrsNfceOutboundXm
 
             $postStarted = hrtime(true);
             $post = $this->perform($ch, 'POST', $this->config->postUrl(), $body, [
+                'User-Agent: Mozilla/5.0 (compatible; NfseAdnCapture/1.0; internal-accounting-office)',
                 'Content-Type: application/x-www-form-urlencoded',
                 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language: pt-BR,pt;q=0.9',
+                'Origin: https://'.$this->config->host(),
                 'Referer: '.$this->config->getUrl(),
             ]);
             $postMs = (int) ((hrtime(true) - $postStarted) / 1_000_000);

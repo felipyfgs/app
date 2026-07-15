@@ -4,19 +4,31 @@ namespace Tests\Unit\Outbound;
 
 use App\Enums\SvrsNfceFailureReason;
 use App\Services\Audit\AuditLogger;
+use App\Services\Outbound\RedisSvrsPortalEgressGovernor;
 use App\Services\Outbound\SvrsNfceCircuitBreaker;
 use App\Services\Outbound\SvrsNfceConfig;
 use App\Services\Outbound\SvrsNfceRateLimiter;
+use App\Services\Outbound\SvrsPortalEgressConfig;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class SvrsNfceRateLimitAndBreakerTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected function setUp(): void
     {
         parent::setUp();
         Cache::flush();
         config([
+            'sefaz.svrs_portal_egress.cohort_id' => 'test-rate',
+            'sefaz.svrs_portal_egress.min_interval_global_seconds' => 5,
+            'sefaz.svrs_portal_egress.min_interval_root_seconds' => 30,
+            'sefaz.svrs_portal_egress.max_inflight_transactions' => 1,
+            'sefaz.svrs_portal_egress.exchanges_per_download' => 2,
+            'sefaz.svrs_portal_egress.max_exchanges_per_hour' => 50,
+            'sefaz.svrs_portal_egress.max_exchanges_per_day' => 100,
             'sefaz.svrs_nfce_xml.min_interval_global_seconds' => 5,
             'sefaz.svrs_nfce_xml.min_interval_root_seconds' => 30,
             'sefaz.svrs_nfce_xml.max_inflight_global' => 1,
@@ -28,35 +40,56 @@ class SvrsNfceRateLimitAndBreakerTest extends TestCase
     public function test_inflight_semaphore(): void
     {
         config([
+            'sefaz.svrs_portal_egress.min_interval_global_seconds' => 0,
+            'sefaz.svrs_portal_egress.min_interval_root_seconds' => 0,
             'sefaz.svrs_nfce_xml.min_interval_global_seconds' => 0,
             'sefaz.svrs_nfce_xml.min_interval_root_seconds' => 0,
         ]);
-        $limiter = new SvrsNfceRateLimiter(new SvrsNfceConfig);
-        $a = $limiter->acquire(10);
+        $limiter = $this->limiter();
+        $a = $limiter->acquire(10, '11111111000191', 1);
         $this->assertTrue($a['allowed']);
-        $b = $limiter->acquire(11);
+        $this->assertNotNull($a['reservation'] ?? null);
+        $b = $limiter->acquire(11, '22222222000191', 1);
         $this->assertFalse($b['allowed']);
         $this->assertSame('inflight', $b['reason']);
-        $limiter->release();
-        $c = $limiter->acquire(11);
+        $limiter->release($a['reservation']);
+        $c = $limiter->acquire(11, '22222222000191', 1);
         $this->assertTrue($c['allowed']);
-        $limiter->release();
+        $limiter->release($c['reservation']);
     }
 
     public function test_global_interval(): void
     {
         config([
+            'sefaz.svrs_portal_egress.min_interval_global_seconds' => 5,
+            'sefaz.svrs_portal_egress.min_interval_root_seconds' => 0,
+            'sefaz.svrs_portal_egress.max_inflight_transactions' => 10,
             'sefaz.svrs_nfce_xml.min_interval_global_seconds' => 5,
             'sefaz.svrs_nfce_xml.min_interval_root_seconds' => 0,
             'sefaz.svrs_nfce_xml.max_inflight_global' => 10,
         ]);
-        $limiter = new SvrsNfceRateLimiter(new SvrsNfceConfig);
-        $this->assertTrue($limiter->acquire(1)['allowed']);
-        $limiter->release();
-        $again = $limiter->acquire(2);
+        $limiter = $this->limiter();
+        $first = $limiter->acquire(1, '11111111000191', 1);
+        $this->assertTrue($first['allowed']);
+        $limiter->release($first['reservation']);
+        $again = $limiter->acquire(2, '22222222000191', 1);
         $this->assertFalse($again['allowed']);
         $this->assertSame('global_interval', $again['reason']);
         $this->assertGreaterThan(0, $again['retry_after_seconds']);
+    }
+
+    public function test_acquire_normaliza_cnpj_alfanumerico(): void
+    {
+        config([
+            'sefaz.svrs_portal_egress.min_interval_global_seconds' => 0,
+            'sefaz.svrs_portal_egress.min_interval_root_seconds' => 0,
+            'sefaz.svrs_portal_egress.max_inflight_transactions' => 5,
+        ]);
+        $limiter = $this->limiter();
+        $a = $limiter->acquire(1, '12abc34501de35', 1);
+        $this->assertTrue($a['allowed']);
+        $this->assertSame('12ABC345', $a['reservation']->rootCnpj);
+        $limiter->release($a['reservation']);
     }
 
     public function test_breaker_opens_on_contract_changed(): void
@@ -108,5 +141,15 @@ class SvrsNfceRateLimitAndBreakerTest extends TestCase
         $this->assertSame('open', $breaker->rootStatus(99)['state']);
         $this->assertTrue($breaker->isCallAllowed(98)); // other root ok if global closed
         $this->assertFalse($breaker->isCallAllowed(99));
+    }
+
+    private function limiter(): SvrsNfceRateLimiter
+    {
+        $governor = new RedisSvrsPortalEgressGovernor(
+            new SvrsPortalEgressConfig,
+            app(AuditLogger::class),
+        );
+
+        return new SvrsNfceRateLimiter(new SvrsNfceConfig, $governor, new SvrsPortalEgressConfig);
     }
 }

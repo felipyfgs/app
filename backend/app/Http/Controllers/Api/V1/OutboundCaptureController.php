@@ -12,6 +12,7 @@ use App\Models\OutboundCaptureProfile;
 use App\Models\OutboundCaptureRun;
 use App\Models\OutboundNumberState;
 use App\Models\OutboundSeriesCursor;
+use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use App\Services\Outbound\CscVaultService;
 use App\Services\Outbound\MaOfficialPackageIngestionService;
@@ -90,7 +91,7 @@ class OutboundCaptureController extends Controller
 
     public function storeCsc(Request $request, OutboundCaptureProfile $profile): JsonResponse
     {
-        $this->authorizeAdmin();
+        $this->authorizeAdminWithTwoFactor();
         $this->ensureProfile($profile);
 
         $data = $request->validate([
@@ -105,15 +106,18 @@ class OutboundCaptureController extends Controller
             (int) $request->user()->id,
         );
 
+        // ADMIN+2FA: devolve valor para UI; audit outbound.csc.replaced + .revealed sem o token.
         return response()->json(['data' => $state]);
     }
 
-    public function showCsc(OutboundCaptureProfile $profile): JsonResponse
+    public function showCsc(Request $request, OutboundCaptureProfile $profile): JsonResponse
     {
-        $this->authorizeAdmin();
+        $this->authorizeAdminWithTwoFactor();
         $this->ensureProfile($profile);
 
-        return response()->json(['data' => $profile->cscPublicState()]);
+        return response()->json([
+            'data' => $this->csc->revealCsc($profile, (int) $request->user()->id),
+        ]);
     }
 
     public function activate(Request $request, OutboundCaptureProfile $profile): JsonResponse
@@ -126,12 +130,14 @@ class OutboundCaptureController extends Controller
             'allowlisted' => ['sometimes', 'boolean'],
         ]);
 
+        $allowlisted = (bool) ($data['allowlisted'] ?? false);
+
         $profile->forceFill([
             'mandate_reference' => $data['mandate_reference'],
             'consent_recorded' => true,
             'consent_recorded_at' => now(),
-            'allowlisted' => $data['allowlisted'] ?? true,
-            'allowlisted_at' => now(),
+            'allowlisted' => $allowlisted,
+            'allowlisted_at' => $allowlisted ? now() : null,
             'status' => OutboundProfileStatus::Active,
             'activated_by' => $request->user()->id,
             'activated_at' => now(),
@@ -319,6 +325,26 @@ class OutboundCaptureController extends Controller
     private function authorizeAdmin(): void
     {
         abort_unless($this->office->role() === OfficeRole::Admin, 403);
+    }
+
+    /**
+     * ADMIN + TOTP confirmado (defesa em profundidade além de EnsureAdminTwoFactor).
+     * Usado em endpoints que materializam segredos fiscais (CSC).
+     */
+    private function authorizeAdminWithTwoFactor(): void
+    {
+        abort_unless($this->office->role() === OfficeRole::Admin, 403);
+
+        if (! config('fortify.two_factor_required', true)) {
+            return;
+        }
+
+        $user = auth()->user();
+        abort_unless(
+            $user instanceof User && $user->hasConfirmedTwoFactor(),
+            403,
+            'Confirme o segundo fator (TOTP) para acessar funções administrativas.',
+        );
     }
 
     private function ensureProfile(OutboundCaptureProfile $profile): void

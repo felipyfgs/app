@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use App\Enums\OutboundCaptureMode;
+use App\Enums\OutboundDeadlineSource;
+use App\Enums\OutboundDeadlineStatus;
 use App\Enums\OutboundFiscalModel;
 use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\OutboundRetrievalStatus;
+use App\Enums\OutboundUrgencyBand;
 use App\Enums\SvrsNfceFailureReason;
 use App\Enums\SvrsNfceRecoveryStatus;
 use App\Models\Concerns\BelongsToOffice;
@@ -16,10 +19,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'office_id', 'outbound_capture_profile_id', 'establishment_id', 'environment', 'model',
-    'direction', 'competence', 'status', 'mode', 'origin', 'access_key', 'outbound_number_state_id',
-    'recovery_status', 'failure_reason', 'attempt_count', 'next_attempt_at', 'correlation_id',
-    'sha256', 'dfe_document_id', 'external_ref', 'requested_at', 'expires_at',
-    'ready_at', 'ingested_at', 'files_expected', 'files_ingested', 'last_error', 'created_by',
+    'direction', 'competence', 'due_at', 'target_at', 'deadline_source', 'urgency_band',
+    'deadline_status', 'capacity_at_risk', 'status', 'mode', 'origin', 'access_key', 'root_cnpj',
+    'outbound_number_state_id', 'recovery_status', 'failure_reason', 'attempt_count',
+    'svrs_transaction_count', 'next_attempt_at', 'planned_at', 'dispatched_at',
+    'accommodation_until', 'correlation_id', 'slot_key', 'sha256', 'dfe_document_id',
+    'external_ref', 'requested_at', 'expires_at', 'ready_at', 'ingested_at', 'captured_at',
+    'captured_before_due', 'capture_source', 'files_expected', 'files_ingested', 'last_error',
+    'created_by',
 ])]
 class MaOutboundRetrievalRequest extends Model
 {
@@ -34,14 +41,26 @@ class MaOutboundRetrievalRequest extends Model
             'origin' => OutboundRetrievalOrigin::class,
             'recovery_status' => SvrsNfceRecoveryStatus::class,
             'failure_reason' => SvrsNfceFailureReason::class,
+            'deadline_source' => OutboundDeadlineSource::class,
+            'urgency_band' => OutboundUrgencyBand::class,
+            'deadline_status' => OutboundDeadlineStatus::class,
+            'capacity_at_risk' => 'boolean',
             'attempt_count' => 'integer',
+            'svrs_transaction_count' => 'integer',
             'files_expected' => 'integer',
             'files_ingested' => 'integer',
+            'captured_before_due' => 'boolean',
             'requested_at' => 'immutable_datetime',
             'expires_at' => 'immutable_datetime',
             'ready_at' => 'immutable_datetime',
             'ingested_at' => 'immutable_datetime',
+            'captured_at' => 'immutable_datetime',
             'next_attempt_at' => 'immutable_datetime',
+            'due_at' => 'immutable_datetime',
+            'target_at' => 'immutable_datetime',
+            'planned_at' => 'immutable_datetime',
+            'dispatched_at' => 'immutable_datetime',
+            'accommodation_until' => 'immutable_datetime',
         ];
     }
 
@@ -108,13 +127,27 @@ class MaOutboundRetrievalRequest extends Model
                 ? $this->failure_reason->label()
                 : null,
             'attempt_count' => $this->attempt_count,
+            'svrs_transaction_count' => $this->svrs_transaction_count,
             'next_attempt_at' => $this->next_attempt_at?->toIso8601String(),
+            'due_at' => $this->due_at?->toIso8601String(),
+            'target_at' => $this->target_at?->toIso8601String(),
+            'urgency_band' => $this->urgency_band instanceof OutboundUrgencyBand
+                ? $this->urgency_band->value
+                : $this->urgency_band,
+            'deadline_status' => $this->deadline_status instanceof OutboundDeadlineStatus
+                ? $this->deadline_status->value
+                : $this->deadline_status,
+            'capacity_at_risk' => (bool) $this->capacity_at_risk,
+            'captured_at' => $this->captured_at?->toIso8601String(),
+            'captured_before_due' => $this->captured_before_due,
+            'capture_source' => $this->capture_source,
             'correlation_id' => $this->correlation_id,
             'sha256' => $this->sha256,
             'external_ref' => $this->external_ref,
             'expires_at' => $this->expires_at?->toIso8601String(),
             'files_ingested' => $this->files_ingested,
             'files_expected' => $this->files_expected,
+            // sem vault_object_id, XML, PFX
         ];
     }
 

@@ -194,7 +194,7 @@ class OutboundXmlImportTest extends TestCase
       <total><ICMSTot><vNF>100.00</vNF></ICMSTot></total>
     </infNFe>
   </NFe>
-  <protNFe><infProt><chNFe>{$chave}</chNFe><cStat>100</cStat></infProt></protNFe>
+  <protNFe><infProt><chNFe>{$chave}</chNFe><nProt>135260000000001</nProt><cStat>100</cStat></infProt></protNFe>
 </nfeProc>
 XML;
     }

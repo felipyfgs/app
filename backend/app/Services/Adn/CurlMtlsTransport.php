@@ -102,6 +102,12 @@ class CurlMtlsTransport
             },
         ];
 
+        // Bundle extra (ICP-Brasil / intermediários SEFAZ) quando o SO não tem a cadeia completa.
+        $caBundle = (string) config('sefaz.ca_bundle', '');
+        if ($caBundle !== '' && is_readable($caBundle)) {
+            $opts[CURLOPT_CAINFO] = $caBundle;
+        }
+
         if (strtoupper($method) === 'POST') {
             $opts[CURLOPT_POST] = true;
             $opts[CURLOPT_POSTFIELDS] = $body ?? '';
@@ -116,13 +122,20 @@ class CurlMtlsTransport
         curl_close($ch);
 
         if ($errno !== 0) {
+            $detail = $error !== '' ? $error : ('curl_errno='.$errno);
+            // Log sanitizado: sem PFX/senha; útil para diagnosticar CA/TLS.
+            \Illuminate\Support\Facades\Log::warning('mtls.transport_failed', [
+                'errno' => $errno,
+                'error' => $detail,
+                'url_host' => parse_url($url, PHP_URL_HOST),
+            ]);
             unset($error);
 
             if ($this->isRetryableCurlError($errno)) {
-                throw new AdnRetryableException('Falha temporária na comunicação mTLS.');
+                throw new AdnRetryableException('Falha temporária na comunicação mTLS: '.$detail);
             }
 
-            throw new AdnPermanentException('Falha permanente na comunicação mTLS.');
+            throw new AdnPermanentException('Falha permanente na comunicação mTLS: '.$detail);
         }
 
         if ($responseBody === false) {

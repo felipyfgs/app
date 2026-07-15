@@ -3,10 +3,16 @@
 namespace App\Services\Outbound;
 
 use App\Contracts\SefazOutboundProtocolQueryClient;
-use App\DTO\Outbound\ProtocolQueryResult;
+use App\Domain\Outbound\Competence;
+use App\Enums\OutboundCaptureMode;
+use App\Enums\OutboundFiscalModel;
 use App\Enums\OutboundNumberStatus;
+use App\Enums\OutboundRetrievalOrigin;
+use App\Enums\OutboundRetrievalStatus;
 use App\Enums\OutboundSeriesStatus;
 use App\Models\Establishment;
+use App\Models\MaOutboundRetrievalRequest;
+use App\Models\OutboundCaptureProfile;
 use App\Models\OutboundNumberState;
 use App\Models\OutboundSeriesCursor;
 use App\Services\Certificates\CredentialService;
@@ -29,6 +35,9 @@ final class OutboundSequenceReconciler
         private readonly CredentialService $credentials,
         private readonly CaptureEligibilityService $eligibility,
         private readonly OutboundKillSwitchService $killSwitch,
+        private readonly OutboundXmlRecoveryOrchestrator $xmlRecovery,
+        private readonly SvrsNfceConfig $svrsNfceConfig,
+        private readonly SvrsNfe55Config $svrsNfe55Config,
     ) {}
 
     /**
@@ -72,12 +81,15 @@ final class OutboundSequenceReconciler
             return ['consulted' => 0, 'discovered' => 0, 'gaps' => 0, 'blocked' => false, 'nnf_start' => null, 'nnf_end' => null];
         }
 
+        $leaseHeld = false;
+
         try {
             $series->forceFill([
                 'status' => OutboundSeriesStatus::Running,
                 'locked_at' => now(),
                 'lock_owner' => gethostname().':'.getmypid(),
             ])->save();
+            $leaseHeld = true;
 
             $client = $establishment->relationLoaded('client')
                 ? $establishment->client
@@ -169,7 +181,10 @@ final class OutboundSequenceReconciler
                         'status' => OutboundSeriesStatus::Blocked,
                         'last_error' => $result['block_reason'] ?? 'Série bloqueada',
                         'last_cstat' => $result['cstat'] ?? null,
+                        'locked_at' => null,
+                        'lock_owner' => null,
                     ])->save();
+                    $leaseHeld = false;
 
                     return compact('consulted', 'discovered', 'gaps') + [
                         'blocked' => true,
@@ -189,6 +204,7 @@ final class OutboundSequenceReconciler
                 'locked_at' => null,
                 'lock_owner' => null,
             ])->save();
+            $leaseHeld = false;
 
             return [
                 'consulted' => $consulted,
@@ -199,12 +215,16 @@ final class OutboundSequenceReconciler
                 'nnf_end' => $nnfEnd,
             ];
         } finally {
-            if ($series->status === OutboundSeriesStatus::Running) {
-                $series->forceFill([
-                    'status' => OutboundSeriesStatus::Idle,
+            // Sempre libera lease de DB (blocked mid-run / exceção não podem deixar locked_at órfão).
+            if ($leaseHeld) {
+                $fill = [
                     'locked_at' => null,
                     'lock_owner' => null,
-                ])->save();
+                ];
+                if ($series->status === OutboundSeriesStatus::Running) {
+                    $fill['status'] = OutboundSeriesStatus::Idle;
+                }
+                $series->forceFill($fill)->save();
             }
             $lock->release();
             // limpa material sensível
@@ -225,35 +245,42 @@ final class OutboundSequenceReconciler
         Establishment $establishment,
         array $material,
     ): array {
-        return DB::transaction(function () use ($series, $state, $establishment, $material) {
-            $maxAttempts = (int) config('sefaz.ma_outbound.max_attempts_per_number', 10);
-            $retryHours = (int) config('sefaz.ma_outbound.retry_interval_hours', 12);
+        $maxAttempts = (int) config('sefaz.ma_outbound.max_attempts_per_number', 10);
+        $retryHours = (int) config('sefaz.ma_outbound.retry_interval_hours', 12);
 
-            // Preserva candidata após timeout ambíguo
-            if ($state->candidate_access_key === null) {
-                $aamm = $this->plausibleAamm($series);
-                $built = $this->keyBuilder->build([
-                    'cuf' => '21',
-                    'aamm' => $aamm,
-                    'cnpj' => $establishment->cnpj,
-                    'model' => $series->model,
-                    'series' => $series->series,
-                    'nnf' => $state->nnf,
-                    'tp_emis' => $series->tp_emis,
-                    'cnf' => $state->candidate_cnf,
-                ]);
+        // 1) Persistir candidata antes de I/O externo (transação curta).
+        if ($state->candidate_access_key === null) {
+            $aamm = $this->plausibleAamm($series);
+            $built = $this->keyBuilder->build([
+                'cuf' => '21',
+                'aamm' => $aamm,
+                'cnpj' => $establishment->cnpj,
+                'model' => $series->model,
+                'series' => $series->series,
+                'nnf' => $state->nnf,
+                'tp_emis' => $series->tp_emis,
+                'cnf' => $state->candidate_cnf,
+            ]);
+            DB::transaction(function () use ($state, $built): void {
                 $state->candidate_access_key = $built['access_key'];
                 $state->candidate_cnf = $built['cnf'];
                 $state->save();
-            }
+            });
+        }
 
-            $result = $this->queryClient->consult(
-                $state->candidate_access_key,
-                $series->model->value,
-                $series->environment,
-                $material,
-            );
+        // 2) Consulta SEFAZ fora de transação DB.
+        $result = $this->queryClient->consult(
+            (string) $state->candidate_access_key,
+            $series->model->value,
+            $series->environment,
+            $material,
+        );
 
+        // 3) Persistir resultado em transação curta.
+        $outcome = DB::transaction(function () use (
+            $series, $state, $establishment, $result, $maxAttempts, $retryHours
+        ) {
+            $state->refresh();
             $state->attempts = (int) $state->attempts + 1;
             $state->last_attempt_at = now();
             $state->last_cstat = $result->cStat;
@@ -274,12 +301,24 @@ final class OutboundSequenceReconciler
                 $state->block_reason = 'cStat 656 — consumo indevido';
                 $state->save();
                 $this->killSwitch->blockSeries($series, 'cStat 656', $result->cStat);
+                // Spec: bloquear também o canal da raiz (perfil).
+                $profile = $series->profile;
+                if ($profile !== null && ! $profile->kill_switch) {
+                    $this->killSwitch->activateProfile(
+                        $profile,
+                        'cStat 656 — consumo indevido no canal MA outbound',
+                        0,
+                    );
+                }
 
                 return ['discovered' => false, 'gap' => false, 'blocked' => true, 'cstat' => '656', 'block_reason' => '656'];
             }
 
-            if ($result->is562WithKey() || ($result->isAuthorizedOnCandidate() && $result->returnedAccessKey)) {
-                $discoveredKey = strtoupper($result->returnedAccessKey ?? $state->candidate_access_key);
+            // 562/613 com chave revelada OU situação autorizada da própria candidata.
+            if ($result->isKeyRevealReject() || $result->is562WithKey() || $result->isAuthorizedOnCandidate()) {
+                $discoveredKey = strtoupper(
+                    $result->returnedAccessKey ?? (string) $state->candidate_access_key
+                );
                 if (! $this->keyBuilder->matchesIdentity(
                     $discoveredKey,
                     '21',
@@ -299,10 +338,16 @@ final class OutboundSequenceReconciler
 
                 $state->discovered_access_key = $discoveredKey;
                 $state->key_discovered_at = now();
-                $state->status = OutboundNumberStatus::XmlPending; // KEY_DISCOVERED → XML_PENDING
+                $state->status = OutboundNumberStatus::XmlPending;
                 $state->save();
 
-                return ['discovered' => true, 'gap' => false, 'blocked' => false, 'cstat' => $result->cStat];
+                return [
+                    'discovered' => true,
+                    'gap' => false,
+                    'blocked' => false,
+                    'cstat' => $result->cStat,
+                    'open_recovery' => true,
+                ];
             }
 
             if ($result->isLimitedWithoutKey()) {
@@ -326,7 +371,6 @@ final class OutboundSequenceReconciler
                 return ['discovered' => false, 'gap' => true, 'blocked' => false, 'cstat' => $result->cStat];
             }
 
-            // Resposta inesperada
             $state->status = OutboundNumberStatus::GapPending;
             $state->next_attempt_at = now()->addHours($retryHours);
             $state->save();
@@ -339,6 +383,105 @@ final class OutboundSequenceReconciler
 
             return ['discovered' => false, 'gap' => true, 'blocked' => false, 'cstat' => $result->cStat];
         });
+
+        // Recovery fora da TX: SVRS auto-queue ou pendência assistida por chave (sem job pré-commit).
+        if (($outcome['open_recovery'] ?? false) === true) {
+            $state->refresh();
+            $this->openXmlRecoveryAfterDiscovery($series, $state, $establishment);
+            unset($outcome['open_recovery']);
+        }
+
+        return $outcome;
+    }
+
+    /**
+     * Após KEY_DISCOVERED/XML_PENDING: SVRS se auto-queue do modelo estiver on; senão assistido por chave.
+     */
+    private function openXmlRecoveryAfterDiscovery(
+        OutboundSeriesCursor $series,
+        OutboundNumberState $state,
+        Establishment $establishment,
+    ): void {
+        $profile = $series->profile
+            ?? OutboundCaptureProfile::query()->find($series->outbound_capture_profile_id);
+
+        if ($profile !== null && $this->shouldAutoQueueSvrs($series)) {
+            $req = $this->xmlRecovery->ensureRecovery(
+                $state,
+                $profile,
+                queue: true,
+                triggeredBy: 'sequence_discovery',
+            );
+            if ($req !== null) {
+                return;
+            }
+        }
+
+        $this->openAssistedRetrievalPending($series, $state, $establishment);
+    }
+
+    private function shouldAutoQueueSvrs(OutboundSeriesCursor $series): bool
+    {
+        $model = $series->model instanceof OutboundFiscalModel
+            ? $series->model->value
+            : (string) $series->model;
+
+        return match ($model) {
+            '65' => $this->svrsNfceConfig->retrievalEnabled()
+                && $this->svrsNfceConfig->autoQueueEnabled(),
+            '55' => $this->svrsNfe55Config->retrievalEnabled()
+                && $this->svrsNfe55Config->autoQueueEnabled(),
+            default => false,
+        };
+    }
+
+    /**
+     * Pendência assistida de recuperação de XML (sem M2M), idempotente por office_id + access_key.
+     */
+    private function openAssistedRetrievalPending(
+        OutboundSeriesCursor $series,
+        OutboundNumberState $state,
+        Establishment $establishment,
+    ): void {
+        $key = strtoupper(preg_replace('/\s+/', '', (string) $state->discovered_access_key) ?? '');
+        if ($key === '' || strlen($key) < 44) {
+            return;
+        }
+
+        // Competência do AAMM da chave descoberta (não seed_issued_at da série).
+        $competence = Competence::tryFromAccessKey($key)?->value()
+            ?? now()->format('Y-m');
+
+        $rootCnpj = strtoupper(substr(
+            preg_replace('/[^A-Z0-9]/i', '', (string) $establishment->cnpj) ?? '',
+            0,
+            8
+        ));
+        if (strlen($rootCnpj) !== 8) {
+            $rootCnpj = substr($key, 6, 8);
+        }
+
+        MaOutboundRetrievalRequest::query()->firstOrCreate(
+            [
+                'office_id' => $series->office_id,
+                'access_key' => $key,
+            ],
+            [
+                'outbound_capture_profile_id' => $series->outbound_capture_profile_id,
+                'establishment_id' => $establishment->id,
+                'environment' => $series->environment,
+                'model' => $series->model->value,
+                'competence' => $competence,
+                'status' => OutboundRetrievalStatus::Pending,
+                'direction' => 'OUT',
+                'mode' => OutboundCaptureMode::Assisted,
+                'origin' => OutboundRetrievalOrigin::MaAssistedUpload,
+                'outbound_number_state_id' => $state->id,
+                'root_cnpj' => $rootCnpj,
+                'external_ref' => 'nnf:'.$state->nnf.':key:'.substr($key, 0, 20),
+                'requested_at' => now(),
+            ],
+        );
     }
 
     /**

@@ -5,10 +5,13 @@ namespace App\Providers;
 use App\Contracts\AdnContributorClient;
 use App\Contracts\CnpjRegistrationLookup;
 use App\Contracts\MaOutboundXmlRetrievalClient;
+use App\Contracts\OutboundXmlCaptureCapacityPlanner;
 use App\Contracts\PfxReaderInterface;
 use App\Contracts\SecureObjectStore;
 use App\Contracts\SvrsNfceDownloadResponseParser as SvrsNfceDownloadResponseParserContract;
 use App\Contracts\SvrsNfceOutboundXmlRetrievalClient;
+use App\Contracts\SvrsNfe55OutboundXmlRetrievalClient;
+use App\Contracts\SvrsPortalEgressGovernor;
 use App\Contracts\SefazCteDistDfeClient;
 use App\Contracts\SefazDistDfeClient;
 use App\Contracts\SefazNfeManifestationClient;
@@ -35,12 +38,18 @@ use App\Services\Outbound\DisabledMaOutboundXmlRetrievalClient;
 use App\Services\Outbound\DisabledSefazOutboundInutilizationClient;
 use App\Services\Outbound\DisabledSefazOutboundMutatingProbeClient;
 use App\Services\Outbound\DisabledSvrsNfceOutboundXmlRetrievalClient;
+use App\Services\Outbound\DisabledSvrsNfe55OutboundXmlRetrievalClient;
+use App\Services\Outbound\HttpSvrsNfe55OutboundXmlRetrievalClient;
+use App\Services\Outbound\SvrsNfe55KillSwitchService;
 use App\Services\Outbound\HttpSefazOutboundProtocolQueryClient;
 use App\Services\Outbound\HttpSvrsNfceOutboundXmlRetrievalClient;
 use App\Services\Outbound\ProtocolQueryResponseParser;
+use App\Services\Outbound\RedisSvrsPortalEgressGovernor;
 use App\Services\Outbound\SvrsNfceConfig;
 use App\Services\Outbound\SvrsNfceDownloadResponseParser;
 use App\Services\Outbound\SvrsNfceKillSwitchService;
+use App\Services\Outbound\SvrsNfe55Config;
+use App\Services\Outbound\SvrsPortalEgressConfig;
 use App\Services\Sefaz\DistDfeResponseParser;
 use App\Services\Sefaz\HttpSefazCteDistDfeClient;
 use App\Services\Sefaz\HttpSefazDistDfeClient;
@@ -136,6 +145,13 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(SefazOutboundInutilizationClient::class, DisabledSefazOutboundInutilizationClient::class);
         $this->app->singleton(SefazOutboundMutatingProbeClient::class, DisabledSefazOutboundMutatingProbeClient::class);
 
+        // SVRS portal egress (compartilhado NF-e 55 + NFC-e 65) — fail-closed
+        $this->app->singleton(SvrsPortalEgressConfig::class);
+        $this->app->singleton(SvrsPortalEgressGovernor::class, RedisSvrsPortalEgressGovernor::class);
+
+        // Agendamento por prazo — capacidade lê o governador (sem PFX)
+        $this->app->singleton(OutboundXmlCaptureCapacityPlanner::class, \App\Services\Outbound\OutboundXmlCaptureCapacityPlanner::class);
+
         // SVRS NFC-e XML retrieval — default disabled client unless flag on
         $this->app->singleton(SvrsNfceConfig::class);
         $this->app->singleton(SvrsNfceKillSwitchService::class);
@@ -148,6 +164,17 @@ class AppServiceProvider extends ServiceProvider
             }
 
             return $app->make(HttpSvrsNfceOutboundXmlRetrievalClient::class);
+        });
+
+        // SVRS NF-e 55 — default desabilitado até smoke G13
+        $this->app->singleton(SvrsNfe55Config::class);
+        $this->app->singleton(SvrsNfe55KillSwitchService::class);
+        $this->app->bind(SvrsNfe55OutboundXmlRetrievalClient::class, function ($app) {
+            if (! (bool) config('sefaz.svrs_nfe55_xml.retrieval_enabled', false)) {
+                return $app->make(DisabledSvrsNfe55OutboundXmlRetrievalClient::class);
+            }
+
+            return $app->make(HttpSvrsNfe55OutboundXmlRetrievalClient::class);
         });
     }
 

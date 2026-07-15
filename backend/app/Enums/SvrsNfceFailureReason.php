@@ -18,6 +18,7 @@ enum SvrsNfceFailureReason: string
     case InvalidSignature = 'INVALID_SIGNATURE';
     case DivergentBytes = 'DIVERGENT_BYTES';
     case RateLimited = 'RATE_LIMITED';
+    case EgressBlockedMultipleQueries = 'SVRS_EGRESS_BLOCKED_MULTIPLE_QUERIES';
     case KillSwitch = 'KILL_SWITCH';
     case ChannelDisabled = 'CHANNEL_DISABLED';
     case BreakerOpen = 'BREAKER_OPEN';
@@ -36,6 +37,7 @@ enum SvrsNfceFailureReason: string
             self::KillSwitch,
             self::ChannelDisabled,
             self::BreakerOpen,
+            self::EgressBlockedMultipleQueries, // reabre após cooldown/canário
             self::AuthForbidden, // threshold no breaker; retry com backoff
         ], true);
     }
@@ -45,7 +47,10 @@ enum SvrsNfceFailureReason: string
      */
     public function opensGlobalBreaker(): bool
     {
-        return $this === self::ResponseContractChanged;
+        return in_array($this, [
+            self::ResponseContractChanged,
+            self::EgressBlockedMultipleQueries,
+        ], true);
     }
 
     /**
@@ -79,6 +84,7 @@ enum SvrsNfceFailureReason: string
             self::InvalidSignature => 'Assinatura ou digest inválidos',
             self::DivergentBytes => 'Bytes divergentes do canônico',
             self::RateLimited => 'Rate limit',
+            self::EgressBlockedMultipleQueries => 'Portal bloqueou por múltiplas consultas',
             self::KillSwitch => 'Kill switch ativo',
             self::ChannelDisabled => 'Canal desabilitado',
             self::BreakerOpen => 'Circuit breaker aberto',

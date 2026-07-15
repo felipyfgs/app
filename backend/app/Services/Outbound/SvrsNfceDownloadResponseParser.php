@@ -27,8 +27,14 @@ final class SvrsNfceDownloadResponseParser implements SvrsNfceDownloadResponsePa
             return $this->fail(SvrsNfceTransportOutcome::PayloadTooLarge, 'HTML GET excede limite.');
         }
 
+        if ($this->looksLikeMultipleQueriesBlock($html)) {
+            return $this->fail(
+                SvrsNfceTransportOutcome::EgressBlockedMultipleQueries,
+                'Portal: IP bloqueado por múltiplas consultas (GET).',
+            );
+        }
+
         $markers = [
-            'Download do XML do NFCe',
             'DownloadXMLDFe',
             'ChaveAcessoDfe',
             'sistema',
@@ -38,14 +44,18 @@ final class SvrsNfceDownloadResponseParser implements SvrsNfceDownloadResponsePa
         $missing = [];
         foreach ($markers as $marker) {
             if (! str_contains($html, $marker)) {
-                // Aceitar variação de case em "NFCe" / "NFC-e" no título
-                if ($marker === 'Download do XML do NFCe'
-                    && (str_contains($html, 'Download do XML do NFC-e')
-                        || str_contains($html, 'Download XML'))) {
-                    continue;
-                }
                 $missing[] = $marker;
             }
+        }
+
+        // Título NFC-e ou NF-e (formulários NFESSL / NFCESSL)
+        $hasDownloadTitle = str_contains($html, 'Download do XML do NFCe')
+            || str_contains($html, 'Download do XML do NFC-e')
+            || str_contains($html, 'Download do XML do NFe')
+            || str_contains($html, 'Download do XML do NF-e')
+            || str_contains($html, 'Download XML');
+        if (! $hasDownloadTitle) {
+            $missing[] = 'DownloadTitle';
         }
 
         // Formulário com action do download
@@ -87,6 +97,14 @@ final class SvrsNfceDownloadResponseParser implements SvrsNfceDownloadResponsePa
     {
         if (strlen($html) > $this->config->maxHtmlBytes()) {
             return $this->fail(SvrsNfceTransportOutcome::PayloadTooLarge, 'HTML POST excede limite.');
+        }
+
+        // Bloqueio textual prevalece sobre HTTP 200 e procura de Blob/XML (task 4.x)
+        if ($this->looksLikeMultipleQueriesBlock($html)) {
+            return $this->fail(
+                SvrsNfceTransportOutcome::EgressBlockedMultipleQueries,
+                'Portal: IP bloqueado por múltiplas consultas.',
+            );
         }
 
         // Templates reconhecidos de "não disponível"
@@ -140,6 +158,51 @@ final class SvrsNfceDownloadResponseParser implements SvrsNfceDownloadResponsePa
             xmlBytes: $decoded,
             parserVersion: $this->parserVersion(),
         );
+    }
+
+    /**
+     * Fingerprint versionado do bloqueio observado (HTTP 200 + texto).
+     * Normaliza espaços e acentos de forma limitada — sem executar JS.
+     */
+    public function looksLikeMultipleQueriesBlock(string $html): bool
+    {
+        $visible = $this->normalizeVisibleText($html);
+        $needles = [
+            'ip nao autorizado devido multiplas consultas',
+            'ip não autorizado devido múltiplas consultas',
+            'nao autorizado devido multiplas consultas',
+            'não autorizado devido múltiplas consultas',
+            'multiplas consultas',
+            'múltiplas consultas',
+        ];
+        foreach ($needles as $n) {
+            if (str_contains($visible, $this->normalizeVisibleText($n))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function blockTemplateFingerprint(string $html): string
+    {
+        $visible = $this->normalizeVisibleText($html);
+        // Só o trecho relevante — sem HTML integral
+        if (preg_match('/ip\s+n[aã]o\s+autorizado[^\n.]{0,80}/u', $visible, $m)) {
+            return hash('sha256', $m[0]);
+        }
+
+        return hash('sha256', 'multiple_queries_block_v1');
+    }
+
+    private function normalizeVisibleText(string $html): string
+    {
+        $text = strip_tags($html);
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = mb_strtolower($text);
+        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+
+        return trim($text);
     }
 
     private function looksLikeNotAvailable(string $html): bool
@@ -218,6 +281,17 @@ final class SvrsNfceDownloadResponseParser implements SvrsNfceDownloadResponsePa
             }
         }
 
+        // Contrato observado no portal em 2026-07:
+        // const stringJson = { xml: "..." }; new Blob([stringJson.xml], ...)
+        // Aceita somente referência objeto.propriedade ligada a um literal local;
+        // nunca avalia JavaScript, chamadas, concatenação ou template string.
+        if ($candidates === []) {
+            $objectPropertyLiteral = $this->extractObjectPropertyBlobLiteral($html);
+            if ($objectPropertyLiteral !== null) {
+                $candidates[] = $objectPropertyLiteral;
+            }
+        }
+
         // Fallback: único literal longo contendo <nfeProc
         if ($candidates === []) {
             if (preg_match_all('/(["\'])((?:\\\\.|(?!\1).)*?<nfeProc(?:\\\\.|(?!\1).)*?<\/nfeProc(?:\\\\.|(?!\1).)*)\1/is', $html, $m2, PREG_SET_ORDER)) {
@@ -238,8 +312,13 @@ final class SvrsNfceDownloadResponseParser implements SvrsNfceDownloadResponsePa
         }
 
         // Rejeitar se o match original sugere concatenação/template no contexto
+        $hasStrictObjectPropertyBlob = preg_match(
+            '/\bnew\s+Blob\s*\(\s*\[\s*[A-Za-z_$][A-Za-z0-9_$]*\.[A-Za-z_$][A-Za-z0-9_$]*\s*\]\s*,/i',
+            $html,
+        ) === 1;
         if (preg_match('/downloadXml\s*\(\s*[^\'"]|new\s+Blob\s*\(\s*\[\s*[^\'"]|`[^`]*\$\{/', $html)
-            && ! preg_match('/downloadXml\s*\(\s*[\'"]|new\s+Blob\s*\(\s*\[\s*[\'"]/', $html)) {
+            && ! preg_match('/downloadXml\s*\(\s*[\'"]|new\s+Blob\s*\(\s*\[\s*[\'"]/', $html)
+            && ! $hasStrictObjectPropertyBlob) {
             return null;
         }
 
@@ -254,6 +333,74 @@ final class SvrsNfceDownloadResponseParser implements SvrsNfceDownloadResponsePa
         }
 
         return $unique[0];
+    }
+
+    private function extractObjectPropertyBlobLiteral(string $html): ?string
+    {
+        if (! preg_match_all(
+            '/\bnew\s+Blob\s*\(\s*\[\s*([A-Za-z_$][A-Za-z0-9_$]*)\.([A-Za-z_$][A-Za-z0-9_$]*)\s*\]\s*,/i',
+            $html,
+            $references,
+            PREG_SET_ORDER | PREG_OFFSET_CAPTURE,
+        )) {
+            return null;
+        }
+
+        $candidates = [];
+        foreach ($references as $reference) {
+            $object = $reference[1][0] ?? '';
+            $property = $reference[2][0] ?? '';
+            $blobOffset = $reference[0][1] ?? -1;
+            if ($object === '' || $property === '' || $blobOffset < 0) {
+                return null;
+            }
+
+            $assignmentPattern = sprintf(
+                '/\b(?:var|let|const)\s+%s\s*=\s*\{/i',
+                preg_quote($object, '/'),
+            );
+            if (! preg_match_all($assignmentPattern, $html, $assignments, PREG_OFFSET_CAPTURE)) {
+                return null;
+            }
+
+            $eligibleAssignments = array_values(array_filter(
+                $assignments[0] ?? [],
+                static fn (array $match): bool => ($match[1] ?? -1) >= 0 && ($match[1] ?? -1) < $blobOffset,
+            ));
+            if (count($eligibleAssignments) !== 1) {
+                return null;
+            }
+
+            $assignmentOffset = (int) $eligibleAssignments[0][1];
+            $objectSource = substr($html, $assignmentOffset, $blobOffset - $assignmentOffset);
+            if ($objectSource === false
+                || strlen($objectSource) > $this->config->maxLiteralBytes() + 16384
+                || str_contains($objectSource, '`')
+                || str_contains($objectSource, '${')) {
+                return null;
+            }
+
+            $propertyPattern = sprintf(
+                '/(?:["\']?%s["\']?)\s*:\s*(["\'])((?:\\\\.|(?!\1).)*)\1/is',
+                preg_quote($property, '/'),
+            );
+            if (! preg_match_all($propertyPattern, $objectSource, $properties, PREG_SET_ORDER)) {
+                return null;
+            }
+            if (count($properties) !== 1) {
+                return null;
+            }
+
+            $literal = $properties[0][2] ?? '';
+            if ($literal === '' || $this->looksLikeExpression($literal)) {
+                return null;
+            }
+            $candidates[] = $literal;
+        }
+
+        $unique = array_values(array_unique($candidates));
+
+        return count($unique) === 1 ? $unique[0] : null;
     }
 
     private function looksLikeExpression(string $body): bool

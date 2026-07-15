@@ -211,10 +211,10 @@ final class MaOfficialPackageIngestionService
                 ->where('sha256', '!=', $sha)
                 ->first();
 
+            // AAD canônico de DF-e: office_id + sha256 (mesma chave do export/download).
             $objectId = $this->store->put($xml, [
                 'office_id' => $officeId,
                 'sha256' => $sha,
-                'kind' => 'ma_package',
             ]);
 
             $doc = DfeDocument::query()->create([
@@ -250,6 +250,11 @@ final class MaOfficialPackageIngestionService
                 try {
                     app(OutboundXmlRecoveryOrchestrator::class)
                         ->resolveByOtherSource($officeId, $key, 'MA_OFFICIAL_PACKAGE');
+                    try {
+                        app(OutboundDeadlineSatisfactionService::class)
+                            ->markCapturedBySource($officeId, $key, 'MA_OFFICIAL_PACKAGE');
+                    } catch (\Throwable) {
+                    }
                 } catch (\Throwable) {
                     // não bloquear ingestão
                 }

@@ -44,12 +44,20 @@ final class HttpSefazOutboundProtocolQueryClient implements SefazOutboundProtoco
                 'SOAPAction: "'.($cfg['soap_action'] ?? '').'"',
             ]);
         } catch (Throwable $e) {
+            $msg = $e->getMessage();
+            // Timeout/rede → ambíguo (retry). CA/TLS/config → mensagem clara.
+            $ambiguous = str_contains(strtolower($msg), 'tempor')
+                || str_contains(strtolower($msg), 'timeout');
+
             return new ProtocolQueryResult(
                 cStat: '000',
-                xMotivo: 'Timeout ou falha de transporte na consulta.',
+                xMotivo: mb_substr($msg !== '' ? $msg : 'Falha de transporte na consulta.', 0, 500),
                 consultedAccessKey: $key,
-                ambiguousTimeout: true,
-                sanitized: ['transport_error' => true],
+                ambiguousTimeout: $ambiguous,
+                sanitized: [
+                    'transport_error' => true,
+                    'exception' => class_basename($e),
+                ],
             );
         }
 
@@ -60,21 +68,16 @@ final class HttpSefazOutboundProtocolQueryClient implements SefazOutboundProtoco
     {
         $ns = $ns !== '' ? $ns : 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4';
 
+        // SVRS/SVAN: nfeDadosMsg direto no Body (sem wrapper nfeConsultaNF) e payload sem escape.
         $dados = <<<XML
-<consSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
-  <tpAmb>{$tpAmb}</tpAmb>
-  <xServ>CONSULTAR</xServ>
-  <chNFe>{$accessKey}</chNFe>
-</consSitNFe>
+<consSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><tpAmb>{$tpAmb}</tpAmb><xServ>CONSULTAR</xServ><chNFe>{$accessKey}</chNFe></consSitNFe>
 XML;
-
-        $escaped = htmlspecialchars($dados, ENT_XML1);
 
         return <<<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
   <soap12:Body>
-    <nfeDadosMsg xmlns="{$ns}">{$escaped}</nfeDadosMsg>
+    <nfeDadosMsg xmlns="{$ns}">{$dados}</nfeDadosMsg>
   </soap12:Body>
 </soap12:Envelope>
 XML;

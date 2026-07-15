@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01">
+  <chNFe>35260799888777000166550010000000011234567925</chNFe>
+  <CNPJ>99888777000166</CNPJ>
+  <xNome>EMIT</xNome>
+  <IE>123</IE>
+  <dhEmi>2026-07-01T10:00:00-03:00</dhEmi>
+  <tpNF>1</tpNF>
+  <vNF>10.00</vNF>
+  <digVal>abc</digVal>
+  <dhRecbto>2026-07-01T10:01:00-03:00</dhRecbto>
+  <nProt>1</nProt>
+  <cStat>100</cStat>
+</resNFe>

@@ -54,7 +54,9 @@ final class SvrsNfceXmlValidator
         string $expectedAccessKey,
         Establishment $establishment,
         string $environment,
+        string $expectedModel = '65',
     ): array {
+        $expectedModel = $expectedModel === '55' ? '55' : '65';
         $sha256 = hash('sha256', $xmlBytes);
 
         if (strlen($xmlBytes) > $this->config->maxXmlBytes()) {
@@ -103,8 +105,12 @@ final class SvrsNfceXmlValidator
             return $this->reject($sha256, SvrsNfceFailureReason::IdentityMismatch, 'cUF deve ser 21.');
         }
 
-        if (substr($key, 20, 2) !== '65') {
-            return $this->reject($sha256, SvrsNfceFailureReason::IdentityMismatch, 'Modelo deve ser 65.');
+        if (substr($key, 20, 2) !== $expectedModel) {
+            return $this->reject(
+                $sha256,
+                SvrsNfceFailureReason::IdentityMismatch,
+                'Modelo deve ser '.$expectedModel.'.',
+            );
         }
 
         $issuer = $this->normalizeCnpj((string) ($parsed['issuer_cnpj'] ?? ''));
@@ -169,7 +175,7 @@ final class SvrsNfceXmlValidator
             'cstat' => $cstat,
             'protocol' => $protocol,
             'environment' => $xmlEnv,
-            'model' => '65',
+            'model' => $expectedModel,
             'signer_fingerprint' => $signerMeta['fingerprint'],
             'signer_not_before' => $signerMeta['not_before'],
             'signer_not_after' => $signerMeta['not_after'],
@@ -191,7 +197,7 @@ final class SvrsNfceXmlValidator
             'cstat' => '',
             'protocol' => null,
             'environment' => '',
-            'model' => '65',
+            'model' => '',
             'signer_fingerprint' => null,
             'signer_not_before' => null,
             'signer_not_after' => null,

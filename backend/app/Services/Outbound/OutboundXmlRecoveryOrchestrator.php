@@ -3,8 +3,15 @@
 namespace App\Services\Outbound;
 
 use App\Contracts\SvrsNfceOutboundXmlRetrievalClient;
+use App\Contracts\SvrsNfe55OutboundXmlRetrievalClient;
+use App\Contracts\SvrsPortalEgressGovernor;
+use App\DTO\Outbound\SvrsEgressReservation;
+use App\DTO\Outbound\SvrsNfceEligibilityResult;
 use App\DTO\Outbound\SvrsNfceRetrievalRequest;
+use App\Enums\DocumentAcquisitionSource;
 use App\Enums\OutboundCaptureMode;
+use App\Enums\OutboundFiscalModel;
+use App\Enums\SvrsEgressBlockCause;
 use App\Enums\OutboundNumberStatus;
 use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\OutboundRetrievalStatus;
@@ -24,17 +31,22 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Orquestração idempotente KEY_DISCOVERED/XML_PENDING → recuperação SVRS.
+ * Orquestração idempotente KEY_DISCOVERED/XML_PENDING → recuperação SVRS (65 e 55).
  */
 final class OutboundXmlRecoveryOrchestrator
 {
     public function __construct(
         private readonly SvrsNfceConfig $config,
+        private readonly SvrsNfe55Config $nfe55Config,
         private readonly SvrsNfceRetrievalEligibility $eligibility,
+        private readonly SvrsNfe55RetrievalEligibility $nfe55Eligibility,
         private readonly SvrsNfceKillSwitchService $killSwitch,
+        private readonly SvrsNfe55KillSwitchService $nfe55KillSwitch,
         private readonly SvrsNfceRateLimiter $rateLimiter,
         private readonly SvrsNfceCircuitBreaker $breaker,
+        private readonly SvrsPortalEgressGovernor $egressGovernor,
         private readonly SvrsNfceOutboundXmlRetrievalClient $client,
+        private readonly SvrsNfe55OutboundXmlRetrievalClient $nfe55Client,
         private readonly SvrsNfceXmlIngestionService $ingestion,
         private readonly CredentialService $credentials,
         private readonly AuditLogger $audit,
@@ -57,12 +69,12 @@ final class OutboundXmlRecoveryOrchestrator
         }
 
         $a1Ok = $this->hasA1((int) $profile->client_id);
-        $eval = $this->eligibility->evaluate($number, $profile, $a1Ok);
+        $eval = $this->evaluateEligibility($number, $profile, $a1Ok);
         if (! $eval->eligible) {
             return null;
         }
 
-        $key = $this->eligibility->normalizeKey(
+        $key = $this->normalizeAccessKey(
             (string) ($number->discovered_access_key ?: $number->candidate_access_key)
         );
         if ($key === null) {
@@ -171,8 +183,13 @@ final class OutboundXmlRecoveryOrchestrator
             'requested_at' => $request->requested_at ?? now(),
         ])->save();
 
+        $profileForQueue = OutboundCaptureProfile::withoutGlobalScopes()->find($request->outbound_capture_profile_id);
+        $queue = ($profileForQueue !== null && $this->profileModelCode($profileForQueue) === '55')
+            ? $this->nfe55Config->queue()
+            : $this->config->queue();
+
         RecoverSvrsNfceXmlJob::dispatch($request->id)
-            ->onQueue($this->config->queue());
+            ->onQueue($queue);
 
         $this->audit->record('svrs_nfce.recovery.queued', 'SUCCESS', $request, [
             'triggered_by' => $triggeredBy,
@@ -195,19 +212,19 @@ final class OutboundXmlRecoveryOrchestrator
             return;
         }
 
-        $acquiredRate = false;
+        $reservation = null;
 
         try {
-            $this->runAttemptLocked($requestId, $acquiredRate);
+            $this->runAttemptLocked($requestId, $reservation);
         } finally {
-            if ($acquiredRate) {
-                $this->rateLimiter->release();
+            if ($reservation !== null) {
+                $this->rateLimiter->release($reservation);
             }
             $lock->release();
         }
     }
 
-    private function runAttemptLocked(int $requestId, bool &$acquiredRate): void
+    private function runAttemptLocked(int $requestId, ?SvrsEgressReservation &$reservation): void
     {
         $request = MaOutboundRetrievalRequest::withoutGlobalScopes()->find($requestId);
         if ($request === null) {
@@ -251,10 +268,18 @@ final class OutboundXmlRecoveryOrchestrator
             return;
         }
 
-        if (! $this->config->retrievalEnabled() || $this->killSwitch->isActive()) {
+        $modelCode = $this->profileModelCode($profile);
+        $channelEnabled = $modelCode === '55'
+            ? $this->nfe55Config->retrievalEnabled()
+            : $this->config->retrievalEnabled();
+        $killActive = $modelCode === '55'
+            ? $this->nfe55KillSwitch->isActive()
+            : $this->killSwitch->isActive();
+
+        if (! $channelEnabled || $killActive) {
             $this->scheduleRetry(
                 $request,
-                $this->killSwitch->isActive() ? SvrsNfceFailureReason::KillSwitch : SvrsNfceFailureReason::ChannelDisabled,
+                $killActive ? SvrsNfceFailureReason::KillSwitch : SvrsNfceFailureReason::ChannelDisabled,
                 'Canal off ou kill switch — fallback assistido.',
                 900,
             );
@@ -264,7 +289,10 @@ final class OutboundXmlRecoveryOrchestrator
 
         $globalState = $this->breaker->globalStatus()['state'];
         $rootState = $this->breaker->rootStatus((int) $profile->client_id)['state'];
-        $isProbe = $globalState === 'half_open' || $rootState === 'half_open';
+        $cohortState = $this->egressGovernor->cohortHealth()['state'] ?? 'open';
+        $isProbe = $globalState === 'half_open'
+            || $rootState === 'half_open'
+            || $cohortState === 'half_open';
 
         // Probe half-open: qualquer recovery elegível (não exige allowlist de piloto)
         if (! $this->breaker->isCallAllowed((int) $profile->client_id, $isProbe)) {
@@ -273,18 +301,37 @@ final class OutboundXmlRecoveryOrchestrator
             return;
         }
 
-        $rate = $this->rateLimiter->acquire((int) $profile->client_id);
-        if (! $rate['allowed']) {
+        // Reserva no governador compartilhado ANTES de materializar A1
+        if (! $this->egressGovernor->isCallAllowed($isProbe)) {
+            $this->scheduleRetry($request, SvrsNfceFailureReason::BreakerOpen, 'Circuit breaker coorte aberto.', 900);
+
+            return;
+        }
+
+        $establishmentForRoot = $profile->establishment()->withoutGlobalScopes()->first()
+            ?? \App\Models\Establishment::withoutGlobalScopes()->find($profile->establishment_id);
+        $rootCnpj = $establishmentForRoot?->cnpj
+            ?? \App\Models\Client::withoutGlobalScopes()->find($profile->client_id)?->root_cnpj
+            ?? ('CLIENT'.$profile->client_id);
+
+        $rate = $this->rateLimiter->acquire(
+            (int) $profile->client_id,
+            (string) $rootCnpj,
+            (int) $profile->office_id,
+            $modelCode === '55' ? 'nfe55' : 'nfce65',
+            $isProbe,
+        );
+        if (! $rate['allowed'] || ($rate['reservation'] ?? null) === null) {
             $this->scheduleRetry(
                 $request,
                 SvrsNfceFailureReason::RateLimited,
-                'Rate limit.',
+                'Orçamento de egress SVRS esgotado.',
                 max(1, $rate['retry_after_seconds']),
             );
 
             return;
         }
-        $acquiredRate = true;
+        $reservation = $rate['reservation'];
 
         $correlationId = $request->correlation_id ?: (string) Str::uuid();
         $attemptNumber = (int) $request->attempt_count + 1;
@@ -295,6 +342,9 @@ final class OutboundXmlRecoveryOrchestrator
             'status' => OutboundRetrievalStatus::Processing,
             'correlation_id' => $correlationId,
             'attempt_count' => $attemptNumber,
+            // Contabiliza transação externa efetiva (GET+POST) mesmo se a resposta falhar depois
+            'svrs_transaction_count' => (int) $request->svrs_transaction_count + 1,
+            'dispatched_at' => now(),
         ])->save();
 
         $certificate = null;
@@ -326,7 +376,9 @@ final class OutboundXmlRecoveryOrchestrator
                     establishmentId: (int) $profile->establishment_id,
                 );
 
-                $result = $this->client->retrieve($dto, $certificate);
+                $result = $modelCode === '55'
+                    ? $this->nfe55Client->retrieve($dto, $certificate)
+                    : $this->client->retrieve($dto, $certificate);
                 $resultOutcome = $result->outcome;
                 $getMs = $result->getLatencyMs;
                 $postMs = $result->postLatencyMs;
@@ -344,6 +396,9 @@ final class OutboundXmlRecoveryOrchestrator
                         $failure = SvrsNfceFailureReason::NotEligible;
                         $detail = 'Estabelecimento ausente.';
                     } else {
+                        $source = $modelCode === '55'
+                            ? DocumentAcquisitionSource::SvrsNfe55DownloadXmlDfe
+                            : DocumentAcquisitionSource::SvrsNfceDownloadXmlDfe;
                         $ingest = $this->ingestion->ingestValidatedBytes(
                             $profile,
                             $establishment,
@@ -352,12 +407,17 @@ final class OutboundXmlRecoveryOrchestrator
                             $result->xmlBytes ?? '',
                             (string) $request->access_key,
                             $correlationId,
+                            $source,
+                            $modelCode,
                         );
 
                         $sha = $ingest['sha256'] ?? $result->sha256;
 
                         if (($ingest['status'] ?? '') === 'captured' || ($ingest['status'] ?? '') === 'duplicate') {
                             $this->breaker->recordSuccess((int) $profile->client_id);
+                            if ($isProbe) {
+                                $this->egressGovernor->closeBreakerAfterCanarySuccess(officeId: (int) $profile->office_id);
+                            }
                             $this->metrics->increment(
                                 ($ingest['status'] ?? '') === 'duplicate' ? 'svrs_nfce_duplicate' : 'svrs_nfce_captured'
                             );
@@ -393,6 +453,21 @@ final class OutboundXmlRecoveryOrchestrator
             $failure = SvrsNfceFailureReason::HttpTransient;
         }
 
+        if ($failure === SvrsNfceFailureReason::EgressBlockedMultipleQueries
+            || $resultOutcome === SvrsNfceTransportOutcome::EgressBlockedMultipleQueries) {
+            $this->egressGovernor->openBreaker(
+                SvrsEgressBlockCause::MultipleQueries,
+                templateFingerprint: 'multiple_queries_block_v1',
+                retryAfterSeconds: $retryAfterHint,
+                officeId: (int) $profile->office_id,
+            );
+        } elseif ($failure === SvrsNfceFailureReason::ResponseContractChanged) {
+            $this->egressGovernor->openBreaker(
+                SvrsEgressBlockCause::ContractChanged,
+                officeId: (int) $profile->office_id,
+            );
+        }
+
         $this->breaker->recordFailure($failure, (int) $profile->client_id, null, (int) $profile->office_id);
 
         $terminalStatus = $this->resolveTerminalStatus($failure, $attemptNumber);
@@ -419,9 +494,13 @@ final class OutboundXmlRecoveryOrchestrator
             ])->save();
 
             $this->metrics->increment('svrs_nfce_retry');
+            $profileForQueue = OutboundCaptureProfile::withoutGlobalScopes()->find($request->outbound_capture_profile_id);
+            $queue = ($profileForQueue !== null && $this->profileModelCode($profileForQueue) === '55')
+                ? $this->nfe55Config->queue()
+                : $this->config->queue();
             RecoverSvrsNfceXmlJob::dispatch($request->id)
                 ->delay(now()->addSeconds($delay))
-                ->onQueue($this->config->queue());
+                ->onQueue($queue);
 
             if ($number->status !== OutboundNumberStatus::XmlCaptured) {
                 $number->forceFill(['status' => OutboundNumberStatus::XmlPending])->save();
@@ -453,7 +532,7 @@ final class OutboundXmlRecoveryOrchestrator
 
     public function resolveByOtherSource(int $officeId, string $accessKey, string $sourceLabel = 'other'): void
     {
-        $key = $this->eligibility->normalizeKey($accessKey);
+        $key = $this->normalizeAccessKey($accessKey);
         if ($key === null) {
             return;
         }
@@ -471,7 +550,35 @@ final class OutboundXmlRecoveryOrchestrator
                 'failure_reason' => SvrsNfceFailureReason::CapturedByOther->value,
                 'last_error' => 'Resolvido por '.$sourceLabel,
                 'next_attempt_at' => null,
+                'urgency_band' => \App\Enums\OutboundUrgencyBand::Captured->value,
+                'capture_source' => mb_substr($sourceLabel, 0, 40),
+                'captured_at' => now(),
             ]);
+    }
+
+    private function evaluateEligibility(
+        OutboundNumberState $number,
+        OutboundCaptureProfile $profile,
+        bool $a1Ok,
+    ): SvrsNfceEligibilityResult {
+        return $this->profileModelCode($profile) === '55'
+            ? $this->nfe55Eligibility->evaluate($number, $profile, $a1Ok)
+            : $this->eligibility->evaluate($number, $profile, $a1Ok);
+    }
+
+    private function profileModelCode(OutboundCaptureProfile $profile): string
+    {
+        $model = $profile->model instanceof OutboundFiscalModel
+            ? $profile->model
+            : OutboundFiscalModel::tryFrom((string) $profile->model);
+
+        return $model === OutboundFiscalModel::Nfe ? '55' : '65';
+    }
+
+    private function normalizeAccessKey(string $raw): ?string
+    {
+        return $this->eligibility->normalizeKey($raw)
+            ?? $this->nfe55Eligibility->normalizeKey($raw);
     }
 
     private function scheduleRetry(
@@ -480,16 +587,26 @@ final class OutboundXmlRecoveryOrchestrator
         string $detail,
         int $delaySeconds,
     ): void {
+        // Jitter determinístico (sem retry na mesma execução — job tries=1)
+        $ratio = (float) config('sefaz.svrs_portal_egress.retry_jitter_ratio', 0.1);
+        $jitter = (int) floor($delaySeconds * $ratio * (($request->id % 10) / 10));
+        $delaySeconds = max(1, $delaySeconds + $jitter);
+
         $request->forceFill([
             'recovery_status' => SvrsNfceRecoveryStatus::RetryScheduled,
             'failure_reason' => $reason,
             'last_error' => mb_substr($detail, 0, 500),
-            'next_attempt_at' => now()->addSeconds(max(1, $delaySeconds)),
+            'next_attempt_at' => now()->addSeconds($delaySeconds),
         ])->save();
 
+        $profile = OutboundCaptureProfile::withoutGlobalScopes()->find($request->outbound_capture_profile_id);
+        $queue = ($profile !== null && $this->profileModelCode($profile) === '55')
+            ? $this->nfe55Config->queue()
+            : $this->config->queue();
+
         RecoverSvrsNfceXmlJob::dispatch($request->id)
-            ->delay(now()->addSeconds(max(1, $delaySeconds)))
-            ->onQueue($this->config->queue());
+            ->delay(now()->addSeconds($delaySeconds))
+            ->onQueue($queue);
     }
 
     private function resolveTerminalStatus(SvrsNfceFailureReason $failure, int $attemptNumber): SvrsNfceRecoveryStatus
@@ -497,15 +614,33 @@ final class OutboundXmlRecoveryOrchestrator
         if (! $failure->isRecoverable()) {
             return SvrsNfceRecoveryStatus::Blocked;
         }
-        if ($attemptNumber >= $this->config->maxRecoverableAttempts()) {
+        $max = $this->maxRecoverableAttempts();
+        if ($attemptNumber >= $max) {
+            // Com política de prazo: esgota tentativas → contingência (não marca capturado)
             return SvrsNfceRecoveryStatus::NotAvailableVisible;
         }
 
         return SvrsNfceRecoveryStatus::RetryScheduled;
     }
 
+    private function maxRecoverableAttempts(): int
+    {
+        if (config('outbound_deadline.deadline_retry_policy')) {
+            return max(1, min(2, (int) config('outbound_deadline.max_svrs_transactions_per_key', 2)));
+        }
+
+        return $this->config->maxRecoverableAttempts();
+    }
+
     private function backoffSeconds(int $attemptNumber): int
     {
+        // Política orientada ao prazo: mínimo 24h entre tentativas (sem 15m/1h/6h/12h).
+        if (config('outbound_deadline.deadline_retry_policy')) {
+            $hours = max(1, (int) config('outbound_deadline.min_hours_between_svrs_attempts', 24));
+
+            return $hours * 3600;
+        }
+
         $schedule = $this->config->retryBackoffSeconds();
         $idx = min(max(0, $attemptNumber - 1), count($schedule) - 1);
         $base = $schedule[$idx];

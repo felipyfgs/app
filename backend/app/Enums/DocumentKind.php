@@ -47,10 +47,15 @@ enum DocumentKind: string
     {
         return match ($this) {
             self::Nfse => true,
-            self::Nfe => (bool) config('sefaz.distdfe_enabled', false),
+            self::Nfe => (bool) config('sefaz.distdfe_enabled', false)
+                || (bool) config('sefaz.ma_outbound.enabled', false)
+                || (bool) config('sefaz.svrs_nfe55_xml.retrieval_enabled', false),
             self::Cte => (bool) config('sefaz.cte_enabled', false),
             self::Mdfe => false,
-            self::Nfce => (bool) config('sefaz.nfce_enabled', false),
+            // NFC-e: não DistDFe de entrada; saída MA / recovery SVRS / import.
+            self::Nfce => (bool) config('sefaz.nfce_enabled', false)
+                || (bool) config('sefaz.ma_outbound.enabled', false)
+                || (bool) config('sefaz.svrs_nfce_xml.retrieval_enabled', false),
         };
     }
 

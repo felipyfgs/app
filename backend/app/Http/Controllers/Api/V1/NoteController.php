@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Contracts\SecureObjectStore;
+use App\Enums\DocumentArtifactQuality;
 use App\Enums\DocumentDirection;
 use App\Enums\DocumentKind;
 use App\Enums\FiscalRole;
@@ -10,12 +11,14 @@ use App\Enums\NfeManifestationType;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\CteDocument;
+use App\Models\DocumentAcquisition;
 use App\Models\NfeDocument;
 use App\Models\NfseEvent;
 use App\Models\NfseNote;
 use App\Services\Audit\AuditLogger;
 use App\Services\Sefaz\NfeManifestationService;
 use App\Services\Sefaz\NfeXmlUnlockService;
+use App\Services\Vault\DocumentVaultReader;
 use App\Support\CurrentOffice;
 use App\Support\DocumentCatalogCursor;
 use App\Support\NfseNoteStatus;
@@ -43,7 +46,11 @@ class NoteController extends Controller
         if (! $wantNfse && ! $wantSefazProjection && ! $wantCte) {
             return response()->json([
                 'data' => [],
-                'meta' => ['next_cursor' => null],
+                'meta' => [
+                    'next_cursor' => null,
+                    'total' => 0,
+                    'per_page' => min(max((int) $request->input('limit', 25), 1), 100),
+                ],
             ]);
         }
 
@@ -83,7 +90,18 @@ class NoteController extends Controller
             } elseif ($wantNfce && ! $wantNfe && $kinds !== []) {
                 $q->where('model', '65');
             }
-            $nfeModels = $q->limit($limit + 1)->get();
+            // Nunca listar resumo se o full da mesma chave existe (preferência de entrega).
+            $q->where(function ($inner): void {
+                $inner->where('is_summary', false)
+                    ->orWhereNotExists(function ($sub): void {
+                        $sub->select(DB::raw(1))
+                            ->from('nfe_documents as full_nfe')
+                            ->whereColumn('full_nfe.access_key', 'nfe_documents.access_key')
+                            ->whereColumn('full_nfe.office_id', 'nfe_documents.office_id')
+                            ->where('full_nfe.is_summary', false);
+                    });
+            });
+            $nfeModels = $q->with(['document.interests', 'document.acquisitions'])->limit($limit + 1)->get();
             $fullKeys = $this->fullAccessKeysForNfe($nfeModels);
             $rows = $rows->merge(
                 $nfeModels->map(fn (NfeDocument $n) => $this->serializeNfeListItem($n, $fullKeys))
@@ -113,8 +131,66 @@ class NoteController extends Controller
             'data' => $page->values(),
             'meta' => [
                 'next_cursor' => $nextCursor,
+                'total' => $this->catalogTotal($request, $wantNfse, $wantSefazProjection, $wantNfe, $wantNfce, $wantCte, $kinds),
+                'per_page' => $limit,
             ],
         ]);
+    }
+
+    /**
+     * Total no escopo dos filtros (soma por fonte). Usado na UPagination do catálogo.
+     * Contagem espelha as cláusulas de listagem (incl. preferência full sobre resumo NF-e/CT-e).
+     *
+     * @param  list<DocumentKind>  $kinds
+     */
+    private function catalogTotal(
+        Request $request,
+        bool $wantNfse,
+        bool $wantSefazProjection,
+        bool $wantNfe,
+        bool $wantNfce,
+        bool $wantCte,
+        array $kinds,
+    ): int {
+        $total = 0;
+
+        if ($wantNfse) {
+            $q = NfseNote::query();
+            $this->applyCatalogFilters($q, $request);
+            $total += (int) $q->count();
+        }
+
+        if ($wantSefazProjection) {
+            $q = NfeDocument::query();
+            $this->applyNfeCatalogFilters($q, $request);
+            if ($wantNfe && ! $wantNfce && $kinds !== []) {
+                $q->where(function ($inner): void {
+                    $inner->where('model', '55')->orWhereNull('model');
+                });
+            } elseif ($wantNfce && ! $wantNfe && $kinds !== []) {
+                $q->where('model', '65');
+            }
+            $q->where(function ($inner): void {
+                $inner->where('is_summary', false)
+                    ->orWhereNotExists(function ($sub): void {
+                        $sub->select(DB::raw(1))
+                            ->from('nfe_documents as full_nfe')
+                            ->whereColumn('full_nfe.access_key', 'nfe_documents.access_key')
+                            ->whereColumn('full_nfe.office_id', 'nfe_documents.office_id')
+                            ->where('full_nfe.is_summary', false);
+                    });
+            });
+            $total += (int) $q->count();
+        }
+
+        if ($wantCte) {
+            $q = CteDocument::query();
+            $this->applyCteCatalogFilters($q, $request);
+            // Listagem CT-e aplica preferência full/resumo no merge em memória, não no SQL.
+            $total += (int) $q->count();
+        }
+
+        return $total;
     }
 
     /**
@@ -339,7 +415,7 @@ class NoteController extends Controller
         $nfe = NfeDocument::query()
             ->where('access_key', $accessKey)
             ->orderBy('is_summary') // false first
-            ->with('document')
+            ->with(['document.interests', 'document.acquisitions'])
             ->first();
 
         if ($nfe !== null) {
@@ -354,10 +430,21 @@ class NoteController extends Controller
             $payload['has_full_xml'] = $hasFull;
             $payload['xml_completeness'] = $hasFull ? 'FULL' : 'SUMMARY_ONLY';
 
+            $acquisitions = ($nfe->document?->acquisitions ?? collect())->map(fn ($a) => [
+                'source' => is_object($a->source) ? $a->source->value : $a->source,
+                'channel' => is_object($a->channel) ? $a->channel->value : $a->channel,
+                'sha256' => $a->sha256,
+                'is_canonical' => (bool) $a->is_canonical,
+                'nsu' => $a->metadata['nsu'] ?? null,
+                'created_at' => $a->created_at?->toIso8601String(),
+            ])->values()->all();
+
             return response()->json([
                 'data' => [
                     'note' => $payload,
                     'events' => [],
+                    'interests' => $payload['interests'] ?? [],
+                    'acquisitions' => $acquisitions,
                     'document' => [
                         'id' => $nfe->document?->id,
                         'sha256' => $nfe->document?->sha256,
@@ -518,13 +605,31 @@ class NoteController extends Controller
         CurrentOffice $currentOffice,
         AuditLogger $audit,
     ): StreamedResponse {
+        try {
+            return $this->streamCanonicalXml($accessKey, $store, $audit);
+        } catch (\RuntimeException $e) {
+            report($e);
+            abort(422, 'XML indisponível no cofre (não foi possível abrir o objeto).');
+        }
+    }
+
+    private function streamCanonicalXml(
+        string $accessKey,
+        SecureObjectStore $store,
+        AuditLogger $audit,
+    ): StreamedResponse {
         $note = NfseNote::query()->where('access_key', $accessKey)->with('document')->first();
         if ($note !== null) {
             $doc = $note->document;
-            $bytes = $store->get($doc->vault_object_id, [
-                'office_id' => $doc->office_id,
-                'sha256' => $doc->sha256,
-            ]);
+            if ($doc === null) {
+                abort(404, 'XML canônico indisponível.');
+            }
+            $bytes = DocumentVaultReader::get(
+                $store,
+                (string) $doc->vault_object_id,
+                (int) $doc->office_id,
+                (string) $doc->sha256,
+            );
             $audit->record('xml.download', 'SUCCESS', $note, [
                 'access_key' => $accessKey,
                 'sha256' => $doc->sha256,
@@ -539,19 +644,31 @@ class NoteController extends Controller
             ]);
         }
 
-        // Prefer full over summary for the same access_key.
+        // Prefer full over summary; always bytes canônicos do dfe (nunca quarentena/spool).
         $nfe = NfeDocument::query()
             ->where('access_key', $accessKey)
-            ->orderBy('is_summary') // false (0) before true (1)
+            ->where('is_summary', false)
             ->with('document')
             ->first();
+        if ($nfe === null) {
+            $nfe = NfeDocument::query()
+                ->where('access_key', $accessKey)
+                ->orderBy('is_summary')
+                ->with('document')
+                ->first();
+        }
 
         if ($nfe !== null) {
             $doc = $nfe->document;
-            $bytes = $store->get($doc->vault_object_id, [
-                'office_id' => $doc->office_id,
-                'sha256' => $doc->sha256,
-            ]);
+            if ($doc === null || $doc->parse_status === 'QUARANTINE') {
+                abort(404, 'XML canônico indisponível.');
+            }
+            $bytes = DocumentVaultReader::get(
+                $store,
+                (string) $doc->vault_object_id,
+                (int) $doc->office_id,
+                (string) $doc->sha256,
+            );
 
             $audit->record('xml.download', 'SUCCESS', $nfe, [
                 'access_key' => $accessKey,
@@ -579,10 +696,15 @@ class NoteController extends Controller
 
         if ($cte !== null) {
             $doc = $cte->document;
-            $bytes = $store->get($doc->vault_object_id, [
-                'office_id' => $doc->office_id,
-                'sha256' => $doc->sha256,
-            ]);
+            if ($doc === null) {
+                abort(404, 'XML canônico indisponível.');
+            }
+            $bytes = DocumentVaultReader::get(
+                $store,
+                (string) $doc->vault_object_id,
+                (int) $doc->office_id,
+                (string) $doc->sha256,
+            );
 
             $audit->record('xml.download', 'SUCCESS', $cte, [
                 'access_key' => $accessKey,
@@ -742,13 +864,69 @@ class NoteController extends Controller
         $kind = ($doc->model === '65') ? DocumentKind::Nfce : DocumentKind::Nfe;
         $isSummary = (bool) $doc->is_summary;
         $hasFull = ! $isSummary || isset($fullKeys[$doc->access_key]);
-        $source = str_starts_with((string) $doc->schema_hint, 'import:') ? 'IMPORT' : $kind->defaultSource();
+
+        $interests = $doc->relationLoaded('document') && $doc->document?->relationLoaded('interests')
+            ? $doc->document->interests
+            : collect();
+        $acquisitions = $doc->relationLoaded('document') && $doc->document?->relationLoaded('acquisitions')
+            ? $doc->document->acquisitions
+            : collect();
+
+        $interestPayload = $interests->map(function ($i) {
+            return [
+                'establishment_id' => $i->establishment_id,
+                'fiscal_role' => $i->fiscal_role instanceof FiscalRole ? $i->fiscal_role->value : $i->fiscal_role,
+                'direction' => $i->direction instanceof DocumentDirection ? $i->direction->value : $i->direction,
+                'channel' => $i->channel,
+                // NSU só quando real (não sintético/null)
+                'nsu' => $i->nsu,
+            ];
+        })->values()->all();
+
+        $acquisitionSources = $acquisitions->map(function ($a) {
+            $src = $a->source;
+            $value = is_object($src) && property_exists($src, 'value') ? $src->value : (string) $src;
+
+            return $value;
+        })->unique()->values()->all();
+
+        // Proveniência: aquisições > schema_hint import > default do kind.
+        // NFC-e (65) nunca rotulada como AUTXML.
+        $source = $kind->defaultSource();
+        if ($acquisitionSources !== []) {
+            $source = $acquisitionSources[0];
+            if ($kind === DocumentKind::Nfce) {
+                $acquisitionSources = array_values(array_filter(
+                    $acquisitionSources,
+                    fn ($s) => ! str_contains((string) $s, 'AUTXML')
+                ));
+                $source = $acquisitionSources[0] ?? 'IMPORT';
+            }
+        } elseif (str_starts_with((string) $doc->schema_hint, 'import:')) {
+            $source = 'MANUAL_XML';
+        } elseif ($doc->acquisition_source) {
+            $src = $doc->acquisition_source;
+            $source = is_object($src) && property_exists($src, 'value') ? $src->value : (string) $src;
+            if ($kind === DocumentKind::Nfce && str_contains($source, 'AUTXML')) {
+                $source = 'MANUAL_XML';
+            }
+        }
+
+        $directions = collect($interestPayload)
+            ->pluck('direction')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $primaryDirection = $doc->direction?->value
+            ?? ($directions[0] ?? DocumentDirection::In->value);
 
         return [
             'id' => $doc->id,
             'kind' => $kind->value,
             'kind_label' => $kind->label(),
             'source' => $source,
+            'acquisition_sources' => $acquisitionSources !== [] ? $acquisitionSources : [$source],
             'capture_available' => $kind->captureAvailable(),
             'access_key' => $doc->access_key,
             'number' => $doc->number,
@@ -759,22 +937,29 @@ class NoteController extends Controller
             'intermediary_cnpj' => null,
             'intermediary_name' => null,
             'fiscal_role' => $doc->fiscal_role?->value ?? $doc->fiscal_role,
-            'direction' => $doc->direction?->value ?? DocumentDirection::In->value,
-            'direction_label' => ($doc->direction ?? DocumentDirection::In)->label(),
+            'direction' => $primaryDirection,
+            'direction_label' => (DocumentDirection::tryFrom((string) $primaryDirection) ?? DocumentDirection::In)->label(),
+            'directions' => $directions !== [] ? $directions : [$primaryDirection],
+            'interests' => $interestPayload,
+            'multi_role' => count($interestPayload) > 1,
             'competence' => $doc->issued_at?->format('Y-m'),
             'issued_at' => $doc->issued_at?->toIso8601String(),
             'service_amount' => $doc->total_amount,
             'issue_location' => null,
             'service_location' => null,
             'status' => $doc->status,
-            'status_label' => ($isSummary && ! $hasFull) ? 'Somente resumo' : 'XML completo',
+            // Situação fiscal operacional (lista): Autorizada · Cancelada · Em revisão
+            'status_label' => $this->nfeFiscalStatusLabel((string) $doc->status, $doc->official_status_code),
             'official_status_code' => $doc->official_status_code,
-            'official_status_label' => ($isSummary && ! $hasFull)
-                ? 'Resumo NF-e — XML completo ainda não disponível'
-                : 'Documento completo (procNFe)',
+            'official_status_label' => $this->nfeOfficialStatusLabel(
+                (string) $doc->status,
+                $doc->official_status_code,
+                $isSummary && ! $hasFull,
+            ),
             'is_summary' => $isSummary,
             'has_full_xml' => $hasFull,
             'xml_completeness' => $hasFull ? 'FULL' : 'SUMMARY_ONLY',
+            'xml_completeness_label' => ($isSummary && ! $hasFull) ? 'Somente resumo' : 'XML completo',
             'manifestation_status' => $doc->manifestation_status,
         ];
     }
@@ -789,6 +974,17 @@ class NoteController extends Controller
         $isSummary = (bool) $doc->is_summary;
         $hasFull = ! $isSummary || isset($fullKeys[$doc->access_key]);
 
+        $acquisition = DocumentAcquisition::query()
+            ->where('office_id', $doc->office_id)
+            ->where('access_key', $doc->access_key)
+            ->orderByDesc('is_canonical')
+            ->orderByDesc('id')
+            ->first();
+
+        $quality = $acquisition?->artifact_quality;
+        $signature = $acquisition?->signature_result;
+        $isRedacted = $quality === DocumentArtifactQuality::AutXmlRedacted;
+
         return [
             'id' => $doc->id,
             'kind' => $kind->value,
@@ -797,27 +993,55 @@ class NoteController extends Controller
             'capture_available' => $kind->captureAvailable(),
             'access_key' => $doc->access_key,
             'number' => $doc->number,
+            'series' => $doc->series,
+            'model' => $doc->model,
             'issuer_cnpj' => $doc->issuer_cnpj,
             'issuer_name' => $doc->issuer_name,
             'taker_cnpj' => $doc->taker_cnpj,
             'taker_name' => $doc->taker_name,
+            'effective_taker_cnpj' => $doc->effective_taker_cnpj,
+            'sender_cnpj' => $doc->sender_cnpj,
+            'recipient_cnpj' => $doc->recipient_cnpj,
+            'expeditor_cnpj' => $doc->expeditor_cnpj,
+            'expeditor_name' => $doc->expeditor_name,
+            'receiver_cnpj' => $doc->receiver_cnpj,
+            'receiver_name' => $doc->receiver_name,
             'intermediary_cnpj' => null,
             'intermediary_name' => null,
             'fiscal_role' => $doc->fiscal_role?->value ?? $doc->fiscal_role,
+            'fiscal_role_label' => $doc->fiscal_role?->label(),
             'direction' => $doc->direction?->value ?? DocumentDirection::In->value,
             'direction_label' => ($doc->direction ?? DocumentDirection::In)->label(),
+            'acquisition_source' => $acquisition?->source?->value,
+            'acquisition_source_label' => $acquisition?->source?->label(),
+            'artifact_quality' => $quality?->value,
+            'artifact_quality_label' => $quality?->label(),
+            'signature_result' => $signature?->value,
+            'signature_result_label' => $signature?->label(),
+            'is_autxml_redacted' => $isRedacted,
+            'autxml_redacted_notice' => $isRedacted
+                ? 'Cópia autXML com referências oficiais substituídas por 999… — solicite o original ao emissor se necessário.'
+                : null,
+            'coverage_status' => $doc->coverage_status?->value,
+            'coverage_status_label' => $doc->coverage_status?->label(),
+            'schema_version' => $doc->schema_version,
             'competence' => $doc->issued_at?->format('Y-m'),
             'issued_at' => $doc->issued_at?->toIso8601String(),
             'service_amount' => $doc->total_amount,
             'issue_location' => null,
             'service_location' => null,
             'status' => $doc->status,
-            'status_label' => ($isSummary && ! $hasFull) ? 'Somente resumo' : 'XML completo',
+            'status_label' => $this->nfeFiscalStatusLabel((string) $doc->status, $doc->official_status_code),
             'official_status_code' => $doc->official_status_code,
-            'official_status_label' => ($isSummary && ! $hasFull) ? 'Resumo CT-e' : 'Documento completo (procCTe)',
+            'official_status_label' => $this->nfeOfficialStatusLabel(
+                (string) $doc->status,
+                $doc->official_status_code,
+                $isSummary && ! $hasFull,
+            ),
             'is_summary' => $isSummary,
             'has_full_xml' => $hasFull,
             'xml_completeness' => $hasFull ? 'FULL' : 'SUMMARY_ONLY',
+            'xml_completeness_label' => ($isSummary && ! $hasFull) ? 'Somente resumo' : 'XML completo',
         ];
     }
 
@@ -852,8 +1076,35 @@ class NoteController extends Controller
         if ($v = $request->string('status')->toString()) {
             $query->where('status', strtoupper($v));
         }
+        if ($v = $request->string('fiscal_role')->toString()) {
+            $role = strtoupper($v);
+            $query->where(function ($q) use ($role): void {
+                $q->where('fiscal_role', $role)
+                    ->orWhereHas('document.interests', fn ($i) => $i->where('fiscal_role', $role));
+            });
+        }
+        if ($v = $request->string('artifact_quality')->toString()) {
+            $quality = strtoupper($v);
+            $query->whereHas('document', function ($dfe) use ($quality): void {
+                $dfe->whereIn('id', function ($sub) use ($quality): void {
+                    $sub->select('dfe_document_id')
+                        ->from('document_acquisitions')
+                        ->where('artifact_quality', $quality)
+                        ->where('is_canonical', true);
+                });
+            });
+        }
+        if ($v = $request->string('coverage_status')->toString()) {
+            $query->where('coverage_status', strtoupper($v));
+        }
         if ($direction = DocumentDirection::tryFromRequest($request->string('direction')->toString())) {
-            $query->where('direction', $direction->value);
+            // Direção via interesse (fonte de verdade por estabelecimento) ou projeção legada.
+            $query->where(function ($q) use ($direction): void {
+                $q->where('direction', $direction->value)
+                    ->orWhereHas('document.interests', function ($interest) use ($direction): void {
+                        $interest->where('direction', $direction->value);
+                    });
+            });
         }
         if ($clientId = $request->integer('client_id')) {
             $query->where(function ($q) use ($clientId): void {
@@ -923,7 +1174,12 @@ class NoteController extends Controller
             $query->where('status', strtoupper($v));
         }
         if ($direction = DocumentDirection::tryFromRequest($request->string('direction')->toString())) {
-            $query->where('direction', $direction->value);
+            $query->where(function ($q) use ($direction): void {
+                $q->where('direction', $direction->value)
+                    ->orWhereHas('document.interests', function ($interest) use ($direction): void {
+                        $interest->where('direction', $direction->value);
+                    });
+            });
         }
         if ($clientId = $request->integer('client_id')) {
             $query->where(function ($q) use ($clientId): void {
@@ -1003,5 +1259,67 @@ class NoteController extends Controller
             ->flip()
             ->map(fn () => true)
             ->all();
+    }
+
+    /**
+     * Chip da grade: Autorizada · Cancelada · Denegada · Em revisão.
+     * Não misturar com completude de XML (campo xml_completeness_label).
+     */
+    private function nfeFiscalStatusLabel(?string $status, ?string $cStat): string
+    {
+        $code = $cStat !== null ? trim($cStat) : '';
+        if (in_array($code, ['101', '151', '155'], true)) {
+            return 'Cancelada';
+        }
+        if (in_array($code, ['110', '301', '302'], true)) {
+            return 'Denegada';
+        }
+        if (in_array($code, ['100', '150'], true)) {
+            return 'Autorizada';
+        }
+
+        $normalized = strtoupper(trim((string) $status));
+        if (in_array($normalized, ['CANCELLED', 'SUPERSEDED', 'REPLACED', 'CANCELED'], true)) {
+            return 'Cancelada';
+        }
+        if (in_array($normalized, ['DENIED', 'DENEGADA'], true)) {
+            return 'Denegada';
+        }
+        if (in_array($normalized, ['ACTIVE', 'AUTHORIZED', 'SUBSTITUTE', 'JUDICIAL'], true)) {
+            return 'Autorizada';
+        }
+
+        // Reuso do mapa operacional NFS-e (mesmos grupos)
+        return NfseNoteStatus::label($normalized !== '' ? $normalized : 'UNKNOWN');
+    }
+
+    /**
+     * Texto oficial/detalhe (não substitui o chip da lista).
+     */
+    private function nfeOfficialStatusLabel(?string $status, ?string $cStat, bool $summaryOnly): ?string
+    {
+        $code = $cStat !== null ? trim($cStat) : '';
+        $map = [
+            '100' => 'Autorizada o uso da NF-e',
+            '150' => 'Autorizada fora de prazo',
+            '101' => 'Cancelamento homologado',
+            '151' => 'Cancelamento fora de prazo',
+            '155' => 'Cancelamento homologado',
+            '110' => 'Uso denegado',
+            '301' => 'Uso denegado',
+            '302' => 'Uso denegado',
+        ];
+        if ($code !== '' && isset($map[$code])) {
+            $base = $map[$code];
+
+            return $summaryOnly ? $base.' · somente resumo' : $base;
+        }
+
+        $chip = $this->nfeFiscalStatusLabel($status, $cStat);
+        if ($summaryOnly) {
+            return $chip.' · somente resumo';
+        }
+
+        return $chip;
     }
 }

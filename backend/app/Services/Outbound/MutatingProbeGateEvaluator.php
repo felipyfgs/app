@@ -14,6 +14,10 @@ use App\Support\CurrentOffice;
  */
 final class MutatingProbeGateEvaluator
 {
+    public function __construct(
+        private readonly OutboundKillSwitchService $killSwitch,
+    ) {}
+
     /**
      * @return array{allowed: bool, reasons: list<string>, reasons_codes: list<string>}
      */
@@ -30,7 +34,7 @@ final class MutatingProbeGateEvaluator
             $codes[] = 'mutating_flag_off';
         }
 
-        if ((bool) config('sefaz.ma_outbound.kill_switch', false) || $profile->kill_switch) {
+        if ($this->killSwitch->isBlocked($profile)) {
             $reasons[] = 'Kill switch ativo.';
             $codes[] = 'kill_switch';
         }

@@ -2,88 +2,127 @@
 
 namespace App\Services\Outbound;
 
+use App\Contracts\SvrsPortalEgressGovernor;
+use App\Domain\Cnpj;
+use App\DTO\Outbound\SvrsEgressReservation;
+use App\DTO\Outbound\SvrsEgressReserveRequest;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Semáforo global (1 em voo), intervalo global 5s e por raiz 30s.
- * Acquire atômico via Cache::lock (fail-closed se o lock não for obtido).
+ * Adapter de compatibilidade: delega ao SvrsPortalEgressGovernor compartilhado.
+ * Defaults defensivos (120s/15min/1 chave) — não mais 5s/30s/20.
+ *
+ * Prefira passar {@see SvrsEgressReservation} explicitamente em release()
+ * (retorno de acquire) em vez de estado mutável da instância.
+ *
+ * @deprecated Prefira injetar SvrsPortalEgressGovernor diretamente.
  */
 final class SvrsNfceRateLimiter
 {
-    private const INFLIGHT_KEY = 'sefaz.svrs_nfce_xml.inflight';
-    private const GLOBAL_LAST_KEY = 'sefaz.svrs_nfce_xml.last_global_at';
-    private const ROOT_LAST_PREFIX = 'sefaz.svrs_nfce_xml.last_root.';
-    private const MUTEX_KEY = 'sefaz.svrs_nfce_xml.rate_mutex';
-
     public function __construct(
         private readonly SvrsNfceConfig $config,
+        private readonly ?SvrsPortalEgressGovernor $governor = null,
+        private readonly ?SvrsPortalEgressConfig $egressConfig = null,
     ) {}
 
     /**
-     * @return array{allowed: bool, retry_after_seconds: int, reason: ?string}
+     * @return array{allowed: bool, retry_after_seconds: int, reason: ?string, reservation?: ?SvrsEgressReservation}
      */
-    public function acquire(int $clientId): array
-    {
-        $lock = Cache::lock(self::MUTEX_KEY, 5);
-        if (! $lock->get()) {
-            return ['allowed' => false, 'retry_after_seconds' => 2, 'reason' => 'mutex'];
+    public function acquire(
+        int $clientId,
+        ?string $rootCnpj = null,
+        int $officeId = 0,
+        string $channel = 'nfce65',
+        bool $isCanary = false,
+    ): array {
+        $governor = $this->governor ?? (app()->bound(SvrsPortalEgressGovernor::class)
+            ? app(SvrsPortalEgressGovernor::class)
+            : null);
+
+        if ($governor === null) {
+            return ['allowed' => false, 'retry_after_seconds' => 60, 'reason' => 'coordinator_unavailable'];
         }
 
-        try {
-            $now = microtime(true);
+        $egress = $this->egressConfig ?? app(SvrsPortalEgressConfig::class);
+        $root = $this->normalizeRootInput($rootCnpj, $clientId);
 
-            $inflight = (int) Cache::get(self::INFLIGHT_KEY, 0);
-            if ($inflight >= $this->config->maxInflightGlobal()) {
-                return ['allowed' => false, 'retry_after_seconds' => 5, 'reason' => 'inflight'];
-            }
+        $channel = $channel === 'nfe55' ? 'nfe55' : 'nfce65';
 
-            $lastGlobal = (float) Cache::get(self::GLOBAL_LAST_KEY, 0);
-            $globalWait = $this->config->minIntervalGlobalSeconds() - ($now - $lastGlobal);
-            if ($globalWait > 0) {
-                return ['allowed' => false, 'retry_after_seconds' => (int) ceil($globalWait), 'reason' => 'global_interval'];
-            }
+        $result = $governor->reserve(new SvrsEgressReserveRequest(
+            rootCnpj: $root,
+            accessKeyMask: '****',
+            channel: $channel,
+            officeId: max(0, $officeId),
+            exchangesNeeded: $egress->exchangesPerDownload(),
+            isCanary: $isCanary,
+        ));
 
-            $rootKey = self::ROOT_LAST_PREFIX.$clientId;
-            $lastRoot = (float) Cache::get($rootKey, 0);
-            $rootWait = $this->config->minIntervalRootSeconds() - ($now - $lastRoot);
-            if ($rootWait > 0) {
-                return ['allowed' => false, 'retry_after_seconds' => (int) ceil($rootWait), 'reason' => 'root_interval'];
-            }
-
-            Cache::put(self::INFLIGHT_KEY, $inflight + 1, 120);
-            Cache::put(self::GLOBAL_LAST_KEY, $now, 3600);
-            Cache::put($rootKey, $now, 3600);
-
-            return ['allowed' => true, 'retry_after_seconds' => 0, 'reason' => null];
-        } finally {
-            $lock->release();
+        if (! $result->allowed || $result->reservation === null) {
+            return [
+                'allowed' => false,
+                'retry_after_seconds' => $result->retryAfterSeconds,
+                'reason' => $result->reason ?? 'denied',
+            ];
         }
+
+        return [
+            'allowed' => true,
+            'retry_after_seconds' => 0,
+            'reason' => null,
+            'reservation' => $result->reservation,
+        ];
     }
 
-    public function release(): void
+    /**
+     * Libera a reserva obtida em acquire(). Passe a reservation explicitamente
+     * (retorno de acquire) — sem estado mutável no limiter.
+     */
+    public function release(?SvrsEgressReservation $reservation = null): void
     {
-        $lock = Cache::lock(self::MUTEX_KEY, 5);
-        if (! $lock->get()) {
-            // Best-effort decrement sem lock
-            $inflight = (int) Cache::get(self::INFLIGHT_KEY, 0);
-            Cache::put(self::INFLIGHT_KEY, max(0, $inflight - 1), 120);
-
+        if ($reservation === null) {
             return;
         }
-
-        try {
-            $inflight = (int) Cache::get(self::INFLIGHT_KEY, 0);
-            Cache::put(self::INFLIGHT_KEY, max(0, $inflight - 1), 120);
-        } finally {
-            $lock->release();
+        $governor = $this->governor ?? (app()->bound(SvrsPortalEgressGovernor::class)
+            ? app(SvrsPortalEgressGovernor::class)
+            : null);
+        if ($governor !== null) {
+            $governor->release($reservation, false);
         }
     }
 
-    /** @internal testes */
+    /** @internal testes — limpa contadores do governador na coorte atual */
     public function reset(): void
     {
-        Cache::forget(self::INFLIGHT_KEY);
-        Cache::forget(self::GLOBAL_LAST_KEY);
-        Cache::forget(self::MUTEX_KEY);
+        $cohort = app(SvrsPortalEgressConfig::class)->cohortId();
+        $prefix = 'svrs.egress.'.$cohort.'.';
+        foreach (['inflight', 'last_global', 'mutex'] as $suffix) {
+            Cache::forget($prefix.$suffix);
+        }
+        // Janelas de hora/dia
+        Cache::forget($prefix.'ex_h.'.gmdate('YmdH'));
+        Cache::forget($prefix.'ex_d.'.gmdate('Ymd'));
+    }
+
+    /**
+     * Alfanumérico maiúsculo (Cnpj::normalize); CNPJ 14 → raiz 8; fallback CLIENT{id}.
+     */
+    private function normalizeRootInput(?string $rootCnpj, int $clientId): string
+    {
+        if ($rootCnpj === null || $rootCnpj === '') {
+            return 'CLIENT'.$clientId;
+        }
+
+        $clean = Cnpj::normalize($rootCnpj);
+        if ($clean === '') {
+            return 'CLIENT'.$clientId;
+        }
+
+        if (strlen($clean) === 14) {
+            $parsed = Cnpj::tryParse($clean);
+
+            return $parsed !== null ? $parsed->root() : substr($clean, 0, 8);
+        }
+
+        return $clean;
     }
 }
