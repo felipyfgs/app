@@ -2,7 +2,7 @@
 
 **Change:** `build-complete-fiscal-monitoring-hub` · task **16.3**  
 **Atualizado:** 2026-07-15  
-**Relacionados:** `docs/ops/backup-restore.md`, `docs/ops/fiscal-hub-control-plane-backup-drill-2026-07-15.md`, ADR 003/005
+**Relacionados:** `docs/ops/backup-restore.md`, `docs/ops/archive/2026-07-15/fiscal-hub-control-plane-backup-drill-2026-07-15.md`, ADR 003/005
 
 ## Princípios
 
@@ -59,7 +59,7 @@ docker compose exec -T php php artisan ops:backup-run --kind=full
 docker compose exec -T php php artisan ops:backup-restore-drill --run=latest
 ```
 
-Drill já registrado: `docs/ops/fiscal-hub-control-plane-backup-drill-2026-07-15.md`.
+Drill já registrado: `docs/ops/archive/2026-07-15/fiscal-hub-control-plane-backup-drill-2026-07-15.md`.
 
 ### Multi-tenant e backup
 

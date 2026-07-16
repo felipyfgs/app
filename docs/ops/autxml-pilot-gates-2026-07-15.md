@@ -16,7 +16,7 @@ Schema presente: `office_fiscal_identities`, `office_credentials`, `office_distr
 
 ## Task 13.1 — Backup/restore pós-schema
 
-- Drill pré-schema: `docs/ops/autxml-backup-drill-2026-07-15.md` (OK).
+- Drill pré-schema: `docs/ops/archive/2026-07-15/autxml-backup-drill-2026-07-15.md` (OK).
 - Schema aditivo aplicado; flags off.
 - Backup pós-schema + verify-only: `backups/nfse-backup-20260715T114027Z` (checksums OK).
 - Restore destrutivo **não** reexecutado nesta sessão em instância viva — procedimento em `docs/ops/backup-restore.md`.

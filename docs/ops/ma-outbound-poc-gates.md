@@ -6,7 +6,7 @@
 | Gate | Status | Notas |
 |------|--------|-------|
 | G0 Segurança | **OK** | Backup+verify, flags default off no CI, fixtures, `NO_GO_M2M` |
-| G1 Pacote oficial | **OK c/ residual** | 65 importado + SHA=emissor. Residual `NO_PACKAGE_55` — ver `ma-outbound-g1-g3-residual-closure-2026-07-15.md` |
+| G1 Pacote oficial | **OK c/ residual** | 65 importado + SHA=emissor. Residual `NO_PACKAGE_55` — ver `archive/2026-07-15/ma-outbound-g1-g3-residual-closure-2026-07-15.md` |
 | G2 Consulta homolog | **OK c/ residual** | Prod 65 matriz completa; homolog conectividade 217. Residuais `NO_HOMOLOG_NFE55` / `NO_HOMOLOG_NFCE65` |
 | G3 Produção leitura | **OK c/ residual** | 65 série 1 ≤10 sem CSC, 656=0. Residual `NO_SERIES_55` |
 | G4 M2M | **`NO_GO_M2M`** | Ver `ma-outbound-g4-g5-decision.md` |
@@ -16,7 +16,7 @@
 
 - **Habilitado** em produção restrita: perfil ACTIVE, allowlist, mandato, modelo 65, série 1.  
 - M2M e mutação **independentes e off**.  
-- Log: `docs/ops/ma-outbound-pilot-log-2026-07-15.md`.
+- Log: `docs/ops/archive/2026-07-15/ma-outbound-pilot-log-2026-07-15.md`.
 
 ## Rollback drill (task 10.4)
 

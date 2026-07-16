@@ -11,7 +11,7 @@ Relacionados:
 - Rollout / allowlist: `docs/ops/cte-rollout-allowlist.md`
 - Aceite do escritório: `docs/ops/cte-pilot-acceptance.md`
 - Matriz de schema: `docs/ops/cte-schema-compatibility-matrix.md`
-- Baseline pré-change: `docs/ops/cte-baseline-state-2026-07-15.md`
+- Baseline pré-change: `docs/ops/archive/2026-07-15/cte-baseline-state-2026-07-15.md`
 
 ## Princípios
 
@@ -45,7 +45,7 @@ Relacionados:
 
 - [ ] Ticket/autorização formal da janela (preencher id abaixo)
 - [ ] Aceite piloto CT-e assinado ou trial interno documentado (`cte-pilot-acceptance.md`)
-- [ ] Backup/restore verificável nas últimas 24h (ver `cte-backup-drill-2026-07-15.md` ou política vigente)
+- [ ] Backup/restore verificável nas últimas 24h (ver `archive/2026-07-15/cte-backup-drill-2026-07-15.md` ou política vigente)
 - [ ] Ownership único de `distNSU` declarado para **cada** CNPJ-base que será consultado (cliente e, se aplicável, escritório)
 
 ### 1.2 Identificação da janela (preencher)

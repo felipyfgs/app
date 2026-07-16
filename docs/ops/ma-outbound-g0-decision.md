@@ -8,7 +8,7 @@
 
 | Item | Evidência |
 |------|-----------|
-| Backup + verify | `docs/ops/ma-outbound-backup-drill-2026-07-15.md` |
+| Backup + verify | `docs/ops/archive/2026-07-15/ma-outbound-backup-drill-2026-07-15.md` |
 | M2M | `NO_GO_M2M` — `docs/ops/ma-outbound-sefaz-ma-status.md` |
 | Parecer/mandato mutante | Pendente — mutação desligada — `docs/ops/ma-outbound-legal-mandate.md` |
 | Endpoints versionados | `backend/config/sefaz.php` → chave `ma_outbound` |

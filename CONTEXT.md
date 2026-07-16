@@ -1,26 +1,29 @@
-# CONTEXT — NFS-e ADN Capture
+# CONTEXT — Hub fiscal multi-escritório
 
-Vocabulário e decisões estáveis do domínio. Detalhes de implementação em `openspec/` e ADRs em `docs/adr/`.
+Vocabulário e decisões estáveis do domínio. Regras operacionais para agentes: `AGENTS.md`. Detalhes em `openspec/` e ADRs em `docs/adr/`.
 
 ## Produto
 
-- Sistema **interno do escritório contábil** (não é portal do cliente final).
-- Objetivo: capturar e organizar XMLs de NFS-e via **ADN** (Ambiente de Dados Nacional), autenticado com certificado **e-CNPJ A1**.
-- Escopo MVP: distribuição ADN, consulta, download e exportação ZIP. Fora: emissão/cancelamento, DANFSe, scraping de portal, APIs municipais.
+- SaaS multi-escritório para **escritórios contábeis** (não é portal do contribuinte final).
+- Captura de DF-e: NFS-e ADN, NF-e DistDFe, CT-e, autXML, import XML/ZIP, canais regionais (quando liberados por flag).
+- Monitoramento fiscal via Integra Contador / SERPRO (contrato global da software house).
+- Fora do escopo: emissão/cancelamento, DANFSe como produto, scraping de portal, APIs municipais genéricas, sublicença de credenciais SERPRO/PFX.
 
 ## Atores e perfis
 
 | Perfil | Papel |
 |--------|--------|
-| `ADMIN` | Administração, certificados, usuários, bootstrap |
-| `OPERATOR` | Cadastros operacionais, sincronização manual, exportações |
+| `ADMIN` | Administração do escritório, certificados, usuários, cofre (com 2FA quando exigido) |
+| `OPERATOR` | Cadastros operacionais, sincronização, import, exportações |
 | `VIEWER` | Consulta e download conforme policy |
+| `PLATFORM_ADMIN` | Operação da plataforma (memberships, catálogo); **não** herda conteúdo fiscal de tenants |
 
 ## Tenancy
 
-- Toda tabela de negócio tem `office_id`.
-- Escritório ativo vem da **associação autenticada**, nunca de `office_id` livre no body/query.
-- MVP cria um escritório; o schema já isola multi-escritório.
+- Toda tabela de negócio de tenant tem `office_id`.
+- Escritório ativo vem da **membership autenticada**, nunca de `office_id` livre no body/query.
+- Mesmo CNPJ pode existir em escritórios distintos; jobs/locks/exports **nunca** misturam tenants.
+- Usuário pode ter várias memberships; troca de tenant é explícita.
 
 ## CNPJ
 

@@ -73,4 +73,4 @@ SEFAZ_MA_OUTBOUND_KILL_SWITCH=true
 
 Preserva XML, aquisições, cursores nNF e auditoria.
 
-Evidência de drill 10.4 (2026-07-15): `docs/ops/ma-outbound-pilot-log-2026-07-15.md`.
+Evidência de drill 10.4 (2026-07-15): `docs/ops/archive/2026-07-15/ma-outbound-pilot-log-2026-07-15.md`.

@@ -87,7 +87,7 @@ Clientes Alpha/Beta/Gamma do `DemoCatalogSeeder` são **fake** — não usar par
 
 | Campo | Valor |
 |-------|--------|
-| Log | `docs/ops/ma-outbound-pilot-log-2026-07-15.md` |
+| Log | `docs/ops/archive/2026-07-15/ma-outbound-pilot-log-2026-07-15.md` |
 | Gates | `docs/ops/ma-outbound-poc-gates.md` |
 | Descoberta XML | `docs/ops/ma-outbound-xml-auto-discovery.md` |
 | Perfil local | ACTIVE · modelo 65 · est. 11 · série 1 · allowlisted |

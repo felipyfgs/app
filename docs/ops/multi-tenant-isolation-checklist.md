@@ -61,7 +61,7 @@
 | Job / comando | Isolamento observado | Risco |
 |---------------|----------------------|-------|
 | `SyncEstablishmentDistributionJob` / ADN dispatch | Cursor/establishment com `office_id`; lock `adn:est:{establishment_id}` | Establishment id é globalmente único → lock ok; garantir que establishment.office_id não mude indevidamente |
-| `SyncSefazDistDfeJob`, `SyncSefazCteDistDfeJob`, `SyncSefazMdfeDistDfeJob` | Locks por cursor/canal | Ok se payload carrega office e revalida |
+| `SyncSefazDistDfeJob`, `SyncSefazCteDistDfeJob` | Locks por cursor/canal | Ok se payload carrega office e revalida |
 | `SyncOfficeAutXmlDistDfeJob`, `SyncOfficeCteAutXmlDistDfeJob` | Office explícito no job | Gate `AutXmlFeature::isOfficeAllowed($officeId)` |
 | `DispatchDueSyncsCommand` / due autXML / due sefaz / MA / SVRS | Iteram cursores/enrollments no banco | Devem processar **todos** os offices elegíveis com fairness; não assumir um único office |
 | `BuildExportZipJob` | `where('office_id', $export->office_id)` + path por office | Bom padrão |

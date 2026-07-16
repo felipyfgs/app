@@ -63,5 +63,5 @@ SEFAZ_SVRS_NFCE_XML_AUTO_QUEUE=false   # existente
 ## 1.6 Backup
 
 Antes de migrations em ambiente com dados fiscais reais: `docs/ops/backup-restore.md`.  
-Drill local pré-schema autXML: `docs/ops/autxml-backup-drill-2026-07-15.md`.  
-Novo drill opcional: `docs/ops/outbound-deadline-backup-drill-2026-07-15.md` (verify-only se stack local).
+Drill local pré-schema autXML: `docs/ops/archive/2026-07-15/autxml-backup-drill-2026-07-15.md`.  
+Novo drill opcional: `docs/ops/archive/2026-07-15/outbound-deadline-backup-drill-2026-07-15.md` (verify-only se stack local).
