@@ -141,8 +141,8 @@ Thumbs.db
 !.grok/skills/**
 !.grok/commands/
 !.grok/commands/**
-# .agents/skills é versionado de propósito (espelho multi-tool) — NÃO ignorar
-# .codex/skills e .opencode/skills também são versionados
+# .agents/skills = fonte canônica de skills do projeto (versionar)
+# .codex/skills e .opencode/skills e .grok/skills = symlinks → .agents/skills (versionar os links)
 
 # --- Artefatos locais de review/agente e screenshots de sessão ---
 .playwright-mcp/

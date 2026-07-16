@@ -1,0 +1,66 @@
+schema: spec-driven
+
+# Injetado nas instruções de artefatos (proposal/specs/design/tasks).
+# Detalhe operacional de agent: AGENTS.md na raiz.
+context: |
+  Produto: hub fiscal multi-escritório (NFS-e ADN, SEFAZ, SERPRO Integra, monitoramento).
+  Monorepo sem package.json na raiz — orquestração Makefile + Docker Compose.
+
+  Stack:
+  - backend/: Laravel 13, PHP 8.4, Horizon, Sanctum/Fortify, Postgres, Redis
+  - frontend/: Nuxt 4 SPA (ssr: false) + Nuxt UI + nuxt-auth-sanctum (cookie)
+  - Runtime prod/local "up": nginx serve frontend/.output/public e proxy /api /sanctum Fortify → PHP-FPM
+  - Dev UI: make dev (Nuxt :3000 com NUXT_SANCTUM_PROXY → nginx)
+  - Filas: Horizon; cron: container scheduler
+
+  Tenancy:
+  - Tenant = Office; contexto via CurrentOffice (nunca confiar office_id do client HTTP)
+  - EnsureOfficeContext remove office_id do request; troca só POST /api/v1/tenants/switch
+  - OfficeRole: ADMIN | OPERATOR | VIEWER (capacidades no enum)
+  - PLATFORM_ADMIN é global e NÃO concede acesso fiscal implícito a tenants
+  - Rotas platform em /api/v1/platform/* sem office context; TOTP obrigatório
+
+  Segurança / dados:
+  - Segredos e XML canônico em SecureObjectStore (vault); VAULT_MASTER_KEY fora do git
+  - Não logar/retornar PFX, senhas, tokens, XML bruto em JSON de API
+  - Feature flags hub fiscal (FeatureFlags): default OFF; kill switch global vence;
+    mutações exigem flags mutantes + allowlist de office
+  - Canais SEFAZ MA / SVRS / autXML: default off em env
+  - Controllers tenant-scoped não importam SERPRO global (tests/Architecture)
+
+  UI:
+  - Telas autenticadas: skill panel-ui → ui-archetype
+  - Copiar arquétipo de .reference/nuxt-dashboard-template @ 0f30c09 (gitignored)
+  - Skills de projeto só em .agents/skills/ (symlinks nos outros engines)
+  - Não scaffold Nuxt novo; estender frontend/
+  - Prod = SPA estática + nginx, não SSR Node
+
+  Verificação:
+  - Backend: vendor/bin/pint --test; php artisan test (--filter=…)
+  - Frontend CI: pnpm lint → typecheck → generate (pnpm@11.9.0)
+  - Hub: bash ./docker/ops/fiscal-hub-verify-backend.sh
+
+rules:
+  proposal:
+    - "Preferir português (pt-BR) nos artefatos."
+    - "Explicitar Non-goals e o que fica fora (canais SEFAZ, mutações, flags)."
+    - "Se tocar multi-tenant, declarar isolamento por Office e proibição de office_id do client."
+    - "Se tocar segredos/XML/credenciais, declarar vault e superfície de API sanitizada."
+    - "Capabilities em kebab-case; checar openspec/specs/ antes de inventar nomes."
+    - "Manter proposal enxuta (por que/o quê); como fica em design."
+  specs:
+    - "Requisitos com SHALL/MUST; cada requirement com ao menos um Scenario WHEN/THEN (header ####)."
+    - "MODIFIED deve copiar o bloco inteiro do spec main antes de editar."
+    - "Cobrir isolamento de tenant, papéis e fail-closed de flags quando aplicável."
+    - "Não exigir defaults ON de feature flags ou canais SEFAZ."
+  design:
+    - "Mapear backend (app/ Domain|Services|Http|Jobs) vs frontend (app/ pages|composables)."
+    - "Decidir middleware/rotas Sanctum e se é platform vs office context."
+    - "Jobs assíncronos usam Horizon; não assumir sync em produção."
+    - "UI: skill ui-archetype (template dashboard); não redesenhar shell."
+    - "Listar riscos: vazamento entre offices, segredos em log/API, kill switches."
+  tasks:
+    - "Tarefas pequenas e verificáveis (comando de teste ou gate explícito)."
+    - "Ordem típica: migrations/domínio → API/policies → jobs → UI → testes."
+    - "Incluir evidência: php artisan test --filter=… e/ou pnpm lint|typecheck."
+    - "Não misturar change de plataforma global com mutação fiscal tenant sem tasks separadas."
