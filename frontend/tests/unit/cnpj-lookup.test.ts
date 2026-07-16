@@ -6,7 +6,11 @@ const APP_ROOT = resolve(__dirname, '../../app')
 
 describe('preenchimento assistido por CNPJ', () => {
   const form = readFileSync(resolve(APP_ROOT, 'components/clients/ClientForm.vue'), 'utf8')
-  const api = readFileSync(resolve(APP_ROOT, 'composables/useApi.ts'), 'utf8')
+  // Superfície da API: fachada + módulo de clientes (useApi modular).
+  const api = [
+    readFileSync(resolve(APP_ROOT, 'composables/useApi.ts'), 'utf8'),
+    readFileSync(resolve(APP_ROOT, 'composables/api/createClientsApi.ts'), 'utf8')
+  ].join('\n')
   const registration = readFileSync(resolve(APP_ROOT, 'components/clients/ClientRegistration.vue'), 'utf8')
 
   it('consulta somente CNPJ numérico completo e sugere a razão social', () => {

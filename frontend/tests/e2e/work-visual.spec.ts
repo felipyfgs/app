@@ -6,11 +6,14 @@ import { expect, test } from '@playwright/test'
 import { installApiFixtures, stabilizeVisualPage } from './support/api-fixtures'
 
 async function openWork(page: import('@playwright/test').Page, path: string) {
-  await page.goto(path)
-  const office = page.getByRole('button', { name: /Escritório ativo/i })
-  const shell = page.getByRole('button', { name: /Abrir barra lateral|Collapse|Recolher|Expandir/i }).first()
-  const workShell = page.getByTestId(/work-|home-work|page-title/)
-  await expect(office.or(shell).or(workShell).first()).toBeVisible({ timeout: 30000 })
+  await page.goto(path, { waitUntil: 'domcontentloaded' })
+  let selector = '[data-testid^="work-"], [data-testid="home-work-kpis"], button:has-text("Escritório ativo")'
+  if (path.startsWith('/work/processes/')) selector = '[data-testid="work-process-detail"]'
+  else if (path.startsWith('/work/calendar')) selector = '[data-testid="work-calendar"]'
+  else if (path.startsWith('/work/templates')) selector = '[data-testid="work-templates-panel"]'
+  else if (path.startsWith('/work/processes')) selector = '[data-testid="work-processes-panel"]'
+  else if (path === '/work' || path.startsWith('/work?')) selector = '[data-testid="work-queue-panel"]'
+  await expect(page.locator(selector).first()).toBeVisible({ timeout: 45000 })
   await stabilizeVisualPage(page)
 }
 

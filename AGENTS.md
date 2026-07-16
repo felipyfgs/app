@@ -102,6 +102,9 @@ UI do painel em `frontend/` **sempre** passa por este encadeamento (não inventa
 - Orquestrador: **`/frontend-nuxt-stack`** (`.grok/skills/frontend-nuxt-stack/`).
 - Template detalhe: **`/nuxt-dashboard-template`** + `references/stack.md`.
 - MCPs: `nuxt-ui` → `https://ui.nuxt.com/mcp` · `nuxt` → `https://nuxt.com/mcp` (configurados no user agent).
+- MCP oficial do Playwright: obrigatório para exploração interativa e validação visual/funcional da UI local; configuração versionada em `.codex/config.toml` e `.grok/config.toml`.
+- O Playwright MCP deve permanecer isolado, headless e restrito às origens locais `127.0.0.1`/`localhost`; não usar para scraping, Gov.br, portais fiscais reais ou certificados.
+- Após alterar `.codex/config.toml`, iniciar uma nova tarefa Codex. No Grok, confiar explicitamente neste repositório antes de ativar MCPs locais (`grok --trust` ou `/hooks-trust`).
 - Conflito forma vs docs: **template vence** na estrutura; MCP só completa props.
 - Não scaffoldar app Nuxt novo nem outro starter; estender `frontend/`.
 - Shell tenant-aware: escritório ativo visível; troca só entre memberships válidas; dados do contrato SERPRO global **não** expostos ao tenant (somente saúde sanitizada, consumo e limites do plano).

@@ -1,0 +1,29 @@
+[mcp_servers.playwright]
+command = "npx"
+args = [
+  "-y",
+  "@playwright/mcp@0.0.77",
+  "--caps",
+  "vision",
+  "--headless",
+  "--isolated",
+  "--viewport-size",
+  "1440x900",
+  "--console-level",
+  "warning",
+  "--timeout-action",
+  "10000",
+  "--timeout-navigation",
+  "60000",
+  "--allowed-hosts",
+  "127.0.0.1,localhost",
+  "--allowed-origins",
+  "http://127.0.0.1:3000;http://localhost:3000;http://127.0.0.1:8080;http://localhost:8080",
+  "--image-responses",
+  "allow",
+  "--output-mode",
+  "stdout",
+]
+enabled = true
+startup_timeout_sec = 120
+tool_timeout_sec = 120

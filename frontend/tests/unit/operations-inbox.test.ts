@@ -5,7 +5,10 @@ import { resolve } from 'node:path'
 const APP_ROOT = resolve(__dirname, '../../app')
 
 describe('operations inbox surface', () => {
-  const api = readFileSync(resolve(APP_ROOT, 'composables/useApi.ts'), 'utf8')
+  // Superfície estática: fachada + módulo operations (runtime em api-modules.test.ts).
+  const facade = readFileSync(resolve(APP_ROOT, 'composables/useApi.ts'), 'utf8')
+  const operationsModule = readFileSync(resolve(APP_ROOT, 'composables/api/createOperationsApi.ts'), 'utf8')
+  const api = [facade, operationsModule].join('\n')
   const types = readFileSync(resolve(APP_ROOT, 'types/api.ts'), 'utf8')
   const health = readFileSync(resolve(APP_ROOT, 'pages/health/index.vue'), 'utf8')
   const notifications = readFileSync(resolve(APP_ROOT, 'components/NotificationsSlideover.vue'), 'utf8')
@@ -14,6 +17,8 @@ describe('operations inbox surface', () => {
   it('expõe client tipado de inbox e summary com backup', () => {
     expect(api).toContain(`'/api/v1/operations/inbox'`)
     expect(api).toContain('inbox:')
+    expect(facade).toContain('createOperationsApi')
+    expect(facade).toContain('operations: operationsApi.operations')
     expect(types).toContain('export interface InboxItem')
     expect(types).toContain('export interface BackupStatus')
     expect(types).toContain('inbox_total')

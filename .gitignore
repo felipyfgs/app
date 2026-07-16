@@ -136,6 +136,7 @@ Thumbs.db
 .opencode/.tmp/
 # Grok: versionar skills e commands OpenSpec; ignorar resto local
 .grok/*
+!.grok/config.toml
 !.grok/skills/
 !.grok/skills/**
 !.grok/commands/
@@ -144,6 +145,7 @@ Thumbs.db
 # .codex/skills e .opencode/skills também são versionados
 
 # --- Artefatos locais de review/agente e screenshots de sessão ---
+.playwright-mcp/
 .review-reports/
 /image.png
 /image copy.png
