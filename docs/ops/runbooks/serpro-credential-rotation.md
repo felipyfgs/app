@@ -83,7 +83,7 @@
 
 ## Evidência (template)
 
-Usar `openspec/changes/operacionalizar-integra-contador-producao/evidence/12-credential-rotation.md` (sem segredos/identidades).
+Usar `openspec/changes/archive/2026-07-16-operacionalizar-integra-contador-producao/evidence/12-credential-rotation.md` (sem segredos/identidades).
 
 ## Rollback
 

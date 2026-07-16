@@ -9,7 +9,8 @@ use App\Services\Serpro\Usage\UsageLedgerService;
  * e evidência formal de precificação. Produção faturável é deny-by-default:
  * shadow, orçamento nulo, preço shadow e fail-open NÃO liberam egress real.
  *
- * @see openspec/changes/operacionalizar-integra-contador-producao
+ * @see openspec/specs/serpro-go-live-controlado
+ * @see openspec/specs/serpro-operacao-observavel
  * @see UsageLedgerService
  */
 

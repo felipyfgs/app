@@ -6,6 +6,6 @@ Templates **sem segredo**. Não gravar Consumer Secret, PFX, token, XML do Termo
 |---------|-----|
 | `external-gates.md` | Gates documentais (chamado SERPRO, jurídico, ops) |
 | `12-*.md` | Escada de rollout / smoke gratuito |
-| `w2g-api-security.md` | Notas de implementação API/security (sessão agente) |
+| `w3v-concurrency-11.5.md` | Evidência de concorrência (sessão de verificação) |
 
 Runbooks canônicos (passo a passo): `docs/ops/runbooks/`.
