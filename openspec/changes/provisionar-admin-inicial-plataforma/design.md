@@ -1,6 +1,6 @@
 ## Context
 
-O `DatabaseSeeder` é protegido por ambiente e hoje cria um Office `demo`, assinatura ativa e três usuários de Office (`operador@example.com`, `admin@example.com` e `viewer@example.com`), todos com a senha local convencional `password`. Nenhum deles representa corretamente o perfil exclusivamente global: o `admin@example.com` possui OfficeMembership real e, portanto, não serve para validar navegação, listagem de equipe e capacidades próprias de um `PLATFORM_ADMIN` sem vínculo tenant.
+O `DatabaseSeeder` é protegido por ambiente e cria o Office `demo`, assinatura ativa e três usuários de Office (`operador@example.com`, `admin@example.com` e `viewer@example.com`), todos com a senha local convencional `password`. Os seeders fiscal e Work também criavam Offices sentinela próprios, fazendo detalhes técnicos aparecerem como identidades de produto no seletor. Nenhum usuário tenant representa corretamente o perfil exclusivamente global: o `admin@example.com` possui OfficeMembership real e não serve para validar capacidades próprias de um `PLATFORM_ADMIN` sem vínculo tenant.
 
 O domínio já possui `User`, `PlatformMembership.default_office_id`, separação de perfis, factories e testes de contexto global. A change `cadastrar-ativar-offices-usuarios` implementa o onboarding real de novos administradores globais, mas esse fluxo pressupõe um administrador autenticado e não deve ser usado para massa demo reproduzível.
 
@@ -17,7 +17,7 @@ O domínio já possui `User`, `PlatformMembership.default_office_id`, separaçã
 | `users.selected_office_id` | `null` | Seleção global não é membership tenant |
 | `platform_memberships.role` | `PLATFORM_ADMIN` | Grant global exclusivo |
 | `platform_memberships.is_active` | `true` | Grant pronto para uso |
-| `platform_memberships.default_office_id` | Office `demo` | Contexto global padrão determinístico |
+| `platform_memberships.default_office_id` | Office `plataforma` | Contexto global próprio e determinístico |
 | OfficeMembership | inexistente | Não converter em conta dual nem consumir seat |
 | `account_activations` | inexistente | Fixture pronta, fora do onboarding real |
 | TOTP/2FA | ausente | Produto não exige mais 2FA |
@@ -31,12 +31,14 @@ O domínio já possui `User`, `PlatformMembership.default_office_id`, separaçã
 - Falhar em colisões incompatíveis em vez de promover automaticamente um usuário existente.
 - Provar a separação entre Office padrão global e OfficeMembership.
 - Manter a fixture impossível de executar fora de `local`/`testing`.
+- Reduzir a massa limpa a dois Offices ativos com nomes de produto claros: `Plataforma` e `Contador Genérico`.
+- Preservar isolamento multi-tenant reutilizando `Plataforma` como sentinela técnico dos módulos demo.
 
 **Non-Goals:**
 
 - Provisionar contas reais em staging/produção.
 - Substituir `app:bootstrap-office` ou o onboarding real de administradores globais.
-- Criar conta dual, Office, assinatura, ativação, UI ou endpoint.
+- Criar conta dual, ativação ou endpoint.
 - Semear dados fiscais, habilitar feature flags ou realizar chamadas externas.
 
 ## Decisions
@@ -47,9 +49,9 @@ Criar `PlatformAdminDemoSeeder` e chamá-lo depois da criação do Office demo e
 
 Alternativa considerada: adicionar as linhas diretamente ao `DatabaseSeeder`. Rejeitada porque mistura a identidade global ao agregado tenant e dificulta o teste isolado do guard e da idempotência.
 
-### 2. Fixture exclusivamente global
+### 2. Fixture exclusivamente global com Office próprio
 
-O seeder criará `User` e `PlatformMembership` em uma transação e verificará que não existe OfficeMembership para o usuário. `default_office_id` apontará ao Office demo, mas `selected_office_id` permanecerá nulo. Isso permite exercitar o contexto global sem adulterar equipe ou limite de usuários.
+O `DatabaseSeeder` garantirá um Office `plataforma` ativo e o sub-seeder criará `User` e `PlatformMembership` em uma transação, verificando que não existe OfficeMembership para o usuário. `default_office_id` apontará a esse Office próprio, mas `selected_office_id` permanecerá nulo. Isso permite exercitar o contexto global sem adulterar equipe ou limite de usuários. O Office `demo` será reconciliado com o nome `Contador Genérico`.
 
 Alternativa considerada: promover `admin@example.com` a conta dual. Rejeitada porque mascararia justamente as diferenças de autorização que o produto precisa testar.
 
@@ -67,18 +69,27 @@ A senha `password` seguirá a convenção já existente e será definida apenas 
 
 Alternativa considerada: usar ativação pendente ou senha aleatória. Rejeitada porque reintroduziria o cadastro manual que a fixture pretende eliminar e duplicaria o onboarding real.
 
+### 5. Sentinelas técnicos reutilizam o Office da Plataforma
+
+Os defaults `FISCAL_DEMO_SENTINEL_SLUG` e `WORK_DEMO_SENTINEL_SLUG` apontarão para `plataforma`. Assim, os dados sentinela continuam em Office diferente de `demo`, preservando as provas de isolamento, mas deixam de criar `demo-sentinel` e `demo-work-sentinel`. Ao repetir o `DatabaseSeeder`, esses dois slugs legados serão apenas desativados; Offices manuais ou com outros slugs não serão alterados.
+
+### 6. Seletor mostra perfil e Office como conceitos distintos
+
+O gatilho do seletor global exibirá `PLATFORM_ADMIN` e o nome do Office em duas linhas. O rodapé identificará explicitamente o perfil e o contexto corrente. A estrutura continuará derivada de `TeamsMenu.vue`; somente rótulos e apresentação da identidade serão adaptados.
+
 ## Risks / Trade-offs
 
 - [Credencial demo conhecida ser executada por engano em produção] → guard duplicado no `DatabaseSeeder` e no sub-seeder, com teste explícito de recusa.
 - [E-mail reservado colidir com usuário local criado manualmente] → validar grants e falhar sem promover ou sobrescrever a conta.
 - [Reexecução apagar uma senha alterada durante desenvolvimento] → definir senha somente na criação e testar preservação do hash.
-- [Office demo ausente ou inativo] → falhar com instrução acionável; o `DatabaseSeeder` mantém a ordem Office → assinatura → admin global.
+- [Office da Plataforma ausente ou inativo] → falhar com instrução acionável; o `DatabaseSeeder` mantém a ordem Offices → assinaturas → admin global.
+- [Dados manuais serem apagados ao limpar o seed] → desativar somente os dois slugs sentinela historicamente reservados; não remover qualquer outro Office.
 - [Fixture global aparecer na equipe ou consumir vaga] → zero OfficeMembership e teste por API/contagem de seats.
 
 ## Migration Plan
 
 1. Adicionar o sub-seeder e seu teste isolado.
-2. Integrá-lo ao `DatabaseSeeder` depois do Office demo.
+2. Integrá-lo ao `DatabaseSeeder` depois dos Offices `Plataforma` e `Contador Genérico`.
 3. Rodar o seed duas vezes em `testing` e comprovar ids/contagens estáveis e senha preservada.
 4. Validar login/contexto global e ausência na equipe do Office.
 5. Rollback de código: remover a chamada e o sub-seeder; dados demo existentes podem ser apagados manualmente apenas em ambiente local.
@@ -86,4 +97,3 @@ Alternativa considerada: usar ativação pendente ou senha aleatória. Rejeitada
 ## Open Questions
 
 Nenhuma decisão de produto bloqueante. Nome, e-mail e senha são valores demo explícitos e podem ser ajustados durante o apply se já houver uma convenção local mais forte documentada no repositório.
-
