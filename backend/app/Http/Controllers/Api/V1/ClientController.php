@@ -28,7 +28,9 @@ class ClientController extends Controller
     {
         $this->authorize('viewAny', Client::class);
 
-        $base = Client::query();
+        // Lista canônica: apenas Cliente-raiz (matrix_client_id null). Filiais legadas
+        // colapsadas/soft-deleted não entram; estabelecimentos cobrem as filiais.
+        $base = Client::query()->whereNull('matrix_client_id');
 
         if ($search = $request->string('q')->toString()) {
             $needle = '%'.mb_strtolower($search).'%';
@@ -261,10 +263,13 @@ class ClientController extends Controller
         });
 
         $data = $this->serializeClient($client);
-        $primary = $client->establishments->first();
+        $primary = $client->establishments->firstWhere('is_matrix', true)
+            ?? $client->establishments->first();
         $data['cnpj'] = $primary?->cnpj;
         $data['trade_name'] = $primary?->trade_name;
         $data['establishments'] = $establishments;
+        $data['canonical_aggregate'] = true;
+        // matrix/branches: compat UI legada. Autoridade de filiais = establishments.
         $data['matrix'] = $client->matrix !== null
             ? $this->serializeLinkedClient($client->matrix)
             : null;

@@ -22,6 +22,9 @@ final class LogSanitizer
         'subject_preview', 'mailbox_body', 'body_vault_object_id',
         'access_key', 'chNFe', 'chave', 'raw_body', 'response_body',
         'request_body', 'payload_xml', 'signed_xml',
+        // Work operacional
+        'storage_path', 'vault_path', 'evidence_bytes', 'file_bytes',
+        'pfx_password',
     ];
 
     /**
@@ -37,6 +40,8 @@ final class LogSanitizer
         'block_reason', 'coverage', 'situation', 'consumption_class',
         // CT-e: baixa cardinalidade (cStat classes, qualidade — nunca CNPJ/chave)
         'cstat', 'quality', 'stream',
+        // Work: labels de baixa cardinalidade
+        'bucket', 'batch_status', 'task_status', 'process_status', 'export_status',
     ];
 
     /**

@@ -58,7 +58,7 @@ return new class extends Migration
                     ON operational_processes (office_id, process_template_id, client_id, competence)
                     WHERE origin = 'TEMPLATE' AND process_template_id IS NOT NULL
                 ");
-            } catch (Throwable) {
+            } catch (\Throwable) {
                 // fallback sem partial (testes ainda cobrem via app)
             }
         }
@@ -116,7 +116,7 @@ return new class extends Migration
         } else {
             try {
                 DB::statement('DROP INDEX IF EXISTS operational_processes_template_unique');
-            } catch (Throwable) {
+            } catch (\Throwable) {
             }
         }
 

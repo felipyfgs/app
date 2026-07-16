@@ -6,6 +6,7 @@ use App\Contracts\SecureObjectStore;
 use App\Domain\Adn\DistributionDocumentDto;
 use App\Domain\Adn\DistributionPageDto;
 use App\Enums\AdnDocumentType;
+use App\Enums\DocumentAcquisitionSource;
 use App\Enums\DocumentDirection;
 use App\Enums\FiscalRole;
 use App\Enums\SyncCursorStatus;
@@ -17,6 +18,7 @@ use App\Models\Establishment;
 use App\Models\NfseEvent;
 use App\Models\NfseNote;
 use App\Models\SyncCursor;
+use App\Services\FiscalDataModel\DocumentAcquisitionRecorder;
 use App\Support\NfseNoteStatus;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -36,6 +38,7 @@ final class DistributionPageProcessor
         private readonly DocumentDecoder $decoder,
         private readonly NfseXmlParser $parser,
         private readonly SecureObjectStore $store,
+        private readonly DocumentAcquisitionRecorder $acquisitions,
     ) {}
 
     /**
@@ -213,27 +216,38 @@ final class DistributionPageProcessor
             ->where('nsu', $doc->nsu)
             ->first();
 
-        if ($byNsu !== null) {
-            return;
+        $interest = $byNsu;
+        if ($interest === null) {
+            $byDocument = DocumentInterest::query()
+                ->where('dfe_document_id', $existing->id)
+                ->where('establishment_id', $establishment->id)
+                ->first();
+
+            if ($byDocument === null) {
+                $interest = DocumentInterest::query()->create([
+                    'establishment_id' => $establishment->id,
+                    'environment' => $cursor->environment,
+                    'nsu' => $doc->nsu,
+                    'office_id' => $cursor->office_id,
+                    'dfe_document_id' => $existing->id,
+                    'fiscal_role' => $fiscalRole ?? null,
+                    'channel' => 'NFSE_ADN',
+                ]);
+            } else {
+                $interest = $byDocument;
+            }
         }
 
-        $byDocument = DocumentInterest::query()
-            ->where('dfe_document_id', $existing->id)
-            ->where('establishment_id', $establishment->id)
-            ->first();
-
-        if ($byDocument !== null) {
-            return;
-        }
-
-        DocumentInterest::query()->create([
-            'establishment_id' => $establishment->id,
-            'environment' => $cursor->environment,
-            'nsu' => $doc->nsu,
-            'office_id' => $cursor->office_id,
-            'dfe_document_id' => $existing->id,
-            'fiscal_role' => $fiscalRole ?? null,
-        ]);
+        // Aquisição na mesma transação da página (NSU só avança após commit do process()).
+        $this->acquisitions->record(
+            document: $existing,
+            source: DocumentAcquisitionSource::Adn,
+            sha256: $sha,
+            establishmentId: $establishment->id,
+            nsu: $doc->nsu,
+            channel: 'NFSE_ADN',
+            interest: $interest,
+        );
     }
 
     private function fiscalRoleForEstablishment(DfeDocument $document, Establishment $establishment): ?FiscalRole

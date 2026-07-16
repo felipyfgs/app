@@ -10,10 +10,10 @@ use App\Models\OperationalProcess;
 use App\Models\OperationalTask;
 use App\Support\CurrentOffice;
 use App\Support\Work\OfficeTimezone;
-use Illuminate\Support\Facades\DB;
 
 /**
  * KPIs e listas de risco do bloco operacional do dashboard.
+ * Agregados por departamento com métricas nomeadas e denominador explícito.
  */
 final class OperationalKpiQuery
 {
@@ -56,16 +56,37 @@ final class OperationalKpiQuery
         $semResponsavel = 0;
         $riskRows = [];
 
+        /** @var array<string, array{work_department_id: int|null, open: int, completed: int, overdue: int, fine: int, unassigned: int, total_relevant: int}> */
+        $deptAgg = [];
+
         foreach ($tasks as $task) {
+            $deptKey = $task->work_department_id === null ? 'null' : (string) $task->work_department_id;
+            if (! isset($deptAgg[$deptKey])) {
+                $deptAgg[$deptKey] = [
+                    'work_department_id' => $task->work_department_id,
+                    'open' => 0,
+                    'completed' => 0,
+                    'overdue' => 0,
+                    'fine' => 0,
+                    'unassigned' => 0,
+                    'total_relevant' => 0,
+                ];
+            }
+
             if ($task->status->isTerminal()) {
                 if ($task->status === TaskStatus::Concluida) {
                     $concluidas++;
+                    $deptAgg[$deptKey]['completed']++;
+                    $deptAgg[$deptKey]['total_relevant']++;
                 }
 
                 continue;
             }
 
             $totalOpen++;
+            $deptAgg[$deptKey]['open']++;
+            $deptAgg[$deptKey]['total_relevant']++;
+
             if ($task->status === TaskStatus::EmProgresso) {
                 $emProgresso++;
             }
@@ -86,15 +107,18 @@ final class OperationalKpiQuery
 
             if (in_array(WorkRisk::Atrasada->value, $values, true)) {
                 $atrasadas++;
+                $deptAgg[$deptKey]['overdue']++;
             }
             if (in_array(WorkRisk::EmMulta->value, $values, true)) {
                 $emMulta++;
+                $deptAgg[$deptKey]['fine']++;
             }
             if ($effective === $today) {
                 $venceHoje++;
             }
             if (in_array(WorkRisk::SemResponsavel->value, $values, true)) {
                 $semResponsavel++;
+                $deptAgg[$deptKey]['unassigned']++;
             }
 
             if ($riskList !== []) {
@@ -124,20 +148,31 @@ final class OperationalKpiQuery
             return $score($b) <=> $score($a);
         });
 
-        $byDepartment = OperationalTask::query()
-            ->select('work_department_id', DB::raw('count(*) as total'))
-            ->where('office_id', $office->id)
-            ->whereIn('status', $openStatuses)
-            ->groupBy('work_department_id')
-            ->get()
-            ->map(fn ($r) => [
-                'work_department_id' => $r->work_department_id,
-                'total' => (int) $r->total,
-            ])
+        $byDepartment = collect($deptAgg)
+            ->map(function (array $row): array {
+                $denom = max($row['total_relevant'], 1);
+                $completedPct = $row['total_relevant'] > 0
+                    ? (int) round(($row['completed'] / $denom) * 100)
+                    : 0;
+
+                return [
+                    'work_department_id' => $row['work_department_id'],
+                    'open' => $row['open'],
+                    'completed' => $row['completed'],
+                    'overdue' => $row['overdue'],
+                    'fine' => $row['fine'],
+                    'unassigned' => $row['unassigned'],
+                    'total_relevant' => $row['total_relevant'],
+                    'completed_percent' => $completedPct,
+                    // Compat legado
+                    'total' => $row['open'],
+                ];
+            })
+            ->values()
             ->all();
 
         $byAssignee = OperationalTask::query()
-            ->select('assignee_membership_id', DB::raw('count(*) as total'))
+            ->selectRaw('assignee_membership_id, count(*) as total')
             ->where('office_id', $office->id)
             ->whereIn('status', $openStatuses)
             ->groupBy('assignee_membership_id')
@@ -183,6 +218,8 @@ final class OperationalKpiQuery
             'processes_without_owner' => $processesWithoutOwner,
             'filters_effective' => [
                 'office_id' => $office->id,
+                'today' => $today,
+                'timezone' => $tz,
             ],
         ];
     }

@@ -25,6 +25,8 @@ enum DocumentAcquisitionSource: string
     /** @deprecated Preferir CteDistNsu — mantido para aquisições legadas */
     case CteDistDfe = 'CTE_DISTDFE';
     case ProtocolQuery = 'PROTOCOL_QUERY'; // só metadados/chave — não XML de guarda
+    /** Aquisição sintética no backfill de proveniência (sem chegada original). */
+    case LegacyBackfill = 'LEGACY_BACKFILL';
 
     public function label(): string
     {
@@ -38,6 +40,7 @@ enum DocumentAcquisitionSource: string
             self::EmitterPush => 'Entrega autenticada do emissor',
             self::MaOfficialPackage => 'Pacote oficial SEFAZ-MA',
             self::MaM2mRetrieval => 'Recuperação M2M MA',
+            self::LegacyBackfill => 'Backfill de proveniência (legado)',
             self::MaAssistedUpload => 'Upload assistido MA',
             self::SvrsNfceDownloadXmlDfe => 'Download XML NFC-e SVRS',
             self::SvrsNfe55DownloadXmlDfe => 'Download XML NF-e 55 SVRS',

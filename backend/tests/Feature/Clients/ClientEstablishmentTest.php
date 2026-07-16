@@ -196,7 +196,7 @@ class ClientEstablishmentTest extends TestCase
             ->assertJsonPath('data.existing_client_id', $existing->id);
     }
 
-    public function test_filial_mesma_raiz_pode_ser_cliente_separado(): void
+    public function test_filial_mesma_raiz_anexa_estabelecimento_ao_cliente_raiz(): void
     {
         [$office, $user] = $this->officeUser(OfficeRole::Operator);
         $this->actingAs($user);
@@ -208,7 +208,7 @@ class ClientEstablishmentTest extends TestCase
         ]);
         Establishment::factory()->forClient($matrix, '11222333000181')->create(['is_matrix' => true]);
 
-        // Filial com a mesma raiz, CNPJ completo diferente → novo cliente
+        // Mesma raiz, CNPJ completo diferente → mesmo Cliente canônico, novo Estabelecimento
         $response = $this->postJson('/api/v1/clients', [
             'legal_name' => 'Filial LTDA',
             'cnpj' => EstablishmentFactory::cnpjWithRoot('11222333', '0002'),
@@ -217,14 +217,15 @@ class ClientEstablishmentTest extends TestCase
 
         $response->assertCreated()
             ->assertJsonPath('data.client.root_cnpj', '11222333')
-            ->assertJsonPath('data.client.legal_name', 'Filial LTDA');
+            ->assertJsonPath('data.client.legal_name', 'Matriz LTDA')
+            ->assertJsonPath('data.client.id', $matrix->id);
 
-        $this->assertDatabaseCount('clients', 2);
+        $this->assertDatabaseCount('clients', 1);
         $this->assertDatabaseCount('establishments', 2);
-        $this->assertNotSame($matrix->id, $response->json('data.client.id'));
+        $this->assertFalse((bool) $response->json('data.establishment.is_matrix'));
     }
 
-    public function test_filial_vinculada_aparece_na_matriz(): void
+    public function test_filial_vinculada_vira_estabelecimento_do_cliente_raiz(): void
     {
         [$office, $user] = $this->officeUser(OfficeRole::Operator);
         $this->actingAs($user);
@@ -243,19 +244,19 @@ class ClientEstablishmentTest extends TestCase
             'matrix_client_id' => $matrix->id,
         ])->assertCreated();
 
-        $this->assertSame($matrix->id, $created->json('data.client.matrix_client_id'));
+        $this->assertSame($matrix->id, $created->json('data.client.id'));
+        $this->assertNull($created->json('data.client.matrix_client_id'));
         $this->assertFalse((bool) $created->json('data.establishment.is_matrix'));
+        $this->assertSame($branchCnpj, $created->json('data.establishment.cnpj'));
 
-        $this->getJson("/api/v1/clients/{$matrix->id}")
-            ->assertOk()
-            ->assertJsonPath('data.branches.0.id', $created->json('data.client.id'))
-            ->assertJsonPath('data.branches.0.legal_name', 'Filial Vinculada LTDA')
-            ->assertJsonPath('data.branches.0.cnpj', $branchCnpj);
+        $detail = $this->getJson("/api/v1/clients/{$matrix->id}")->assertOk();
+        $detailId = $detail->json('data.client.id') ?? $detail->json('data.id');
+        $this->assertSame($matrix->id, $detailId);
 
-        $this->getJson('/api/v1/clients/'.$created->json('data.client.id'))
-            ->assertOk()
-            ->assertJsonPath('data.matrix.id', $matrix->id)
-            ->assertJsonPath('data.matrix.legal_name', 'Matriz LTDA');
+        $this->assertSame(
+            2,
+            Establishment::query()->where('client_id', $matrix->id)->count(),
+        );
     }
 
     public function test_filial_exige_mesma_raiz_da_matriz(): void
@@ -475,8 +476,9 @@ class ClientEstablishmentTest extends TestCase
         app(CurrentOffice::class)->resolve($user);
 
         $matrix = Client::factory()->forOffice($office)->create(['root_cnpj' => '11222333']);
+        // Segundo cliente com raiz distinta (unique parcial por root canônico).
         $client = Client::factory()->forOffice($office)->create([
-            'root_cnpj' => '11222333',
+            'root_cnpj' => '04252011',
             'matrix_client_id' => null,
         ]);
 

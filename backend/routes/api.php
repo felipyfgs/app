@@ -324,8 +324,12 @@ Route::prefix('v1')->group(function (): void {
                 Route::patch('/processes/{process}', [OperationalProcessController::class, 'update']);
                 Route::post('/processes/{process}/archive', [OperationalProcessController::class, 'archive']);
                 Route::post('/processes/{process}/comments', [OperationalProcessController::class, 'comment']);
+                Route::get('/processes/{process}/timeline', [OperationalProcessController::class, 'timeline']);
 
+                Route::post('/processes/{process}/tasks', [OperationalTaskController::class, 'storeOnProcess']);
+                Route::post('/processes/{process}/tasks/reorder', [OperationalTaskController::class, 'reorder']);
                 Route::get('/tasks/{task}', [OperationalTaskController::class, 'show']);
+                Route::patch('/tasks/{task}/structure', [OperationalTaskController::class, 'updateStructure']);
                 Route::post('/tasks/{task}/start', [OperationalTaskController::class, 'start']);
                 Route::post('/tasks/{task}/block', [OperationalTaskController::class, 'block']);
                 Route::post('/tasks/{task}/resume', [OperationalTaskController::class, 'resume']);

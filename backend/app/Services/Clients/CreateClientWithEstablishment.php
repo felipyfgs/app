@@ -18,8 +18,11 @@ use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
- * Cria Cliente + seu único Estabelecimento (1:1) atomicamente no escritório da sessão.
- * Filiais = novo cadastro de cliente com o CNPJ completo da filial (não se adicionam sob a matriz).
+ * Cria/atualiza o agregado canônico Cliente (raiz) + Estabelecimento (CNPJ completo).
+ *
+ * - Um Cliente por (office_id, root_cnpj) para a raiz (matrix_client_id null).
+ * - Vários Estabelecimentos por Cliente; no máximo uma matriz ativa.
+ * - Payload legado `matrix_client_id` reutiliza o Cliente-raiz em vez de criar cliente-filial.
  */
 final class CreateClientWithEstablishment
 {
@@ -95,61 +98,41 @@ final class CreateClientWithEstablishment
                         : true;
                 }
 
-                // Vínculo matriz → filial: cada um é cliente próprio; a filial aponta para a matriz.
-                $matrixClientId = null;
-                $matrixIdRaw = $payload['matrix_client_id'] ?? null;
-                if ($matrixIdRaw !== null && $matrixIdRaw !== '') {
-                    $matrix = Client::query()
-                        ->where('office_id', $officeId)
-                        ->whereKey((int) $matrixIdRaw)
-                        ->lockForUpdate()
-                        ->first();
+                // Resolve Cliente-raiz canônico: (office, root) ou matrix_client_id legado.
+                $client = $this->resolveRootClient($officeId, $root, $payload);
+                $createdNewClient = $client === null;
 
-                    if ($matrix === null) {
-                        throw ValidationException::withMessages([
-                            'matrix_client_id' => ['Matriz não encontrada neste escritório.'],
-                        ]);
-                    }
-
-                    if ($matrix->matrix_client_id !== null) {
-                        throw ValidationException::withMessages([
-                            'matrix_client_id' => ['Vincule à matriz (raiz), não a outra filial.'],
-                        ]);
-                    }
-
-                    // Mesma raiz de CNPJ: filiais compartilham a base com a matriz.
-                    if ($matrix->root_cnpj !== $root) {
-                        throw ValidationException::withMessages([
-                            'matrix_client_id' => ['A matriz informada tem raiz de CNPJ diferente deste cadastro.'],
-                            'cnpj' => ['O CNPJ da filial deve ter a mesma raiz da matriz vinculada.'],
-                        ]);
-                    }
-
-                    $matrixClientId = $matrix->id;
+                if ($createdNewClient) {
+                    $client = Client::query()->create([
+                        'office_id' => $officeId,
+                        'legal_name' => (string) $payload['legal_name'],
+                        'display_name' => $payload['display_name'] ?? null,
+                        'root_cnpj' => $root,
+                        'matrix_client_id' => null,
+                        'legal_nature_code' => $payload['legal_nature_code'] ?? null,
+                        'legal_nature_name' => $payload['legal_nature_name'] ?? null,
+                        'company_size_code' => $payload['company_size_code'] ?? null,
+                        'company_size_name' => $payload['company_size_name'] ?? null,
+                        'tax_regime' => $payload['tax_regime'] ?? null,
+                        'notes' => $payload['notes'] ?? null,
+                        'is_active' => $payload['is_active'] ?? true,
+                        'inactive_reason' => $payload['inactive_reason'] ?? null,
+                        'registration_source' => $source,
+                        'registration_refreshed_at' => $refreshedAt,
+                    ]);
                 }
 
-                // Com matriz vinculada, o estabelecimento deste cliente não é "matriz".
-                $isMatrixEstablishment = $matrixClientId !== null
-                    ? false
-                    : (bool) ($payload['is_matrix'] ?? true);
+                $hasMatrixEstablishment = Establishment::query()
+                    ->where('office_id', $officeId)
+                    ->where('client_id', $client->id)
+                    ->where('is_matrix', true)
+                    ->whereNull('deleted_at')
+                    ->lockForUpdate()
+                    ->exists();
 
-                $client = Client::query()->create([
-                    'office_id' => $officeId,
-                    'legal_name' => (string) $payload['legal_name'],
-                    'display_name' => $payload['display_name'] ?? null,
-                    'root_cnpj' => $root,
-                    'matrix_client_id' => $matrixClientId,
-                    'legal_nature_code' => $payload['legal_nature_code'] ?? null,
-                    'legal_nature_name' => $payload['legal_nature_name'] ?? null,
-                    'company_size_code' => $payload['company_size_code'] ?? null,
-                    'company_size_name' => $payload['company_size_name'] ?? null,
-                    'tax_regime' => $payload['tax_regime'] ?? null,
-                    'notes' => $payload['notes'] ?? null,
-                    'is_active' => $payload['is_active'] ?? true,
-                    'inactive_reason' => $payload['inactive_reason'] ?? null,
-                    'registration_source' => $source,
-                    'registration_refreshed_at' => $refreshedAt,
-                ]);
+                // Novo estabelecimento é matriz só se ainda não houver matriz ativa no Cliente.
+                $wantsMatrix = (bool) ($payload['is_matrix'] ?? ! $hasMatrixEstablishment);
+                $isMatrixEstablishment = $wantsMatrix && ! $hasMatrixEstablishment;
 
                 $address = is_array($payload['address'] ?? null) ? $payload['address'] : [];
 
@@ -183,20 +166,29 @@ final class CreateClientWithEstablishment
                     'registration_refreshed_at' => $refreshedAt,
                 ]);
 
-                $contact = $this->createInitialContact($officeId, $client, $payload);
-                $customFields = $this->createCustomFields(
-                    $officeId,
-                    $client,
-                    $payload,
-                    $newVaultObjects,
-                );
+                $contact = null;
+                $customFields = [];
+                if ($createdNewClient) {
+                    $contact = $this->createInitialContact($officeId, $client, $payload);
+                    $customFields = $this->createCustomFields(
+                        $officeId,
+                        $client,
+                        $payload,
+                        $newVaultObjects,
+                    );
 
-                $this->audit->record('client.create', 'SUCCESS', $client, [
-                    'root_cnpj' => $client->root_cnpj,
-                    'fields' => ['legal_name', 'root_cnpj', 'registration_source'],
-                    'registration_source' => $source->value,
-                    'establishment_id' => $establishment->id,
-                ]);
+                    $this->audit->record('client.create', 'SUCCESS', $client, [
+                        'root_cnpj' => $client->root_cnpj,
+                        'fields' => ['legal_name', 'root_cnpj', 'registration_source'],
+                        'registration_source' => $source->value,
+                        'establishment_id' => $establishment->id,
+                    ]);
+                } else {
+                    $this->audit->record('client.establishment_attach', 'SUCCESS', $client, [
+                        'root_cnpj' => $client->root_cnpj,
+                        'establishment_id' => $establishment->id,
+                    ]);
+                }
 
                 $this->audit->record('establishment.create', 'SUCCESS', $establishment, [
                     'client_id' => $client->id,
@@ -232,6 +224,63 @@ final class CreateClientWithEstablishment
 
             throw $exception;
         }
+    }
+
+    /**
+     * Localiza Cliente-raiz canônico no escritório (mesmo root ou matrix_client_id legado).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function resolveRootClient(int $officeId, string $root, array $payload): ?Client
+    {
+        $matrixIdRaw = $payload['matrix_client_id'] ?? null;
+        if ($matrixIdRaw !== null && $matrixIdRaw !== '') {
+            $matrix = Client::query()
+                ->where('office_id', $officeId)
+                ->whereKey((int) $matrixIdRaw)
+                ->lockForUpdate()
+                ->first();
+
+            if ($matrix === null) {
+                throw ValidationException::withMessages([
+                    'matrix_client_id' => ['Matriz não encontrada neste escritório.'],
+                ]);
+            }
+
+            // Cliente-filial legado: sobe para a raiz.
+            if ($matrix->matrix_client_id !== null) {
+                $rootClient = Client::query()
+                    ->where('office_id', $officeId)
+                    ->whereKey((int) $matrix->matrix_client_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($rootClient === null) {
+                    throw ValidationException::withMessages([
+                        'matrix_client_id' => ['Vincule à matriz (raiz), não a outra filial.'],
+                    ]);
+                }
+
+                $matrix = $rootClient;
+            }
+
+            if ($matrix->root_cnpj !== $root) {
+                throw ValidationException::withMessages([
+                    'matrix_client_id' => ['A matriz informada tem raiz de CNPJ diferente deste cadastro.'],
+                    'cnpj' => ['O CNPJ da filial deve ter a mesma raiz da matriz vinculada.'],
+                ]);
+            }
+
+            return $matrix;
+        }
+
+        return Client::query()
+            ->where('office_id', $officeId)
+            ->where('root_cnpj', $root)
+            ->whereNull('matrix_client_id')
+            ->whereNull('deleted_at')
+            ->lockForUpdate()
+            ->first();
     }
 
     /**

@@ -81,6 +81,9 @@ class DatabaseSeeder extends Seeder
 
         // Fixtures fiscais do hub de monitoramento (office demo only; guard interno)
         $this->call(FiscalMonitoringDemoSeeder::class);
+
+        // Massa operacional /work no office demo (guard interno; âncora DEMO_WORK_ANCHOR_DATE)
+        $this->call(OperationalWorkDemoSeeder::class);
     }
 
     private function ensureActiveSubscription(Office $office): void

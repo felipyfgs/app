@@ -36,6 +36,47 @@ class Client extends Model
     /** @use HasFactory<ClientFactory> */
     use BelongsToOffice, HasFactory, SoftDeletes;
 
+    protected static function booted(): void
+    {
+        // Evidência fiscal/financeira: exclusão física bloqueada (retenção explícita).
+        static::forceDeleting(function (Client $client): void {
+            // Sem depender do global scope da request (fail-closed / sem CurrentOffice).
+            $hasCursors = Establishment::query()
+                ->withoutGlobalScopes()
+                ->where('client_id', $client->id)
+                ->where('office_id', $client->office_id)
+                ->whereHas('syncCursors')
+                ->exists();
+
+            $hasEvidence = $hasCursors
+                || \Illuminate\Support\Facades\DB::table('dfe_documents')
+                    ->where('office_id', $client->office_id)
+                    ->whereExists(function ($q) use ($client): void {
+                        $q->selectRaw('1')
+                            ->from('document_interests as di')
+                            ->join('establishments as e', 'e.id', '=', 'di.establishment_id')
+                            ->whereColumn('di.dfe_document_id', 'dfe_documents.id')
+                            ->where('e.client_id', $client->id)
+                            ->where('e.office_id', $client->office_id);
+                    })
+                    ->exists()
+                || \Illuminate\Support\Facades\DB::table('fiscal_monitoring_runs')
+                    ->where('client_id', $client->id)
+                    ->where('office_id', $client->office_id)
+                    ->exists()
+                || \Illuminate\Support\Facades\DB::table('serpro_api_usage_entries')
+                    ->where('client_id', $client->id)
+                    ->where('office_id', $client->office_id)
+                    ->exists();
+
+            if ($hasEvidence) {
+                throw new \RuntimeException(
+                    'Exclusão física de Cliente bloqueada: existe evidência fiscal ou de consumo. Use inativação.',
+                );
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [

@@ -27,6 +27,7 @@ class OfficeFactory extends Factory
             'name' => $name,
             'slug' => Str::slug($name).'-'.Str::lower(Str::random(4)),
             'is_active' => true,
+            'timezone' => 'America/Sao_Paulo',
         ];
     }
 

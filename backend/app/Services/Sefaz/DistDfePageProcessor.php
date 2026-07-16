@@ -7,6 +7,7 @@ use App\Domain\Sefaz\DistDfeDocumentDto;
 use App\Domain\Sefaz\DistDfePageDto;
 use App\Enums\AdnDocumentType;
 use App\Enums\CaptureChannel;
+use App\Enums\DocumentAcquisitionSource;
 use App\Enums\DocumentDirection;
 use App\Enums\FiscalRole;
 use App\Enums\SyncCursorStatus;
@@ -18,6 +19,7 @@ use App\Models\Establishment;
 use App\Models\NfeDocument;
 use App\Models\NfeEvent;
 use App\Services\Adn\DocumentDecoder;
+use App\Services\FiscalDataModel\DocumentAcquisitionRecorder;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -32,6 +34,7 @@ final class DistDfePageProcessor
         private readonly SecureObjectStore $store,
         private readonly DistDfeResponseParser $schemaHelper,
         private readonly AutoCienciaScheduler $autoCiencia,
+        private readonly DocumentAcquisitionRecorder $acquisitions,
     ) {}
 
     /**
@@ -182,7 +185,7 @@ final class DistDfePageProcessor
             $storedObjectIds,
         );
 
-        DocumentInterest::query()->firstOrCreate(
+        $interest = DocumentInterest::query()->firstOrCreate(
             [
                 'establishment_id' => $establishment->id,
                 'environment' => $cursor->environment,
@@ -194,6 +197,16 @@ final class DistDfePageProcessor
                 'dfe_document_id' => $dfe->id,
                 'fiscal_role' => FiscalRole::Taker->value,
             ]
+        );
+
+        $this->acquisitions->record(
+            document: $dfe,
+            source: DocumentAcquisitionSource::NfeDistDfe,
+            sha256: $decoded['sha256'],
+            establishmentId: $establishment->id,
+            nsu: $doc->nsu,
+            channel: CaptureChannel::NfeDistDfe->value,
+            interest: $interest,
         );
 
         if ($isEvent && $accessKey) {

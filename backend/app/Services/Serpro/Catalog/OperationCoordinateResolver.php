@@ -68,6 +68,12 @@ final class OperationCoordinateResolver
             ];
         }
 
+        // Autoridade canônica serpro_operations + versions (plano de controle)
+        $canonical = $this->resolveFromCanonicalOperations($operationKey);
+        if ($canonical !== null) {
+            return $canonical;
+        }
+
         // Fallback manifesto (antes da migration / import / SQLite sem tabela)
         $m = $this->manifest->load();
         $entry = $this->manifest->findByOperationKey($m, $operationKey);
@@ -102,5 +108,73 @@ final class OperationCoordinateResolver
         }
 
         return $coords;
+    }
+
+    /**
+     * @return array{
+     *   operation_key: string,
+     *   id_sistema: string,
+     *   id_servico: string,
+     *   versao_sistema: string,
+     *   route: SerproFunctionalRoute,
+     *   required_proxy_power: string|null,
+     *   platform_support: SerproPlatformSupport,
+     *   dados_mode: string,
+     *   billable_class: string,
+     *   is_mutating: bool,
+     *   label: string
+     * }|null
+     */
+    private function resolveFromCanonicalOperations(string $operationKey): ?array
+    {
+        try {
+            $op = \Illuminate\Support\Facades\DB::table('serpro_operations')
+                ->where('operation_key', $operationKey)
+                ->first();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($op === null) {
+            return null;
+        }
+
+        try {
+            $version = \Illuminate\Support\Facades\DB::table('serpro_operation_versions')
+                ->where('serpro_operation_id', $op->id)
+                ->orderByDesc('id')
+                ->first();
+        } catch (\Throwable) {
+            $version = null;
+        }
+
+        // Sem versão efetiva não há coordenadas executáveis — cair no manifesto.
+        if ($version === null) {
+            return null;
+        }
+
+        $route = SerproFunctionalRoute::tryFrom((string) ($version->functional_route ?? ''))
+            ?? SerproFunctionalRoute::Consultar;
+
+        // Preferir flags da versão/metadata quando existirem; desconhecido → fail-closed (mutante).
+        $isMutating = filter_var($version->is_mutating ?? $op->is_mutating ?? true, FILTER_VALIDATE_BOOL);
+        $proxyPower = $version->required_proxy_power ?? $op->required_proxy_power ?? null;
+        $supportRaw = (string) ($version->platform_support ?? $op->platform_support ?? '');
+        $platformSupport = SerproPlatformSupport::tryFrom($supportRaw)
+            ?? SerproPlatformSupport::Inventoried;
+
+        return [
+            'operation_key' => (string) $op->operation_key,
+            'id_sistema' => (string) ($version->id_sistema ?? $version->system_code ?? ''),
+            'id_servico' => (string) ($version->id_servico ?? $version->service_code ?? ''),
+            'versao_sistema' => (string) ($version->versao_sistema ?? '1.0'),
+            'route' => $route,
+            'required_proxy_power' => $proxyPower !== null ? (string) $proxyPower : null,
+            'platform_support' => $platformSupport,
+            'dados_mode' => (string) ($version->dados_mode ?? 'JSON_STRING'),
+            'billable_class' => (string) ($op->consumption_class ?? 'DESCONHECIDA'),
+            'is_mutating' => $isMutating,
+            'label' => (string) ($op->label ?? $op->operation_key),
+        ];
     }
 }

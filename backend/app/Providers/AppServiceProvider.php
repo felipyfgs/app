@@ -124,6 +124,14 @@ use App\Services\Serpro\Usage\UsageLedgerService;
 use App\Services\Vault\EnvelopeCrypto;
 use App\Services\Vault\FilesystemSecureObjectStore;
 use App\Support\CurrentOffice;
+use App\Support\FiscalDataModel\PrivilegedOfficeContext;
+use Illuminate\Console\Events\CommandFinished;
+use Illuminate\Console\Events\CommandStarting;
+
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
@@ -332,8 +340,13 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->registerPrivilegedOfficeContextListeners();
+
         // Preflight: simulated proibido em production
         if ($this->app->environment('production')) {
+            // Isolamento de tenant: fail-closed não desligável via env em produção.
+            config(['fiscal_data_model.fail_closed_scopes' => true]);
+
             try {
                 $this->app->make(CapabilityDriverResolver::class)->assertProductionSafe();
             } catch (\Throwable $e) {
@@ -410,5 +423,44 @@ class AppServiceProvider extends ServiceProvider
         $registry->register($this->app->make(ParcelamentoReadAdapter::class));
         $registry->register($this->app->make(ParcelamentoEmitDocumentAdapter::class));
         $registry->register($this->app->make(ParcelamentoMutatingAdapter::class));
+    }
+
+    /**
+     * Jobs e console operam sem membership HTTP: abrem contexto privilegiado tipado
+     * para não reativar o anti-padrão "scope nulo = todos os tenants".
+     */
+    private function registerPrivilegedOfficeContextListeners(): void
+    {
+        Event::listen(JobProcessing::class, function (JobProcessing $event): void {
+            $name = $event->job->resolveName();
+            PrivilegedOfficeContext::enter('queue:'.$name);
+        });
+
+        Event::listen(JobProcessed::class, function (): void {
+            PrivilegedOfficeContext::leave();
+        });
+
+        Event::listen(JobFailed::class, function (): void {
+            PrivilegedOfficeContext::leave();
+        });
+
+        // JobExceptionOccurred não faz leave: JobFailed/JobProcessed fecham o ciclo.
+        // Leave duplo em drivers sync com jobs aninhados zera o depth cedo demais.
+
+        Event::listen(CommandStarting::class, function (CommandStarting $event): void {
+            $command = (string) ($event->command ?? 'unknown');
+            // Jobs e console multi-tenant devem filtrar office_id explicitamente
+            // mesmo com contexto privilegiado aberto.
+            if (PrivilegedOfficeContext::isOpen()) {
+                return;
+            }
+            PrivilegedOfficeContext::enter('console:'.$command);
+        });
+
+        Event::listen(CommandFinished::class, function (): void {
+            if (PrivilegedOfficeContext::isOpen()) {
+                PrivilegedOfficeContext::leave();
+            }
+        });
     }
 }

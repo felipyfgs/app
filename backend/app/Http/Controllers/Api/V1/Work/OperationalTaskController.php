@@ -7,11 +7,14 @@ use App\Models\OperationalComment;
 use App\Models\OperationalTask;
 use App\Models\OperationalTaskEvidence;
 use App\Services\Audit\AuditLogger;
+use App\Services\Work\MembershipResolver;
 use App\Services\Work\OperationalEvidenceService;
 use App\Services\Work\OperationalProcessService;
 use App\Services\Work\OperationalQueueQuery;
+use App\Services\Work\OperationalTaskStructureService;
 use App\Services\Work\OperationalTaskTransitionService;
 use App\Services\Work\OperationalWorkBulkService;
+use App\Models\OperationalProcess;
 use App\Support\CurrentOffice;
 use App\Support\Work\OptimisticLock;
 use App\Support\Work\RejectClientOfficeId;
@@ -131,8 +134,12 @@ class OperationalTaskController extends Controller
         return response()->json(['data' => $this->public($task)]);
     }
 
-    public function assign(Request $request, OperationalTask $task, CurrentOffice $currentOffice, AuditLogger $audit): JsonResponse
-    {
+    public function assign(
+        Request $request,
+        OperationalTask $task,
+        MembershipResolver $memberships,
+        AuditLogger $audit,
+    ): JsonResponse {
         $this->authorize('assign', $task);
         RejectClientOfficeId::strip($request);
 
@@ -141,6 +148,14 @@ class OperationalTaskController extends Controller
             'assignee_membership_id' => ['nullable', 'integer'],
             'work_department_id' => ['nullable', 'integer'],
         ]);
+
+        // Null limpa assignee/dept; IDs devem pertencer ao escritório da sessão.
+        if (array_key_exists('assignee_membership_id', $data) && $data['assignee_membership_id'] !== null) {
+            $memberships->requireActiveMembership((int) $data['assignee_membership_id']);
+        }
+        if (array_key_exists('work_department_id', $data) && $data['work_department_id'] !== null) {
+            $memberships->requireActiveDepartment((int) $data['work_department_id']);
+        }
 
         OptimisticLock::assert($task, (int) $data['lock_version'], 'operational_task');
         $attrs = [];
@@ -154,6 +169,75 @@ class OperationalTaskController extends Controller
         $audit->record('work.task.assign', 'SUCCESS', $task, $attrs);
 
         return response()->json(['data' => $this->public($task->fresh())]);
+    }
+
+    public function storeOnProcess(
+        Request $request,
+        OperationalProcess $process,
+        OperationalTaskStructureService $structure,
+    ): JsonResponse {
+        $this->authorize('update', $process);
+        RejectClientOfficeId::strip($request);
+        $data = $request->validate([
+            'title' => ['required', 'string', 'max:200'],
+            'description' => ['nullable', 'string'],
+            'sort_order' => ['sometimes', 'integer', 'min:1'],
+            'due_date' => ['nullable', 'date_format:Y-m-d'],
+            'work_department_id' => ['nullable', 'integer'],
+            'assignee_membership_id' => ['nullable', 'integer'],
+            'is_required' => ['sometimes', 'boolean'],
+            'is_critical' => ['sometimes', 'boolean'],
+            'requires_evidence' => ['sometimes', 'boolean'],
+            'justification' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $task = $structure->addTask($process, $data);
+
+        return response()->json(['data' => $this->public($task)], 201);
+    }
+
+    public function updateStructure(
+        Request $request,
+        OperationalTask $task,
+        OperationalTaskStructureService $structure,
+    ): JsonResponse {
+        // Estrutura: capability do processo (não a policy de executor da tarefa).
+        $process = $task->process()->firstOrFail();
+        $this->authorize('update', $process);
+        RejectClientOfficeId::strip($request);
+        $data = $request->validate([
+            'lock_version' => ['required', 'integer'],
+            'title' => ['sometimes', 'string', 'max:200'],
+            'description' => ['nullable', 'string'],
+            'due_date' => ['nullable', 'date_format:Y-m-d'],
+            'work_department_id' => ['nullable', 'integer'],
+            'assignee_membership_id' => ['nullable', 'integer'],
+            'is_required' => ['sometimes', 'boolean'],
+            'is_critical' => ['sometimes', 'boolean'],
+            'requires_evidence' => ['sometimes', 'boolean'],
+            'justification' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $task = $structure->updateTask($task, (int) $data['lock_version'], $data);
+
+        return response()->json(['data' => $this->public($task)]);
+    }
+
+    public function reorder(
+        Request $request,
+        OperationalProcess $process,
+        OperationalTaskStructureService $structure,
+    ): JsonResponse {
+        $this->authorize('update', $process);
+        RejectClientOfficeId::strip($request);
+        $data = $request->validate([
+            'order' => ['required', 'array', 'min:1'],
+            'order.*.id' => ['required', 'integer'],
+            'order.*.sort_order' => ['required', 'integer', 'min:1'],
+            'order.*.lock_version' => ['required', 'integer'],
+            'justification' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $structure->reorder($process, $data['order'], $data['justification'] ?? null);
+
+        return response()->json(['data' => ['reordered' => true]]);
     }
 
     public function bulk(Request $request, OperationalWorkBulkService $service): JsonResponse
@@ -262,7 +346,46 @@ class OperationalTaskController extends Controller
             'completed_at' => $t->completed_at?->toIso8601String(),
         ];
 
+        if ($t->relationLoaded('department') && $t->department) {
+            $data['department'] = [
+                'id' => $t->department->id,
+                'name' => $t->department->name,
+                'code' => $t->department->code,
+            ];
+        }
+        if ($t->relationLoaded('assigneeMembership') && $t->assigneeMembership?->user) {
+            $data['assignee'] = [
+                'membership_id' => $t->assigneeMembership->id,
+                'name' => $t->assigneeMembership->user->name,
+            ];
+        }
+
         if ($detailed) {
+            $riskCalc = new \App\Domain\Work\WorkRiskCalculator;
+            $today = (new \App\Domain\Work\DueDateCalculator)->todayInOffice(
+                \App\Support\Work\OfficeTimezone::for(
+                    \App\Models\Office::query()->find($t->office_id)
+                        ?? new \App\Models\Office(['timezone' => 'America/Sao_Paulo'])
+                )
+            );
+            $process = $t->relationLoaded('process') ? $t->process : null;
+            $riskList = $riskCalc->forTask(
+                $t->status,
+                $t->due_date?->format('Y-m-d'),
+                $process?->due_date?->format('Y-m-d'),
+                (bool) ($process?->subject_to_fine),
+                $t->assignee_membership_id,
+                $today,
+            );
+            $data['risks'] = array_map(fn ($r) => $r->value, $riskList);
+            $data['effective_due_date'] = $riskCalc->effectiveDueDate(
+                $t->due_date?->format('Y-m-d'),
+                $process?->due_date?->format('Y-m-d'),
+            );
+            $data['bucket'] = (new \App\Domain\Work\QueueBucketResolver)
+                ->resolve($t->status, $riskList, $data['effective_due_date'], $today)
+                ->value;
+
             $data['evidences'] = $t->relationLoaded('evidences')
                 ? $t->evidences->map(fn (OperationalTaskEvidence $e) => $this->publicEvidence($e))->values()
                 : [];
@@ -274,15 +397,17 @@ class OperationalTaskController extends Controller
                     'created_at' => $c->created_at?->toIso8601String(),
                 ])->values()
                 : [];
-            if ($t->relationLoaded('process') && $t->process) {
+            if ($process) {
                 $data['process'] = [
-                    'id' => $t->process->id,
-                    'title' => $t->process->title,
-                    'competence' => $t->process->competence,
-                    'status' => $t->process->status->value,
-                    'client' => $t->process->client ? [
-                        'id' => $t->process->client->id,
-                        'name' => $t->process->client->display_name ?: $t->process->client->legal_name,
+                    'id' => $process->id,
+                    'title' => $process->title,
+                    'competence' => $process->competence,
+                    'status' => $process->status->value,
+                    'subject_to_fine' => (bool) $process->subject_to_fine,
+                    'due_date' => $process->due_date?->format('Y-m-d'),
+                    'client' => $process->client ? [
+                        'id' => $process->client->id,
+                        'name' => $process->client->display_name ?: $process->client->legal_name,
                     ] : null,
                 ];
             }

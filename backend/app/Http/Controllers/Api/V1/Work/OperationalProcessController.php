@@ -2,13 +2,19 @@
 
 namespace App\Http\Controllers\Api\V1\Work;
 
+use App\Domain\Work\DueDateCalculator;
+use App\Domain\Work\WorkRiskCalculator;
+use App\Enums\Work\TaskStatus;
+use App\Enums\Work\WorkRisk;
 use App\Http\Controllers\Controller;
 use App\Models\OperationalComment;
 use App\Models\OperationalProcess;
 use App\Models\OperationalTask;
 use App\Services\Audit\AuditLogger;
 use App\Services\Work\OperationalProcessService;
+use App\Services\Work\OperationalTimelineQuery;
 use App\Support\CurrentOffice;
+use App\Support\Work\OfficeTimezone;
 use App\Support\Work\RejectClientOfficeId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +28,13 @@ class OperationalProcessController extends Controller
 
         $perPage = min(max((int) $request->input('per_page', 25), 1), 100);
         $q = OperationalProcess::query()
-            ->with(['client:id,legal_name,display_name', 'tasks', 'department:id,name,code'])
+            ->with([
+                'client:id,legal_name,display_name',
+                'tasks',
+                'department:id,name,code',
+                'assigneeMembership:id,user_id,office_id',
+                'assigneeMembership.user:id,name',
+            ])
             ->where('office_id', $currentOffice->id())
             ->orderByDesc('id');
 
@@ -38,15 +50,19 @@ class OperationalProcessController extends Controller
         if ($request->filled('department_id')) {
             $q->where('work_department_id', (int) $request->input('department_id'));
         }
+        if ($request->filled('assignee_membership_id')) {
+            $q->where('assignee_membership_id', (int) $request->input('assignee_membership_id'));
+        }
         if ($request->filled('q')) {
             $needle = '%'.mb_strtolower($request->string('q')->toString()).'%';
             $q->whereRaw('LOWER(title) LIKE ?', [$needle]);
         }
 
         $paginator = $q->paginate($perPage);
+        $today = (new DueDateCalculator)->todayInOffice(OfficeTimezone::for($currentOffice->office()));
 
         return response()->json([
-            'data' => collect($paginator->items())->map(fn (OperationalProcess $p) => $this->public($p)),
+            'data' => collect($paginator->items())->map(fn (OperationalProcess $p) => $this->public($p, false, $today)),
             'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),
@@ -56,12 +72,13 @@ class OperationalProcessController extends Controller
         ]);
     }
 
-    public function show(OperationalProcess $process): JsonResponse
+    public function show(OperationalProcess $process, CurrentOffice $currentOffice): JsonResponse
     {
         $this->authorize('view', $process);
-        $process->load(['client', 'tasks.evidences', 'department', 'assigneeMembership.user']);
+        $process->load(['client', 'tasks.evidences', 'tasks.assigneeMembership.user', 'department', 'assigneeMembership.user', 'comments']);
+        $today = (new DueDateCalculator)->todayInOffice(OfficeTimezone::for($currentOffice->office()));
 
-        return response()->json(['data' => $this->public($process, detailed: true)]);
+        return response()->json(['data' => $this->public($process, detailed: true, today: $today)]);
     }
 
     public function store(Request $request, OperationalProcessService $service): JsonResponse
@@ -163,11 +180,53 @@ class OperationalProcessController extends Controller
         ], 201);
     }
 
+    public function timeline(OperationalProcess $process, OperationalTimelineQuery $timeline): JsonResponse
+    {
+        $this->authorize('view', $process);
+
+        return response()->json([
+            'data' => $timeline->forProcess($process),
+        ]);
+    }
+
     /**
      * @return array<string, mixed>
      */
-    private function public(OperationalProcess $p, bool $detailed = false): array
+    private function public(OperationalProcess $p, bool $detailed = false, ?string $today = null): array
     {
+        $today ??= (new DueDateCalculator)->todayInOffice('America/Sao_Paulo');
+        $riskCalc = new WorkRiskCalculator;
+
+        $taskCount = $p->relationLoaded('tasks') ? $p->tasks->count() : null;
+        $completedCount = null;
+        $openCount = null;
+        $progressPercent = null;
+        $risks = [];
+
+        if ($p->relationLoaded('tasks')) {
+            $completedCount = $p->tasks->filter(
+                fn (OperationalTask $t) => in_array($t->status, [TaskStatus::Concluida, TaskStatus::Dispensada], true)
+            )->count();
+            $openCount = $p->tasks->filter(fn (OperationalTask $t) => ! $t->status->isTerminal())->count();
+            $progressPercent = $taskCount > 0 ? (int) round(($completedCount / $taskCount) * 100) : 0;
+
+            foreach ($p->tasks as $t) {
+                if ($t->status->isTerminal()) {
+                    continue;
+                }
+                foreach ($riskCalc->forTask(
+                    $t->status,
+                    $t->due_date?->format('Y-m-d'),
+                    $p->due_date?->format('Y-m-d'),
+                    (bool) $p->subject_to_fine,
+                    $t->assignee_membership_id,
+                    $today,
+                ) as $r) {
+                    $risks[$r->value] = true;
+                }
+            }
+        }
+
         $data = [
             'id' => $p->id,
             'title' => $p->title,
@@ -187,26 +246,64 @@ class OperationalProcessController extends Controller
                 'id' => $p->client->id,
                 'name' => $p->client->display_name ?: $p->client->legal_name,
             ] : null,
-            'task_count' => $p->relationLoaded('tasks') ? $p->tasks->count() : null,
+            'department' => $p->relationLoaded('department') && $p->department ? [
+                'id' => $p->department->id,
+                'name' => $p->department->name,
+                'code' => $p->department->code,
+            ] : null,
+            'assignee' => $p->relationLoaded('assigneeMembership') && $p->assigneeMembership?->user ? [
+                'membership_id' => $p->assigneeMembership->id,
+                'name' => $p->assigneeMembership->user->name,
+            ] : null,
+            'task_count' => $taskCount,
+            'completed_task_count' => $completedCount,
+            'open_task_count' => $openCount,
+            'progress_percent' => $progressPercent,
+            'risks' => array_keys($risks),
         ];
 
         if ($detailed && $p->relationLoaded('tasks')) {
-            $data['tasks'] = $p->tasks->map(fn (OperationalTask $t) => [
-                'id' => $t->id,
-                'sort_order' => $t->sort_order,
-                'title' => $t->title,
-                'description' => $t->description,
-                'status' => $t->status->value,
-                'due_date' => $t->due_date?->format('Y-m-d'),
-                'is_required' => $t->is_required,
-                'is_critical' => $t->is_critical,
-                'requires_evidence' => $t->requires_evidence,
-                'block_reason' => $t->block_reason,
-                'assignee_membership_id' => $t->assignee_membership_id,
-                'work_department_id' => $t->work_department_id,
-                'lock_version' => $t->lock_version,
-                'evidence_count' => $t->relationLoaded('evidences') ? $t->evidences->count() : null,
-            ])->values();
+            $data['tasks'] = $p->tasks->map(function (OperationalTask $t) use ($p, $riskCalc, $today) {
+                $taskRisks = $riskCalc->forTask(
+                    $t->status,
+                    $t->due_date?->format('Y-m-d'),
+                    $p->due_date?->format('Y-m-d'),
+                    (bool) $p->subject_to_fine,
+                    $t->assignee_membership_id,
+                    $today,
+                );
+
+                return [
+                    'id' => $t->id,
+                    'sort_order' => $t->sort_order,
+                    'title' => $t->title,
+                    'description' => $t->description,
+                    'status' => $t->status->value,
+                    'due_date' => $t->due_date?->format('Y-m-d'),
+                    'is_required' => $t->is_required,
+                    'is_critical' => $t->is_critical,
+                    'requires_evidence' => $t->requires_evidence,
+                    'block_reason' => $t->block_reason,
+                    'assignee_membership_id' => $t->assignee_membership_id,
+                    'work_department_id' => $t->work_department_id,
+                    'lock_version' => $t->lock_version,
+                    'risks' => array_map(fn (WorkRisk $r) => $r->value, $taskRisks),
+                    'assignee' => $t->relationLoaded('assigneeMembership') && $t->assigneeMembership?->user ? [
+                        'membership_id' => $t->assigneeMembership->id,
+                        'name' => $t->assigneeMembership->user->name,
+                    ] : null,
+                    'evidence_count' => $t->relationLoaded('evidences') ? $t->evidences->count() : null,
+                ];
+            })->values();
+
+            if ($p->relationLoaded('comments')) {
+                $data['comments'] = $p->comments->map(fn (OperationalComment $c) => [
+                    'id' => $c->id,
+                    'body' => $c->body,
+                    'author_membership_id' => $c->author_membership_id,
+                    'created_at' => $c->created_at?->toIso8601String(),
+                ])->values();
+            }
         }
 
         return $data;

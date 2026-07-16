@@ -16,6 +16,7 @@ use App\Models\ProcessTemplate;
 use App\Models\ProcessTemplateTask;
 use App\Models\User;
 use App\Models\WorkDepartment;
+use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -103,9 +104,12 @@ class OperationalWorkCoreTest extends TestCase
 
     private function loginAs(User $user): static
     {
-        // Sem headers SPA: Origin stateful + troca de actingAs gerava 401 Unauthenticated.
-        // API tests usam guard sanctum direto (mesmo padrão de outras feature suites).
-        return $this->actingAs($user, 'sanctum');
+        // Guard sanctum + limpeza do CurrentOffice entre trocas de usuário.
+        app(CurrentOffice::class)->clear();
+        $this->actingAs($user, 'sanctum');
+        app(CurrentOffice::class)->resolve($user);
+
+        return $this;
     }
 
     public function test_admin_cria_departamento_e_operador_nao(): void
@@ -345,6 +349,34 @@ class OperationalWorkCoreTest extends TestCase
         $this->loginAs($this->viewerA)
             ->postJson('/api/v1/work/exports', ['filters' => []])
             ->assertForbidden();
+    }
+
+    public function test_payload_work_sem_marcadores_sensiveis(): void
+    {
+        $process = OperationalProcess::factory()->create([
+            'office_id' => $this->officeA->id,
+            'client_id' => $this->clientA->id,
+        ]);
+        $task = OperationalTask::factory()->create([
+            'office_id' => $this->officeA->id,
+            'operational_process_id' => $process->id,
+            'assignee_membership_id' => $this->operatorMembershipA->id,
+        ]);
+
+        $queue = $this->loginAs($this->operatorA)
+            ->getJson('/api/v1/work/queue')
+            ->assertOk();
+        \Tests\Support\ApiSecretScanner::assertClean(json_encode($queue->json()) ?: '', 'work.queue');
+
+        $show = $this->loginAs($this->operatorA)
+            ->getJson("/api/v1/work/tasks/{$task->id}")
+            ->assertOk();
+        \Tests\Support\ApiSecretScanner::assertClean(json_encode($show->json()) ?: '', 'work.task');
+
+        $kpis = $this->loginAs($this->adminA)
+            ->getJson('/api/v1/work/kpis')
+            ->assertOk();
+        \Tests\Support\ApiSecretScanner::assertClean(json_encode($kpis->json()) ?: '', 'work.kpis');
     }
 
     public function test_concorrencia_otimista_409(): void

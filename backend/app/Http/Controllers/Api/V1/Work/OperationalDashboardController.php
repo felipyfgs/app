@@ -4,12 +4,10 @@ namespace App\Http\Controllers\Api\V1\Work;
 
 use App\Http\Controllers\Controller;
 use App\Models\OperationalExport;
-use App\Models\OperationalProcess;
 use App\Models\OperationalTask;
+use App\Services\Work\OperationalCalendarQuery;
 use App\Services\Work\OperationalExportService;
 use App\Services\Work\OperationalKpiQuery;
-use App\Support\CurrentOffice;
-use App\Support\Work\OfficeTimezone;
 use App\Support\Work\RejectClientOfficeId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,7 +23,7 @@ class OperationalDashboardController extends Controller
         return response()->json(['data' => $query->build()]);
     }
 
-    public function calendar(Request $request, CurrentOffice $currentOffice): JsonResponse
+    public function calendar(Request $request, OperationalCalendarQuery $query): JsonResponse
     {
         $this->authorize('viewAny', OperationalTask::class);
         RejectClientOfficeId::strip($request);
@@ -33,37 +31,19 @@ class OperationalDashboardController extends Controller
         $data = $request->validate([
             'from' => ['required', 'date_format:Y-m-d'],
             'to' => ['required', 'date_format:Y-m-d'],
+            'department_id' => ['sometimes', 'nullable', 'integer'],
+            'assignee_membership_id' => ['sometimes', 'nullable', 'integer'],
+            'client_id' => ['sometimes', 'nullable', 'integer'],
+            'status' => ['sometimes', 'nullable', 'string'],
+            'risk' => ['sometimes', 'nullable', 'string'],
         ]);
 
-        $office = $currentOffice->office();
-        $tz = OfficeTimezone::for($office);
-
-        $rows = OperationalTask::query()
-            ->selectRaw('due_date, count(*) as total')
-            ->where('office_id', $office->id)
-            ->whereNotNull('due_date')
-            ->whereBetween('due_date', [$data['from'], $data['to']])
-            ->groupBy('due_date')
-            ->orderBy('due_date')
-            ->get()
-            ->map(fn ($r) => [
-                'date' => $r->due_date instanceof \DateTimeInterface
-                    ? $r->due_date->format('Y-m-d')
-                    : (string) $r->due_date,
-                'total' => (int) $r->total,
-            ]);
-
         return response()->json([
-            'data' => [
-                'office_timezone' => $tz,
-                'from' => $data['from'],
-                'to' => $data['to'],
-                'days' => $rows,
-            ],
+            'data' => $query->interval($data),
         ]);
     }
 
-    public function calendarDay(Request $request, CurrentOffice $currentOffice): JsonResponse
+    public function calendarDay(Request $request, OperationalCalendarQuery $query): JsonResponse
     {
         $this->authorize('viewAny', OperationalTask::class);
         RejectClientOfficeId::strip($request);
@@ -71,26 +51,18 @@ class OperationalDashboardController extends Controller
         $data = $request->validate([
             'date' => ['required', 'date_format:Y-m-d'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'department_id' => ['sometimes', 'nullable', 'integer'],
+            'assignee_membership_id' => ['sometimes', 'nullable', 'integer'],
+            'client_id' => ['sometimes', 'nullable', 'integer'],
+            'status' => ['sometimes', 'nullable', 'string'],
+            'risk' => ['sometimes', 'nullable', 'string'],
         ]);
 
-        $perPage = (int) ($data['per_page'] ?? 25);
-        $paginator = OperationalTask::query()
-            ->with(['process.client'])
-            ->where('office_id', $currentOffice->id())
-            ->whereDate('due_date', $data['date'])
-            ->orderBy('id')
-            ->paginate($perPage);
+        $paginator = $query->day($data);
 
         return response()->json([
-            'data' => collect($paginator->items())->map(fn (OperationalTask $t) => [
-                'id' => $t->id,
-                'title' => $t->title,
-                'status' => $t->status->value,
-                'process_id' => $t->operational_process_id,
-                'process_title' => $t->process?->title,
-                'client_name' => $t->process?->client?->display_name
-                    ?: $t->process?->client?->legal_name,
-            ]),
+            'data' => $paginator->items(),
             'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),
