@@ -11,6 +11,7 @@
 .env
 .env.*
 !.env.example
+!.env.prod.example
 backend/.env
 backend/.env.*
 !backend/.env.example
@@ -19,6 +20,7 @@ frontend/.env.*
 !frontend/.env.example
 **/.env
 !**/.env.example
+!**/.env.prod.example
 backend/auth.json
 **/auth.json
 # Chaves e segredos soltos
@@ -33,10 +35,8 @@ backend/vendor/
 # Store local do pnpm (nunca versionar; regenera com install)
 **/.pnpm-store/
 .pnpm-store/
-.opencode/node_modules/
-.opencode/package.json
-.opencode/package-lock.json
-.opencode/bun.lock
+**/composer.phar
+composer.phar
 
 # --- Backend (Laravel) ---
 backend/public/build
@@ -97,16 +97,57 @@ backups/
 *.sql
 *.sql.gz
 *.dump
+*.sqlite
+*.sqlite3
+# Estado ACME (Traefik / Let's Encrypt) — NUNCA versionar
+**/acme.json
+letsencrypt/
+**/letsencrypt/
 
 # --- Vault, dados fiscais e certificados (NUNCA versionar) ---
 data/
 vault/
+.vault/
+**/vault-objects/
+private_storage/
 *.pfx
 *.p12
 *.pem
 *.key
+*.crt
+*.cer
+*.jks
+*.p7b
+# PDF sensível / termo assinado exportado por engano
+**/*termo*.pdf
+**/*contrato-serpro*
 !docker/**/*.conf
 !**/.gitkeep
+# Fixtures de teste PEM/PFX ficam em backend/tests/fixtures (git may track if mode allows)
+
+# --- Documentos locais soltos na raiz (contratos, dumps de sessão) ---
+/*.pdf
+/*.docx
+/*.doc
+/*.xlsx
+/*.xls
+/*.csv
+
+# --- Arquivos de backup / pacotes acidentais ---
+*.bak
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# --- Temp local ---
+tmp/
+.tmp/
+.cache/
+*.tmp
+*.temp
 
 # --- Testes / cobertura / caches ---
 coverage/
@@ -131,17 +172,10 @@ Thumbs.db
 *.swp
 *.swo
 
-# --- Ferramentas locais de agente ---
-# Skills versionadas por engine: .opencode/skills, .grok/skills, .codex/skills
-# (sem pasta .agents/ no repositório)
-.codex/.tmp/
-.opencode/.tmp/
-.grok/*
-!.grok/config.toml
-!.grok/skills/
-!.grok/skills/**
-!.grok/commands/
-!.grok/commands/**
+# --- Ferramentas locais de agente (engines inteiras — só disco local) ---
+.grok/
+.codex/
+.opencode/
 
 
 # --- Artefatos locais de review/agente e screenshots de sessão ---
@@ -156,6 +190,9 @@ frontend/pw-clients.mjs
 frontend/test-results/
 frontend/playwright-report/
 frontend/blob-report/
+# Baselines de regressão visual Playwright — só local (pesados; regenerar com
+# PLAYWRIGHT_INCLUDE_VISUAL=1 pnpm test:e2e:visual --update-snapshots)
+frontend/tests/e2e/__screenshots__/
 # merge/patch leftovers
 *.orig
 *.rej
