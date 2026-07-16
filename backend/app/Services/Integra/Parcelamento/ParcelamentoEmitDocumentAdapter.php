@@ -25,7 +25,7 @@ use Carbon\CarbonImmutable;
 final class ParcelamentoEmitDocumentAdapter implements FiscalSourceAdapter
 {
     public function __construct(
-        private readonly FakeParcelamentoSource $source,
+        private readonly SerproParcelamentoSource $source,
         private readonly TaxGuideEnrollment $guides,
         private readonly TaxProxyPowerService $proxyPowers,
     ) {}
@@ -177,7 +177,7 @@ final class ParcelamentoEmitDocumentAdapter implements FiscalSourceAdapter
         $response = $this->source->execute($modality, 'EMITIR_DOCUMENTO', [
             'parcelaParaEmitir' => $parcelKey,
             'numeroParcelamento' => $orderExternalId,
-        ]);
+        ], $request);
 
         if (! empty($response['timeout_uncertain'])) {
             $evidence = json_encode($response, JSON_THROW_ON_ERROR);

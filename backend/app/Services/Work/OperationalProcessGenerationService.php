@@ -5,7 +5,6 @@ namespace App\Services\Work;
 use App\Domain\Work\CompetenceMonth;
 use App\Domain\Work\DueDateCalculator;
 use App\Domain\Work\DueRule;
-use App\Enums\Work\DueRuleType;
 use App\Enums\Work\GenerationBatchStatus;
 use App\Enums\Work\GenerationItemStatus;
 use App\Enums\Work\ProcessOrigin;
@@ -21,6 +20,7 @@ use App\Models\ProcessTemplateTask;
 use App\Services\Audit\AuditLogger;
 use App\Support\CurrentOffice;
 use App\Support\Work\OfficeTimezone;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -306,7 +306,7 @@ final class OperationalProcessGenerationService
                 $hadSuccess = true;
             } catch (Throwable $e) {
                 $hadError = true;
-                $code = $e instanceof \Illuminate\Database\UniqueConstraintViolationException
+                $code = $e instanceof UniqueConstraintViolationException
                     ? GenerationItemStatus::SkippedDuplicate
                     : GenerationItemStatus::Failed;
 

@@ -2,11 +2,11 @@
 
 namespace Tests\Unit\Serpro;
 
+use App\Enums\TermoAuthorizationState;
+use App\Services\Integra\TermoAutorizacaoGenerator;
 use App\Services\Integra\TermoXmlValidator;
-use DOMDocument;
 use PHPUnit\Framework\TestCase;
-use RobRichards\XMLSecLibs\XMLSecurityDSig;
-use RobRichards\XMLSecLibs\XMLSecurityKey;
+use Tests\Support\TermoFixtureFactory;
 
 class TermoXmlValidatorTest extends TestCase
 {
@@ -18,44 +18,58 @@ class TermoXmlValidatorTest extends TestCase
         $this->validator = new TermoXmlValidator;
     }
 
-    public function test_termo_valido_estrutura_critica(): void
+    public function test_termo_valido_estrutura_critica_e_local_validated(): void
     {
-        $xml = $this->sampleTermo(
-            signedBy: '12345678901',
-            destinario: '11222333000181',
-            author: '12345678901',
-        );
+        $author = TermoFixtureFactory::defaultAuthorCpf();
+        $dest = TermoFixtureFactory::defaultDestinationCnpj();
+        $fixture = TermoFixtureFactory::signedTermo($author, $dest);
 
-        $result = $this->validator->validate($xml, '12345678901', '11222333000181');
+        $result = $this->validator->validate($fixture['xml'], $author, $dest);
 
         $this->assertTrue($result->valid, ($result->errorCode ?? '').': '.($result->errorMessage ?? ''));
         $this->assertNotNull($result->sha256);
         $this->assertTrue($result->signatureChecked);
+        $this->assertSame(TermoAuthorizationState::LocalValidated->value, $result->authorizationState);
+        $this->assertNotSame(TermoAuthorizationState::SerproAccepted->value, $result->authorizationState);
+    }
+
+    public function test_raiz_legada_termo_autorizacao_rejeita(): void
+    {
+        $xml = TermoFixtureFactory::legacyRootXml();
+        $result = $this->validator->validate(
+            $xml,
+            TermoFixtureFactory::defaultAuthorCpf(),
+            TermoFixtureFactory::defaultDestinationCnpj(),
+        );
+
+        $this->assertFalse($result->valid);
+        $this->assertSame('LEGACY_OR_INVALID_ROOT', $result->errorCode);
     }
 
     public function test_signatario_divergente_rejeita(): void
     {
-        $xml = $this->sampleTermo(
-            signedBy: '99999999999',
-            destinario: '11222333000181',
-            author: '12345678901',
+        $fixture = TermoFixtureFactory::signedTermo('11144477735', TermoFixtureFactory::defaultDestinationCnpj());
+
+        $result = $this->validator->validate(
+            $fixture['xml'],
+            TermoFixtureFactory::defaultAuthorCpf(),
+            TermoFixtureFactory::defaultDestinationCnpj(),
         );
 
-        $result = $this->validator->validate($xml, '12345678901', '11222333000181');
-
         $this->assertFalse($result->valid);
-        $this->assertContains($result->errorCode, ['SIGNER_MISMATCH', 'AUTHOR_MISMATCH']);
+        $this->assertContains($result->errorCode, ['SIGNER_MISMATCH', 'AUTHOR_MISMATCH', 'CERT_IDENTITY_MISMATCH']);
     }
 
     public function test_destinatario_divergente_rejeita(): void
     {
-        $xml = $this->sampleTermo(
-            signedBy: '12345678901',
-            destinario: '99888777000166',
-            author: '12345678901',
-        );
+        $author = TermoFixtureFactory::defaultAuthorCpf();
+        $fixture = TermoFixtureFactory::signedTermo($author, '99888777000100');
 
-        $result = $this->validator->validate($xml, '12345678901', '11222333000181');
+        $result = $this->validator->validate(
+            $fixture['xml'],
+            $author,
+            TermoFixtureFactory::defaultDestinationCnpj(),
+        );
 
         $this->assertFalse($result->valid);
         $this->assertSame('DESTINATION_MISMATCH', $result->errorCode);
@@ -63,93 +77,87 @@ class TermoXmlValidatorTest extends TestCase
 
     public function test_sem_signature_rejeita(): void
     {
-        $xml = <<<'XML'
-<?xml version="1.0"?>
-<TermoAutorizacao>
-  <assinadoPor>12345678901</assinadoPor>
-  <autorPedido>12345678901</autorPedido>
-  <destinatario>11222333000181</destinatario>
-  <dataInicioVigencia>2026-01-01</dataInicioVigencia>
-  <dataFimVigencia>2027-12-31</dataFimVigencia>
-</TermoAutorizacao>
-XML;
+        $xml = TermoFixtureFactory::unsignedDraft();
+        $result = $this->validator->validate(
+            $xml,
+            TermoFixtureFactory::defaultAuthorCpf(),
+            TermoFixtureFactory::defaultDestinationCnpj(),
+        );
 
-        $result = $this->validator->validate($xml, '12345678901', '11222333000181');
         $this->assertFalse($result->valid);
         $this->assertSame('MISSING_SIGNATURE', $result->errorCode);
     }
 
     public function test_termo_expirado_rejeita(): void
     {
-        $xml = $this->sampleTermo(
-            signedBy: '12345678901',
-            destinario: '11222333000181',
-            author: '12345678901',
-            validTo: '2020-01-01',
+        $author = TermoFixtureFactory::defaultAuthorCpf();
+        $dest = TermoFixtureFactory::defaultDestinationCnpj();
+        $fixture = TermoFixtureFactory::signedTermo(
+            $author,
+            $dest,
+            validTo: '20200101',
         );
 
-        $result = $this->validator->validate($xml, '12345678901', '11222333000181');
+        $result = $this->validator->validate($fixture['xml'], $author, $dest);
+
         $this->assertFalse($result->valid);
         $this->assertSame('TERM_EXPIRED', $result->errorCode);
     }
 
-    private function sampleTermo(
-        string $signedBy,
-        string $destinario,
-        string $author,
-        string $validTo = '2027-12-31',
-    ): string {
-        $xml = <<<XML
-<?xml version="1.0"?>
-<TermoAutorizacao Id="termo-1">
-  <assinadoPor>{$signedBy}</assinadoPor>
-  <autorPedido>{$author}</autorPedido>
-  <destinatario>{$destinario}</destinatario>
-  <dataInicioVigencia>2026-01-01</dataInicioVigencia>
-  <dataFimVigencia>{$validTo}</dataFimVigencia>
-</TermoAutorizacao>
-XML;
+    public function test_signature_wrapping_rejeita(): void
+    {
+        $xml = TermoFixtureFactory::wrappingAttackXml();
+        $result = $this->validator->validate(
+            $xml,
+            TermoFixtureFactory::defaultAuthorCpf(),
+            TermoFixtureFactory::defaultDestinationCnpj(),
+        );
 
-        return $this->sign($xml, $signedBy);
+        $this->assertFalse($result->valid);
+        $this->assertContains($result->errorCode, [
+            'UNEXPECTED_ROOT_CHILD',
+            'SIGNATURE_WRAPPING',
+            'REFERENCE_URI',
+            'SIGNATURE_COUNT',
+        ]);
     }
 
-    private function sign(string $xml, string $identity): string
+    public function test_doctype_entity_rejeita(): void
     {
-        $privateKey = openssl_pkey_new([
-            'private_key_bits' => 2048,
-            'private_key_type' => OPENSSL_KEYTYPE_RSA,
-            'digest_alg' => 'sha256',
-        ]);
-        $this->assertNotFalse($privateKey);
-        $csr = openssl_csr_new([
-            'commonName' => 'Autor Teste:'.$identity,
-            'serialNumber' => $identity,
-        ], $privateKey, ['digest_alg' => 'sha256']);
-        $this->assertNotFalse($csr);
-        $certificate = openssl_csr_sign($csr, null, $privateKey, 365, ['digest_alg' => 'sha256']);
-        $this->assertNotFalse($certificate);
-        $this->assertTrue(openssl_pkey_export($privateKey, $privatePem));
-        $this->assertTrue(openssl_x509_export($certificate, $certificatePem));
+        $xml = <<<'XML'
+<?xml version="1.0"?>
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+<termoDeAutorizacao>
+  <dados>&xxe;</dados>
+</termoDeAutorizacao>
+XML;
 
-        $dom = new DOMDocument;
-        $dom->loadXML($xml, LIBXML_NONET);
-        $signature = new XMLSecurityDSig;
-        $signature->setCanonicalMethod(XMLSecurityDSig::EXC_C14N);
-        $signature->addReference(
-            $dom->documentElement,
-            XMLSecurityDSig::SHA256,
-            ['http://www.w3.org/2000/09/xmldsig#enveloped-signature'],
-            ['id_name' => 'Id', 'overwrite' => false],
+        $result = $this->validator->validate(
+            $xml,
+            TermoFixtureFactory::defaultAuthorCpf(),
+            TermoFixtureFactory::defaultDestinationCnpj(),
         );
-        $key = new XMLSecurityKey(XMLSecurityKey::RSA_SHA256, ['type' => 'private']);
-        $key->loadKey($privatePem, false);
-        $signature->sign($key);
-        $signature->add509Cert($certificatePem, true, false);
-        $signature->appendSignature($dom->documentElement);
 
-        $signed = $dom->saveXML() ?: '';
-        $this->assertStringContainsString('X509Certificate', $signed);
+        $this->assertFalse($result->valid);
+        $this->assertSame('UNSAFE_XML', $result->errorCode);
+    }
 
-        return $signed;
+    public function test_textos_legais_canonicos_no_gerador(): void
+    {
+        $gen = new TermoAutorizacaoGenerator;
+        $xml = $gen->generateUnsigned(
+            TermoFixtureFactory::defaultDestinationCnpj(),
+            'CONTRATANTE',
+            TermoFixtureFactory::defaultAuthorCpf(),
+            'Autor',
+            'PF',
+            '20260716',
+            '20271231',
+        );
+
+        $this->assertStringContainsString('termoDeAutorizacao', $xml);
+        $this->assertStringContainsString('API Integra Contador', $xml);
+        $this->assertStringContainsString('papel="contratante"', $xml);
+        $this->assertStringContainsString('papel="autor pedido de dados"', $xml);
     }
 }

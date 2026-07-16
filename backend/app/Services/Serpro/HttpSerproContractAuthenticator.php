@@ -72,6 +72,7 @@ final class HttpSerproContractAuthenticator implements SerproContractAuthenticat
         }
 
         $tokenUrl = (string) config('serpro.oauth.token_url');
+        $this->assertCanonicalOauthEndpoint($tokenUrl);
         $roleType = (string) config('serpro.oauth.role_type', 'TERCEIROS');
         $correlationId = $this->audit->correlationId();
 
@@ -169,6 +170,28 @@ final class HttpSerproContractAuthenticator implements SerproContractAuthenticat
         ], null, null);
 
         return $token;
+    }
+
+    /**
+     * Bloqueia endpoint OAuth alternativo (curl Área do Cliente) até gate formal.
+     */
+    private function assertCanonicalOauthEndpoint(string $tokenUrl): void
+    {
+        if (! (bool) config('serpro.oauth_alternate_blocked', true)) {
+            return;
+        }
+
+        $parts = parse_url($tokenUrl);
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $path = (string) ($parts['path'] ?? '');
+        $canonicalHost = strtolower((string) config('serpro.oauth_canonical_host', 'autenticacao.sapi.serpro.gov.br'));
+        $canonicalPath = (string) config('serpro.oauth_canonical_path', '/authenticate');
+
+        if ($host !== $canonicalHost || rtrim($path, '/') !== rtrim($canonicalPath, '/')) {
+            throw new RuntimeException(
+                'Endpoint OAuth fora do canônico /authenticate. Fluxo alternativo bloqueado até resposta formal SERPRO.'
+            );
+        }
     }
 
     private function markUnavailable(SerproContract $contract, string $reason): void

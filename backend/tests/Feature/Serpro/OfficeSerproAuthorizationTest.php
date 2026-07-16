@@ -11,6 +11,7 @@ use App\Enums\TaxProxyPowerSource;
 use App\Enums\TaxProxyPowerStatus;
 use App\Enums\TermRePresentationStrategy;
 use App\Models\Client;
+use App\Models\Establishment;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\TaxProxyPower;
@@ -18,9 +19,8 @@ use App\Models\User;
 use App\Services\Integra\OfficeSerproAuthorizationService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use RobRichards\XMLSecLibs\XMLSecurityDSig;
-use RobRichards\XMLSecLibs\XMLSecurityKey;
 use Tests\Support\ApiSecretScanner;
+use Tests\Support\TermoFixtureFactory;
 use Tests\TestCase;
 
 class OfficeSerproAuthorizationTest extends TestCase
@@ -41,7 +41,7 @@ class OfficeSerproAuthorizationTest extends TestCase
         $this->postJson('/api/v1/office/serpro-authorization/author', [
             'environment' => 'TRIAL',
             'author_identity_type' => 'CPF',
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
             'author_name' => 'Contador Teste',
             'certificate_mode' => 'EXTERNAL_SIGNATURE',
         ])->assertOk()
@@ -49,13 +49,14 @@ class OfficeSerproAuthorizationTest extends TestCase
             ->assertJsonMissingPath('data.author_identity')
             ->assertJsonMissingPath('data.termo_vault_object_id');
 
-        $xml = $this->validTermoXml('12345678901', '11222333000181');
+        $xml = $this->validTermoXml('52998224725', '11222333000181');
         $upload = $this->postJson('/api/v1/office/serpro-authorization/termo', [
             'environment' => 'TRIAL',
             'termo_xml' => $xml,
         ]);
         $upload->assertCreated();
         $body = (string) $upload->getContent();
+        $this->assertStringNotContainsString('<termoDeAutorizacao>', $body);
         $this->assertStringNotContainsString('<TermoAutorizacao>', $body);
         $this->assertStringNotContainsString('SignatureValue', $body);
         $this->assertStringNotContainsString($xml, $body);
@@ -80,7 +81,7 @@ class OfficeSerproAuthorizationTest extends TestCase
 
         $this->postJson('/api/v1/office/serpro-authorization/author', [
             'author_identity_type' => 'CPF',
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
         ])->assertOk();
 
         $xml = $this->validTermoXml('99999999999', '11222333000181');
@@ -100,13 +101,13 @@ class OfficeSerproAuthorizationTest extends TestCase
             $office,
             SerproEnvironment::Trial,
             AuthorIdentityType::Cpf,
-            '12345678901',
+            '52998224725',
             'A3 User',
             AuthorCertificateMode::InteractiveA3,
             $admin->id,
         );
 
-        $svc->uploadTermo($office, SerproEnvironment::Trial, $this->validTermoXml('12345678901', '11222333000181'), $admin->id);
+        $svc->uploadTermo($office, SerproEnvironment::Trial, $this->validTermoXml('52998224725', '11222333000181'), $admin->id);
         $auth = $svc->refreshProcuradorToken($office, SerproEnvironment::Trial, $admin->id);
 
         $this->assertSame(SerproAuthorizationStatus::ActionRequired, $auth->status);
@@ -128,12 +129,12 @@ class OfficeSerproAuthorizationTest extends TestCase
             $office,
             SerproEnvironment::Trial,
             AuthorIdentityType::Cpf,
-            '12345678901',
+            '52998224725',
             null,
             AuthorCertificateMode::ExternalSignature,
             $admin->id,
         );
-        $svc->uploadTermo($office, SerproEnvironment::Trial, $this->validTermoXml('12345678901', '11222333000181'), $admin->id);
+        $svc->uploadTermo($office, SerproEnvironment::Trial, $this->validTermoXml('52998224725', '11222333000181'), $admin->id);
 
         // Simula token expirado
         $auth = OfficeSerproAuthorization::query()->where('office_id', $office->id)->firstOrFail();
@@ -159,16 +160,18 @@ class OfficeSerproAuthorizationTest extends TestCase
         $admin = User::factory()->forOffice($officeA, OfficeRole::Admin)->withTwoFactorConfirmed()->create();
         $clientA = Client::factory()->forOffice($officeA)->create();
         $clientB = Client::factory()->forOffice($officeB)->create();
+        Establishment::factory()->forClient($clientA)->create();
+        Establishment::factory()->forClient($clientB)->create();
 
         $this->actingAs($admin);
         app(CurrentOffice::class)->resolve($admin);
 
         $this->postJson('/api/v1/office/serpro-authorization/author', [
             'author_identity_type' => 'CPF',
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
         ])->assertOk();
         $this->postJson('/api/v1/office/serpro-authorization/termo', [
-            'termo_xml' => $this->validTermoXml('12345678901', '11222333000181'),
+            'termo_xml' => $this->validTermoXml('52998224725', '11222333000181'),
         ])->assertCreated();
         $this->postJson('/api/v1/office/serpro-authorization/refresh-token')->assertOk();
 
@@ -220,7 +223,7 @@ class OfficeSerproAuthorizationTest extends TestCase
                 'office_id' => $officeA->id,
                 'client_id' => $clientA->id,
                 'office_serpro_authorization_id' => null,
-                'author_identity' => '12345678901',
+                'author_identity' => '52998224725',
                 'contributor_cnpj' => '12345678000195',
                 'system_code' => 'INTEGRA',
                 'service_code' => null,
@@ -243,7 +246,7 @@ class OfficeSerproAuthorizationTest extends TestCase
             'office_id' => $officeA->id,
             'client_id' => $otherClientA->id,
             'office_serpro_authorization_id' => null,
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
             'contributor_cnpj' => '98765432000198',
             'system_code' => 'OUTRO',
             'service_code' => null,
@@ -264,7 +267,7 @@ class OfficeSerproAuthorizationTest extends TestCase
             'office_id' => $officeB->id,
             'client_id' => $clientB->id,
             'office_serpro_authorization_id' => null,
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
             'contributor_cnpj' => '12345678000195',
             'system_code' => 'INTEGRA',
             'service_code' => null,
@@ -364,55 +367,15 @@ class OfficeSerproAuthorizationTest extends TestCase
 
         $this->postJson('/api/v1/office/serpro-authorization/author', [
             'author_identity_type' => 'CPF',
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
         ])->assertForbidden();
     }
 
     private function validTermoXml(string $signedBy, string $destination): string
     {
-        $xml = <<<XML
-<?xml version="1.0"?>
-<TermoAutorizacao Id="termo-1">
-  <assinadoPor>{$signedBy}</assinadoPor>
-  <autorPedido>{$signedBy}</autorPedido>
-  <destinatario>{$destination}</destinatario>
-  <dataInicioVigencia>2026-01-01</dataInicioVigencia>
-  <dataFimVigencia>2027-12-31</dataFimVigencia>
-</TermoAutorizacao>
-XML;
-
-        $privateKey = openssl_pkey_new([
-            'private_key_bits' => 2048,
-            'private_key_type' => OPENSSL_KEYTYPE_RSA,
-            'digest_alg' => 'sha256',
-        ]);
-        $csr = openssl_csr_new([
-            'commonName' => 'Autor Teste:'.$signedBy,
-            'serialNumber' => $signedBy,
-        ], $privateKey, ['digest_alg' => 'sha256']);
-        $certificate = openssl_csr_sign($csr, null, $privateKey, 365, ['digest_alg' => 'sha256']);
-        openssl_pkey_export($privateKey, $privatePem);
-        openssl_x509_export($certificate, $certificatePem);
-
-        $dom = new \DOMDocument;
-        $dom->loadXML($xml, LIBXML_NONET);
-        $signature = new XMLSecurityDSig;
-        $signature->setCanonicalMethod(XMLSecurityDSig::C14N);
-        $signature->addReference(
-            $dom->documentElement,
-            XMLSecurityDSig::SHA256,
-            ['http://www.w3.org/2000/09/xmldsig#enveloped-signature'],
-            ['id_name' => 'Id', 'overwrite' => false],
-        );
-        $key = new XMLSecurityKey(
-            XMLSecurityKey::RSA_SHA256,
-            ['type' => 'private'],
-        );
-        $key->loadKey($privatePem, false);
-        $signature->sign($key);
-        $signature->add509Cert($certificatePem, true, false);
-        $signature->appendSignature($dom->documentElement);
-
-        return $dom->saveXML() ?: $xml;
+        return TermoFixtureFactory::signedTermo(
+            authorIdentity: $signedBy,
+            destinationCnpj: $destination,
+        )['xml'];
     }
 }

@@ -13,6 +13,7 @@ use App\Enums\TaxProxyPowerSource;
 use App\Enums\TaxProxyPowerStatus;
 use App\Enums\TermRePresentationStrategy;
 use App\Models\Client;
+use App\Models\Establishment;
 use App\Models\FiscalMutationOperation;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
@@ -54,6 +55,7 @@ class FiscalMutationOperationsTest extends TestCase
         $this->client = Client::factory()->forOffice($this->office)->create([
             'root_cnpj' => '12345678000199',
         ]);
+        Establishment::factory()->forClient($this->client)->create();
         $this->admin = User::factory()
             ->forOffice($this->office, OfficeRole::Admin)
             ->withTwoFactorConfirmed()
@@ -399,7 +401,7 @@ class FiscalMutationOperationsTest extends TestCase
             $this->office,
             SerproEnvironment::Trial,
             AuthorIdentityType::Cpf,
-            '12345678901',
+            '52998224725',
             'Contador Teste',
             AuthorCertificateMode::ExternalSignature,
             $this->admin->id,
@@ -415,7 +417,7 @@ class FiscalMutationOperationsTest extends TestCase
             'termo_valid_from' => now()->subDay(),
             'termo_valid_to' => now()->addYear(),
             'termo_destination_cnpj' => '11222333000181',
-            'termo_signed_by' => '12345678901',
+            'termo_signed_by' => '52998224725',
             'termo_uploaded_at' => now(),
             'termo_authorization_state' => 'SIMULATED',
             'procurador_token_vault_object_id' => (string) Str::ulid(),

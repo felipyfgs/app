@@ -4,6 +4,7 @@ namespace App\Services\Integra;
 
 use App\Contracts\IntegraProcuracoesClient;
 use App\DTO\Serpro\ProcuracaoLookupRequest;
+use App\Enums\SerproDataSegregationClass;
 use App\Enums\SerproEnvironment;
 use App\Enums\TaxProxyPowerSource;
 use App\Enums\TaxProxyPowerStatus;
@@ -17,13 +18,22 @@ use RuntimeException;
 
 final class TaxProxyPowerService
 {
+    public const PROVENANCE_SIMULATED = 'SIMULATED';
+
+    public const PROVENANCE_API_VERIFIED = 'API_VERIFIED';
+
+    public const PROVENANCE_MANUAL_PENDING = 'MANUAL_PENDING';
+
+    public const PROVENANCE_MANUAL_APPROVED = 'MANUAL_APPROVED';
+
     public function __construct(
         private readonly IntegraProcuracoesClient $procuracoes,
         private readonly AuditLogger $audit,
+        private readonly ContributorCnpjResolver $contributors,
     ) {}
 
     /**
-     * Importação manual de evidência oficial (quando API não cobre o caso).
+     * Importação manual de evidência oficial — permanece PENDING até aprovação explícita.
      */
     public function importManualEvidence(
         Office $office,
@@ -37,6 +47,7 @@ final class TaxProxyPowerService
         string $evidenceRef,
         ?string $evidenceSha256 = null,
         ?int $actorUserId = null,
+        ?SerproEnvironment $environment = null,
     ): TaxProxyPower {
         if ($client->office_id !== $office->id) {
             throw new RuntimeException('Contribuinte não pertence ao escritório.');
@@ -46,7 +57,8 @@ final class TaxProxyPowerService
             throw new RuntimeException('Autorização de outro escritório.');
         }
 
-        $contributor = $this->resolveContributorCnpj($client);
+        $env = $environment ?? $auth->environment ?? SerproEnvironment::Trial;
+        $contributor = $this->contributors->resolve($client);
 
         $power = TaxProxyPower::query()->updateOrCreate(
             [
@@ -58,16 +70,23 @@ final class TaxProxyPowerService
             ],
             [
                 'office_serpro_authorization_id' => $auth->id,
+                'environment' => $env instanceof SerproEnvironment ? $env->value : (string) $env,
                 'contributor_cnpj' => $contributor,
                 'system_code' => strtoupper($systemCode),
                 'service_code' => $serviceCode !== null ? strtoupper($serviceCode) : null,
-                'status' => TaxProxyPowerStatus::Active,
+                // Nunca ACTIVE sem verificação/aprovação explícita
+                'status' => TaxProxyPowerStatus::Pending,
+                'provenance' => self::PROVENANCE_MANUAL_PENDING,
+                'segregation_class' => SerproDataSegregationClass::HistoricalUnverified->value,
                 'valid_from' => $validFrom,
                 'valid_to' => $validTo,
+                'accepted_at' => null,
+                'freshness_checked_at' => null,
+                'closed_at' => null,
                 'evidence_ref' => mb_substr($evidenceRef, 0, 120),
                 'evidence_sha256' => $evidenceSha256,
-                'verified_at' => now(),
-                'last_check_result' => 'MANUAL_IMPORT',
+                'verified_at' => null,
+                'last_check_result' => 'MANUAL_IMPORT_PENDING_APPROVAL',
             ],
         );
 
@@ -75,13 +94,55 @@ final class TaxProxyPowerService
             'power_code' => $power->power_code,
             'client_id' => $client->id,
             'source' => $power->source->value,
+            'status' => $power->status->value,
+            'provenance' => $power->provenance,
         ], $actorUserId, $office->id);
 
         return $power->refresh();
     }
 
     /**
+     * Aprovação/verificação explícita de evidência manual (ADMIN).
+     */
+    public function approveManualEvidence(
+        TaxProxyPower $power,
+        ?int $actorUserId,
+        bool $markAccepted = true,
+    ): TaxProxyPower {
+        if ($power->source !== TaxProxyPowerSource::ManualOfficialEvidence
+            && $power->source !== TaxProxyPowerSource::Import) {
+            throw new RuntimeException('Somente evidência manual/import pode ser aprovada por este fluxo.');
+        }
+
+        if ($power->status === TaxProxyPowerStatus::Revoked) {
+            throw new RuntimeException('Poder revogado não pode ser reativado por aprovação manual.');
+        }
+
+        $power->status = TaxProxyPowerStatus::Active;
+        $power->provenance = self::PROVENANCE_MANUAL_APPROVED;
+        $power->segregation_class = SerproDataSegregationClass::Production->value;
+        $power->verified_at = now();
+        $power->freshness_checked_at = now();
+        if ($markAccepted) {
+            $power->accepted_at = $power->accepted_at ?? now();
+        }
+        $power->closed_at = null;
+        $power->last_check_result = 'MANUAL_APPROVED';
+        $power->save();
+
+        $this->audit->record('serpro.proxy_power.approve', 'SUCCESS', $power, [
+            'power_code' => $power->power_code,
+            'client_id' => $power->client_id,
+            'actor_user_id' => $actorUserId,
+        ], $actorUserId, $power->office_id);
+
+        return $power->refresh();
+    }
+
+    /**
      * Sincroniza poderes via adapter Integra-Procurações (fake ou real).
+     * Sync completo (sem powerCode) encerra/revoga ausentes.
+     * Evidência simulada NUNCA vira ACTIVE.
      *
      * @return list<TaxProxyPower>
      */
@@ -92,12 +153,20 @@ final class TaxProxyPowerService
         SerproEnvironment $environment,
         ?string $powerCode = null,
         ?int $actorUserId = null,
+        bool $allowBillableLookup = true,
     ): array {
         if ($client->office_id !== $office->id || $auth->office_id !== $office->id) {
             throw new RuntimeException('Isolamento de tenant violado.');
         }
 
-        $contributor = $this->resolveContributorCnpj($client);
+        // Smoke gratuito: bloquear OBTERPROCURACAO41 faturável
+        if (! $allowBillableLookup && ! (bool) config('serpro.proxy_powers.allow_billable_lookup_in_free_smoke', false)) {
+            throw new RuntimeException(
+                'OBTERPROCURACAO41 faturável bloqueado durante free smoke. Use evidência offline/aprovada.'
+            );
+        }
+
+        $contributor = $this->contributors->resolve($client);
 
         $result = $this->procuracoes->lookup(new ProcuracaoLookupRequest(
             officeId: $office->id,
@@ -112,39 +181,150 @@ final class TaxProxyPowerService
             throw new RuntimeException($result->errorMessage ?? 'Falha ao consultar procurações.');
         }
 
+        $isFullSync = $powerCode === null || $powerCode === '';
+        $seenCodes = [];
         $saved = [];
+
         foreach ($result->powers as $row) {
+            $code = strtoupper((string) ($row['power_code'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+            $seenCodes[] = $code;
+
+            $remoteStatus = TaxProxyPowerStatus::tryFrom(strtoupper((string) ($row['status'] ?? 'ACTIVE')))
+                ?? TaxProxyPowerStatus::Active;
+
+            // Aceite RFB: PENDING_ACCEPT / AGUARDANDO_ACEITE → inelegível
+            $acceptRaw = strtoupper((string) ($row['accept_status'] ?? $row['status_aceite'] ?? ''));
+            $needsAccept = in_array($acceptRaw, ['PENDING_ACCEPT', 'AGUARDANDO_ACEITE', 'PENDING', 'NAO_ACEITO'], true);
+            $acceptedAt = null;
+            if (! $needsAccept && ! $result->simulated) {
+                if (! empty($row['accepted_at'])) {
+                    $acceptedAt = CarbonImmutable::parse((string) $row['accepted_at']);
+                } elseif ($remoteStatus === TaxProxyPowerStatus::Active) {
+                    // API real listando ACTIVE implica aceite quando não sinaliza pendência
+                    $acceptedAt = now()->toImmutable();
+                }
+            }
+
+            if ($result->simulated) {
+                $status = TaxProxyPowerStatus::Pending;
+                $provenance = self::PROVENANCE_SIMULATED;
+                $segregation = SerproDataSegregationClass::TrialSimulated->value;
+                $lastCheck = 'SIMULATED_PENDING_VERIFICATION';
+                $acceptedAt = null;
+            } elseif ($needsAccept) {
+                $status = TaxProxyPowerStatus::Pending;
+                $provenance = self::PROVENANCE_API_VERIFIED;
+                $segregation = SerproDataSegregationClass::Production->value;
+                $lastCheck = 'PENDING_ACCEPT';
+                $acceptedAt = null;
+            } else {
+                $status = $remoteStatus === TaxProxyPowerStatus::Active
+                    ? TaxProxyPowerStatus::Active
+                    : $remoteStatus;
+                $provenance = self::PROVENANCE_API_VERIFIED;
+                $segregation = SerproDataSegregationClass::Production->value;
+                $lastCheck = 'API_OK';
+            }
+
             $saved[] = TaxProxyPower::query()->updateOrCreate(
                 [
                     'office_id' => $office->id,
                     'client_id' => $client->id,
-                    'power_code' => strtoupper($row['power_code']),
+                    'power_code' => $code,
                     'author_identity' => $auth->author_identity,
                     'source' => TaxProxyPowerSource::IntegraProcuracoes->value,
                 ],
                 [
                     'office_serpro_authorization_id' => $auth->id,
+                    'environment' => $environment->value,
                     'contributor_cnpj' => $contributor,
-                    'system_code' => strtoupper($row['system_code']),
+                    'system_code' => strtoupper((string) ($row['system_code'] ?? '')),
                     'service_code' => isset($row['service_code']) ? strtoupper((string) $row['service_code']) : null,
-                    'status' => TaxProxyPowerStatus::tryFrom(strtoupper($row['status'])) ?? TaxProxyPowerStatus::Active,
+                    'status' => $status,
+                    'provenance' => $provenance,
+                    'segregation_class' => $segregation,
                     'valid_from' => ! empty($row['valid_from']) ? CarbonImmutable::parse($row['valid_from']) : null,
                     'valid_to' => ! empty($row['valid_to']) ? CarbonImmutable::parse($row['valid_to']) : null,
+                    'accepted_at' => $acceptedAt,
+                    'freshness_checked_at' => now(),
+                    'closed_at' => null,
                     'evidence_ref' => $result->evidenceRef,
-                    'verified_at' => now(),
-                    'last_check_result' => $result->simulated ? 'SIMULATED' : 'API_OK',
-                    'metadata' => ['simulated' => $result->simulated],
+                    'verified_at' => $result->simulated ? null : now(),
+                    'last_check_result' => $lastCheck,
+                    'metadata' => [
+                        'simulated' => $result->simulated,
+                        'accept_status' => $acceptRaw !== '' ? $acceptRaw : null,
+                    ],
                 ],
+            );
+        }
+
+        // Sync completo autenticado: encerra poderes da mesma fonte que sumiram
+        $closed = 0;
+        if ($isFullSync && ! $result->simulated) {
+            $closed = $this->closeMissingPowers(
+                office: $office,
+                client: $client,
+                auth: $auth,
+                environment: $environment,
+                seenPowerCodes: $seenCodes,
             );
         }
 
         $this->audit->record('serpro.proxy_power.sync', 'SUCCESS', $auth, [
             'client_id' => $client->id,
             'count' => count($saved),
+            'closed' => $closed,
             'simulated' => $result->simulated,
+            'full_sync' => $isFullSync,
         ], $actorUserId, $office->id);
 
         return $saved;
+    }
+
+    /**
+     * Encerra deterministicamente poderes ACTIVE da fonte API ausentes no sync completo.
+     *
+     * @param  list<string>  $seenPowerCodes
+     */
+    public function closeMissingPowers(
+        Office $office,
+        Client $client,
+        OfficeSerproAuthorization $auth,
+        SerproEnvironment $environment,
+        array $seenPowerCodes,
+    ): int {
+        $seen = array_map('strtoupper', $seenPowerCodes);
+
+        $query = TaxProxyPower::query()
+            ->where('office_id', $office->id)
+            ->where('client_id', $client->id)
+            ->where('author_identity', $auth->author_identity)
+            ->where('source', TaxProxyPowerSource::IntegraProcuracoes->value)
+            ->where('environment', $environment->value)
+            ->whereIn('status', [
+                TaxProxyPowerStatus::Active->value,
+                TaxProxyPowerStatus::Pending->value,
+            ])
+            ->whereNull('closed_at');
+
+        if ($seen !== []) {
+            $query->whereNotIn('power_code', $seen);
+        }
+
+        $closed = 0;
+        foreach ($query->get() as $power) {
+            $power->status = TaxProxyPowerStatus::Revoked;
+            $power->closed_at = now();
+            $power->last_check_result = 'CLOSED_MISSING_FROM_FULL_SYNC';
+            $power->save();
+            $closed++;
+        }
+
+        return $closed;
     }
 
     public function findUsablePower(
@@ -152,18 +332,47 @@ final class TaxProxyPowerService
         int $clientId,
         string $powerCode,
         string $authorIdentity,
+        ?SerproEnvironment $environment = null,
+        bool $requireD1 = false,
+        bool $requireFresh = true,
+        bool $requireAccept = true,
     ): ?TaxProxyPower {
-        $power = TaxProxyPower::query()
+        $query = TaxProxyPower::query()
             ->where('office_id', $officeId)
             ->where('client_id', $clientId)
             ->where('power_code', strtoupper($powerCode))
             ->where('author_identity', $authorIdentity)
             ->where('status', TaxProxyPowerStatus::Active->value)
-            ->orderByDesc('id')
-            ->first();
+            ->whereNull('closed_at')
+            ->orderByDesc('id');
+
+        if ($environment !== null) {
+            $query->where(function ($q) use ($environment): void {
+                $q->where('environment', $environment->value)
+                    ->orWhereNull('environment');
+            });
+        }
+
+        $power = $query->first();
 
         if ($power === null) {
             return null;
+        }
+
+        // Simulado nunca satisfaz uso real
+        if ($power->provenance === self::PROVENANCE_SIMULATED
+            || $power->segregation_class === SerproDataSegregationClass::TrialSimulated->value
+            || $power->segregation_class === SerproDataSegregationClass::Fake->value
+            || $power->segregation_class === SerproDataSegregationClass::Demo->value) {
+            if ($environment === SerproEnvironment::Production
+                || $environment === SerproEnvironment::Homologation) {
+                return null;
+            }
+            // Trial: ainda exige ACTIVE não-simulado para elegibilidade de chamada "real"
+            // Simulado só conta se config permitir (testes/dev)
+            if (! (bool) config('serpro.proxy_powers.allow_simulated_in_trial', false)) {
+                return null;
+            }
         }
 
         if (! $power->isCurrentlyValid()) {
@@ -175,31 +384,106 @@ final class TaxProxyPowerService
             return null;
         }
 
+        $strict = $environment === SerproEnvironment::Production
+            || $environment === SerproEnvironment::Homologation;
+
+        if ($requireAccept && ! $power->isAcceptedByAuthorizee()) {
+            // Trial: ACTIVE legado (sem accepted_at) permanece usável; PENDING/simulado não.
+            if ($strict || $power->status !== TaxProxyPowerStatus::Active) {
+                return null;
+            }
+            if (in_array($power->provenance, [
+                self::PROVENANCE_SIMULATED,
+                self::PROVENANCE_MANUAL_PENDING,
+            ], true)) {
+                return null;
+            }
+        }
+
+        if ($requireFresh && ! $power->isFresh()) {
+            // Produção exige frescor; Trial só bloqueia se freshness_checked_at existir e estiver velho.
+            if ($strict) {
+                return null;
+            }
+            if ($power->freshness_checked_at !== null && ! $power->isFresh()) {
+                return null;
+            }
+        }
+
+        if ($requireD1 && ! $power->coversD1()) {
+            return null;
+        }
+
         return $power;
     }
 
-    private function resolveContributorCnpj(Client $client): string
-    {
-        $matrix = $client->establishments()
-            ->where('is_matrix', true)
-            ->orderBy('id')
+    /**
+     * Diagnóstico de por que um poder não é usável (para eligibility codes).
+     *
+     * @return list<string>
+     */
+    public function diagnoseUnusable(
+        int $officeId,
+        int $clientId,
+        string $powerCode,
+        string $authorIdentity,
+        ?SerproEnvironment $environment = null,
+        bool $requireD1 = false,
+    ): array {
+        $reasons = [];
+
+        $power = TaxProxyPower::query()
+            ->where('office_id', $officeId)
+            ->where('client_id', $clientId)
+            ->where('power_code', strtoupper($powerCode))
+            ->where('author_identity', $authorIdentity)
+            ->orderByDesc('id')
             ->first();
 
-        if ($matrix !== null && is_string($matrix->cnpj) && strlen($matrix->cnpj) === 14) {
-            return strtoupper($matrix->cnpj);
+        if ($power === null) {
+            return ['PROXY_POWER_MISSING'];
         }
 
-        $any = $client->establishments()->orderBy('id')->first();
-        if ($any !== null && is_string($any->cnpj) && strlen($any->cnpj) === 14) {
-            return strtoupper($any->cnpj);
+        if ($power->status !== TaxProxyPowerStatus::Active || $power->closed_at !== null) {
+            if ($power->status === TaxProxyPowerStatus::Pending) {
+                if (($power->metadata['accept_status'] ?? null) === 'PENDING_ACCEPT'
+                    || $power->last_check_result === 'PENDING_ACCEPT') {
+                    $reasons[] = 'PROXY_POWER_NOT_ACCEPTED';
+                } elseif ($power->provenance === self::PROVENANCE_SIMULATED
+                    || $power->provenance === self::PROVENANCE_MANUAL_PENDING) {
+                    $reasons[] = 'PROXY_POWER_MISSING';
+                } else {
+                    $reasons[] = 'PROXY_POWER_NOT_ACCEPTED';
+                }
+            } elseif ($power->status === TaxProxyPowerStatus::Expired) {
+                $reasons[] = 'PROXY_POWER_EXPIRED';
+            } else {
+                $reasons[] = 'PROXY_POWER_MISSING';
+            }
         }
 
-        $root = strtoupper((string) $client->root_cnpj);
-        if (strlen($root) === 14) {
-            return $root;
+        if ($power->valid_to !== null && $power->valid_to->isPast()) {
+            $reasons[] = 'PROXY_POWER_EXPIRED';
         }
 
-        // Fallback determinístico para testes sem establishment (não é CNPJ válido de DV).
-        return str_pad(substr($root, 0, 8), 14, '0');
+        if (! $power->isAcceptedByAuthorizee()) {
+            $reasons[] = 'PROXY_POWER_NOT_ACCEPTED';
+        }
+
+        if (! $power->isFresh()) {
+            $reasons[] = 'PROXY_POWER_STALE';
+        }
+
+        if ($requireD1 && ! $power->coversD1()) {
+            $reasons[] = 'PROXY_POWER_D1_MISSING';
+        }
+
+        if ($environment !== null
+            && $power->environment !== null
+            && $power->environment !== $environment->value) {
+            $reasons[] = 'ENVIRONMENT_MISMATCH';
+        }
+
+        return $reasons === [] ? ['PROXY_POWER_INSUFFICIENT'] : array_values(array_unique($reasons));
     }
 }

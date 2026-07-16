@@ -14,6 +14,8 @@ use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Integra\ContributorCnpjResolver;
+use App\Services\Serpro\Catalog\OperationKeyMap;
 use App\Services\Serpro\SerproContractService;
 use Illuminate\Support\Str;
 use Throwable;
@@ -29,6 +31,7 @@ final class FiscalMutationService
         private readonly FiscalMutationTransport $transport,
         private readonly SerproContractService $contracts,
         private readonly AuditLogger $audit,
+        private readonly ContributorCnpjResolver $contributors,
     ) {}
 
     /**
@@ -567,19 +570,30 @@ final class FiscalMutationService
 
         // Identidades reais só no transporte — não logar
         $contributorCnpj = $this->resolveContributorCnpj($client);
-        $contractorCnpj = $contract?->contractor_cnpj ?? '00000000000000';
-        $authorIdentity = $auth?->author_identity ?? '00000000000';
+        if ($contract === null || ! $contract->isUsable()) {
+            throw new \RuntimeException('Contrato SERPRO indisponível para mutação fiscal.');
+        }
+        $contractorCnpj = (string) $contract->contractor_cnpj;
+        $authorIdentity = trim((string) ($auth?->author_identity ?? ''));
+        if ($authorIdentity === '' || $authorIdentity === '00000000000000') {
+            throw new \RuntimeException('Autor do Pedido não configurado para mutação fiscal.');
+        }
+
+        $operationKey = OperationKeyMap::require(
+            null,
+            $operation->solution_code,
+            $operation->service_code,
+            $operation->operation_code,
+        );
 
         return new IntegraRequest(
             officeId: (int) $operation->office_id,
             clientId: (int) $operation->client_id,
             environment: $env->value,
-            solutionCode: $operation->solution_code,
-            serviceCode: $operation->service_code,
-            operationCode: $operation->operation_code,
             contractorCnpj: $contractorCnpj,
             authorIdentity: $authorIdentity,
             contributorCnpj: $contributorCnpj,
+            operationKey: $operationKey,
             payload: [
                 'competence' => $operation->competence_period_key,
                 'request_keys' => array_keys($operation->request_sanitized ?? []),
@@ -587,6 +601,10 @@ final class FiscalMutationService
             ],
             idempotencyKey: $operation->idempotency_key,
             correlationId: $operation->correlation_id,
+            isMutating: true,
+            solutionCode: $operation->solution_code,
+            serviceCode: $operation->service_code,
+            operationCode: $operation->operation_code,
         );
     }
 
@@ -738,13 +756,7 @@ final class FiscalMutationService
 
     private function resolveContributorCnpj(Client $client): string
     {
-        // Reutiliza lógica do TaxProxyPowerService via reflection-free fallback
-        $root = strtoupper(preg_replace('/[^0-9A-Za-z]/', '', (string) $client->root_cnpj) ?? '');
-        if (strlen($root) === 14) {
-            return $root;
-        }
-
-        return str_pad(substr($root, 0, 8), 14, '0');
+        return $this->contributors->resolve($client);
     }
 
     private function resolveContributorMaskedRef(Client $client): string

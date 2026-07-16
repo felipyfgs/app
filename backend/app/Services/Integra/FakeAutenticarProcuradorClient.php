@@ -5,6 +5,7 @@ namespace App\Services\Integra;
 use App\Contracts\AutenticarProcuradorClient;
 use App\DTO\Serpro\ProcuradorAuthRequest;
 use App\DTO\Serpro\ProcuradorAuthResult;
+use App\Enums\TermoAuthorizationState;
 use Carbon\CarbonImmutable;
 
 final class FakeAutenticarProcuradorClient implements AutenticarProcuradorClient
@@ -19,6 +20,8 @@ final class FakeAutenticarProcuradorClient implements AutenticarProcuradorClient
             token: 'fake-procurador-'.$request->officeId.'-'.bin2hex(random_bytes(8)),
             expiresAt: $expires,
             simulated: true,
+            // Fake/simulado NUNCA produz SERPRO_ACCEPTED.
+            authorizationState: TermoAuthorizationState::Simulated->value,
         );
     }
 }

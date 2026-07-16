@@ -116,5 +116,16 @@
         <!-- Ledger SERPRO: shadow on / bloqueio comercial off no CI -->
         <env name="SERPRO_USAGE_SHADOW_MODE" value="true" force="true"/>
         <env name="SERPRO_USAGE_COMMERCIAL_BLOCKING" value="false" force="true"/>
+        <!-- Integra Contador: doubles em testing; .env local de piloto não deve vazar -->
+        <server name="SERPRO_USE_FAKE_CLIENTS" value="true"/>
+        <server name="SERPRO_DEFAULT_ENVIRONMENT" value="TRIAL"/>
+        <server name="SERPRO_SMOKE_ENABLED" value="false"/>
+        <server name="SERPRO_KILL_SWITCH" value="false"/>
+        <server name="SERPRO_PROD_CHECK_STRICT" value="false"/>
+        <env name="SERPRO_USE_FAKE_CLIENTS" value="true" force="true"/>
+        <env name="SERPRO_DEFAULT_ENVIRONMENT" value="TRIAL" force="true"/>
+        <env name="SERPRO_SMOKE_ENABLED" value="false" force="true"/>
+        <env name="SERPRO_KILL_SWITCH" value="false" force="true"/>
+        <env name="SERPRO_PROD_CHECK_STRICT" value="false" force="true"/>
     </php>
 </phpunit>

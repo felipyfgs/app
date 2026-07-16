@@ -53,8 +53,17 @@ return [
     | simulated é rejeitado em APP_ENV=production no preflight.
     */
     'capabilities' => [
+        // Drivers explícitos por família (disabled|simulated|real). simulated proibido em production.
         'sitfis' => env('SERPRO_CAPABILITY_SITFIS', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
         'autentica_procurador' => env('SERPRO_CAPABILITY_AUTENTICA_PROCURADOR', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
+        'authorization' => env('SERPRO_CAPABILITY_AUTHORIZATION', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
+        'mailbox' => env('SERPRO_CAPABILITY_MAILBOX', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
+        'dctfweb' => env('SERPRO_CAPABILITY_DCTFWEB', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
+        'simples_mei' => env('SERPRO_CAPABILITY_SIMPLES_MEI', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
+        'installments' => env('SERPRO_CAPABILITY_INSTALLMENTS', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
+        'guides' => env('SERPRO_CAPABILITY_GUIDES', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
+        'registrations' => env('SERPRO_CAPABILITY_REGISTRATIONS', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
+        'tax_processes' => env('SERPRO_CAPABILITY_TAX_PROCESSES', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
         'default' => env('SERPRO_CAPABILITY_DEFAULT', 'disabled'),
     ],
 
@@ -91,6 +100,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Retenção / offboarding (dias) — ledger e auditoria preservados
+    |--------------------------------------------------------------------------
+    */
+    'retention' => [
+        'pfx_days' => (int) env('SERPRO_RETENTION_PFX_DAYS', 2555),
+        'token_days' => (int) env('SERPRO_RETENTION_TOKEN_DAYS', 0),
+        'termo_days' => (int) env('SERPRO_RETENTION_TERMO_DAYS', 2555),
+        'power_days' => (int) env('SERPRO_RETENTION_POWER_DAYS', 2555),
+        'evidence_days' => (int) env('SERPRO_RETENTION_EVIDENCE_DAYS', 2555),
+        'ledger_days' => (int) env('SERPRO_RETENTION_LEDGER_DAYS', 2555),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Reapresentação do Termo após expirar token do procurador
     |--------------------------------------------------------------------------
     | PENDING_VALIDATION | REUSE_STORED_TERM | REQUIRE_NEW_SIGNATURE
@@ -107,20 +130,46 @@ return [
     |--------------------------------------------------------------------------
     | Deve coincidir com o CNPJ do contrato ativo no ambiente.
     */
+    /*
+    |--------------------------------------------------------------------------
+    | PFX do contratante (e-CNPJ A1)
+    |--------------------------------------------------------------------------
+    */
+    'contractor_pfx' => [
+        /** Dias mínimos de validade residual para promoção/cutover. */
+        'min_horizon_days' => (int) env('SERPRO_CONTRACTOR_PFX_MIN_HORIZON_DAYS', 7),
+        /** Exigir extracerts no PFX (cadeia). */
+        'require_chain' => filter_var(env('SERPRO_CONTRACTOR_PFX_REQUIRE_CHAIN', false), FILTER_VALIDATE_BOOL),
+        /** Aprovações distintas (quatro olhos) para cutover. */
+        'cutover_approvals_required' => (int) env('SERPRO_CREDENTIAL_CUTOVER_APPROVALS', 2),
+    ],
+
     'termo_destination_cnpj' => env('SERPRO_TERMO_DESTINATION_CNPJ', ''),
+    'termo_destination_name' => env('SERPRO_TERMO_DESTINATION_NAME', 'CONTRATANTE'),
     'termo_xsd_path' => env(
         'SERPRO_TERMO_XSD_PATH',
         resource_path('serpro/xsd/termo-autorizacao.v1.xsd'),
     ),
+    'termo_schema_meta_path' => env(
+        'SERPRO_TERMO_SCHEMA_META_PATH',
+        resource_path('serpro/xsd/termo-autorizacao.v1.meta.json'),
+    ),
 
     /*
     |--------------------------------------------------------------------------
-    | Rate limit global (aprox.)
+    | Rate limits contratuais (opt-in)
+    |
+    | Não há números oficiais universais no catálogo. Zero desabilita o
+    | limitador local até que o contrato/operação forneça um limite validado.
     |--------------------------------------------------------------------------
     */
     'rate_limit' => [
-        'global_per_minute' => (int) env('SERPRO_RATE_LIMIT_GLOBAL_PER_MINUTE', 120),
-        'per_office_per_minute' => (int) env('SERPRO_RATE_LIMIT_OFFICE_PER_MINUTE', 30),
+        'version' => (string) env('SERPRO_RATE_LIMIT_VERSION', 'v1'),
+        'global_per_minute' => (int) env('SERPRO_RATE_LIMIT_GLOBAL_PER_MINUTE', 0),
+        'per_office_per_minute' => (int) env('SERPRO_RATE_LIMIT_OFFICE_PER_MINUTE', 0),
+        'default_operation_per_minute' => (int) env('SERPRO_RATE_LIMIT_OPERATION_PER_MINUTE', 0),
+        /** @var array<string, array{per_minute?: int}> */
+        'operations' => [],
     ],
 
     /*
@@ -129,7 +178,188 @@ return [
     |--------------------------------------------------------------------------
     */
     'smoke' => [
+        /** Opt-in operacional. Default OFF. NUNCA habilitar em CI. */
         'enabled' => filter_var(env('SERPRO_SMOKE_ENABLED', false), FILTER_VALIDATE_BOOL),
         'status' => env('SERPRO_SMOKE_STATUS', 'PENDING_OPS'),
+        /**
+         * Frase exigida em --confirm para tls/oauth live.
+         * Ver SerproSmokeService::CONFIRM_PHRASE (I_UNDERSTAND_LIVE_SERPRO).
+         */
+        'confirm_phrase' => env('SERPRO_SMOKE_CONFIRM_PHRASE', 'I_UNDERSTAND_LIVE_SERPRO'),
+        /** Live smoke é proibido quando CI=true / GITHUB_ACTIONS (hard block no serviço). */
+        'allow_in_ci' => false,
+        /**
+         * Host padrão do handshake TLS (default = host de serpro.oauth.token_url).
+         * Apenas HTTPS; nunca path /Consultar|/Emitir|/Declarar.
+         */
+        'tls_url' => env('SERPRO_SMOKE_TLS_URL'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Go-live / contenção produtiva
+    |--------------------------------------------------------------------------
+    | prod_check_strict: em true, serpro:prod-check falha em qualquer issue.
+    | allow_real_drivers_in_prod_check: somente para ensaios controlados.
+    | official_sources_manifest: registro versionado de fontes oficiais.
+    */
+    'prod_check_strict' => filter_var(env('SERPRO_PROD_CHECK_STRICT', false), FILTER_VALIDATE_BOOL),
+    'allow_real_drivers_in_prod_check' => filter_var(
+        env('SERPRO_ALLOW_REAL_DRIVERS_IN_PROD_CHECK', false),
+        FILTER_VALIDATE_BOOL
+    ),
+    'official_sources_manifest' => env(
+        'SERPRO_OFFICIAL_SOURCES_MANIFEST',
+        resource_path('serpro/official-sources.v2026-07-16.json')
+    ),
+
+    /*
+    | Endpoint OAuth alternativo (Área do Cliente) — BLOQUEADO até gate externo.
+    | Nunca usar como token_url de produção.
+    */
+    'oauth_alternate_blocked' => true,
+    'oauth_canonical_host' => 'autenticacao.sapi.serpro.gov.br',
+    'oauth_canonical_path' => '/authenticate',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Matriz de poderes e procurações
+    |--------------------------------------------------------------------------
+    */
+    'power_matrix_manifest' => env(
+        'SERPRO_POWER_MATRIX_MANIFEST',
+        resource_path('serpro/power-matrix.v2026-07-16.json')
+    ),
+    'proxy_powers' => [
+        /** Idade máxima da evidência de procuração (horas) para elegibilidade. */
+        'freshness_max_age_hours' => (int) env('SERPRO_PROXY_FRESHNESS_HOURS', 168),
+        /** Permite poderes simulados no Trial (somente dev/test). Default off. */
+        'allow_simulated_in_trial' => filter_var(
+            env('SERPRO_PROXY_ALLOW_SIMULATED_IN_TRIAL', false),
+            FILTER_VALIDATE_BOOL
+        ),
+        /** Free smoke NÃO pode chamar OBTERPROCURACAO41 faturável. */
+        'allow_billable_lookup_in_free_smoke' => filter_var(
+            env('SERPRO_PROXY_ALLOW_BILLABLE_IN_FREE_SMOKE', false),
+            FILTER_VALIDATE_BOOL
+        ),
+        /**
+         * Hash observado da página oficial (se capturado em runtime/ops).
+         * Divergência da matriz aprovada ⇒ REVIEW_REQUIRED.
+         */
+        'observed_source_sha256' => env('SERPRO_PROXY_MATRIX_OBSERVED_SHA256'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Lifecycle / alertas de expiração (somente verificação — sem assinar/mutar)
+    |--------------------------------------------------------------------------
+    | Janelas em dias antes do vencimento: 90, 60, 30, 15, 7, 1.
+    */
+    'lifecycle' => [
+        'alert_days' => [90, 60, 30, 15, 7, 1],
+        'token_renewal_skew_seconds' => (int) env('SERPRO_TOKEN_RENEWAL_SKEW_SECONDS', 300),
+        'lock_seconds' => (int) env('SERPRO_LIFECYCLE_LOCK_SECONDS', 120),
+        'queue' => env('SERPRO_LIFECYCLE_QUEUE', 'default'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Filas Horizon (devem constar em config/horizon.php supervisors)
+    |--------------------------------------------------------------------------
+    */
+    'queues' => [
+        'fiscal' => env('SERPRO_QUEUE_FISCAL', 'fiscal'),
+        'default' => env('SERPRO_QUEUE_DEFAULT', 'default'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Jobs assíncronos SERPRO/fiscal (retry, backoff, flags)
+    |--------------------------------------------------------------------------
+    */
+    'jobs' => [
+        'tries' => (int) env('SERPRO_JOB_TRIES', 3),
+        'timeout_seconds' => (int) env('SERPRO_JOB_TIMEOUT_SECONDS', 300),
+        'backoff' => [30, 120, 300],
+        /** Capabilities cujo driver precisa estar ≠ disabled no dispatch e no handle. */
+        'flag_capabilities' => [
+            'RefreshRegistrationLinksJob' => 'registrations',
+            'RefreshTaxProcessesJob' => 'tax_processes',
+            'SignTermoWithManagedA1Job' => 'autentica_procurador',
+            'PollEventosAtualizacaoJob' => 'authorization',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Eventos de Atualização (/Monitorar) — limites versionados oficiais
+    |--------------------------------------------------------------------------
+    | Fonte: eventos_limites no manifesto official-sources.
+    | 429 remoto: não retry até a janela diária (America/Sao_Paulo) reabrir.
+    */
+    'eventos' => [
+        'limits_version' => (string) env('SERPRO_EVENTOS_LIMITS_VERSION', 'v2026-07-16'),
+        'pf_per_day' => (int) env('SERPRO_EVENTOS_PF_PER_DAY', 1000),
+        'pj_per_day' => (int) env('SERPRO_EVENTOS_PJ_PER_DAY', 1000),
+        'contributors_per_batch' => (int) env('SERPRO_EVENTOS_CONTRIBUTORS_PER_BATCH', 1000),
+        'timezone' => env('SERPRO_EVENTOS_TZ', 'America/Sao_Paulo'),
+        /**
+         * Fallback defensivo APENAS quando a resposta de solicitação omite
+         * TempoEsperaMedioEmMs. O fluxo NUNCA usa isso no lugar de TempoLimiteEmMin
+         * recebido (one-shot / TTL do protocolo).
+         */
+        'fallback_wait_ms_if_omitted' => (int) env('SERPRO_EVENTOS_FALLBACK_WAIT_MS', 5000),
+        'queue' => env('SERPRO_EVENTOS_QUEUE', 'fiscal'),
+        'solicit_pf_operation_key' => 'eventosatualizacao.soliceventospf',
+        'solicit_pj_operation_key' => 'eventosatualizacao.soliceventospj',
+        'obter_pf_operation_key' => 'eventosatualizacao.obtereventospf',
+        'obter_pj_operation_key' => 'eventosatualizacao.obtereventospj',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Observabilidade / alertas / runbooks (sem PII nos labels)
+    |--------------------------------------------------------------------------
+    */
+    'observability' => [
+        'stuck_queue_seconds' => (int) env('SERPRO_STUCK_QUEUE_SECONDS', 900),
+        'horizon_snapshot_enabled' => filter_var(
+            env('SERPRO_HORIZON_SNAPSHOT_ENABLED', true),
+            FILTER_VALIDATE_BOOL
+        ),
+        'ops_scan_enabled' => filter_var(env('SERPRO_OPS_SCAN_ENABLED', true), FILTER_VALIDATE_BOOL),
+        'runbooks' => [
+            'credential_compromised' => 'docs/ops/runbooks/serpro-credential-rotation.md',
+            'credential_rotation' => 'docs/ops/runbooks/serpro-credential-rotation.md',
+            'clean_prod_deploy' => 'docs/ops/runbooks/serpro-clean-prod-deploy.md',
+            'smoke' => 'docs/ops/runbooks/serpro-smoke.md',
+            'free_smoke_ladder' => 'docs/ops/runbooks/serpro-free-smoke-ladder.md',
+            'go_live_rollout' => 'docs/ops/runbooks/serpro-go-live-rollout.md',
+            'cert_expiry' => 'docs/ops/runbooks/serpro-incidents.md',
+            'termo_rejected' => 'docs/ops/runbooks/serpro-incidents.md',
+            'http_401' => 'docs/ops/runbooks/serpro-incidents.md',
+            'http_403_billable' => 'docs/ops/runbooks/serpro-incidents.md',
+            'http_429' => 'docs/ops/runbooks/serpro-incidents.md',
+            'http_5xx' => 'docs/ops/runbooks/serpro-incidents.md',
+            'breaker_open' => 'docs/ops/runbooks/serpro-incidents.md',
+            'budget_exceeded' => 'docs/ops/runbooks/serpro-incidents.md',
+            'queue_stuck' => 'docs/ops/runbooks/serpro-incidents.md',
+            'document_drift' => 'docs/ops/runbooks/serpro-incidents.md',
+            'backup_restore' => 'docs/ops/runbooks/serpro-incidents.md',
+            'catalog_price' => 'docs/ops/runbooks/serpro-incidents.md',
+            'kill_switch' => 'docs/ops/runbooks/serpro-kill-switch.md',
+            'audit_integrity' => 'docs/ops/runbooks/serpro-audit-integrity.md',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Readiness (offline por default — sem token/fiscal implícito)
+    |--------------------------------------------------------------------------
+    */
+    'readiness' => [
+        'default_ttl_hours' => (int) env('SERPRO_READINESS_TTL_HOURS', 24),
+        'allow_live' => filter_var(env('SERPRO_READINESS_ALLOW_LIVE', false), FILTER_VALIDATE_BOOL),
     ],
 ];

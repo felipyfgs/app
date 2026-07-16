@@ -168,6 +168,25 @@ class TaxGuideController extends Controller
             'confirmation_summary.competence_period_key' => ['sometimes'],
             'confirmation_summary.amount_cents' => ['sometimes'],
             'confirmation_summary.effect' => ['sometimes', 'string', 'max:255'],
+            'operation_data' => ['sometimes', 'array'],
+            'operation_data.uf' => ['sometimes', 'nullable', 'string', 'size:2'],
+            'operation_data.municipio' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'operation_data.codigoReceita' => ['sometimes', 'string', 'max:10'],
+            'operation_data.codigoReceitaExtensao' => ['sometimes', 'string', 'max:10'],
+            'operation_data.numeroReferencia' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'operation_data.tipoPA' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'operation_data.dataPA' => ['sometimes', 'date'],
+            'operation_data.vencimento' => ['sometimes', 'nullable', 'date'],
+            'operation_data.cota' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'operation_data.valorImposto' => ['sometimes', 'numeric', 'min:0'],
+            'operation_data.valorMulta' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'operation_data.valorJuros' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'operation_data.ganhoCapital' => ['sometimes', 'boolean'],
+            'operation_data.dataAlienacao' => ['sometimes', 'nullable', 'date'],
+            'operation_data.dataConsolidacao' => ['sometimes', 'date'],
+            'operation_data.observacao' => ['sometimes', 'nullable', 'string', 'max:200'],
+            'operation_data.cno' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'operation_data.cnpjPrestador' => ['sometimes', 'nullable', 'string', 'max:20'],
         ]);
 
         $client = $this->resolveClient($office->id, (int) $data['client_id']);
@@ -192,6 +211,7 @@ class TaxGuideController extends Controller
                 idempotencyKey: $data['idempotency_key'] ?? null,
                 correlationId: $data['correlation_id'] ?? null,
                 forceReissue: (bool) ($data['force_reissue'] ?? false),
+                operationData: $data['operation_data'] ?? [],
             );
         } catch (GuideException $e) {
             return $this->guideError($e);

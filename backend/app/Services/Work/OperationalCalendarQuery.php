@@ -5,13 +5,13 @@ namespace App\Services\Work;
 use App\Domain\Work\DueDateCalculator;
 use App\Domain\Work\QueueBucketResolver;
 use App\Domain\Work\WorkRiskCalculator;
-use App\Enums\Work\TaskStatus;
 use App\Enums\Work\WorkRisk;
 use App\Models\OperationalTask;
 use App\Support\CurrentOffice;
 use App\Support\Work\OfficeTimezone;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -195,7 +195,7 @@ final class OperationalCalendarQuery
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder<OperationalTask>  $query
+     * @param  Builder<OperationalTask>  $query
      * @param  array<string, mixed>  $filters
      */
     private function applyFilters($query, array $filters): void

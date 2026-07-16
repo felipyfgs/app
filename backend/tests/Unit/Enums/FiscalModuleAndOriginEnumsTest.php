@@ -25,6 +25,8 @@ class FiscalModuleAndOriginEnumsTest extends TestCase
             'declarations',
             'guides',
             'fgts',
+            'registrations',
+            'tax_processes',
         ];
 
         $this->assertSame($expected, FiscalModuleKey::values());
@@ -32,6 +34,8 @@ class FiscalModuleAndOriginEnumsTest extends TestCase
         $this->assertSame('dctfweb_mit', FiscalModuleKey::Dctfweb->featureFlagKey());
         $this->assertNull(FiscalModuleKey::Dashboard->featureFlagKey());
         $this->assertSame(FiscalModuleKey::Mailbox, FiscalModuleKey::tryFromPath('/monitoring/mailbox'));
+        $this->assertSame(FiscalModuleKey::Registrations, FiscalModuleKey::tryFromRoute('vinculos'));
+        $this->assertSame(FiscalModuleKey::TaxProcesses, FiscalModuleKey::tryFromPath('/monitoring/tax-processes'));
     }
 
     public function test_data_origin_values_and_synthetic(): void

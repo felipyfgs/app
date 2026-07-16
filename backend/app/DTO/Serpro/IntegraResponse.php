@@ -61,12 +61,29 @@ final class IntegraResponse
             return $this->retryAfterSeconds;
         }
 
-        foreach (['tempoEspera', 'tempo_espera', 'waitSeconds'] as $key) {
+        foreach ([
+            'TempoEsperaMedioEmMs',
+            'tempoEsperaMedioEmMs',
+            'tempoEspera',
+            'tempo_espera',
+            'waitSeconds',
+        ] as $key) {
             if (isset($this->body[$key]) && is_numeric($this->body[$key])) {
-                return max(1, (int) $this->body[$key]);
+                $raw = (int) $this->body[$key];
+                // Campos *EmMs → segundos de espera (ceil)
+                if (str_contains($key, 'Ms') || str_contains($key, 'ms')) {
+                    return max(1, (int) ceil($raw / 1000));
+                }
+
+                return max(1, $raw);
             }
             if (is_array($this->dados) && isset($this->dados[$key]) && is_numeric($this->dados[$key])) {
-                return max(1, (int) $this->dados[$key]);
+                $raw = (int) $this->dados[$key];
+                if (str_contains($key, 'Ms') || str_contains($key, 'ms')) {
+                    return max(1, (int) ceil($raw / 1000));
+                }
+
+                return max(1, $raw);
             }
         }
 
@@ -92,7 +109,7 @@ final class IntegraResponse
             'retry_after_seconds' => $this->retryAfterSeconds,
             'correlation_id' => $this->correlationId,
             'latency_ms' => $this->latencyMs,
-            'etag' => $this->etag,
+            'has_etag' => $this->etag !== null && $this->etag !== '',
             'expires' => $this->expiresHeader,
             'business_status' => $this->businessStatus,
             'mensagens_count' => count($this->mensagens),

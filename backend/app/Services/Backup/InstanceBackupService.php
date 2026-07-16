@@ -2,13 +2,16 @@
 
 namespace App\Services\Backup;
 
+use App\Contracts\SecureObjectStore;
 use App\Models\InstanceBackupRun;
+use App\Services\Vault\EnvelopeCrypto;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -89,18 +92,53 @@ final class InstanceBackupService
                 }
             }
 
-            $required = $kind === InstanceBackupRun::KIND_FULL ? 2 : 1;
+            if ($kind === InstanceBackupRun::KIND_FULL) {
+                try {
+                    $components[] = $this->backupPrivateStorage($absoluteRunDir, $relativeRunDir);
+                } catch (Throwable $e) {
+                    $errors[] = $this->sanitizeMessage($e->getMessage());
+                }
+            }
+
+            $required = $kind === InstanceBackupRun::KIND_FULL ? 3 : 1;
             $ok = count($components) >= $required && $errors === [];
+
+            $packageCrypto = BackupPackageCrypto::fromConfig();
+            $packageEncrypted = false;
+            $packageRelative = null;
+            $packageSha = null;
+
+            if ($ok && $packageCrypto !== null && $kind === InstanceBackupRun::KIND_FULL) {
+                try {
+                    $sealed = $this->sealRunDirectory($absoluteRunDir, $components, $packageCrypto);
+                    $packageEncrypted = true;
+                    $packageRelative = $relativeRunDir.'/package.nfsebkp';
+                    $packageSha = $sealed['sha256'];
+                    $components[] = [
+                        'name' => 'package',
+                        'path' => $packageRelative,
+                        'sha256' => $packageSha,
+                        'byte_size' => $sealed['byte_size'],
+                        'format' => 'nfse-backup-package-v1',
+                        'encrypted' => true,
+                    ];
+                } catch (Throwable $e) {
+                    $errors[] = $this->sanitizeMessage($e->getMessage());
+                    $ok = false;
+                }
+            }
 
             $manifestRelative = $relativeRunDir.'/manifest.json';
             $manifestAbsolute = $absoluteRunDir.DIRECTORY_SEPARATOR.'manifest.json';
             $manifest = [
-                'format' => 'nfse-adn-backup-v1',
+                'format' => $packageEncrypted ? 'nfse-adn-backup-v3' : 'nfse-adn-backup-v2',
                 'kind' => $kind,
                 'created_at' => now()->toIso8601String(),
                 'app' => config('app.name'),
                 'components' => $components,
                 'master_key_included' => false,
+                'package_encrypted' => $packageEncrypted,
+                'vault_separated' => true,
             ];
 
             $this->assertManifestSafe($manifest);
@@ -233,6 +271,25 @@ final class InstanceBackupService
                 if (($component['name'] ?? null) === 'database') {
                     $this->assertDatabaseArtifactLooksRestorable($absolute, is_string($format) ? $format : null);
                 }
+
+                if (($component['name'] ?? null) === 'package' && ($component['encrypted'] ?? false)) {
+                    $this->assertEncryptedPackageOpenable($absolute);
+                }
+            }
+
+            $vaultRefStats = ['checked' => 0, 'missing' => 0, 'ok' => 0];
+            if (config('backup.drill_validate_vault_refs', true)) {
+                $vaultRefStats = $this->validateDbVaultReferences();
+                if ($vaultRefStats['missing'] > 0) {
+                    throw new RuntimeException(
+                        "Referências DB→vault quebradas: {$vaultRefStats['missing']} de {$vaultRefStats['checked']}."
+                    );
+                }
+            }
+
+            $decryptProof = null;
+            if (config('backup.drill_sample_decrypt', true)) {
+                $decryptProof = $this->proveVaultDecryptWithExternalKey();
             }
 
             $drill->fill([
@@ -241,7 +298,13 @@ final class InstanceBackupService
                 'byte_size' => $source->byte_size,
                 'manifest_path' => $source->manifest_path,
                 'checksum' => $source->checksum,
-                'message' => 'Drill OK no backup #'.$source->id.'.',
+                'message' => sprintf(
+                    'Drill OK no backup #%d. vault_refs=%d ok=%d decrypt=%s',
+                    $source->id,
+                    $vaultRefStats['checked'],
+                    $vaultRefStats['ok'],
+                    $decryptProof ?? 'skipped',
+                ),
             ]);
             $drill->save();
         } catch (Throwable $e) {
@@ -371,6 +434,261 @@ final class InstanceBackupService
             'sha256' => hash_file('sha256', $absolute),
             'byte_size' => (int) filesize($absolute),
         ];
+    }
+
+    /**
+     * Storage privado da aplicação (não é o vault; inclui spools/artefatos tenant).
+     *
+     * @return array{name: string, path: string, sha256: string, byte_size: int, format: string}
+     */
+    private function backupPrivateStorage(string $absoluteRunDir, string $relativeRunDir): array
+    {
+        $privateRoot = storage_path('app/private');
+        if (! is_dir($privateRoot)) {
+            File::ensureDirectoryExists($privateRoot, 0700);
+        }
+
+        $fileName = 'private.tar';
+        $absolute = $absoluteRunDir.DIRECTORY_SEPARATOR.$fileName;
+
+        $result = Process::path($privateRoot)->run([
+            'tar', '-cf', $absolute, '-C', $privateRoot, '.',
+        ]);
+
+        if (! $result->successful()) {
+            if (is_file($absolute)) {
+                @unlink($absolute);
+            }
+            $dest = $absoluteRunDir.DIRECTORY_SEPARATOR.'private';
+            $this->copyVaultTree($privateRoot, $dest);
+            $inventory = $this->inventoryChecksum($dest);
+            $marker = $absoluteRunDir.DIRECTORY_SEPARATOR.'private.sha256';
+            File::put($marker, $inventory."\n");
+            @chmod($marker, 0600);
+
+            return [
+                'name' => 'private',
+                'path' => $relativeRunDir.'/private.sha256',
+                'sha256' => hash_file('sha256', $marker),
+                'byte_size' => $this->directoryByteSize($dest),
+                'format' => 'directory_inventory',
+            ];
+        }
+
+        @chmod($absolute, 0600);
+
+        return [
+            'name' => 'private',
+            'path' => $relativeRunDir.'/'.$fileName,
+            'sha256' => hash_file('sha256', $absolute),
+            'byte_size' => (int) filesize($absolute),
+            'format' => 'tar',
+        ];
+    }
+
+    /**
+     * Empacota componentes em um único blob cifrado+autenticado (chave externa).
+     *
+     * @param  list<array<string, mixed>>  $components
+     * @return array{sha256: string, byte_size: int}
+     */
+    private function sealRunDirectory(string $absoluteRunDir, array $components, BackupPackageCrypto $crypto): array
+    {
+        $bundle = [
+            'format' => 'nfse-backup-inner-v1',
+            'created_at' => now()->toIso8601String(),
+            'files' => [],
+        ];
+
+        foreach ($components as $component) {
+            $name = (string) ($component['name'] ?? '');
+            $path = (string) ($component['path'] ?? '');
+            if ($name === '' || $path === '') {
+                continue;
+            }
+            $absolute = $this->absoluteFromRelative($path);
+            if (! is_file($absolute)) {
+                // directory_inventory: incluir marker + árvore se existirem
+                $siblingDir = dirname($absolute).DIRECTORY_SEPARATOR.$name;
+                if (is_dir($siblingDir)) {
+                    continue;
+                }
+                if (! is_file($absolute)) {
+                    throw new RuntimeException("Componente ausente para selar: {$name}");
+                }
+            }
+            $bytes = file_get_contents($absolute);
+            if ($bytes === false) {
+                throw new RuntimeException("Falha ao ler componente para selar: {$name}");
+            }
+            $bundle['files'][$name] = [
+                'path' => basename($absolute),
+                'sha256' => hash('sha256', $bytes),
+                'content_b64' => base64_encode($bytes),
+            ];
+        }
+
+        $plaintext = json_encode($bundle, JSON_THROW_ON_ERROR);
+        $sealed = $crypto->seal($plaintext);
+        $out = $absoluteRunDir.DIRECTORY_SEPARATOR.'package.nfsebkp';
+        File::put($out, $sealed);
+        @chmod($out, 0600);
+
+        return [
+            'sha256' => hash_file('sha256', $out),
+            'byte_size' => (int) filesize($out),
+        ];
+    }
+
+    private function assertEncryptedPackageOpenable(string $absolutePackage): void
+    {
+        $crypto = BackupPackageCrypto::fromConfig();
+        if ($crypto === null) {
+            throw new RuntimeException(
+                'Pacote cifrado presente, mas BACKUP_PACKAGE_KEY ausente (chave externa obrigatória no drill).'
+            );
+        }
+
+        $bytes = file_get_contents($absolutePackage);
+        if ($bytes === false || $bytes === '') {
+            throw new RuntimeException('Pacote cifrado ilegível.');
+        }
+
+        if (! BackupPackageCrypto::isSealedPackage($bytes)) {
+            throw new RuntimeException('Magic de pacote cifrado inválido.');
+        }
+
+        $plaintext = $crypto->open($bytes);
+        $decoded = json_decode($plaintext, true, 512, JSON_THROW_ON_ERROR);
+        if (! is_array($decoded) || ($decoded['format'] ?? null) !== 'nfse-backup-inner-v1') {
+            throw new RuntimeException('Conteúdo interno do pacote cifrado inválido.');
+        }
+        if (! is_array($decoded['files'] ?? null) || $decoded['files'] === []) {
+            throw new RuntimeException('Pacote cifrado sem arquivos internos.');
+        }
+    }
+
+    /**
+     * Valida que IDs de vault referenciados no DB existem no filesystem do cofre.
+     *
+     * @return array{checked: int, missing: int, ok: int}
+     */
+    private function validateDbVaultReferences(): array
+    {
+        $checked = 0;
+        $missing = 0;
+        $ok = 0;
+        $vaultRoot = (string) config('vault.disk_root');
+        $store = null;
+        try {
+            $store = app(SecureObjectStore::class);
+        } catch (Throwable) {
+            $store = null;
+        }
+
+        $columns = [
+            ['serpro_contracts', 'pfx_vault_object_id'],
+            ['serpro_contracts', 'oauth_vault_object_id'],
+            ['serpro_contracts', 'token_vault_object_id'],
+            ['serpro_credential_versions', 'pfx_vault_object_id'],
+            ['serpro_credential_versions', 'oauth_vault_object_id'],
+            ['serpro_credential_versions', 'token_vault_object_id'],
+            ['client_credentials', 'vault_object_id'],
+            ['office_credentials', 'vault_object_id'],
+            ['vault_object_journal', 'object_id'],
+        ];
+
+        foreach ($columns as [$table, $column]) {
+            if (! Schema::hasTable($table)
+                || ! Schema::hasColumn($table, $column)) {
+                continue;
+            }
+
+            $ids = DB::table($table)
+                ->whereNotNull($column)
+                ->where($column, '!=', '')
+                ->limit(500)
+                ->pluck($column);
+
+            foreach ($ids as $id) {
+                if (! is_string($id) || $id === '') {
+                    continue;
+                }
+                $checked++;
+                $exists = false;
+                if ($store !== null) {
+                    try {
+                        $exists = $store->exists($id);
+                    } catch (Throwable) {
+                        $exists = false;
+                    }
+                } else {
+                    // Fallback path layout ULID: ab/cd/{id}
+                    $path = rtrim($vaultRoot, DIRECTORY_SEPARATOR)
+                        .DIRECTORY_SEPARATOR
+                        .substr($id, 0, 2)
+                        .DIRECTORY_SEPARATOR
+                        .substr($id, 2, 2)
+                        .DIRECTORY_SEPARATOR
+                        .$id;
+                    $exists = is_file($path) || is_file($vaultRoot.DIRECTORY_SEPARATOR.$id);
+                }
+
+                if ($exists) {
+                    $ok++;
+                } else {
+                    $missing++;
+                }
+            }
+        }
+
+        return compact('checked', 'missing', 'ok');
+    }
+
+    /**
+     * Prova de descriptografia com chave mestra externa (config = "chave recuperada").
+     * Cria objeto sintético, reabre e apaga — não usa material produtivo real em texto claro.
+     */
+    private function proveVaultDecryptWithExternalKey(): string
+    {
+        $master = (string) config('vault.master_key');
+        if ($master === '') {
+            throw new RuntimeException('VAULT_MASTER_KEY ausente: drill de descriptografia impossível.');
+        }
+
+        // Chave errada deve falhar de forma explícita.
+        try {
+            $wrong = new EnvelopeCrypto(
+                random_bytes(SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_KEYBYTES),
+                1,
+            );
+            $sealed = (new EnvelopeCrypto(
+                base64_decode($master, true) ?: random_bytes(32),
+                (int) config('vault.master_key_version', 1),
+            ))->seal('drill-proof-'.bin2hex(random_bytes(4)), ['purpose' => 'BACKUP_DRILL']);
+
+            try {
+                $wrong->open($sealed, ['purpose' => 'BACKUP_DRILL']);
+                throw new RuntimeException('Drill: chave incorreta não falhou (invariante quebrada).');
+            } catch (RuntimeException $e) {
+                if (str_contains($e->getMessage(), 'invariante')) {
+                    throw $e;
+                }
+                // esperado
+            }
+
+            $crypto = EnvelopeCrypto::fromConfig();
+            $plain = $crypto->open($sealed, ['purpose' => 'BACKUP_DRILL']);
+            if (! str_starts_with($plain, 'drill-proof-')) {
+                throw new RuntimeException('Drill: plaintext inesperado após decrypt com chave externa.');
+            }
+
+            return 'ok';
+        } catch (RuntimeException $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            throw new RuntimeException('Drill de descriptografia falhou: '.$this->sanitizeMessage($e->getMessage()), 0, $e);
+        }
     }
 
     private function pgDumpToGzip(string $absoluteGzipPath, string $connection): void

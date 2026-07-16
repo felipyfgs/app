@@ -98,6 +98,9 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        'redis:fiscal' => 120,
+        'redis:'.env('SEFAZ_QUEUE_NFE', 'sync-sefaz-nfe') => 120,
+        'redis:'.env('IMPORT_QUEUE', 'import-xml') => 120,
     ],
 
     /*
@@ -201,9 +204,12 @@ return [
             'connection' => 'redis',
             'queue' => [
                 'default',
+                // SERPRO / fiscal hub (RefreshRegistrationLinks, TaxProcesses, Eventos, Termo A1)
+                env('SERPRO_QUEUE_FISCAL', 'fiscal'),
                 env('SEFAZ_QUEUE_NFE', 'sync-sefaz-nfe'),
                 env('SEFAZ_QUEUE_MANIFEST', 'manifest-nfe'),
                 env('SEFAZ_QUEUE_CTE', 'sync-sefaz-cte'),
+                env('SEFAZ_CTE_AUTXML_QUEUE', env('SEFAZ_QUEUE_CTE_AUTXML', 'sync-sefaz-cte-autxml')),
                 env('SEFAZ_AUTXML_QUEUE', 'sync-sefaz-autxml'),
                 env('SEFAZ_MA_OUTBOUND_QUEUE', 'capture-outbound-ma'),
                 env('IMPORT_QUEUE', 'import-xml'),

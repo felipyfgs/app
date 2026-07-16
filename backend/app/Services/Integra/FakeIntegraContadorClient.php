@@ -7,6 +7,7 @@ use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
 use App\Enums\FiscalSourceProvenance;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
+use App\Services\Serpro\Catalog\OperationKeyMap;
 
 /**
  * Client trial/CI — resultados SIMULATED por padrão (não viram evidência produtiva).
@@ -48,19 +49,57 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
         $this->calls++;
         $this->history[] = $request;
 
-        $key = $this->key(
-            (string) ($request->solutionCode ?? ''),
-            (string) ($request->serviceCode ?? ''),
-            (string) ($request->operationCode ?? ''),
-        );
-        if (! empty($this->queue[$key])) {
-            $next = array_shift($this->queue[$key]);
+        $queueKey = $this->resolveQueueKey($request);
+        if ($queueKey !== null && ! empty($this->queue[$queueKey])) {
+            $next = array_shift($this->queue[$queueKey]);
             $response = is_callable($next) ? $next($request) : $next;
 
             return $this->withProvenance($response, $request);
         }
 
         return $this->withProvenance($this->defaultResponse($request), $request);
+    }
+
+    /**
+     * Compatibiliza fila legada (SYSTEM|SERVICE|OP) com executor central (só operation_key).
+     */
+    private function resolveQueueKey(IntegraRequest $request): ?string
+    {
+        $direct = $this->key(
+            (string) ($request->solutionCode ?? ''),
+            (string) ($request->serviceCode ?? ''),
+            (string) ($request->operationCode ?? ''),
+        );
+        if (! empty($this->queue[$direct])) {
+            return $direct;
+        }
+
+        // Filas enfileiradas com solution/service/op vazios (testes de projeção).
+        $wildcard = $this->key('', '', '');
+        if (! empty($this->queue[$wildcard])) {
+            return $wildcard;
+        }
+
+        $opKey = trim((string) ($request->operationKey ?? ''));
+        if ($opKey === '') {
+            return null;
+        }
+
+        foreach (array_keys($this->queue) as $queued) {
+            if ($this->queue[$queued] === []) {
+                continue;
+            }
+            $parts = explode('|', $queued);
+            if (count($parts) !== 3) {
+                continue;
+            }
+            $mapped = OperationKeyMap::resolve(null, $parts[0], $parts[1], $parts[2]);
+            if ($mapped === $opKey) {
+                return $queued;
+            }
+        }
+
+        return null;
     }
 
     private function withProvenance(IntegraResponse $response, IntegraRequest $request): IntegraResponse
@@ -98,36 +137,73 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
 
     private function defaultResponse(IntegraRequest $request): IntegraResponse
     {
-        if (str_starts_with((string) $request->operationKey, 'sitfis.')) {
+        $opKey = (string) ($request->operationKey ?? '');
+        if (str_starts_with($opKey, 'sitfis.')) {
             return $this->sitfisResponse($request);
         }
 
         $op = strtoupper((string) ($request->operationCode ?? ''));
         $svc = strtoupper((string) ($request->serviceCode ?? ''));
         $solution = strtoupper((string) ($request->solutionCode ?? ''));
-        $period = (string) ($request->payload['competencia']
+        $period = (string) ($request->businessData['competencia']
+            ?? $request->businessData['period_key']
+            ?? $request->payload['competencia']
             ?? $request->payload['periodo']
             ?? $request->payload['ano']
             ?? '2026-01');
-        $force = strtoupper((string) ($request->payload['force_status']
+        $force = strtoupper((string) ($request->businessData['force_status']
+            ?? $request->payload['force_status']
             ?? $request->payload['scenario']
             ?? ''));
 
+        // operation_key canônico → domínio legado para corpos versionados
+        if (str_starts_with($opKey, 'pgdasd.') || str_starts_with($opKey, 'defis.')
+            || str_starts_with($opKey, 'regimeapuracao.') || str_starts_with($opKey, 'pgmei.')
+            || str_starts_with($opKey, 'ccmei.') || str_starts_with($opKey, 'dasnsimei.')) {
+            [$solution, $svc, $op] = $this->domainTripleFromOperationKey($opKey);
+        }
+
         // Integra-SN / Integra-MEI — corpos versionados (dto_version=1) para adapters SimplesMei
-        if ($solution === 'INTEGRA_SN' || $solution === 'INTEGRA_MEI') {
+        if ($solution === 'INTEGRA_SN' || $solution === 'INTEGRA_MEI'
+            || in_array($svc, ['PGDASD', 'DEFIS', 'REGIME_APURACAO', 'PGMEI', 'CCMEI', 'DASN_SIMEI'], true)) {
+            if ($solution === '' || $solution === 'PGDASD' || $solution === 'DEFIS') {
+                $solution = str_starts_with($opKey, 'pgmei.') || str_starts_with($opKey, 'ccmei.') || str_starts_with($opKey, 'dasnsimei.')
+                    ? 'INTEGRA_MEI'
+                    : 'INTEGRA_SN';
+            }
+
             return new IntegraResponse(
                 success: true,
                 httpStatus: 200,
-                body: $this->simplesMeiBody($solution, $svc, $op, $period, $force),
+                body: $this->simplesMeiBody($solution, $svc !== '' ? $svc : 'PGDASD', $op !== '' ? $op : 'CONSULTAR_DECLARACAO', $period, $force),
                 headers: ['x-simulated' => '1'],
                 simulated: true,
                 correlationId: $request->correlationId,
                 latencyMs: 1,
+                operationKey: $opKey !== '' ? $opKey : null,
             );
         }
 
+        // DCTF/MIT por operation_key canônico
+        if (str_starts_with($opKey, 'dctfweb.') || str_starts_with($opKey, 'mit.')) {
+            if (str_contains($opKey, 'trans') || str_contains($opKey, 'encapuracao') || str_contains($opKey, 'gerarguia')) {
+                $op = str_contains($opKey, 'encapuracao')
+                    ? DctfwebCodes::OP_MIT_ENCERRAR
+                    : (str_contains($opKey, 'gerarguia') ? DctfwebCodes::OP_EMITIR_DARF : DctfwebCodes::OP_TRANSMITIR);
+            }
+            if (str_starts_with($opKey, 'mit.')) {
+                $svc = DctfwebCodes::SERVICE_MIT;
+                $solution = DctfwebCodes::SYSTEM_MIT;
+            } else {
+                $svc = DctfwebCodes::SERVICE_DCTFWEB;
+                $solution = DctfwebCodes::SYSTEM_DCTFWEB;
+            }
+        }
+
         // Mutantes: simulado sem efeito real
-        if (in_array($op, [DctfwebCodes::OP_TRANSMITIR, DctfwebCodes::OP_MIT_ENCERRAR], true)) {
+        if (in_array($op, [DctfwebCodes::OP_TRANSMITIR, DctfwebCodes::OP_MIT_ENCERRAR], true)
+            || str_contains($opKey, 'transdeclaracao')
+            || str_contains($opKey, 'encapuracao')) {
             return new IntegraResponse(
                 success: true,
                 httpStatus: 200,
@@ -419,6 +495,26 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
     private function key(string $solution, string $service, string $operation): string
     {
         return strtoupper($solution).'|'.strtoupper($service).'|'.strtoupper($operation);
+    }
+
+    /**
+     * @return array{0: string, 1: string, 2: string} solution, service, operation
+     */
+    private function domainTripleFromOperationKey(string $operationKey): array
+    {
+        return match (true) {
+            str_starts_with($operationKey, 'pgdasd.gerardas') => ['INTEGRA_SN', 'PGDASD', 'GERAR_DAS'],
+            str_starts_with($operationKey, 'pgdasd.trans') => ['INTEGRA_SN', 'PGDASD', 'TRANSMITIR'],
+            str_starts_with($operationKey, 'pgdasd.') => ['INTEGRA_SN', 'PGDASD', 'CONSULTAR_DECLARACAO'],
+            str_starts_with($operationKey, 'defis.trans') => ['INTEGRA_SN', 'DEFIS', 'TRANSMITIR'],
+            str_starts_with($operationKey, 'defis.') => ['INTEGRA_SN', 'DEFIS', 'CONSULTAR'],
+            str_starts_with($operationKey, 'regimeapuracao.') => ['INTEGRA_SN', 'REGIME_APURACAO', 'CONSULTAR'],
+            str_starts_with($operationKey, 'pgmei.gerardas') => ['INTEGRA_MEI', 'PGMEI', 'GERAR_DAS'],
+            str_starts_with($operationKey, 'pgmei.') => ['INTEGRA_MEI', 'PGMEI', 'CONSULTAR'],
+            str_starts_with($operationKey, 'ccmei.') => ['INTEGRA_MEI', 'CCMEI', 'CONSULTAR'],
+            str_starts_with($operationKey, 'dasnsimei.') => ['INTEGRA_MEI', 'DASN_SIMEI', 'CONSULTAR'],
+            default => ['', '', ''],
+        };
     }
 
     /** Helper de teste: recibo transmitido produtivo. */

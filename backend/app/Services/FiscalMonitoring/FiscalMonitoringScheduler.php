@@ -202,6 +202,17 @@ final class FiscalMonitoringScheduler
             if ($locked === null || ! $locked->is_enabled) {
                 return 'skipped';
             }
+
+            // Scheduler NUNCA cria intenção mutante (fail-closed).
+            if ($this->looksMutating($locked)) {
+                $locked->forceFill([
+                    'next_run_at' => $this->nextRunAfter($locked, $now),
+                    'last_skip_reason' => 'MUTATING_NOT_SCHEDULED',
+                ])->save();
+
+                return 'blocked';
+            }
+
             $sitfisDriver = null;
             if (strtoupper((string) $locked->service_code) === 'SITFIS') {
                 $sitfisDriver = app(CapabilityDriverResolver::class)->forCapability('sitfis');
@@ -281,6 +292,28 @@ final class FiscalMonitoringScheduler
         }
 
         return $created;
+    }
+
+    /**
+     * Heurística fail-closed: códigos de operação tipicamente mutantes não entram no scheduler.
+     */
+    private function looksMutating(FiscalMonitoringSchedule $schedule): bool
+    {
+        $meta = is_array($schedule->metadata) ? $schedule->metadata : [];
+        $flag = strtoupper((string) ($meta['mutability'] ?? $meta['is_mutating'] ?? ''));
+        if (in_array($flag, ['MUTATING', 'WRITE', 'MUTATION', '1', 'TRUE'], true)) {
+            return true;
+        }
+
+        $op = strtoupper((string) $schedule->operation_code);
+        $mutatingOps = [
+            'TRANSMITIR', 'TRANSMITIR_DECLARACAO', 'TRANSDECLARACAO',
+            'EMITIR_GUIA', 'GERARGUIA', 'GERARDAS', 'GERAR_DAS',
+            'ENCERRAR', 'ENCAPURACAO', 'ADERIR', 'EFETUAROPCAOREGIME',
+            'ATUBENEFICIO', 'SOLICRENUNCIA',
+        ];
+
+        return in_array($op, $mutatingOps, true);
     }
 
     public function globalSlotAvailable(): bool

@@ -9,6 +9,7 @@ use Illuminate\Support\Carbon;
 
 /**
  * Versão de tabela de preços SERPRO (plano de controle — sem office_id).
+ * Somente eligibility=PRODUCTION e authorizes_production=true liberam egress real.
  */
 #[Fillable([
     'version_code',
@@ -18,6 +19,12 @@ use Illuminate\Support\Carbon;
     'is_active',
     'currency',
     'notes',
+    'source_url',
+    'source_hash',
+    'source_revision',
+    'eligibility',
+    'authorizes_production',
+    'billing_cycle_kind',
 ])]
 class SerproPriceVersion extends Model
 {
@@ -27,6 +34,7 @@ class SerproPriceVersion extends Model
             'effective_from' => 'immutable_datetime',
             'effective_to' => 'immutable_datetime',
             'is_active' => 'boolean',
+            'authorizes_production' => 'boolean',
         ];
     }
 
@@ -52,5 +60,12 @@ class SerproPriceVersion extends Model
         }
 
         return true;
+    }
+
+    public function authorizesProductiveEgress(): bool
+    {
+        return (bool) $this->authorizes_production
+            && strtoupper((string) $this->eligibility) === 'PRODUCTION'
+            && $this->is_active;
     }
 }

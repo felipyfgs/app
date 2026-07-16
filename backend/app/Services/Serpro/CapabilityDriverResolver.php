@@ -12,22 +12,50 @@ use RuntimeException;
 final class CapabilityDriverResolver
 {
     /**
-     * Mapa estável operation_key / família → chave de config.
+     * Prefixo de operation_key → chave de config.
      *
      * @var array<string, string>
      */
-    private const OPERATION_CAPABILITY = [
-        'sitfis.solicitar_protocolo' => 'sitfis',
-        'sitfis.emitir_relatorio' => 'sitfis',
-        'autentica_procurador.envio_xml_assinado' => 'autentica_procurador',
+    private const PREFIX_CAPABILITY = [
+        'sitfis.' => 'sitfis',
+        'autentica_procurador.' => 'autentica_procurador',
+        'autenticaprocurador.' => 'autentica_procurador',
+        'procuracoes.' => 'authorization',
+        'eventosatualizacao.' => 'authorization',
+        'caixa_postal.' => 'mailbox',
+        'dte.' => 'mailbox',
+        'dctfweb.' => 'dctfweb',
+        'mit.' => 'dctfweb',
+        'pgdasd.' => 'simples_mei',
+        'pgmei.' => 'simples_mei',
+        'ccmei.' => 'simples_mei',
+        'defis.' => 'simples_mei',
+        'regimeapuracao.' => 'simples_mei',
+        'dasnsimei.' => 'simples_mei',
+        'parc' => 'installments', // parcmei., parcsn., etc.
+        'pert' => 'installments',
+        'relp' => 'installments',
+        'sicalc.' => 'guides',
+        'pagtoweb.' => 'guides',
+        'pnr_contador.' => 'registrations',
+        'eprocesso.' => 'tax_processes',
     ];
 
     public function forOperationKey(string $operationKey): SerproCapabilityDriver
     {
-        $capability = self::OPERATION_CAPABILITY[$operationKey]
-            ?? $this->guessCapability($operationKey);
+        return $this->forCapability($this->capabilityForOperationKey($operationKey));
+    }
 
-        return $this->forCapability($capability);
+    public function capabilityForOperationKey(string $operationKey): string
+    {
+        $key = strtolower(trim($operationKey));
+        foreach (self::PREFIX_CAPABILITY as $prefix => $capability) {
+            if (str_starts_with($key, $prefix)) {
+                return $capability;
+            }
+        }
+
+        return 'default';
     }
 
     public function forCapability(string $capability): SerproCapabilityDriver
@@ -85,16 +113,15 @@ final class CapabilityDriverResolver
         }
     }
 
-    private function guessCapability(string $operationKey): string
+    /**
+     * @return list<string>
+     */
+    public function knownCapabilities(): array
     {
-        if (str_starts_with($operationKey, 'sitfis.')) {
-            return 'sitfis';
-        }
-        if (str_starts_with($operationKey, 'autentica_procurador.')) {
-            return 'autentica_procurador';
-        }
-
-        return 'default';
+        return array_values(array_unique(array_merge(
+            array_values(self::PREFIX_CAPABILITY),
+            ['default'],
+        )));
     }
 
     private function isProduction(): bool

@@ -15,6 +15,8 @@ use App\Services\Audit\AuditLogger;
 use App\Services\Fiscal\Guides\DTO\GuideEmissionRequest;
 use App\Services\Fiscal\Guides\Exceptions\GuideException;
 use App\Services\Fiscal\Guides\Exceptions\GuideTransportTimeoutException;
+use App\Services\Serpro\Catalog\OperationCoordinateResolver;
+use App\Services\Serpro\Catalog\OperationKeyMap;
 use App\Services\Serpro\Usage\UsageLedgerService;
 use App\Services\Serpro\Usage\UsageReserveRequest;
 use Carbon\CarbonImmutable;
@@ -34,6 +36,7 @@ final class GuideIssuanceService
         private readonly GuideStorageService $storage,
         private readonly UsageLedgerService $usage,
         private readonly AuditLogger $audit,
+        private readonly OperationCoordinateResolver $coordinates,
     ) {}
 
     /**
@@ -144,9 +147,19 @@ final class GuideIssuanceService
         ?string $idempotencyKey = null,
         ?string $correlationId = null,
         bool $forceReissue = false,
+        array $operationData = [],
     ): array {
         $this->assertClientTenant($office, $client);
         $op = $this->catalog->resolve($systemCode, $serviceCode, $operationCode);
+        $operationKey = OperationKeyMap::resolve(
+            null,
+            $op['system'],
+            $op['service'],
+            $op['operation'],
+        );
+        $official = $operationKey !== null
+            ? $this->coordinates->resolveExecutable($operationKey)
+            : null;
 
         if (! $this->catalog->isEmissionOperation($op['operation'])) {
             throw new GuideException('Operação não é de emissão de guia.', 'not_emission_operation');
@@ -264,6 +277,9 @@ final class GuideIssuanceService
             $guide,
             $logical,
             $forceReissue,
+            $operationData,
+            $operationKey,
+            $official,
         ): array {
             $guide = $guide ?? TaxGuide::query()->create([
                 'office_id' => $office->id,
@@ -316,6 +332,15 @@ final class GuideIssuanceService
                 quantity: 1,
                 clientId: (int) $client->id,
                 correlationId: $correlationId,
+                operationKey: $operationKey,
+                functionalRoute: $official !== null ? $official['route']->value : null,
+                requestTag: $operationKey !== null ? substr(hash('sha256', implode('|', [
+                    (string) $office->id,
+                    (string) $client->id,
+                    $operationKey,
+                    $versionIdem,
+                    $correlationId,
+                ])), 0, 32) : null,
             ));
 
             if (! $reserve->allowed) {
@@ -363,6 +388,7 @@ final class GuideIssuanceService
                     dueAtIso: $dueAtIso,
                     idempotencyKey: $versionIdem,
                     correlationId: $correlationId,
+                    payload: $operationData,
                 ));
             } catch (GuideTransportTimeoutException $e) {
                 return $this->markUnknownResult(

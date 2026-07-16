@@ -21,7 +21,7 @@ use App\Support\FeatureFlags;
 final class ParcelamentoReadAdapter implements FiscalSourceAdapter
 {
     public function __construct(
-        private readonly FakeParcelamentoSource $source,
+        private readonly SerproParcelamentoSource $source,
         private readonly ParcelamentoProjectionService $projection,
         private readonly TaxProxyPowerService $proxyPowers,
     ) {}
@@ -105,7 +105,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
             return $this->executeMonitor($request, $modality, $payload);
         }
 
-        $response = $this->source->execute($modality, $operation, $payload);
+        $response = $this->source->execute($modality, $operation, $payload, $request);
         if (! $response['success']) {
             return FiscalAdapterResult::failed(
                 $response['error_message'] ?? 'Falha na consulta de parcelamento',
@@ -159,7 +159,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
         TaxInstallmentModality $modality,
         array $payload,
     ): FiscalAdapterResult {
-        $pedidosResp = $this->source->execute($modality, 'CONSULTAR_PEDIDOS', $payload);
+        $pedidosResp = $this->source->execute($modality, 'CONSULTAR_PEDIDOS', $payload, $request);
         if (! $pedidosResp['success']) {
             return FiscalAdapterResult::failed(
                 $pedidosResp['error_message'] ?? 'Falha ao listar pedidos',
@@ -180,7 +180,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
 
             $det = $this->source->execute($modality, 'CONSULTAR_PARCELAMENTO', [
                 'numeroParcelamento' => $numero,
-            ]);
+            ], $request);
             if ($det['success']) {
                 $detalhes[$numero] = $det['body'];
                 foreach ($det['body']['parcelas'] ?? [] as $p) {
@@ -190,7 +190,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
 
             $paraGerar = $this->source->execute($modality, 'CONSULTAR_PARCELAS', [
                 'numeroParcelamento' => $numero,
-            ]);
+            ], $request);
             if ($paraGerar['success']) {
                 foreach ($paraGerar['body']['parcelasParaGerar'] ?? [] as $p) {
                     $parcelasMerged[] = $p;
@@ -206,7 +206,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
                 $pag = $this->source->execute($modality, 'CONSULTAR_PAGAMENTO', [
                     'numeroParcelamento' => $numero,
                     'anoMesParcela' => $key,
-                ]);
+                ], $request);
                 if ($pag['success']) {
                     $pagamentos[$key] = $pag['body'];
                 }

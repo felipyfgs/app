@@ -8,21 +8,24 @@ use App\DTO\Serpro\IntegraResponse;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\SerproCapabilityDriver;
 use App\Services\Serpro\CapabilityDriverResolver;
+use InvalidArgumentException;
 
-/** Seleciona o transporte por capacidade, sem fallback entre drivers. */
+/**
+ * Seleciona o transporte por capacidade, sem fallback entre drivers.
+ * operation_key é obrigatório; produção nunca usa simulated.
+ */
 final class CapabilityAwareIntegraContadorClient implements IntegraContadorClient
 {
     public function __construct(
         private readonly CapabilityDriverResolver $drivers,
-        private readonly FakeIntegraContadorClient $legacyFake,
         private readonly SimulatedIntegraContadorClient $simulated,
         private readonly HttpIntegraContadorClient $real,
     ) {}
 
     public function execute(IntegraRequest $request): IntegraResponse
     {
-        if ($request->operationKey === null || $request->operationKey === '') {
-            return $this->legacyClient()->execute($request);
+        if (trim($request->operationKey) === '') {
+            throw new InvalidArgumentException('operation_key é obrigatório no gateway Integra.');
         }
 
         return match ($this->drivers->forOperationKey($request->operationKey)) {
@@ -40,13 +43,5 @@ final class CapabilityAwareIntegraContadorClient implements IntegraContadorClien
             SerproCapabilityDriver::Simulated => $this->simulated->execute($request),
             SerproCapabilityDriver::Real => $this->real->execute($request),
         };
-    }
-
-    private function legacyClient(): IntegraContadorClient
-    {
-        $useFake = app()->environment('testing')
-            || (bool) config('serpro.trial.use_fake_clients', true);
-
-        return $useFake ? $this->legacyFake : $this->real;
     }
 }

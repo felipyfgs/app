@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
+    'chain_seq',
     'office_id',
     'user_id',
     'action',
@@ -17,6 +18,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'ip_address',
     'user_agent',
     'correlation_id',
+    'prev_hash',
+    'entry_hash',
     'created_at',
 ])]
 class AuditLog extends Model
@@ -28,6 +31,7 @@ class AuditLog extends Model
         return [
             'context' => 'array',
             'created_at' => 'immutable_datetime',
+            'chain_seq' => 'integer',
         ];
     }
 

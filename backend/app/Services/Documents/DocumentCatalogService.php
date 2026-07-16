@@ -992,5 +992,4 @@ class DocumentCatalogService
 
         return $chip;
     }
-
 }

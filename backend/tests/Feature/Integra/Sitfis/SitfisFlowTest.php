@@ -164,7 +164,7 @@ class SitfisFlowTest extends TestCase
         $this->assertSame(FiscalSituation::Processing, $done->situation);
         $this->assertSame('PROT-WAIT-1', $done->progress['protocol'] ?? null);
         $this->assertSame('WAITING_MIN_PERIOD', $done->progress['phase'] ?? null);
-        $this->assertSame(['SOLICITARPROTOCOLO91'], $this->integra->operations());
+        $this->assertSame(['sitfis.solicitar_protocolo'], $this->integra->operations());
 
         // Simulação não cria reserva, franquia ou custo no ledger.
         $this->assertSame(
@@ -189,7 +189,7 @@ class SitfisFlowTest extends TestCase
         $this->assertSame(FiscalRunStatus::Requeued, $done2->status);
         $this->assertSame(FiscalSituation::Processing, $done2->situation);
         // Ainda só a solicitação — sem EMITIR durante a espera
-        $this->assertSame(['SOLICITARPROTOCOLO91'], $this->integra->operations());
+        $this->assertSame(['sitfis.solicitar_protocolo'], $this->integra->operations());
         $this->assertSame(0, FiscalEvidenceArtifact::query()->withoutGlobalScopes()
             ->where('office_id', $this->office->id)->count());
     }
@@ -238,7 +238,7 @@ class SitfisFlowTest extends TestCase
 
         $this->assertSame(FiscalRunStatus::Completed, $done->status);
         $this->assertSame(FiscalSituation::Pending, $done->situation);
-        $this->assertContains('RELATORIOSITFIS92', $this->integra->operations());
+        $this->assertContains('sitfis.emitir_relatorio', $this->integra->operations());
 
         $evidence = FiscalEvidenceArtifact::query()->withoutGlobalScopes()
             ->where('run_id', $done->id)->first();
@@ -540,7 +540,7 @@ class SitfisFlowTest extends TestCase
         $this->assertSame('POLLING_EMIT', $polling->progress['phase'] ?? null);
         $this->assertSame(1, (int) ($polling->progress['poll_count'] ?? 0));
         $this->assertGreaterThanOrEqual(60, (int) ($polling->progress['requeue_after_seconds'] ?? 0));
-        $this->assertSame(['SOLICITARPROTOCOLO91', 'RELATORIOSITFIS92'], $this->integra->operations());
+        $this->assertSame(['sitfis.solicitar_protocolo', 'sitfis.emitir_relatorio'], $this->integra->operations());
     }
 
     public function test_snapshot_service_refresh_forca_quando_ttl_expirado(): void

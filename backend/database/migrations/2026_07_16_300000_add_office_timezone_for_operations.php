@@ -28,9 +28,9 @@ return new class extends Migration
                 ->each(function (object $row): void {
                     $tz = (string) $row->deadline_timezone;
                     try {
-                        new \DateTimeZone($tz);
+                        new DateTimeZone($tz);
                         DB::table('offices')->where('id', $row->id)->update(['timezone' => $tz]);
-                    } catch (\Exception) {
+                    } catch (Exception) {
                         DB::table('offices')->where('id', $row->id)->update(['timezone' => 'America/Sao_Paulo']);
                     }
                 });

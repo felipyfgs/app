@@ -7,6 +7,7 @@ namespace App\Services\Serpro\Usage;
  *
  * Defaults: shadow ON, commercial blocking OFF.
  * Shadow mode vence: com shadow ativo, bloqueio comercial nunca aplica.
+ * Produção efetiva (blocking on) é deny-by-default para unknown/preço/orçamento.
  */
 final class UsageShadowPolicy
 {
@@ -25,7 +26,48 @@ final class UsageShadowPolicy
     }
 
     /**
-     * @return array{shadow_mode: bool, commercial_blocking_enabled: bool, effective_blocking: bool}
+     * Modo produtivo de cobrança: aplica fail-closed e budgets monetários.
+     */
+    public function isProductiveBillingMode(): bool
+    {
+        return $this->isCommercialBlockingEnabled();
+    }
+
+    public function failOpenOnUnknown(): bool
+    {
+        if ($this->isProductiveBillingMode()) {
+            return false;
+        }
+
+        return (bool) config('serpro_usage.fail_open_on_unknown', false);
+    }
+
+    public function requiresPositiveMonetaryBudgets(): bool
+    {
+        if (! $this->isProductiveBillingMode()) {
+            return false;
+        }
+
+        return (bool) config('serpro_usage.require_positive_monetary_budgets', true);
+    }
+
+    public function requiresProductionPriceTable(): bool
+    {
+        if (! $this->isProductiveBillingMode()) {
+            return false;
+        }
+
+        return (bool) config('serpro_usage.require_production_price_table', true);
+    }
+
+    /**
+     * @return array{
+     *   shadow_mode: bool,
+     *   commercial_blocking_enabled: bool,
+     *   effective_blocking: bool,
+     *   productive_billing: bool,
+     *   fail_open_on_unknown: bool
+     * }
      */
     public function snapshot(): array
     {
@@ -36,6 +78,8 @@ final class UsageShadowPolicy
             'shadow_mode' => $shadow,
             'commercial_blocking_enabled' => $configuredBlocking,
             'effective_blocking' => $this->isCommercialBlockingEnabled(),
+            'productive_billing' => $this->isProductiveBillingMode(),
+            'fail_open_on_unknown' => $this->failOpenOnUnknown(),
         ];
     }
 }

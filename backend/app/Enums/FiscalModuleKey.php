@@ -17,6 +17,8 @@ enum FiscalModuleKey: string
     case Declarations = 'declarations';
     case Guides = 'guides';
     case Fgts = 'fgts';
+    case Registrations = 'registrations';
+    case TaxProcesses = 'tax_processes';
 
     public function label(): string
     {
@@ -30,6 +32,8 @@ enum FiscalModuleKey: string
             self::Declarations => 'Declarações',
             self::Guides => 'Guias',
             self::Fgts => 'FGTS / eSocial',
+            self::Registrations => 'Cadastro e vínculos',
+            self::TaxProcesses => 'Processos fiscais',
         };
     }
 
@@ -49,6 +53,8 @@ enum FiscalModuleKey: string
             self::Declarations => 'declaracoes',
             self::Guides => 'guias',
             self::Fgts => 'fgts',
+            self::Registrations => 'registrations',
+            self::TaxProcesses => 'tax_processes',
         };
     }
 
@@ -65,6 +71,8 @@ enum FiscalModuleKey: string
             self::Declarations => '/monitoring/declarations',
             self::Guides => '/monitoring/guides',
             self::Fgts => '/monitoring/fgts',
+            self::Registrations => '/monitoring/registrations',
+            self::TaxProcesses => '/monitoring/tax-processes',
         };
     }
 
@@ -101,6 +109,10 @@ enum FiscalModuleKey: string
             'declaracoes' => self::Declarations,
             'guias' => self::Guides,
             'simples' => self::SimplesMei,
+            'cadastro' => self::Registrations,
+            'vinculos' => self::Registrations,
+            'eprocesso' => self::TaxProcesses,
+            'processos' => self::TaxProcesses,
         ];
 
         if (isset($aliases[$normalized])) {
@@ -138,6 +150,8 @@ enum FiscalModuleKey: string
             self::Declarations => ['DECLARACOES'],
             self::Guides => ['GUIAS'],
             self::Fgts => ['FGTS'],
+            self::Registrations => ['PNRCONTADOR'],
+            self::TaxProcesses => ['EPROCESSO'],
             self::Dashboard => [],
         };
     }

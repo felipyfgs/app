@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'office_id',
     'period_year',
     'period_month',
+    'cycle_code',
+    'period_kind',
     'system_code',
     'service_code',
     'consumption_class',

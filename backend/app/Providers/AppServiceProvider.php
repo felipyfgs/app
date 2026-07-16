@@ -24,11 +24,13 @@ use App\Contracts\SefazOutboundInutilizationClient;
 use App\Contracts\SefazOutboundMutatingProbeClient;
 use App\Contracts\SefazOutboundProtocolQueryClient;
 use App\Contracts\SerproContractAuthenticator;
+use App\Contracts\SerproOperationExecutor;
 use App\Contracts\SvrsNfceDownloadResponseParser as SvrsNfceDownloadResponseParserContract;
 use App\Contracts\SvrsNfceOutboundXmlRetrievalClient;
 use App\Contracts\SvrsNfe55OutboundXmlRetrievalClient;
 use App\Contracts\SvrsPortalEgressGovernor;
 use App\Contracts\TaxGuideEnrollment;
+use App\Enums\SerproCapabilityDriver;
 use App\Models\Client;
 use App\Models\ClientContact;
 use App\Models\ClientCredential;
@@ -60,6 +62,7 @@ use App\Services\Clients\CnpjWsRegistrationLookup;
 use App\Services\Esocial\FakeEsocialEventClient;
 use App\Services\Esocial\FgtsEsocialSourceAdapter;
 use App\Services\Fiscal\Guides\FakeGuideEmissionClient;
+use App\Services\Fiscal\Guides\SerproGuideEmissionClient;
 use App\Services\Fiscal\Mutations\FakeFiscalMutationTransport;
 use App\Services\Fiscal\Mutations\IntegraFiscalMutationTransport;
 use App\Services\Fiscal\SimplesMei\DasGuideHookService;
@@ -68,26 +71,31 @@ use App\Services\Fiscal\SimplesMei\SimplesMeiAdapter;
 use App\Services\Fiscal\SimplesMei\SimplesMeiCatalog;
 use App\Services\Fiscal\SimplesMei\SimplesMeiResponseMapper;
 use App\Services\FiscalMonitoring\FiscalAdapterRegistry;
-use App\Services\Integra\Dctfweb\DctfwebAdapterRegistrar;
-use App\Enums\SerproCapabilityDriver;
 use App\Services\Integra\CapabilityAwareIntegraContadorClient;
+use App\Services\Integra\ContributorCnpjResolver;
+use App\Services\Integra\Dctfweb\DctfwebAdapterRegistrar;
 use App\Services\Integra\DisabledAutenticarProcuradorClient;
 use App\Services\Integra\FakeAutenticarProcuradorClient;
 use App\Services\Integra\FakeIntegraContadorClient;
 use App\Services\Integra\FakeIntegraProcuracoesClient;
+use App\Services\Integra\HttpAutenticarProcuradorClient;
+use App\Services\Integra\HttpIntegraProcuracoesClient;
 use App\Services\Integra\IntegraEligibilityService;
-use App\Services\Integra\SimulatedIntegraContadorClient;
 use App\Services\Integra\Mailbox\CaixaPostalDetailAdapter;
 use App\Services\Integra\Mailbox\CaixaPostalListAdapter;
 use App\Services\Integra\Mailbox\DteIndicatorAdapter;
 use App\Services\Integra\Mailbox\FakeCaixaPostalClient;
 use App\Services\Integra\Mailbox\FakeDteIndicatorClient;
+use App\Services\Integra\Mailbox\SerproCaixaPostalClient;
+use App\Services\Integra\Mailbox\SerproDteIndicatorClient;
 use App\Services\Integra\OfficeSerproAuthorizationService;
 use App\Services\Integra\Parcelamento\FakeParcelamentoSource;
 use App\Services\Integra\Parcelamento\ParcelamentoEmitDocumentAdapter;
 use App\Services\Integra\Parcelamento\ParcelamentoMutatingAdapter;
 use App\Services\Integra\Parcelamento\ParcelamentoReadAdapter;
+use App\Services\Integra\Parcelamento\SerproParcelamentoSource;
 use App\Services\Integra\Parcelamento\StubTaxGuideEnrollment;
+use App\Services\Integra\SimulatedIntegraContadorClient;
 use App\Services\Integra\Sitfis\SitfisSourceAdapter;
 use App\Services\Outbound\DisabledMaOutboundXmlRetrievalClient;
 use App\Services\Outbound\DisabledSefazOutboundInutilizationClient;
@@ -120,14 +128,14 @@ use App\Services\Serpro\FakeSerproContractAuthenticator;
 use App\Services\Serpro\HttpSerproContractAuthenticator;
 use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproHttpTransport;
-use App\Services\Serpro\Usage\UsageLedgerService;
+use App\Services\Serpro\SerproOperationService;
+use App\Services\Serpro\SerproProductionBootGuard;
 use App\Services\Vault\EnvelopeCrypto;
 use App\Services\Vault\FilesystemSecureObjectStore;
 use App\Support\CurrentOffice;
 use App\Support\FiscalDataModel\PrivilegedOfficeContext;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
-
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
@@ -286,6 +294,10 @@ class AppServiceProvider extends ServiceProvider
             return $app->make(CapabilityAwareIntegraContadorClient::class);
         });
 
+        // Único entrypoint produtivo — adapters/jobs injetam isto, não o client HTTP.
+        $this->app->singleton(SerproOperationExecutor::class, SerproOperationService::class);
+        $this->app->singleton(SerproOperationService::class);
+
         $this->app->bind(AutenticarProcuradorClient::class, function ($app) {
             $useFake = $app->environment('testing')
                 || (bool) config('serpro.trial.use_fake_clients', true);
@@ -298,10 +310,21 @@ class AppServiceProvider extends ServiceProvider
             return match ($driver) {
                 SerproCapabilityDriver::Disabled => $app->make(DisabledAutenticarProcuradorClient::class),
                 SerproCapabilityDriver::Simulated => $app->make(FakeAutenticarProcuradorClient::class),
-                SerproCapabilityDriver::Real => $app->make(\App\Services\Integra\HttpAutenticarProcuradorClient::class),
+                SerproCapabilityDriver::Real => $app->make(HttpAutenticarProcuradorClient::class),
             };
         });
-        $this->app->bind(IntegraProcuracoesClient::class, FakeIntegraProcuracoesClient::class);
+        $this->app->bind(IntegraProcuracoesClient::class, function ($app) {
+            if ($app->environment('testing')) {
+                return $app->make(FakeIntegraProcuracoesClient::class);
+            }
+
+            $driver = $app->make(CapabilityDriverResolver::class)->forCapability('authorization');
+
+            return match ($driver) {
+                SerproCapabilityDriver::Disabled, SerproCapabilityDriver::Simulated => $app->make(FakeIntegraProcuracoesClient::class),
+                SerproCapabilityDriver::Real => $app->make(HttpIntegraProcuracoesClient::class),
+            };
+        });
 
         // Núcleo fiscal — registry de adapters (módulos filhos registram em boot de seus providers)
         $this->app->singleton(FiscalAdapterRegistry::class);
@@ -310,11 +333,23 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(FakeEsocialEventClient::class);
         $this->app->bind(EsocialEventClient::class, FakeEsocialEventClient::class);
 
-        // Caixa Postal / DTE — fakes em testing e trial (HTTP real em change futura)
+        // Caixa Postal / DTE — driver por capacidade (fake em testing / simulated)
         $this->app->singleton(FakeCaixaPostalClient::class);
         $this->app->singleton(FakeDteIndicatorClient::class);
-        $this->app->bind(CaixaPostalClient::class, FakeCaixaPostalClient::class);
-        $this->app->bind(DteIndicatorClient::class, FakeDteIndicatorClient::class);
+        $this->app->bind(CaixaPostalClient::class, function ($app) {
+            if ($app->environment('testing')) {
+                return $app->make(FakeCaixaPostalClient::class);
+            }
+
+            return $app->make(SerproCaixaPostalClient::class);
+        });
+        $this->app->bind(DteIndicatorClient::class, function ($app) {
+            if ($app->environment('testing')) {
+                return $app->make(FakeDteIndicatorClient::class);
+            }
+
+            return $app->make(SerproDteIndicatorClient::class);
+        });
 
         // Mutações fiscais — fake controlável em testing; Integra em demais ambientes
         $this->app->singleton(FakeFiscalMutationTransport::class);
@@ -326,12 +361,21 @@ class AppServiceProvider extends ServiceProvider
             return $app->make(IntegraFiscalMutationTransport::class);
         });
 
-        // Guias fiscais — fake controlável (trial/testing); adapter SERPRO real em change futura
+        // Guias fiscais — fake apenas em testes; demais ambientes falham fechado
+        // no adapter SERPRO quando o driver da capacidade não for explicitamente real.
         $this->app->singleton(FakeGuideEmissionClient::class);
-        $this->app->bind(GuideEmissionClient::class, FakeGuideEmissionClient::class);
+        $this->app->singleton(SerproGuideEmissionClient::class);
+        $this->app->bind(GuideEmissionClient::class, function ($app) {
+            if ($app->environment('testing')) {
+                return $app->make(FakeGuideEmissionClient::class);
+            }
 
-        // Parcelamentos SN/MEI — fakes + hook na central de guias
+            return $app->make(SerproGuideEmissionClient::class);
+        });
+
+        // Parcelamentos SN/MEI — driver por capacidade (fake em simulated/testing)
         $this->app->singleton(FakeParcelamentoSource::class);
+        $this->app->singleton(SerproParcelamentoSource::class);
         $this->app->singleton(TaxGuideEnrollment::class, StubTaxGuideEnrollment::class);
         $this->app->singleton(ParcelamentoReadAdapter::class);
         $this->app->singleton(ParcelamentoEmitDocumentAdapter::class);
@@ -349,6 +393,7 @@ class AppServiceProvider extends ServiceProvider
 
             try {
                 $this->app->make(CapabilityDriverResolver::class)->assertProductionSafe();
+                $this->app->make(SerproProductionBootGuard::class)->assertSafeOrFail();
             } catch (\Throwable $e) {
                 // Fail-closed no boot de produção
                 throw $e;
@@ -406,12 +451,13 @@ class AppServiceProvider extends ServiceProvider
             $registry->register(new SimplesMeiAdapter(
                 definition: $def,
                 eligibility: $this->app->make(IntegraEligibilityService::class),
-                ledger: $this->app->make(UsageLedgerService::class),
+                operations: $this->app->make(SerproOperationService::class),
                 mapper: $this->app->make(SimplesMeiResponseMapper::class),
                 contracts: $this->app->make(SerproContractService::class),
                 authorizations: $this->app->make(OfficeSerproAuthorizationService::class),
                 regimeApplicability: $this->app->make(RegimeApplicabilityService::class),
                 dasGuideHook: $this->app->make(DasGuideHookService::class),
+                contributors: $this->app->make(ContributorCnpjResolver::class),
             ));
         }
 

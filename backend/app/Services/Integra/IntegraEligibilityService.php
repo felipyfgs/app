@@ -13,18 +13,23 @@ use App\Models\Office;
 use App\Models\SerproServiceCatalogEntry;
 use App\Models\User;
 use App\Services\Platform\OfficeSubscriptionGate;
+use App\Services\Serpro\OfficialClarificationGate;
 use App\Services\Serpro\SerproCircuitBreaker;
 use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproKillSwitchService;
+use App\Services\Serpro\SerproProductionOnboardingGuard;
 use App\Services\Serpro\Usage\UsageBudgetGate;
 use App\Support\FeatureFlags;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Matriz de elegibilidade pré-chamada Integra Contador.
+ * Matriz de elegibilidade pré-chamada Integra Contador (fail-closed).
  */
 final class IntegraEligibilityService
 {
+    /** idServico oficial faturável de lookup de procurações. */
+    public const BILLABLE_PROXY_LOOKUP_SERVICE = 'OBTERPROCURACAO41';
+
     public function __construct(
         private readonly OfficeSubscriptionGate $subscriptionGate,
         private readonly SerproContractService $contracts,
@@ -33,6 +38,10 @@ final class IntegraEligibilityService
         private readonly TaxProxyPowerService $proxyPowers,
         private readonly OfficeSerproAuthorizationService $authorizations,
         private readonly UsageBudgetGate $budget,
+        private readonly RepresentationChainService $representationChain,
+        private readonly ProxyPowerMatrixService $powerMatrix,
+        private readonly SerproProductionOnboardingGuard $onboardingGuard,
+        private readonly OfficialClarificationGate $clarificationGate,
     ) {}
 
     public function evaluate(
@@ -44,6 +53,8 @@ final class IntegraEligibilityService
         SerproEnvironment $environment,
         ?User $user = null,
         ?string $module = null,
+        bool $requireD1 = false,
+        bool $freeSmokeMode = false,
     ): EligibilityResult {
         $codes = [];
         $context = [
@@ -61,6 +72,13 @@ final class IntegraEligibilityService
         }
         if (FeatureFlags::isKillSwitchActive()) {
             $codes[] = SerproEligibilityCode::KillSwitch;
+        }
+
+        // 0b. Demo office never hits real endpoints
+        if ($this->onboardingGuard->isDemoOffice($office)
+            && in_array($environment, [SerproEnvironment::Production, SerproEnvironment::Homologation], true)
+        ) {
+            $codes[] = SerproEligibilityCode::DemoOfficeBlocked;
         }
 
         // 1. Kill switch SERPRO / solução
@@ -113,20 +131,72 @@ final class IntegraEligibilityService
             }
         }
 
+        // 5b. Cadeia contratante → autor → contribuinte
+        $chain = $this->representationChain->resolve($office, $client, $environment, $auth);
+        $context['representation_chain'] = $chain->toSanitizedArray();
+        if (! $chain->isComplete()) {
+            $codes[] = SerproEligibilityCode::RepresentationChainIncomplete;
+        }
+
         // 6. Contribuinte mesmo tenant
         if ($client->office_id !== $office->id) {
             $codes[] = SerproEligibilityCode::ContributorCrossTenant;
         }
 
+        // 6b. Free smoke: bloquear lookup faturável de procurações
+        if ($freeSmokeMode && $this->isBillableProxyLookup($solutionCode, $serviceCode, $operationCode)) {
+            $codes[] = SerproEligibilityCode::FreeSmokeBillableBlocked;
+        }
+
+        // 6c. Matriz de poderes versionada
+        $matrixEval = $this->powerMatrix->evaluateUsability(
+            $this->observedSourceHashForPowers()
+        );
+        $context['power_matrix'] = [
+            'review_status' => $matrixEval['review_status'],
+            'matrix_version' => $matrixEval['matrix_version'],
+            'usable' => $matrixEval['usable'],
+        ];
+        if (
+            $environment === SerproEnvironment::Production
+            && ! $matrixEval['usable']
+        ) {
+            $codes[] = SerproEligibilityCode::PowerMatrixReviewRequired;
+        }
+
         // 7. Catálogo / cobertura / mutabilidade
         $catalog = SerproServiceCatalogEntry::query()
             ->where('environment', $environment->value)
-            ->where('solution_code', $solutionCode)
-            ->where('service_code', $serviceCode)
-            ->where('operation_code', $operationCode)
+            ->where(function ($q) use ($solutionCode, $serviceCode, $operationCode): void {
+                $q->where(function ($q2) use ($solutionCode, $serviceCode, $operationCode): void {
+                    $q2->where('solution_code', $solutionCode)
+                        ->where('service_code', $serviceCode)
+                        ->where('operation_code', $operationCode);
+                })->orWhere(function ($q2) use ($solutionCode, $serviceCode, $operationCode): void {
+                    // Coordenadas oficiais idSistema/idServico
+                    $q2->where('id_sistema', $solutionCode)
+                        ->where('id_servico', $serviceCode)
+                        ->orWhere(function ($q3) use ($solutionCode, $operationCode): void {
+                            $q3->where('id_sistema', $solutionCode)
+                                ->where('id_servico', $operationCode);
+                        });
+                });
+            })
             ->where('is_enabled', true)
             ->orderByDesc('catalog_version')
             ->first();
+
+        // Fallback legado (solution/service/operation)
+        if ($catalog === null) {
+            $catalog = SerproServiceCatalogEntry::query()
+                ->where('environment', $environment->value)
+                ->where('solution_code', $solutionCode)
+                ->where('service_code', $serviceCode)
+                ->where('operation_code', $operationCode)
+                ->where('is_enabled', true)
+                ->orderByDesc('catalog_version')
+                ->first();
+        }
 
         if ($catalog === null) {
             $codes[] = SerproEligibilityCode::ServiceNotCataloged;
@@ -141,18 +211,51 @@ final class IntegraEligibilityService
                 }
             }
 
-            // 8. Procuração / poder
-            $requiredPower = $catalog->required_proxy_power;
-            if ($requiredPower !== null && $requiredPower !== '') {
+            // 8. Procuração / poder — matriz + catálogo
+            $requiredPowers = $this->resolveRequiredPowers(
+                $catalog,
+                $solutionCode,
+                $serviceCode,
+                $operationCode,
+            );
+
+            foreach ($requiredPowers as $requiredPower) {
                 $power = $this->proxyPowers->findUsablePower(
-                    $office->id,
-                    $client->id,
-                    $requiredPower,
-                    $auth->author_identity,
+                    officeId: $office->id,
+                    clientId: $client->id,
+                    powerCode: $requiredPower,
+                    authorIdentity: (string) $auth->author_identity,
+                    environment: $environment,
+                    requireD1: $requireD1,
+                    requireFresh: true,
+                    requireAccept: true,
                 );
                 if ($power === null) {
-                    $codes[] = SerproEligibilityCode::ProxyPowerMissing;
+                    $diag = $this->proxyPowers->diagnoseUnusable(
+                        $office->id,
+                        $client->id,
+                        $requiredPower,
+                        (string) $auth->author_identity,
+                        $environment,
+                        $requireD1,
+                    );
+                    foreach ($diag as $reason) {
+                        $codes[] = SerproEligibilityCode::tryFrom($reason)
+                            ?? SerproEligibilityCode::ProxyPowerMissing;
+                    }
                 }
+            }
+        }
+
+        // 8b. Gate CNPJ alfanumérico em Eventos (quando D-1 / monitorar)
+        if ($requireD1 && $chain->contributorCnpj !== '') {
+            $cnpjGate = $this->clarificationGate->evaluateCnpjField(
+                $chain->contributorCnpj,
+                OfficialClarificationGate::CONTEXT_EVENTOS_PAYLOAD,
+                $environment,
+            );
+            if (! $cnpjGate['allowed'] && $cnpjGate['code'] !== null) {
+                $codes[] = $cnpjGate['code'];
             }
         }
 
@@ -165,12 +268,11 @@ final class IntegraEligibilityService
             if ($membership === null) {
                 $codes[] = SerproEligibilityCode::RoleForbidden;
             } elseif ($membership->role === OfficeRole::Viewer) {
-                // VIEWER não dispara chamadas externas
                 $codes[] = SerproEligibilityCode::RoleForbidden;
             }
         }
 
-        // 10. Orçamento — mesma fonte de verdade do ledger ({@see UsageBudgetGate})
+        // 10. Orçamento
         $consumptionClass = $this->resolveConsumptionClass($catalog);
         $budgetEval = $this->budget->evaluate(
             officeId: (int) $office->id,
@@ -181,7 +283,6 @@ final class IntegraEligibilityService
         if (! (bool) $budgetEval['allowed']) {
             $codes[] = SerproEligibilityCode::BudgetExceeded;
         }
-        // Snapshot tenant-safe (sem global_used/global_budget)
         $context['budget_used'] = $budgetEval['used_quantity'];
         $context['budget_reserved_open'] = $budgetEval['reserved_open_quantity'];
         $context['budget_quota'] = $budgetEval['franchise_quota'];
@@ -189,12 +290,19 @@ final class IntegraEligibilityService
         $context['budget_block_reason'] = $budgetEval['block_reason'];
 
         // 11. Rate limit simples
-        $perOffice = (int) config('serpro.rate_limit.per_office_per_minute', 30);
+        $perOffice = (int) config('serpro.rate_limit.per_office_per_minute', 0);
         $rateKey = 'serpro.rate.office.'.$office->id.'.'.now()->format('YmdHi');
         $hits = (int) Cache::get($rateKey, 0);
-        if ($hits >= $perOffice) {
+        if ($perOffice > 0 && $hits >= $perOffice) {
             $codes[] = SerproEligibilityCode::RateLimited;
         }
+
+        // Dedup codes
+        $unique = [];
+        foreach ($codes as $code) {
+            $unique[$code->value] = $code;
+        }
+        $codes = array_values($unique);
 
         $blocking = array_values(array_filter(
             $codes,
@@ -208,11 +316,12 @@ final class IntegraEligibilityService
         return EligibilityResult::ok($context);
     }
 
-    /**
-     * Incrementa contador de rate limit após elegibilidade OK (pré-chamada).
-     */
     public function touchRateLimit(int $officeId): void
     {
+        if ((int) config('serpro.rate_limit.per_office_per_minute', 0) <= 0) {
+            return;
+        }
+
         $rateKey = 'serpro.rate.office.'.$officeId.'.'.now()->format('YmdHi');
         if (! Cache::has($rateKey)) {
             Cache::put($rateKey, 1, 120);
@@ -232,5 +341,67 @@ final class IntegraEligibilityService
 
         return SerproConsumptionClass::tryFrom(strtoupper($value))
             ?? SerproConsumptionClass::Consulta;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function resolveRequiredPowers(
+        SerproServiceCatalogEntry $catalog,
+        string $solutionCode,
+        string $serviceCode,
+        string $operationCode,
+    ): array {
+        $powers = [];
+
+        $metaPowers = $catalog->metadata['required_proxy_powers'] ?? null;
+        if (is_array($metaPowers)) {
+            foreach ($metaPowers as $p) {
+                $p = strtoupper(trim((string) $p));
+                if ($p !== '') {
+                    $powers[] = $p;
+                }
+            }
+        }
+
+        if ($catalog->required_proxy_power !== null && $catalog->required_proxy_power !== '') {
+            $powers[] = strtoupper((string) $catalog->required_proxy_power);
+        }
+
+        // Matriz oficial idSistema+idServico
+        $idSistema = (string) ($catalog->id_sistema ?: $catalog->solution_code ?: $solutionCode);
+        $idServico = (string) ($catalog->id_servico ?: $catalog->operation_code ?: $operationCode);
+        foreach ($this->powerMatrix->requiredPowers($idSistema, $idServico) as $p) {
+            $powers[] = $p;
+        }
+
+        // Também tenta service_code como idServico
+        if ($serviceCode !== $idServico) {
+            foreach ($this->powerMatrix->requiredPowers($idSistema, $serviceCode) as $p) {
+                $powers[] = $p;
+            }
+        }
+
+        return array_values(array_unique($powers));
+    }
+
+    private function isBillableProxyLookup(string $solutionCode, string $serviceCode, string $operationCode): bool
+    {
+        $needles = [
+            strtoupper($serviceCode),
+            strtoupper($operationCode),
+            strtoupper($solutionCode),
+        ];
+
+        return in_array(self::BILLABLE_PROXY_LOOKUP_SERVICE, $needles, true)
+            || in_array('PROCURACOES.OBTER', $needles, true)
+            || str_contains(strtoupper($operationCode), 'OBTERPROCURACAO');
+    }
+
+    private function observedSourceHashForPowers(): ?string
+    {
+        $configured = config('serpro.proxy_powers.observed_source_sha256');
+
+        return is_string($configured) && $configured !== '' ? $configured : null;
     }
 }

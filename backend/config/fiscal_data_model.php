@@ -51,7 +51,6 @@ return [
      */
     'fail_closed_scopes' => filter_var(env('FISCAL_MODEL_FAIL_CLOSED_SCOPES', true), FILTER_VALIDATE_BOOL),
 
-
     /**
      * Agregados com corte independente (ordem de apply no design).
      */

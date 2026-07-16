@@ -7,6 +7,7 @@ use App\Models\ProcessGenerationBatch;
 use App\Models\ProcessGenerationItem;
 use App\Models\ProcessTemplate;
 use App\Services\Work\OperationalProcessGenerationService;
+use App\Support\CurrentOffice;
 use App\Support\Work\RejectClientOfficeId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -61,7 +62,7 @@ class ProcessGenerationController extends Controller
     public function show(ProcessGenerationBatch $batch): JsonResponse
     {
         $this->authorize('viewAny', ProcessTemplate::class);
-        if ((int) $batch->office_id !== (int) app(\App\Support\CurrentOffice::class)->id()) {
+        if ((int) $batch->office_id !== (int) app(CurrentOffice::class)->id()) {
             abort(404);
         }
 

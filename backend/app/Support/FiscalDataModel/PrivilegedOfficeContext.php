@@ -4,7 +4,6 @@ namespace App\Support\FiscalDataModel;
 
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
-use Throwable;
 
 /**
  * Contexto privilegiado tipado para rotinas globais (jobs, console, plataforma).

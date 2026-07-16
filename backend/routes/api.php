@@ -10,12 +10,6 @@ use App\Http\Controllers\Api\V1\DocumentImportBatchController;
 use App\Http\Controllers\Api\V1\DocumentImportController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ExportController;
-use App\Http\Controllers\Api\V1\Work\OperationalDashboardController;
-use App\Http\Controllers\Api\V1\Work\OperationalProcessController;
-use App\Http\Controllers\Api\V1\Work\OperationalTaskController;
-use App\Http\Controllers\Api\V1\Work\ProcessGenerationController;
-use App\Http\Controllers\Api\V1\Work\ProcessTemplateController;
-use App\Http\Controllers\Api\V1\Work\WorkDepartmentController;
 use App\Http\Controllers\Api\V1\Fiscal\DctfwebController;
 use App\Http\Controllers\Api\V1\Fiscal\DeclarationHubController;
 use App\Http\Controllers\Api\V1\Fiscal\FgtsEsocialController;
@@ -26,10 +20,12 @@ use App\Http\Controllers\Api\V1\Fiscal\FiscalMutationController;
 use App\Http\Controllers\Api\V1\Fiscal\FiscalSnapshotController;
 use App\Http\Controllers\Api\V1\Fiscal\MailboxMessageController;
 use App\Http\Controllers\Api\V1\Fiscal\MitController;
+use App\Http\Controllers\Api\V1\Fiscal\RegistrationLinkController;
 use App\Http\Controllers\Api\V1\Fiscal\SimplesMeiController;
 use App\Http\Controllers\Api\V1\Fiscal\SitfisSituationController;
 use App\Http\Controllers\Api\V1\Fiscal\TaxGuideController;
 use App\Http\Controllers\Api\V1\Fiscal\TaxInstallmentController;
+use App\Http\Controllers\Api\V1\Fiscal\TaxProcessController;
 use App\Http\Controllers\Api\V1\FiscalDocumentQuarantineController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\NoteController;
@@ -43,11 +39,19 @@ use App\Http\Controllers\Api\V1\OperationsSummaryController;
 use App\Http\Controllers\Api\V1\OutboundCaptureController;
 use App\Http\Controllers\Api\V1\OutboundDeadlineController;
 use App\Http\Controllers\Api\V1\Platform\SerproContractController;
+use App\Http\Controllers\Api\V1\Platform\SerproPlatformOpsController;
 use App\Http\Controllers\Api\V1\Platform\SerproUsageAdminController;
 use App\Http\Controllers\Api\V1\Platform\TenantAdminController;
+use App\Http\Controllers\Api\V1\SerproTenantController;
 use App\Http\Controllers\Api\V1\SvrsNfceRecoveryController;
 use App\Http\Controllers\Api\V1\SyncController;
 use App\Http\Controllers\Api\V1\TenantSwitchController;
+use App\Http\Controllers\Api\V1\Work\OperationalDashboardController;
+use App\Http\Controllers\Api\V1\Work\OperationalProcessController;
+use App\Http\Controllers\Api\V1\Work\OperationalTaskController;
+use App\Http\Controllers\Api\V1\Work\ProcessGenerationController;
+use App\Http\Controllers\Api\V1\Work\ProcessTemplateController;
+use App\Http\Controllers\Api\V1\Work\WorkDepartmentController;
 use App\Http\Middleware\EnsureActiveUser;
 use App\Http\Middleware\EnsureAdminTwoFactor;
 use App\Http\Middleware\EnsureOfficeContext;
@@ -95,6 +99,19 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/serpro/kill-switch', [SerproContractController::class, 'killSwitchStatus']);
             Route::post('/serpro/kill-switch', [SerproContractController::class, 'killSwitch']);
             Route::post('/serpro/breaker/reset', [SerproContractController::class, 'breakerReset']);
+
+            // Credenciais versionadas, readiness, orçamento e rollout (quatro olhos)
+            Route::get('/serpro/credential-versions', [SerproPlatformOpsController::class, 'listCredentialVersions']);
+            Route::get('/serpro/credential-versions/{serproCredentialVersion}', [SerproPlatformOpsController::class, 'showCredentialVersion']);
+            Route::post('/serpro/credential-versions/{serproCredentialVersion}/approvals', [SerproPlatformOpsController::class, 'approveCredentialVersion']);
+            Route::post('/serpro/credential-versions/{serproCredentialVersion}/cutover', [SerproPlatformOpsController::class, 'cutoverCredentialVersion']);
+            Route::get('/serpro/readiness', [SerproPlatformOpsController::class, 'readiness']);
+            Route::get('/serpro/metrics', [SerproPlatformOpsController::class, 'metrics']);
+            Route::get('/serpro/budgets', [SerproPlatformOpsController::class, 'listBudgets']);
+            Route::get('/serpro/rollouts', [SerproPlatformOpsController::class, 'listRollouts']);
+            Route::post('/serpro/rollouts', [SerproPlatformOpsController::class, 'requestRollout']);
+            Route::post('/serpro/rollouts/{serproRolloutApproval}/approve', [SerproPlatformOpsController::class, 'approveRollout']);
+            Route::post('/serpro/rollouts/{serproRolloutApproval}/reject', [SerproPlatformOpsController::class, 'rejectRollout']);
         });
 
         Route::middleware([
@@ -105,10 +122,20 @@ Route::prefix('v1')->group(function (): void {
             // Assinatura/limites do office atual (leitura liberada mesmo suspenso — middleware só bloqueia mutações)
             Route::get('/office/subscription', [OfficeSubscriptionController::class, 'show']);
 
+            // Tenant SERPRO namespace canônico (/api/v1/serpro/*) — office_id só via CurrentOffice
+            Route::get('/serpro/authorization', [SerproTenantController::class, 'authorization']);
+            Route::get('/serpro/readiness', [SerproTenantController::class, 'readiness']);
+            Route::get('/serpro/health', [SerproTenantController::class, 'health']);
+            Route::get('/serpro/usage', [SerproTenantController::class, 'usageSummary']);
+            Route::get('/serpro/usage/entries', [SerproTenantController::class, 'usageEntries']);
+
             // Onboarding Integra: Autor, Termo, procurações (sem XML/PFX/tokens na resposta)
             Route::get('/office/serpro-authorization', [OfficeSerproAuthorizationController::class, 'show']);
             Route::post('/office/serpro-authorization/author', [OfficeSerproAuthorizationController::class, 'configureAuthor']);
+            Route::post('/office/serpro-authorization/termo/draft', [OfficeSerproAuthorizationController::class, 'generateTermoDraft']);
+            Route::get('/office/serpro-authorization/termo/draft', [OfficeSerproAuthorizationController::class, 'downloadTermoDraft']);
             Route::post('/office/serpro-authorization/termo', [OfficeSerproAuthorizationController::class, 'uploadTermo']);
+            Route::post('/office/serpro-authorization/termo/sign-managed-a1', [OfficeSerproAuthorizationController::class, 'signTermoManagedA1']);
             Route::post('/office/serpro-authorization/author-a1', [OfficeSerproAuthorizationController::class, 'storeAuthorA1']);
             Route::post('/office/serpro-authorization/refresh-token', [OfficeSerproAuthorizationController::class, 'refreshToken']);
             Route::get('/office/serpro-authorization/proxy-powers', [OfficeSerproAuthorizationController::class, 'listProxyPowers']);
@@ -174,6 +201,20 @@ Route::prefix('v1')->group(function (): void {
             // Situação Fiscal (SITFIS) — snapshot com idade; refresh respeita TTL
             Route::get('/fiscal/sitfis', [SitfisSituationController::class, 'show']);
             Route::post('/fiscal/sitfis/refresh', [SitfisSituationController::class, 'refresh']);
+
+            // Cadastro/Vínculos (PNR Contador) — listagem + detalhe + refresh explícito
+            Route::get('/fiscal/registrations', [RegistrationLinkController::class, 'index']);
+            Route::get('/fiscal/clients/{clientId}/registrations', [RegistrationLinkController::class, 'showForClient']);
+            Route::post('/fiscal/clients/{clientId}/registrations/refresh', [RegistrationLinkController::class, 'refresh'])
+                ->middleware('throttle:20,1');
+
+            // Processos fiscais (e-Processo)
+            Route::get('/fiscal/tax-processes', [TaxProcessController::class, 'index']);
+            Route::get('/fiscal/clients/{clientId}/tax-processes', [TaxProcessController::class, 'showForClient']);
+            Route::post('/fiscal/clients/{clientId}/tax-processes/refresh', [TaxProcessController::class, 'refresh'])
+                ->middleware('throttle:20,1');
+            Route::get('/fiscal/tax-processes/{id}', [TaxProcessController::class, 'show'])
+                ->whereNumber('id');
 
             // Caixa Postal / DTE (tenant-scoped; conteúdo restrito; triagem ≠ leitura oficial)
             Route::get('/fiscal/mailbox/messages', [MailboxMessageController::class, 'index']);

@@ -6,25 +6,36 @@ use App\Contracts\AutenticarProcuradorClient;
 use App\Contracts\PfxReaderInterface;
 use App\Contracts\SecureObjectStore;
 use App\Contracts\SerproContractAuthenticator;
+use App\Domain\BrazilianTaxId;
 use App\DTO\Serpro\ProcuradorAuthRequest;
 use App\Enums\AuthorCertificateMode;
 use App\Enums\AuthorIdentityType;
 use App\Enums\SecureObjectPurpose;
 use App\Enums\SerproAuthorizationStatus;
+use App\Enums\SerproDataSegregationClass;
 use App\Enums\SerproEnvironment;
+use App\Enums\TaxProxyPowerStatus;
 use App\Enums\TermoAuthorizationState;
 use App\Enums\TermRePresentationStrategy;
+use App\Jobs\Serpro\SignTermoWithManagedA1Job;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\OfficeSerproAuthorizationEvent;
+use App\Models\SerproAuthorizationConsent;
+use App\Models\SerproTermVersion;
+use App\Models\TaxProxyPower;
 use App\Services\Audit\AuditLogger;
 use App\Services\Serpro\SerproContractService;
+use App\Services\Serpro\SerproProductionOnboardingGuard;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
 
 /**
  * Onboarding Autor do Pedido / Termo / token do procurador (tenant-scoped).
- * Nunca retorna XML, PFX ou tokens.
+ * Nunca retorna XML, PFX ou tokens nas APIs públicas (download de draft é endpoint dedicado).
  */
 final class OfficeSerproAuthorizationService
 {
@@ -32,6 +43,7 @@ final class OfficeSerproAuthorizationService
         private readonly SecureObjectStore $store,
         private readonly PfxReaderInterface $pfxReader,
         private readonly TermoXmlValidator $termoValidator,
+        private readonly TermoAutorizacaoGenerator $termoGenerator,
         private readonly AutenticarProcuradorClient $procuradorClient,
         private readonly SerproContractService $contracts,
         private readonly SerproContractAuthenticator $authenticator,
@@ -56,6 +68,7 @@ final class OfficeSerproAuthorizationService
             'author_identity_type' => AuthorIdentityType::Cnpj,
             'author_identity' => '00000000000000',
             'certificate_mode' => AuthorCertificateMode::ExternalSignature,
+            'termo_authorization_state' => TermoAuthorizationState::Draft,
         ]);
     }
 
@@ -68,11 +81,16 @@ final class OfficeSerproAuthorizationService
         AuthorCertificateMode $mode = AuthorCertificateMode::ExternalSignature,
         ?int $actorUserId = null,
     ): OfficeSerproAuthorization {
+        $this->assertOfficeEligibleForEnvironment($office, $environment);
         $identity = $this->normalizeIdentity($identity);
         $this->assertIdentity($identityType, $identity);
 
         $auth = $this->getOrCreate($office, $environment);
         $from = $auth->status;
+        $identityChanged = $auth->author_identity !== $identity
+            && $auth->author_identity !== ''
+            && $auth->author_identity !== '00000000000000';
+        $modeChanged = $auth->certificate_mode !== $mode;
 
         $auth->author_identity_type = $identityType;
         $auth->author_identity = $identity;
@@ -84,11 +102,21 @@ final class OfficeSerproAuthorizationService
         }
 
         if ($mode === AuthorCertificateMode::InteractiveA3) {
-            // A3 nunca é automatizado
             $auth->managed_a1_consent = false;
         }
 
         $auth->save();
+
+        if ($identityChanged || $modeChanged) {
+            $this->invalidateDerivedAuthorization(
+                $auth,
+                $office,
+                $environment,
+                reason: 'author_changed',
+                actorUserId: $actorUserId,
+            );
+            $auth = $auth->refresh();
+        }
 
         $this->recordEvent($auth, $from, $auth->status, 'author.configure', 'Autor configurado.', $actorUserId);
 
@@ -101,23 +129,123 @@ final class OfficeSerproAuthorizationService
         return $auth->refresh();
     }
 
+    /**
+     * Gera draft canônico não assinado e armazena no vault (fluxo externo A1/A3).
+     *
+     * @return array{auth: OfficeSerproAuthorization, draft_sha256: string}
+     */
+    public function generateTermoDraft(
+        Office $office,
+        SerproEnvironment $environment,
+        CarbonImmutable|string|null $vigencia = null,
+        ?int $actorUserId = null,
+    ): array {
+        $auth = $this->getOrCreate($office, $environment);
+
+        if ($auth->author_identity === '' || $auth->author_identity === '00000000000000') {
+            throw new RuntimeException('Configure a identidade do Autor do Pedido antes do draft.');
+        }
+
+        [$destinationCnpj, $destinationName] = $this->resolveDestination($environment);
+        $authorTipo = $auth->author_identity_type === AuthorIdentityType::Cpf ? 'PF' : 'PJ';
+        $authorName = $auth->author_name ?: 'Autor do Pedido';
+        $dataAssinatura = CarbonImmutable::now('America/Sao_Paulo');
+        $vigenciaDate = $vigencia !== null
+            ? ($vigencia instanceof CarbonImmutable ? $vigencia : CarbonImmutable::parse((string) $vigencia))
+            : $dataAssinatura->addYear();
+
+        $xml = $this->termoGenerator->generateUnsigned(
+            destinationCnpj: $destinationCnpj,
+            destinationName: $destinationName,
+            authorIdentity: $auth->author_identity,
+            authorName: $authorName,
+            authorTipo: $authorTipo,
+            dataAssinatura: $dataAssinatura,
+            vigencia: $vigenciaDate,
+        );
+        $sha = hash('sha256', $xml);
+
+        $aad = SecureObjectPurpose::SerproTermoXml->aadBase([
+            'office_id' => $office->id,
+            'environment' => $environment->value,
+            'kind' => 'draft',
+            'sha256' => $sha,
+            'author_identity' => $auth->author_identity,
+        ]);
+        $objectId = $this->store->put($xml, $aad);
+        unset($xml);
+
+        $meta = is_array($auth->metadata) ? $auth->metadata : [];
+        $previousDraft = $meta['termo_draft_vault_object_id'] ?? null;
+        $meta['termo_draft_vault_object_id'] = $objectId;
+        $meta['termo_draft_sha256'] = $sha;
+        $meta['termo_draft_generated_at'] = now()->toIso8601String();
+        $meta['termo_draft_schema_version'] = TermoAutorizacaoGenerator::SCHEMA_VERSION;
+
+        $from = $auth->status;
+        $auth->metadata = $meta;
+        $auth->termo_authorization_state = TermoAuthorizationState::Draft;
+        if ($auth->status === SerproAuthorizationStatus::Draft) {
+            $auth->status = SerproAuthorizationStatus::PendingTerm;
+        }
+        $auth->save();
+
+        if (is_string($previousDraft) && $previousDraft !== '' && $previousDraft !== $objectId) {
+            try {
+                $this->store->delete($previousDraft);
+            } catch (Throwable) {
+            }
+        }
+
+        $this->recordEvent($auth, $from, $auth->status, 'termo.draft_generate', 'Draft do Termo gerado.', $actorUserId, [
+            'draft_sha256' => $sha,
+        ]);
+        $this->audit->record('serpro.authorization.termo_draft', 'SUCCESS', $auth, [
+            'draft_sha256' => $sha,
+            'environment' => $environment->value,
+        ], $actorUserId, $office->id);
+
+        return ['auth' => $auth->refresh(), 'draft_sha256' => $sha];
+    }
+
+    /**
+     * Retorna XML do draft para download protegido (caller deve ser ADMIN autenticado).
+     */
+    public function getTermoDraftXml(Office $office, SerproEnvironment $environment): string
+    {
+        $auth = $this->getOrCreate($office, $environment);
+        $meta = is_array($auth->metadata) ? $auth->metadata : [];
+        $objectId = $meta['termo_draft_vault_object_id'] ?? null;
+        $sha = $meta['termo_draft_sha256'] ?? null;
+        if (! is_string($objectId) || $objectId === '' || ! is_string($sha) || $sha === '') {
+            throw new RuntimeException('Draft do Termo não encontrado. Gere o draft antes do download.');
+        }
+
+        $aad = SecureObjectPurpose::SerproTermoXml->aadBase([
+            'office_id' => $office->id,
+            'environment' => $environment->value,
+            'kind' => 'draft',
+            'sha256' => $sha,
+            'author_identity' => $auth->author_identity,
+        ]);
+
+        return $this->store->get($objectId, $aad);
+    }
+
     public function uploadTermo(
         Office $office,
         SerproEnvironment $environment,
         string $termoXml,
         ?int $actorUserId = null,
     ): OfficeSerproAuthorization {
+        $this->assertOfficeEligibleForEnvironment($office, $environment);
         $auth = $this->getOrCreate($office, $environment);
 
         if ($auth->author_identity === '' || $auth->author_identity === '00000000000000') {
             throw new RuntimeException('Configure a identidade do Autor do Pedido antes do Termo.');
         }
 
-        $destination = (string) config('serpro.termo_destination_cnpj', '');
-        $contract = $this->contracts->activeFor($environment);
-        if ($destination === '' && $contract !== null) {
-            $destination = $contract->contractor_cnpj;
-        }
+        [$destination] = $this->resolveDestination($environment);
 
         $validation = $this->termoValidator->validate(
             $termoXml,
@@ -126,7 +254,8 @@ final class OfficeSerproAuthorizationService
         );
 
         if (! $validation->valid) {
-            $auth->termo_authorization_state = TermoAuthorizationState::Rejected;
+            $auth->termo_authorization_state = TermoAuthorizationState::tryFrom((string) ($validation->authorizationState ?? ''))
+                ?? TermoAuthorizationState::Rejected;
             $auth->last_validation_result = $validation->errorCode ?? 'TERM_REJECTED';
             $auth->last_validation_message = mb_substr(
                 $validation->errorMessage ?? 'Termo inválido.',
@@ -144,48 +273,97 @@ final class OfficeSerproAuthorizationService
             throw new RuntimeException($validation->errorMessage ?? 'Termo inválido.');
         }
 
-        $aad = SecureObjectPurpose::SerproTermoXml->aadBase([
-            'office_id' => $office->id,
-            'environment' => $environment->value,
-            'sha256' => $validation->sha256,
-            'author_identity' => $auth->author_identity,
-        ]);
+        return DB::transaction(function () use ($office, $environment, $termoXml, $actorUserId, $auth, $validation) {
+            // Invalidar token/cache/poderes da versão anterior antes de promover o novo Termo.
+            $this->invalidateDerivedAuthorization(
+                $auth,
+                $office,
+                $environment,
+                reason: 'termo_replaced',
+                actorUserId: $actorUserId,
+                keepTermo: true,
+            );
 
-        // Imutável: novo objeto; referência antiga permanece no histórico de vault (não sobrescreve bytes).
-        $objectId = $this->store->put($termoXml, $aad);
+            $aad = SecureObjectPurpose::SerproTermoXml->aadBase([
+                'office_id' => $office->id,
+                'environment' => $environment->value,
+                'kind' => 'signed',
+                'sha256' => $validation->sha256,
+                'author_identity' => $auth->author_identity,
+            ]);
 
-        $from = $auth->status;
-        $auth->termo_vault_object_id = $objectId;
-        $auth->termo_sha256 = $validation->sha256;
-        $auth->termo_valid_from = $validation->validFrom;
-        $auth->termo_valid_to = $validation->validTo;
-        $auth->termo_destination_cnpj = $validation->destinationCnpj;
-        $auth->termo_signed_by = $validation->signedBy;
-        $auth->termo_uploaded_at = now();
-        $auth->termo_authorization_state = $validation->authorizationState
-            ?? TermoAuthorizationState::LocalValidated->value;
-        $auth->last_validation_result = 'TERM_VALID';
-        $auth->last_validation_message = 'Termo validado (estrutura crítica).';
-        $auth->last_validated_at = now();
-        $auth->status = SerproAuthorizationStatus::TermValid;
-        $auth->action_required_reason = null;
-        $auth->save();
+            $objectId = $this->store->put($termoXml, $aad);
 
-        $this->recordEvent($auth, $from, $auth->status, 'termo.upload', 'Termo assinado armazenado.', $actorUserId, [
-            'termo_sha256' => $validation->sha256,
-            'signature_checked' => $validation->signatureChecked,
-        ]);
+            $from = $auth->status;
+            $auth->termo_vault_object_id = $objectId;
+            $auth->termo_sha256 = $validation->sha256;
+            $auth->termo_valid_from = $validation->validFrom;
+            $auth->termo_valid_to = $validation->validTo;
+            $auth->termo_destination_cnpj = $validation->destinationCnpj;
+            $auth->termo_signed_by = $validation->signedBy;
+            $auth->termo_uploaded_at = now();
+            $auth->termo_authorization_state = TermoAuthorizationState::LocalValidated;
+            $auth->last_validation_result = 'TERM_VALID';
+            $auth->last_validation_message = 'Termo validado localmente (LOCAL_VALIDATED ≠ SERPRO_ACCEPTED).';
+            $auth->last_validated_at = now();
+            $auth->status = SerproAuthorizationStatus::TermValid;
+            $auth->action_required_reason = null;
 
-        $this->audit->record('serpro.authorization.termo_upload', 'SUCCESS', $auth, [
-            'termo_sha256' => $validation->sha256,
-            'environment' => $environment->value,
-        ], $actorUserId, $office->id);
+            // Limpar draft após upload assinado.
+            $meta = is_array($auth->metadata) ? $auth->metadata : [];
+            unset($meta['termo_draft_vault_object_id'], $meta['termo_draft_sha256'], $meta['termo_draft_generated_at']);
+            $auth->metadata = $meta;
+            $auth->save();
 
-        return $auth->refresh();
+            $versionNumber = (int) SerproTermVersion::query()
+                ->where('office_serpro_authorization_id', $auth->id)
+                ->max('version_number') + 1;
+
+            // Revogar versões anteriores (retenção de evidência).
+            SerproTermVersion::query()
+                ->where('office_serpro_authorization_id', $auth->id)
+                ->whereIn('status', ['LOCAL_VALIDATED', 'SIGNED', 'SERPRO_ACCEPTED', 'ACTIVE'])
+                ->update(['status' => TermoAuthorizationState::Revoked->value]);
+
+            SerproTermVersion::query()->create([
+                'office_id' => $office->id,
+                'office_serpro_authorization_id' => $auth->id,
+                'environment' => $environment->value,
+                'version_number' => $versionNumber,
+                'status' => TermoAuthorizationState::LocalValidated->value,
+                'author_identity' => $auth->author_identity,
+                'destination_cnpj' => $validation->destinationCnpj,
+                'termo_sha256' => $validation->sha256,
+                'termo_vault_object_id' => $objectId,
+                'signature_mode' => $auth->certificate_mode->value,
+                'valid_from' => $validation->validFrom,
+                'valid_to' => $validation->validTo,
+                'created_by_user_id' => $actorUserId,
+                'segregation_class' => SerproDataSegregationClass::HistoricalUnverified->value,
+                'metadata' => [
+                    'schema_version' => TermoAutorizacaoGenerator::SCHEMA_VERSION,
+                    'signature_checked' => $validation->signatureChecked,
+                ],
+            ]);
+
+            $this->recordEvent($auth, $from, $auth->status, 'termo.upload', 'Termo assinado armazenado.', $actorUserId, [
+                'termo_sha256' => $validation->sha256,
+                'signature_checked' => $validation->signatureChecked,
+                'version_number' => $versionNumber,
+            ]);
+
+            $this->audit->record('serpro.authorization.termo_upload', 'SUCCESS', $auth, [
+                'termo_sha256' => $validation->sha256,
+                'environment' => $environment->value,
+                'version_number' => $versionNumber,
+            ], $actorUserId, $office->id);
+
+            return $auth->refresh();
+        });
     }
 
     /**
-     * A1 gerenciado opcional do Autor — consentimento + purpose exclusivo.
+     * A1 gerenciado opcional do Autor — consentimento versionado + purpose exclusivo.
      */
     public function storeManagedAuthorA1(
         Office $office,
@@ -198,12 +376,15 @@ final class OfficeSerproAuthorizationService
         if (! $consent) {
             throw new RuntimeException('Consentimento explícito é obrigatório para A1 gerenciado.');
         }
+        if ($actorUserId === null) {
+            throw new RuntimeException('Actor (ADMIN) é obrigatório para custódia A1.');
+        }
+        $this->assertOfficeEligibleForEnvironment($office, $environment);
 
         $auth = $this->getOrCreate($office, $environment);
         $meta = $this->pfxReader->read($pfxBinary, $password);
 
         $holder = $this->normalizeIdentity($meta['cnpj']);
-        // A1 de PF pode vir sem CNPJ — PfxReader exige CNPJ; para CPF, comparar author se numérico 11.
         if ($auth->author_identity_type === AuthorIdentityType::Cnpj) {
             if ($holder !== $auth->author_identity) {
                 throw new RuntimeException('CNPJ do certificado A1 diverge do Autor configurado.');
@@ -224,6 +405,7 @@ final class OfficeSerproAuthorizationService
 
         $objectId = $this->store->put($payload, $aad);
         $previous = $auth->author_pfx_vault_object_id;
+        $a1Changed = $previous !== null && $previous !== $objectId;
 
         $auth->certificate_mode = AuthorCertificateMode::ManagedA1;
         $auth->managed_a1_consent = true;
@@ -234,6 +416,17 @@ final class OfficeSerproAuthorizationService
         $auth->author_cert_valid_to = $meta['valid_to'];
         $auth->save();
 
+        SerproAuthorizationConsent::query()->create([
+            'office_id' => $office->id,
+            'office_serpro_authorization_id' => $auth->id,
+            'consent_type' => SerproAuthorizationConsent::TYPE_MANAGED_A1_CUSTODY,
+            'version_code' => SerproAuthorizationConsent::VERSION_MANAGED_A1_V1,
+            'actor_user_id' => $actorUserId,
+            'consented_at' => now(),
+            'payload_sha256' => hash('sha256', $meta['fingerprint_sha256'].'|'.SerproAuthorizationConsent::VERSION_MANAGED_A1_V1),
+            'metadata' => ['fingerprint_sha256' => $meta['fingerprint_sha256']],
+        ]);
+
         if ($previous !== null && $previous !== $objectId) {
             try {
                 $this->store->delete($previous);
@@ -241,10 +434,80 @@ final class OfficeSerproAuthorizationService
             }
         }
 
+        if ($a1Changed) {
+            $this->invalidateDerivedAuthorization(
+                $auth,
+                $office,
+                $environment,
+                reason: 'author_a1_changed',
+                actorUserId: $actorUserId,
+            );
+        }
+
         unset($pfxBinary, $password, $meta, $payload);
 
         $this->audit->record('serpro.authorization.author_a1', 'SUCCESS', $auth, [
             'fingerprint_sha256' => $auth->author_fingerprint_sha256,
+            'environment' => $environment->value,
+        ], $actorUserId, $office->id);
+
+        return $auth->refresh();
+    }
+
+    /**
+     * Dispara assinatura A1 gerenciada (consentimento versionado + job dedicado).
+     */
+    public function dispatchManagedA1Sign(
+        Office $office,
+        SerproEnvironment $environment,
+        bool $consent,
+        ?int $actorUserId = null,
+    ): OfficeSerproAuthorization {
+        if (! $consent) {
+            throw new RuntimeException('Consentimento versionado é obrigatório para assinar com A1 gerenciado.');
+        }
+        if ($actorUserId === null) {
+            throw new RuntimeException('Actor (ADMIN+2FA) é obrigatório.');
+        }
+
+        $auth = $this->getOrCreate($office, $environment);
+        if ($auth->certificate_mode !== AuthorCertificateMode::ManagedA1) {
+            throw new RuntimeException('Configure A1 gerenciado antes de assinar.');
+        }
+        if (! $auth->managed_a1_consent || $auth->author_pfx_vault_object_id === null) {
+            throw new RuntimeException('Custódia A1/consentimento ausente.');
+        }
+
+        $meta = is_array($auth->metadata) ? $auth->metadata : [];
+        if (empty($meta['termo_draft_vault_object_id'])) {
+            // Auto-gerar draft se ausente.
+            $this->generateTermoDraft($office, $environment, null, $actorUserId);
+            $auth = $auth->refresh();
+        }
+
+        SerproAuthorizationConsent::query()->create([
+            'office_id' => $office->id,
+            'office_serpro_authorization_id' => $auth->id,
+            'consent_type' => SerproAuthorizationConsent::TYPE_MANAGED_A1,
+            'version_code' => SerproAuthorizationConsent::VERSION_MANAGED_A1_V1,
+            'actor_user_id' => $actorUserId,
+            'consented_at' => now(),
+            'payload_sha256' => hash(
+                'sha256',
+                ($auth->author_fingerprint_sha256 ?? '').'|sign|'.SerproAuthorizationConsent::VERSION_MANAGED_A1_V1,
+            ),
+            'metadata' => ['action' => 'sign_termo'],
+        ]);
+
+        SignTermoWithManagedA1Job::dispatch(
+            $office->id,
+            $environment->value,
+            $auth->id,
+            $actorUserId,
+            $this->audit->correlationId(),
+        );
+
+        $this->audit->record('serpro.authorization.termo_managed_a1_dispatch', 'SUCCESS', $auth, [
             'environment' => $environment->value,
         ], $actorUserId, $office->id);
 
@@ -274,6 +537,7 @@ final class OfficeSerproAuthorizationService
         SerproEnvironment $environment,
         ?int $actorUserId = null,
     ): OfficeSerproAuthorization {
+        $this->assertOfficeEligibleForEnvironment($office, $environment);
         $auth = $this->getOrCreate($office, $environment);
 
         if ($auth->termo_vault_object_id === null) {
@@ -288,7 +552,6 @@ final class OfficeSerproAuthorizationService
             );
         }
 
-        // Token ainda válido
         if (
             $auth->procurador_token_vault_object_id !== null
             && $auth->procurador_token_expires_at !== null
@@ -317,16 +580,28 @@ final class OfficeSerproAuthorizationService
                     $actorUserId,
                 );
             }
-            // REUSE_STORED_TERM: continua
         }
 
         $termoAad = SecureObjectPurpose::SerproTermoXml->aadBase([
             'office_id' => $office->id,
             'environment' => $environment->value,
+            'kind' => 'signed',
             'sha256' => $auth->termo_sha256,
             'author_identity' => $auth->author_identity,
         ]);
-        $termoXml = $this->store->get($auth->termo_vault_object_id, $termoAad);
+
+        // Compat: termos gravados antes do kind=signed
+        try {
+            $termoXml = $this->store->get($auth->termo_vault_object_id, $termoAad);
+        } catch (Throwable) {
+            $legacyAad = SecureObjectPurpose::SerproTermoXml->aadBase([
+                'office_id' => $office->id,
+                'environment' => $environment->value,
+                'sha256' => $auth->termo_sha256,
+                'author_identity' => $auth->author_identity,
+            ]);
+            $termoXml = $this->store->get($auth->termo_vault_object_id, $legacyAad);
+        }
 
         $contract = $this->contracts->activeFor($environment);
         $allowSimulatedBearer = (bool) config('serpro.trial.use_fake_clients', false);
@@ -344,7 +619,6 @@ final class OfficeSerproAuthorizationService
                         $e,
                     );
                 }
-                // Trial/fake: permite Bearer simulado apenas com use_fake_clients.
                 $bearer = 'SIMULATED';
             }
         } elseif ($allowSimulatedBearer) {
@@ -403,11 +677,37 @@ final class OfficeSerproAuthorizationService
         $from = $auth->status;
         $auth->procurador_token_vault_object_id = $objectId;
         $auth->procurador_token_expires_at = $result->expiresAt;
-        $auth->procurador_etag = $result->etag;
-        $auth->termo_authorization_state = $result->authorizationState
+        // ETag sensível: não persistir em claro se parecer carregar token.
+        $etag = $result->etag;
+        if (is_string($etag) && (str_contains(strtolower($etag), 'token') || strlen($etag) > 64)) {
+            $auth->procurador_etag = null;
+            $meta = is_array($auth->metadata) ? $auth->metadata : [];
+            $meta['has_procurador_etag'] = true;
+            $auth->metadata = $meta;
+        } else {
+            $auth->procurador_etag = $etag;
+        }
+
+        $resolvedState = $result->authorizationState
             ?? ($result->simulated
                 ? TermoAuthorizationState::Simulated->value
                 : TermoAuthorizationState::SerproAccepted->value);
+
+        // Fail-closed: simulated nunca vira SERPRO_ACCEPTED.
+        if ($result->simulated && $resolvedState === TermoAuthorizationState::SerproAccepted->value) {
+            $resolvedState = TermoAuthorizationState::Simulated->value;
+        }
+        if (! $result->simulated && $resolvedState === TermoAuthorizationState::SerproAccepted->value) {
+            // ok
+        } elseif (! $result->simulated && $resolvedState !== TermoAuthorizationState::SerproAccepted->value) {
+            // real path that didn't set state → accepted
+            if ($result->success) {
+                $resolvedState = TermoAuthorizationState::SerproAccepted->value;
+            }
+        }
+
+        $auth->termo_authorization_state = TermoAuthorizationState::tryFrom($resolvedState)
+            ?? ($result->simulated ? TermoAuthorizationState::Simulated : TermoAuthorizationState::SerproAccepted);
         $auth->last_token_refresh_at = now();
         $auth->status = SerproAuthorizationStatus::TokenActive;
         $auth->action_required_reason = null;
@@ -420,14 +720,34 @@ final class OfficeSerproAuthorizationService
             }
         }
 
+        // Atualizar versão do Termo com token/aceite (referências opacas).
+        $termVersion = SerproTermVersion::query()
+            ->where('office_serpro_authorization_id', $auth->id)
+            ->where('termo_sha256', $auth->termo_sha256)
+            ->orderByDesc('version_number')
+            ->first();
+        if ($termVersion !== null) {
+            $termVersion->token_vault_object_id = $objectId;
+            $termVersion->token_expires_at = $result->expiresAt;
+            if (! $result->simulated && $auth->termo_authorization_state === TermoAuthorizationState::SerproAccepted) {
+                $termVersion->status = TermoAuthorizationState::SerproAccepted->value;
+                $termVersion->serpro_accepted_at = now();
+            } elseif ($result->simulated) {
+                $termVersion->status = TermoAuthorizationState::Simulated->value;
+            }
+            $termVersion->save();
+        }
+
         $this->recordEvent($auth, $from, $auth->status, 'procurador.token_refresh', 'Token do procurador renovado.', $actorUserId, [
             'simulated' => $result->simulated,
             'expires_at' => $result->expiresAt->toIso8601String(),
+            'authorization_state' => $auth->termo_authorization_state?->value,
         ]);
 
         $this->audit->record('serpro.authorization.token_refresh', 'SUCCESS', $auth, [
             'simulated' => $result->simulated,
             'expires_at' => $result->expiresAt->toIso8601String(),
+            'authorization_state' => $auth->termo_authorization_state?->value,
         ], $actorUserId, $office->id);
 
         return $auth->refresh();
@@ -440,6 +760,136 @@ final class OfficeSerproAuthorizationService
 
         return TermRePresentationStrategy::tryFrom((string) $raw)
             ?? TermRePresentationStrategy::PendingValidation;
+    }
+
+    /**
+     * Invalida atomicamente token, ETag, cache e poderes derivados (retenção de Termo/auditoria).
+     */
+    public function invalidateDerivedAuthorization(
+        OfficeSerproAuthorization $auth,
+        Office $office,
+        SerproEnvironment $environment,
+        string $reason,
+        ?int $actorUserId = null,
+        bool $keepTermo = false,
+    ): void {
+        $termoHash = $auth->termo_sha256;
+        $previousToken = $auth->procurador_token_vault_object_id;
+
+        $auth->procurador_token_vault_object_id = null;
+        $auth->procurador_token_expires_at = null;
+        $auth->procurador_etag = null;
+        $auth->last_token_refresh_at = null;
+
+        if (! $keepTermo) {
+            // Não apaga bytes do vault (retenção); só desassocia uso operacional se revogação total.
+            if (in_array($reason, ['revoked', 'author_changed'], true)) {
+                if ($auth->status === SerproAuthorizationStatus::TokenActive
+                    || $auth->status === SerproAuthorizationStatus::TermValid) {
+                    $auth->status = SerproAuthorizationStatus::PendingTerm;
+                }
+                if ($reason === 'author_changed') {
+                    $auth->termo_vault_object_id = null;
+                    $auth->termo_sha256 = null;
+                    $auth->termo_signed_by = null;
+                    $auth->termo_destination_cnpj = null;
+                    $auth->termo_valid_from = null;
+                    $auth->termo_valid_to = null;
+                    $auth->termo_uploaded_at = null;
+                    $auth->termo_authorization_state = TermoAuthorizationState::Draft;
+                }
+            }
+        } else {
+            // Termo novo: volta para estado local sem token.
+            if ($auth->termo_authorization_state === TermoAuthorizationState::SerproAccepted
+                || $auth->termo_authorization_state === TermoAuthorizationState::Simulated) {
+                $auth->termo_authorization_state = TermoAuthorizationState::LocalValidated;
+            }
+            if ($auth->status === SerproAuthorizationStatus::TokenActive) {
+                $auth->status = SerproAuthorizationStatus::TermValid;
+            }
+        }
+
+        $auth->save();
+
+        // Cache meta do procurador (todas as chaves conhecidas para o autor/termo).
+        if (is_string($termoHash) && $termoHash !== '') {
+            $contract = $this->contracts->activeFor($environment);
+            $contractKey = $contract !== null
+                ? (string) ($contract->id ?? $contract->contractor_cnpj)
+                : 'none';
+            $cacheKey = sprintf(
+                'serpro:procurador:meta:%d:%s:%s:%s:%s',
+                $office->id,
+                $environment->value,
+                substr(hash('sha256', $contractKey), 0, 16),
+                substr(hash('sha256', $auth->author_identity), 0, 16),
+                substr($termoHash, 0, 16),
+            );
+            Cache::forget($cacheKey);
+            // Legacy key sem contract (pré-4.9)
+            Cache::forget(sprintf(
+                'serpro:procurador:meta:%d:%s:%s:%s',
+                $office->id,
+                $environment->value,
+                substr(hash('sha256', $auth->author_identity), 0, 16),
+                substr($termoHash, 0, 16),
+            ));
+        }
+
+        if (is_string($previousToken) && $previousToken !== '') {
+            try {
+                $this->store->delete($previousToken);
+            } catch (Throwable) {
+            }
+        }
+
+        // Poderes derivados: suspender uso (retenção de evidência).
+        TaxProxyPower::query()
+            ->where('office_id', $office->id)
+            ->where('office_serpro_authorization_id', $auth->id)
+            ->where('status', TaxProxyPowerStatus::Active->value)
+            ->update([
+                'status' => TaxProxyPowerStatus::Revoked->value,
+                'last_check_result' => 'INVALIDATED:'.$reason,
+                'updated_at' => now(),
+            ]);
+
+        $this->recordEvent(
+            $auth,
+            $auth->status,
+            $auth->status,
+            'authorization.invalidate_derived',
+            'Token/cache/poderes invalidados: '.$reason,
+            $actorUserId,
+            ['reason' => $reason, 'keep_termo' => $keepTermo],
+        );
+
+        $this->audit->record('serpro.authorization.invalidate_derived', 'SUCCESS', $auth, [
+            'reason' => $reason,
+            'environment' => $environment->value,
+        ], $actorUserId, $office->id);
+    }
+
+    /**
+     * @return array{0: string, 1: string} [cnpj, nome]
+     */
+    private function resolveDestination(SerproEnvironment $environment): array
+    {
+        $destination = (string) config('serpro.termo_destination_cnpj', '');
+        $name = (string) config('serpro.termo_destination_name', 'CONTRATANTE');
+        $contract = $this->contracts->activeFor($environment);
+        if ($destination === '' && $contract !== null) {
+            $destination = (string) $contract->contractor_cnpj;
+        }
+        if ($destination === '') {
+            throw new RuntimeException('CNPJ destinatário do Termo (contratante) não configurado.');
+        }
+        if ($contract !== null && property_exists($contract, 'contractor_name') && is_string($contract->contractor_name) && $contract->contractor_name !== '') {
+            $name = $contract->contractor_name;
+        }
+
+        return [$this->normalizeIdentity($destination), $name];
     }
 
     private function recordEvent(
@@ -466,7 +916,7 @@ final class OfficeSerproAuthorizationService
 
     private function normalizeIdentity(string $raw): string
     {
-        return strtoupper(preg_replace('/[^0-9A-Za-z]/', '', $raw) ?? '');
+        return BrazilianTaxId::normalize($raw);
     }
 
     private function assertIdentity(AuthorIdentityType $type, string $identity): void
@@ -477,5 +927,14 @@ final class OfficeSerproAuthorizationService
         if ($type === AuthorIdentityType::Cnpj && strlen($identity) !== 14) {
             throw new RuntimeException('CNPJ do Autor deve ter 14 caracteres.');
         }
+    }
+
+    /**
+     * Bloqueia Office demo em ambiente real (Production/Homologation).
+     */
+    public function assertOfficeEligibleForEnvironment(Office $office, SerproEnvironment $environment): void
+    {
+        app(SerproProductionOnboardingGuard::class)
+            ->assertMayUseRealEndpoint($office, $environment);
     }
 }

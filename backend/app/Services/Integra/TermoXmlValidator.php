@@ -6,22 +6,33 @@ use App\DTO\Serpro\TermoValidationResult;
 use App\Enums\TermoAuthorizationState;
 use Carbon\CarbonImmutable;
 use DOMDocument;
+use DOMElement;
+use DOMNode;
 use DOMXPath;
 use RobRichards\XMLSecLibs\XMLSecurityDSig;
 use RobRichards\XMLSecLibs\XMLSecurityKey;
 
 /**
- * Validador do Termo de Autorização XML (layout oficial + XMLDSig + cert).
+ * Validador estrito do Termo de Autorização (layout derivado + XMLDSig anti-wrapping).
  *
- * Estados: LOCAL_VALIDATED (só local) ≠ SERPRO_ACCEPTED (retorno real Autentica Procurador).
- * Cadeia ICP-Brasil completa/revogação permanecem sujeitas ao SERPRO.
+ * - Entidades externas desabilitadas (LIBXML_NONET / no network)
+ * - Uma única Signature / uma única Reference
+ * - Dados extraídos somente de /termoDeAutorizacao/dados (fora de ds:Signature)
+ * - Transforms permitidos: Enveloped + C14N
+ * - RSA-SHA256, digest SHA-256, C14N, X509 final
+ * - LOCAL_VALIDATED ≠ SERPRO_ACCEPTED
  */
 final class TermoXmlValidator
 {
-    /**
-     * @param  string  $expectedAuthorIdentity  CPF/CNPJ do Autor
-     * @param  string  $expectedDestinationCnpj  CNPJ da software house contratante
-     */
+    private const DS_NS = 'http://www.w3.org/2000/09/xmldsig#';
+
+    private const ALLOWED_TRANSFORMS = [
+        TermoXmlSigner::TRANSFORM_ENVELOPED,
+        TermoXmlSigner::TRANSFORM_C14N,
+        // Some signers emit the with-comments variant; reject non-listed strictly.
+        XMLSecurityDSig::C14N,
+    ];
+
     public function validate(
         string $xml,
         string $expectedAuthorIdentity,
@@ -32,6 +43,9 @@ final class TermoXmlValidator
             'xmldsig_crypto' => false,
             'structure_critical' => true,
             'certificate_checks' => false,
+            'anti_wrapping' => false,
+            'schema_derived' => true,
+            'schema_official' => false,
         ];
 
         $xml = trim($xml);
@@ -39,85 +53,138 @@ final class TermoXmlValidator
             return $this->reject('EMPTY_XML', 'Termo XML vazio ou inválido.', $limits);
         }
 
+        // Bloquear DOCTYPE / entidades externas antes do parse.
+        if (preg_match('/<!DOCTYPE/i', $xml) || preg_match('/<!ENTITY/i', $xml)) {
+            return $this->reject('UNSAFE_XML', 'Termo com DOCTYPE/ENTITY não é permitido.', $limits);
+        }
+
         $sha256 = hash('sha256', $xml);
 
         $previous = libxml_use_internal_errors(true);
         $dom = new DOMDocument;
-        $loaded = $dom->loadXML($xml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
+        // LIBXML_NONET: sem rede; não expandir entidades externas.
+        $flags = LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING;
+        if (defined('LIBXML_NOENT')) {
+            // Explicitly do NOT set NOENT (would expand entities). Keep default safe.
+        }
+        $loaded = $dom->loadXML($xml, $flags);
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
 
-        if (! $loaded) {
+        if (! $loaded || $dom->documentElement === null) {
             return $this->reject('MALFORMED_XML', 'Termo XML malformado.', $limits, $sha256);
         }
 
-        $xpath = new DOMXPath($dom);
-        $xpath->registerNamespace('ds', 'http://www.w3.org/2000/09/xmldsig#');
-
-        // Atributos/elementos oficiais (case-insensitive local-name)
-        $signedBy = $this->firstText($xpath, [
-            '//*[local-name()="assinadoPor"]',
-            '//@assinadoPor',
-            '//*[local-name()="AssinadoPor"]',
-        ]);
-        $destination = $this->firstText($xpath, [
-            '//*[local-name()="destinatario"]',
-            '//@destinatario',
-            '//*[local-name()="cnpjDestinatario"]',
-            '//@cnpjDestinatario',
-        ]);
-        $sistema = $this->firstText($xpath, [
-            '//*[local-name()="sistema"]',
-            '//@sistema',
-        ]);
-        $dataAssinaturaRaw = $this->firstText($xpath, [
-            '//*[local-name()="dataAssinatura"]',
-            '//@dataAssinatura',
-        ]);
-        $validFromRaw = $this->firstText($xpath, [
-            '//*[local-name()="dataInicioVigencia"]',
-            '//*[local-name()="vigenciaInicio"]',
-            '//@dataInicioVigencia',
-            '//@vigenciaInicio',
-            '//*[local-name()="vigencia"]/*[local-name()="inicio"]',
-        ]);
-        $validToRaw = $this->firstText($xpath, [
-            '//*[local-name()="dataFimVigencia"]',
-            '//*[local-name()="vigenciaFim"]',
-            '//@dataFimVigencia',
-            '//@vigenciaFim',
-            '//*[local-name()="vigencia"]/*[local-name()="fim"]',
-        ]);
-        $authorNode = $this->firstText($xpath, [
-            '//*[local-name()="autorPedido"]',
-            '//*[local-name()="niAutor"]',
-            '//@niAutor',
-            '//*[local-name()="cpfAutor"]',
-            '//*[local-name()="cnpjAutor"]',
-        ]);
-
-        $signedByNorm = $this->normalizeId($signedBy ?? '');
-        $destinationNorm = $this->normalizeId($destination ?? '');
-        $authorNorm = $this->normalizeId($authorNode ?? $signedByNorm);
-        $expectedAuthor = $this->normalizeId($expectedAuthorIdentity);
-        $expectedDest = $this->normalizeId($expectedDestinationCnpj);
-
-        if ($signedByNorm === '' || $authorNorm === '') {
-            return $this->reject('MISSING_SIGNER', 'Identidade do signatário (assinadoPor) não encontrada no Termo.', $limits, $sha256);
-        }
-
-        if ($signedByNorm !== $authorNorm && $signedByNorm !== $expectedAuthor) {
+        $root = $dom->documentElement;
+        if ($root->localName !== 'termoDeAutorizacao') {
             return $this->reject(
-                'SIGNER_MISMATCH',
-                'Identidade assinadoPor diverge do titular/Autor do Pedido.',
+                'LEGACY_OR_INVALID_ROOT',
+                'Raiz deve ser termoDeAutorizacao (layout legado TermoAutorizacao rejeitado).',
                 $limits,
                 $sha256,
-                $signedByNorm,
-                $authorNorm,
             );
         }
 
-        if ($expectedAuthor !== '' && $signedByNorm !== $expectedAuthor && $authorNorm !== $expectedAuthor) {
+        // Estrutura anti-wrapping: apenas dados + Signature como filhos de elemento.
+        $dadosNodes = [];
+        $signatureNodes = [];
+        $otherElementChildren = [];
+        foreach ($root->childNodes as $child) {
+            if ($child->nodeType !== XML_ELEMENT_NODE) {
+                continue;
+            }
+            /** @var DOMElement $child */
+            if ($child->localName === 'dados' && $child->namespaceURI === null) {
+                $dadosNodes[] = $child;
+            } elseif ($child->localName === 'Signature' && ($child->namespaceURI === self::DS_NS || $child->namespaceURI === null)) {
+                $signatureNodes[] = $child;
+            } else {
+                $otherElementChildren[] = $child->localName;
+            }
+        }
+
+        if ($otherElementChildren !== []) {
+            return $this->reject(
+                'UNEXPECTED_ROOT_CHILD',
+                'Filhos inesperados na raiz do Termo: '.implode(',', $otherElementChildren),
+                $limits,
+                $sha256,
+            );
+        }
+
+        if (count($dadosNodes) !== 1) {
+            return $this->reject(
+                'DADOS_COUNT',
+                'Termo deve conter exatamente um elemento dados coberto pela assinatura.',
+                $limits,
+                $sha256,
+            );
+        }
+
+        if (count($signatureNodes) === 0) {
+            return $this->reject(
+                'MISSING_SIGNATURE',
+                'Termo sem elemento Signature (XMLDSig).',
+                $limits,
+                $sha256,
+            );
+        }
+
+        if (count($signatureNodes) !== 1) {
+            return $this->reject(
+                'MULTIPLE_SIGNATURES',
+                'Termo deve conter exatamente uma Signature.',
+                $limits,
+                $sha256,
+            );
+        }
+
+        // Nenhuma Signature aninhada em outros nós.
+        $xpathAll = new DOMXPath($dom);
+        $xpathAll->registerNamespace('ds', self::DS_NS);
+        $allSigs = $xpathAll->query('//*[local-name()="Signature"]');
+        if ($allSigs !== false && $allSigs->length !== 1) {
+            return $this->reject(
+                'SIGNATURE_WRAPPING',
+                'Detectada multiplicidade/posicionamento suspeito de Signature (wrapping).',
+                $limits,
+                $sha256,
+            );
+        }
+
+        $dados = $dadosNodes[0];
+        $extracted = $this->extractFromDados($dados);
+        if ($extracted['error'] !== null) {
+            return $this->reject(
+                $extracted['error'],
+                $extracted['message'] ?? 'Estrutura de dados inválida.',
+                $limits,
+                $sha256,
+            );
+        }
+
+        // Rejeitar nós críticos duplicados fora de dados (ex.: wrapping com identity não assinada).
+        $criticalDup = $this->detectCriticalDuplicatesOutsideDados($root, $dados);
+        if ($criticalDup !== null) {
+            return $this->reject(
+                'SIGNATURE_WRAPPING',
+                $criticalDup,
+                $limits,
+                $sha256,
+            );
+        }
+
+        $signedByNorm = $extracted['assinadoPorNumero'];
+        $destinationNorm = $extracted['destinatarioNumero'];
+        $authorNorm = $signedByNorm;
+        $expectedAuthor = $this->normalizeId($expectedAuthorIdentity);
+        $expectedDest = $this->normalizeId($expectedDestinationCnpj);
+
+        if ($signedByNorm === '') {
+            return $this->reject('MISSING_SIGNER', 'Identidade assinadoPor ausente.', $limits, $sha256);
+        }
+
+        if ($expectedAuthor !== '' && $signedByNorm !== $expectedAuthor) {
             return new TermoValidationResult(
                 valid: false,
                 errorCode: 'AUTHOR_MISMATCH',
@@ -130,7 +197,7 @@ final class TermoXmlValidator
             );
         }
 
-        if ($expectedDest !== '' && $destinationNorm !== '' && $destinationNorm !== $expectedDest) {
+        if ($expectedDest !== '' && $destinationNorm !== $expectedDest) {
             return new TermoValidationResult(
                 valid: false,
                 errorCode: 'DESTINATION_MISMATCH',
@@ -144,14 +211,61 @@ final class TermoXmlValidator
             );
         }
 
-        if ($expectedDest !== '' && $destinationNorm === '') {
-            return $this->reject('MISSING_DESTINATION', 'Destinatário do Termo não encontrado.', $limits, $sha256, $signedByNorm, $authorNorm);
+        if ($destinationNorm === '') {
+            return $this->reject(
+                'MISSING_DESTINATION',
+                'Destinatário do Termo não encontrado.',
+                $limits,
+                $sha256,
+                $signedByNorm,
+                $authorNorm,
+            );
         }
 
-        $validFrom = $this->parseOfficialDate($validFromRaw) ?? $this->parseOfficialDate($dataAssinaturaRaw);
-        $validTo = $this->parseOfficialDate($validToRaw);
+        if (($extracted['sistemaId'] ?? '') !== TermoAutorizacaoGenerator::SISTEMA_ID) {
+            return $this->reject(
+                'SISTEMA_MISMATCH',
+                'sistema/@id deve ser "API Integra Contador".',
+                $limits,
+                $sha256,
+                $signedByNorm,
+                $authorNorm,
+            );
+        }
 
-        if ($validTo !== null && $validTo->isPast()) {
+        foreach ([
+            'termo' => TermoAutorizacaoGenerator::TERMO_TEXTO,
+            'avisoLegal' => TermoAutorizacaoGenerator::AVISO_LEGAL_TEXTO,
+            'finalidade' => TermoAutorizacaoGenerator::FINALIDADE_TEXTO,
+        ] as $field => $expectedText) {
+            $actual = $extracted[$field.'Texto'] ?? '';
+            if (! $this->legalTextsMatch($actual, $expectedText)) {
+                return $this->reject(
+                    'LEGAL_TEXT_MISMATCH',
+                    "Texto legal de {$field} diverge da versão oficial fixada.",
+                    $limits,
+                    $sha256,
+                    $signedByNorm,
+                    $authorNorm,
+                );
+            }
+        }
+
+        $validFrom = $this->parseOfficialDate($extracted['dataAssinatura'] ?? null);
+        $validTo = $this->parseOfficialDate($extracted['vigencia'] ?? null);
+
+        if ($validTo === null) {
+            return $this->reject(
+                'MISSING_VIGENCIA',
+                'Vigência do Termo ausente ou inválida.',
+                $limits,
+                $sha256,
+                $signedByNorm,
+                $authorNorm,
+            );
+        }
+
+        if ($validTo->endOfDay()->isPast()) {
             return new TermoValidationResult(
                 valid: false,
                 errorCode: 'TERM_EXPIRED',
@@ -163,33 +277,15 @@ final class TermoXmlValidator
                 validTo: $validTo,
                 sha256: $sha256,
                 limits: $limits,
-                authorizationState: TermoAuthorizationState::Rejected->value,
+                authorizationState: TermoAuthorizationState::Expired->value,
             );
         }
 
-        $signatureNodes = $xpath->query('//ds:Signature|//*[local-name()="Signature"]');
-        $hasSignature = $signatureNodes !== false && $signatureNodes->length > 0;
-        if (! $hasSignature) {
-            return new TermoValidationResult(
-                valid: false,
-                errorCode: 'MISSING_SIGNATURE',
-                errorMessage: 'Termo sem elemento Signature (XMLDSig).',
-                signedBy: $signedByNorm,
-                destinationCnpj: $destinationNorm,
-                authorIdentity: $authorNorm,
-                validFrom: $validFrom,
-                validTo: $validTo,
-                sha256: $sha256,
-                signatureChecked: false,
-                signatureValid: false,
-                limits: $limits,
-                authorizationState: TermoAuthorizationState::Rejected->value,
-            );
-        }
-
-        $crypto = $this->verifyXmlDsig($dom);
+        // XMLDSig crypto + transforms + single reference
+        $crypto = $this->verifyXmlDsig($dom, $signatureNodes[0]);
         $limits['xmldsig_crypto'] = $crypto['ok'];
         $limits['certificate_checks'] = $crypto['cert_ok'];
+        $limits['anti_wrapping'] = $crypto['anti_wrapping'];
 
         if (! $crypto['ok']) {
             return new TermoValidationResult(
@@ -209,10 +305,9 @@ final class TermoXmlValidator
             );
         }
 
-        // Identidade do certificado vs assinadoPor (quando disponível)
         if ($crypto['cert_identity'] !== null && $crypto['cert_identity'] !== '') {
             $certId = $this->normalizeId($crypto['cert_identity']);
-            if ($certId !== $signedByNorm && $certId !== $authorNorm && $certId !== $expectedAuthor) {
+            if ($certId !== $signedByNorm && $certId !== $expectedAuthor) {
                 return new TermoValidationResult(
                     valid: false,
                     errorCode: 'CERT_IDENTITY_MISMATCH',
@@ -232,13 +327,18 @@ final class TermoXmlValidator
         }
 
         $defaultXsdPath = dirname(__DIR__, 3).'/resources/serpro/xsd/termo-autorizacao.v1.xsd';
-        $xsdPath = app()->bound('config')
-            ? (string) config('serpro.termo_xsd_path', $defaultXsdPath)
-            : $defaultXsdPath;
+        $xsdPath = $defaultXsdPath;
+        try {
+            if (function_exists('app') && app()->bound('config')) {
+                $xsdPath = (string) config('serpro.termo_xsd_path', $defaultXsdPath);
+            }
+        } catch (\Throwable) {
+            $xsdPath = $defaultXsdPath;
+        }
         if ($xsdPath === '' || ! is_readable($xsdPath)) {
             return $this->reject(
                 'XSD_UNAVAILABLE',
-                'XSD versionado do Termo não está disponível.',
+                'XSD derivado versionado do Termo não está disponível.',
                 $limits,
                 $sha256,
                 $signedByNorm,
@@ -247,15 +347,15 @@ final class TermoXmlValidator
         }
 
         $previous = libxml_use_internal_errors(true);
-        $ok = $dom->schemaValidate($xsdPath);
+        $ok = @$dom->schemaValidate($xsdPath);
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
-        $limits['xsd_full'] = $ok;
+        $limits['xsd_full'] = (bool) $ok;
         if (! $ok) {
             return new TermoValidationResult(
                 valid: false,
                 errorCode: 'XSD_FAILED',
-                errorMessage: 'Termo não conforme ao XSD versionado.',
+                errorMessage: 'Termo não conforme ao XSD derivado versionado (não oficial SERPRO).',
                 signedBy: $signedByNorm,
                 destinationCnpj: $destinationNorm,
                 authorIdentity: $authorNorm,
@@ -272,178 +372,339 @@ final class TermoXmlValidator
         return new TermoValidationResult(
             valid: true,
             signedBy: $signedByNorm,
-            destinationCnpj: $destinationNorm !== '' ? $destinationNorm : $expectedDest,
-            authorIdentity: $authorNorm !== '' ? $authorNorm : $expectedAuthor,
+            destinationCnpj: $destinationNorm,
+            authorIdentity: $authorNorm,
             validFrom: $validFrom,
             validTo: $validTo,
             sha256: $sha256,
             signatureChecked: true,
             signatureValid: true,
-            limits: array_merge($limits, ['sistema' => $sistema]),
+            limits: array_merge($limits, [
+                'sistema' => $extracted['sistemaId'],
+                'schema_version' => TermoAutorizacaoGenerator::SCHEMA_VERSION,
+            ]),
             authorizationState: TermoAuthorizationState::LocalValidated->value,
         );
     }
 
     /**
-     * @return array{ok: bool, cert_ok: bool, cert_identity: ?string, error: ?string, message: ?string}
+     * @return array{
+     *   ok: bool,
+     *   cert_ok: bool,
+     *   anti_wrapping: bool,
+     *   cert_identity: ?string,
+     *   error: ?string,
+     *   message: ?string
+     * }
      */
-    private function verifyXmlDsig(DOMDocument $dom): array
+    private function verifyXmlDsig(DOMDocument $dom, DOMElement $signatureEl): array
     {
         try {
-            $objDSig = new XMLSecurityDSig;
-            $objDSig->idKeys = ['Id', 'ID', 'id'];
+            $xpath = new DOMXPath($dom);
+            $xpath->registerNamespace('ds', self::DS_NS);
 
-            $signature = $objDSig->locateSignature($dom);
-            if ($signature === null) {
-                return [
-                    'ok' => false,
-                    'cert_ok' => false,
-                    'cert_identity' => null,
-                    'error' => 'MISSING_SIGNATURE',
-                    'message' => 'Signature XMLDSig não localizada.',
-                ];
+            // Scoped to the single signature element.
+            $sigXPath = new DOMXPath($signatureEl->ownerDocument ?? $dom);
+            $sigXPath->registerNamespace('ds', self::DS_NS);
+
+            $references = $xpath->query('.//ds:Reference|./ds:SignedInfo/ds:Reference', $signatureEl);
+            if ($references === false || $references->length !== 1) {
+                return $this->cryptoFail('REFERENCE_COUNT', 'Termo deve ter exatamente uma Reference XMLDSig.');
             }
 
-            $xpath = new DOMXPath($dom);
-            $xpath->registerNamespace('ds', 'http://www.w3.org/2000/09/xmldsig#');
-            $signatureAlgorithm = (string) $xpath->evaluate('string(//ds:SignatureMethod/@Algorithm)');
-            $digestAlgorithm = (string) $xpath->evaluate('string(//ds:DigestMethod/@Algorithm)');
-            $canonicalAlgorithm = (string) $xpath->evaluate('string(//ds:CanonicalizationMethod/@Algorithm)');
-            if ($signatureAlgorithm !== XMLSecurityKey::RSA_SHA256
-                || $digestAlgorithm !== XMLSecurityDSig::SHA256
-                || ! in_array($canonicalAlgorithm, [XMLSecurityDSig::C14N, XMLSecurityDSig::EXC_C14N], true)) {
-                return [
-                    'ok' => false,
-                    'cert_ok' => false,
-                    'cert_identity' => null,
-                    'error' => 'XMLDSIG_ALGORITHM_UNSUPPORTED',
-                    'message' => 'Termo deve usar RSA-SHA256, digest SHA-256 e C14N.',
-                ];
+            /** @var DOMElement $ref */
+            $ref = $references->item(0);
+            $uri = $ref->getAttribute('URI');
+            // Permitido: "" (documento) ou "#id" apontando ao root — nunca URI externa/http.
+            if ($uri !== '' && ! str_starts_with($uri, '#')) {
+                return $this->cryptoFail('EXTERNAL_URI', 'Reference com URI externa não é permitida.');
+            }
+            if (str_starts_with($uri, '#')) {
+                $id = substr($uri, 1);
+                $root = $dom->documentElement;
+                $rootId = $root?->getAttribute('Id')
+                    ?: $root?->getAttribute('ID')
+                    ?: $root?->getAttribute('id');
+                if ($root === null || $rootId !== $id) {
+                    return $this->cryptoFail(
+                        'REFERENCE_NOT_ROOT',
+                        'Reference não aponta para o documento/raiz do Termo (risco de wrapping).',
+                    );
+                }
+            }
+
+            $transforms = $xpath->query('.//ds:Transform', $ref);
+            $found = [];
+            if ($transforms !== false) {
+                foreach ($transforms as $t) {
+                    if (! $t instanceof DOMElement) {
+                        continue;
+                    }
+                    $alg = $t->getAttribute('Algorithm');
+                    $found[] = $alg;
+                    if (! in_array($alg, self::ALLOWED_TRANSFORMS, true)) {
+                        return $this->cryptoFail(
+                            'TRANSFORM_NOT_ALLOWED',
+                            'Transform XMLDSig não permitido: '.$alg,
+                        );
+                    }
+                }
+            }
+            if (! in_array(TermoXmlSigner::TRANSFORM_ENVELOPED, $found, true)
+                && ! in_array('http://www.w3.org/2000/09/xmldsig#enveloped-signature', $found, true)) {
+                return $this->cryptoFail('MISSING_ENVELOPED', 'Transform Enveloped é obrigatório.');
+            }
+
+            $signatureAlgorithm = (string) $xpath->evaluate('string(.//ds:SignatureMethod/@Algorithm)', $signatureEl);
+            $digestAlgorithm = (string) $xpath->evaluate('string(.//ds:DigestMethod/@Algorithm)', $signatureEl);
+            $canonicalAlgorithm = (string) $xpath->evaluate('string(.//ds:CanonicalizationMethod/@Algorithm)', $signatureEl);
+
+            $rsaSha256 = XMLSecurityKey::RSA_SHA256;
+            $sha256 = XMLSecurityDSig::SHA256;
+            $allowedC14n = [
+                XMLSecurityDSig::C14N,
+                TermoXmlSigner::TRANSFORM_C14N,
+                'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
+            ];
+
+            if ($signatureAlgorithm !== $rsaSha256) {
+                return $this->cryptoFail('XMLDSIG_ALGORITHM_UNSUPPORTED', 'SignatureMethod deve ser RSA-SHA256.');
+            }
+            if ($digestAlgorithm !== $sha256) {
+                return $this->cryptoFail('XMLDSIG_ALGORITHM_UNSUPPORTED', 'DigestMethod deve ser SHA-256.');
+            }
+            if (! in_array($canonicalAlgorithm, $allowedC14n, true)) {
+                return $this->cryptoFail('XMLDSIG_ALGORITHM_UNSUPPORTED', 'CanonicalizationMethod deve ser C14N.');
+            }
+
+            // Apenas um X509Certificate (EndCertOnly).
+            $x509List = $xpath->query('.//ds:X509Certificate', $signatureEl);
+            if ($x509List === false || $x509List->length === 0) {
+                return $this->cryptoFail('X509_MISSING', 'Certificado X.509 embutido ausente.');
+            }
+            if ($x509List->length > 1) {
+                return $this->cryptoFail('X509_CHAIN_EMBEDDED', 'Somente o certificado final (EndCertOnly) é permitido.');
+            }
+
+            $objDSig = new XMLSecurityDSig;
+            $objDSig->idKeys = ['Id', 'ID', 'id'];
+            $signature = $objDSig->locateSignature($dom);
+            if ($signature === null) {
+                return $this->cryptoFail('MISSING_SIGNATURE', 'Signature XMLDSig não localizada.');
             }
 
             $objDSig->canonicalizeSignedInfo();
             if (! $objDSig->validateReference()) {
-                return [
-                    'ok' => false,
-                    'cert_ok' => false,
-                    'cert_identity' => null,
-                    'error' => 'DIGEST_MISMATCH',
-                    'message' => 'Digest da referência XMLDSig não confere.',
-                ];
+                return $this->cryptoFail('DIGEST_MISMATCH', 'Digest da referência XMLDSig não confere.');
             }
 
             $objKey = $objDSig->locateKey();
             if ($objKey === null) {
-                return [
-                    'ok' => false,
-                    'cert_ok' => false,
-                    'cert_identity' => null,
-                    'error' => 'KEY_MISSING',
-                    'message' => 'Chave pública da assinatura não localizada.',
-                ];
+                return $this->cryptoFail('KEY_MISSING', 'Chave pública da assinatura não localizada.');
             }
 
-            // Carrega X509 embutido (KeyInfo) diretamente da Signature localizada.
-            $x509 = $signature->getElementsByTagNameNS('*', 'X509Certificate');
-            if ($x509->length === 0) {
-                return [
-                    'ok' => false,
-                    'cert_ok' => false,
-                    'cert_identity' => null,
-                    'error' => 'X509_MISSING',
-                    'message' => 'Certificado X.509 embutido ausente.',
-                ];
-            }
-            $pem = $this->certPemFromBase64(trim((string) $x509->item(0)?->textContent));
+            $pem = $this->certPemFromBase64(trim((string) $x509List->item(0)?->textContent));
             $objKey->loadKey($pem, false, true);
 
             if (! $objDSig->verify($objKey)) {
-                return [
-                    'ok' => false,
-                    'cert_ok' => false,
-                    'cert_identity' => null,
-                    'error' => 'SIGNATURE_INVALID',
-                    'message' => 'Assinatura RSA-SHA256 não confere.',
-                ];
+                return $this->cryptoFail('SIGNATURE_INVALID', 'Assinatura RSA-SHA256 não confere.');
             }
 
+            $parsed = openssl_x509_parse($pem);
+            if (! is_array($parsed)) {
+                return $this->cryptoFail('CERT_INVALID', 'Certificado X.509 embutido inválido.');
+            }
+
+            $now = time();
+            if (isset($parsed['validTo_time_t']) && $parsed['validTo_time_t'] < $now) {
+                return $this->cryptoFail('CERT_EXPIRED', 'Certificado do Termo expirado.');
+            }
+            if (isset($parsed['validFrom_time_t']) && $parsed['validFrom_time_t'] > $now) {
+                return $this->cryptoFail('CERT_NOT_YET_VALID', 'Certificado do Termo ainda não válido.');
+            }
+
+            // Finalidade: digitalSignature / nonRepudiation quando keyUsage presente.
+            $ku = $parsed['extensions']['keyUsage'] ?? '';
+            if (is_string($ku) && $ku !== ''
+                && ! str_contains(strtolower($ku), 'digital signature')
+                && ! str_contains(strtolower($ku), 'non repudiation')
+                && ! str_contains(strtolower($ku), 'nonrepudiation')) {
+                return $this->cryptoFail('CERT_KEY_USAGE_INVALID', 'Certificado não permite assinatura digital.');
+            }
+
+            // Cadeia/revogação ICP-Brasil: disponibilidade local limitada — flag partial.
+            // SERPRO valida cadeia completa no aceite remoto.
             $certIdentity = null;
-            $certOk = false;
-            if ($x509->length > 0) {
-                $pem = $this->certPemFromBase64(trim((string) $x509->item(0)?->textContent));
-                $parsed = openssl_x509_parse($pem);
-                if (is_array($parsed)) {
-                    $certOk = true;
-                    $now = time();
-                    if (isset($parsed['validTo_time_t']) && $parsed['validTo_time_t'] < $now) {
-                        return [
-                            'ok' => false,
-                            'cert_ok' => false,
-                            'cert_identity' => null,
-                            'error' => 'CERT_EXPIRED',
-                            'message' => 'Certificado do Termo expirado.',
-                        ];
-                    }
-                    if (isset($parsed['validFrom_time_t']) && $parsed['validFrom_time_t'] > $now) {
-                        return [
-                            'ok' => false,
-                            'cert_ok' => false,
-                            'cert_identity' => null,
-                            'error' => 'CERT_NOT_YET_VALID',
-                            'message' => 'Certificado do Termo ainda não válido.',
-                        ];
-                    }
-                    // Uso de chave: digitalSignature / nonRepudiation
-                    $ku = $parsed['extensions']['keyUsage'] ?? '';
-                    if (is_string($ku) && $ku !== ''
-                        && ! str_contains(strtolower($ku), 'digital signature')
-                        && ! str_contains(strtolower($ku), 'non repudiation')
-                        && ! str_contains(strtolower($ku), 'nonrepudiation')) {
-                        return [
-                            'ok' => false,
-                            'cert_ok' => false,
-                            'cert_identity' => null,
-                            'error' => 'CERT_KEY_USAGE_INVALID',
-                            'message' => 'Certificado não permite assinatura digital.',
-                        ];
-                    }
-                    $cn = (string) ($parsed['subject']['CN'] ?? '');
-                    if (preg_match('/(\d{11}|\d{14})/', $cn, $m)) {
-                        $certIdentity = $m[1];
-                    }
-                    $serial = (string) ($parsed['subject']['serialNumber'] ?? '');
-                    if ($certIdentity === null && preg_match('/(\d{11}|\d{14})/', $serial, $m2)) {
-                        $certIdentity = $m2[1];
-                    }
-                }
+            $cn = (string) ($parsed['subject']['CN'] ?? '');
+            if (preg_match('/(\d{11}|\d{14})/', $cn, $m)) {
+                $certIdentity = $m[1];
             }
-
-            if (! $certOk) {
-                return [
-                    'ok' => false,
-                    'cert_ok' => false,
-                    'cert_identity' => null,
-                    'error' => 'CERT_INVALID',
-                    'message' => 'Certificado X.509 embutido inválido.',
-                ];
+            $serial = (string) ($parsed['subject']['serialNumber'] ?? '');
+            if ($certIdentity === null && preg_match('/(\d{11}|\d{14})/', $serial, $m2)) {
+                $certIdentity = $m2[1];
             }
 
             return [
                 'ok' => true,
-                'cert_ok' => $certOk,
+                'cert_ok' => true,
+                'anti_wrapping' => true,
                 'cert_identity' => $certIdentity,
                 'error' => null,
                 'message' => null,
             ];
         } catch (\Throwable $e) {
+            return $this->cryptoFail('XMLDSIG_ERROR', 'Falha na verificação XMLDSig: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * @return array{ok: false, cert_ok: false, anti_wrapping: bool, cert_identity: null, error: string, message: string}
+     */
+    private function cryptoFail(string $error, string $message, bool $antiWrapping = false): array
+    {
+        return [
+            'ok' => false,
+            'cert_ok' => false,
+            'anti_wrapping' => $antiWrapping,
+            'cert_identity' => null,
+            'error' => $error,
+            'message' => $message,
+        ];
+    }
+
+    /**
+     * Extrai atributos oficiais exclusivamente do nó dados assinado.
+     *
+     * @return array<string, mixed>
+     */
+    private function extractFromDados(DOMElement $dados): array
+    {
+        $byName = [];
+        foreach ($dados->childNodes as $child) {
+            if ($child->nodeType !== XML_ELEMENT_NODE) {
+                continue;
+            }
+            /** @var DOMElement $child */
+            $name = $child->localName;
+            if (isset($byName[$name])) {
+                return [
+                    'error' => 'DUPLICATE_DADOS_CHILD',
+                    'message' => "Elemento duplicado em dados: {$name}",
+                ];
+            }
+            $byName[$name] = $child;
+        }
+
+        $required = [
+            'sistema', 'termo', 'avisoLegal', 'finalidade',
+            'dataAssinatura', 'vigencia', 'destinatario', 'assinadoPor',
+        ];
+        foreach ($required as $req) {
+            if (! isset($byName[$req])) {
+                return [
+                    'error' => 'MISSING_FIELD',
+                    'message' => "Campo obrigatório ausente em dados: {$req}",
+                ];
+            }
+        }
+
+        /** @var DOMElement $sistema */
+        $sistema = $byName['sistema'];
+        /** @var DOMElement $dest */
+        $dest = $byName['destinatario'];
+        /** @var DOMElement $assinado */
+        $assinado = $byName['assinadoPor'];
+
+        if (($dest->getAttribute('tipo') ?: '') !== 'PJ'
+            || strtolower($dest->getAttribute('papel') ?: '') !== 'contratante') {
             return [
-                'ok' => false,
-                'cert_ok' => false,
-                'cert_identity' => null,
-                'error' => 'XMLDSIG_ERROR',
-                'message' => 'Falha na verificação XMLDSig: '.$e->getMessage(),
+                'error' => 'DESTINATARIO_ATTR',
+                'message' => 'destinatario deve ter tipo=PJ e papel=contratante.',
             ];
         }
+
+        $assinadoPapel = strtolower(trim($assinado->getAttribute('papel') ?: ''));
+        if ($assinadoPapel !== 'autor pedido de dados') {
+            return [
+                'error' => 'ASSINADO_POR_PAPEL',
+                'message' => 'assinadoPor/@papel deve ser "autor pedido de dados".',
+            ];
+        }
+
+        $tipo = strtoupper($assinado->getAttribute('tipo') ?: '');
+        if (! in_array($tipo, ['PF', 'PJ'], true)) {
+            return [
+                'error' => 'ASSINADO_POR_TIPO',
+                'message' => 'assinadoPor/@tipo deve ser PF ou PJ.',
+            ];
+        }
+
+        return [
+            'error' => null,
+            'message' => null,
+            'sistemaId' => $sistema->getAttribute('id'),
+            'termoTexto' => $byName['termo']->getAttribute('texto'),
+            'avisoLegalTexto' => $byName['avisoLegal']->getAttribute('texto'),
+            'finalidadeTexto' => $byName['finalidade']->getAttribute('texto'),
+            'dataAssinatura' => $byName['dataAssinatura']->getAttribute('data'),
+            'vigencia' => $byName['vigencia']->getAttribute('data'),
+            'destinatarioNumero' => $this->normalizeId($dest->getAttribute('numero')),
+            'destinatarioNome' => $dest->getAttribute('nome'),
+            'assinadoPorNumero' => $this->normalizeId($assinado->getAttribute('numero')),
+            'assinadoPorNome' => $assinado->getAttribute('nome'),
+            'assinadoPorTipo' => $tipo,
+        ];
+    }
+
+    private function detectCriticalDuplicatesOutsideDados(DOMElement $root, DOMElement $dados): ?string
+    {
+        $critical = ['assinadoPor', 'destinatario', 'vigencia', 'dataAssinatura', 'sistema', 'termo', 'avisoLegal', 'finalidade', 'dados'];
+        $xpath = new DOMXPath($root->ownerDocument ?? new DOMDocument);
+        foreach ($critical as $name) {
+            $nodes = $xpath->query('//*[local-name()="'.$name.'"]', $root);
+            if ($nodes === false) {
+                continue;
+            }
+            foreach ($nodes as $node) {
+                if (! $node instanceof DOMNode) {
+                    continue;
+                }
+                // Permitir somente descendentes de $dados (ou o próprio dados único sob root).
+                if ($name === 'dados') {
+                    if ($node !== $dados) {
+                        return 'Elemento dados duplicado ou fora da posição esperada (wrapping).';
+                    }
+
+                    continue;
+                }
+                if (! $this->isDescendantOf($node, $dados)) {
+                    return "Elemento crítico {$name} fora do nó dados assinado (wrapping).";
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function isDescendantOf(DOMNode $node, DOMNode $ancestor): bool
+    {
+        $current = $node->parentNode;
+        while ($current !== null) {
+            if ($current === $ancestor) {
+                return true;
+            }
+            $current = $current->parentNode;
+        }
+
+        return false;
+    }
+
+    private function legalTextsMatch(string $actual, string $expected): bool
+    {
+        // Comparação exata após normalizar espaços Unicode / quebras.
+        $norm = static fn (string $s): string => preg_replace('/\s+/u', ' ', trim($s)) ?? '';
+
+        return $norm($actual) === $norm($expected);
     }
 
     private function certPemFromBase64(string $b64): string
@@ -453,9 +714,6 @@ final class TermoXmlValidator
         return "-----BEGIN CERTIFICATE-----\n".chunk_split($b64, 64, "\n")."-----END CERTIFICATE-----\n";
     }
 
-    /**
-     * Datas oficiais AAAAMMDD ou ISO.
-     */
     private function parseOfficialDate(?string $raw): ?CarbonImmutable
     {
         if ($raw === null || trim($raw) === '') {
@@ -474,26 +732,6 @@ final class TermoXmlValidator
         } catch (\Throwable) {
             return null;
         }
-    }
-
-    /**
-     * @param  list<string>  $queries
-     */
-    private function firstText(DOMXPath $xpath, array $queries): ?string
-    {
-        foreach ($queries as $q) {
-            $nodes = $xpath->query($q);
-            if ($nodes !== false && $nodes->length > 0) {
-                $text = trim((string) $nodes->item(0)?->textContent);
-                if ($text === '' && $nodes->item(0)?->nodeType === XML_ATTRIBUTE_NODE) {
-                    $text = trim((string) $nodes->item(0)->nodeValue);
-                }
-
-                return $text !== '' ? $text : null;
-            }
-        }
-
-        return null;
     }
 
     private function normalizeId(string $raw): string

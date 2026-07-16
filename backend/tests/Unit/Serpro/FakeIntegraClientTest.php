@@ -15,12 +15,13 @@ class FakeIntegraClientTest extends TestCase
             officeId: 1,
             clientId: 2,
             environment: 'TRIAL',
-            solutionCode: 'INTEGRA_SN',
-            serviceCode: 'PGDASD',
-            operationCode: 'CONSULTAR_DECLARACAO',
             contractorCnpj: '11222333000181',
-            authorIdentity: '12345678901',
+            authorIdentity: '52998224725',
             contributorCnpj: '11222333000181',
+            operationKey: 'pgdasd.consdeclaracao',
+            solutionCode: 'PGDASD',
+            serviceCode: 'PGDASD',
+            operationCode: 'CONSDECLARACAO13',
         ));
 
         $this->assertTrue($response->success);

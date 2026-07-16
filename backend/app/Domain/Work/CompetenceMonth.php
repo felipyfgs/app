@@ -2,13 +2,14 @@
 
 namespace App\Domain\Work;
 
+use App\Domain\Outbound\Competence;
 use InvalidArgumentException;
 use Stringable;
 
 /**
  * Competência operacional canônica YYYY-MM.
  *
- * Reutiliza a semântica de {@see \App\Domain\Outbound\Competence},
+ * Reutiliza a semântica de {@see Competence},
  * com limites explícitos para o módulo de processos.
  */
 final readonly class CompetenceMonth implements Stringable

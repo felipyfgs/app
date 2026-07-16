@@ -237,6 +237,38 @@ final class SimulatedIntegraContadorClient implements IntegraContadorClient
             ];
         }
 
+        // PGDAS-D / PGMEI consultas: corpo mínimo para mappers de situação (UP_TO_DATE exige recibo).
+        if (is_string($operationKey) && (
+            str_starts_with($operationKey, 'pgdasd.')
+            || str_starts_with($operationKey, 'pgmei.')
+            || str_starts_with($operationKey, 'defis.')
+            || str_starts_with($operationKey, 'ccmei.')
+            || str_starts_with($operationKey, 'dasn')
+            || str_contains($operationKey, 'regime')
+        )) {
+            $period = (string) ($request->businessData['competencia']
+                ?? $request->businessData['period_key']
+                ?? $request->payload['competencia']
+                ?? '2026-03');
+
+            return [
+                'status' => 'OK',
+                'dto_version' => '1',
+                'competence' => $period,
+                'competencia' => $period,
+                'situacao' => 'ENTREGUE',
+                'receipt_number' => 'SIM-REC-'.substr(hash('sha256', $operationKey.$request->contributorCnpj), 0, 10),
+                'numero_recibo' => 'SIM-REC-'.substr(hash('sha256', $operationKey.$request->contributorCnpj), 0, 10),
+                'declaration_id' => 'SIM-DECL-1',
+                'dados' => [
+                    'status' => 'ENTREGUE',
+                    'competence' => $period,
+                    'receipt_number' => 'SIM-REC-'.substr(hash('sha256', $operationKey.$request->contributorCnpj), 0, 10),
+                ],
+                'simulated' => true,
+            ];
+        }
+
         return [
             'status' => 'OK',
             'dados' => '{}',

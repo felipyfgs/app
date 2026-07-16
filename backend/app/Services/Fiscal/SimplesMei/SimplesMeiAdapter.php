@@ -3,21 +3,19 @@
 namespace App\Services\Fiscal\SimplesMei;
 
 use App\Contracts\FiscalSourceAdapter;
-use App\Contracts\IntegraContadorClient;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
 use App\DTO\Fiscal\SimplesMei\SimplesMeiOperationDef;
-use App\DTO\Serpro\IntegraRequest;
+use App\DTO\Serpro\MutationAuthorization;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutability;
 use App\Enums\SerproEnvironment;
-use App\Enums\SerproUsageResult;
-use App\Models\Client;
+use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\OfficeSerproAuthorizationService;
+use App\Services\Serpro\Catalog\OperationKeyMap;
 use App\Services\Serpro\SerproContractService;
-use App\Services\Serpro\Usage\UsageLedgerService;
-use App\Services\Serpro\Usage\UsageReserveRequest;
+use App\Services\Serpro\SerproOperationService;
 use App\Support\FeatureFlags;
 use Illuminate\Support\Str;
 
@@ -29,19 +27,14 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
     public function __construct(
         private readonly SimplesMeiOperationDef $definition,
         private readonly IntegraEligibilityService $eligibility,
-        private readonly UsageLedgerService $ledger,
+        private readonly SerproOperationService $operations,
         private readonly SimplesMeiResponseMapper $mapper,
         private readonly SerproContractService $contracts,
         private readonly OfficeSerproAuthorizationService $authorizations,
         private readonly RegimeApplicabilityService $regimeApplicability,
         private readonly DasGuideHookService $dasGuideHook,
+        private readonly ContributorCnpjResolver $contributors,
     ) {}
-
-    private function integra(): IntegraContadorClient
-    {
-        // Resolve no execute para respeitar rebind de testes / fake trial
-        return app(IntegraContadorClient::class);
-    }
 
     public function systemCode(): string
     {
@@ -169,73 +162,46 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
             return FiscalAdapterResult::blocked('Contrato SERPRO indisponível.', 'CONTRACT_UNAVAILABLE');
         }
 
+        // Autor/contribuinte resolvidos no executor; pre-check de identidade do autor
         $auth = $this->authorizations->getOrCreate($office, $env);
-        $contributor = $this->resolveContributorCnpj($client);
-        $authorIdentity = (string) ($auth->author_identity ?? '');
+        if (trim((string) ($auth->author_identity ?? '')) === '') {
+            return FiscalAdapterResult::blocked('Autor do Pedido não configurado.', 'AUTHOR_IDENTITY_MISSING');
+        }
+        try {
+            $this->contributors->resolve($client);
+        } catch (\Throwable) {
+            return FiscalAdapterResult::blocked('CNPJ completo do contribuinte não encontrado.', 'CONTRIBUTOR_IDENTITY_MISSING');
+        }
 
         $correlationId = $request->run->correlation_id ?? (string) Str::uuid();
         $idempotencyKey = 'sm:'.$request->run->idempotency_key.':'.$def->operationCode;
 
-        $reserve = $this->ledger->reserve(new UsageReserveRequest(
-            officeId: (int) $office->id,
-            idempotencyKey: $idempotencyKey,
-            systemCode: $def->systemCode,
-            serviceCode: $def->serviceCode,
-            operationCode: $def->operationCode,
-            quantity: 1,
-            clientId: (int) $client->id,
-            contributorRef: substr(hash('sha256', $contributor), 0, 16),
-            correlationId: $correlationId,
-        ));
-
-        if (! $reserve->allowed) {
-            return FiscalAdapterResult::blocked(
-                'Orçamento SERPRO bloqueou a operação.',
-                'BUDGET_EXCEEDED',
-            );
-        }
-
         $payload = $this->buildPayload($request, $periodKey);
 
         try {
-            $response = $this->integra()->execute(new IntegraRequest(
-                officeId: (int) $office->id,
-                clientId: (int) $client->id,
-                environment: $env->value,
-                solutionCode: $def->systemCode,
-                serviceCode: $def->serviceCode,
-                operationCode: $this->mapExternalOperation($def),
-                contractorCnpj: (string) $contract->contractor_cnpj,
-                authorIdentity: $authorIdentity,
-                contributorCnpj: $contributor,
-                payload: $payload,
-                idempotencyKey: $idempotencyKey,
-                correlationId: $correlationId,
-            ));
-        } catch (\Throwable $e) {
-            $this->ledger->finalize(
-                $reserve->reservation,
-                SerproUsageResult::TransportError,
+            $operationKey = OperationKeyMap::require(
+                null,
+                $def->systemCode,
+                $def->serviceCode,
+                $def->operationCode,
             );
 
+            $response = $this->operations->execute(
+                office: $office,
+                client: $client,
+                operationKey: $operationKey,
+                businessData: $payload,
+                idempotencyKey: $idempotencyKey,
+                correlationId: $correlationId,
+                mutationAuth: MutationAuthorization::none(),
+                module: SimplesMeiCatalog::MODULE,
+            );
+        } catch (\Throwable) {
             return FiscalAdapterResult::failed(
                 'Falha de transporte Integra Contador.',
                 'TRANSPORT_ERROR',
             );
         }
-
-        $usageResult = $response->success
-            ? SerproUsageResult::Success
-            : ($response->httpStatus >= 500
-                ? SerproUsageResult::HttpError
-                : SerproUsageResult::ClientError);
-
-        $this->ledger->finalize(
-            $reserve->reservation,
-            $usageResult,
-            latencyMs: $response->latencyMs,
-            httpStatus: $response->httpStatus,
-        );
 
         $result = $this->mapper->map($def, $response, $periodKey);
 
@@ -312,28 +278,5 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         }
 
         return $payload;
-    }
-
-    private function resolveContributorCnpj(Client $client): string
-    {
-        $matrix = $client->establishments()
-            ->where('is_matrix', true)
-            ->first();
-
-        if ($matrix !== null && is_string($matrix->cnpj) && strlen($matrix->cnpj) === 14) {
-            return strtoupper($matrix->cnpj);
-        }
-
-        $any = $client->establishments()->first();
-        if ($any !== null && is_string($any->cnpj) && strlen($any->cnpj) === 14) {
-            return strtoupper($any->cnpj);
-        }
-
-        $root = strtoupper((string) $client->root_cnpj);
-        if (strlen($root) === 8) {
-            return $root.'0001'.'00'; // fallback sintético só para envelope trial — tests usam establishment
-        }
-
-        return $root !== '' ? $root : '00000000000000';
     }
 }

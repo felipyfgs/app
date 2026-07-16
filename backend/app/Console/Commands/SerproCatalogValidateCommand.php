@@ -24,6 +24,7 @@ final class SerproCatalogValidateCommand extends Command
         $path = $this->option('path') ?: null;
         $result = $manifest->validate(null, $path);
 
+        $routes = $result['route_counts'] ?? [];
         $this->table(
             ['Métrica', 'Valor'],
             [
@@ -34,6 +35,11 @@ final class SerproCatalogValidateCommand extends Command
                 ['PROSPECTION', (string) ($result['counts']['PROSPECTION'] ?? 0)],
                 ['UNDER_CONSTRUCTION', (string) ($result['counts']['UNDER_CONSTRUCTION'] ?? 0)],
                 ['CANCELED', (string) ($result['counts']['CANCELED'] ?? 0)],
+                ['Apoiar', (string) ($routes['Apoiar'] ?? 0)],
+                ['Consultar', (string) ($routes['Consultar'] ?? 0)],
+                ['Declarar', (string) ($routes['Declarar'] ?? 0)],
+                ['Emitir', (string) ($routes['Emitir'] ?? 0)],
+                ['Monitorar', (string) ($routes['Monitorar'] ?? 0)],
                 ['keys únicas', $result['unique_operation_keys'] ? 'sim' : 'não'],
                 ['coords únicas', $result['unique_coordinates'] ? 'sim' : 'não'],
                 ['sha256', $result['sha256'] ?? '—'],

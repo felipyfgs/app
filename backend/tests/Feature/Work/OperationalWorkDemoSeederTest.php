@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Work;
 
+use App\Enums\Work\ProcessOrigin;
+use App\Enums\Work\ProcessStatus;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\OperationalProcess;
@@ -15,6 +17,7 @@ use App\Services\Work\Demo\WorkDemoEnvironmentGuard;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\OperationalWorkDemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use LogicException;
 use Tests\TestCase;
 
@@ -111,11 +114,11 @@ class OperationalWorkDemoSeederTest extends TestCase
         $manual = OperationalProcess::query()->create([
             'office_id' => $office->id,
             'client_id' => $client->id,
-            'origin' => \App\Enums\Work\ProcessOrigin::Manual,
+            'origin' => ProcessOrigin::Manual,
             'title' => 'Processo manual do operador',
             'competence' => '2026-06',
             'due_date' => '2026-06-20',
-            'status' => \App\Enums\Work\ProcessStatus::AFazer,
+            'status' => ProcessStatus::AFazer,
             'subject_to_fine' => false,
             'lock_version' => 1,
         ]);
@@ -246,7 +249,7 @@ class OperationalWorkDemoSeederTest extends TestCase
         $beforeDepts = WorkDepartment::query()->count();
 
         try {
-            \Illuminate\Support\Facades\DB::transaction(function () use ($office): void {
+            DB::transaction(function () use ($office): void {
                 WorkDepartment::query()->create([
                     'office_id' => $office->id,
                     'code' => 'XXX',

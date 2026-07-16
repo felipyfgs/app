@@ -50,4 +50,29 @@ return [
     |--------------------------------------------------------------------------
     */
     'stale_after_hours' => (int) env('BACKUP_STALE_AFTER_HOURS', 24),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Chave externa do pacote unificado (cifra+autentica artefato)
+    |--------------------------------------------------------------------------
+    |
+    | base64 de 32 bytes. NÃO é VAULT_MASTER_KEY. Ausente = pacote em claro
+    | com checksums (legado v2). Preferir sempre definida em produção.
+    |
+    */
+    'package_key' => env('BACKUP_PACKAGE_KEY', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Restore drill: validar referências DB→vault e prova de decrypt
+    |--------------------------------------------------------------------------
+    */
+    'drill_validate_vault_refs' => filter_var(
+        env('BACKUP_DRILL_VALIDATE_VAULT_REFS', true),
+        FILTER_VALIDATE_BOOL
+    ),
+    'drill_sample_decrypt' => filter_var(
+        env('BACKUP_DRILL_SAMPLE_DECRYPT', true),
+        FILTER_VALIDATE_BOOL
+    ),
 ];

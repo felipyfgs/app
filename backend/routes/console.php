@@ -13,6 +13,17 @@ Schedule::command('outbound:deadline-plan')->hourly();
 Schedule::command('exports:purge-expired')->hourly();
 Schedule::command('import:purge-expired-spools')->hourly();
 Schedule::command('credentials:refresh-expiry')->hourly();
+// SERPRO lifecycle: alertas de PFX/A1/Termo/token/procurações — sem assinar/mutar
+Schedule::command('serpro:lifecycle-scan')->hourly();
+// SERPRO ops: breaker, fila parada, budget, drift, runbooks + Horizon snapshot
+Schedule::command('serpro:ops-scan --horizon-snapshot')->everyFiveMinutes();
+if (config('serpro.observability.horizon_snapshot_enabled', true)) {
+    Schedule::command('horizon:snapshot')->everyFiveMinutes();
+}
+// Integridade da cadeia de auditoria (alerta sem PII)
+Schedule::command('audit:verify-chain --alert')->dailyAt('03:30');
+// GC seguro pós-offboarding (após prazo legal)
+Schedule::command('serpro:retention-gc')->dailyAt('04:15');
 
 if (config('backup.schedule_enabled')) {
     Schedule::command('ops:backup-run --kind=full')->dailyAt('02:15');

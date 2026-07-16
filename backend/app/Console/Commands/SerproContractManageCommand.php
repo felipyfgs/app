@@ -21,7 +21,7 @@ class SerproContractManageCommand extends Command
     protected $signature = 'serpro:contract
         {action : list|show|register|activate|replace|deactivate|block|health|catalog|kill-on|kill-off}
         {--id= : ID do contrato}
-        {--env=TRIAL : Ambiente TRIAL|HOMOLOGATION|PRODUCTION}
+        {--serpro-env=TRIAL : Ambiente SERPRO TRIAL|HOMOLOGATION|PRODUCTION}
         {--pfx= : Caminho do arquivo PFX}
         {--password= : Senha do PFX (prefira prompt interativo)}
         {--consumer-key= : Consumer Key}
@@ -213,7 +213,7 @@ class SerproContractManageCommand extends Command
 
     private function environment(): SerproEnvironment
     {
-        $raw = strtoupper((string) $this->option('env'));
+        $raw = strtoupper((string) $this->option('serpro-env'));
 
         return SerproEnvironment::from($raw);
     }

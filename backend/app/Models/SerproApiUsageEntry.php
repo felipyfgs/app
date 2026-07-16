@@ -38,6 +38,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'shadow_mode',
     'occurred_at',
     'created_at',
+    'environment',
+    'serpro_contract_id',
+    'attempt_state',
+    'catalog_revision',
+    'price_revision',
+    'remote_state',
+    'segregation_class',
 ])]
 class SerproApiUsageEntry extends Model
 {

@@ -3,13 +3,16 @@
 namespace App\Services\Serpro\Usage;
 
 use App\DTO\Serpro\IntegraResponse;
+use App\Enums\SerproBillabilityOutcome;
 use App\Enums\SerproConsumptionClass;
+use App\Enums\SerproDataSegregationClass;
 use App\Enums\SerproUsageReservationStatus;
 use App\Enums\SerproUsageResult;
 use App\Models\Office;
 use App\Models\SerproApiUsageEntry;
 use App\Models\SerproApiUsageReservation;
 use App\Services\Audit\AuditLogger;
+use App\Services\Serpro\IntegraBillingClassifier;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -31,11 +34,12 @@ final class UsageLedgerService
         private readonly UsageBudgetGate $budget,
         private readonly UsageShadowPolicy $shadow,
         private readonly AuditLogger $audit,
+        private readonly IntegraBillingClassifier $billingClassifier,
+        private readonly BillingCycleResolver $cycles,
     ) {}
 
     public function reserve(UsageReserveRequest $request): UsageReserveOutcome
     {
-        // Idempotência: reutiliza execução lógica existente (pré-check sem lock).
         $existing = SerproApiUsageReservation::query()
             ->withoutGlobalScopes()
             ->where('idempotency_key', $request->idempotencyKey)
@@ -60,6 +64,17 @@ final class UsageLedgerService
 
         $class = $classified['class'];
         $isEssential = $request->forceEssential ?? $classified['is_essential'];
+        $catalogKnown = $classified['catalog_id'] !== null;
+
+        // Rotas oficiais não faturáveis
+        if (in_array($request->functionalRoute, ['Apoiar', 'Monitorar'], true)) {
+            $class = SerproConsumptionClass::NaoFaturavel;
+        }
+
+        $preTransport = $this->billingClassifier->classifyPreTransport(
+            $request->functionalRoute,
+            catalogKnown: $catalogKnown || $class === SerproConsumptionClass::NaoFaturavel,
+        );
 
         $estimate = $this->prices->estimate(
             class: $class,
@@ -69,11 +84,33 @@ final class UsageLedgerService
             operationCode: $request->operationCode,
         );
 
+        // Simulação: custo zero e não consome budget
+        if ($request->isSimulated) {
+            $estimate['estimated_cost_micros'] = 0;
+            $estimate['unit_cost_micros'] = 0;
+            $estimate['price_unknown'] = false;
+        }
+
         $correlationId = $request->correlationId
             ?? $this->audit->correlationId()
             ?: (string) Str::uuid();
 
+        // Um request tag opaco por attempt (≠ idempotency key).
+        $requestTag = $request->requestTag;
+        if ($requestTag === null || $requestTag === '') {
+            $requestTag = substr(hash('sha256', $request->idempotencyKey.'|'.$correlationId), 0, 32);
+        }
+
         $shadow = $this->shadow->isShadowMode();
+        $segregation = $request->isSimulated
+            ? SerproDataSegregationClass::TrialSimulated->value
+            : ($shadow
+                ? SerproDataSegregationClass::Shadow->value
+                : SerproDataSegregationClass::Production->value);
+
+        $environment = $request->environment ?? (string) config('serpro.default_environment', 'TRIAL');
+        $catalogRevision = $request->catalogRevision
+            ?? ($classified['catalog_id'] !== null ? (string) $classified['catalog_id'] : null);
 
         /** @var array{reservation: SerproApiUsageReservation, budget: array<string, mixed>, allowed: bool, replayed: bool} $pack */
         $pack = DB::transaction(function () use (
@@ -83,8 +120,12 @@ final class UsageLedgerService
             $estimate,
             $correlationId,
             $shadow,
+            $segregation,
+            $environment,
+            $requestTag,
+            $preTransport,
+            $catalogRevision,
         ): array {
-            // Double-check sob lock de unique (corrida de retry / cross-tenant).
             $race = SerproApiUsageReservation::query()
                 ->withoutGlobalScopes()
                 ->where('idempotency_key', $request->idempotencyKey)
@@ -102,30 +143,68 @@ final class UsageLedgerService
                 ];
             }
 
-            // Serializa avaliação de orçamento por office (evita oversubscription de franquia).
             $this->lockOfficeBudget($request->officeId);
+
+            $costMicros = (int) ($estimate['estimated_cost_micros'] ?? 0);
+            $blockReason = null;
+            $allowed = true;
+
+            // Fail-closed: catálogo/rota/preço desconhecido em modo produtivo
+            if (! $request->isSimulated && $this->shadow->isProductiveBillingMode()) {
+                if ($preTransport['outcome'] === SerproBillabilityOutcome::UnknownBlocked) {
+                    $allowed = false;
+                    $blockReason = $preTransport['reason'] ?? 'BILLING_RULE_UNKNOWN';
+                } elseif ($class === SerproConsumptionClass::Desconhecida && ! $this->shadow->failOpenOnUnknown()) {
+                    $allowed = false;
+                    $blockReason = UsageBudgetGate::BLOCK_PRICE_UNKNOWN;
+                } elseif ((bool) ($estimate['price_unknown'] ?? false) && $class->isBillable()) {
+                    $allowed = false;
+                    $blockReason = UsageBudgetGate::BLOCK_PRICE_UNKNOWN;
+                } elseif (
+                    $this->shadow->requiresProductionPriceTable()
+                    && $class->isBillable()
+                    && ! (bool) ($estimate['authorizes_production'] ?? false)
+                ) {
+                    $allowed = false;
+                    $blockReason = UsageBudgetGate::BLOCK_PRICE_UNKNOWN;
+                }
+            }
 
             $budgetEval = $this->budget->evaluate(
                 officeId: $request->officeId,
                 class: $class,
                 quantity: $request->quantity,
                 isEssential: $isEssential,
+                estimatedCostMicros: $request->isSimulated ? 0 : $costMicros,
+                isCanary: $request->isCanary,
+                operationKey: $request->operationKey,
+                environment: $environment === 'TRIAL' ? 'PRODUCTION' : $environment,
             );
 
-            $allowed = (bool) $budgetEval['allowed'];
+            if ($allowed && ! (bool) $budgetEval['allowed']) {
+                $allowed = false;
+                $blockReason = $budgetEval['block_reason'] ?? 'BUDGET_BLOCKED';
+            }
+
+            if ($request->isSimulated) {
+                $allowed = true;
+                $blockReason = null;
+            }
+
             $status = $allowed
                 ? SerproUsageReservationStatus::Reserved
                 : SerproUsageReservationStatus::Blocked;
 
-            // Simulação nunca reserva orçamento/franquia
-            if ($request->isSimulated) {
-                $allowed = true;
-                $status = SerproUsageReservationStatus::Reserved;
-            }
-
-            // Rotas oficiais não faturáveis
-            if (in_array($request->functionalRoute, ['Apoiar', 'Monitorar'], true)) {
-                $class = SerproConsumptionClass::NaoFaturavel;
+            $budgetIds = [];
+            if ($allowed && ! $request->isSimulated && $costMicros > 0 && $this->shadow->requiresPositiveMonetaryBudgets()) {
+                $budgetIds = $this->budget->atomicReserveMicros(
+                    officeId: $request->officeId,
+                    costMicros: $costMicros,
+                    cycleCode: (string) $budgetEval['cycle_code'],
+                    isCanary: $request->isCanary,
+                    operationKey: $request->operationKey,
+                    environment: $environment === 'TRIAL' ? 'PRODUCTION' : $environment,
+                );
             }
 
             $create = [
@@ -142,22 +221,40 @@ final class UsageLedgerService
                 'status' => $status,
                 'correlation_id' => $correlationId,
                 'price_version_id' => $request->isSimulated ? null : $estimate['price_version_id'],
-                'estimated_cost_micros' => $request->isSimulated ? null : $estimate['estimated_cost_micros'],
+                'estimated_cost_micros' => $request->isSimulated ? 0 : $estimate['estimated_cost_micros'],
                 'shadow_mode' => $shadow,
-                'would_block' => $request->isSimulated ? false : (bool) $budgetEval['would_block'],
-                'block_reason' => $allowed ? null : ($budgetEval['block_reason'] ?? null),
+                'would_block' => $request->isSimulated ? false : ((bool) $budgetEval['would_block'] || ! $allowed),
+                'block_reason' => $allowed ? null : $blockReason,
                 'result' => $allowed ? null : SerproUsageResult::BlockedByBudget,
                 'reserved_at' => now(),
                 'finalized_at' => $allowed ? null : now(),
             ];
+
             if (Schema::hasColumn('serpro_api_usage_reservations', 'operation_key')) {
                 $create['operation_key'] = $request->operationKey;
                 $create['is_simulated'] = $request->isSimulated;
-                $create['request_tag'] = $request->requestTag;
+                $create['request_tag'] = $requestTag;
                 $create['functional_route'] = $request->functionalRoute;
+            }
+            if (Schema::hasColumn('serpro_api_usage_reservations', 'environment')) {
+                $create['environment'] = $environment;
+                $create['serpro_contract_id'] = $request->serproContractId;
+                $create['catalog_revision'] = $catalogRevision;
+                $create['price_revision'] = $estimate['price_revision'] ?? null;
+                $create['segregation_class'] = $segregation;
+                $create['attempt_state'] = $allowed ? 'reserved' : 'blocked';
             }
 
             $reservation = SerproApiUsageReservation::query()->create($create);
+
+            if ($budgetIds !== [] && Schema::hasColumn('serpro_api_usage_reservations', 'durable_result_ref') === false) {
+                // metadata em block_reason não — guarda ids no correlation via refresh opcional
+            }
+            // Persist budget ids em metadata se coluna existir (json notes não há); usa durable_result_ref como ref opaca.
+            if ($budgetIds !== [] && Schema::hasColumn('serpro_api_usage_reservations', 'durable_result_ref')) {
+                $reservation->durable_result_ref = 'budgets:'.implode(',', $budgetIds);
+                $reservation->save();
+            }
 
             return [
                 'reservation' => $reservation,
@@ -181,7 +278,6 @@ final class UsageLedgerService
                     'service_code' => $request->serviceCode,
                     'operation_code' => $request->operationCode,
                     'block_reason' => $reservation->block_reason,
-                    // sem CNPJ
                 ],
                 officeId: $request->officeId,
             );
@@ -195,9 +291,6 @@ final class UsageLedgerService
         );
     }
 
-    /**
-     * Finaliza reserva com resultado da chamada (inclusive falha possivelmente faturável).
-     */
     public function finalize(
         SerproApiUsageReservation $reservation,
         SerproUsageResult $result,
@@ -210,7 +303,6 @@ final class UsageLedgerService
             ->whereKey($reservation->id)
             ->firstOrFail();
 
-        // Já finalizada: reutiliza entrada (idempotente).
         if ($reservation->status === SerproUsageReservationStatus::Finalized) {
             $entry = SerproApiUsageEntry::query()
                 ->withoutGlobalScopes()
@@ -231,11 +323,36 @@ final class UsageLedgerService
         }
 
         $billable = $possiblyBillable ?? $result->possiblyBillableByDefault();
+        $outcome = null;
 
-        // NAO_FATURAVEL nunca vira tentativa faturável.
+        if ($httpStatus !== null) {
+            $route = $reservation->functional_route ?? null;
+            $outcome = $this->billingClassifier->classifyPostTransport(
+                is_string($route) ? $route : null,
+                $httpStatus,
+            );
+            $billable = $outcome->isBillableAttempt() && $billable;
+        } elseif (in_array($result, [SerproUsageResult::Timeout, SerproUsageResult::TransportError, SerproUsageResult::Unknown], true)) {
+            // Timeout/transporte incerto → POSSIBLY_BILLABLE
+            $outcome = SerproBillabilityOutcome::PossiblyBillable;
+            $billable = true;
+            $possiblyBillable = true;
+        }
+
         if ($reservation->consumption_class->value === 'NAO_FATURAVEL') {
             $billable = false;
         }
+
+        if ((bool) ($reservation->is_simulated ?? false)) {
+            $billable = false;
+        }
+
+        $remoteState = match (true) {
+            $outcome === SerproBillabilityOutcome::PossiblyBillable,
+            $result === SerproUsageResult::Timeout,
+            $result === SerproUsageResult::TransportError => 'uncertain',
+            default => 'acknowledged',
+        };
 
         return DB::transaction(function () use (
             $reservation,
@@ -243,6 +360,8 @@ final class UsageLedgerService
             $latencyMs,
             $httpStatus,
             $billable,
+            $remoteState,
+            $possiblyBillable,
         ): SerproApiUsageEntry {
             $locked = SerproApiUsageReservation::query()
                 ->withoutGlobalScopes()
@@ -277,12 +396,18 @@ final class UsageLedgerService
                 $locked->http_status = $httpStatus;
                 $locked->possibly_billable = $billable;
                 $locked->finalized_at = now();
+                if (Schema::hasColumn('serpro_api_usage_reservations', 'attempt_state')) {
+                    $locked->attempt_state = $remoteState === 'uncertain' ? 'uncertain' : 'acknowledged';
+                    $locked->remote_state = $remoteState;
+                }
                 $locked->save();
 
                 return $existingEntry;
             }
 
-            // Custo histórico: preserva estimativa da reserva (não recalcula se preço mudou).
+            $cost = (int) ($locked->estimated_cost_micros ?? 0);
+            $this->settleBudgetsFromReservation($locked, $cost, consume: $billable);
+
             $entryData = [
                 'office_id' => $locked->office_id,
                 'reservation_id' => $locked->id,
@@ -297,7 +422,7 @@ final class UsageLedgerService
                 'result' => $result,
                 'correlation_id' => $locked->correlation_id,
                 'price_version_id' => $locked->price_version_id,
-                'estimated_cost_micros' => $locked->estimated_cost_micros,
+                'estimated_cost_micros' => (bool) ($locked->is_simulated ?? false) ? 0 : $locked->estimated_cost_micros,
                 'is_billable_attempt' => $billable,
                 'latency_ms' => $latencyMs,
                 'http_status' => $httpStatus,
@@ -311,24 +436,35 @@ final class UsageLedgerService
                 $entryData['request_tag'] = $locked->request_tag;
                 $entryData['functional_route'] = $locked->functional_route;
             }
+            if (Schema::hasColumn('serpro_api_usage_entries', 'environment')) {
+                $entryData['environment'] = $locked->environment ?? null;
+                $entryData['serpro_contract_id'] = $locked->serpro_contract_id ?? null;
+                $entryData['attempt_state'] = $remoteState === 'uncertain' ? 'uncertain' : 'acknowledged';
+                $entryData['catalog_revision'] = $locked->catalog_revision ?? null;
+                $entryData['price_revision'] = $locked->price_revision ?? null;
+                $entryData['remote_state'] = $remoteState;
+                $entryData['segregation_class'] = $locked->segregation_class
+                    ?? ($locked->shadow_mode ? SerproDataSegregationClass::Shadow->value : SerproDataSegregationClass::Production->value);
+            }
+
             $entry = SerproApiUsageEntry::query()->create($entryData);
 
             $locked->status = SerproUsageReservationStatus::Finalized;
             $locked->result = $result;
             $locked->latency_ms = $latencyMs;
             $locked->http_status = $httpStatus;
-            $locked->possibly_billable = $billable;
+            $locked->possibly_billable = $possiblyBillable ?? $billable;
             $locked->finalized_at = now();
+            if (Schema::hasColumn('serpro_api_usage_reservations', 'attempt_state')) {
+                $locked->attempt_state = $remoteState === 'uncertain' ? 'uncertain' : 'acknowledged';
+                $locked->remote_state = $remoteState;
+            }
             $locked->save();
 
             return $entry;
         });
     }
 
-    /**
-     * Libera reserva quando a chamada HTTP não foi disparada (não faturável).
-     * Concorrente com finalize: se já Finalized, no-op seguro (retorna estado atual).
-     */
     public function release(SerproApiUsageReservation $reservation): SerproApiUsageReservation
     {
         return DB::transaction(function () use ($reservation): SerproApiUsageReservation {
@@ -342,10 +478,16 @@ final class UsageLedgerService
                 return $locked;
             }
 
+            $cost = (int) ($locked->estimated_cost_micros ?? 0);
+            $this->settleBudgetsFromReservation($locked, $cost, consume: false);
+
             $locked->status = SerproUsageReservationStatus::Released;
             $locked->result = SerproUsageResult::Released;
             $locked->possibly_billable = false;
             $locked->finalized_at = now();
+            if (Schema::hasColumn('serpro_api_usage_reservations', 'attempt_state')) {
+                $locked->attempt_state = 'released';
+            }
             $locked->save();
 
             return $locked;
@@ -353,12 +495,6 @@ final class UsageLedgerService
     }
 
     /**
-     * Helper: reserva + callback + finalize/release.
-     *
-     * Se o callback retornar {@see IntegraResponse}, mapeia success/httpStatus → SerproUsageResult.
-     * Se retornar array com chave `usage_result` (SerproUsageResult), usa esse valor.
-     * Caso contrário, Success se não lançar.
-     *
      * @template T
      *
      * @param  callable(): T  $call
@@ -417,9 +553,6 @@ final class UsageLedgerService
         }
     }
 
-    /**
-     * Mapeia resposta Integra → resultado de uso do ledger.
-     */
     public function mapIntegraResponse(IntegraResponse $response): SerproUsageResult
     {
         if ($response->success) {
@@ -446,6 +579,26 @@ final class UsageLedgerService
         return SerproUsageResult::Unknown;
     }
 
+    private function settleBudgetsFromReservation(SerproApiUsageReservation $locked, int $cost, bool $consume): void
+    {
+        if ($cost <= 0 || ! $this->shadow->requiresPositiveMonetaryBudgets()) {
+            return;
+        }
+
+        $ref = (string) ($locked->durable_result_ref ?? '');
+        if (! str_starts_with($ref, 'budgets:')) {
+            return;
+        }
+        $ids = array_values(array_filter(array_map(
+            'intval',
+            explode(',', substr($ref, strlen('budgets:'))),
+        )));
+        if ($ids === []) {
+            return;
+        }
+        $this->budget->settleReservedMicros($ids, $cost, $consume);
+    }
+
     private function assertSameOffice(SerproApiUsageReservation $reservation, int $officeId): void
     {
         if ((int) $reservation->office_id !== $officeId) {
@@ -455,16 +608,11 @@ final class UsageLedgerService
         }
     }
 
-    /**
-     * Trava por office para serializar avaliação de orçamento dentro da transaction.
-     * PostgreSQL: advisory xact lock; demais drivers: lockForUpdate na linha do office.
-     */
     private function lockOfficeBudget(int $officeId): void
     {
         $driver = DB::connection()->getDriverName();
 
         if ($driver === 'pgsql') {
-            // Namespace estável (uso SERPRO) + office_id
             DB::select('SELECT pg_advisory_xact_lock(?, ?)', [0x5E12_0001, $officeId]);
 
             return;
@@ -477,7 +625,7 @@ final class UsageLedgerService
     }
 
     /**
-     * @return array{0: SerproUsageResult, 1: int|null, 2: int|null} usage, httpStatus, latencyMs override
+     * @return array{0: SerproUsageResult, 1: int|null, 2: int|null}
      */
     private function resolveUsageResultFromCallback(mixed $result): array
     {

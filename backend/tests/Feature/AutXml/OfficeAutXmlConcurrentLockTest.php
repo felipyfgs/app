@@ -157,15 +157,19 @@ class OfficeAutXmlConcurrentLockTest extends TestCase
         $office = Office::factory()->create();
         $identity = OfficeFiscalIdentity::factory()->forOffice($office)->withCnpj('11222333000181')->create();
 
-        // Duas filiais (dois clientes/estabelecimentos) com a mesma raiz de emitente.
+        // Duas filiais (matriz + filial com matrix_client_id) na mesma raiz de emitente.
         // O cursor autXML do escritório permanece um por raiz/ambiente/canal do office.
+        // Unique parcial clients (office_id, root_cnpj) só cobre matrix_client_id IS NULL.
         $client1 = Client::factory()->forOffice($office)->create(['root_cnpj' => '99888777']);
         Establishment::factory()->forClient($client1)->create([
             'office_id' => $office->id,
             'cnpj' => '99888777000166',
             'is_active' => true,
         ]);
-        $client2 = Client::factory()->forOffice($office)->create(['root_cnpj' => '99888777']);
+        $client2 = Client::factory()->forOffice($office)->create([
+            'root_cnpj' => '99888777',
+            'matrix_client_id' => $client1->id,
+        ]);
         Establishment::factory()->forClient($client2)->create([
             'office_id' => $office->id,
             'cnpj' => '99888777000247',

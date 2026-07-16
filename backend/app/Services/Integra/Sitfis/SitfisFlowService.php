@@ -2,7 +2,6 @@
 
 namespace App\Services\Integra\Sitfis;
 
-use App\Contracts\IntegraContadorClient;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
 use App\DTO\Serpro\IntegraRequest;
@@ -15,16 +14,13 @@ use App\Enums\FiscalSourceProvenance;
 use App\Enums\FiscalVerificationState;
 use App\Enums\SerproCapabilityDriver;
 use App\Enums\SerproEnvironment;
-use App\Enums\SerproUsageResult;
 use App\Models\SerproContract;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Serpro\CapabilityDriverResolver;
-use App\Services\Serpro\Usage\UsageLedgerService;
-use App\Services\Serpro\Usage\UsageReserveRequest;
+use App\Services\Serpro\SerproOperationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use RuntimeException;
-use Throwable;
 
 /**
  * Orquestra SITFIS: solicitação → protocolo → espera mínima → emissão com polling respeitoso.
@@ -34,11 +30,10 @@ use Throwable;
 final class SitfisFlowService
 {
     public function __construct(
-        private readonly IntegraContadorClient $integra,
+        private readonly SerproOperationService $operations,
         private readonly SitfisIdentityResolver $identities,
         private readonly SitfisReportParser $parser,
         private readonly IntegraEligibilityService $eligibility,
-        private readonly UsageLedgerService $ledger,
         private readonly CapabilityDriverResolver $drivers,
     ) {}
 
@@ -376,84 +371,8 @@ final class SitfisFlowService
             correlationId: $correlation,
         );
 
-        $driver = $this->drivers->forOperationKey($operationKey);
-        if ($driver === SerproCapabilityDriver::Disabled) {
-            return new IntegraResponse(
-                success: false,
-                httpStatus: 503,
-                body: [],
-                errorCode: 'CAPABILITY_DISABLED',
-                errorMessage: 'Capacidade SITFIS desabilitada.',
-                correlationId: $correlation,
-                operationKey: $operationKey,
-            );
-        }
-        // Simulação não cria reserva, franquia ou custo no ledger.
-        if ($driver === SerproCapabilityDriver::Simulated) {
-            return $this->integra->execute($integraRequest);
-        }
-
-        $reserve = $this->ledger->reserve(new UsageReserveRequest(
-            officeId: (int) $request->office->id,
-            idempotencyKey: $idempotencyKey,
-            systemCode: $domainSystem,
-            serviceCode: $service,
-            operationCode: $catalogOperation,
-            quantity: 1,
-            clientId: (int) $request->client->id,
-            contributorRef: substr(hash('sha256', $ids['contributor_cnpj']), 0, 16),
-            correlationId: $correlation,
-            operationKey: $operationKey,
-            isSimulated: false,
-            functionalRoute: str_contains($operationKey, 'solicitar') ? 'Apoiar' : 'Emitir',
-            requestTag: $integraRequest->resolvedRequestTag(),
-        ));
-
-        if (! $reserve->allowed) {
-            return new IntegraResponse(
-                success: false,
-                httpStatus: 422,
-                body: [],
-                errorCode: 'BUDGET_EXCEEDED',
-                errorMessage: 'Orçamento SERPRO bloqueou a operação.',
-                correlationId: $correlation,
-                operationKey: $operationKey,
-            );
-        }
-
-        try {
-            $response = $this->integra->execute($integraRequest);
-        } catch (Throwable $e) {
-            $this->ledger->finalize(
-                $reserve->reservation,
-                SerproUsageResult::TransportError,
-                possiblyBillable: false,
-            );
-
-            return new IntegraResponse(
-                success: false,
-                httpStatus: 0,
-                body: [],
-                errorCode: 'SITFIS_TRANSPORT',
-                errorMessage: $e->getMessage(),
-                correlationId: $correlation,
-                operationKey: $operationKey,
-            );
-        }
-
-        $possiblyBillable = ! $response->simulated
-            && ! in_array($response->httpStatus, [204, 304, 400, 401, 404, 429, 500, 503], true)
-            && ($response->functionalRoute === null || ! in_array($response->functionalRoute, ['Apoiar', 'Monitorar'], true));
-
-        $this->ledger->finalize(
-            $reserve->reservation,
-            $this->ledger->mapIntegraResponse($response),
-            latencyMs: $response->latencyMs,
-            httpStatus: $response->httpStatus > 0 ? $response->httpStatus : null,
-            possiblyBillable: $possiblyBillable,
-        );
-
-        return $response;
+        // Egress único via executor central (gates, ledger, attempt, request-tag).
+        return $this->operations->executeRequest($integraRequest, module: 'sitfis');
     }
 
     private function isGateBlock(IntegraResponse $response): bool

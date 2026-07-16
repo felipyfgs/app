@@ -10,12 +10,16 @@ use App\DTO\Serpro\IntegraResponse;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\SecureObjectPurpose;
 use App\Enums\SerproEnvironment;
+use App\Enums\SerproFunctionalRoute;
 use App\Models\OfficeSerproAuthorization;
+use App\Models\TaxProxyPower;
 use App\Services\Serpro\Catalog\OperationCoordinateResolver;
 use App\Services\Serpro\SerproCircuitBreaker;
 use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproHttpTransport;
 use App\Services\Serpro\SerproKillSwitchService;
+use App\Services\Serpro\SerproRateLimiter;
+use App\Support\LogSanitizer;
 use RuntimeException;
 use Throwable;
 
@@ -25,6 +29,23 @@ use Throwable;
  */
 final class HttpIntegraContadorClient implements IntegraContadorClient
 {
+    /** Headers permitidos além dos oficiais do contrato/procurador. */
+    private const HEADER_ALLOWLIST = [
+        'if-none-match',
+        'accept',
+        'content-type',
+        'x-correlation-id',
+    ];
+
+    private const OFFICIAL_HEADER_NAMES = [
+        'authorization',
+        'jwt_token',
+        'autenticar_procurador_token',
+        'x-request-tag',
+        'content-type',
+        'accept',
+    ];
+
     public function __construct(
         private readonly SerproContractService $contracts,
         private readonly SerproContractAuthenticator $authenticator,
@@ -33,65 +54,110 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         private readonly SerproCircuitBreaker $breaker,
         private readonly SecureObjectStore $store,
         private readonly ?OperationCoordinateResolver $coordinates = null,
+        private readonly ?SerproRateLimiter $rateLimiter = null,
     ) {}
 
     public function execute(IntegraRequest $request): IntegraResponse
     {
         $operationKey = $request->operationKey;
-        $coords = null;
-        $solutionForBreaker = $request->solutionCode ?? 'INTEGRA';
+        $requestTag = $request->resolvedRequestTag();
 
-        if ($operationKey !== null) {
-            try {
-                $coords = ($this->coordinates ?? app(OperationCoordinateResolver::class))
-                    ->resolveExecutable($operationKey);
-                $solutionForBreaker = $coords['id_sistema'];
-            } catch (RuntimeException $e) {
-                if (str_contains($e->getMessage(), 'CAPABILITY_NOT_IMPLEMENTED')) {
-                    return $this->fail($request, 422, 'CAPABILITY_NOT_IMPLEMENTED', $e->getMessage(), $operationKey);
-                }
-                throw $e;
+        try {
+            $coords = ($this->coordinates ?? app(OperationCoordinateResolver::class))
+                ->resolveExecutable($operationKey);
+        } catch (RuntimeException $e) {
+            if (str_contains($e->getMessage(), 'CAPABILITY_NOT_IMPLEMENTED')
+                || str_contains($e->getMessage(), 'CAPABILITY_NOT_EXECUTABLE')
+            ) {
+                return $this->fail($request, 422, 'CAPABILITY_NOT_IMPLEMENTED', $e->getMessage());
             }
+            throw $e;
         }
 
+        $solutionForBreaker = (string) $coords['id_sistema'];
+        $routeEnum = $coords['route'] instanceof SerproFunctionalRoute
+            ? $coords['route']
+            : SerproFunctionalRoute::from((string) $coords['route']);
+        $routePath = $routeEnum->path();
+        $routeName = $routeEnum->value;
+        $isMutating = (bool) ($coords['is_mutating'] || $request->isMutating);
+
         if ($this->killSwitch->isSolutionBlocked($solutionForBreaker)) {
-            return $this->fail($request, 503, 'KILL_SWITCH', 'Integra Contador temporariamente desabilitado.', $operationKey);
+            return $this->fail($request, 503, 'KILL_SWITCH', 'Integra Contador temporariamente desabilitado.');
         }
 
         if (! $this->breaker->isCallAllowed($solutionForBreaker)) {
-            return $this->fail($request, 503, 'CIRCUIT_OPEN', 'Circuit breaker aberto para a solução.', $operationKey);
+            return $this->fail($request, 503, 'CIRCUIT_OPEN', 'Circuit breaker aberto para a solução.');
+        }
+
+        try {
+            ($this->rateLimiter ?? app(SerproRateLimiter::class))->attempt($request->officeId, $operationKey);
+        } catch (RuntimeException $e) {
+            return $this->fail($request, 429, 'RATE_LIMIT_LOCAL', $e->getMessage());
         }
 
         $env = SerproEnvironment::from($request->environment);
         $contract = $this->contracts->activeFor($env);
         if ($contract === null || ! $contract->isUsable()) {
-            return $this->fail($request, 503, 'CONTRACT_UNAVAILABLE', 'Contrato SERPRO indisponível.', $operationKey);
+            return $this->fail($request, 503, 'CONTRACT_UNAVAILABLE', 'Contrato SERPRO indisponível.');
         }
 
-        $isAutenticaProcurador = $operationKey === 'autentica_procurador.envio_xml_assinado';
+        $authMode = (string) ($coords['auth_mode'] ?? 'PROCURATOR_WHEN_REPRESENTING');
+        $proxyRule = (string) ($coords['proxy_rule'] ?? 'NOT_APPLICABLE');
+        $isAutenticaProcurador = $authMode === 'CONTRACT_ONLY'
+            || $operationKey === 'autentica_procurador.envio_xml_assinado';
+
         if (! $isAutenticaProcurador
-            && $contract->contractor_cnpj !== strtoupper($request->contractorCnpj)) {
-            return $this->fail($request, 422, 'CONTRACTOR_MISMATCH', 'Identidade contratante diverge do contrato ativo.', $operationKey);
+            && $contract->contractor_cnpj !== $request->contractorCnpj
+        ) {
+            return $this->fail($request, 422, 'CONTRACTOR_MISMATCH', 'Identidade contratante diverge do contrato ativo.');
         }
 
-        $procuradorToken = $isAutenticaProcurador ? null : $this->loadProcuradorToken($request, $env);
-        if (! $isAutenticaProcurador && $procuradorToken === null) {
-            return $this->fail($request, 422, 'PROCURADOR_TOKEN_MISSING', 'Token do procurador ausente ou expirado para o escritório.', $operationKey);
+        // Poder e-CAC antes do transporte, quando exigido
+        $powerCheck = $this->assertProxyPower($request, $coords, $proxyRule);
+        if ($powerCheck !== null) {
+            return $powerCheck;
+        }
+
+        /** @var list<string> $requiredPowers */
+        $requiredPowers = $coords['required_proxy_powers'] ?? [];
+        $needsProcuradorToken = $this->requiresProcuradorToken(
+            $authMode,
+            $proxyRule,
+            $request,
+            $isAutenticaProcurador,
+            $requiredPowers,
+        );
+
+        $procuradorToken = null;
+        if ($needsProcuradorToken) {
+            $procuradorToken = $this->loadProcuradorToken($request, $env);
+            if ($procuradorToken === null) {
+                return $this->fail(
+                    $request,
+                    422,
+                    'PROCURADOR_TOKEN_MISSING',
+                    'Token do procurador ausente ou expirado para o escritório.',
+                );
+            }
         }
 
         try {
             $token = $this->authenticator->authenticate($contract);
             $token->assertComplete();
         } catch (Throwable $e) {
-            return $this->fail($request, 503, 'CONTRACT_UNHEALTHY', 'Falha de autenticação do contrato: '.$e->getMessage(), $operationKey);
+            return $this->fail(
+                $request,
+                503,
+                'CONTRACT_UNHEALTHY',
+                'Falha de autenticação do contrato: '.$e->getMessage(),
+            );
         }
 
-        $idSistema = $coords['id_sistema'] ?? (string) $request->solutionCode;
-        $idServico = $coords['id_servico'] ?? (string) $request->operationCode;
-        $versao = $coords['versao_sistema'] ?? '1.0';
-        $route = $coords !== null ? $coords['route']->path() : '/Consultar';
-        $dadosMode = $coords['dados_mode'] ?? 'JSON_STRING';
-        $requestTag = $request->resolvedRequestTag();
+        $idSistema = (string) $coords['id_sistema'];
+        $idServico = (string) $coords['id_servico'];
+        $versao = (string) $coords['versao_sistema'];
+        $dadosMode = (string) ($coords['dados_mode'] ?? 'JSON_STRING');
 
         $dadosString = $this->serializeDados($request, $dadosMode);
 
@@ -100,14 +166,8 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 'numero' => $contract->contractor_cnpj,
                 'tipo' => 2,
             ],
-            'autorPedidoDados' => [
-                'numero' => $request->authorIdentity,
-                'tipo' => strlen($request->authorIdentity) === 11 ? 1 : 2,
-            ],
-            'contribuinte' => [
-                'numero' => $request->contributorCnpj,
-                'tipo' => strlen($request->contributorCnpj) === 11 ? 1 : 2,
-            ],
+            'autorPedidoDados' => $request->author->toEnvelope(),
+            'contribuinte' => $request->contributor->toEnvelope(),
             'pedidoDados' => [
                 'idSistema' => $idSistema,
                 'idServico' => $idServico,
@@ -117,52 +177,206 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         ];
 
         $body = json_encode($envelope, JSON_THROW_ON_ERROR);
-        $jwt = $token->officialJwt();
+        $baseUrl = rtrim((string) config('serpro.api.base_url'), '/');
+        $url = $baseUrl.$routePath;
+
+        $attempt = 0;
+        $maxAttempts = 2; // 1 tentativa + 1 renovação OAuth após 401
+        $lastResponse = null;
+
+        while ($attempt < $maxAttempts) {
+            $attempt++;
+            $jwt = $token->officialJwt();
+            $headers = $this->buildHeaders($token->tokenType, $token->accessToken, $jwt, $requestTag, $procuradorToken, $request->headers);
+            unset($jwt);
+
+            try {
+                $lastResponse = $this->transport->request(
+                    'POST',
+                    $url,
+                    null,
+                    $body,
+                    $headers,
+                    $request->correlationId,
+                );
+            } catch (Throwable $e) {
+                $this->breaker->recordFailure($solutionForBreaker, 'transport');
+                // Timeout/falha ambígua em mutação: NÃO retry automático
+                if ($isMutating) {
+                    return new IntegraResponse(
+                        success: false,
+                        httpStatus: 0,
+                        body: [],
+                        errorCode: 'MUTATION_TIMEOUT_PENDING',
+                        errorMessage: 'Timeout ambíguo em mutação — pendente de conciliação.',
+                        correlationId: $request->correlationId,
+                        operationKey: $operationKey,
+                        requestTag: $requestTag,
+                        functionalRoute: $routeName,
+                        sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+                    );
+                }
+                throw new RuntimeException('Falha de transporte Integra Contador.', 0, $e);
+            }
+
+            if ($lastResponse['status'] === 401 && $attempt < $maxAttempts) {
+                $this->authenticator->invalidate($contract);
+                try {
+                    $token = $this->authenticator->authenticate($contract);
+                    $token->assertComplete();
+                } catch (Throwable $e) {
+                    return $this->fail(
+                        $request,
+                        503,
+                        'CONTRACT_UNHEALTHY',
+                        'Falha ao renovar OAuth após 401: '.$e->getMessage(),
+                    );
+                }
+
+                continue; // mesma tag, mesma body
+            }
+
+            break;
+        }
+
+        return $this->normalizeResponse(
+            $lastResponse ?? ['status' => 0, 'body' => '', 'headers' => [], 'retry_after' => null, 'latency_ms' => null],
+            $request,
+            $operationKey,
+            $requestTag,
+            $routeName,
+            $solutionForBreaker,
+        );
+    }
+
+    /**
+     * @param  list<string>  $requiredPowers
+     */
+    private function requiresProcuradorToken(
+        string $authMode,
+        string $proxyRule,
+        IntegraRequest $request,
+        bool $isAutenticaProcurador,
+        array $requiredPowers = [],
+    ): bool {
+        if ($isAutenticaProcurador || $authMode === 'CONTRACT_ONLY') {
+            return false;
+        }
+
+        if ($authMode === 'PROCURATOR_REQUIRED' || $proxyRule === 'REQUIRED') {
+            return true;
+        }
+
+        $isRepresenting = $request->author->numero !== $request->contributor->numero;
+        if (! $isRepresenting) {
+            return false;
+        }
+
+        // Representação: token quando catálogo exige poder/proxy ou auth_mode de procurador
+        if ($proxyRule === 'NOT_APPLICABLE' && $requiredPowers === [] && $authMode === '') {
+            return false;
+        }
+
+        if ($proxyRule === 'NOT_APPLICABLE' && $requiredPowers === []
+            && ! in_array($authMode, ['PROCURATOR_WHEN_REPRESENTING', 'PROCURATOR_REQUIRED'], true)
+        ) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $coords
+     */
+    private function assertProxyPower(IntegraRequest $request, array $coords, string $proxyRule): ?IntegraResponse
+    {
+        if (in_array($proxyRule, ['NOT_APPLICABLE', 'EVENT_DEPENDENT'], true)) {
+            return null;
+        }
+
+        /** @var list<string> $powers */
+        $powers = $coords['required_proxy_powers'] ?? [];
+        if ($powers === [] && ! empty($coords['required_proxy_power'])) {
+            $powers = preg_split('/[\s,]+/', (string) $coords['required_proxy_power']) ?: [];
+        }
+        $powers = array_values(array_filter(array_map('strval', $powers)));
+        if ($powers === []) {
+            return null;
+        }
+
+        // Só exige poder quando a relação autor–contribuinte implica representação
+        if ($proxyRule === 'REQUIRED_WHEN_REPRESENTING'
+            && $request->author->numero === $request->contributor->numero
+        ) {
+            return null;
+        }
+
+        try {
+            $has = TaxProxyPower::query()
+                ->where('office_id', $request->officeId)
+                ->where('client_id', $request->clientId)
+                ->whereIn('power_code', $powers)
+                ->where(function ($q): void {
+                    $q->whereNull('valid_to')->orWhere('valid_to', '>', now());
+                })
+                ->exists();
+        } catch (Throwable) {
+            return $this->fail(
+                $request,
+                503,
+                'PROXY_POWER_UNAVAILABLE',
+                'Não foi possível validar o poder e-CAC obrigatório.',
+            );
+        }
+
+        if (! $has) {
+            return $this->fail(
+                $request,
+                422,
+                'PROXY_POWER_MISSING',
+                'Poder e-CAC obrigatório ausente: '.implode(',', $powers),
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, string>  $extraHeaders
+     * @return list<string>
+     */
+    private function buildHeaders(
+        string $tokenType,
+        string $accessToken,
+        string $jwt,
+        string $requestTag,
+        ?string $procuradorToken,
+        array $extraHeaders,
+    ): array {
         $headers = [
-            'Authorization: '.$token->tokenType.' '.$token->accessToken,
+            'Authorization: '.$tokenType.' '.$accessToken,
             'jwt_token: '.$jwt,
-            'X-Request-Tag: '.$requestTag,
+            'X-Request-Tag: '.substr($requestTag, 0, 32),
             'Content-Type: application/json',
             'Accept: application/json',
         ];
-        if ($procuradorToken !== null) {
+        if ($procuradorToken !== null && $procuradorToken !== '') {
             $headers[] = 'autenticar_procurador_token: '.$procuradorToken;
         }
-        foreach ($request->headers as $name => $value) {
+
+        foreach ($extraHeaders as $name => $value) {
             $ln = strtolower((string) $name);
-            if (in_array($ln, ['authorization', 'jwt_token', 'autenticar_procurador_token', 'x-request-tag'], true)) {
-                continue;
+            if (in_array($ln, self::OFFICIAL_HEADER_NAMES, true)) {
+                continue; // não sobrescreve oficiais
+            }
+            if (! in_array($ln, self::HEADER_ALLOWLIST, true)) {
+                continue; // descarta header arbitrário
             }
             $headers[] = $name.': '.$value;
         }
 
-        unset($procuradorToken, $jwt);
-
-        $baseUrl = rtrim((string) config('serpro.api.base_url'), '/');
-        $url = $baseUrl.$route;
-
-        try {
-            $response = $this->transport->request(
-                'POST',
-                $url,
-                null,
-                $body,
-                $headers,
-                $request->correlationId,
-            );
-        } catch (Throwable $e) {
-            $this->breaker->recordFailure($solutionForBreaker, 'transport');
-            throw new RuntimeException('Falha de transporte Integra Contador.', 0, $e);
-        }
-
-        return $this->normalizeResponse(
-            $response,
-            $request,
-            $operationKey,
-            $requestTag,
-            ltrim($route, '/'),
-            $solutionForBreaker,
-        );
+        return $headers;
     }
 
     /**
@@ -171,14 +385,14 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
     private function normalizeResponse(
         array $response,
         IntegraRequest $request,
-        ?string $operationKey,
+        string $operationKey,
         string $requestTag,
         string $route,
         string $solutionForBreaker,
     ): IntegraResponse {
         $status = $response['status'];
         $headers = $response['headers'] ?? [];
-        $etag = $this->headerValue($headers, 'etag');
+        $etag = $this->sanitizeEtag($this->headerValue($headers, 'etag'));
         $expires = $this->headerValue($headers, 'expires');
 
         if ($status === 429) {
@@ -188,15 +402,57 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 success: false,
                 httpStatus: 429,
                 body: [],
-                headers: $headers,
+                headers: $this->publicHeaders($headers),
                 errorCode: 'RATE_LIMITED',
                 errorMessage: 'Rate limit SERPRO.',
                 simulated: false,
-                retryAfterSeconds: $response['retry_after'],
+                retryAfterSeconds: $response['retry_after'] ?? 60,
                 correlationId: $request->correlationId,
                 latencyMs: $response['latency_ms'],
                 etag: $etag,
                 expiresHeader: $expires,
+                operationKey: $operationKey,
+                requestTag: $requestTag,
+                functionalRoute: $route,
+                sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+            );
+        }
+
+        if ($status === 503) {
+            $this->breaker->recordFailure($solutionForBreaker, '503');
+
+            return new IntegraResponse(
+                success: false,
+                httpStatus: 503,
+                body: [],
+                headers: $this->publicHeaders($headers),
+                errorCode: 'UPSTREAM_UNAVAILABLE',
+                errorMessage: 'SERPRO temporariamente indisponível.',
+                simulated: false,
+                retryAfterSeconds: $response['retry_after'] ?? 30,
+                correlationId: $request->correlationId,
+                latencyMs: $response['latency_ms'],
+                operationKey: $operationKey,
+                requestTag: $requestTag,
+                functionalRoute: $route,
+                sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+            );
+        }
+
+        if ($status === 304) {
+            return new IntegraResponse(
+                success: true,
+                httpStatus: 304,
+                body: [],
+                headers: $this->publicHeaders($headers),
+                errorCode: 'NOT_MODIFIED',
+                errorMessage: 'Conteúdo não modificado (cache/ETag).',
+                simulated: false,
+                correlationId: $request->correlationId,
+                latencyMs: $response['latency_ms'],
+                etag: $etag,
+                expiresHeader: $expires,
+                businessStatus: 'NOT_MODIFIED',
                 operationKey: $operationKey,
                 requestTag: $requestTag,
                 functionalRoute: $route,
@@ -211,7 +467,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 success: false,
                 httpStatus: $status,
                 body: [],
-                headers: $headers,
+                headers: $this->publicHeaders($headers),
                 errorCode: 'UPSTREAM_ERROR',
                 errorMessage: 'Erro upstream SERPRO.',
                 correlationId: $request->correlationId,
@@ -249,8 +505,8 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             return new IntegraResponse(
                 success: false,
                 httpStatus: $status,
-                body: $decoded,
-                headers: $headers,
+                body: $this->sanitizeBodyKeys($decoded),
+                headers: $this->publicHeaders($headers),
                 errorCode: 'STILL_PROCESSING',
                 errorMessage: 'Operação em processamento na fonte.',
                 simulated: false,
@@ -279,8 +535,8 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         return new IntegraResponse(
             success: $success,
             httpStatus: $status,
-            body: $decoded,
-            headers: $headers,
+            body: $this->sanitizeBodyKeys($decoded),
+            headers: $this->publicHeaders($headers),
             errorCode: $success ? null : 'REQUEST_FAILED',
             errorMessage: $success ? null : 'Chamada Integra Contador rejeitada.',
             simulated: false,
@@ -305,7 +561,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             return '';
         }
 
-        // Preferir businessData; payload legado pode já trazer pedidoDados.dados
+        // Preferir businessData — serializado exatamente uma vez
         if ($request->businessData !== []) {
             $data = $request->businessData;
             unset($data['__scenario']);
@@ -322,7 +578,6 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             return $request->payload['pedidoDados']['dados'];
         }
 
-        // Legado: payload com chaves de negócio (protocolo, contribuinte…)
         $legacy = $request->payload;
         unset($legacy['idSistema'], $legacy['idServico'], $legacy['versaoSistema'], $legacy['dados']);
         if ($legacy === [] && isset($request->payload['dados']) && is_array($request->payload['dados'])) {
@@ -394,12 +649,67 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         return null;
     }
 
+    /**
+     * ETag pode transportar token/protocolo. Permanece apenas em memória para o
+     * fluxo assíncrono; persistência é responsabilidade de um cofre criptografado.
+     */
+    private function sanitizeEtag(?string $etag): ?string
+    {
+        if ($etag === null || $etag === '') {
+            return null;
+        }
+
+        return $etag;
+    }
+
+    /**
+     * @param  array<string, string>  $headers
+     * @return array<string, string>
+     */
+    private function publicHeaders(array $headers): array
+    {
+        $allowed = ['retry-after', 'expires', 'content-type', 'x-request-id'];
+        $out = [];
+        foreach ($headers as $k => $v) {
+            $lk = strtolower((string) $k);
+            if (in_array($lk, $allowed, true)) {
+                $out[$lk] = (string) $v;
+            }
+            // etag intencionalmente omitido da superfície pública default
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    private function sanitizeBodyKeys(array $body): array
+    {
+        foreach ($body as $key => $value) {
+            $lower = strtolower((string) $key);
+            $blocked = ['access_token', 'jwt_token', 'autenticar_procurador_token', 'xmlassinado', 'pfx', 'password', 'private_key', 'consumer_secret', 'termo_xml'];
+            if (in_array($lower, $blocked, true)) {
+                unset($body[$key]);
+
+                continue;
+            }
+            if (is_array($value)) {
+                $body[$key] = $this->sanitizeBodyKeys($value);
+            } elseif (is_string($value) && LogSanitizer::looksLikeSecret($value)) {
+                $body[$key] = '[redacted]';
+            }
+        }
+
+        return $body;
+    }
+
     private function fail(
         IntegraRequest $request,
         int $http,
         string $code,
         string $message,
-        ?string $operationKey,
     ): IntegraResponse {
         return new IntegraResponse(
             success: false,
@@ -408,7 +718,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             errorCode: $code,
             errorMessage: $message,
             correlationId: $request->correlationId,
-            operationKey: $operationKey,
+            operationKey: $request->operationKey,
             requestTag: $request->resolvedRequestTag(),
             sourceProvenance: FiscalSourceProvenance::SerproReal->value,
         );
@@ -433,7 +743,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         if ($author === '' || $author === '00000000000000') {
             return null;
         }
-        if (strtoupper($request->authorIdentity) !== $author) {
+        if ($request->authorIdentity !== $author) {
             return null;
         }
 

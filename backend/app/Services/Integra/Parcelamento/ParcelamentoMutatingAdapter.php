@@ -21,7 +21,7 @@ final class ParcelamentoMutatingAdapter implements FiscalSourceAdapter
     public static int $remoteCalls = 0;
 
     public function __construct(
-        private readonly FakeParcelamentoSource $source,
+        private readonly SerproParcelamentoSource $source,
     ) {}
 
     public function systemCode(): string
@@ -83,7 +83,7 @@ final class ParcelamentoMutatingAdapter implements FiscalSourceAdapter
             return FiscalAdapterResult::unsupported("Modalidade inválida: {$modality}");
         }
 
-        $response = $this->source->execute($modalityEnum, $op, $request->context['payload'] ?? []);
+        $response = $this->source->execute($modalityEnum, $op, $request->context['payload'] ?? [], $request);
 
         return FiscalAdapterResult::failed(
             $response['error_message'] ?? 'Mutação de parcelamento não implementada no piloto.',

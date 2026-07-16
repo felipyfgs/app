@@ -5,14 +5,17 @@ namespace Tests\Feature\FiscalDataModel;
 use App\Domain\Adn\DistributionDocumentDto;
 use App\Domain\Adn\DistributionPageDto;
 use App\Enums\AdnDocumentType;
+use App\Enums\DocumentAcquisitionSource;
 use App\Enums\SyncCursorStatus;
 use App\Models\Client;
+use App\Models\DfeDocument;
 use App\Models\DocumentAcquisition;
 use App\Models\Establishment;
 use App\Models\Office;
 use App\Models\SyncCursor;
 use App\Services\Adn\DistributionPageProcessor;
 use App\Services\Adn\HttpAdnContributorClient;
+use App\Services\FiscalDataModel\DocumentAcquisitionRecorder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -83,10 +86,10 @@ class AdnAcquisitionInTransactionTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        $doc = \App\Models\DfeDocument::query()->findOrFail($docId);
-        $rec = app(\App\Services\FiscalDataModel\DocumentAcquisitionRecorder::class);
-        $a1 = $rec->record($doc, \App\Enums\DocumentAcquisitionSource::Adn, $doc->sha256, nsu: 10, channel: 'NFSE_ADN');
-        $a2 = $rec->record($doc, \App\Enums\DocumentAcquisitionSource::Adn, $doc->sha256, nsu: 10, channel: 'NFSE_ADN');
+        $doc = DfeDocument::query()->findOrFail($docId);
+        $rec = app(DocumentAcquisitionRecorder::class);
+        $a1 = $rec->record($doc, DocumentAcquisitionSource::Adn, $doc->sha256, nsu: 10, channel: 'NFSE_ADN');
+        $a2 = $rec->record($doc, DocumentAcquisitionSource::Adn, $doc->sha256, nsu: 10, channel: 'NFSE_ADN');
         $this->assertSame($a1->id, $a2->id);
         $this->assertSame(1, (int) DocumentAcquisition::query()->count());
     }

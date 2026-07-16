@@ -4,7 +4,6 @@ namespace App\Services\FiscalDataModel;
 
 use App\Support\FiscalDataModel\BackfillResult;
 use App\Support\FiscalDataModel\FiscalModelAggregates;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use RuntimeException;

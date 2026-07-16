@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'slug', 'is_active', 'deadline_timezone', 'timezone'])]
+#[Fillable(['name', 'slug', 'is_active', 'serpro_segregation_class', 'deadline_timezone', 'timezone'])]
 class Office extends Model
 {
     /** @use HasFactory<OfficeFactory> */

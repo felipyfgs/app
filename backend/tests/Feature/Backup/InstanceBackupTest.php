@@ -70,7 +70,39 @@ class InstanceBackupTest extends TestCase
 
         $manifest = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
         $this->assertFalse($manifest['master_key_included']);
-        $this->assertCount(2, $manifest['components']);
+        // full = database + vault + private
+        $this->assertGreaterThanOrEqual(3, count($manifest['components']));
+        $names = array_column($manifest['components'], 'name');
+        $this->assertContains('database', $names);
+        $this->assertContains('vault', $names);
+        $this->assertContains('private', $names);
+        $this->assertFalse($manifest['package_encrypted'] ?? false);
+    }
+
+    public function test_full_backup_cifra_pacote_quando_chave_externa_configurada(): void
+    {
+        $packageKey = base64_encode(random_bytes(32));
+        config(['backup.package_key' => $packageKey]);
+
+        $result = app(InstanceBackupService::class)->run(InstanceBackupRun::KIND_FULL);
+        $run = $result['run'];
+        $this->assertSame(InstanceBackupRun::STATUS_SUCCESS, $run->status);
+
+        $manifestPath = $this->backupRoot.'/'.str_replace('/', DIRECTORY_SEPARATOR, $run->manifest_path);
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertTrue($manifest['package_encrypted']);
+        $this->assertSame('nfse-adn-backup-v3', $manifest['format']);
+        $names = array_column($manifest['components'], 'name');
+        $this->assertContains('package', $names);
+
+        $drill = app(InstanceBackupService::class)->restoreDrill($run->id)['run'];
+        $this->assertSame(InstanceBackupRun::STATUS_SUCCESS, $drill->status);
+        $this->assertStringContainsString('decrypt=ok', (string) $drill->message);
+
+        // Chave errada no drill do pacote.
+        config(['backup.package_key' => base64_encode(random_bytes(32))]);
+        $failed = app(InstanceBackupService::class)->restoreDrill($run->id)['run'];
+        $this->assertSame(InstanceBackupRun::STATUS_FAILED, $failed->status);
     }
 
     public function test_falha_parcial_marca_failed(): void

@@ -3,8 +3,6 @@
 namespace Database\Seeders;
 
 use App\Contracts\SecureObjectStore;
-use App\Enums\OfficeRole;
-use App\Enums\SecureObjectPurpose;
 use App\Enums\Work\DueRuleType;
 use App\Enums\Work\ProcessOrigin;
 use App\Enums\Work\ProcessStatus;
@@ -27,7 +25,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Throwable;
 
 /**
  * Massa operacional demonstrativa para o office `demo` (local/testing).
@@ -622,7 +619,7 @@ class OperationalWorkDemoSeeder extends Seeder
 
     /**
      * @param  array<string, Client>  $demoClients
-     * @param  array<string, WorkDepartment>  $demoDepts unused shape reference
+     * @param  array<string, WorkDepartment>  $demoDepts  unused shape reference
      */
     private function reconcileSentinelOffice(array $demoClients, array $demoDepts): Office
     {

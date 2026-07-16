@@ -30,7 +30,7 @@ return new class extends Migration
 
             $indexName = $table.'_office_id_id_unique';
             if ($this->indexExists($table, $indexName)) {
-                throw new \RuntimeException(
+                throw new RuntimeException(
                     "Pré-condição de migration falhou [office_composite_candidate_keys]: índice já existe {$indexName}.",
                 );
             }

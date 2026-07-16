@@ -2,8 +2,7 @@
 
 namespace Tests\Feature\FiscalDataModel;
 
-use App\Models\DfeDocument;
-use App\Models\DocumentInterest;
+use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\Office;
 use App\Support\FiscalDataModel\FiscalModelAggregates;
@@ -19,7 +18,7 @@ class DocumentProvenanceBackfillTest extends TestCase
     public function test_cria_aquisicao_sintetica_sem_alterar_sha_do_documento(): void
     {
         $office = Office::factory()->create();
-        $client = \App\Models\Client::factory()->forOffice($office)->create();
+        $client = Client::factory()->forOffice($office)->create();
         $est = Establishment::factory()->forClient($client)->create();
 
         $sha = hash('sha256', 'xml-bytes-fixture');

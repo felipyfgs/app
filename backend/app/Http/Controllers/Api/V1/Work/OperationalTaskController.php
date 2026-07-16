@@ -2,8 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1\Work;
 
+use App\Domain\Work\DueDateCalculator;
+use App\Domain\Work\QueueBucketResolver;
+use App\Domain\Work\WorkRiskCalculator;
 use App\Http\Controllers\Controller;
+use App\Models\Office;
 use App\Models\OperationalComment;
+use App\Models\OperationalProcess;
 use App\Models\OperationalTask;
 use App\Models\OperationalTaskEvidence;
 use App\Services\Audit\AuditLogger;
@@ -14,8 +19,8 @@ use App\Services\Work\OperationalQueueQuery;
 use App\Services\Work\OperationalTaskStructureService;
 use App\Services\Work\OperationalTaskTransitionService;
 use App\Services\Work\OperationalWorkBulkService;
-use App\Models\OperationalProcess;
 use App\Support\CurrentOffice;
+use App\Support\Work\OfficeTimezone;
 use App\Support\Work\OptimisticLock;
 use App\Support\Work\RejectClientOfficeId;
 use Illuminate\Http\JsonResponse;
@@ -361,11 +366,11 @@ class OperationalTaskController extends Controller
         }
 
         if ($detailed) {
-            $riskCalc = new \App\Domain\Work\WorkRiskCalculator;
-            $today = (new \App\Domain\Work\DueDateCalculator)->todayInOffice(
-                \App\Support\Work\OfficeTimezone::for(
-                    \App\Models\Office::query()->find($t->office_id)
-                        ?? new \App\Models\Office(['timezone' => 'America/Sao_Paulo'])
+            $riskCalc = new WorkRiskCalculator;
+            $today = (new DueDateCalculator)->todayInOffice(
+                OfficeTimezone::for(
+                    Office::query()->find($t->office_id)
+                        ?? new Office(['timezone' => 'America/Sao_Paulo'])
                 )
             );
             $process = $t->relationLoaded('process') ? $t->process : null;
@@ -382,7 +387,7 @@ class OperationalTaskController extends Controller
                 $t->due_date?->format('Y-m-d'),
                 $process?->due_date?->format('Y-m-d'),
             );
-            $data['bucket'] = (new \App\Domain\Work\QueueBucketResolver)
+            $data['bucket'] = (new QueueBucketResolver)
                 ->resolve($t->status, $riskList, $data['effective_due_date'], $today)
                 ->value;
 

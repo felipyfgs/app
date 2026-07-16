@@ -11,24 +11,35 @@ use Illuminate\Support\Collection;
 /**
  * Cálculo de custo estimado por faixas configuráveis (sem hardcode no client HTTP).
  * Preserva versão de preço usada no momento da reserva/finalização.
+ * Tabelas shadow NÃO autorizam produção quando productionOnly=true.
  */
 final class PriceCalculator
 {
+    public function __construct(
+        private readonly UsageShadowPolicy $shadow,
+    ) {}
+
     /**
      * Resolve a versão de preço vigente no instante informado.
      */
-    public function resolveVersion(Carbon|string|null $at = null): ?SerproPriceVersion
+    public function resolveVersion(Carbon|string|null $at = null, ?bool $productionOnly = null): ?SerproPriceVersion
     {
         $at = $at instanceof Carbon ? $at : ($at ? Carbon::parse($at) : now());
+        $productionOnly ??= $this->shadow->requiresProductionPriceTable();
 
-        return SerproPriceVersion::query()
+        $query = SerproPriceVersion::query()
             ->where('is_active', true)
             ->where('effective_from', '<=', $at)
             ->where(function ($q) use ($at): void {
                 $q->whereNull('effective_to')->orWhere('effective_to', '>=', $at);
-            })
-            ->orderByDesc('effective_from')
-            ->first();
+            });
+
+        if ($productionOnly) {
+            $query->where('authorizes_production', true)
+                ->where('eligibility', 'PRODUCTION');
+        }
+
+        return $query->orderByDesc('effective_from')->first();
     }
 
     /**
@@ -36,7 +47,10 @@ final class PriceCalculator
      *     price_version_id: int|null,
      *     estimated_cost_micros: int|null,
      *     unit_cost_micros: int|null,
-     *     currency: string|null
+     *     currency: string|null,
+     *     price_unknown: bool,
+     *     authorizes_production: bool,
+     *     price_revision: string|null
      * }
      */
     public function estimate(
@@ -47,17 +61,25 @@ final class PriceCalculator
         ?string $operationCode = null,
         Carbon|string|null $at = null,
         ?SerproPriceVersion $version = null,
+        ?bool $productionOnly = null,
     ): array {
+        $productionOnly ??= $this->shadow->requiresProductionPriceTable();
+
         if (! $class->allowsCostEstimate()) {
+            $v = $version ?? $this->resolveVersion($at, $productionOnly);
+
             return [
-                'price_version_id' => $version?->id ?? $this->resolveVersion($at)?->id,
+                'price_version_id' => $v?->id,
                 'estimated_cost_micros' => null,
                 'unit_cost_micros' => null,
-                'currency' => $version?->currency ?? $this->resolveVersion($at)?->currency,
+                'currency' => $v?->currency,
+                'price_unknown' => $class === SerproConsumptionClass::Desconhecida,
+                'authorizes_production' => $v?->authorizesProductiveEgress() ?? false,
+                'price_revision' => $v?->source_revision ?? $v?->version_code,
             ];
         }
 
-        $version ??= $this->resolveVersion($at);
+        $version ??= $this->resolveVersion($at, $productionOnly);
 
         if ($version === null) {
             return [
@@ -65,6 +87,9 @@ final class PriceCalculator
                 'estimated_cost_micros' => null,
                 'unit_cost_micros' => null,
                 'currency' => null,
+                'price_unknown' => true,
+                'authorizes_production' => false,
+                'price_revision' => null,
             ];
         }
 
@@ -76,6 +101,9 @@ final class PriceCalculator
                 'estimated_cost_micros' => 0,
                 'unit_cost_micros' => $tier?->unit_cost_micros ?? 0,
                 'currency' => $version->currency,
+                'price_unknown' => false,
+                'authorizes_production' => $version->authorizesProductiveEgress(),
+                'price_revision' => $version->source_revision ?? $version->version_code,
             ];
         }
 
@@ -87,6 +115,9 @@ final class PriceCalculator
                 'estimated_cost_micros' => null,
                 'unit_cost_micros' => null,
                 'currency' => $version->currency,
+                'price_unknown' => true,
+                'authorizes_production' => $version->authorizesProductiveEgress(),
+                'price_revision' => $version->source_revision ?? $version->version_code,
             ];
         }
 
@@ -95,6 +126,9 @@ final class PriceCalculator
             'estimated_cost_micros' => $tier->unit_cost_micros * max(1, $quantity),
             'unit_cost_micros' => $tier->unit_cost_micros,
             'currency' => $version->currency,
+            'price_unknown' => false,
+            'authorizes_production' => $version->authorizesProductiveEgress(),
+            'price_revision' => $version->source_revision ?? $version->version_code,
         ];
     }
 

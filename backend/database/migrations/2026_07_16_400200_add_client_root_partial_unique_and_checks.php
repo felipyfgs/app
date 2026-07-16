@@ -40,7 +40,7 @@ return new class extends Migration
             $sample = collect($dupes)
                 ->map(fn ($r) => sprintf('office=%s root=%s n=%s', $r->office_id, $r->root_cnpj, $r->cnt))
                 ->implode('; ');
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 'client_root_partial_unique: raízes canônicas duplicadas antes do índice. '
                 .'Execute colapso/merge ou resolva manualmente. Amostra: '.$sample,
             );

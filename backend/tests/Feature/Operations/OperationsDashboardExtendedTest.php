@@ -51,7 +51,7 @@ class OperationsDashboardExtendedTest extends TestCase
             'environment' => SerproEnvironment::Trial,
             'status' => SerproAuthorizationStatus::PendingTerm,
             'author_identity_type' => 'CPF',
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
             'author_name' => 'Autor Teste',
             'certificate_mode' => 'EXTERNAL_SIGNATURE',
         ]);
@@ -108,7 +108,7 @@ class OperationsDashboardExtendedTest extends TestCase
             'environment' => SerproEnvironment::Trial,
             'status' => SerproAuthorizationStatus::PendingTerm,
             'author_identity_type' => 'CPF',
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
             'certificate_mode' => 'EXTERNAL_SIGNATURE',
         ]);
 
@@ -223,7 +223,7 @@ class OperationsDashboardExtendedTest extends TestCase
             'environment' => SerproEnvironment::Trial,
             'status' => SerproAuthorizationStatus::TokenActive,
             'author_identity_type' => 'CPF',
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
             'certificate_mode' => 'EXTERNAL_SIGNATURE',
             'termo_vault_object_id' => '01ARZ3NDEKTSV4RRFFQ69G5FAV',
             'termo_sha256' => str_repeat('a', 64),
@@ -236,7 +236,7 @@ class OperationsDashboardExtendedTest extends TestCase
         TaxProxyPower::query()->create([
             'office_id' => $office->id,
             'client_id' => $client->id,
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
             'contributor_cnpj' => '11222333000181',
             'system_code' => 'INTEGRA_SN',
             'service_code' => 'PGDASD',
@@ -272,7 +272,7 @@ class OperationsDashboardExtendedTest extends TestCase
             'environment' => SerproEnvironment::Trial,
             'status' => SerproAuthorizationStatus::TokenActive,
             'author_identity_type' => 'CPF',
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
             'certificate_mode' => 'EXTERNAL_SIGNATURE',
             'termo_vault_object_id' => '01ARZ3NDEKTSV4RRFFQ69G5FAV',
             'termo_valid_to' => now()->addYear(),
@@ -284,7 +284,7 @@ class OperationsDashboardExtendedTest extends TestCase
             'office_id' => $office->id,
             'client_id' => $client->id,
             'office_serpro_authorization_id' => $auth->id,
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
             'contributor_cnpj' => '11222333000181',
             'system_code' => 'INTEGRA_SN',
             'service_code' => 'PGDASD',

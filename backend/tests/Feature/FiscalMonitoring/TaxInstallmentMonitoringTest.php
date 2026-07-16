@@ -166,7 +166,7 @@ class TaxInstallmentMonitoringTest extends TestCase
         TaxProxyPower::query()->create([
             'office_id' => $this->office->id,
             'client_id' => $this->client->id,
-            'author_identity' => '12345678901',
+            'author_identity' => '52998224725',
             'contributor_cnpj' => '11222333000181',
             'system_code' => ParcelamentoServiceCatalog::SOLUTION,
             'service_code' => TaxInstallmentModality::Parcsn->value,
@@ -202,7 +202,7 @@ class TaxInstallmentMonitoringTest extends TestCase
             operationCode: 'MONITOR',
             trigger: FiscalTrigger::Manual,
             context: [
-                'author_identity' => '12345678901',
+                'author_identity' => '52998224725',
                 'require_proxy_power' => true,
             ],
         );
@@ -238,7 +238,7 @@ class TaxInstallmentMonitoringTest extends TestCase
             operationCode: 'MONITOR',
             trigger: FiscalTrigger::Manual,
             context: [
-                'author_identity' => '12345678901',
+                'author_identity' => '52998224725',
                 'require_proxy_power' => true,
             ],
         );

@@ -11,6 +11,7 @@ use App\Services\Serpro\SerproCircuitBreaker;
 use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproHealthService;
 use App\Services\Serpro\SerproKillSwitchService;
+use App\Services\Serpro\SerproRolloutApprovalService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -29,6 +30,7 @@ class SerproContractController extends Controller
         private readonly SerproCatalogService $catalog,
         private readonly SerproKillSwitchService $killSwitch,
         private readonly SerproCircuitBreaker $breaker,
+        private readonly SerproRolloutApprovalService $rollouts,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -181,22 +183,61 @@ class SerproContractController extends Controller
             'solution' => ['nullable', 'string', 'max:80'],
         ]);
 
-        $userId = $request->user()?->id;
+        $userId = (int) $request->user()->id;
+
+        // Ativar kill switch: imediato (fail-closed). Desativar: quatro olhos.
         if (! empty($data['solution'])) {
             if ($data['active']) {
                 $this->killSwitch->activateSolution($data['solution'], $data['reason'], $userId);
-            } else {
-                $this->killSwitch->deactivateSolution($data['solution'], $data['reason'], $userId);
+
+                return response()->json(['data' => $this->killSwitch->status()]);
             }
-        } else {
-            if ($data['active']) {
-                $this->killSwitch->activateGlobal($data['reason'], $userId);
-            } else {
-                $this->killSwitch->deactivateGlobal($data['reason'], $userId);
-            }
+
+            $approval = $this->rollouts->request(
+                action: SerproRolloutApprovalService::ACTION_KILL_SWITCH_SOLUTION_OFF,
+                subjectType: 'KILL_SWITCH_SOLUTION',
+                subjectId: null,
+                reason: $data['reason'],
+                requestedByUserId: $userId,
+                context: ['solution' => strtoupper($data['solution'])],
+            );
+
+            // primeiro olho do solicitante
+            $result = $this->rollouts->approve($approval, $userId, totpVerified: true, reason: $data['reason']);
+
+            return response()->json([
+                'data' => $this->killSwitch->status(),
+                'approval' => $this->rollouts->toSanitized($result['approval']),
+                'executed' => $result['executed'],
+                'message' => $result['executed']
+                    ? 'Kill switch de solução desativado.'
+                    : 'Aguardando segundo PLATFORM_ADMIN (quatro olhos).',
+            ]);
         }
 
-        return response()->json(['data' => $this->killSwitch->status()]);
+        if ($data['active']) {
+            $this->killSwitch->activateGlobal($data['reason'], $userId);
+
+            return response()->json(['data' => $this->killSwitch->status()]);
+        }
+
+        $approval = $this->rollouts->request(
+            action: SerproRolloutApprovalService::ACTION_KILL_SWITCH_OFF,
+            subjectType: 'KILL_SWITCH',
+            subjectId: null,
+            reason: $data['reason'],
+            requestedByUserId: $userId,
+        );
+        $result = $this->rollouts->approve($approval, $userId, totpVerified: true, reason: $data['reason']);
+
+        return response()->json([
+            'data' => $this->killSwitch->status(),
+            'approval' => $this->rollouts->toSanitized($result['approval']),
+            'executed' => $result['executed'],
+            'message' => $result['executed']
+                ? 'Kill switch global desativado.'
+                : 'Aguardando segundo PLATFORM_ADMIN (quatro olhos).',
+        ]);
     }
 
     public function killSwitchStatus(): JsonResponse

@@ -4,13 +4,13 @@ namespace Tests\Feature\Work;
 
 use App\Enums\OfficeRole;
 use App\Enums\Work\DueRuleType;
+use App\Enums\Work\GenerationBatchStatus;
 use App\Enums\Work\GenerationItemStatus;
 use App\Enums\Work\ProcessOrigin;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\OfficeMembership;
 use App\Models\OperationalProcess;
-use App\Models\ProcessGenerationBatch;
 use App\Models\ProcessTemplate;
 use App\Models\ProcessTemplateTask;
 use App\Models\User;
@@ -18,7 +18,6 @@ use App\Models\WorkDepartment;
 use App\Services\Work\OperationalProcessGenerationService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -92,7 +91,7 @@ class OperationalGenerationConcurrencyTest extends TestCase
 
         // Força item elegível e processa (como worker após corrida)
         $batchRace->forceFill([
-            'status' => \App\Enums\Work\GenerationBatchStatus::Queued,
+            'status' => GenerationBatchStatus::Queued,
             'queued_at' => now(),
         ])->save();
         $batchRace->items()->update([

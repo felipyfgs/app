@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 
 #[Fillable([
     'office_id',
@@ -49,7 +50,7 @@ class Client extends Model
                 ->exists();
 
             $hasEvidence = $hasCursors
-                || \Illuminate\Support\Facades\DB::table('dfe_documents')
+                || DB::table('dfe_documents')
                     ->where('office_id', $client->office_id)
                     ->whereExists(function ($q) use ($client): void {
                         $q->selectRaw('1')
@@ -60,11 +61,11 @@ class Client extends Model
                             ->where('e.office_id', $client->office_id);
                     })
                     ->exists()
-                || \Illuminate\Support\Facades\DB::table('fiscal_monitoring_runs')
+                || DB::table('fiscal_monitoring_runs')
                     ->where('client_id', $client->id)
                     ->where('office_id', $client->office_id)
                     ->exists()
-                || \Illuminate\Support\Facades\DB::table('serpro_api_usage_entries')
+                || DB::table('serpro_api_usage_entries')
                     ->where('client_id', $client->id)
                     ->where('office_id', $client->office_id)
                     ->exists();

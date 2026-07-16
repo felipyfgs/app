@@ -1,13 +1,16 @@
 <?php
 
+use App\Services\Work\Demo\WorkDemoEnvironmentGuard;
+use Database\Seeders\OperationalWorkDemoSeeder;
+
 /**
  * Fixtures operacionais demonstrativas (office demo, local/testing).
  *
  * NUNCA habilita seeder em production — o guard de ambiente prevalece
  * sobre qualquer variável DEMO_*.
  *
- * @see \App\Services\Work\Demo\WorkDemoEnvironmentGuard
- * @see \Database\Seeders\OperationalWorkDemoSeeder
+ * @see WorkDemoEnvironmentGuard
+ * @see OperationalWorkDemoSeeder
  */
 
 return [

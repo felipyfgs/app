@@ -2,11 +2,12 @@
 
 namespace App\Support\Work;
 
+use App\Support\CurrentOffice;
 use Illuminate\Http\Request;
 
 /**
  * Remove/rejeita office_id fornecido pelo cliente em payload ou query.
- * A autoridade do tenant é sempre {@see \App\Support\CurrentOffice}.
+ * A autoridade do tenant é sempre {@see CurrentOffice}.
  */
 final class RejectClientOfficeId
 {

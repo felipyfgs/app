@@ -130,7 +130,7 @@ final class ProgrammableIntegraContadorClient implements IntegraContadorClient
     public function operations(): array
     {
         return array_map(
-            fn (IntegraRequest $r) => (string) ($r->operationCode ?? $r->operationKey ?? ''),
+            fn (IntegraRequest $r) => (string) ($r->operationKey ?: ($r->operationCode ?? '')),
             $this->requests,
         );
     }

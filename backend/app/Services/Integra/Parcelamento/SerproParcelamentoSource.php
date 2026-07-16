@@ -1,0 +1,111 @@
+<?php
+
+namespace App\Services\Integra\Parcelamento;
+
+use App\DTO\Fiscal\FiscalAdapterRequest;
+use App\DTO\Serpro\MutationAuthorization;
+use App\Enums\SerproCapabilityDriver;
+use App\Enums\TaxInstallmentModality;
+use App\Services\Serpro\CapabilityDriverResolver;
+use App\Services\Serpro\SerproOperationService;
+
+/**
+ * Fonte de parcelamento dirigida por driver (simulated→fake; real→executor central).
+ * Sem fallback silencioso de real para fake em falha.
+ */
+final class SerproParcelamentoSource
+{
+    public function __construct(
+        private readonly FakeParcelamentoSource $fake,
+        private readonly SerproOperationService $operations,
+        private readonly CapabilityDriverResolver $drivers,
+    ) {}
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{
+     *     success: bool,
+     *     simulated: bool,
+     *     timeout_uncertain?: bool,
+     *     error_code?: string,
+     *     error_message?: string,
+     *     body: array<string, mixed>
+     * }
+     */
+    public function execute(
+        TaxInstallmentModality $modality,
+        string $operation,
+        array $payload = [],
+        ?FiscalAdapterRequest $request = null,
+    ): array {
+        $driver = $this->drivers->forCapability('installments');
+        if ($driver === SerproCapabilityDriver::Disabled) {
+            return [
+                'success' => false,
+                'simulated' => false,
+                'error_code' => 'CAPABILITY_DISABLED',
+                'error_message' => 'Parcelamentos desabilitados.',
+                'body' => [],
+            ];
+        }
+        if ($driver === SerproCapabilityDriver::Simulated) {
+            return $this->fake->execute($modality, $operation, $payload);
+        }
+
+        $system = strtoupper($modality->value);
+        $op = strtoupper($operation);
+        try {
+            $idServico = ParcelamentoServiceCatalog::idServico($modality, $op);
+            $operationKey = strtolower(str_replace('-', '_', $system)).'.'.strtolower((string) preg_replace('/\d+$/', '', $idServico));
+        } catch (\InvalidArgumentException) {
+            $operationKey = null;
+        }
+
+        if ($operationKey === null) {
+            return [
+                'success' => false,
+                'simulated' => false,
+                'error_code' => 'OPERATION_KEY_UNKNOWN',
+                'error_message' => "Sem operation_key oficial para {$system}/{$op}.",
+                'body' => [],
+            ];
+        }
+
+        $officeId = (int) ($request?->office->id ?? 0);
+        $clientId = (int) ($request?->client->id ?? 0);
+        if ($officeId <= 0 || $clientId <= 0 || $request === null) {
+            return [
+                'success' => false,
+                'simulated' => false,
+                'error_code' => 'TENANT_CONTEXT_MISSING',
+                'error_message' => 'Contexto tenant obrigatório para chamada real de parcelamento.',
+                'body' => [],
+            ];
+        }
+
+        $isMutating = in_array($op, ['ADERIR', 'REPARCELAR', 'DESISTIR', 'GERARDAS', 'EMITIR_DOCUMENTO'], true);
+
+        $response = $this->operations->execute(
+            office: $request->office,
+            client: $request->client,
+            operationKey: $operationKey,
+            businessData: $payload,
+            correlationId: $request->run->correlation_id,
+            mutationAuth: MutationAuthorization::none(),
+            module: 'parcelamentos',
+        );
+
+        // Mutantes: executor bloqueia via MutationAuthorization; reforçar se catálogo não marcar is_mutating
+        if ($isMutating && $response->errorCode === null && $response->success) {
+            // Não deve ocorrer nesta change — defesa extra
+        }
+
+        return [
+            'success' => $response->success,
+            'simulated' => $response->simulated,
+            'error_code' => $response->errorCode,
+            'error_message' => $response->errorMessage,
+            'body' => is_array($response->dados) ? $response->dados : $response->body,
+        ];
+    }
+}

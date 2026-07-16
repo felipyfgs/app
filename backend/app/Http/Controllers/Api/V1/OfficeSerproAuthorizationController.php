@@ -20,6 +20,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 /**
@@ -89,6 +90,69 @@ class OfficeSerproAuthorizationController extends Controller
         return response()->json(['data' => $auth->toPublicArray()]);
     }
 
+    /**
+     * Gera draft canônico não assinado (fluxo externo A1/A3).
+     * Não devolve o XML — use downloadTermoDraft.
+     */
+    public function generateTermoDraft(Request $request): JsonResponse
+    {
+        $this->assertAdmin();
+        $office = $this->currentOffice->office();
+
+        $data = $request->validate([
+            'environment' => ['sometimes', 'string', Rule::enum(SerproEnvironment::class)],
+            'vigencia' => ['sometimes', 'date'],
+        ]);
+
+        $env = isset($data['environment'])
+            ? SerproEnvironment::from($data['environment'])
+            : SerproEnvironment::from((string) config('serpro.default_environment', 'TRIAL'));
+
+        try {
+            $result = $this->authorizations->generateTermoDraft(
+                $office,
+                $env,
+                isset($data['vigencia']) ? $data['vigencia'] : null,
+                $request->user()?->id,
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'data' => $result['auth']->toPublicArray(),
+            'draft_sha256' => $result['draft_sha256'],
+        ], 201);
+    }
+
+    /**
+     * Download protegido do draft (ADMIN + 2FA middleware). XML não-assinado.
+     */
+    public function downloadTermoDraft(Request $request): Response
+    {
+        $this->assertAdmin();
+        $office = $this->currentOffice->office();
+        $env = $this->environment($request);
+
+        try {
+            $xml = $this->authorizations->getTermoDraftXml($office, $env);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 404);
+        }
+
+        $this->audit->record('serpro.authorization.termo_draft_download', 'SUCCESS', null, [
+            'environment' => $env->value,
+            'bytes' => strlen($xml),
+        ], $request->user()?->id, $office->id);
+
+        return response($xml, 200, [
+            'Content-Type' => 'application/xml; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="termo-autorizacao-draft.xml"',
+            'Cache-Control' => 'no-store, private',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     public function uploadTermo(Request $request): JsonResponse
     {
         $this->assertAdmin();
@@ -120,6 +184,40 @@ class OfficeSerproAuthorizationController extends Controller
         }
 
         return response()->json(['data' => $auth->toPublicArray()], 201);
+    }
+
+    /**
+     * Dispara job de assinatura com A1 gerenciado (consentimento versionado).
+     */
+    public function signTermoManagedA1(Request $request): JsonResponse
+    {
+        $this->assertAdmin();
+        $office = $this->currentOffice->office();
+
+        $data = $request->validate([
+            'environment' => ['sometimes', 'string', Rule::enum(SerproEnvironment::class)],
+            'consent' => ['required', 'accepted'],
+        ]);
+
+        $env = isset($data['environment'])
+            ? SerproEnvironment::from($data['environment'])
+            : SerproEnvironment::from((string) config('serpro.default_environment', 'TRIAL'));
+
+        try {
+            $auth = $this->authorizations->dispatchManagedA1Sign(
+                $office,
+                $env,
+                true,
+                $request->user()?->id,
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'data' => $auth->toPublicArray(),
+            'message' => 'Assinatura A1 gerenciada enfileirada.',
+        ], 202);
     }
 
     public function storeAuthorA1(Request $request): JsonResponse

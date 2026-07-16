@@ -4,9 +4,7 @@ namespace Tests\Feature\FiscalMonitoring;
 
 use App\DTO\Serpro\IntegraResponse;
 use App\Enums\DctfwebArtifactKind;
-use App\Enums\DctfwebMutationStatus;
 use App\Enums\DctfwebTransmissionStatus;
-use App\Enums\FiscalPaymentStatus;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
 use App\Enums\MitEncerramentoStatus;
@@ -20,7 +18,7 @@ use App\Models\Client;
 use App\Models\DctfwebDarfDocument;
 use App\Models\DctfwebDeclaration;
 use App\Models\DctfwebEvidenceVersion;
-use App\Models\DctfwebMutationAttempt;
+use App\Models\Establishment;
 use App\Models\FiscalEvidenceArtifact;
 use App\Models\FiscalLastUpdateEvent;
 use App\Models\FiscalMonitoringRun;
@@ -80,6 +78,7 @@ class DctfwebMitMonitoringTest extends TestCase
         $this->client = Client::factory()->forOffice($this->office)->create([
             'root_cnpj' => '11222333',
         ]);
+        Establishment::factory()->forClient($this->client, '11222333000181')->create();
         $this->admin = User::factory()->forOffice($this->office, OfficeRole::Admin)->withTwoFactorConfirmed()->create();
         $this->fake = app(FakeIntegraContadorClient::class);
         $this->fake->reset();
@@ -101,7 +100,7 @@ class DctfwebMitMonitoringTest extends TestCase
             'environment' => SerproEnvironment::Trial,
             'status' => SerproAuthorizationStatus::TokenActive,
             'author_identity_type' => 'CNPJ',
-            'author_identity' => '99888777000166',
+            'author_identity' => '99888777000100',
             'certificate_mode' => 'EXTERNAL_SIGNATURE',
             'termo_vault_object_id' => '01ARZ3NDEKTSV4RRFFQ69G5FAV',
             'termo_valid_to' => now()->addYear(),
@@ -119,7 +118,7 @@ class DctfwebMitMonitoringTest extends TestCase
                 'office_id' => $this->office->id,
                 'client_id' => $this->client->id,
                 'office_serpro_authorization_id' => $auth->id,
-                'author_identity' => '99888777000166',
+                'author_identity' => '99888777000100',
                 'contributor_cnpj' => '11222333000181',
                 'system_code' => $system,
                 'service_code' => $service,
@@ -435,7 +434,8 @@ class DctfwebMitMonitoringTest extends TestCase
 
     public function test_timeout_incerto_bloqueia_retry_ate_reconciliacao(): void
     {
-        // Habilita mutação só para exercitar timeout incerto
+        // Flags mutantes ON + actor/2FA — ainda assim o executor tipado bloqueia
+        // Emitir/Declarar nesta change (MutationAuthorization hard-block, task 6.7).
         config([
             'fiscal_monitoring.mutating_enabled' => true,
             'features.mutating.enabled' => true,
@@ -443,14 +443,12 @@ class DctfwebMitMonitoringTest extends TestCase
             'fortify.two_factor_required' => true,
         ]);
 
-        // Catálogo mutante OFF por default — habilita para o path de timeout.
         SerproServiceCatalogEntry::query()
             ->where('solution_code', DctfwebCodes::SYSTEM_DCTFWEB)
             ->where('service_code', DctfwebCodes::SERVICE_DCTFWEB)
             ->where('operation_code', DctfwebCodes::OP_TRANSMITIR)
             ->update(['is_enabled' => true, 'is_mutating' => true]);
 
-        // Actor + 2FA recente obrigatórios (fail-closed no guard)
         $this->actingAs($this->admin);
         app(CurrentOffice::class)->resolve($this->admin);
         app(RecentTwoFactorGate::class)->markConfirmed($this->admin);
@@ -484,30 +482,12 @@ class DctfwebMitMonitoringTest extends TestCase
         $done = $runs->execute($run->id);
 
         $this->assertSame(FiscalRunStatus::Failed, $done->status);
-        $this->assertSame('UNCERTAIN_TIMEOUT', $done->error_code);
+        $this->assertSame('MUTATION_DISABLED', $done->error_code);
         $this->assertSame(FiscalSituation::Error, $done->situation);
+        // Nenhum HTTP mutante deve sair (fila não consumida).
+        $this->assertSame(0, $this->fake->calls);
 
-        $attempt = DctfwebMutationAttempt::query()->withoutGlobalScopes()
-            ->where('office_id', $this->office->id)
-            ->where('operation_code', DctfwebCodes::OP_TRANSMITIR)
-            ->first();
-        $this->assertNotNull($attempt);
-        $this->assertSame(DctfwebMutationStatus::Uncertain, $attempt->status);
-        $this->assertNotNull($attempt->blocked_retry_until);
-
-        $gate = app(DctfwebMutationGuard::class)->assertMayMutate(
-            office: $this->office,
-            client: $this->client,
-            systemCode: DctfwebCodes::SYSTEM_DCTFWEB,
-            serviceCode: DctfwebCodes::SERVICE_DCTFWEB,
-            operationCode: DctfwebCodes::OP_TRANSMITIR,
-            periodKey: $period,
-            actor: $this->admin,
-        );
-        $this->assertFalse($gate['allowed']);
-        $this->assertSame('UNCERTAIN_RETRY_BLOCKED', $gate['code']);
-
-        // Sem actor → fail-closed
+        // Guard sem actor permanece fail-closed (independente do executor).
         $gateNoActor = app(DctfwebMutationGuard::class)->assertMayMutate(
             office: $this->office,
             client: $this->client,
@@ -519,34 +499,13 @@ class DctfwebMitMonitoringTest extends TestCase
         );
         $this->assertFalse($gateNoActor['allowed']);
         $this->assertSame('ACTOR_REQUIRED', $gateNoActor['code']);
-
-        // Nova tentativa mutante bloqueada no adapter (mesmo com actor)
-        $this->fake->queue(
-            DctfwebCodes::SYSTEM_DCTFWEB,
-            DctfwebCodes::SERVICE_DCTFWEB,
-            DctfwebCodes::OP_TRANSMITIR,
-            FakeIntegraContadorClient::productiveRecibo($period, 'SHOULD-NOT-RUN'),
-        );
-        $run2 = $runs->enqueueManual(
-            $this->office,
-            $this->client,
-            DctfwebCodes::SYSTEM_DCTFWEB,
-            DctfwebCodes::SERVICE_DCTFWEB,
-            DctfwebCodes::OP_TRANSMITIR,
-            competence: $competence,
-            actorId: $this->admin->id,
-            correlationId: 'unc-2',
-            dispatch: false,
-        );
-        $done2 = $runs->execute($run2->id);
-        $this->assertSame(FiscalRunStatus::Blocked, $done2->status);
-        $this->assertSame('UNCERTAIN_RETRY_BLOCKED', $done2->error_code);
-        // Fake não deve ter sido chamado na segunda (só a 1ª timeout)
-        $this->assertSame(1, $this->fake->calls);
     }
 
     public function test_darf_emitido_nao_marca_pagamento(): void
     {
+        // EMITIR_DARF é mutante: executor central bloqueia nesta change (task 6.7).
+        // Quando a autorização tipada for liberada, o adapter deve persistir DARF
+        // com payment_status=UNKNOWN (nunca pago por inferência de emissão).
         $period = '2026-06';
         $this->fake->queue(
             DctfwebCodes::SYSTEM_DCTFWEB,
@@ -578,18 +537,15 @@ class DctfwebMitMonitoringTest extends TestCase
             correlationId: 'darf-1',
             dispatch: false,
         );
-        $runs->execute($run->id);
+        $done = $runs->execute($run->id);
+
+        $this->assertSame(FiscalRunStatus::Failed, $done->status);
+        $this->assertSame('MUTATION_DISABLED', $done->error_code);
+        $this->assertSame(0, $this->fake->calls);
 
         $darf = DctfwebDarfDocument::query()->withoutGlobalScopes()
             ->where('office_id', $this->office->id)->first();
-        $this->assertNotNull($darf);
-        $this->assertSame(FiscalPaymentStatus::Unknown, $darf->payment_status);
-        $this->assertSame('DARF-99', $darf->document_number);
-
-        $decl = DctfwebDeclaration::query()->withoutGlobalScopes()
-            ->where('period_key', $period)->first();
-        $this->assertNotNull($decl);
-        $this->assertSame(FiscalPaymentStatus::Unknown, $decl->payment_status);
+        $this->assertNull($darf, 'sem emissão real não deve materializar DARF');
     }
 
     public function test_api_evento_e_listagem_tenant_scoped(): void

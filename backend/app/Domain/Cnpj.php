@@ -13,11 +13,26 @@ final class Cnpj implements Stringable
 {
     private function __construct(private readonly string $value) {}
 
+    /**
+     * Normaliza para 14 chars alfanuméricos maiúsculos (sem máscara).
+     * Nunca coerção numérica — zeros e letras são preservados.
+     */
     public static function normalize(string $raw): string
     {
-        $clean = strtoupper(preg_replace('/[^0-9A-Za-z]/', '', $raw) ?? '');
+        return strtoupper(preg_replace('/[^0-9A-Za-z]/', '', $raw) ?? '');
+    }
 
-        return $clean;
+    /**
+     * Round-trip seguro para persistência/JSON/XML/cache.
+     */
+    public function toStorageString(): string
+    {
+        return $this->value;
+    }
+
+    public static function fromStorageString(string $stored): self
+    {
+        return self::parse($stored);
     }
 
     public static function tryParse(string $raw): ?self

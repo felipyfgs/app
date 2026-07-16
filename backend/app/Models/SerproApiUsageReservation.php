@@ -43,6 +43,14 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'possibly_billable',
     'reserved_at',
     'finalized_at',
+    'environment',
+    'serpro_contract_id',
+    'attempt_state',
+    'catalog_revision',
+    'price_revision',
+    'remote_state',
+    'durable_result_ref',
+    'segregation_class',
 ])]
 class SerproApiUsageReservation extends Model
 {

@@ -238,6 +238,9 @@ class UsageLedgerServiceTest extends TestCase
         config([
             'serpro_usage.shadow_mode' => false,
             'serpro_usage.commercial_blocking_enabled' => true,
+            // Franquia legada: testes de budget monetário cobertos em SerproBilling*
+            'serpro_usage.require_positive_monetary_budgets' => false,
+            'serpro_usage.require_production_price_table' => false,
         ]);
 
         OfficeSubscription::query()->where('office_id', $this->office->id)->update([
@@ -250,6 +253,7 @@ class UsageLedgerServiceTest extends TestCase
             systemCode: 'INTEGRA_CONTADOR',
             serviceCode: 'SITFIS',
             operationCode: 'CONSULTAR_SITUACAO',
+            functionalRoute: 'Consultar',
         ));
         $this->ledger->finalize($a->reservation, SerproUsageResult::Success);
 
@@ -259,6 +263,7 @@ class UsageLedgerServiceTest extends TestCase
             systemCode: 'INTEGRA_CONTADOR',
             serviceCode: 'GUIAS',
             operationCode: 'EMITIR_GUIA',
+            functionalRoute: 'Emitir',
         ));
 
         $this->assertFalse($b->allowed);
@@ -274,6 +279,8 @@ class UsageLedgerServiceTest extends TestCase
             'serpro_usage.commercial_blocking_enabled' => true,
             'serpro_usage.global_monthly_budget' => 10,
             'serpro_usage.max_tenant_share_of_global' => 0.3, // max 3
+            'serpro_usage.require_positive_monetary_budgets' => false,
+            'serpro_usage.require_production_price_table' => false,
         ]);
 
         OfficeSubscription::query()->where('office_id', $this->office->id)->update([
@@ -287,6 +294,7 @@ class UsageLedgerServiceTest extends TestCase
                 systemCode: 'INTEGRA_CONTADOR',
                 serviceCode: 'SITFIS',
                 operationCode: 'CONSULTAR_SITUACAO',
+                functionalRoute: 'Consultar',
             ));
             $this->assertTrue($o->allowed, "iter {$i}");
             $this->ledger->finalize($o->reservation, SerproUsageResult::Success);
@@ -298,6 +306,7 @@ class UsageLedgerServiceTest extends TestCase
             systemCode: 'INTEGRA_CONTADOR',
             serviceCode: 'GUIAS',
             operationCode: 'EMITIR_GUIA',
+            functionalRoute: 'Emitir',
         ));
 
         $this->assertFalse($blocked->allowed);
@@ -333,6 +342,8 @@ class UsageLedgerServiceTest extends TestCase
         config([
             'serpro_usage.shadow_mode' => false,
             'serpro_usage.commercial_blocking_enabled' => true,
+            'serpro_usage.require_positive_monetary_budgets' => false,
+            'serpro_usage.require_production_price_table' => false,
         ]);
 
         OfficeSubscription::query()->where('office_id', $this->office->id)->update([
@@ -345,6 +356,7 @@ class UsageLedgerServiceTest extends TestCase
             systemCode: 'INTEGRA_CONTADOR',
             serviceCode: 'GUIAS',
             operationCode: 'EMITIR_GUIA',
+            functionalRoute: 'Emitir',
         ));
         $b = $this->ledger->reserve(new UsageReserveRequest(
             officeId: $this->office->id,
@@ -352,6 +364,7 @@ class UsageLedgerServiceTest extends TestCase
             systemCode: 'INTEGRA_CONTADOR',
             serviceCode: 'GUIAS',
             operationCode: 'EMITIR_GUIA',
+            functionalRoute: 'Emitir',
         ));
         $this->assertTrue($a->allowed);
         $this->assertTrue($b->allowed);
@@ -362,6 +375,7 @@ class UsageLedgerServiceTest extends TestCase
             systemCode: 'INTEGRA_CONTADOR',
             serviceCode: 'GUIAS',
             operationCode: 'EMITIR_GUIA',
+            functionalRoute: 'Emitir',
         ));
 
         $this->assertFalse($c->allowed);

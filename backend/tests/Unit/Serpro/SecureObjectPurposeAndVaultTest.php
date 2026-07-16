@@ -70,6 +70,50 @@ class SecureObjectPurposeAndVaultTest extends TestCase
         $this->rmTree($root);
     }
 
+    public function test_keyring_reads_previous_key_version_and_rewrap_to_current(): void
+    {
+        $root = sys_get_temp_dir().'/serpro-vault-kr-'.bin2hex(random_bytes(4));
+        $keyV1 = random_bytes(32);
+        $keyV2 = random_bytes(32);
+
+        $storeV1 = new FilesystemSecureObjectStore(new EnvelopeCrypto($keyV1, 1), $root);
+        $aad = SecureObjectPurpose::SerproOauthSecrets->aadBase([
+            'environment' => 'TRIAL',
+            'contractor_cnpj' => '11222333000181',
+        ]);
+        // AAD de negócio NÃO inclui key_version — isso é só no envelope.
+        $aadWithNoise = $aad + ['note' => 'business-aad'];
+        $id = $storeV1->put('oauth-pair-secret', $aadWithNoise);
+        $this->assertSame(1, $storeV1->cryptoKeyVersionOf($id));
+
+        // Leitura com keyring atual=v2 + previous v1
+        $cryptoV2 = new EnvelopeCrypto($keyV2, 2, [1 => $keyV1]);
+        $storeV2 = new FilesystemSecureObjectStore($cryptoV2, $root);
+        $this->assertSame('oauth-pair-secret', $storeV2->get($id, $aadWithNoise));
+
+        // AAD errado ainda falha (distinto de key version)
+        $failedAad = false;
+        try {
+            $storeV2->get($id, SecureObjectPurpose::SerproBearerToken->aadBase(['environment' => 'TRIAL']));
+        } catch (RuntimeException) {
+            $failedAad = true;
+        }
+        $this->assertTrue($failedAad);
+
+        $result = $storeV2->rewrap($id, $aadWithNoise, dryRun: false);
+        $this->assertTrue($result['rewritten']);
+        $this->assertSame(1, $result['from_version']);
+        $this->assertSame(2, $result['to_version']);
+        $this->assertSame(2, $storeV2->cryptoKeyVersionOf($id));
+        $this->assertSame('oauth-pair-secret', $storeV2->get($id, $aadWithNoise));
+
+        // Idempotente na versão atual
+        $again = $storeV2->rewrap($id, $aadWithNoise, dryRun: false);
+        $this->assertFalse($again['rewritten']);
+
+        $this->rmTree($root);
+    }
+
     private function rmTree(string $dir): void
     {
         if (! is_dir($dir)) {
