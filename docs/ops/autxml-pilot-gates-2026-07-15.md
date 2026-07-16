@@ -60,3 +60,10 @@ Schema presente: `office_fiscal_identities`, `office_credentials`, `office_distr
 | Escala de estabelecimentos | Bloqueada até go de piloto e SLOs |
 
 Reavaliar este arquivo quando houver smoke assinado (data, office_id allowlisted, cStat, chaves mascaradas).
+
+## Handoff implementação (2026-07-16)
+
+Tasks 13.3–13.9 de produção restrita **READY_FOR_PILOT**.  
+Stream autXML / import histórico não foram executados com A1 real no CI.  
+Flags OFF por default; archive da change de implementação liberado.
+

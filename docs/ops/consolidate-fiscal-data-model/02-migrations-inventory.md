@@ -5,13 +5,13 @@
 
 ## Resumo
 
-| Status | Quantidade |
+| Status | Quantidade (pós-fase-2 harness, local) |
 |--------|------------|
-| Ran | 48 |
-| Pending | 7 |
-| Arquivos em `backend/database/migrations` | 55 |
+| Ran | 56 |
+| Pending | 0 |
+| Arquivos em `backend/database/migrations` | 56 |
 
-> Há **55 arquivos** e **55 nomes** no status (48+7). Duas migrations compartilham o timestamp `2026_07_15_060000_*` (outbound deadline + cte extend) — ambas Ran.
+> Captura inicial da fase 1: 48 Ran + 7 Pending. Na fase 2, o apply local executou as 7 pendentes (align-serpro residual + operational processes) e a harness `2026_07_16_400000_*`. Duas migrations legadas compartilham o timestamp `2026_07_15_060000_*`.
 
 ## Pendentes (não aplicar às cegas nesta change)
 

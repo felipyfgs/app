@@ -9,12 +9,14 @@
 ## State of the repo
 
 - A implementação está em andamento em `backend/`, `frontend/` e `docker/`; a fonte de verdade continua sendo o OpenSpec em `openspec/`.
-- Main specs em `openspec/specs/` (sincronizados em 2026-07-14 a partir das changes arquivadas).
-- Active change: `build-complete-fiscal-monitoring-hub` (SaaS multi-escritório + Integra Contador / monitoramento fiscal). Arquivo recente: `openspec/changes/archive/2026-07-14-*` e `2026-07-15-*`.
+- Main specs em `openspec/specs/` (sincronizados em **2026-07-16** a partir das changes arquivadas).
+- **Active change:** nenhuma no momento. Changes recentes estão em `openspec/changes/archive/2026-07-16-*` (hub fiscal, modelo de dados, work operacional, CT-e, AutXML, SVRS NFE-55, fixtures, dashboard, etc.). Archives anteriores: `2026-07-14-*`, `2026-07-15-*`.
+- Piloto/smoke de produção (SERPRO mTLS, DistDFe real, SVRS auto-queue, etc.) permanece **OPEN/PENDING_OPS** em `docs/ops/*` mesmo com implementação arquivada — não assumir gates de piloto como PASS só porque a change foi arquivada.
 - OpenSpec skills/commands (oficial via `openspec init --tools …` / `openspec update` onde existir; Grok adaptado manualmente — CLI ainda não lista `grok`):
   - OpenCode: `.opencode/skills/openspec-*` + `.opencode/commands/opsx-*.md` (`/opsx-propose`, `/opsx-explore`, `/opsx-apply`, `/opsx-sync`, `/opsx-archive`)
   - Codex: `.codex/skills/openspec-*`
   - Grok: `.grok/skills/openspec-*` + `.grok/commands/opsx-*.md` (mesmos slash: `/opsx-propose`, `/opsx-explore`, `/opsx-apply`, `/opsx-sync`, `/opsx-archive`; também `/openspec-propose`, etc.)
+  - Grok loop engineering: `.grok/skills/task-loop/` + `.grok/commands/task-loop.md` (`/task-loop`, `/loop`) — goal → implement → verify até PASS (subagentes); complementar a `/opsx-apply`, não substitui.
   Preferir essas skills em vez de inventar workflow.
 
 ## OpenSpec workflow

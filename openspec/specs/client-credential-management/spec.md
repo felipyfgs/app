@@ -276,3 +276,93 @@ O sistema SHALL permitir que ADMIN com 2FA recente cadastre ou substitua CSC e I
 #### Scenario: Leitura de credencial
 - **WHEN** qualquer usuário consulta o estado do CSC
 - **THEN** a resposta indica somente configurado/ausente/inválido e nunca contém CSC, ID em claro ou referência do vault
+
+### Requirement: Cliente canônico por raiz do CNPJ
+O sistema MUST manter exatamente um Cliente não excluído por raiz de CNPJ e escritório e SHALL associar a esse Cliente todos os Estabelecimentos da mesma raiz, preservando o CNPJ completo normalizado e imutável em cada Estabelecimento.
+
+#### Scenario: Segunda filial da mesma raiz
+- **WHEN** um usuário autorizado cadastra um CNPJ completo cuja raiz já pertence a Cliente do escritório ativo
+- **THEN** o sistema cria somente o novo Estabelecimento sob o Cliente existente e não cria outro Cliente
+
+#### Scenario: CNPJ de raiz diferente
+- **WHEN** uma associação tenta ligar Estabelecimento a Cliente de outra raiz
+- **THEN** a aplicação e a integridade persistente rejeitam a operação sem alterar o cadastro vigente
+
+#### Scenario: Mesma raiz em outro escritório
+- **WHEN** a mesma raiz já existe em outro escritório
+- **THEN** o sistema permite o Cliente independente no escritório ativo e não revela nem reutiliza o registro externo
+
+### Requirement: Autoridade única de matriz e certificado da raiz
+O sistema MUST garantir no máximo uma matriz ativa por Cliente e MUST manter o A1 ativo somente na raiz do Cliente, sem `matrix_client_id`, cópia de PFX ou credencial concorrente por filial.
+
+#### Scenario: Promoção de nova matriz
+- **WHEN** uma operação válida altera qual Estabelecimento é a matriz
+- **THEN** a troca ocorre atomicamente e nunca deixa duas matrizes ativas
+
+#### Scenario: Canal de uma filial
+- **WHEN** uma filial elegível inicia captura ADN ou SEFAZ
+- **THEN** o job resolve o A1 ativo do Cliente raiz e o materializa somente em memória
+
+### Requirement: Consolidação cadastral sem perda
+A migração MUST agrupar cadastros legados por `office_id` e raiz, preservar identificadores por mapa de correspondência e bloquear registros ambíguos antes do corte.
+
+#### Scenario: Cliente legado por filial
+- **WHEN** mais de um Cliente legado do mesmo escritório representa CNPJs da mesma raiz
+- **THEN** o backfill cria ou seleciona uma raiz canônica, reassocia os Estabelecimentos e preserva contatos, atributos, credenciais e histórico sem duplicar o A1
+
+#### Scenario: Conflito de duas credenciais ativas
+- **WHEN** a consolidação encontra mais de um A1 reivindicado como ativo para a mesma raiz
+- **THEN** nenhum segredo é exposto, a ativação canônica fica bloqueada e a divergência é encaminhada para revisão administrativa
+
+### Requirement: Credenciais do cliente e do escritório são agregados distintos
+O sistema MUST manter o e-CNPJ A1 de cada cliente separado da credencial fiscal própria do escritório em modelo, tabela, política, objeto de vault, AAD e serviço de resolução. A credencial do escritório MUST NOT ser cadastrada mediante Cliente fictício nem copiada para `client_credentials`; e a credencial do cliente MUST NOT ser promovida, referenciada ou copiada como credencial do escritório.
+
+#### Scenario: Cadastro do A1 do escritório
+- **WHEN** ADMIN com 2FA recente ativa uma credencial para a identidade fiscal do escritório
+- **THEN** o material é gravado em objeto de vault pertencente ao escritório e nenhum `client_credential` é criado ou alterado
+
+#### Scenario: Cadastro do A1 de cliente
+- **WHEN** ADMIN ativa uma credencial para uma raiz de Cliente
+- **THEN** o material permanece vinculado somente ao Cliente e não habilita o canal autXML do escritório
+
+#### Scenario: Mesmo fingerprint em proprietários diferentes
+- **WHEN** uma tentativa de cadastro reutiliza fingerprint ou material já associado a proprietário de tipo diferente
+- **THEN** o sistema não cria vínculo cruzado silencioso e exige tratamento explícito sem expor o PFX ou a senha
+
+### Requirement: Uso de A1 limitado ao proprietário e ao canal
+O sistema SHALL resolver credenciais de cliente exclusivamente para canais executados em nome daquele cliente e SHALL resolver a credencial do escritório exclusivamente para canais autorizados do próprio escritório, inicialmente `NFE_AUTXML_DISTDFE`. O sistema MUST verificar no backend `office_id`, tipo do proprietário, identificador do proprietário, CNPJ compatível, estado e validade antes de materializar qualquer PFX.
+
+#### Scenario: Job de cliente tenta usar A1 do escritório
+- **WHEN** DistDFe de entrada, CT-e, ADN, manifestação, consulta outbound ou recuperação MA tenta resolver a credencial do escritório
+- **THEN** a operação é rejeitada antes da materialização e os canais do cliente preservam seus cursores
+
+#### Scenario: Job autXML tenta usar A1 de cliente
+- **WHEN** o canal `NFE_AUTXML_DISTDFE` tenta resolver um `client_credential`
+- **THEN** a operação é rejeitada antes da chamada externa e o cursor central não avança
+
+#### Scenario: Identificador de outro escritório
+- **WHEN** API ou job referencia credencial cuja `office_id` difere do contexto autenticado/persistido
+- **THEN** o sistema não revela sua existência nem seus metadados e não acessa o objeto do vault
+
+#### Scenario: Materialização válida do A1 do escritório
+- **WHEN** o job autXML resolve a credencial ACTIVE e não vencida da identidade fiscal correta
+- **THEN** PFX e senha existem apenas em memória durante a chamada mTLS e não são retornados ao job payload, API, log ou auditoria
+
+### Requirement: Falhas de credencial não atravessam proprietários
+O sistema SHALL bloquear e alertar somente os cursores que dependem da credencial ausente, inválida, substituída ou vencida. A substituição/expiração do A1 do escritório MUST NOT bloquear cursores de clientes, e a substituição/expiração de um A1 de cliente MUST NOT bloquear o cursor autXML do escritório.
+
+#### Scenario: A1 do escritório vencido
+- **WHEN** a credencial fiscal ACTIVE do escritório vence
+- **THEN** os cursores `NFE_AUTXML_DISTDFE` dependentes são bloqueados e os jobs dos clientes continuam elegíveis conforme suas próprias credenciais
+
+#### Scenario: A1 de cliente vencido
+- **WHEN** uma credencial de cliente vence
+- **THEN** somente os canais dependentes daquela raiz são bloqueados e o stream autXML do escritório preserva estado e agenda
+
+#### Scenario: Substituição falha do A1 do escritório
+- **WHEN** um novo PFX do escritório falha na validação
+- **THEN** a credencial anterior permanece ativa e nenhuma credencial de cliente é modificada
+
+#### Scenario: Renovação concluída
+- **WHEN** o A1 do escritório é substituído com sucesso
+- **THEN** somente os cursores do escritório podem voltar à elegibilidade, sem reset de NSU e sem desbloqueio automático de cursor de cliente

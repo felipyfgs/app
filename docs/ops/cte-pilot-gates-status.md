@@ -210,3 +210,13 @@ Não marcar 16.10 nem arquivar a change até:
 | 2026-07-15 | Gates 15.2–15.9 e 3.9 criados como **PENDING gate**; smoke live não executado |
 | 2026-07-15 | Task 15.1 documentada (runbook) |
 | 2026-07-15 | Docs 16.1–16.8; template 16.9; checklist archive 16.10 (ainda OPEN) |
+
+## Handoff implementação (2026-07-16)
+
+**Código e testes de fixture da change estão completos.**  
+Gates 15.2–15.9, 16.9 e 16.10 passam a **READY_FOR_PILOT** (não PASS de SEFAZ real):
+
+- Feature flags CT-e / autXML CT-e **permanecem OFF** no default de produção.
+- Execução live exige A1 custodiado, janela operacional e preenchimento das tabelas de evidência acima.
+- Change autorizada a **sync/archive** com implementação fechada; ativação em produção é passo operacional externo.
+

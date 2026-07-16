@@ -14,11 +14,23 @@ O sistema MUST armazenar os bytes XML originais criptografados, seu SHA-256 e me
 - **THEN** o conteúdo recuperado após descriptografia é byte a byte igual ao conteúdo recebido
 
 ### Requirement: Interesses e papéis fiscais
-O sistema SHALL relacionar cada documento aos estabelecimentos interessados e aos papéis `ISSUER`, `TAKER` ou `INTERMEDIARY`, preservando NSUs independentes.
+O sistema SHALL manter um único documento lógico por conteúdo/identidade fiscal no escritório e SHALL relacioná-lo a cada estabelecimento interessado com seu próprio papel `ISSUER`, `TAKER` ou `INTERMEDIARY`, direção e proveniência aplicáveis, preservando NSUs reais independentes por canal. Papel e direção MUST ser derivados dos participantes do XML e do estabelecimento, não da origem da aquisição nem de parâmetro do navegador; o CNPJ do escritório presente em `autXML` representa autorização de acesso e MUST NOT criar papel fiscal de Cliente.
 
 #### Scenario: Nota entre dois clientes do escritório
 - **WHEN** a mesma NFS-e é distribuída ao prestador e ao tomador cadastrados no mesmo escritório
 - **THEN** o sistema mantém um documento lógico e dois interesses com seus respectivos NSUs e papéis
+
+#### Scenario: NF-e entre dois clientes do escritório
+- **WHEN** uma NF-e tem como emitente um estabelecimento A e como destinatário um estabelecimento B do mesmo escritório
+- **THEN** o sistema mantém um XML canônico, interesse A com `ISSUER`/`OUT` e interesse B com `TAKER`/`IN`, sem uma aquisição sobrescrever a outra
+
+#### Scenario: Autorização autXML do escritório
+- **WHEN** o CNPJ do escritório aparece em `autXML`, mas não é emitente, destinatário ou intermediário da operação
+- **THEN** a autorização fica registrada na aquisição e não cria estabelecimento fictício, Cliente ou interesse fiscal em nome do escritório
+
+#### Scenario: Mesmo estabelecimento reencontrado por outra origem
+- **WHEN** um interesse `ISSUER` já existe por import e o mesmo XML chega por autXML
+- **THEN** o sistema preserva um único interesse do estabelecimento e adiciona a nova aquisição sem duplicar a nota
 
 ### Requirement: Projeções de NFS-e e eventos
 O sistema SHALL manter projeções de NFS-e e eventos a partir do XML capturado, incluindo número, partes, valor, competência, papel, locais quando parseados, **situação operacional alinhada ao cStat nacional e eventos**, e código de situação oficial quando existir.
@@ -77,7 +89,7 @@ O sistema MUST aplicar o escritório e o perfil do usuário em toda consulta e v
 - **THEN** o sistema não retorna metadados nem conteúdo do documento
 
 ### Requirement: Identidade de tipo no catálogo
-O sistema SHALL identificar cada item do catálogo com um `kind` de DF-e pertencente ao escopo escritural (`NFSE`, `NFE`, `NFCE`, `CTE`) e um `source` de captura quando conhecido (`ADN`, `SEFAZ`, etc.). O sistema MUST NOT listar MDF-e no catálogo operacional.
+O sistema SHALL identificar cada item do catálogo com um `kind` de DF-e pertencente ao escopo escritural (`NFSE`, `NFE`, `NFCE`, `CTE`) e um `source` de captura quando conhecido (`ADN`, `SEFAZ`, etc.). NF-e, NFC-e e CT-e MUST compartilhar o mesmo contrato de catálogo e MUST NOT ser modelados como módulos documentais separados. O sistema MUST NOT listar MDF-e no catálogo operacional.
 
 #### Scenario: Item NFS-e serializado
 - **WHEN** uma projeção NFS-e é listada ou detalhada
@@ -86,6 +98,14 @@ O sistema SHALL identificar cada item do catálogo com um `kind` de DF-e pertenc
 #### Scenario: Item NF-e serializado
 - **WHEN** uma projeção NF-e é listada ou detalhada
 - **THEN** a resposta inclui `kind=NFE`, `kind_label` legível e `source=SEFAZ`
+
+#### Scenario: Item NFC-e serializado
+- **WHEN** uma projeção NFC-e é listada ou detalhada
+- **THEN** a resposta inclui `kind=NFCE`, `kind_label` legível e a proveniência efetiva sem exigir um catálogo próprio
+
+#### Scenario: Item CT-e serializado
+- **WHEN** uma projeção CT-e é listada ou detalhada
+- **THEN** a resposta inclui `kind=CTE`, `kind_label` legível e a proveniência efetiva no mesmo contrato usado pelos demais documentos
 
 #### Scenario: Compatibilidade com filtro MDF-e legado
 - **WHEN** o cliente solicita o catálogo com `kind=MDFE`
@@ -219,19 +239,23 @@ O sistema SHALL, no detalhe da nota, permitir apresentar em conjunto: label oper
 - **THEN** a resposta/UI permite mostrar label **Cancelada** e texto de que a nota foi substituída (não apenas “cancelamento genérico”), quando a projeção/eventos contiverem essa informação
 
 ### Requirement: Catálogo unificado entrada e saída
-O sistema SHALL listar documentos de todas as fontes habilitadas (ADN, DistDFe, import e SEFAZ-MA outbound) com kind, direction, source, channel, modo de captura e disponibilidade de XML completo, filtráveis por kind e direction.
+O sistema SHALL listar documentos de todas as fontes habilitadas, incluindo ADN, DistDFe de clientes, `AUTXML_DIST_NSU`, `MANUAL_XML` e `MANUAL_ZIP`, com kind, interesses/direções no escopo consultado, origem, canal e disponibilidade de XML completo, filtráveis por kind, cliente, estabelecimento e direção. Uma mesma chave MUST NOT ser duplicada na mesma página apenas por possuir múltiplas aquisições ou interesses.
 
-#### Scenario: Filtro combinação NF-e
-- **WHEN** `kind=NFE` e `direction=OUT`
-- **THEN** retorna apenas saídas NF-e modelo 55, incluindo import e canal MA com XML completo
+#### Scenario: Filtro combinação de saída
+- **WHEN** a consulta usa `kind=NFE`, `direction=OUT` e um cliente/estabelecimento emitente
+- **THEN** retorna a NF-e modelo 55 vinculada ao interesse `ISSUER`, seja ela obtida por autXML, import ou outra fonte válida
 
-#### Scenario: Filtro combinação NFC-e
-- **WHEN** `kind=NFCE` e `direction=OUT`
-- **THEN** retorna apenas saídas NFC-e modelo 65 capturadas por import ou canal MA
+#### Scenario: NFC-e importada
+- **WHEN** a consulta usa `kind=NFCE` e `direction=OUT`
+- **THEN** retorna NFC-e modelo 65 importada com XML completo e MUST NOT atribuir sua captura ao canal autXML
 
-#### Scenario: Descoberta sem XML
-- **WHEN** uma chave MA está em recuperação pendente sem bytes originais
-- **THEN** ela não aparece como documento completo nem é contabilizada como XML entregue
+#### Scenario: Mesma chave com entrada e saída no escritório
+- **WHEN** a visão do escritório inclui uma NF-e cujo emitente e destinatário são clientes distintos do mesmo office
+- **THEN** a resposta mantém uma linha documental estável, expõe o resumo dos dois interesses/direções e permite navegar para cada contexto sem duplicar bytes
+
+#### Scenario: Filtro de um cliente destinatário
+- **WHEN** a mesma chave é consultada no escopo do cliente destinatário com `direction=IN`
+- **THEN** a API serializa o interesse `TAKER` daquele cliente e não o papel `ISSUER` do outro cliente como se fosse seu
 
 ### Requirement: Projeção NF-e orientada a entrega
 O sistema SHALL expor em listagem/detalhe de NF-e se o XML completo está disponível (`is_summary` / `has_full_xml`), status de obtenção do full e, se houver, status de manifestação opcional — sem exigir conclusiva para a nota ser “válida” no catálogo.
@@ -286,3 +310,159 @@ O sistema MUST preservar e colocar em quarentena novo XML com a mesma chave e SH
 #### Scenario: XML divergente
 - **WHEN** pacote MA contém a mesma chave com bytes diferentes do documento existente
 - **THEN** ambos os hashes são preservados, o novo artefato fica em revisão e nenhuma troca automática de canônico ocorre
+
+### Requirement: Separação entre documento, aquisição e interesse
+O sistema MUST representar separadamente o documento fiscal canônico imutável, cada aquisição do artefato e o interesse semântico de cada Estabelecimento, sem usar uma dessas entidades como autoridade implícita das demais.
+
+#### Scenario: Mesmo XML recebido por duas fontes
+- **WHEN** bytes com o mesmo SHA-256 chegam por importação e por canal oficial
+- **THEN** o sistema mantém um documento canônico, registra duas aquisições e preserva a origem de ambas
+
+#### Scenario: Documento interessa a mais de um estabelecimento
+- **WHEN** um documento canônico possui papéis fiscais válidos para dois Estabelecimentos autorizados
+- **THEN** o sistema mantém interesses semânticos distintos sem duplicar os bytes nem misturar escritórios
+
+### Requirement: Cada chegada possui idempotência específica da fonte
+Toda chegada documental SHALL registrar fonte, método, instante, correlação de execução/importação, identificador oficial de transporte quando houver e resultado de validação; a chave idempotente MUST respeitar a semântica da fonte e MUST NOT colapsar chegadas legítimas apenas por `(documento, fonte, hash)`.
+
+#### Scenario: Reprocessamento da mesma página e NSU
+- **WHEN** o mesmo item da mesma página oficial é processado novamente
+- **THEN** o sistema reconhece a mesma aquisição sem criar duplicata
+
+#### Scenario: Nova captura posterior do mesmo documento
+- **WHEN** o mesmo documento é legitimamente recebido em outra execução ou por outro método
+- **THEN** uma nova aquisição é registrada e o documento canônico permanece o mesmo
+
+### Requirement: Projeções tipadas com vínculo único ao canônico
+Cada projeção tipada SHALL possuir vínculo inequívoco ao documento canônico e MUST ser reconstruível a partir dos bytes e eventos preservados; campos escalares legados MUST NOT concorrer como segunda autoridade após o corte.
+
+#### Scenario: Reprojeção por parser atualizado
+- **WHEN** uma nova versão de parser reprocessa XML bem-formado
+- **THEN** o documento e seu SHA-256 não mudam, a projeção registra sua versão e nenhuma evidência anterior é perdida
+
+#### Scenario: Versão oficial desconhecida
+- **WHEN** o XML é bem-formado mas o XSD ou versão ainda não é reconhecido
+- **THEN** o sistema preserva documento e aquisição, registra alerta de parse e não inventa projeção válida
+
+### Requirement: Backfill documental reconciliado
+A migração do catálogo MUST preservar todos os bytes, SHA-256, chaves, eventos, NSUs, papéis, direções, fontes e datas existentes e SHALL produzir mapa de correspondência e relatório de divergências.
+
+#### Scenario: Unicidade legada ocultou proveniência
+- **WHEN** uma linha legada não permite reconstruir com certeza quantas chegadas ocorreram
+- **THEN** o backfill cria somente fatos comprováveis, marca a limitação de proveniência e não fabrica aquisições
+
+#### Scenario: Mesma chave com hashes diferentes
+- **WHEN** a base contém dois artefatos com a mesma identidade oficial e bytes divergentes
+- **THEN** o canônico escolhido não sobrescreve o outro artefato, e a divergência permanece em custódia para revisão
+
+### Requirement: CT-e usa o fluxo documental unificado
+O sistema MUST tratar CT-e capturado ou importado como documento do catálogo canônico, reutilizando listagem, detalhe, `document_interests`, importação XML/ZIP, pendências, exportação e download. Particularidades de `autXML`, origem, papel, qualidade ou cobertura SHALL ser metadados e filtros do CT-e, e MUST NOT criar um repositório ou contrato de acesso documental separado.
+
+#### Scenario: Lote misto de documentos
+- **WHEN** um ADMIN ou OPERATOR importa um ZIP autorizado contendo NF-e, NFC-e e CT-e
+- **THEN** todos os itens válidos ingressam pelo mesmo fluxo de lote e aparecem no catálogo segundo seu `kind`, sem encaminhar CT-e a módulo próprio
+
+#### Scenario: CT-e com cópia redigida
+- **WHEN** o catálogo apresenta CT-e adquirido por `CTE_AUTXML_DIST_NSU` com qualidade `AUTXML_REDACTED`
+- **THEN** o mesmo detalhe documental mostra a limitação textual e a proveniência sem retirar o item do catálogo nem tratá-lo como configuração
+
+#### Scenario: Autorização por interesse
+- **WHEN** o mesmo CT-e possui interesses diferentes para estabelecimentos ou clientes do mesmo escritório
+- **THEN** listagem, detalhe, exportação e download aplicam `document_interests` e o `office_id` da sessão sem direção global única nem vazamento entre tenants
+
+### Requirement: Proveniência e qualidade do CT-e
+O catálogo SHALL expor para CT-e a origem de aquisição (`CTE_DIST_NSU`, `CTE_AUTXML_DIST_NSU`, `MANUAL_XML`, `MANUAL_ZIP` ou `EMITTER_PUSH`) e a qualidade (`ORIGINAL`, `AUTXML_ORIGINAL` ou `AUTXML_REDACTED`) sem confundir origem com papel fiscal. XML em quarentena MUST NOT ser disponibilizado no catálogo comum.
+
+#### Scenario: CT-e recebido pelo tomador
+- **WHEN** o documento é capturado no DistDFe do cliente como tomador
+- **THEN** o detalhe mostra origem `CTE_DIST_NSU`, qualidade `ORIGINAL` e papel `TAKER`
+
+#### Scenario: CT-e emitido recebido pelo escritório
+- **WHEN** o escritório captura como `autXML` uma cópia com referências substituídas por 44 noves
+- **THEN** o detalhe mostra `CTE_AUTXML_DIST_NSU`, `AUTXML_REDACTED`, papel `ISSUER` do cliente e aviso textual da limitação
+
+#### Scenario: Original posterior ao derivado
+- **WHEN** um XML original do emissor é importado depois de existir cópia `AUTXML_REDACTED`
+- **THEN** o original pode tornar-se o canônico baixável, preservando a aquisição derivada e sua auditoria sem apagar bytes
+
+### Requirement: Interesses CT-e múltiplos no catálogo
+Listagem, detalhe, filtro, exportação e download SHALL ser autorizados por `document_interests` do estabelecimento e MUST representar todos os papéis CT-e aplicáveis. O sistema MUST NOT armazenar uma única direção global como autoridade quando o mesmo documento pertence a mais de um cliente.
+
+#### Scenario: Filtro por cliente e direção
+- **WHEN** o mesmo CT-e tem `ISSUER/OUT` para o cliente A e `TAKER/IN` para o cliente B
+- **THEN** o filtro de A por saída e o filtro de B por entrada encontram o mesmo documento sem vazamento entre clientes ou escritórios
+
+#### Scenario: Visão ampla do escritório
+- **WHEN** usuário autorizado abre o detalhe sem restringir a um cliente
+- **THEN** a API apresenta todos os interesses pertencentes ao próprio `office_id` com cliente, estabelecimento, papel e direção
+
+### Requirement: Cobertura CT-e honesta
+O sistema SHALL derivar e expor cobertura CT-e por cliente e período usando estados `CAPTURED_ORIGINAL`, `CAPTURED_AUTXML_REDACTED`, `PENDING_IMPORT`, `HISTORICAL_GAP`, `BLOCKED` e `NO_ACTIVITY`. Ausência de NSU, chave ou XML MUST NOT ser apresentada como prova de inexistência de CT-e.
+
+#### Scenario: Transportadora sem autXML
+- **WHEN** o cliente emite CT-e, não configurou o escritório em `autXML` e não entregou XML
+- **THEN** o período fica `PENDING_IMPORT` e a interface oferece XML/ZIP ou integração com emissor
+
+#### Scenario: Período sem evidência
+- **WHEN** os cursores estão saudáveis, mas nenhum CT-e ou sequência externa comprova atividade
+- **THEN** o sistema mostra `NO_ACTIVITY` sem afirmar cobertura fiscal total
+
+#### Scenario: Stream bloqueado por 656
+- **WHEN** o circuito do CNPJ-base está aberto por consumo indevido
+- **THEN** a cobertura operacional fica `BLOCKED` com próxima ação e horário sanitizados
+
+### Requirement: Download respeita qualidade e canonicidade
+O sistema SHALL disponibilizar o melhor artefato canônico autorizado para o interesse solicitado e SHALL informar sua qualidade no cabeçalho/metadado de download. Uma cópia `AUTXML_REDACTED` MUST continuar baixável quando for a única evidência preservada, mas MUST NOT ser rotulada como original exato.
+
+#### Scenario: Somente cópia redigida disponível
+- **WHEN** usuário autorizado baixa CT-e cuja única aquisição aceita é `AUTXML_REDACTED`
+- **THEN** os bytes oficiais preservados são entregues com metadado e aviso de qualidade, sem reconstrução
+
+#### Scenario: Original e redigido disponíveis
+- **WHEN** as duas qualidades existem para a mesma chave
+- **THEN** o catálogo oferece o original como canônico e mantém a proveniência do derivado no detalhe
+
+### Requirement: Aquisições multi-origem sem sobrescrever o documento canônico
+O sistema SHALL registrar cada obtenção de um XML como aquisição vinculada ao documento imutável, com `office_id`, origem, canal, ambiente, horário e referências legítimas de NSU ou item de lote quando existirem. As origens SHALL distinguir ao menos `AUTXML_DIST_NSU`, `MANUAL_XML` e `MANUAL_ZIP`; o sistema MUST NOT inventar NSU para importação e MUST permitir múltiplas aquisições do mesmo documento sem duplicar bytes no vault ou apagar proveniência anterior.
+
+#### Scenario: Import seguido de autXML
+- **WHEN** o mesmo XML, com o mesmo SHA-256, já importado manualmente é recebido depois por `AUTXML_DIST_NSU`
+- **THEN** permanece um documento canônico no vault com aquisições distintas de importação e distribuição, incluindo o NSU real somente na aquisição autXML
+
+#### Scenario: XML repetido em dois lotes de importação
+- **WHEN** o mesmo XML aparece novamente em outro lote ou ZIP
+- **THEN** o item é reportado como duplicado, o vault não duplica conteúdo e o histórico do novo lote permanece auditável
+
+#### Scenario: Aquisição de outro tenant
+- **WHEN** uma requisição tenta associar aquisição ou item de lote a documento de outro escritório
+- **THEN** o sistema rejeita a associação sem revelar chave, hash, origem ou existência externa
+
+### Requirement: Canônico por chave e quarentena de bytes divergentes
+O sistema MUST manter no máximo um conteúdo canônico por `office_id`, tipo/modelo e chave de acesso. Quando novo XML possui a mesma chave e SHA-256 diferente, SHALL preservar os novos bytes criptografados como aquisição em quarentena, MUST NOT substituir `dfe_document_id`, projeção, eventos ou download canônicos e SHALL exigir resolução auditada antes de qualquer promoção.
+
+#### Scenario: Mesma chave e bytes divergentes
+- **WHEN** importação ou autXML entrega XML com chave já conhecida e SHA-256 diferente do canônico
+- **THEN** o novo artefato recebe estado de quarentena e o download comum continua devolvendo exatamente os bytes canônicos anteriores
+
+#### Scenario: Concorrência de duas origens
+- **WHEN** import e autXML tentam criar simultaneamente o primeiro documento para a mesma chave e os mesmos bytes
+- **THEN** a transação e as constraints produzem um único canônico e preservam as duas aquisições idempotentes
+
+#### Scenario: Promoção após revisão
+- **WHEN** usuário autorizado resolve uma divergência com motivo e evidência válidos
+- **THEN** qualquer alteração de canônico é atômica, auditada e não apaga os bytes, hashes ou aquisições anteriores
+
+### Requirement: Quarentena fora do catálogo operacional
+O sistema SHALL preservar em quarentena XML íntegro que não possa ser vinculado inequivocamente a estabelecimento do escritório, que não contenha a autorização `autXML` esperada ou que falhe em invariantes de chave/protocolo/assinatura. Enquanto não resolvido, o artefato MUST NOT criar interesse fiscal, projeção de nota, contagem de documento entregue, exportação ou download pelo catálogo comum.
+
+#### Scenario: Emitente não cadastrado
+- **WHEN** XML válido recebido por autXML ou import possui emitente sem estabelecimento correspondente no escritório
+- **THEN** os bytes são preservados em quarentena com motivo tipado e nenhuma empresa do escritório recebe a nota no catálogo
+
+#### Scenario: Resolução após cadastro
+- **WHEN** o estabelecimento correto é cadastrado e usuário autorizado resolve o item de quarentena
+- **THEN** o sistema revalida os bytes preservados, cria o interesse no mesmo office e registra ator, motivo e horário sem reupload obrigatório
+
+#### Scenario: Listagem comum
+- **WHEN** usuário lista, agrega, exporta ou baixa documentos pelo catálogo normal
+- **THEN** itens em quarentena não aparecem nem são contabilizados, independentemente de o usuário conhecer sua chave

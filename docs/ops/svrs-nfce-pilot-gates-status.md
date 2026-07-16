@@ -38,3 +38,10 @@ Nenhum smoke com dados fiscais reais foi executado nesta sessão.
 3. Uma chave NFC-e 65 de teste/piloto.
 4. Executar smoke com `RETRIEVAL_ENABLED=true`, `AUTO_QUEUE=false`, sem persistência automática no primeiro passo.
 5. Registrar evidência sanitizada (sem CNPJ/chave/XML) em `docs/ops/svrs-nfce-smoke-*.md`.
+
+## Handoff implementação NFE-55 resiliente (2026-07-16)
+
+Tasks 13.x/14.x de smoke/piloto **READY_FOR_PILOT** (sem chamada SVRS real neste repositório).  
+Defaults: auto-queue OFF, budgets preventivos, kill switch testável em código.  
+Archive autorizado após sync de specs; ampliação de allowlist exige evidência formal.
+
