@@ -16,57 +16,23 @@ Se 2 e 3 conflitarem, **ganha o template** na estrutura/slots/classes; MCP só p
 
 | Skill | Escopo | Papel |
 |-------|--------|-------|
-| **`ui-archetype`** | Projeto (``.opencode/skills/` / discovery `.agents/skills/``) | Forma visual. Obrigatória em UI autenticada. |
-| **`panel-ui`** | Projeto (``.opencode/skills/` / discovery `.agents/skills/``) | Orquestra domínio + arquétipo + nuxt/nuxt-ui. |
-| **`nuxt-ui`** | Global (`~/`.opencode/skills/` / discovery `.agents/skills/`nuxt-ui`) | Theming, forms, overlays, 125+ componentes. |
-| **`nuxt`** | Global (`~/`.opencode/skills/` / discovery `.agents/skills/`nuxt`) | Framework Nuxt 4. |
-
-Invocação: `/ui-archetype`, `/panel-ui`, `/nuxt-ui`, `/nuxt`.
-
-## MCPs
-
-| MCP | URL | Uso |
-|-----|-----|-----|
-| **nuxt-ui** | `https://ui.nuxt.com/mcp` | Props/slots `U*`, ícones, examples |
-| **nuxt** | `https://nuxt.com/mcp` | Docs Nuxt 4 (prod = SPA + Nginx) |
-
-Prioridade MCP nuxt-ui: `search_components` → `get_component` → `search_icons` → examples.
-
-## Protocolo (1 tela)
-
-```text
-A. product-matrix.md → arquétipo + arquivo em .reference/
-B. Copiar markup (skill ui-archetype)
-C. Prop U* incerta → MCP nuxt-ui
-D. Middleware/pages/SPA → skill/MCP nuxt
-E. useApi + permissões + office da sessão (AGENTS.md)
-F. checklist.md
-```
-
-## Anti-padrões
-
-| Errado | Certo |
-|--------|-------|
-| Só Nuxt UI MCP e inventar layout | Template primeiro |
-| `nuxi` novo dashboard | `.reference/nuxt-dashboard-template` @ `0f30c09` |
-| SSR em prod | SPA estática + API Laravel |
-| Ícones inventados | `search_icons` / `i-lucide-*` do template |
+| **`ui-archetype`** | Projeto (`.opencode/skills/`) | Forma visual. Obrigatória em UI autenticada. |
+| **`panel-ui`** | Projeto (`.opencode/skills/`) | Orquestra domínio + arquétipo + nuxt/nuxt-ui. |
+| **`nuxt-ui`** | Global (`~/.agents/skills/nuxt-ui`) | Theming, forms, overlays. |
+| **`nuxt`** | Global (`~/.agents/skills/nuxt`) | Framework Nuxt 4. |
 
 ## Onde vive
 
 ```text
-Projeto (canônico, multi-agent):
-  `.opencode/skills/` / discovery `.agents/skills/`ui-archetype/
-  `.opencode/skills/` / discovery `.agents/skills/`panel-ui/
-  .reference/nuxt-dashboard-template/
-  frontend/
+Fonte real (editar aqui):
+  .opencode/skills/
+
+Discovery (symlinks → .opencode/skills):
+  .agents/skills/   # Codex + OpenCode
+  .grok/skills/     # Grok
 
 User (global):
-  ~/`.opencode/skills/` / discovery `.agents/skills/`nuxt/
-  ~/`.opencode/skills/` / discovery `.agents/skills/`nuxt-ui/
-  ~/`.opencode/skills/` / discovery `.agents/skills/`git-commit/
-
-MCP:
-  ~/.config/opencode/opencode.jsonc  → nuxt + nuxt-ui
-  .codex/config.toml / .grok/config.toml → playwright (projeto)
+  ~/.agents/skills/nuxt/
+  ~/.agents/skills/nuxt-ui/
+  ~/.agents/skills/git-commit/
 ```

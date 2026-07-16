@@ -31,7 +31,7 @@ context: |
   UI:
   - Telas autenticadas: skill panel-ui → ui-archetype
   - Copiar arquétipo de .reference/nuxt-dashboard-template @ 0f30c09 (gitignored)
-  - Skills de projeto só em .agents/skills/ (Grok: .grok/skills → symlink)
+  - Skills de projeto em .opencode/skills/ (.agents e .grok são symlink)
   - Não scaffold Nuxt novo; estender frontend/
   - Prod = SPA estática + nginx, não SSR Node
 
