@@ -11,9 +11,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Associação global usuário ↔ papel da plataforma.
- * SEM office_id — escopo global estrutural.
+ * SEM office_id de membership — escopo global estrutural.
+ * default_office_id: Office padrão de contexto (não cria OfficeMembership).
  */
-#[Fillable(['user_id', 'role', 'is_active'])]
+#[Fillable(['user_id', 'role', 'is_active', 'default_office_id'])]
 class PlatformMembership extends Model
 {
     /** @use HasFactory<PlatformMembershipFactory> */
@@ -26,12 +27,18 @@ class PlatformMembership extends Model
         return [
             'role' => PlatformRole::class,
             'is_active' => 'boolean',
+            'default_office_id' => 'integer',
         ];
     }
 
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function defaultOffice(): BelongsTo
+    {
+        return $this->belongsTo(Office::class, 'default_office_id');
     }
 
     public function isPlatformAdmin(): bool

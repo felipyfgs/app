@@ -4,51 +4,50 @@ namespace App\Policies\Work;
 
 use App\Models\OperationalProcess;
 use App\Models\User;
-use App\Support\CurrentOffice;
+use App\Policies\Work\Concerns\UsesRealWorkRole;
 
 class OperationalProcessPolicy
 {
+    use UsesRealWorkRole;
+
     public function viewAny(User $user): bool
     {
-        return app(CurrentOffice::class)->role()?->canViewWork() === true;
+        return $this->effectiveRole()?->canViewWork() === true;
     }
 
     public function view(User $user, OperationalProcess $process): bool
     {
-        return $this->sameOffice($process);
+        return $this->sameOfficeId((int) $process->office_id)
+            && $this->effectiveRole()?->canViewWork() === true;
     }
 
     public function create(User $user): bool
     {
-        return app(CurrentOffice::class)->role()?->canCreateWorkProcesses() === true;
+        return $this->realRole()?->canCreateWorkProcesses() === true;
     }
 
     public function update(User $user, OperationalProcess $process): bool
     {
-        if (! $this->sameOffice($process)) {
+        if (! $this->sameOfficeId((int) $process->office_id)) {
             return false;
         }
-        $role = app(CurrentOffice::class)->role();
+        $role = $this->realRole();
+        if ($role === null) {
+            return false;
+        }
 
-        return $role?->canAdministerWork() === true || $role?->canCreateWorkProcesses() === true;
+        return $role->canAdministerWork() === true || $role->canCreateWorkProcesses() === true;
     }
 
     public function archive(User $user, OperationalProcess $process): bool
     {
-        return $this->sameOffice($process)
-            && app(CurrentOffice::class)->role()?->canAdministerWork() === true;
+        return $this->sameOfficeId((int) $process->office_id)
+            && $this->realRole()?->canAdministerWork() === true;
     }
 
     public function comment(User $user, OperationalProcess $process): bool
     {
-        return $this->sameOffice($process)
-            && app(CurrentOffice::class)->role()?->canExecuteWorkTasks() === true;
-    }
-
-    private function sameOffice(OperationalProcess $process): bool
-    {
-        $officeId = app(CurrentOffice::class)->id();
-
-        return $officeId !== null && $officeId === (int) $process->office_id;
+        return $this->sameOfficeId((int) $process->office_id)
+            && $this->realRole()?->canExecuteWorkTasks() === true;
     }
 }

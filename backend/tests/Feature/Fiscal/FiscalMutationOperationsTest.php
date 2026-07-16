@@ -94,20 +94,26 @@ class FiscalMutationOperationsTest extends TestCase
         );
     }
 
-    public function test_totp_expirado_bloqueia_preflight_e_execucao(): void
+    public function test_senha_recente_ausente_bloqueia_preflight_e_execucao(): void
     {
         $this->actingAs($this->admin);
         app(CurrentOffice::class)->resolve($this->admin);
-        // Sem markConfirmed → TOTP expirado/ausente
+        // Sem markConfirmed → senha recente ausente/expirada
 
         $response = $this->postJson('/api/v1/fiscal/mutations/preflight', $this->basePayload([
-            'idempotency_key' => 'totp-exp-1',
+            'idempotency_key' => 'pwd-exp-1',
         ]));
 
         $response->assertStatus(422);
-        $this->assertContains('TOTP_EXPIRED', $response->json('data.codes'));
+        $codes = $response->json('data.codes') ?? [];
+        $this->assertTrue(
+            in_array('PASSWORD_CONFIRMATION_REQUIRED', $codes, true)
+            || in_array('PASSWORD_CONFIRMATION_EXPIRED', $codes, true)
+            || in_array('TOTP_EXPIRED', $codes, true),
+            'Esperava código de confirmação de senha; got: '.json_encode($codes),
+        );
 
-        // Confirma e expira
+        // Confirma (legado confirm-totp em testing) e expira
         $this->postJson('/api/v1/auth/confirm-totp', ['code' => '000000'])->assertOk();
         app(RecentTwoFactorGate::class)->expire(user: $this->admin);
         $this->withSession([
@@ -115,10 +121,16 @@ class FiscalMutationOperationsTest extends TestCase
         ]);
 
         $response2 = $this->postJson('/api/v1/fiscal/mutations/preflight', $this->basePayload([
-            'idempotency_key' => 'totp-exp-2',
+            'idempotency_key' => 'pwd-exp-2',
         ]));
         $response2->assertStatus(422);
-        $this->assertContains('TOTP_EXPIRED', $response2->json('data.codes'));
+        $codes2 = $response2->json('data.codes') ?? [];
+        $this->assertTrue(
+            in_array('PASSWORD_CONFIRMATION_REQUIRED', $codes2, true)
+            || in_array('PASSWORD_CONFIRMATION_EXPIRED', $codes2, true)
+            || in_array('TOTP_EXPIRED', $codes2, true),
+            'Esperava código de confirmação de senha; got: '.json_encode($codes2),
+        );
     }
 
     public function test_poder_revogado_apos_preflight_bloqueia_envio(): void

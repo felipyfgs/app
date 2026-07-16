@@ -14,6 +14,7 @@ use App\Models\OfficeCredential;
 use App\Models\OfficeDistributionCursor;
 use App\Models\OfficeFiscalIdentity;
 use App\Models\User;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use App\Services\Certificates\OfficeCredentialResolver;
 use App\Services\Certificates\OfficeCredentialService;
 use App\Services\Certificates\OfficeFiscalIdentityService;
@@ -64,9 +65,10 @@ class OfficeFiscalCredentialTest extends TestCase
     public function test_admin_cadastra_identidade_e_ativa_a1(): void
     {
         $office = Office::factory()->create();
-        $admin = User::factory()->forOffice($office, OfficeRole::Admin)->withTwoFactorConfirmed()->create();
+        $admin = User::factory()->forOffice($office, OfficeRole::Admin)->create();
         $this->actingAs($admin);
         app(CurrentOffice::class)->resolve($admin);
+        app(RecentPasswordConfirmationGate::class)->markConfirmed($admin);
 
         $this->postJson('/api/v1/office/fiscal-identity', [
             'cnpj' => '11.222.333/0001-81',
@@ -102,9 +104,10 @@ class OfficeFiscalCredentialTest extends TestCase
     public function test_raiz_incompativel_rejeita_como_rv593(): void
     {
         $office = Office::factory()->create();
-        $admin = User::factory()->forOffice($office, OfficeRole::Admin)->withTwoFactorConfirmed()->create();
+        $admin = User::factory()->forOffice($office, OfficeRole::Admin)->create();
         $this->actingAs($admin);
         app(CurrentOffice::class)->resolve($admin);
+        app(RecentPasswordConfirmationGate::class)->markConfirmed($admin);
 
         OfficeFiscalIdentity::factory()->forOffice($office)->withCnpj('11222333000181')->create();
         $this->mockPfxReaderMatchingRoot('99888777');

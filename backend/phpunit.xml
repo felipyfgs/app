@@ -23,7 +23,7 @@
     <php>
         <!-- server: Laravel Env lê $_SERVER com prioridade sobre putenv/$_ENV no container Docker -->
         <server name="APP_ENV" value="testing"/>
-        <server name="AUTH_TWO_FACTOR_REQUIRED" value="true"/>
+        <server name="AUTH_TWO_FACTOR_REQUIRED" value="false"/>
         <server name="APP_MAINTENANCE_DRIVER" value="file"/>
         <server name="BCRYPT_ROUNDS" value="4"/>
         <server name="BROADCAST_CONNECTION" value="null"/>
@@ -62,7 +62,7 @@
         <server name="SEFAZ_CTE_REQUIRE_SIGNATURE" value="false"/>
 
         <env name="APP_ENV" value="testing" force="true"/>
-        <env name="AUTH_TWO_FACTOR_REQUIRED" value="true" force="true"/>
+        <env name="AUTH_TWO_FACTOR_REQUIRED" value="false" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
         <env name="BROADCAST_CONNECTION" value="null" force="true"/>

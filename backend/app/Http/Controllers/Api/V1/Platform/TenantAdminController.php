@@ -105,6 +105,9 @@ class TenantAdminController extends Controller
                             SubscriptionStatus::Trial,
                             notes: $validated['notes'] ?? null,
                         ),
+                        SubscriptionStatus::PendingActivation => throw new InvalidArgumentException(
+                            'PENDING_ACTIVATION só é definido na criação de Office; use o fluxo de ativação.',
+                        ),
                     };
                 }
 

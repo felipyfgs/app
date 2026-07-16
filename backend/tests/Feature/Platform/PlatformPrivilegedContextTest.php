@@ -169,12 +169,12 @@ class PlatformPrivilegedContextTest extends TestCase
             ->assertJsonPath('data.office_id', $officeA->id);
     }
 
-    public function test_clear_selecao_remove_contexto_privilegiado(): void
+    public function test_clear_selecao_remove_sessao_mas_default_reativa(): void
     {
         $this->enablePrivileged();
 
         $office = Office::factory()->create();
-        $admin = User::factory()->asPlatformAdmin()->create();
+        $admin = User::factory()->asPlatformAdmin($office->id)->create();
 
         $this->actingAs($admin)
             ->postJson('/api/v1/platform/offices/select', ['office_id' => $office->id])
@@ -187,10 +187,15 @@ class PlatformPrivilegedContextTest extends TestCase
 
         app(CurrentOffice::class)->clear();
 
+        // Sessão limpa, mas default_office_id permanece → contexto privilegiado reata
         $this->actingAs($admin)
             ->getJson('/api/v1/clients')
-            ->assertForbidden()
-            ->assertJsonPath('message', 'Usuário sem escritório ativo.');
+            ->assertOk();
+
+        $this->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('data.access_mode', OfficeAccessMode::PlatformPrivileged->value)
+            ->assertJsonPath('data.office.id', $office->id);
 
         $this->assertTrue(
             PlatformPrivilegedAuditEvent::query()

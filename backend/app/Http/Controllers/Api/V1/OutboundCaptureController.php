@@ -14,6 +14,7 @@ use App\Models\OutboundNumberState;
 use App\Models\OutboundSeriesCursor;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use App\Services\Outbound\CscVaultService;
 use App\Services\Outbound\MaOfficialPackageIngestionService;
 use App\Services\Outbound\OutboundKillSwitchService;
@@ -328,22 +329,20 @@ class OutboundCaptureController extends Controller
     }
 
     /**
-     * ADMIN + TOTP confirmado (defesa em profundidade além de EnsureAdminTwoFactor).
-     * Usado em endpoints que materializam segredos fiscais (CSC).
+     * ADMIN + senha recente (defesa em profundidade para materializar segredos fiscais).
      */
     private function authorizeAdminWithTwoFactor(): void
     {
         abort_unless($this->office->role() === OfficeRole::Admin, 403);
 
-        if (! config('fortify.two_factor_required', true)) {
-            return;
-        }
-
         $user = auth()->user();
+        abort_unless($user instanceof User, 403);
+
+        $gate = app(RecentPasswordConfirmationGate::class);
         abort_unless(
-            $user instanceof User && $user->hasConfirmedTwoFactor(),
+            $gate->isRecentlyConfirmed($user),
             403,
-            'Confirme o segundo fator (TOTP) para acessar funções administrativas.',
+            'Reconfirme sua senha para acessar funções administrativas.',
         );
     }
 

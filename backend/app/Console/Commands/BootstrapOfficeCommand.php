@@ -3,10 +3,12 @@
 namespace App\Console\Commands;
 
 use App\Enums\OfficeRole;
+use App\Enums\PlatformRole;
 use App\Enums\SubscriptionPlan;
 use App\Enums\SubscriptionStatus;
 use App\Models\Office;
 use App\Models\OfficeSubscription;
+use App\Models\PlatformMembership;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +24,7 @@ class BootstrapOfficeCommand extends Command
         {--admin-name= : Nome do administrador}
         {--admin-email= : E-mail do administrador}';
 
-    protected $description = 'Cria o primeiro escritório e administrador (seguro; falha se já existir escritório)';
+    protected $description = 'Cria o primeiro escritório e conta dual (PLATFORM_ADMIN + Office ADMIN)';
 
     public function handle(): int
     {
@@ -76,9 +78,18 @@ class BootstrapOfficeCommand extends Command
                 'selected_office_id' => $office->id,
             ]);
 
+            // Membership real de Office ADMIN
             $office->users()->attach($user->id, [
                 'role' => OfficeRole::Admin->value,
                 'is_active' => true,
+            ]);
+
+            // Papel global PLATFORM_ADMIN com Office padrão = primeiro Office
+            PlatformMembership::query()->create([
+                'user_id' => $user->id,
+                'role' => PlatformRole::PlatformAdmin->value,
+                'is_active' => true,
+                'default_office_id' => $office->id,
             ]);
 
             // Assinatura ACTIVE para o tenant (sem isso, mutações HTTP retornam 403 MISSING).
@@ -102,8 +113,7 @@ class BootstrapOfficeCommand extends Command
             ]);
         });
 
-        $this->info('Escritório, administrador e assinatura ACTIVE criados.');
-        $this->warn('Configure e confirme o TOTP antes de usar funções administrativas.');
+        $this->info('Escritório, conta dual (PLATFORM_ADMIN + Office ADMIN) e assinatura ACTIVE criados.');
 
         return self::SUCCESS;
     }

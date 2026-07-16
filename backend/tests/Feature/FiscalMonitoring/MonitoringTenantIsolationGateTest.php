@@ -195,8 +195,8 @@ class MonitoringTenantIsolationGateTest extends TestCase
 
         foreach ($fiscalGets as $url) {
             $this->getJson($url)
-                ->assertForbidden()
-                ->assertJsonPath('message', 'Usuário sem escritório ativo.');
+                ->assertStatus(409)
+                ->assertJsonPath('code', 'office_context_required');
         }
 
         // Platform routes continuam acessíveis

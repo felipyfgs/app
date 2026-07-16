@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\User;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,6 +19,11 @@ class EnsureActiveUser
             return $next($request);
         }
 
+        try {
+            app(RecentPasswordConfirmationGate::class)->clear(request(), $user instanceof User ? $user : null);
+        } catch (\Throwable) {
+            // best-effort
+        }
         Auth::guard('web')->logout();
         Auth::forgetGuards();
         $request->setUserResolver(static fn () => null);

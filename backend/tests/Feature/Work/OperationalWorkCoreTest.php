@@ -144,9 +144,12 @@ class OperationalWorkCoreTest extends TestCase
             'password' => 'password',
         ]);
 
+        // Sem contexto privilegiado/default resolvido: 409 office_context_required.
+        // Com flag privilegiada + default ativo, leitura Work seria 200 (ver PlatformWorkReadOnlyTest).
         $this->loginAs($platform)
             ->getJson('/api/v1/work/queue')
-            ->assertStatus(403);
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'office_context_required');
     }
 
     public function test_modelo_preview_geracao_e_unicidade_template(): void

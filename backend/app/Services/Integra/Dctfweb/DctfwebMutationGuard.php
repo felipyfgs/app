@@ -80,19 +80,11 @@ final class DctfwebMutationGuard
             ];
         }
 
-        if (! $actor->hasConfirmedTwoFactor() && config('fortify.two_factor_required', true)) {
-            return [
-                'allowed' => false,
-                'code' => 'TWO_FACTOR_REQUIRED',
-                'message' => '2FA confirmado obrigatório para mutação fiscal.',
-            ];
-        }
-
         if (! $this->totp->isRecentlyConfirmed($actor)) {
             return [
                 'allowed' => false,
-                'code' => 'TWO_FACTOR_REQUIRED',
-                'message' => '2FA recente obrigatório para mutação fiscal.',
+                'code' => 'PASSWORD_CONFIRMATION_REQUIRED',
+                'message' => 'Reconfirmação de senha recente obrigatória para mutação fiscal.',
             ];
         }
 

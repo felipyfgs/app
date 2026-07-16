@@ -2,7 +2,8 @@
 
 use Laravel\Fortify\Features;
 
-$twoFactorRequired = env('AUTH_TWO_FACTOR_REQUIRED', true);
+// TOTP/2FA descontinuado: default false. Colunas legadas permanecem no schema.
+$twoFactorRequired = filter_var(env('AUTH_TWO_FACTOR_REQUIRED', false), FILTER_VALIDATE_BOOL);
 
 return [
 

@@ -230,6 +230,8 @@ final class RegistrationAndTaxProcessApiTest extends TestCase
         $platformAdmin = User::factory()->asPlatformAdmin()->create();
         $this->actingAs($platformAdmin);
         app(CurrentOffice::class)->clear();
-        $this->getJson('/api/v1/fiscal/registrations')->assertForbidden();
+        $this->getJson('/api/v1/fiscal/registrations')
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'office_context_required');
     }
 }

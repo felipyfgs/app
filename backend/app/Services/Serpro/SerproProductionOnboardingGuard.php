@@ -7,6 +7,7 @@ use App\Enums\SerproDataSegregationClass;
 use App\Enums\SerproEnvironment;
 use App\Models\Office;
 use App\Models\User;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use App\Services\Integra\OfficeSerproAuthorizationService;
 use RuntimeException;
 
@@ -86,8 +87,9 @@ final class SerproProductionOnboardingGuard
             throw new RuntimeException('Somente Office ADMIN pode executar '.$purpose.'.');
         }
 
-        if ((bool) config('fortify.two_factor_required', true) && ! $user->hasConfirmedTwoFactor()) {
-            throw new RuntimeException('2FA vigente é obrigatório para '.$purpose.'.');
+        $passwordGate = app(RecentPasswordConfirmationGate::class);
+        if (! $passwordGate->isRecentlyConfirmed($user)) {
+            throw new RuntimeException('Reconfirmação de senha recente é obrigatória para '.$purpose.'.');
         }
 
         if (! $explicitConsent) {

@@ -3,6 +3,7 @@
 namespace App\Services\Platform;
 
 use App\Enums\OfficeAccessMode;
+use App\Enums\OfficeLifecycleStatus;
 use App\Enums\OfficeRole;
 use App\Models\Office;
 use App\Models\PlatformPrivilegedAuditEvent;
@@ -11,6 +12,7 @@ use App\Support\CurrentOffice;
 use App\Support\FeatureFlags;
 use App\Support\PlatformPrivilegedContext;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -18,7 +20,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * Seletor global de office para PLATFORM_ADMIN (modo privilegiado).
  *
  * Não cria OfficeMembership, não altera users.selected_office_id.
- * Sessão: {@see PlatformPrivilegedContext::SESSION_KEY}.
+ * Toda seleção válida atualiza sessão + default_office_id atomicamente.
  */
 final class PlatformOfficeSelectService
 {
@@ -27,25 +29,39 @@ final class PlatformOfficeSelectService
     ) {}
 
     /**
-     * Lista offices ativos (metadados não-fiscais) para o seletor global.
+     * Lista todos os offices (ativos, inativos e pendentes) com metadados sanitizados.
      *
-     * @return list<array{id: int, name: string|null, slug: string|null, is_active: bool}>
+     * @return list<array{id: int, name: string|null, slug: string|null, is_active: bool, status: string, lifecycle_status: string, selectable: bool}>
      */
     public function listOffices(): array
     {
         return Office::query()
-            ->where('is_active', true)
             ->orderBy('name')
             ->orderBy('id')
-            ->get(['id', 'name', 'slug', 'is_active'])
-            ->map(fn (Office $o) => [
-                'id' => $o->id,
-                'name' => $o->name,
-                'slug' => $o->slug,
-                'is_active' => (bool) $o->is_active,
-            ])
+            ->get(['id', 'name', 'slug', 'is_active', 'lifecycle_status'])
+            ->map(fn (Office $o) => $this->summarizeOffice($o))
             ->values()
             ->all();
+    }
+
+    /**
+     * Envelope canônico de GET /platform/offices.
+     *
+     * @return array{offices: list<array>, selected_office_id: int|null, default_office_id: int|null}
+     */
+    public function listEnvelope(User $user): array
+    {
+        $this->currentOffice->clear();
+        $resolved = null;
+        if (FeatureFlags::isPlatformPrivilegedContextEnabled() && $user->isPlatformAdmin()) {
+            $resolved = $this->currentOffice->resolve($user);
+        }
+
+        return [
+            'offices' => $this->listOffices(),
+            'selected_office_id' => $resolved?->id,
+            'default_office_id' => $this->currentOffice->defaultOfficeId($user),
+        ];
     }
 
     /**
@@ -83,15 +99,17 @@ final class PlatformOfficeSelectService
             abort(404, 'Escritório não encontrado.');
         }
 
-        // Não altera membership nem selected_office_id do usuário.
-        // Sessão SPA + cache por usuário (token clients / suite de testes).
-        $this->currentOffice->rememberPlatformSelection($user, $office->id);
-        if ($request->hasSession()) {
-            // Rotaciona id de sessão sem destroy (mantém atributos no driver array).
-            $request->session()->regenerate();
-            // Regrava após regenerate (garantia em drivers de teste).
-            $request->session()->put(PlatformPrivilegedContext::SESSION_KEY, $office->id);
-        }
+        DB::transaction(function () use ($user, $office, $request): void {
+            // Sessão SPA + cache por usuário (token clients / suite de testes).
+            $this->currentOffice->rememberPlatformSelection($user, $office->id);
+            // Persistência do padrão global (sobrevive ao próximo login).
+            $this->currentOffice->persistDefaultOffice($user, $office->id);
+
+            if ($request->hasSession()) {
+                $request->session()->regenerate();
+                $request->session()->put(PlatformPrivilegedContext::SESSION_KEY, $office->id);
+            }
+        });
 
         $this->currentOffice->clear();
         $this->currentOffice->bindPlatformPrivileged($user, $office);
@@ -109,6 +127,7 @@ final class PlatformOfficeSelectService
                 'from_office_id' => $fromOfficeId,
                 'to_office_id' => $office->id,
                 'membership_created' => false,
+                'default_office_id' => $office->id,
                 'selected_office_id_unchanged' => $user->selected_office_id,
             ],
         );
@@ -117,7 +136,7 @@ final class PlatformOfficeSelectService
     }
 
     /**
-     * Remove a seleção privilegiada (não mexe em memberships).
+     * Remove a seleção privilegiada da sessão (não apaga default_office_id).
      */
     public function clear(User $user, Request $request): void
     {
@@ -155,7 +174,10 @@ final class PlatformOfficeSelectService
      *     access_mode: string|null,
      *     office: array{id: int, name: string|null, slug: string|null}|null,
      *     role: string|null,
-     *     actor_user_id: int|null
+     *     real_office_role: string|null,
+     *     has_real_membership: bool,
+     *     actor_user_id: int|null,
+     *     default_office_id: int|null
      * }
      */
     public function current(User $user): array
@@ -180,13 +202,43 @@ final class PlatformOfficeSelectService
                 'slug' => $office->slug,
             ] : null,
             'role' => $privileged ? OfficeRole::Admin->value : null,
+            'real_office_role' => $privileged ? $this->currentOffice->realOfficeRole()?->value : null,
+            'has_real_membership' => $privileged && $this->currentOffice->hasRealMembership(),
             'actor_user_id' => $privileged ? $user->id : null,
+            'default_office_id' => $this->currentOffice->defaultOfficeId($user),
+        ];
+    }
+
+    /**
+     * @return array{id: int, name: string|null, slug: string|null, is_active: bool, status: string, lifecycle_status: string, selectable: bool}
+     */
+    private function summarizeOffice(Office $o): array
+    {
+        $active = (bool) $o->is_active;
+        $lifecycle = $o->lifecycle_status instanceof OfficeLifecycleStatus
+            ? $o->lifecycle_status->value
+            : (string) ($o->getAttribute('lifecycle_status') ?? 'ACTIVE');
+
+        $status = match (true) {
+            $lifecycle === 'PENDING_ACTIVATION' => 'pending_activation',
+            $active => 'active',
+            default => 'inactive',
+        };
+
+        return [
+            'id' => $o->id,
+            'name' => $o->name,
+            'slug' => $o->slug,
+            'is_active' => $active,
+            'status' => $status,
+            'lifecycle_status' => $lifecycle,
+            // Pendentes não são selecionáveis como contexto tenant operacional
+            'selectable' => $active && $lifecycle !== 'PENDING_ACTIVATION',
         ];
     }
 
     private function auditDenied(User $user, int $targetOfficeId, string $reason): void
     {
-        // Só grava se o office existir (FK); senão só reason em log estruturado via try/skip.
         $officeExists = Office::query()->whereKey($targetOfficeId)->exists();
         if (! $officeExists) {
             return;

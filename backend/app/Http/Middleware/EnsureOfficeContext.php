@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use App\Support\CurrentOffice;
 use Closure;
 use Illuminate\Http\Request;
@@ -13,11 +14,21 @@ class EnsureOfficeContext
 
     public function handle(Request $request, Closure $next): Response
     {
-        $office = $this->currentOffice->resolve($request->user());
+        $user = $request->user();
+        $office = $this->currentOffice->resolve($user);
 
         if ($office === null) {
+            // PLATFORM_ADMIN sem Office válido: 409 estável para o cliente corrigir o padrão.
+            if ($user instanceof User && $user->isPlatformAdmin()) {
+                return response()->json([
+                    'message' => 'Selecione um escritório ativo para continuar.',
+                    'code' => CurrentOffice::CONTEXT_STATUS_REQUIRED,
+                ], 409);
+            }
+
             return response()->json([
                 'message' => 'Usuário sem escritório ativo.',
+                'code' => 'office_membership_required',
             ], 403);
         }
 

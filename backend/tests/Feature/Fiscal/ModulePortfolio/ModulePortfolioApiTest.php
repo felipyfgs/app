@@ -284,11 +284,12 @@ class ModulePortfolioApiTest extends TestCase
         app(CurrentOffice::class)->clear();
 
         $this->getJson('/api/v1/fiscal/modules/sitfis/overview')
-            ->assertForbidden()
-            ->assertJsonPath('message', 'Usuário sem escritório ativo.');
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'office_context_required');
 
         $this->getJson('/api/v1/fiscal/modules/sitfis/clients')
-            ->assertForbidden();
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'office_context_required');
     }
 
     public function test_contagem_de_queries_sem_n_plus_one_grave(): void

@@ -20,6 +20,7 @@ class PlatformMembershipFactory extends Factory
             'user_id' => User::factory(),
             'role' => PlatformRole::PlatformAdmin,
             'is_active' => true,
+            'default_office_id' => null,
         ];
     }
 
@@ -31,5 +32,10 @@ class PlatformMembershipFactory extends Factory
     public function forUser(User $user): static
     {
         return $this->state(fn () => ['user_id' => $user->id]);
+    }
+
+    public function withDefaultOffice(int $officeId): static
+    {
+        return $this->state(fn () => ['default_office_id' => $officeId]);
     }
 }

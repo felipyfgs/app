@@ -90,8 +90,9 @@ final class SerproRolloutApprovalService
         bool $totpVerified,
         ?string $reason = null,
     ): array {
+        // $totpVerified legado: agora significa "senha recente confirmada" (PASSWORD).
         if (! $totpVerified) {
-            throw new RuntimeException('Aprovação de rollout SERPRO exige TOTP verificado.');
+            throw new RuntimeException('Aprovação de rollout SERPRO exige reconfirmação de senha recente.');
         }
 
         if ($approval->status === 'EXECUTED' || $approval->status === 'REJECTED' || $approval->status === 'EXPIRED') {

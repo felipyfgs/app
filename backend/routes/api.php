@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Activation\PublicActivationController;
 use App\Http\Controllers\Api\V1\Auth\ConfirmPasswordController;
 use App\Http\Controllers\Api\V1\ClientContactController;
 use App\Http\Controllers\Api\V1\ClientController;
@@ -30,6 +31,7 @@ use App\Http\Controllers\Api\V1\Fiscal\TaxProcessController;
 use App\Http\Controllers\Api\V1\FiscalDocumentQuarantineController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\NoteController;
+use App\Http\Controllers\Api\V1\Office\OfficeMemberController;
 use App\Http\Controllers\Api\V1\OfficeAutXmlController;
 use App\Http\Controllers\Api\V1\OfficeFiscalCredentialController;
 use App\Http\Controllers\Api\V1\OfficeSerproAuthorizationController;
@@ -40,6 +42,8 @@ use App\Http\Controllers\Api\V1\OperationsInboxController;
 use App\Http\Controllers\Api\V1\OperationsSummaryController;
 use App\Http\Controllers\Api\V1\OutboundCaptureController;
 use App\Http\Controllers\Api\V1\OutboundDeadlineController;
+use App\Http\Controllers\Api\V1\Platform\PlatformAdminUserController;
+use App\Http\Controllers\Api\V1\Platform\PlatformOfficeController;
 use App\Http\Controllers\Api\V1\Platform\PlatformOfficeSelectController;
 use App\Http\Controllers\Api\V1\Platform\SerproContractController;
 use App\Http\Controllers\Api\V1\Platform\SerproPlatformOpsController;
@@ -56,17 +60,24 @@ use App\Http\Controllers\Api\V1\Work\ProcessGenerationController;
 use App\Http\Controllers\Api\V1\Work\ProcessTemplateController;
 use App\Http\Controllers\Api\V1\Work\WorkDepartmentController;
 use App\Http\Middleware\EnsureActiveUser;
-use App\Http\Middleware\EnsureAdminTwoFactor;
 use App\Http\Middleware\EnsureOfficeContext;
 use App\Http\Middleware\EnsureOfficeSubscriptionWritable;
 use App\Http\Middleware\EnsurePlatformAdmin;
-use App\Http\Middleware\EnsurePrivilegedPasswordConfirmation;
+use App\Http\Middleware\EnsureRecentPasswordConfirmation;
+use App\Http\Middleware\EnsureWorkRealMembership;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
     // EMITTER_PUSH — autenticação por token de integração (sem sessão)
     Route::post('/integrations/cte/push', [CteEmitterPushController::class, 'push'])
         ->middleware('throttle:'.(int) config('sefaz.cte_emitter_push.rate_limit_per_minute', 30).',1');
+
+    // Ativação pública (sem auth) — token/senha somente no body; Cache-Control no controller
+    Route::middleware('throttle:20,1')->group(function (): void {
+        Route::post('/activations/inspect', [PublicActivationController::class, 'inspect']);
+        Route::post('/activations/complete', [PublicActivationController::class, 'complete']);
+        Route::post('/first-access/complete', [PublicActivationController::class, 'completeFirstAccess']);
+    });
 
     Route::middleware(['auth:sanctum', EnsureActiveUser::class])->group(function (): void {
         Route::get('/me', MeController::class);
@@ -87,12 +98,37 @@ Route::prefix('v1')->group(function (): void {
             EnsurePlatformAdmin::class,
         ])->prefix('platform')->group(function (): void {
             // Seletor global de office (platform_privileged; flag default OFF)
-            Route::get('/offices', [PlatformOfficeSelectController::class, 'index']);
+            // Rotas estáticas antes de /offices/{office}
             Route::get('/offices/current', [PlatformOfficeSelectController::class, 'current']);
             Route::post('/offices/select', [PlatformOfficeSelectController::class, 'select'])
                 ->middleware('throttle:30,1');
             Route::delete('/offices/select', [PlatformOfficeSelectController::class, 'clear'])
                 ->middleware('throttle:30,1');
+
+            // Lista do seletor privilegiado (envelope com selected/default)
+            Route::get('/offices/selector', [PlatformOfficeSelectController::class, 'index']);
+            // Compat: GET /offices permanece o seletor (testes existentes)
+            Route::get('/offices', [PlatformOfficeSelectController::class, 'index']);
+
+            // Administração de Offices (criação pendente, detalhe, ativação)
+            Route::get('/offices/admin', [PlatformOfficeController::class, 'index']);
+            Route::post('/offices', [PlatformOfficeController::class, 'store'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::get('/offices/{office}', [PlatformOfficeController::class, 'show']);
+            Route::post('/offices/{office}/activation/regenerate', [PlatformOfficeController::class, 'regenerateActivation'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::patch('/offices/{office}/first-admin', [PlatformOfficeController::class, 'updateFirstAdmin'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+
+            // Administradores globais
+            Route::get('/admins', [PlatformAdminUserController::class, 'index']);
+            Route::post('/admins', [PlatformAdminUserController::class, 'store'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::get('/admins/{user}', [PlatformAdminUserController::class, 'show']);
+            Route::patch('/admins/{user}', [PlatformAdminUserController::class, 'update'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::post('/admins/{user}/activation/regenerate', [PlatformAdminUserController::class, 'regenerateActivation'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
 
             Route::get('/tenants', [TenantAdminController::class, 'index']);
             Route::get('/tenants/{office}', [TenantAdminController::class, 'show']);
@@ -132,7 +168,6 @@ Route::prefix('v1')->group(function (): void {
 
         Route::middleware([
             EnsureOfficeContext::class,
-            EnsureAdminTwoFactor::class,
             EnsureOfficeSubscriptionWritable::class,
         ])->group(function (): void {
             // Assinatura/limites do office atual (leitura liberada mesmo suspenso — middleware só bloqueia mutações)
@@ -203,17 +238,16 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/fiscal/installments/guides', [TaxInstallmentController::class, 'guides']);
             Route::post('/fiscal/installments/runs', [TaxInstallmentController::class, 'enqueue']);
 
-            // Operações fiscais mutantes (OFF por default; 2FA recente + confirmação + idempotência;
-            // em platform_privileged: reconfirmação de senha em vez de TOTP)
+            // Operações fiscais mutantes (OFF por default; senha recente + confirmação + idempotência)
             Route::post('/auth/confirm-totp', [FiscalMutationController::class, 'confirmTotp'])
-                ->middleware('throttle:10,1');
+                ->middleware('throttle:10,1'); // legado: redireciona mentalmente a confirm-password
             Route::post('/fiscal/mutations/preflight', [FiscalMutationController::class, 'preflight'])
                 ->middleware('throttle:30,1');
             Route::post('/fiscal/mutations', [FiscalMutationController::class, 'execute'])
-                ->middleware(['throttle:20,1', EnsurePrivilegedPasswordConfirmation::class]);
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
             Route::get('/fiscal/mutations/{mutation}', [FiscalMutationController::class, 'show']);
             Route::post('/fiscal/mutations/{mutation}/reconcile', [FiscalMutationController::class, 'reconcile'])
-                ->middleware(['throttle:20,1', EnsurePrivilegedPasswordConfirmation::class]);
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
 
             // Situação Fiscal (SITFIS) — snapshot com idade; refresh respeita TTL
             Route::get('/fiscal/sitfis', [SitfisSituationController::class, 'show']);
@@ -304,9 +338,9 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/office/fiscal-identity', [OfficeFiscalCredentialController::class, 'showIdentity']);
             Route::post('/office/fiscal-identity', [OfficeFiscalCredentialController::class, 'storeIdentity']);
             Route::post('/office/fiscal-identity/credential', [OfficeFiscalCredentialController::class, 'storeCredential'])
-                ->middleware(EnsurePrivilegedPasswordConfirmation::class);
+                ->middleware(EnsureRecentPasswordConfirmation::class);
             Route::post('/office/fiscal-identity/credentials/{credential}/revoke', [OfficeFiscalCredentialController::class, 'revokeCredential'])
-                ->middleware(EnsurePrivilegedPasswordConfirmation::class);
+                ->middleware(EnsureRecentPasswordConfirmation::class);
 
             // Configuração unificada /settings: perfil, consentimento, A1 canônico (sem download)
             Route::get('/office/settings', [OfficeSettingsController::class, 'show']);
@@ -316,11 +350,26 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/office/settings/consent/revoke', [OfficeSettingsController::class, 'revokeConsent']);
             Route::get('/office/settings/credential', [OfficeSettingsController::class, 'showCredential']);
             Route::post('/office/settings/credential', [OfficeSettingsController::class, 'storeCredential'])
-                ->middleware(EnsurePrivilegedPasswordConfirmation::class);
+                ->middleware(EnsureRecentPasswordConfirmation::class);
             Route::post('/office/settings/credential/replace', [OfficeSettingsController::class, 'replaceCredential'])
-                ->middleware(EnsurePrivilegedPasswordConfirmation::class);
+                ->middleware(EnsureRecentPasswordConfirmation::class);
             Route::post('/office/settings/credential/remove', [OfficeSettingsController::class, 'removeCredential'])
-                ->middleware(EnsurePrivilegedPasswordConfirmation::class);
+                ->middleware(EnsureRecentPasswordConfirmation::class);
+
+            // Equipe do escritório — exige membership ADMIN real (checado no serviço)
+            Route::get('/office/members', [OfficeMemberController::class, 'index']);
+            Route::post('/office/members', [OfficeMemberController::class, 'store'])
+                ->middleware(['throttle:30,1', EnsureRecentPasswordConfirmation::class]);
+            Route::patch('/office/members/{membership}', [OfficeMemberController::class, 'update'])
+                ->middleware(EnsureRecentPasswordConfirmation::class);
+            Route::patch('/office/members/{membership}/recipient', [OfficeMemberController::class, 'updateRecipient'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::post('/office/members/{membership}/deactivate', [OfficeMemberController::class, 'deactivate'])
+                ->middleware(EnsureRecentPasswordConfirmation::class);
+            Route::post('/office/members/{membership}/reactivate', [OfficeMemberController::class, 'reactivate'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::post('/office/members/{membership}/activation/regenerate', [OfficeMemberController::class, 'regenerateActivation'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
 
             // Onboarding autXML + cursor central (sem reset de NSU)
             Route::get('/office/autxml', [OfficeAutXmlController::class, 'overview']);
@@ -377,53 +426,58 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/operations/inbox', OperationsInboxController::class);
 
             // ── Work: processos operacionais (plano de dados; sem SERPRO/ADN/SEFAZ) ──
+            // Leitura: membership ou platform_privileged. Mutação/export: membership real.
+            // @see config/work_route_matrix.php
             Route::prefix('work')->group(function (): void {
                 Route::get('/departments', [WorkDepartmentController::class, 'index']);
-                Route::post('/departments', [WorkDepartmentController::class, 'store']);
-                Route::patch('/departments/{department}', [WorkDepartmentController::class, 'update']);
-                Route::post('/departments/{department}/assign-membership', [WorkDepartmentController::class, 'assignMembership']);
-
                 Route::get('/templates', [ProcessTemplateController::class, 'index']);
-                Route::post('/templates', [ProcessTemplateController::class, 'store']);
                 Route::get('/templates/{template}', [ProcessTemplateController::class, 'show']);
-                Route::patch('/templates/{template}', [ProcessTemplateController::class, 'update']);
-                Route::post('/templates/{template}/preview', [ProcessGenerationController::class, 'preview']);
-                Route::post('/generation-batches/{batch}/confirm', [ProcessGenerationController::class, 'confirm']);
                 Route::get('/generation-batches/{batch}', [ProcessGenerationController::class, 'show']);
-
                 Route::get('/queue', [OperationalTaskController::class, 'queue']);
                 Route::get('/processes', [OperationalProcessController::class, 'index']);
-                Route::post('/processes', [OperationalProcessController::class, 'store']);
                 Route::get('/processes/{process}', [OperationalProcessController::class, 'show']);
-                Route::patch('/processes/{process}', [OperationalProcessController::class, 'update']);
-                Route::post('/processes/{process}/archive', [OperationalProcessController::class, 'archive']);
-                Route::post('/processes/{process}/comments', [OperationalProcessController::class, 'comment']);
                 Route::get('/processes/{process}/timeline', [OperationalProcessController::class, 'timeline']);
-
-                Route::post('/processes/{process}/tasks', [OperationalTaskController::class, 'storeOnProcess']);
-                Route::post('/processes/{process}/tasks/reorder', [OperationalTaskController::class, 'reorder']);
                 Route::get('/tasks/{task}', [OperationalTaskController::class, 'show']);
-                Route::patch('/tasks/{task}/structure', [OperationalTaskController::class, 'updateStructure']);
-                Route::post('/tasks/{task}/start', [OperationalTaskController::class, 'start']);
-                Route::post('/tasks/{task}/block', [OperationalTaskController::class, 'block']);
-                Route::post('/tasks/{task}/resume', [OperationalTaskController::class, 'resume']);
-                Route::post('/tasks/{task}/complete', [OperationalTaskController::class, 'complete']);
-                Route::post('/tasks/{task}/dispense', [OperationalTaskController::class, 'dispense']);
-                Route::post('/tasks/{task}/reopen', [OperationalTaskController::class, 'reopen']);
-                Route::post('/tasks/{task}/claim', [OperationalTaskController::class, 'claim']);
-                Route::post('/tasks/{task}/assign', [OperationalTaskController::class, 'assign']);
-                Route::post('/tasks/{task}/comments', [OperationalTaskController::class, 'comment']);
-                Route::post('/tasks/{task}/evidences', [OperationalTaskController::class, 'uploadEvidence']);
                 Route::get('/tasks/{task}/evidences/{evidence}/download', [OperationalTaskController::class, 'downloadEvidence']);
-                Route::delete('/tasks/{task}/evidences/{evidence}', [OperationalTaskController::class, 'removeEvidence']);
-                Route::post('/tasks/bulk', [OperationalTaskController::class, 'bulk']);
-
                 Route::get('/kpis', [OperationalDashboardController::class, 'kpis']);
                 Route::get('/calendar', [OperationalDashboardController::class, 'calendar']);
                 Route::get('/calendar/day', [OperationalDashboardController::class, 'calendarDay']);
-                Route::post('/exports', [OperationalDashboardController::class, 'createExport']);
                 Route::get('/exports/{export}', [OperationalDashboardController::class, 'showExport']);
                 Route::get('/exports/{export}/download', [OperationalDashboardController::class, 'downloadExport']);
+
+                Route::middleware([EnsureWorkRealMembership::class])->group(function (): void {
+                    Route::post('/departments', [WorkDepartmentController::class, 'store']);
+                    Route::patch('/departments/{department}', [WorkDepartmentController::class, 'update']);
+                    Route::post('/departments/{department}/assign-membership', [WorkDepartmentController::class, 'assignMembership']);
+
+                    Route::post('/templates', [ProcessTemplateController::class, 'store']);
+                    Route::patch('/templates/{template}', [ProcessTemplateController::class, 'update']);
+                    Route::post('/templates/{template}/preview', [ProcessGenerationController::class, 'preview']);
+                    Route::post('/generation-batches/{batch}/confirm', [ProcessGenerationController::class, 'confirm']);
+
+                    Route::post('/processes', [OperationalProcessController::class, 'store']);
+                    Route::patch('/processes/{process}', [OperationalProcessController::class, 'update']);
+                    Route::post('/processes/{process}/archive', [OperationalProcessController::class, 'archive']);
+                    Route::post('/processes/{process}/comments', [OperationalProcessController::class, 'comment']);
+
+                    Route::post('/processes/{process}/tasks', [OperationalTaskController::class, 'storeOnProcess']);
+                    Route::post('/processes/{process}/tasks/reorder', [OperationalTaskController::class, 'reorder']);
+                    Route::patch('/tasks/{task}/structure', [OperationalTaskController::class, 'updateStructure']);
+                    Route::post('/tasks/{task}/start', [OperationalTaskController::class, 'start']);
+                    Route::post('/tasks/{task}/block', [OperationalTaskController::class, 'block']);
+                    Route::post('/tasks/{task}/resume', [OperationalTaskController::class, 'resume']);
+                    Route::post('/tasks/{task}/complete', [OperationalTaskController::class, 'complete']);
+                    Route::post('/tasks/{task}/dispense', [OperationalTaskController::class, 'dispense']);
+                    Route::post('/tasks/{task}/reopen', [OperationalTaskController::class, 'reopen']);
+                    Route::post('/tasks/{task}/claim', [OperationalTaskController::class, 'claim']);
+                    Route::post('/tasks/{task}/assign', [OperationalTaskController::class, 'assign']);
+                    Route::post('/tasks/{task}/comments', [OperationalTaskController::class, 'comment']);
+                    Route::post('/tasks/{task}/evidences', [OperationalTaskController::class, 'uploadEvidence']);
+                    Route::delete('/tasks/{task}/evidences/{evidence}', [OperationalTaskController::class, 'removeEvidence']);
+                    Route::post('/tasks/bulk', [OperationalTaskController::class, 'bulk']);
+
+                    Route::post('/exports', [OperationalDashboardController::class, 'createExport']);
+                });
             });
 
             // Quarentena fiscal (sem XML bruto)

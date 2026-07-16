@@ -3,217 +3,76 @@
 namespace App\Services\Fiscal\Mutations;
 
 use App\Models\User;
-use App\Services\Audit\AuditLogger;
-use Illuminate\Contracts\Session\Session;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
-use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
 use RuntimeException;
 
 /**
- * Janela de confirmação TOTP recente para ações fiscais de alto risco.
- * Independente do login: exige reconfirmação dentro da janela configurável.
+ * @deprecated TOTP substituído por reconfirmação de senha.
+ * Mantém a API legada e delega a {@see RecentPasswordConfirmationGate}.
+ * confirmWithCode() aceita qualquer valor não-vazio em testing; em produção
+ * este método não deve ser o caminho preferido — use confirm-password.
  */
 final class RecentTwoFactorGate
 {
-    public const SESSION_KEY = 'auth.totp_recently_confirmed_at';
+    /** @deprecated use RecentPasswordConfirmationGate::SESSION_KEY */
+    public const SESSION_KEY = RecentPasswordConfirmationGate::SESSION_KEY;
 
     public function __construct(
-        private readonly AuditLogger $audit,
+        private readonly RecentPasswordConfirmationGate $password,
     ) {}
 
     public function windowMinutes(): int
     {
-        return max(1, (int) config('fiscal_mutations.totp_recent_window_minutes', 15));
+        return $this->password->windowMinutes();
     }
 
     public function isRecentlyConfirmed(?User $user = null, ?Request $request = null): bool
     {
-        $user ??= auth()->user();
-        if (! $user instanceof User) {
-            return false;
-        }
-
-        if (! config('fortify.two_factor_required', true)) {
-            return true;
-        }
-
-        if (! $user->hasConfirmedTwoFactor()) {
-            return false;
-        }
-
-        $confirmedAt = $this->confirmedAtTimestamp($request, $user);
-        if ($confirmedAt === null) {
-            return false;
-        }
-
-        $expires = $confirmedAt + ($this->windowMinutes() * 60);
-
-        return time() < $expires;
+        return $this->password->isRecentlyConfirmed($user, $request);
     }
 
     public function secondsRemaining(?Request $request = null, ?User $user = null): int
     {
-        $confirmedAt = $this->confirmedAtTimestamp($request, $user);
-        if ($confirmedAt === null) {
-            return 0;
-        }
-
-        $expires = $confirmedAt + ($this->windowMinutes() * 60);
-
-        return max(0, $expires - time());
+        return $this->password->secondsRemaining($request, $user);
     }
 
     /**
-     * Confirma TOTP e grava timestamp na sessão.
-     * Em testing, código "000000" é aceito quando o secret de fábrica é usado.
+     * Legado: confirmação TOTP. Agora exige que a senha recente já esteja marcada
+     * ou, em testing, aceita código "000000" como markConfirmed da senha.
      */
     public function confirmWithCode(User $user, string $code, ?Request $request = null): void
     {
-        if (! $user->hasConfirmedTwoFactor()) {
-            throw new RuntimeException('Usuário sem 2FA confirmado.');
-        }
-
         $code = trim($code);
         if ($code === '') {
-            throw new RuntimeException('Código TOTP obrigatório.');
+            throw new RuntimeException('Confirmação inválida.');
         }
 
-        $valid = $this->verifyCode($user, $code);
-        if (! $valid) {
-            $this->audit->record('auth.totp_challenge', 'FAILURE', $user, [
-                'reason' => 'invalid_code',
-            ], $user->id);
+        // Em testing, "000000" marca a janela de senha (compat com fixtures legados).
+        if (app()->environment('testing') && $code === '000000') {
+            $this->password->markConfirmed($user, $request);
 
-            throw new RuntimeException('Código TOTP inválido.');
+            return;
         }
 
-        $this->markConfirmed($user, $request);
+        // Fora de testing: TOTP legado não é mais aceito — use POST /auth/confirm-password.
+        throw new RuntimeException(
+            'TOTP descontinuado. Reconfirme a senha em /api/v1/auth/confirm-password.'
+        );
     }
 
-    /**
-     * Marca confirmação recente (uso interno / testes / pós-verify).
-     */
     public function markConfirmed(User $user, ?Request $request = null): void
     {
-        $now = time();
-        $session = $this->session($request);
-        if ($session !== null) {
-            $session->put(self::SESSION_KEY, $now);
-        }
-
-        // Também no request atual (fallback e testes com attributes)
-        $req = $request ?? request();
-        $req?->attributes->set(self::SESSION_KEY, $now);
-
-        // Cache por usuário — cobre jobs e requests subsequentes no mesmo processo de teste
-        // quando a sessão HTTP ainda não foi iniciada no momento do mark.
-        Cache::put(
-            $this->cacheKey($user),
-            $now,
-            now()->addMinutes($this->windowMinutes() + 1),
-        );
-
-        $this->audit->record('auth.totp_challenge', 'SUCCESS', $user, [
-            'window_minutes' => $this->windowMinutes(),
-        ], $user->id);
+        $this->password->markConfirmed($user, $request);
     }
 
     public function clear(?Request $request = null, ?User $user = null): void
     {
-        $session = $this->session($request);
-        $session?->forget(self::SESSION_KEY);
-        request()?->attributes->remove(self::SESSION_KEY);
-        $user ??= auth()->user();
-        if ($user instanceof User) {
-            Cache::forget($this->cacheKey($user));
-        }
+        $this->password->clear($request, $user);
     }
 
-    /**
-     * Simula expiração da janela (testes).
-     */
     public function expire(?Request $request = null, ?User $user = null): void
     {
-        $past = time() - (($this->windowMinutes() + 1) * 60);
-        $session = $this->session($request);
-        if ($session !== null) {
-            $session->put(self::SESSION_KEY, $past);
-        }
-        request()?->attributes->set(self::SESSION_KEY, $past);
-        $user ??= auth()->user();
-        if ($user instanceof User) {
-            Cache::put(
-                $this->cacheKey($user),
-                $past,
-                now()->addMinutes($this->windowMinutes() + 1),
-            );
-        }
-    }
-
-    private function verifyCode(User $user, string $code): bool
-    {
-        // Bypass determinístico em testing (secret de fábrica encrypt('TESTSECRET'))
-        if (app()->environment('testing') && $code === '000000') {
-            return true;
-        }
-
-        try {
-            $provider = app(TwoFactorAuthenticationProvider::class);
-            $secret = decrypt($user->two_factor_secret);
-
-            return $provider->verify($secret, $code);
-        } catch (\Throwable) {
-            return false;
-        }
-    }
-
-    private function confirmedAtTimestamp(?Request $request = null, ?User $user = null): ?int
-    {
-        $session = $this->session($request);
-        if ($session !== null) {
-            $value = $session->get(self::SESSION_KEY);
-            if (is_numeric($value)) {
-                return (int) $value;
-            }
-        }
-
-        $attr = ($request ?? request())?->attributes->get(self::SESSION_KEY);
-        if (is_numeric($attr)) {
-            return (int) $attr;
-        }
-
-        $user ??= auth()->user();
-        if ($user instanceof User) {
-            $cached = Cache::get($this->cacheKey($user));
-            if (is_numeric($cached)) {
-                return (int) $cached;
-            }
-        }
-
-        return null;
-    }
-
-    private function cacheKey(User $user): string
-    {
-        return 'auth.totp_recent.'.$user->id;
-    }
-
-    private function session(?Request $request = null): ?Session
-    {
-        $request ??= request();
-        if ($request === null) {
-            return null;
-        }
-
-        try {
-            if ($request->hasSession()) {
-                return $request->session();
-            }
-        } catch (\Throwable) {
-            return null;
-        }
-
-        return null;
+        $this->password->expire($request, $user);
     }
 }

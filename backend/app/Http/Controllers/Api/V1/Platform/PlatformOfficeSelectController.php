@@ -22,13 +22,13 @@ class PlatformOfficeSelectController extends Controller
         private readonly CurrentOffice $currentOffice,
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        /** @var User $user */
+        $user = $request->user();
+
         return response()->json([
-            'data' => [
-                'offices' => $this->selector->listOffices(),
-                'current' => $this->selector->current(request()->user()),
-            ],
+            'data' => $this->selector->listEnvelope($user),
         ]);
     }
 
@@ -71,6 +71,9 @@ class PlatformOfficeSelectController extends Controller
                 ],
                 'role' => OfficeRole::Admin->value,
                 'access_mode' => $this->currentOffice->accessMode()?->value,
+                'real_office_role' => $this->currentOffice->realOfficeRole()?->value,
+                'has_real_membership' => $this->currentOffice->hasRealMembership(),
+                'default_office_id' => $this->currentOffice->defaultOfficeId($user),
                 'actor_user_id' => $user->id,
             ],
         ]);

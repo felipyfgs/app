@@ -9,6 +9,7 @@ use App\Models\Establishment;
 use App\Models\Office;
 use App\Models\OutboundCaptureProfile;
 use App\Models\User;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -116,6 +117,7 @@ class OutboundSeedAndPackageTest extends TestCase
         [$office, $user, $est] = $this->seedMaEstablishment(OfficeRole::Admin);
         $this->actingAs($user);
         app(CurrentOffice::class)->resolve($user);
+        $this->markPasswordConfirmed($user);
 
         $xml = file_get_contents(base_path('tests/fixtures/ma-outbound/procNFe_65_out_ma.xml'));
         $this->postJson('/api/v1/outbound/establishments/'.$est->id.'/seed', [
@@ -161,6 +163,7 @@ class OutboundSeedAndPackageTest extends TestCase
         [$office, $admin, $est] = $this->seedMaEstablishment(OfficeRole::Admin);
         $this->actingAs($admin);
         app(CurrentOffice::class)->resolve($admin);
+        $this->markPasswordConfirmed($admin);
 
         $xml = file_get_contents(base_path('tests/fixtures/ma-outbound/procNFe_65_out_ma.xml'));
         $this->postJson('/api/v1/outbound/establishments/'.$est->id.'/seed', [
@@ -223,7 +226,7 @@ class OutboundSeedAndPackageTest extends TestCase
     private function seedMaEstablishment(OfficeRole $role = OfficeRole::Operator): array
     {
         $office = Office::factory()->create();
-        $user = User::factory()->forOffice($office, $role)->withTwoFactorConfirmed()->create();
+        $user = User::factory()->forOffice($office, $role)->create();
         $client = Client::factory()->forOffice($office)->create(['root_cnpj' => '12345678']);
         $est = Establishment::factory()->forClient($client)->create([
             'cnpj' => '12345678000190',
@@ -233,5 +236,10 @@ class OutboundSeedAndPackageTest extends TestCase
         ]);
 
         return [$office, $user, $est];
+    }
+
+    private function markPasswordConfirmed(User $user): void
+    {
+        app(RecentPasswordConfirmationGate::class)->markConfirmed($user);
     }
 }

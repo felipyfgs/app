@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\OfficeLifecycleStatus;
 use App\Enums\SubscriptionPlan;
 use App\Enums\SubscriptionStatus;
 use App\Models\Office;
@@ -27,6 +28,7 @@ class OfficeFactory extends Factory
             'name' => $name,
             'slug' => Str::slug($name).'-'.Str::lower(Str::random(4)),
             'is_active' => true,
+            'lifecycle_status' => OfficeLifecycleStatus::Active,
             'timezone' => 'America/Sao_Paulo',
         ];
     }

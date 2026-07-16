@@ -27,6 +27,7 @@ class UserFactory extends Factory
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
             'is_active' => true,
+            'password_change_required' => false,
         ];
     }
 
@@ -58,18 +59,41 @@ class UserFactory extends Factory
 
     /**
      * PLATFORM_ADMIN global — sem membership de office e sem acesso fiscal implícito.
-     * Navegação platform/* não exige TOTP; factory ainda confirma 2FA para cenários legados.
+     * default_office_id opcional via withPlatformDefaultOffice().
      */
-    public function asPlatformAdmin(): static
+    public function asPlatformAdmin(?int $defaultOfficeId = null): static
     {
-        return $this->withTwoFactorConfirmed()->afterCreating(function (User $user): void {
-            PlatformMembership::query()->firstOrCreate(
+        return $this->afterCreating(function (User $user) use ($defaultOfficeId): void {
+            $attrs = ['is_active' => true];
+            if ($defaultOfficeId !== null) {
+                $attrs['default_office_id'] = $defaultOfficeId;
+            } else {
+                $oldestActive = Office::query()
+                    ->where('is_active', true)
+                    ->orderBy('id')
+                    ->value('id');
+                if ($oldestActive !== null) {
+                    $attrs['default_office_id'] = (int) $oldestActive;
+                }
+            }
+
+            PlatformMembership::query()->updateOrCreate(
                 [
                     'user_id' => $user->id,
                     'role' => PlatformRole::PlatformAdmin->value,
                 ],
-                ['is_active' => true],
+                $attrs,
             );
+        });
+    }
+
+    public function withPlatformDefaultOffice(int $officeId): static
+    {
+        return $this->afterCreating(function (User $user) use ($officeId): void {
+            PlatformMembership::query()
+                ->where('user_id', $user->id)
+                ->where('role', PlatformRole::PlatformAdmin->value)
+                ->update(['default_office_id' => $officeId]);
         });
     }
 }

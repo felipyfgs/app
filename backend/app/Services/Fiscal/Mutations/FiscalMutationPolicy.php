@@ -122,27 +122,16 @@ final class FiscalMutationPolicy
             $codes[] = FiscalMutationDenialCode::RoleForbidden;
         }
 
-        // 4. Reconfirmação recente: TOTP (membership ADMIN) ou senha (platform_privileged)
-        $requireTotp = $options['require_totp'] ?? true;
-        $privilegedOnOffice = $this->currentOffice->isPlatformPrivileged()
-            && $this->currentOffice->id() === $office->id;
+        // 4. Reconfirmação recente de senha (todos os perfis; TOTP descontinuado)
+        $requireAuth = $options['require_totp'] ?? $options['require_password'] ?? true;
 
-        if ($requireTotp) {
-            if ($privilegedOnOffice) {
-                if (! $this->passwordGate->isRecentlyConfirmed($user)) {
-                    $codes[] = FiscalMutationDenialCode::PasswordConfirmationRequired;
-                }
-                $context['password_seconds_remaining'] = $this->passwordGate->secondsRemaining(user: $user);
-                $context['auth_challenge'] = 'password';
-            } else {
-                if (! $user->hasConfirmedTwoFactor() && config('fortify.two_factor_required', true)) {
-                    $codes[] = FiscalMutationDenialCode::TotpRequired;
-                } elseif (! $this->totp->isRecentlyConfirmed($user)) {
-                    $codes[] = FiscalMutationDenialCode::TotpExpired;
-                }
-                $context['totp_seconds_remaining'] = $this->totp->secondsRemaining();
-                $context['auth_challenge'] = 'totp';
+        if ($requireAuth) {
+            if (! $this->passwordGate->isRecentlyConfirmed($user)) {
+                $codes[] = FiscalMutationDenialCode::PasswordConfirmationRequired;
             }
+            $context['password_seconds_remaining'] = $this->passwordGate->secondsRemaining(user: $user);
+            $context['auth_challenge'] = 'password';
+            $context['confirmation_method'] = 'PASSWORD';
         }
 
         // 5. Plano / assinatura

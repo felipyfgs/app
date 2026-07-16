@@ -11,11 +11,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'action',
     'approver_user_id',
     'approver_role',
-    'totp_verified',
+    'totp_verified', // legado: true = confirmação humana válida
     'decision',
     'reason',
     'decided_at',
-    'context',
+    'context', // confirmation_method / confirmed_at (sem senha/hash)
 ])]
 class SerproCredentialApproval extends Model
 {

@@ -551,8 +551,9 @@ final class SerproCredentialVersionService
         string $decision,
         ?string $reason = null,
     ): SerproCredentialApproval {
+        // $totpVerified legado: significa confirmação de senha recente (PASSWORD).
         if (! $totpVerified) {
-            throw new RuntimeException('Aprovação de credencial SERPRO exige TOTP verificado.');
+            throw new RuntimeException('Aprovação de credencial SERPRO exige reconfirmação de senha recente.');
         }
 
         return SerproCredentialApproval::query()->create([
@@ -560,10 +561,14 @@ final class SerproCredentialVersionService
             'action' => strtoupper($action),
             'approver_user_id' => $approverUserId,
             'approver_role' => 'PLATFORM_ADMIN',
-            'totp_verified' => true,
+            'totp_verified' => true, // coluna legada: true = confirmação humana válida
             'decision' => strtoupper($decision),
             'reason' => $reason !== null ? mb_substr($reason, 0, 500) : null,
             'decided_at' => now(),
+            'context' => [
+                'confirmation_method' => 'PASSWORD',
+                'confirmed_at' => now()->toIso8601String(),
+            ],
         ]);
     }
 

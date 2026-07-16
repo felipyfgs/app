@@ -210,7 +210,7 @@ class SerproCredentialVersionLifecycleTest extends TestCase
         $this->assertSame('01OLDPFX00000000000000000', $contract->fresh()->pfx_vault_object_id);
     }
 
-    public function test_approval_exige_totp(): void
+    public function test_approval_exige_senha_recente(): void
     {
         $version = SerproCredentialVersion::query()->create([
             'environment' => SerproEnvironment::Trial,
@@ -219,7 +219,7 @@ class SerproCredentialVersionLifecycleTest extends TestCase
         ]);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/TOTP/i');
+        $this->expectExceptionMessageMatches('/senha|password|reconfirm/i');
         app(SerproCredentialVersionService::class)->recordApproval(
             $version,
             'CUTOVER',

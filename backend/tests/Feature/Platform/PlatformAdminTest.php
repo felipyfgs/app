@@ -57,14 +57,16 @@ class PlatformAdminTest extends TestCase
         $this->assertTrue($admin->isPlatformAdmin());
         $this->assertNull($admin->activeMembership());
 
+        // Sem seleção/default ativo resolvido: 409 office_context_required (rotas tenant).
         $this->actingAs($admin)
             ->getJson('/api/v1/clients')
-            ->assertForbidden()
-            ->assertJsonPath('message', 'Usuário sem escritório ativo.');
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'office_context_required');
 
         $this->actingAs($admin)
             ->getJson('/api/v1/office/subscription')
-            ->assertForbidden();
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'office_context_required');
     }
 
     public function test_admin_de_escritorio_nao_acessa_rotas_platform(): void
@@ -189,19 +191,21 @@ class PlatformAdminTest extends TestCase
             ->assertJsonPath('data.two_factor_confirmed', false);
     }
 
-    public function test_platform_admin_com_totp_continua_acessando_plataforma(): void
+    public function test_platform_admin_acessa_plataforma_sem_totp(): void
     {
-        config()->set('fortify.two_factor_required', true);
-
         $office = Office::factory()->create();
-        $admin = User::factory()->asPlatformAdmin()->create();
+        $admin = User::factory()->asPlatformAdmin()->create([
+            'two_factor_secret' => null,
+            'two_factor_confirmed_at' => null,
+        ]);
 
-        $this->assertTrue($admin->hasConfirmedTwoFactor());
+        $this->assertTrue($admin->isPlatformAdmin());
+        $this->assertFalse($admin->requiresTwoFactorForAdmin());
 
         $this->actingAs($admin)
             ->patchJson('/api/v1/platform/tenants/'.$office->id.'/subscription', [
                 'status' => 'SUSPENDED',
-                'notes' => 'com totp',
+                'notes' => 'sem totp',
             ])
             ->assertOk()
             ->assertJsonPath('data.subscription.status', SubscriptionStatus::Suspended->value);

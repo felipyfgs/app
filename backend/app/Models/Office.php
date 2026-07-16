@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\OfficeLifecycleStatus;
 use Database\Factories\OfficeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'slug', 'is_active', 'serpro_segregation_class', 'deadline_timezone', 'timezone'])]
+#[Fillable(['name', 'slug', 'is_active', 'lifecycle_status', 'serpro_segregation_class', 'deadline_timezone', 'timezone'])]
 class Office extends Model
 {
     /** @use HasFactory<OfficeFactory> */
@@ -20,7 +21,13 @@ class Office extends Model
     {
         return [
             'is_active' => 'boolean',
+            'lifecycle_status' => OfficeLifecycleStatus::class,
         ];
+    }
+
+    public function isPendingActivation(): bool
+    {
+        return $this->lifecycle_status === OfficeLifecycleStatus::PendingActivation;
     }
 
     public function users(): BelongsToMany
@@ -64,5 +71,10 @@ class Office extends Model
     public function serproOnboardingStates(): HasMany
     {
         return $this->hasMany(OfficeSerproOnboardingState::class);
+    }
+
+    public function accountActivations(): HasMany
+    {
+        return $this->hasMany(AccountActivation::class);
     }
 }

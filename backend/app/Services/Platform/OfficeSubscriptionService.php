@@ -231,6 +231,10 @@ final class OfficeSubscriptionService
     {
         // Matriz mínima do ciclo de vida comercial.
         $allowed = match ($from) {
+            SubscriptionStatus::PendingActivation => [
+                SubscriptionStatus::Active,
+                SubscriptionStatus::Canceled,
+            ],
             SubscriptionStatus::Trial => [
                 SubscriptionStatus::Active,
                 SubscriptionStatus::PastDue,

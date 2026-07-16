@@ -4,42 +4,38 @@ namespace App\Policies\Work;
 
 use App\Models\ProcessTemplate;
 use App\Models\User;
-use App\Support\CurrentOffice;
+use App\Policies\Work\Concerns\UsesRealWorkRole;
 
 class ProcessTemplatePolicy
 {
+    use UsesRealWorkRole;
+
     public function viewAny(User $user): bool
     {
-        return app(CurrentOffice::class)->role()?->canViewWork() === true;
+        return $this->effectiveRole()?->canViewWork() === true;
     }
 
     public function view(User $user, ProcessTemplate $template): bool
     {
-        return $this->sameOffice($template);
+        return $this->sameOfficeId((int) $template->office_id)
+            && $this->effectiveRole()?->canViewWork() === true;
     }
 
     public function create(User $user): bool
     {
-        return app(CurrentOffice::class)->role()?->canManageWorkCatalog() === true;
+        return $this->realRole()?->canManageWorkCatalog() === true;
     }
 
     public function update(User $user, ProcessTemplate $template): bool
     {
-        return $this->sameOffice($template)
-            && app(CurrentOffice::class)->role()?->canManageWorkCatalog() === true;
+        return $this->sameOfficeId((int) $template->office_id)
+            && $this->realRole()?->canManageWorkCatalog() === true;
     }
 
     public function generate(User $user, ProcessTemplate $template): bool
     {
-        return $this->sameOffice($template)
+        return $this->sameOfficeId((int) $template->office_id)
             && $template->is_active
-            && app(CurrentOffice::class)->role()?->canCreateWorkProcesses() === true;
-    }
-
-    private function sameOffice(ProcessTemplate $template): bool
-    {
-        $officeId = app(CurrentOffice::class)->id();
-
-        return $officeId !== null && $officeId === (int) $template->office_id;
+            && $this->realRole()?->canCreateWorkProcesses() === true;
     }
 }

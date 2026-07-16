@@ -25,6 +25,9 @@ final class LogSanitizer
         // Work operacional
         'storage_path', 'vault_path', 'evidence_bytes', 'file_bytes',
         'pfx_password',
+        // Ativação / primeiro acesso
+        'temporary_password', 'activation_url', 'activation_token',
+        'reconfirm_password', 'secret_hash', 'link_token',
     ];
 
     /**

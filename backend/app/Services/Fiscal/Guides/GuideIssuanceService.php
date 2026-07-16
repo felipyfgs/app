@@ -113,7 +113,8 @@ final class GuideIssuanceService
                 'would_allow_with_confirmation' => ! in_array('mutating_disabled', $gate['codes'], true)
                     && ! in_array('module_disabled', $gate['codes'], true)
                     && ! in_array('role_required', $gate['codes'], true)
-                    && ! in_array('two_factor_required', $gate['codes'], true),
+                    && ! in_array('two_factor_required', $gate['codes'], true)
+                    && ! in_array('password_confirmation_required', $gate['codes'], true),
                 'codes' => $gate['codes'],
                 'reasons' => $gate['reasons'],
             ],

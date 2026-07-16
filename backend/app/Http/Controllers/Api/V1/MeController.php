@@ -20,23 +20,39 @@ class MeController extends Controller
         $user = $request->user();
         $office = $currentOffice->resolve($user);
         $role = $currentOffice->role();
+        $realRole = $currentOffice->realOfficeRole();
+        $contextStatus = $currentOffice->contextStatus()
+            ?? ($office !== null ? CurrentOffice::CONTEXT_STATUS_OK : CurrentOffice::CONTEXT_STATUS_REQUIRED);
 
         return response()->json([
             'data' => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
-                'two_factor_confirmed' => $user->hasConfirmedTwoFactor(),
-                'two_factor_required' => (bool) config('fortify.two_factor_required', true),
-                'requires_two_factor_setup' => $user->requiresTwoFactorForAdmin(),
+                // Campos 2FA legados mantidos por compatibilidade de payload; sempre false (TOTP removido).
+                'two_factor_confirmed' => false,
+                'two_factor_required' => false,
+                'requires_two_factor_setup' => false,
                 'is_platform_admin' => $user->isPlatformAdmin(),
                 'access_mode' => $currentOffice->accessMode()?->value,
+                'real_office_role' => $realRole?->value,
+                'has_real_membership' => $currentOffice->hasRealMembership(),
+                'context_status' => $contextStatus,
+                // Alias histórico: office === current_office
                 'office' => $office === null ? null : [
                     'id' => $office->id,
                     'name' => $office->name,
                     'slug' => $office->slug,
                 ],
+                'current_office' => $office === null ? null : [
+                    'id' => $office->id,
+                    'name' => $office->name,
+                    'slug' => $office->slug,
+                ],
                 'role' => $role?->value,
+                'default_office_id' => $user->isPlatformAdmin()
+                    ? $currentOffice->defaultOfficeId($user)
+                    : null,
                 'memberships' => $tenantSwitch->listMemberships($user),
             ],
         ]);

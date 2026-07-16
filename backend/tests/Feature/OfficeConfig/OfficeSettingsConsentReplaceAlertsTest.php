@@ -19,6 +19,7 @@ use App\Models\OfficeInstitutionalProfile;
 use App\Models\OfficeSerproOnboardingState;
 use App\Models\OfficeTechnicalConsent;
 use App\Models\User;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use App\Services\Certificates\OfficeCredentialService;
 use App\Support\CurrentOffice;
 use Carbon\CarbonImmutable;
@@ -396,9 +397,10 @@ class OfficeSettingsConsentReplaceAlertsTest extends TestCase
     private function actingAsOfficeAdmin(): array
     {
         $office = Office::factory()->create();
-        $admin = User::factory()->forOffice($office, OfficeRole::Admin)->withTwoFactorConfirmed()->create();
+        $admin = User::factory()->forOffice($office, OfficeRole::Admin)->create();
         $this->actingAs($admin);
         app(CurrentOffice::class)->resolve($admin);
+        app(RecentPasswordConfirmationGate::class)->markConfirmed($admin);
 
         return [$office, $admin];
     }

@@ -65,13 +65,13 @@ final class GuideHighRiskGate
                 $codes[] = 'role_required';
             }
 
-            if ($user === null || ! $user->hasConfirmedTwoFactor()) {
-                $reasons[] = '2FA confirmado é obrigatório para emissão de alto risco.';
-                $codes[] = 'two_factor_required';
+            if ($user === null) {
+                $reasons[] = 'Usuário autenticado é obrigatório para emissão de alto risco.';
+                $codes[] = 'auth_required';
             }
 
             if (! $this->hasRecentChallenge($user)) {
-                $reasons[] = 'Desafio de 2FA recente ausente ou expirado.';
+                $reasons[] = 'Reconfirmação de senha recente ausente ou expirada.';
                 $codes[] = 'high_risk_challenge_required';
             }
 
@@ -153,7 +153,9 @@ final class GuideHighRiskGate
             $this->recent2fa->confirmWithCode($user, $code);
         } catch (\RuntimeException $e) {
             $msg = $e->getMessage();
-            $codeKey = str_contains(mb_strtolower($msg), 'inválido') ? 'totp_invalid' : 'two_factor_required';
+            $codeKey = str_contains(mb_strtolower($msg), 'inválid')
+                ? 'password_invalid'
+                : 'password_confirmation_required';
             throw GuideException::forbidden($msg, $codeKey);
         }
     }

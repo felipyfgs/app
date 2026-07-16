@@ -4,7 +4,6 @@ namespace App\Models;
 
 use App\Enums\OfficeRole;
 use App\Enums\PlatformRole;
-use App\Support\CurrentOffice;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -17,7 +16,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'is_active'])]
+#[Fillable(['name', 'email', 'password', 'is_active', 'password_change_required'])]
 #[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 class User extends Authenticatable
 {
@@ -30,8 +29,14 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'password_change_required' => 'boolean',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    public function accountActivations(): HasMany
+    {
+        return $this->hasMany(AccountActivation::class);
     }
 
     public function selectedOffice(): BelongsTo
@@ -101,6 +106,9 @@ class User extends Authenticatable
         return $membership?->role;
     }
 
+    /**
+     * Dados TOTP legados podem existir; o produto não exige mais 2FA.
+     */
     public function hasConfirmedTwoFactor(): bool
     {
         return $this->two_factor_confirmed_at !== null
@@ -108,17 +116,10 @@ class User extends Authenticatable
     }
 
     /**
-     * Office ADMIN no tenant resolvido (sessão / selected_office_id / fallback)
-     * deve ter TOTP confirmado. Não usa activeMembership() legado (primeiro por id).
+     * TOTP/2FA descontinuado — sempre false.
      */
     public function requiresTwoFactorForAdmin(): bool
     {
-        if (! config('fortify.two_factor_required', true)) {
-            return false;
-        }
-
-        $role = app(CurrentOffice::class)->resolveMembership($this)?->role;
-
-        return $role === OfficeRole::Admin && ! $this->hasConfirmedTwoFactor();
+        return false;
     }
 }

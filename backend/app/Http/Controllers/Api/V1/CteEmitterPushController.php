@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\OfficeIntegrationToken;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use App\Services\Import\OutboundXmlIngestionService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
@@ -110,26 +111,23 @@ class CteEmitterPushController extends Controller
     }
 
     /**
-     * Defesa em profundidade: ADMIN + TOTP confirmado (alinha EnsureAdminTwoFactor / OfficeFiscalCredential).
+     * Defesa em profundidade: ADMIN + senha recente.
      * Não depende do grupo de rotas — seguro se issue/revoke forem reutilizados.
      */
     private function denyUnlessAdminWithTwoFactor(Request $request, CurrentOffice $currentOffice, string $actionLabel): ?JsonResponse
     {
         if ($currentOffice->role() !== OfficeRole::Admin) {
             return response()->json([
-                'message' => "Apenas ADMIN com 2FA pode {$actionLabel}.",
+                'message' => "Apenas ADMIN pode {$actionLabel}.",
             ], 403);
         }
 
-        if (! config('fortify.two_factor_required', true)) {
-            return null;
-        }
-
         $user = $request->user();
-        if (! $user instanceof User || ! $user->hasConfirmedTwoFactor()) {
+        $gate = app(RecentPasswordConfirmationGate::class);
+        if (! $user instanceof User || ! $gate->isRecentlyConfirmed($user, $request)) {
             return response()->json([
-                'message' => 'Confirme o segundo fator (TOTP) para acessar funções administrativas.',
-                'code' => 'two_factor_required',
+                'message' => 'Reconfirme sua senha para acessar funções administrativas.',
+                'code' => 'password_confirmation_required',
             ], 403);
         }
 

@@ -4,65 +4,72 @@ namespace App\Policies\Work;
 
 use App\Models\OperationalTask;
 use App\Models\User;
-use App\Support\CurrentOffice;
+use App\Policies\Work\Concerns\UsesRealWorkRole;
 
 class OperationalTaskPolicy
 {
+    use UsesRealWorkRole;
+
     public function viewAny(User $user): bool
     {
-        return app(CurrentOffice::class)->role()?->canViewWork() === true;
+        return $this->effectiveRole()?->canViewWork() === true;
     }
 
     public function view(User $user, OperationalTask $task): bool
     {
-        return $this->sameOffice($task);
+        return $this->sameOfficeId((int) $task->office_id)
+            && $this->effectiveRole()?->canViewWork() === true;
     }
 
     public function update(User $user, OperationalTask $task): bool
     {
-        if (! $this->sameOffice($task)) {
+        if (! $this->sameOfficeId((int) $task->office_id)) {
             return false;
         }
 
-        $role = app(CurrentOffice::class)->role();
-        if ($role?->canAdministerWork() === true) {
+        $role = $this->realRole();
+        if ($role === null) {
+            return false;
+        }
+
+        if ($role->canAdministerWork() === true) {
             return true;
         }
 
-        if ($role?->canExecuteWorkTasks() !== true) {
+        if ($role->canExecuteWorkTasks() !== true) {
             return false;
         }
 
-        $membershipId = app(CurrentOffice::class)->membership()?->id;
+        $membershipId = $this->currentOffice()->realMembership()?->id;
 
         // Executor: responsável ou tarefa livre do próprio departamento
         if ($task->assignee_membership_id !== null) {
             return (int) $task->assignee_membership_id === (int) $membershipId;
         }
 
-        $dept = app(CurrentOffice::class)->membership()?->work_department_id;
+        $dept = $this->currentOffice()->realMembership()?->work_department_id;
 
         return $dept !== null && (int) $task->work_department_id === (int) $dept;
     }
 
     public function assign(User $user, OperationalTask $task): bool
     {
-        return $this->sameOffice($task)
-            && app(CurrentOffice::class)->role()?->canAdministerWork() === true;
+        return $this->sameOfficeId((int) $task->office_id)
+            && $this->realRole()?->canAdministerWork() === true;
     }
 
     public function claim(User $user, OperationalTask $task): bool
     {
-        if (! $this->sameOffice($task)) {
+        if (! $this->sameOfficeId((int) $task->office_id)) {
             return false;
         }
-        if (app(CurrentOffice::class)->role()?->canExecuteWorkTasks() !== true) {
+        if ($this->realRole()?->canExecuteWorkTasks() !== true) {
             return false;
         }
         if ($task->assignee_membership_id !== null) {
             return false;
         }
-        $dept = app(CurrentOffice::class)->membership()?->work_department_id;
+        $dept = $this->currentOffice()->realMembership()?->work_department_id;
 
         return $dept !== null && (int) $task->work_department_id === (int) $dept;
     }
@@ -74,8 +81,8 @@ class OperationalTaskPolicy
 
     public function dispense(User $user, OperationalTask $task): bool
     {
-        return $this->sameOffice($task)
-            && app(CurrentOffice::class)->role()?->canAdministerWork() === true;
+        return $this->sameOfficeId((int) $task->office_id)
+            && $this->realRole()?->canAdministerWork() === true;
     }
 
     public function reopen(User $user, OperationalTask $task): bool
@@ -85,8 +92,8 @@ class OperationalTaskPolicy
 
     public function comment(User $user, OperationalTask $task): bool
     {
-        return $this->sameOffice($task)
-            && app(CurrentOffice::class)->role()?->canExecuteWorkTasks() === true;
+        return $this->sameOfficeId((int) $task->office_id)
+            && $this->realRole()?->canExecuteWorkTasks() === true;
     }
 
     public function uploadEvidence(User $user, OperationalTask $task): bool
@@ -96,19 +103,13 @@ class OperationalTaskPolicy
 
     public function downloadEvidence(User $user, OperationalTask $task): bool
     {
-        return $this->sameOffice($task)
-            && app(CurrentOffice::class)->role()?->canDownloadWorkEvidence() === true;
+        // Download de evidência: exige membership real (não só leitura privilegiada)
+        return $this->sameOfficeId((int) $task->office_id)
+            && $this->realRole()?->canDownloadWorkEvidence() === true;
     }
 
     public function bulk(User $user): bool
     {
-        return app(CurrentOffice::class)->role()?->canAdministerWork() === true;
-    }
-
-    private function sameOffice(OperationalTask $task): bool
-    {
-        $officeId = app(CurrentOffice::class)->id();
-
-        return $officeId !== null && $officeId === (int) $task->office_id;
+        return $this->realRole()?->canAdministerWork() === true;
     }
 }

@@ -85,11 +85,13 @@ class SerproPlatformSecurityApiTest extends TestCase
 
         $this->actingAs($admin)
             ->getJson('/api/v1/serpro/authorization')
-            ->assertForbidden();
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'office_context_required');
 
         $this->actingAs($admin)
             ->getJson('/api/v1/serpro/readiness')
-            ->assertForbidden();
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'office_context_required');
     }
 
     public function test_tenant_serpro_readiness_sanitizada_e_sem_vault(): void

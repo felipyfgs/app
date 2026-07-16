@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SerproCredentialVersion;
 use App\Models\SerproRolloutApproval;
 use App\Models\SerproUsageBudget;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use App\Services\Serpro\SerproCredentialVersionService;
 use App\Services\Serpro\SerproKillSwitchService;
 use App\Services\Serpro\SerproMetricsExporter;
@@ -57,22 +58,30 @@ class SerproPlatformOpsController extends Controller
             'action' => ['required', 'string', 'max:40'],
             'decision' => ['required', 'string', Rule::in(['APPROVE', 'REJECT'])],
             'reason' => ['nullable', 'string', 'max:500'],
-            // TOTP é validado pelo middleware de plataforma; flag explícita reforça o contrato dual-approval
+            // Legado: totp_verified — confirmação real via EnsureRecentPasswordConfirmation + senha.
             'totp_verified' => ['sometimes', 'boolean'],
         ]);
+
+        $passwordGate = app(RecentPasswordConfirmationGate::class);
+        $confirmed = $passwordGate->isRecentlyConfirmed($request->user(), $request);
 
         try {
             $approval = $this->credentials->recordApproval(
                 $serproCredentialVersion,
                 $data['action'],
                 (int) $request->user()->id,
-                totpVerified: true,
+                totpVerified: $confirmed,
                 decision: $data['decision'],
                 reason: $data['reason'] ?? null,
             );
         } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code' => $confirmed ? 'approval_error' : 'password_confirmation_required',
+            ], $confirmed ? 422 : 403);
         }
+
+        $ctx = is_array($approval->context) ? $approval->context : [];
 
         return response()->json([
             'data' => [
@@ -80,6 +89,9 @@ class SerproPlatformOpsController extends Controller
                 'action' => $approval->action,
                 'decision' => $approval->decision,
                 'approver_user_id' => $approval->approver_user_id,
+                'confirmation_method' => $ctx['confirmation_method'] ?? 'PASSWORD',
+                'confirmed_at' => $ctx['confirmed_at'] ?? $approval->decided_at?->toIso8601String(),
+                // Campo legado sanitizado (nunca a senha)
                 'totp_verified' => (bool) $approval->totp_verified,
                 'decided_at' => $approval->decided_at?->toIso8601String(),
                 'credential_version' => $serproCredentialVersion->fresh()->toSanitizedArray(),

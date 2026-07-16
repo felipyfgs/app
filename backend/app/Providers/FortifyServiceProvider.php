@@ -41,7 +41,12 @@ class FortifyServiceProvider extends ServiceProvider
                 ->where(Fortify::username(), (string) $request->input(Fortify::username()))
                 ->first();
 
-            if (! $user?->is_active || ! Hash::check((string) $request->input('password'), $user->password)) {
+            // Inativo, troca obrigatória pendente (primeiro acesso) ou senha inválida → falha neutra.
+            if (
+                ! $user?->is_active
+                || $user->password_change_required
+                || ! Hash::check((string) $request->input('password'), $user->password)
+            ) {
                 return null;
             }
 

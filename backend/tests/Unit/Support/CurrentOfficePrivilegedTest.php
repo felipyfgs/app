@@ -73,7 +73,7 @@ class CurrentOfficePrivilegedTest extends TestCase
         $this->assertFalse($ctx->isPlatformPrivileged());
     }
 
-    public function test_membership_retorna_apos_clear_privilegiado(): void
+    public function test_default_office_reata_apos_clear_sessao_preservando_real_membership(): void
     {
         config([
             'features.kill_switch' => false,
@@ -82,8 +82,9 @@ class CurrentOfficePrivilegedTest extends TestCase
 
         $officeA = Office::factory()->create();
         $officeB = Office::factory()->create();
+        // default = A (mais antigo); membership real VIEWER em A
         $admin = User::factory()
-            ->asPlatformAdmin()
+            ->asPlatformAdmin($officeA->id)
             ->forOffice($officeA, OfficeRole::Viewer)
             ->create();
 
@@ -94,10 +95,13 @@ class CurrentOfficePrivilegedTest extends TestCase
         $this->assertSame($officeB->id, $ctx->resolve($admin)?->id);
         $this->assertTrue($ctx->isPlatformPrivileged());
 
+        // Limpa só a sessão/cache; default_office_id permanece → reata A em modo privilegiado
         $ctx->forgetPlatformSelection($admin);
         $ctx->clear();
         $this->assertSame($officeA->id, $ctx->resolve($admin)?->id);
-        $this->assertSame(OfficeAccessMode::Membership, $ctx->accessMode());
-        $this->assertSame(OfficeRole::Viewer, $ctx->role());
+        $this->assertSame(OfficeAccessMode::PlatformPrivileged, $ctx->accessMode());
+        $this->assertSame(OfficeRole::Admin, $ctx->role()); // efetivo
+        $this->assertSame(OfficeRole::Viewer, $ctx->realOfficeRole()); // real
+        $this->assertTrue($ctx->hasRealMembership());
     }
 }

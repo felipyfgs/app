@@ -9,6 +9,7 @@ use App\Models\Establishment;
 use App\Models\Office;
 use App\Models\OfficeIntegrationToken;
 use App\Models\User;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -24,6 +25,7 @@ class CteEmitterPushTest extends TestCase
         $user = User::factory()->forOffice($office, OfficeRole::Admin)->withTwoFactorConfirmed()->create();
         $this->actingAs($user);
         app(CurrentOffice::class)->resolve($user);
+        app(RecentPasswordConfirmationGate::class)->markConfirmed($user);
 
         $res = $this->postJson('/api/v1/office/integration-tokens', [
             'name' => 'ERP Piloto',
@@ -70,14 +72,13 @@ class CteEmitterPushTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_admin_sem_2fa_nao_emite_token(): void
+    public function test_admin_sem_senha_recente_nao_emite_token(): void
     {
         config([
             'sefaz.cte_emitter_push.enabled' => true,
-            'fortify.two_factor_required' => true,
         ]);
         $office = Office::factory()->create();
-        // ADMIN sem TOTP confirmado
+        // ADMIN sem reconfirmação de senha recente
         $user = User::factory()->forOffice($office, OfficeRole::Admin)->create([
             'two_factor_secret' => null,
             'two_factor_confirmed_at' => null,
@@ -87,7 +88,7 @@ class CteEmitterPushTest extends TestCase
 
         $this->postJson('/api/v1/office/integration-tokens', ['name' => 'ERP'])
             ->assertForbidden()
-            ->assertJsonPath('code', 'two_factor_required');
+            ->assertJsonPath('code', 'password_confirmation_required');
     }
 
     public function test_push_importa_cte_com_token_valido(): void
