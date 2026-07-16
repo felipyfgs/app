@@ -167,18 +167,3 @@ export function defaultReadCodesForModule(
       return null
   }
 }
-
-/** Feature-flag keys por módulo (espelho FiscalModuleKey::featureFlagKey). */
-export function featureFlagKeyForModule(moduleKey: FiscalModuleKey | string): string | null {
-  switch (moduleKey) {
-    case 'simples_mei': return 'simples_mei'
-    case 'dctfweb': return 'dctfweb_mit'
-    case 'installments': return 'parcelamentos'
-    case 'sitfis': return 'sitfis'
-    case 'mailbox': return 'mailbox'
-    case 'declarations': return 'declaracoes'
-    case 'guides': return 'guias'
-    case 'fgts': return 'fgts'
-    default: return null
-  }
-}

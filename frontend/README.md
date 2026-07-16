@@ -1,4 +1,4 @@
-# Frontend — NFS-e ADN
+# Frontend — painel do hub fiscal
 
 SPA Nuxt 4 + Nuxt UI 4, baseada no template MIT [`nuxt-ui-templates/dashboard`](https://github.com/nuxt-ui-templates/dashboard) (commit `0f30c09`).
 
@@ -9,67 +9,55 @@ SPA Nuxt 4 + Nuxt UI 4, baseada no template MIT [`nuxt-ui-templates/dashboard`](
 - `nuxt-auth-sanctum` (cookie session same-origin)
 - Sem mocks `server/api` — só API Laravel
 
-## Padrões de tela
+## Skills do monorepo
+
+Não remover. Orquestração e arquétipo:
+
+- `.grok/skills/frontend-nuxt-stack` + `.grok/skills/nuxt-dashboard-template`
+- Espelhos em `.agents/`, `.codex/` e `.opencode/` (multi-tool)
+
+## Rotas principais
 
 | Rota | Padrão |
 |------|--------|
-| `/` | Dashboard analítico (`UPageGrid` + indicadores reais) |
-| `/clients` | Lista administrativa (tabela server-side + modal `UForm`) |
-| `/clients/:id` (+ `/cadastro`, `/estabelecimentos`, `/certificado`, `/sincronizacao`) | Settings com rotas aninhadas (`NuxtPage`), como o template |
-| `/notes` e `/notes/:accessKey` | Mestre–detalhe (painel redimensionável no desktop; slideover no mobile) |
-| `/exports` | Lista administrativa + modal de solicitação |
-| `/syncs` | Lista administrativa + detalhe em slideover |
-| `/admin` | Settings (conteúdo restrito a `ADMIN` com 2FA) |
+| `/` | Dashboard operacional |
+| `/clients` | Lista + detalhe aninhado (cadastro, estabelecimentos, certificado, sync, saídas) |
+| `/docs` | Catálogo de documentos (URLs legadas `/notes` redirecionam) |
+| `/docs/imports` | Import em massa |
+| `/monitoring/*` | Hub fiscal (SITFIS, Simples/MEI, DCTFWeb, mailbox, guias, …) |
+| `/syncs` | Saúde de canais DistDFe / autXML / CT-e |
+| `/settings` | Integra Contador, CT-e autXML, procurações, uso, assinatura |
+| `/admin` | Administração de escritório (ADMIN + 2FA) |
+| `/exports`, `/health`, `/closing` | Exportações, saúde, fechamento |
 
 ### Hierarquia de ações
 
-1. **Navbar** — título, collapse da sidebar, no máximo uma ação primária
-2. **Compactas** — botões ghost com tooltip e `aria-label`
-3. **Toolbar** — subnavegação (detalhe de cliente)
-4. **Faixa utilitária no corpo** — busca/filtros de tabela
-5. **Linha** — ações secundárias no fim
+1. **Navbar** — título, collapse da sidebar, no máximo uma ação primária  
+2. **Compactas** — botões ghost com tooltip e `aria-label`  
+3. **Toolbar** — subnavegação (detalhe de cliente / settings)  
+4. **Faixa utilitária** — busca/filtros de tabela  
+5. **Linha** — ações secundárias  
 
 ### Tabelas
 
-Preset visual compartilhado em `app.config.ts` / `utils/table-ui.ts` (cabeçalho elevado, bordas, cantos). Paginação:
+Preset em `app.config.ts` / `utils/table-ui.ts`. Paginação server-side ou cursor conforme a API.
 
-- Clientes: offset numerado (`page` na URL)
-- Notas e Sincronizações: cursor (`cursor` opcional na URL de Notas, com filtros)
+### Permissões e tenancy
 
-### Permissões
-
-Sidebar, command palette e atalhos derivam de `utils/navigation.ts` + `utils/permissions.ts` (`ADMIN` / `OPERATOR` / `VIEWER`).
+- Papéis `ADMIN` / `OPERATOR` / `VIEWER` no escritório ativo  
+- `PLATFORM_ADMIN` é fluxo separado  
+- Troca de escritório só entre memberships válidas (`OfficeIdentity`)
 
 ## Desenvolvimento
 
-```bash
-make dev
-```
-
-Abra `http://localhost:3000`. O volume `./frontend:/app` habilita HMR, e o proxy do `nuxt-auth-sanctum` encaminha API, CSRF e login ao Laravel sem CORS.
-
-## Validação
+Preferir a stack do monorepo (`make dev`). No host:
 
 ```bash
-# Dentro do container frontend-dev (recomendado) ou com node_modules locais:
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm test:e2e   # requer app em PLAYWRIGHT_BASE_URL (default http://127.0.0.1:3000)
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run dev
 ```
 
-Viewports de referência: **1440×900**, **390×844** e inspeção manual a **360 px** (sem rolagem horizontal do documento).
+Testes: `pnpm test` (unit), `pnpm test:e2e` (Playwright).
 
-## Produção
-
-```bash
-pnpm generate
-```
-
-Artefatos em `.output/public`, servidos pelo Nginx no monorepo.
-
-## Segurança na UI
-
-- Nunca renderizar PFX, senha, chave privada, PEM, XML fiscal bruto ou resposta ADN não sanitizada
-- Escritório ativo vem da sessão (sem seletor arbitrário de “team”)
-- Download de XML é ação explícita auditada
+Ver também [`../README.md`](../README.md) e [`../AGENTS.md`](../AGENTS.md).
