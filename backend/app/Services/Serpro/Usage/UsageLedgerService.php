@@ -170,6 +170,8 @@ final class UsageLedgerService
                 }
             }
 
+            $budgetEnvironment = strtoupper((string) $environment);
+
             $budgetEval = $this->budget->evaluate(
                 officeId: $request->officeId,
                 class: $class,
@@ -178,7 +180,7 @@ final class UsageLedgerService
                 estimatedCostMicros: $request->isSimulated ? 0 : $costMicros,
                 isCanary: $request->isCanary,
                 operationKey: $request->operationKey,
-                environment: $environment === 'TRIAL' ? 'PRODUCTION' : $environment,
+                environment: $budgetEnvironment,
             );
 
             if ($allowed && ! (bool) $budgetEval['allowed']) {
@@ -191,21 +193,35 @@ final class UsageLedgerService
                 $blockReason = null;
             }
 
+            $budgetIds = [];
+            if ($allowed && ! $request->isSimulated && $costMicros > 0 && $this->shadow->requiresPositiveMonetaryBudgets()) {
+                try {
+                    $budgetIds = $this->budget->atomicReserveMicros(
+                        officeId: $request->officeId,
+                        costMicros: $costMicros,
+                        cycleCode: (string) $budgetEval['cycle_code'],
+                        isCanary: $request->isCanary,
+                        operationKey: $request->operationKey,
+                        environment: $budgetEnvironment,
+                    );
+                } catch (\RuntimeException $e) {
+                    if (! str_contains($e->getMessage(), 'BUDGET_RESERVE_RACE')) {
+                        throw $e;
+                    }
+                    // Corrida entre evaluate e reserve: fail-closed com reserva Blocked.
+                    $allowed = false;
+                    $blockReason = UsageBudgetGate::BLOCK_MONETARY_GLOBAL;
+                    $budgetEval = array_merge($budgetEval, [
+                        'allowed' => false,
+                        'would_block' => true,
+                        'block_reason' => $blockReason,
+                    ]);
+                }
+            }
+
             $status = $allowed
                 ? SerproUsageReservationStatus::Reserved
                 : SerproUsageReservationStatus::Blocked;
-
-            $budgetIds = [];
-            if ($allowed && ! $request->isSimulated && $costMicros > 0 && $this->shadow->requiresPositiveMonetaryBudgets()) {
-                $budgetIds = $this->budget->atomicReserveMicros(
-                    officeId: $request->officeId,
-                    costMicros: $costMicros,
-                    cycleCode: (string) $budgetEval['cycle_code'],
-                    isCanary: $request->isCanary,
-                    operationKey: $request->operationKey,
-                    environment: $environment === 'TRIAL' ? 'PRODUCTION' : $environment,
-                );
-            }
 
             $create = [
                 'office_id' => $request->officeId,

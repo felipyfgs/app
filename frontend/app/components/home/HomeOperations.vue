@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { InboxItem, OperationsSummary } from '~/types/api'
+import { resolveInboxItemLink } from '~/utils/inbox-links'
 
 const props = defineProps<{
   summary: OperationsSummary | null
@@ -34,12 +35,7 @@ function severityColor(severity: string): 'error' | 'warning' | 'info' | 'neutra
 }
 
 function itemLink(item: InboxItem): string {
-  if (String(item.type).startsWith('credential') && item.links?.credential) {
-    return item.links.credential
-  }
-  if (item.links?.sync) return item.links.sync
-  if (item.links?.client) return item.links.client
-  return '/health'
+  return resolveInboxItemLink(item)
 }
 </script>
 

@@ -51,11 +51,10 @@ final class SerproProductionBootGuard
         $baseUrl = (string) config('serpro.api.base_url', '');
         $allowedHosts = [
             'gateway.apiserpro.serpro.gov.br',
-            'gateway.apiserpro.serpro.gov.br',
         ];
         $apiHost = strtolower((string) (parse_url($baseUrl, PHP_URL_HOST) ?? ''));
-        if ($apiHost === '' || ! str_ends_with($apiHost, 'serpro.gov.br')) {
-            $issues[] = 'API base_url fora da allowlist serpro.gov.br.';
+        if ($apiHost === '' || ! in_array($apiHost, $allowedHosts, true)) {
+            $issues[] = 'API base_url fora da allowlist de hosts SERPRO.';
         }
 
         return $issues;

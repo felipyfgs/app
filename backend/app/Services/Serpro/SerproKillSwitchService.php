@@ -47,12 +47,18 @@ final class SerproKillSwitchService
             return true;
         }
 
-        $configMap = config('serpro.solution_kill_switches', []);
-        if (is_array($configMap) && ! empty($configMap[$solutionCode])) {
-            return true;
-        }
-
         $code = strtoupper($solutionCode);
+
+        $configMap = config('serpro.solution_kill_switches', []);
+        if (is_array($configMap)) {
+            $normalized = [];
+            foreach ($configMap as $key => $value) {
+                $normalized[strtoupper((string) $key)] = $value;
+            }
+            if (! empty($normalized[$code])) {
+                return true;
+            }
+        }
         if ($this->loadPersistedActive(self::SOLUTION_CONTROL_PREFIX.$code)) {
             return true;
         }

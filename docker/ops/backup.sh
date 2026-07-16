@@ -173,15 +173,16 @@ PHPEOF
     rm -f -- "$temporary_dir/bundle.tar" "$temporary_dir/_seal_package.php"
     package_encrypted=sim
     formato=nfse-adn-backup-v3
-    componentes=postgres.sql.gz,vault.tar.gz,private.tar.gz,package.nfsebkp
-    # Componentes em claro permanecem para restore operacional; o package.nfsebkp
-    # é a prova autenticada unificada com chave externa.
+    # v3: package.nfsebkp é o único payload no destino (sem plaintext irmãos).
+    componentes=package.nfsebkp
+    rm -f -- "$temporary_dir/postgres.sql.gz" "$temporary_dir/vault.tar.gz" \
+        "$temporary_dir/private.tar.gz"
 fi
 
 (
     cd "$temporary_dir"
     if [ "$package_encrypted" = sim ]; then
-        sha256sum postgres.sql.gz vault.tar.gz private.tar.gz package.nfsebkp > SHA256SUMS
+        sha256sum package.nfsebkp > SHA256SUMS
     else
         sha256sum postgres.sql.gz vault.tar.gz private.tar.gz > SHA256SUMS
         rm -f -- bundle.tar

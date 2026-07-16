@@ -5,13 +5,13 @@ Todos os passos usam respostas sanitizadas. Nunca cole Key/Secret/PFX/token/XML 
 ## 1. Consumer Key/Secret ou PFX comprometido
 
 1. `POST /api/v1/platform/serpro/kill-switch` com `active=true` e motivo (imediato).
-2. Marcar versão exposta: CLI `serpro:credential-version mark-exposed` (ou fluxo de contenção).
+2. Marcar versão comprometida: `php artisan serpro:credential-version compromise --id=<VERSION_ID> --reason='…'` (ver `serpro-credential-rotation.md`). Contratos legados: `php artisan serpro:prod-check --serpro-env=PRODUCTION --mark-exposed`.
 3. Invalidar caches/tokens (`token` vault refs limpas no cutover).
-4. Registrar nova versão `PENDING` via vault (arquivo + prompt; sem argv de segredo).
-5. Verificar (`verify-pending`), obter 2× `PLATFORM_ADMIN` approvals CUTOVER, cutover com OAuth prévio.
+4. Registrar nova versão `PENDING`: `php artisan serpro:credential-version register-pending …` (arquivo + prompt; sem argv de segredo).
+5. Verificar (`serpro:credential-version verify --id=…`), 2× `PLATFORM_ADMIN` via `approve-cutover`, depois `cutover` **com** probe OAuth (sem `skip_oauth` em produção).
 6. Confirmar `serpro:readiness` / `GET /api/v1/platform/serpro/readiness`.
 7. Remover cópias transitórias do host (ver `docs/ops/serpro-transient-secret-removal.md`).
-8. Auditoria: `audit:verify-chain`.
+8. Auditoria: `php artisan audit:verify-chain`.
 
 ## 2. Certificado (PFX) próximo do vencimento
 

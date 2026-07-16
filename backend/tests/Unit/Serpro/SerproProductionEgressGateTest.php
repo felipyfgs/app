@@ -2,7 +2,9 @@
 
 namespace Tests\Unit\Serpro;
 
+use App\Enums\SerproEnvironment;
 use App\Enums\SerproFunctionalRoute;
+use App\Models\Office;
 use App\Services\Serpro\SerproKillSwitchService;
 use App\Services\Serpro\SerproProductionEgressGate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -39,5 +41,29 @@ class SerproProductionEgressGateTest extends TestCase
 
         $this->assertFalse($eval['allowed']);
         $this->assertSame('KILL_SWITCH', $eval['code']);
+    }
+
+    public function test_production_office_without_segregation_class_is_blocked(): void
+    {
+        config(['serpro.kill_switch' => false, 'serpro.trial.use_fake_clients' => false]);
+        Cache::flush();
+
+        $office = Office::factory()->create([
+            'slug' => 'real-unset',
+            'serpro_segregation_class' => null,
+        ]);
+
+        $gate = $this->app->make(SerproProductionEgressGate::class);
+        $eval = $gate->evaluateBillableEgress(
+            route: SerproFunctionalRoute::Consultar,
+            office: $office,
+            environment: SerproEnvironment::Production,
+        );
+
+        $this->assertFalse($eval['allowed']);
+        $this->assertNotEmpty($eval['checks'] ?? []);
+        $failed = collect($eval['checks'] ?? [])->firstWhere('id', 'office_segregation');
+        $this->assertNotNull($failed);
+        $this->assertFalse($failed['ok'] ?? true);
     }
 }

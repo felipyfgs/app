@@ -130,12 +130,12 @@ prod-check:
 	@! grep -Eq '^FEATURES_MUTATING_ENABLED=true$$' "$(PROD_ENV)" || { echo "FEATURES_MUTATING_ENABLED deve permanecer false" >&2; exit 2; }
 	@grep -Eq '^SERPRO_KILL_SWITCH=' "$(PROD_ENV)" || { echo "Defina SERPRO_KILL_SWITCH em $(PROD_ENV) (recomendado true na contenção)" >&2; exit 2; }
 	@! grep -Eq '^SERPRO_SMOKE_ENABLED=true$$' "$(PROD_ENV)" || { echo "SERPRO_SMOKE_ENABLED deve permanecer false até smoke controlado" >&2; exit 2; }
-	@# Se a stack estiver no ar, executa prod-check de credencial exposta (fail se não RETIRED/COMPROMISED)
-	@if docker compose ps --status running --services 2>/dev/null | grep -qx 'php'; then \
+	@# Se a stack prod estiver no ar, executa prod-check de credencial exposta (fail se não RETIRED/COMPROMISED)
+	@if $(PROD_COMPOSE) ps --status running --services 2>/dev/null | grep -qx 'php'; then \
 		echo "==> serpro:prod-check (credenciais expostas / egress faturável)"; \
-		docker compose exec -T php php artisan serpro:prod-check --serpro-env=PRODUCTION || exit 2; \
+		$(PROD_COMPOSE) exec -T php php artisan serpro:prod-check --serpro-env=PRODUCTION || exit 2; \
 	else \
-		echo "Aviso: stack php offline — serpro:prod-check de runtime adiado (checks de .env ok)"; \
+		echo "Aviso: stack prod php offline — serpro:prod-check de runtime adiado (checks de .env ok)"; \
 	fi
 
 prod-config: prod-check
@@ -157,7 +157,9 @@ prod-down:
 	$(PROD_COMPOSE) down
 
 prod-backup: prod-check
+	@test -n "$$BACKUP_PACKAGE_KEY" || { echo "Defina BACKUP_PACKAGE_KEY (base64 de 32 bytes) para backup de produção cifrado (v3)" >&2; exit 2; }
 	STACK_FILE=compose.prod.yml STACK_ENV=$(PROD_ENV) STACK_PROJECT=fiscal-hub \
+		BACKUP_PACKAGE_KEY="$$BACKUP_PACKAGE_KEY" \
 		./docker/ops/backup.sh "$${BACKUP_DIR:-backups}"
 
 prod-backup-verify:

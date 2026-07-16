@@ -3,10 +3,14 @@
 - [x] 1.1 Manter kill switch e drivers reais desligados e adicionar `prod-check` que bloqueie egress faturável enquanto a versão de credencial exposta não estiver `RETIRED`/`COMPROMISED`.
 - [x] 1.2 Inventariar e segregar Offices/clientes demo, tokens fake, ledger shadow e evidências antigas, sem apagar trilha histórica nem promover registros por inferência.
 - [x] 1.3 Criar registro versionado das fontes oficiais (URL, data, hash, tipo, revisão e capacidades afetadas) para API Reference, OAuth, Termo, cache, procurações, cobrança, Eventos, cadeia TLS e CNPJ alfanumérico.
-- [x] 1.4 Abrir e registrar chamado SERPRO sobre a divergência entre o curl da Área do Cliente e o endpoint canônico `/authenticate`; manter o fluxo alternativo bloqueado até resposta formal.
-- [x] 1.5 Solicitar/confirmar com o SERPRO o XSD oficial do Termo e a serialização de CNPJ alfanumérico no Termo/Eventos, registrando respostas como evidência sem segredo.
-- [x] 1.6 Submeter a divergência de vigência do contrato, tabela/ciclo tarifário e modelo software-house à revisão jurídico-comercial e transformar pendências em gates documentais.
-- [x] 1.7 Definir responsáveis, on-call, RPO/RTO, escrow/KMS, política de custódia A1 e Office/cliente não-demo candidatos ao smoke gratuito sem gravar suas identidades nos artefatos OpenSpec.
+- [ ] 1.4 Abrir e registrar chamado SERPRO sobre a divergência entre o curl da Área do Cliente e o endpoint canônico `/authenticate`; manter o fluxo alternativo bloqueado até resposta formal.
+  - Scaffold de gate em código/docs; evidência em `evidence/external-gates.md` ainda pendente de resposta formal.
+- [ ] 1.5 Solicitar/confirmar com o SERPRO o XSD oficial do Termo e a serialização de CNPJ alfanumérico no Termo/Eventos, registrando respostas como evidência sem segredo.
+  - Scaffold ok; resposta oficial externa pendente.
+- [ ] 1.6 Submeter a divergência de vigência do contrato, tabela/ciclo tarifário e modelo software-house à revisão jurídico-comercial e transformar pendências em gates documentais.
+  - Gates documentais modelados; aceite jurídico-comercial externo pendente.
+- [ ] 1.7 Definir responsáveis, on-call, RPO/RTO, escrow/KMS, política de custódia A1 e Office/cliente não-demo candidatos ao smoke gratuito sem gravar suas identidades nos artefatos OpenSpec.
+  - Template em evidence; papéis/RPO-RTO ainda TBD.
 
 ## 2. Persistência e modelo de domínio
 
@@ -127,23 +131,25 @@
 
 ## 12. Rollout e smoke sem cobrança
 
-- [x] 12.1 Rotacionar Consumer Key/Secret expostos no canal SERPRO, coordenar APIs compartilhadas, marcar a versão anterior comprometida e não registrar os novos valores em issue/log/change.
+Tooling/scaffold marcado nos sub-bullets; checkboxes de live ops permanecem abertos até evidence preenchida.
+
+- [ ] 12.1 Rotacionar Consumer Key/Secret expostos no canal SERPRO, coordenar APIs compartilhadas, marcar a versão anterior comprometida e não registrar os novos valores em issue/log/change.
   - Scaffold: `serpro:credential-version compromise|register-pending|verify|approve-cutover|cutover`; runbook `docs/ops/runbooks/serpro-credential-rotation.md`; evidence template `evidence/12-credential-rotation.md`. **Live ops-gated.**
-- [x] 12.2 Avaliar reexportação/revogação dos PFX expostos, importar versões aprovadas no vault e remover cópias transitórias do workspace/host conforme procedimento auditado.
+- [ ] 12.2 Avaliar reexportação/revogação dos PFX expostos, importar versões aprovadas no vault e remover cópias transitórias do workspace/host conforme procedimento auditado.
   - Scaffold: mesmo CLI + `docs/ops/serpro-transient-secret-removal.md`; dual-approval cutover. **Live ops-gated.**
-- [x] 12.3 Implantar em produção limpa com drivers/flags `OFF`, dados demo segregados, budgets positivos preparados e kill switch testado.
+- [ ] 12.3 Implantar em produção limpa com drivers/flags `OFF`, dados demo segregados, budgets positivos preparados e kill switch testado.
   - Scaffold: `serpro:smoke checklist`, `serpro:go-live checklist`, `serpro:prod-check`; runbook `serpro-clean-prod-deploy.md`. **Deploy live ops-gated.**
-- [x] 12.4 Executar handshake TLS/cadeia no endpoint oficial de validação e `serpro:readiness` global; registrar evidência sem chamar serviço fiscal.
+- [ ] 12.4 Executar handshake TLS/cadeia no endpoint oficial de validação e `serpro:readiness` global; registrar evidência sem chamar serviço fiscal.
   - Scaffold: `serpro:smoke tls` (opt-in `SERPRO_SMOKE_ENABLED` + confirm; bloqueado em CI); `--record-readiness` → `TLS_OK`. **Live ops-gated.**
-- [x] 12.5 Executar OAuth mTLS real com a nova versão, validar Bearer+JWT/expiração e encerrar sem rota de negócio.
+- [ ] 12.5 Executar OAuth mTLS real com a nova versão, validar Bearer+JWT/expiração e encerrar sem rota de negócio.
   - Scaffold: `serpro:smoke oauth` (mesmos gates; saída sanitizada sem token). **Live ops-gated.**
-- [x] 12.6 Selecionar explicitamente um Office real não-demo, confirmar autor/consentimento e gerar/assinar/validar o Termo pelo fluxo aprovado.
+- [ ] 12.6 Selecionar explicitamente um Office real não-demo, confirmar autor/consentimento e gerar/assinar/validar o Termo pelo fluxo aprovado.
   - Scaffold: runbook free-smoke ladder + readiness office; identidade **não** versionada no OpenSpec. **Live ops-gated.**
-- [x] 12.7 Enviar o Termo somente por `/Apoiar`, validar 200/304, token/Expires/ETag no vault e promover `TERM_SERPRO_ACCEPTED`; confirmar zero segredo em logs/Redis/API.
+- [ ] 12.7 Enviar o Termo somente por `/Apoiar`, validar 200/304, token/Expires/ETag no vault e promover `TERM_SERPRO_ACCEPTED`; confirmar zero segredo em logs/Redis/API.
   - Scaffold: runbook 12.7 + fluxos Termo existentes; promoção via readiness/promotion service. **Live ops-gated.**
-- [x] 12.8 Confirmar poderes/autorização do canário por evidência válida sem usar `/Consultar` como smoke e executar um canário `/Monitorar` dentro dos limites oficiais.
+- [ ] 12.8 Confirmar poderes/autorização do canário por evidência válida sem usar `/Consultar` como smoke e executar um canário `/Monitorar` dentro dos limites oficiais.
   - Scaffold: free-smoke ladder docs; bloqueio lookup faturável em free smoke; limites `serpro.eventos`. **Live ops-gated.**
-- [x] 12.9 Testar kill switch, alertas, breaker, restart Redis, ledger e reconciliação; confirmar que nenhuma chamada `/Consultar`, `/Emitir` ou `/Declarar` ocorreu.
+- [ ] 12.9 Testar kill switch, alertas, breaker, restart Redis, ledger e reconciliação; confirmar que nenhuma chamada `/Consultar`, `/Emitir` ou `/Declarar` ocorreu.
   - Scaffold: `serpro:go-live kill-switch-*|breaker-status|ledger-dry-run`; kill switch durable pós-flush; testes unitários. **Drill live ops-gated.**
-- [x] 12.10 Promover somente `FREE_SMOKE_OK`, registrar bloqueios remanescentes e deixar qualquer canário faturável dependente de aprovação operacional separada, teto unitário e reconciliação posterior.
+- [ ] 12.10 Promover somente `FREE_SMOKE_OK`, registrar bloqueios remanescentes e deixar qualquer canário faturável dependente de aprovação operacional separada, teto unitário e reconciliação posterior.
   - Scaffold: `serpro:go-live free-smoke-promote` + `canary-blocked-check`; `SerproReadinessPromotionService` bloqueia CANARY sem dual+teto. **Promoção live ops-gated.**

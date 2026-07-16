@@ -196,10 +196,20 @@ class SerproContractManageCommand extends Command
         if ($on) {
             $killSwitch->activateGlobal($reason);
             $this->warn('Kill switch SERPRO GLOBAL ATIVO');
-        } else {
-            $killSwitch->deactivateGlobal($reason);
-            $this->info('Kill switch SERPRO global desativado');
+
+            return self::SUCCESS;
         }
+
+        // Desligar é four-eyes: só local/testing podem forçar via CLI; produção usa rollout dual.
+        if (! app()->environment(['local', 'testing'])) {
+            throw new RuntimeException(
+                'kill-off via CLI exige dual approval (platform API / SerproRolloutApprovalService KILL_SWITCH_OFF). '.
+                'Desativação imediata só é permitida em local/testing.'
+            );
+        }
+
+        $killSwitch->deactivateGlobal($reason);
+        $this->info('Kill switch SERPRO global desativado (ambiente local/testing)');
 
         return self::SUCCESS;
     }

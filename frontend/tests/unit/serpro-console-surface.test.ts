@@ -81,6 +81,9 @@ describe('console global SERPRO (superfície)', () => {
 
     const slideover = readFileSync(resolve(APP, 'components/NotificationsSlideover.vue'), 'utf8')
     expect(slideover).toContain('resolveInboxItemLink')
+
+    const homeOps = readFileSync(resolve(APP, 'components/home/HomeOperations.vue'), 'utf8')
+    expect(homeOps).toContain('resolveInboxItemLink')
   })
 
   it('facade useApi expõe platform', () => {

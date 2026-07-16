@@ -109,8 +109,17 @@ final class SerproProductionEgressGate
         if ($office !== null) {
             $seg = $office->serpro_segregation_class
                 ?? ($this->isDemoOffice($office) ? SerproDataSegregationClass::Demo->value : null);
-            if ($seg !== null && $seg !== SerproDataSegregationClass::Production->value) {
-                $fail('office_segregation', "Office segregado como {$seg}; endpoint real/faturável bloqueado.");
+            $segNormalized = $seg !== null ? strtoupper((string) $seg) : '';
+            // Fail-closed em PRODUCTION: exige classe Production explícita (null/vazio bloqueia).
+            if ($environment === SerproEnvironment::Production) {
+                if ($segNormalized !== SerproDataSegregationClass::Production->value) {
+                    $label = $segNormalized === '' ? 'unset' : $segNormalized;
+                    $fail('office_segregation', "Office segregado como {$label}; endpoint real/faturável bloqueado.");
+                } else {
+                    $pass('office_segregation', 'Office elegível (PRODUCTION).');
+                }
+            } elseif ($segNormalized !== '' && $segNormalized !== SerproDataSegregationClass::Production->value) {
+                $fail('office_segregation', "Office segregado como {$segNormalized}; endpoint real/faturável bloqueado.");
             } else {
                 $pass('office_segregation', 'Office elegível (não demo/shadow).');
             }

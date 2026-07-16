@@ -213,6 +213,13 @@ final class SerproCredentialVersionService
             throw new RuntimeException('Cutover exige versão VERIFIED.');
         }
 
+        // skip_oauth só em local/testing — produção exige probe OAuth/mTLS real.
+        if ($skipOauth && ! app()->environment(['local', 'testing'])) {
+            throw new RuntimeException(
+                'skip_oauth não é permitido fora de local/testing; execute cutover com probe OAuth.'
+            );
+        }
+
         $required = max(2, (int) config('serpro.contractor_pfx.cutover_approvals_required', 2));
         $approvers = $this->distinctApprovers($version, 'CUTOVER');
         if ($approvers < $required) {

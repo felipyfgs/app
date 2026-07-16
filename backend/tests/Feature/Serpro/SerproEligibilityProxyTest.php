@@ -334,6 +334,19 @@ class SerproEligibilityProxyTest extends TestCase
         $guard->assertMayUseRealEndpoint($demo, SerproEnvironment::Production);
     }
 
+    public function test_office_without_production_segregation_cannot_use_real_production(): void
+    {
+        $office = Office::factory()->create([
+            'slug' => 'sem-classe',
+            'serpro_segregation_class' => null,
+        ]);
+        $guard = app(SerproProductionOnboardingGuard::class);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('serpro_segregation_class=PRODUCTION');
+        $guard->assertMayUseRealEndpoint($office, SerproEnvironment::Production);
+    }
+
     public function test_sensitive_mutation_requires_admin_2fa_consent(): void
     {
         $office = Office::factory()->create(['slug' => 'contabil-real']);

@@ -47,9 +47,12 @@ final class SerproProductionOnboardingGuard
 
         if ($environment === SerproEnvironment::Production) {
             $seg = strtoupper((string) ($office->serpro_segregation_class ?? ''));
-            if ($seg !== '' && $seg !== SerproDataSegregationClass::Production->value) {
+            // Fail-closed: null/vazio não é elegível — exige classe Production explícita.
+            if ($seg !== SerproDataSegregationClass::Production->value) {
                 throw new RuntimeException(
-                    'Office com segregação '.$seg.' não pode usar produção real.'
+                    $seg === ''
+                        ? 'Office sem serpro_segregation_class=PRODUCTION não pode usar produção real.'
+                        : 'Office com segregação '.$seg.' não pode usar produção real.'
                 );
             }
         }

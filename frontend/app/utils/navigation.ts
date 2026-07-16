@@ -100,6 +100,18 @@ export function monitoringDestinations(path = ''): NavDestination[] {
         label: 'FGTS (parcial)',
         icon: 'i-lucide-landmark',
         to: '/monitoring/fgts'
+      },
+      {
+        id: 'monitoring-registrations',
+        label: 'Cadastro / Vínculos',
+        icon: 'i-lucide-link-2',
+        to: '/monitoring/registrations'
+      },
+      {
+        id: 'monitoring-tax-processes',
+        label: 'Processos fiscais',
+        icon: 'i-lucide-scale',
+        to: '/monitoring/tax-processes'
       }
     ]
   }]

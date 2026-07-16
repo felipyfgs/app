@@ -34,7 +34,9 @@ describe('navigation monitoramento (15.4)', () => {
       'monitoring-mailbox',
       'monitoring-declarations',
       'monitoring-guides',
-      'monitoring-fgts'
+      'monitoring-fgts',
+      'monitoring-registrations',
+      'monitoring-tax-processes'
     ])
   })
 

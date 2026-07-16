@@ -259,11 +259,19 @@ final class SerproOperationService implements SerproOperationExecutor
             }
         }
 
-        // 12. Rate limiter local
+        // 12. Rate limiter local (egress real: fail-closed se limites zero/ausentes)
         try {
-            $this->rateLimiter->attempt((int) $office->id, $operationKey);
+            $this->rateLimiter->attempt(
+                (int) $office->id,
+                $operationKey,
+                productiveEgress: $driver->value === 'real',
+            );
         } catch (Throwable $e) {
-            return $this->blocked($operationKey, 'RATE_LIMIT_LOCAL', $e->getMessage(), $correlationId, 429);
+            $code = str_contains($e->getMessage(), 'RATE_LIMIT_NOT_CONFIGURED')
+                ? 'RATE_LIMIT_NOT_CONFIGURED'
+                : 'RATE_LIMIT_LOCAL';
+
+            return $this->blocked($operationKey, $code, $e->getMessage(), $correlationId, 429);
         }
 
         // 13. Idempotency namespaced: Office/env/op/entity + key lógica
@@ -444,8 +452,11 @@ final class SerproOperationService implements SerproOperationExecutor
 
         if ($response->success) {
             $this->breaker->recordSuccess($idSistema !== '' ? $idSistema : null);
-        } elseif ($response->httpStatus >= 500 || $response->httpStatus === 0) {
-            $this->breaker->recordFailure($idSistema !== '' ? $idSistema : null, 'remote_5xx');
+        } elseif ($this->breaker->isTechnicalFailure($response->httpStatus, $response->errorCode)) {
+            $this->breaker->recordFailure(
+                $idSistema !== '' ? $idSistema : null,
+                $response->errorCode ?? ('http_'.$response->httpStatus),
+            );
         }
 
         return $response;

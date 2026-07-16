@@ -53,7 +53,7 @@ backup_dir=$2
 [ ! -L "$backup_dir" ] || fail "o diretório de backup não pode ser um link simbólico"
 backup_dir=$(CDPATH= cd -- "$backup_dir" && pwd -P)
 
-for required_file in postgres.sql.gz vault.tar.gz SHA256SUMS MANIFEST.txt; do
+for required_file in SHA256SUMS MANIFEST.txt; do
     [ -f "$backup_dir/$required_file" ] || fail "arquivo ausente: $required_file"
     [ ! -L "$backup_dir/$required_file" ] || fail "links simbólicos não são aceitos: $required_file"
 done
@@ -66,23 +66,36 @@ case "$format" in
     *) fail "formato de backup incompatível" ;;
 esac
 
-if [ "$has_private" = true ]; then
-    [ -f "$backup_dir/private.tar.gz" ] || fail "arquivo ausente: private.tar.gz"
-    [ ! -L "$backup_dir/private.tar.gz" ] || fail "links simbólicos não são aceitos: private.tar.gz"
-    grep -qx 'cofre_separado=sim' "$backup_dir/MANIFEST.txt" \
-        || fail "manifesto não declara a separação do cofre"
-fi
 grep -qx 'chave_mestra_incluida=nao' "$backup_dir/MANIFEST.txt" \
     || fail "manifesto de separação da chave mestra inválido"
 
+# material_dir: origem dos componentes plaintext usados no restore.
+# v3 materializa a partir de package.nfsebkp (único payload autenticado).
+material_dir=$backup_dir
+material_cleanup=
+cleanup_material() {
+    if [ -n "$material_cleanup" ] && [ -d "$material_cleanup" ]; then
+        rm -rf -- "$material_cleanup"
+    fi
+}
+
 if [ "$has_package" = true ]; then
     [ -f "$backup_dir/package.nfsebkp" ] || fail "arquivo ausente: package.nfsebkp"
+    [ ! -L "$backup_dir/package.nfsebkp" ] || fail "links simbólicos não são aceitos: package.nfsebkp"
     grep -qx 'pacote_cifrado=sim' "$backup_dir/MANIFEST.txt" \
         || fail "manifesto v3 sem pacote_cifrado=sim"
+    grep -qx 'cofre_separado=sim' "$backup_dir/MANIFEST.txt" \
+        || fail "manifesto não declara a separação do cofre"
     [ -n "$BACKUP_PACKAGE_KEY" ] || fail "BACKUP_PACKAGE_KEY obrigatória para validar pacote v3"
-    # Prefere php no host; fallback: container php da stack (CI/dev sem php-cli).
+
+    (
+        cd "$backup_dir"
+        sha256sum --check --strict SHA256SUMS
+    )
+
+    material_cleanup=$(mktemp -d)
+    material_dir=$material_cleanup
     open_script=$(mktemp)
-    trap 'rm -f -- "$open_script"' EXIT HUP INT TERM
     cat > "$open_script" <<'PHPEOF'
 <?php
 $keyB64 = getenv('BACKUP_PACKAGE_KEY') ?: '';
@@ -116,32 +129,57 @@ if (strlen($plain) !== $ptLen) {
     fwrite(STDERR, "tamanho não confere\n");
     exit(1);
 }
+$out = $argv[2] ?? '';
+if ($out === '' || file_put_contents($out, $plain) === false) {
+    fwrite(STDERR, "falha ao gravar bundle descriptografado\n");
+    exit(1);
+}
 PHPEOF
+    bundle_tar="$material_dir/bundle.tar"
     if command -v php >/dev/null 2>&1; then
         BACKUP_PACKAGE_KEY="$BACKUP_PACKAGE_KEY" php "$open_script" \
-            "$backup_dir/package.nfsebkp" \
-            || fail "falha ao validar package.nfsebkp com chave externa (php host)"
+            "$backup_dir/package.nfsebkp" "$bundle_tar" \
+            || { rm -f -- "$open_script"; cleanup_material; fail "falha ao abrir package.nfsebkp (php host)"; }
     else
         compose run --rm -T --no-deps \
             -e BACKUP_PACKAGE_KEY="$BACKUP_PACKAGE_KEY" \
             -v "$backup_dir:/backup-crypto:ro" \
+            -v "$material_dir:/backup-out:rw" \
             -v "$open_script:/backup-crypto-open.php:ro" \
-            --entrypoint php php /backup-crypto-open.php /backup-crypto/package.nfsebkp \
-            || fail "falha ao validar package.nfsebkp (php container; instale php-cli no host se preferir)"
+            --entrypoint php php /backup-crypto-open.php \
+            /backup-crypto/package.nfsebkp /backup-out/bundle.tar \
+            || { rm -f -- "$open_script"; cleanup_material; fail "falha ao abrir package.nfsebkp (php container)"; }
     fi
     rm -f -- "$open_script"
+    tar -xf "$bundle_tar" -C "$material_dir" \
+        || { cleanup_material; fail "bundle do package.nfsebkp inválido"; }
+    rm -f -- "$bundle_tar"
+    for required_file in postgres.sql.gz vault.tar.gz private.tar.gz; do
+        [ -f "$material_dir/$required_file" ] || { cleanup_material; fail "pacote v3 sem componente: $required_file"; }
+    done
+else
+    for required_file in postgres.sql.gz vault.tar.gz; do
+        [ -f "$backup_dir/$required_file" ] || fail "arquivo ausente: $required_file"
+        [ ! -L "$backup_dir/$required_file" ] || fail "links simbólicos não são aceitos: $required_file"
+    done
+    if [ "$has_private" = true ]; then
+        [ -f "$backup_dir/private.tar.gz" ] || fail "arquivo ausente: private.tar.gz"
+        [ ! -L "$backup_dir/private.tar.gz" ] || fail "links simbólicos não são aceitos: private.tar.gz"
+        grep -qx 'cofre_separado=sim' "$backup_dir/MANIFEST.txt" \
+            || fail "manifesto não declara a separação do cofre"
+    fi
+    (
+        cd "$backup_dir"
+        sha256sum --check --strict SHA256SUMS
+    )
 fi
 
-(
-    cd "$backup_dir"
-    sha256sum --check --strict SHA256SUMS
-)
-gzip -t "$backup_dir/postgres.sql.gz"
-gzip -t "$backup_dir/vault.tar.gz"
-[ "$has_private" = false ] || gzip -t "$backup_dir/private.tar.gz"
+gzip -t "$material_dir/postgres.sql.gz"
+gzip -t "$material_dir/vault.tar.gz"
+[ "$has_private" = false ] || gzip -t "$material_dir/private.tar.gz"
 
 listing=$(mktemp)
-trap 'rm -f -- "$listing"' EXIT HUP INT TERM
+trap 'rm -f -- "$listing"; cleanup_material' EXIT HUP INT TERM
 validate_archive() {
     archive=$1
     tar -tzf "$archive" > "$listing"
@@ -153,8 +191,8 @@ validate_archive() {
     fi
 }
 
-validate_archive "$backup_dir/vault.tar.gz"
-[ "$has_private" = false ] || validate_archive "$backup_dir/private.tar.gz"
+validate_archive "$material_dir/vault.tar.gz"
+[ "$has_private" = false ] || validate_archive "$material_dir/private.tar.gz"
 
 printf 'Checksums e arquivos válidos: %s\n' "$backup_dir"
 [ "$verify_only" = true ] && exit 0
@@ -189,6 +227,7 @@ finish_restore() {
     trap - EXIT HUP INT TERM
     rm -rf -- "$work_dir"
     rm -f -- "$listing"
+    cleanup_material
 
     if [ "$restore_succeeded" = true ]; then
         compose start php >/dev/null
@@ -213,7 +252,7 @@ services_to_stop='php'
 # shellcheck disable=SC2086
 compose stop $services_to_stop >/dev/null
 
-gzip -dc "$backup_dir/postgres.sql.gz" > "$work_dir/postgres.sql"
+gzip -dc "$material_dir/postgres.sql.gz" > "$work_dir/postgres.sql"
 compose exec -T postgres sh -eu -c '
     dropdb --force --if-exists --maintenance-db=postgres --username="$POSTGRES_USER" "$POSTGRES_DB"
     createdb --maintenance-db=postgres --username="$POSTGRES_USER" --owner="$POSTGRES_USER" "$POSTGRES_DB"
@@ -222,7 +261,7 @@ compose exec -T postgres sh -eu -c \
     'exec psql --set ON_ERROR_STOP=1 --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"' \
     < "$work_dir/postgres.sql"
 
-gzip -dc "$backup_dir/vault.tar.gz" > "$work_dir/vault.tar"
+gzip -dc "$material_dir/vault.tar.gz" > "$work_dir/vault.tar"
 compose run --rm -T --no-deps --user root --entrypoint sh php -eu -c '
     restore_dir=/var/vault/.restore
     rm -rf -- "$restore_dir"
@@ -237,7 +276,7 @@ compose run --rm -T --no-deps --user root --entrypoint sh php -eu -c '
 ' < "$work_dir/vault.tar"
 
 if [ "$has_private" = true ]; then
-    gzip -dc "$backup_dir/private.tar.gz" > "$work_dir/private.tar"
+    gzip -dc "$material_dir/private.tar.gz" > "$work_dir/private.tar"
     compose run --rm -T --no-deps --user root --entrypoint sh php -eu -c '
         restore_dir=/var/www/html/storage/app/private/.restore
         rm -rf -- "$restore_dir"

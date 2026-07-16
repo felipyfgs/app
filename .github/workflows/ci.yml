@@ -118,4 +118,4 @@ jobs:
           docker run --rm --entrypoint php-fpm fiscal-hub-php:prod -t
           ./docker/ops/restore-smoke.sh
       - name: Validar mudança OpenSpec
-        run: npx --yes @fission-ai/openspec@1.5.0 validate integrar-serpro-monitoramento-completo --json
+        run: npx --yes @fission-ai/openspec@1.5.0 validate operacionalizar-integra-contador-producao --strict --json
