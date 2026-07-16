@@ -657,59 +657,57 @@ onMounted(async () => {
     Arquétipo customers.vue. Views por cliente | catálogo no sidebar (Documentos).
     Tabelas com :ui do template.
   -->
-  <UDashboardPanel id="docs" class="min-w-0">
-    <template #header>
-      <UDashboardNavbar data-testid="page-navbar" title="Documentos">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #trailing>
-          <UBadge
-            :label="view === 'client' ? String(byClientTotal) : String(listTotal || notes.length)"
-            variant="subtle"
-          />
-        </template>
-        <template #right>
-          <UTooltip text="Atualizar">
-            <UButton
-              icon="i-lucide-refresh-cw"
-              color="neutral"
-              variant="ghost"
-              square
-              aria-label="Atualizar catálogo de documentos"
-              :loading="loading"
-              @click="reloadActive"
-            />
-          </UTooltip>
-          <UButton
-            to="/docs/imports"
-            icon="i-lucide-history"
-            label="Histórico"
-            color="neutral"
-            variant="ghost"
-            size="sm"
-            aria-label="Histórico de lotes de importação"
-          />
-          <UButton
-            v-if="canImportDocuments && view === 'document'"
-            icon="i-lucide-upload"
-            label="Importar XML/ZIP"
-            color="neutral"
-            variant="outline"
-            aria-label="Importar XML ou ZIP de saídas"
-            @click="() => { importOpen = true }"
-          />
-          <UButton
-            v-if="canCreateExport && view === 'document'"
-            icon="i-lucide-download"
-            label="Exportar filtro"
-            color="primary"
-            :loading="exporting"
-            :disabled="exporting || !kindExportAvailable"
-            @click="exportCurrentFilter"
-          />
-        </template>
-      </UDashboardNavbar>
+  <DashboardListShell
+    panel-id="docs"
+    title="Documentos"
+    panel-class="min-w-0"
+  >
+    <template #navbar-trailing>
+      <UBadge
+        :label="view === 'client' ? String(byClientTotal) : String(listTotal || notes.length)"
+        variant="subtle"
+      />
+    </template>
+    <template #navbar-right>
+      <UTooltip text="Atualizar">
+        <UButton
+          icon="i-lucide-refresh-cw"
+          color="neutral"
+          variant="ghost"
+          square
+          aria-label="Atualizar catálogo de documentos"
+          :loading="loading"
+          @click="reloadActive"
+        />
+      </UTooltip>
+      <UButton
+        to="/docs/imports"
+        icon="i-lucide-history"
+        label="Histórico"
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        aria-label="Histórico de lotes de importação"
+      />
+      <UButton
+        v-if="canImportDocuments && view === 'document'"
+        icon="i-lucide-upload"
+        label="Importar XML/ZIP"
+        color="neutral"
+        variant="outline"
+        aria-label="Importar XML ou ZIP de saídas"
+        @click="() => { importOpen = true }"
+      />
+      <UButton
+        v-if="canCreateExport && view === 'document'"
+        icon="i-lucide-download"
+        label="Exportar filtro"
+        color="primary"
+        :loading="exporting"
+        :disabled="exporting || !kindExportAvailable"
+        @click="exportCurrentFilter"
+      />
+    </template>
 
       <UModal
         v-model:open="importOpen"
@@ -811,9 +809,6 @@ onMounted(async () => {
           </div>
         </template>
       </UModal>
-    </template>
-
-    <template #body>
       <!--
         Body: insights (HomeStats-like) → toolbar busca → tabela (customers).
       -->
@@ -895,8 +890,7 @@ onMounted(async () => {
           />
         </template>
       </div>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 
   <NotesDetailModal
     v-model:open="isDetailOpen"

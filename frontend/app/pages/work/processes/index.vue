@@ -97,21 +97,21 @@ onMounted(load)
 </script>
 
 <template>
-  <UDashboardPanel id="work-processes" data-testid="work-processes-panel">
-    <template #header>
-      <UDashboardNavbar title="Processos">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <UButton
-            v-if="canOpenTemplates"
-            icon="i-lucide-plus"
-            label="Modelos / lote"
-            to="/work/templates"
-          />
-        </template>
-      </UDashboardNavbar>
+  <DashboardListShell
+    panel-id="work-processes"
+    title="Processos"
+    panel-test-id="work-processes-panel"
+  >
+    <template #navbar-right>
+      <UButton
+        v-if="canOpenTemplates"
+        icon="i-lucide-plus"
+        label="Modelos / lote"
+        to="/work/templates"
+      />
+    </template>
+
+    <template #toolbar>
       <UDashboardToolbar>
         <div class="flex flex-wrap gap-2 p-1">
           <UInput
@@ -144,77 +144,78 @@ onMounted(load)
       </UDashboardToolbar>
     </template>
 
-    <template #body>
-      <h1 data-testid="page-title" class="sr-only">
-        Processos
-      </h1>
-      <div v-if="loading" class="p-4 space-y-2">
-        <USkeleton v-for="i in 5" :key="i" class="h-10 w-full" />
-      </div>
-      <div v-else-if="!items.length" class="p-6 text-sm text-muted">
-        Nenhum processo encontrado.
-      </div>
-      <template v-else>
-        <UTable
-          :data="items"
-          :columns="columns"
-          :ui="DASHBOARD_TABLE_UI"
-          class="cursor-pointer"
-          @select="(_e: Event, row: { original: OperationalProcess }) => openRow(row.original)"
-        >
-          <template #client-cell="{ row }">
-            {{ row.original.client?.name || '—' }}
-          </template>
-          <template #competence-cell="{ row }">
-            {{ formatCompetence(row.original.competence) }}
-          </template>
-          <template #status-cell="{ row }">
-            <UBadge
-              size="sm"
-              variant="subtle"
-              :color="processStatusColor(row.original.status)"
-              :label="processStatusLabel(row.original.status)"
-            />
-          </template>
-          <template #progress-cell="{ row }">
-            <div class="flex min-w-24 flex-col gap-1">
-              <UProgress
-                :model-value="row.original.progress_percent ?? 0"
-                size="sm"
-                :aria-label="`Progresso ${row.original.progress_percent ?? 0}%`"
-              />
-              <span class="text-xs text-muted">
-                {{ row.original.completed_task_count ?? 0 }}/{{ row.original.task_count ?? 0 }}
-              </span>
-            </div>
-          </template>
-          <template #risk-cell="{ row }">
-            <UBadge
-              v-if="row.original.risks?.length"
-              size="sm"
-              variant="subtle"
-              :color="highestRiskColor(row.original.risks)"
-              :label="workRiskLabel(row.original.risks[0]!)"
-            />
-            <span v-else class="text-xs text-muted">—</span>
-          </template>
-          <template #due_date-cell="{ row }">
-            {{ formatDueDate(row.original.due_date) }}
-          </template>
-          <template #assignee-cell="{ row }">
-            {{ row.original.assignee?.name || '—' }}
-          </template>
-        </UTable>
-        <div class="flex items-center justify-between gap-2 border-t border-default p-3 text-sm text-muted">
-          <span>{{ total }} processo(s)</span>
-          <UPagination
-            v-if="total > 25"
-            v-model:page="page"
-            :total="total"
-            :items-per-page="25"
+    <h1 data-testid="page-title" class="sr-only">
+      Processos
+    </h1>
+    <div v-if="loading" class="p-4 space-y-2">
+      <USkeleton v-for="i in 5" :key="i" class="h-10 w-full" />
+    </div>
+    <UEmpty
+      v-else-if="!items.length"
+      icon="i-lucide-folder-open"
+      title="Nenhum processo encontrado"
+      description="Ajuste filtros ou crie processos a partir de um modelo."
+    />
+    <template v-else>
+      <UTable
+        :data="items"
+        :columns="columns"
+        :ui="DASHBOARD_TABLE_UI"
+        class="cursor-pointer"
+        @select="(_e: Event, row: { original: OperationalProcess }) => openRow(row.original)"
+      >
+        <template #client-cell="{ row }">
+          {{ row.original.client?.name || '—' }}
+        </template>
+        <template #competence-cell="{ row }">
+          {{ formatCompetence(row.original.competence) }}
+        </template>
+        <template #status-cell="{ row }">
+          <UBadge
+            size="sm"
+            variant="subtle"
+            :color="processStatusColor(row.original.status)"
+            :label="processStatusLabel(row.original.status)"
           />
-        </div>
-      </template>
+        </template>
+        <template #progress-cell="{ row }">
+          <div class="flex min-w-24 flex-col gap-1">
+            <UProgress
+              :model-value="row.original.progress_percent ?? 0"
+              size="sm"
+              :aria-label="`Progresso ${row.original.progress_percent ?? 0}%`"
+            />
+            <span class="text-xs text-muted">
+              {{ row.original.completed_task_count ?? 0 }}/{{ row.original.task_count ?? 0 }}
+            </span>
+          </div>
+        </template>
+        <template #risk-cell="{ row }">
+          <UBadge
+            v-if="row.original.risks?.length"
+            size="sm"
+            variant="subtle"
+            :color="highestRiskColor(row.original.risks)"
+            :label="workRiskLabel(row.original.risks[0]!)"
+          />
+          <span v-else class="text-xs text-muted">—</span>
+        </template>
+        <template #due_date-cell="{ row }">
+          {{ formatDueDate(row.original.due_date) }}
+        </template>
+        <template #assignee-cell="{ row }">
+          {{ row.original.assignee?.name || '—' }}
+        </template>
+      </UTable>
+      <div class="flex items-center justify-between gap-2 border-t border-default p-3 text-sm text-muted">
+        <span>{{ total }} processo(s)</span>
+        <UPagination
+          v-if="total > 25"
+          v-model:page="page"
+          :total="total"
+          :items-per-page="25"
+        />
+      </div>
     </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

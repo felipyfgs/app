@@ -119,17 +119,12 @@ watch(allowed, (ok) => {
 </script>
 
 <template>
-  <UDashboardPanel id="admin" data-testid="settings-panel" :ui="{ body: 'lg:py-12' }">
-    <template #header>
-      <UDashboardNavbar title="Administração">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-      </UDashboardNavbar>
-      <!-- Toolbar omitida: uma única seção real no MVP. -->
-    </template>
-
-    <template #body>
+  <DashboardListShell
+    panel-id="admin"
+    title="Administração"
+    panel-test-id="settings-panel"
+    :panel-ui="{ body: 'lg:py-12' }"
+  >
       <div class="mx-auto flex w-full flex-col gap-4 sm:gap-6 lg:max-w-2xl lg:gap-12">
         <UAlert
           v-if="!allowed"
@@ -391,6 +386,5 @@ watch(allowed, (ok) => {
           />
         </template>
       </div>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

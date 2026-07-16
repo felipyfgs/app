@@ -203,27 +203,26 @@ onMounted(() => {
 </script>
 
 <template>
-  <UDashboardPanel id="health">
-    <template #header>
-      <UDashboardNavbar data-testid="page-navbar" title="Saúde operacional">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <UTooltip text="Atualizar inbox">
-            <UButton
-              icon="i-lucide-refresh-cw"
-              color="neutral"
-              variant="ghost"
-              square
-              aria-label="Atualizar inbox operacional"
-              :loading="loading"
-              @click="load(true)"
-            />
-          </UTooltip>
-        </template>
-      </UDashboardNavbar>
+  <DashboardListShell
+    panel-id="health"
+    title="Saúde operacional"
+    navbar-test-id="page-navbar"
+  >
+    <template #navbar-right>
+      <UTooltip text="Atualizar inbox">
+        <UButton
+          icon="i-lucide-refresh-cw"
+          color="neutral"
+          variant="ghost"
+          square
+          aria-label="Atualizar inbox operacional"
+          :loading="loading"
+          @click="load(true)"
+        />
+      </UTooltip>
+    </template>
 
+    <template #toolbar>
       <UDashboardToolbar data-testid="page-toolbar">
         <template #left>
           <div class="flex min-w-0 flex-wrap items-center gap-2">
@@ -252,7 +251,6 @@ onMounted(() => {
       </UDashboardToolbar>
     </template>
 
-    <template #body>
       <UAlert
         icon="i-lucide-info"
         title="Fila acionável do escritório"
@@ -370,6 +368,5 @@ onMounted(() => {
           @click="load(false)"
         />
       </div>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

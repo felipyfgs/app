@@ -178,12 +178,12 @@ onMounted(load)
     >
       Carregando…
     </div>
-    <div
+    <UEmpty
       v-else-if="!rows.length"
-      class="text-sm text-muted"
-    >
-      Nenhuma procuração retornada pela API.
-    </div>
+      icon="i-lucide-file-key"
+      title="Nenhuma procuração retornada"
+      description="A API não devolveu procurações para este escritório."
+    />
     <UTable
       v-else
       :data="rows"

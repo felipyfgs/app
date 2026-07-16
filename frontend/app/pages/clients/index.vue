@@ -10,9 +10,8 @@
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { Client, ClientListStats } from '~/types/api'
 import { upperFirst } from 'scule'
+import { sortHeader } from '~/utils/table-sort'
 import { DENSE_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
-
-const UButton = resolveComponent('UButton')
 
 const api = useApi()
 const {
@@ -124,20 +123,6 @@ const kpiCards = computed(() => [
     icon: 'i-lucide-badge-alert'
   }
 ])
-
-function sortHeader(label: string, column: { getIsSorted: () => false | 'asc' | 'desc', toggleSorting: (desc?: boolean) => void }) {
-  const isSorted = column.getIsSorted()
-  return h(UButton, {
-    color: 'neutral',
-    variant: 'ghost',
-    label,
-    icon: isSorted
-      ? (isSorted === 'asc' ? 'i-lucide-arrow-up-narrow-wide' : 'i-lucide-arrow-down-wide-narrow')
-      : 'i-lucide-arrow-up-down',
-    class: '-mx-2.5',
-    onClick: () => column.toggleSorting(column.getIsSorted() === 'asc')
-  })
-}
 
 /**
  * Cadastro de clientes — colunas P0:
@@ -928,7 +913,7 @@ onBeforeUnmount(() => {
             color="neutral"
             variant="subtle"
             :disabled="deleting"
-            @click="deleteOpen = false"
+            @click="() => { deleteOpen = false }"
           />
           <UButton
             label="Excluir"

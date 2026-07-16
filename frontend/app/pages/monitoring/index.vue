@@ -202,26 +202,19 @@ onMounted(load)
 </script>
 
 <template>
-  <UDashboardPanel id="monitoring-dashboard">
-    <template #header>
-      <UDashboardNavbar
-        title="Dashboard Fiscal"
-        data-testid="page-navbar"
-        :ui="{ right: 'gap-3' }"
-      >
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <span
+  <DashboardListShell
+    panel-id="monitoring-dashboard"
+    title="Dashboard Fiscal"
+  >
+    <template #navbar-right>
+      <span
             v-if="lastValidAt"
             class="hidden text-xs text-muted sm:inline"
           >
             Atualizado: {{ formatDateTime(lastValidAt) }}
           </span>
-        </template>
-      </UDashboardNavbar>
-
+    </template>
+    <template #toolbar>
       <UDashboardToolbar data-testid="page-toolbar">
         <template #left>
           <MonitoringModuleNav active="dashboard" />
@@ -238,8 +231,6 @@ onMounted(load)
         </template>
       </UDashboardToolbar>
     </template>
-
-    <template #body>
       <UAlert
         v-if="loadError"
         color="error"
@@ -397,7 +388,7 @@ onMounted(load)
             v-else-if="!attentionItems.length"
             class="py-6 text-sm text-muted"
           >
-            Nenhum item de atenção retornado pela API.
+            <UEmpty icon="i-lucide-bell-off" title="Nenhum item de atenção" size="sm" />
           </div>
           <ul
             v-else
@@ -439,7 +430,7 @@ onMounted(load)
             v-else-if="!recentRuns.length"
             class="py-6 text-sm text-muted"
           >
-            Nenhuma execução retornada pela API.
+            <UEmpty icon="i-lucide-play" title="Nenhuma execução retornada" size="sm" />
           </div>
           <ul
             v-else
@@ -486,6 +477,5 @@ onMounted(load)
           :label="FISCAL_MODULE_LABELS[key]"
         />
       </div>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

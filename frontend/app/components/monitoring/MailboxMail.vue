@@ -191,52 +191,46 @@ watch(sessionEpoch, () => {
 </script>
 
 <template>
-  <UDashboardPanel
-    id="mailbox-detail"
-    data-testid="mailbox-detail"
+  <DashboardListShell
+    panel-id="mailbox-detail"
+    :title="String(message?.subject_preview || `Mensagem #${messageId}`)"
+    panel-test-id="mailbox-detail"
+    :show-collapse="false"
+    :navbar-toggle="false"
   >
-    <UDashboardNavbar
-      :title="String(message?.subject_preview || `Mensagem #${messageId}`)"
-      :toggle="false"
-    >
-      <template
+    <template #navbar-leading>
+      <UButton
         v-if="showClose"
-        #leading
-      >
-        <UButton
-          icon="i-lucide-x"
-          color="neutral"
-          variant="ghost"
-          class="-ms-1.5"
-          aria-label="Fechar detalhe"
-          @click="onClose"
-        />
-      </template>
-      <template
+        icon="i-lucide-x"
+        color="neutral"
+        variant="ghost"
+        class="-ms-1.5"
+        aria-label="Fechar detalhe"
+        @click="onClose"
+      />
+      <UDashboardSidebarCollapse
         v-else
-        #leading
-      >
-        <UDashboardSidebarCollapse class="lg:hidden" />
-      </template>
-      <template #right>
-        <UButton
-          v-if="message?.has_body"
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-file-text"
-          label="Corpo"
-          @click="openBody"
-        />
-        <UButton
-          to="/monitoring/mailbox"
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-arrow-left"
-          label="Lista"
-          class="lg:hidden"
-        />
-      </template>
-    </UDashboardNavbar>
+        class="lg:hidden"
+      />
+    </template>
+    <template #navbar-right>
+      <UButton
+        v-if="message?.has_body"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-file-text"
+        label="Corpo"
+        @click="openBody"
+      />
+      <UButton
+        to="/monitoring/mailbox"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-arrow-left"
+        label="Lista"
+        class="lg:hidden"
+      />
+    </template>
 
     <div class="flex flex-1 flex-col overflow-y-auto">
       <UAlert
@@ -414,5 +408,5 @@ watch(sessionEpoch, () => {
         </div>
       </template>
     </div>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

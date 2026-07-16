@@ -211,20 +211,24 @@ onMounted(load)
 </script>
 
 <template>
-  <UDashboardPanel id="work-templates" data-testid="work-templates-panel">
-    <template #header>
-      <UDashboardNavbar title="Modelos de processo">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <UButton
-            icon="i-lucide-plus"
-            label="Novo modelo"
-            @click="() => { createOpen = true }"
-          />
-        </template>
-      </UDashboardNavbar>
+  <!--
+    Arquétipo lista admin (customers.vue) via DashboardListShell.
+    Fontes: .reference/.../customers.vue + clients + table-ui.
+  -->
+  <DashboardListShell
+    panel-id="work-templates"
+    title="Modelos de processo"
+    panel-test-id="work-templates-panel"
+  >
+    <template #navbar-right>
+      <UButton
+        icon="i-lucide-plus"
+        label="Novo modelo"
+        @click="() => { createOpen = true }"
+      />
+    </template>
+
+    <template #toolbar>
       <UDashboardToolbar>
         <UInput
           v-model="q"
@@ -236,52 +240,54 @@ onMounted(load)
       </UDashboardToolbar>
     </template>
 
-    <template #body>
-      <h1 class="sr-only">
-        Modelos de processo
-      </h1>
+    <h1 class="sr-only">
+      Modelos de processo
+    </h1>
 
-      <div v-if="loading" class="space-y-2 p-4">
-        <USkeleton v-for="i in 4" :key="i" class="h-10 w-full" />
-      </div>
-      <div v-else-if="!items.length" class="p-6 text-sm text-muted">
-        Nenhum modelo. Crie o primeiro para gerar processos em lote.
-      </div>
-      <template v-else>
-        <UTable :data="items" :columns="columns" :ui="DASHBOARD_TABLE_UI">
-          <template #is_active-cell="{ row }">
-            <UBadge
-              size="sm"
-              variant="subtle"
-              :color="row.original.is_active ? 'success' : 'neutral'"
-              :label="row.original.is_active ? 'Ativo' : 'Inativo'"
-            />
-          </template>
-          <template #tasks-cell="{ row }">
-            {{ row.original.tasks?.length ?? 0 }}
-          </template>
-          <template #actions-cell="{ row }">
-            <UButton
-              size="xs"
-              variant="soft"
-              label="Gerar"
-              @click="openGeneration(row.original)"
-            />
-          </template>
-        </UTable>
-        <div class="flex justify-between border-t border-default p-3 text-sm text-muted">
-          <span>{{ total }} modelo(s)</span>
-          <UPagination
-            v-if="total > 25"
-            v-model:page="page"
-            :total="total"
-            :items-per-page="25"
+    <div v-if="loading" class="space-y-2 p-4">
+      <USkeleton v-for="i in 4" :key="i" class="h-10 w-full" />
+    </div>
+    <UEmpty
+      v-else-if="!items.length"
+      icon="i-lucide-layout-template"
+      title="Nenhum modelo"
+      description="Crie o primeiro para gerar processos em lote."
+    />
+    <template v-else>
+      <UTable :data="items" :columns="columns" :ui="DASHBOARD_TABLE_UI">
+        <template #is_active-cell="{ row }">
+          <UBadge
+            size="sm"
+            variant="subtle"
+            :color="row.original.is_active ? 'success' : 'neutral'"
+            :label="row.original.is_active ? 'Ativo' : 'Inativo'"
           />
-        </div>
-      </template>
+        </template>
+        <template #tasks-cell="{ row }">
+          {{ row.original.tasks?.length ?? 0 }}
+        </template>
+        <template #actions-cell="{ row }">
+          <UButton
+            size="xs"
+            variant="soft"
+            label="Gerar"
+            @click="openGeneration(row.original)"
+          />
+        </template>
+      </UTable>
+      <div class="flex justify-between border-t border-default p-3 text-sm text-muted">
+        <span>{{ total }} modelo(s)</span>
+        <UPagination
+          v-if="total > 25"
+          v-model:page="page"
+          :total="total"
+          :items-per-page="25"
+        />
+      </div>
+    </template>
 
-      <!-- Modal criar (AddModal-like) -->
-      <UModal v-model:open="createOpen" title="Novo modelo de processo">
+    <!-- Modal criar (AddModal-like) -->
+    <UModal v-model:open="createOpen" title="Novo modelo de processo">
         <template #body>
           <div class="space-y-4">
             <UFormField label="Nome" required>
@@ -451,7 +457,6 @@ onMounted(load)
             />
           </div>
         </template>
-      </UModal>
-    </template>
-  </UDashboardPanel>
+    </UModal>
+  </DashboardListShell>
 </template>

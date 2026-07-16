@@ -485,44 +485,41 @@ onBeforeUnmount(pause)
 </script>
 
 <template>
-  <UDashboardPanel id="exports">
-    <template #header>
-      <UDashboardNavbar data-testid="page-navbar" title="Exportações">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <UTooltip text="Atualizar lista">
-            <UButton
-              icon="i-lucide-refresh-cw"
-              color="neutral"
-              variant="ghost"
-              square
-              aria-label="Atualizar lista de exportações"
-              :loading="loading"
-              @click="load()"
-            />
-          </UTooltip>
-          <UButton
-            v-if="canCreateExport"
-            icon="i-lucide-plus"
-            label="Pedir ZIP"
-            class="hidden sm:inline-flex"
-            @click="openCreate"
-          />
-          <UButton
-            v-if="canCreateExport"
-            icon="i-lucide-plus"
-            square
-            class="sm:hidden"
-            aria-label="Pedir ZIP"
-            @click="openCreate"
-          />
-        </template>
-      </UDashboardNavbar>
+  <DashboardListShell
+    panel-id="exports"
+    title="Exportações"
+    navbar-test-id="page-navbar"
+  >
+    <template #navbar-right>
+      <UTooltip text="Atualizar lista">
+        <UButton
+          icon="i-lucide-refresh-cw"
+          color="neutral"
+          variant="ghost"
+          square
+          aria-label="Atualizar lista de exportações"
+          :loading="loading"
+          @click="load()"
+        />
+      </UTooltip>
+      <UButton
+        v-if="canCreateExport"
+        icon="i-lucide-plus"
+        label="Pedir ZIP"
+        class="hidden sm:inline-flex"
+        @click="openCreate"
+      />
+      <UButton
+        v-if="canCreateExport"
+        icon="i-lucide-plus"
+        square
+        class="sm:hidden"
+        aria-label="Pedir ZIP"
+        @click="openCreate"
+      />
     </template>
 
-    <template #body>
+    <template #kpis>
       <!-- Como funciona — linguagem de escritório -->
       <UCard class="mb-4" data-testid="exports-how-it-works">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -607,6 +604,7 @@ onBeforeUnmount(pause)
           </p>
         </UCard>
       </div>
+    </template>
 
       <UAlert
         v-if="hasPending"
@@ -756,6 +754,7 @@ onBeforeUnmount(pause)
         </div>
       </UEmpty>
 
+    <template #footer>
       <div
         v-if="total"
         class="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4"
@@ -770,6 +769,7 @@ onBeforeUnmount(pause)
           :items-per-page="perPage"
         />
       </div>
+    </template>
 
       <UModal
         v-if="canCreateExport"
@@ -938,6 +938,5 @@ onBeforeUnmount(pause)
           </UForm>
         </template>
       </UModal>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

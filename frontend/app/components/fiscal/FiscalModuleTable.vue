@@ -139,25 +139,21 @@ const itemsPerPage = computed(() => {
 </script>
 
 <template>
-  <UDashboardPanel :id="panelId || 'fiscal-module'">
-    <template #header>
-      <UDashboardNavbar
-        :title="title"
-        data-testid="page-navbar"
-      >
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <!-- Named slot de ações da carteira. Nome `navbar-actions` evita colisão
-             com slots internos `#actions` de UAlert/UButton no mesmo SFC. -->
-        <template #right>
-          <div class="flex min-w-0 flex-wrap items-center justify-end gap-2" data-testid="fiscal-module-navbar-actions">
-            <slot name="navbar-actions" />
-            <slot name="actions" />
-          </div>
-        </template>
-      </UDashboardNavbar>
+  <DashboardListShell
+    :panel-id="panelId || 'fiscal-module'"
+    :title="title"
+    navbar-test-id="page-navbar"
+  >
+    <template #navbar-right>
+      <!-- Named slot de ações da carteira. Nome `navbar-actions` evita colisão
+           com slots internos `#actions` de UAlert/UButton no mesmo SFC. -->
+      <div class="flex min-w-0 flex-wrap items-center justify-end gap-2" data-testid="fiscal-module-navbar-actions">
+        <slot name="navbar-actions" />
+        <slot name="actions" />
+      </div>
+    </template>
 
+    <template #toolbar>
       <!-- Nav do módulo (Settings-like) -->
       <UDashboardToolbar
         v-if="showModuleNav || $slots.nav"
@@ -213,7 +209,6 @@ const itemsPerPage = computed(() => {
       </UDashboardToolbar>
     </template>
 
-    <template #body>
       <p
         v-if="description"
         class="mb-4 text-sm text-muted"
@@ -347,6 +342,5 @@ const itemsPerPage = computed(() => {
       </template>
 
       <slot name="detail" />
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

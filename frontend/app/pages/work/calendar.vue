@@ -185,13 +185,13 @@ watch(sessionEpoch, () => {
 </script>
 
 <template>
-  <UDashboardPanel id="work-calendar-main" class="min-w-0" data-testid="work-calendar">
-    <template #header>
-      <UDashboardNavbar title="Calendário operacional">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
+  <DashboardListShell
+    panel-id="work-calendar-main"
+    title="Calendário operacional"
+    panel-test-id="work-calendar"
+    panel-class="min-w-0"
+  >
+    <template #navbar-right>
           <div class="flex items-center gap-1">
             <UButton
               icon="i-lucide-chevron-left"
@@ -225,22 +225,19 @@ watch(sessionEpoch, () => {
             size="xs"
             class="ms-2"
           />
-          <UButton
-            class="lg:hidden"
-            icon="i-lucide-panel-right"
-            color="neutral"
-            variant="ghost"
-            aria-label="Abrir painel do dia"
-            @click="() => { railOpen = true }"
-          />
-        </template>
-      </UDashboardNavbar>
+      <UButton
+        class="lg:hidden"
+        icon="i-lucide-panel-right"
+        color="neutral"
+        variant="ghost"
+        aria-label="Abrir painel do dia"
+        @click="() => { railOpen = true }"
+      />
     </template>
 
-    <template #body>
-      <h1 class="sr-only">
-        Calendário operacional
-      </h1>
+    <h1 class="sr-only">
+      Calendário operacional
+    </h1>
 
       <div v-if="loadError && !days.length" class="p-4">
         <UAlert color="error" :title="loadError">
@@ -332,8 +329,12 @@ watch(sessionEpoch, () => {
         <div v-if="dayLoading" class="space-y-2">
           <USkeleton v-for="i in 5" :key="i" class="h-14 w-full" />
         </div>
-        <div v-else-if="!dayItems.length" class="text-sm text-muted">
-          Nenhuma tarefa com prazo em {{ formatDueDate(date) }}.
+        <div v-else-if="!dayItems.length">
+          <UEmpty
+            icon="i-lucide-calendar-off"
+            :title="`Nenhuma tarefa em ${formatDueDate(date)}`"
+            size="sm"
+          />
         </div>
         <ul v-else class="divide-y divide-default rounded-md border border-default">
           <li
@@ -361,22 +362,21 @@ watch(sessionEpoch, () => {
           </li>
         </ul>
       </div>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
+
 
   <!-- Rail desktop -->
-  <UDashboardPanel
-    id="work-calendar-rail"
-    class="hidden lg:flex"
+  <DashboardListShell
+    panel-id="work-calendar-rail"
+    title="Dia selecionado"
+    panel-class="hidden lg:flex"
+    resizable
     :default-size="22"
     :min-size="18"
     :max-size="28"
-    resizable
+    :show-collapse="false"
+    :navbar-toggle="false"
   >
-    <template #header>
-      <UDashboardNavbar title="Dia selecionado" :toggle="false" />
-    </template>
-    <template #body>
       <div class="flex flex-col gap-4 p-3">
         <UCalendar v-model="calendarModel" class="w-full" />
         <UTabs
@@ -406,13 +406,16 @@ watch(sessionEpoch, () => {
               {{ taskStatusLabel(item.status) }}
             </p>
           </li>
-          <li v-if="!railItems.length" class="text-xs text-muted">
-            Nenhuma tarefa nesta lista.
+          <li v-if="!railItems.length" class="list-none">
+            <UEmpty
+              icon="i-lucide-inbox"
+              title="Nenhuma tarefa nesta lista"
+              size="sm"
+            />
           </li>
         </ul>
       </div>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 
   <!-- Rail mobile -->
   <USlideover v-model:open="railOpen" title="Dia selecionado" class="lg:hidden">
@@ -428,8 +431,12 @@ watch(sessionEpoch, () => {
           >
             {{ item.title }}
           </li>
-          <li v-if="!dayItems.length" class="text-xs text-muted">
-            Nenhuma tarefa.
+          <li v-if="!dayItems.length" class="list-none">
+            <UEmpty
+              icon="i-lucide-inbox"
+              title="Nenhuma tarefa"
+              size="sm"
+            />
           </li>
         </ul>
       </div>

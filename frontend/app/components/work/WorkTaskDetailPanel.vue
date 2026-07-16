@@ -108,20 +108,24 @@ function downloadUrl(evidenceId: number) {
 </script>
 
 <template>
-  <UDashboardPanel id="work-task-detail" data-testid="work-task-detail">
-    <template #header>
-      <UDashboardNavbar :title="detail?.title || 'Tarefa'" :toggle="false">
-        <template #leading>
-          <UButton
-            icon="i-lucide-x"
-            color="neutral"
-            variant="ghost"
-            class="-ms-1.5"
-            aria-label="Fechar detalhe"
-            @click="emit('close')"
-          />
-        </template>
-        <template #right>
+  <DashboardListShell
+    panel-id="work-task-detail"
+    :title="detail?.title || 'Tarefa'"
+    panel-test-id="work-task-detail"
+    :show-collapse="false"
+    :navbar-toggle="false"
+  >
+    <template #navbar-leading>
+      <UButton
+        icon="i-lucide-x"
+        color="neutral"
+        variant="ghost"
+        class="-ms-1.5"
+        aria-label="Fechar detalhe"
+        @click="emit('close')"
+      />
+    </template>
+    <template #navbar-right>
           <template v-if="detail && canExecute">
             <UTooltip v-if="detail.status === 'A_FAZER'" text="Iniciar">
               <UButton
@@ -151,19 +155,18 @@ function downloadUrl(evidenceId: number) {
               />
             </UTooltip>
           </template>
-        </template>
-      </UDashboardNavbar>
     </template>
 
-    <template #body>
       <div v-if="loading" class="space-y-3 p-4">
         <USkeleton class="h-8 w-1/2" />
         <USkeleton class="h-24 w-full" />
       </div>
 
-      <div v-else-if="!detail" class="p-6 text-sm text-muted">
-        Selecione uma tarefa na fila.
-      </div>
+      <UEmpty
+        v-else-if="!detail"
+        icon="i-lucide-mouse-pointer-click"
+        title="Selecione uma tarefa na fila"
+      />
 
       <div v-else class="flex flex-col gap-4 p-4 sm:p-6">
         <div>
@@ -376,6 +379,5 @@ function downloadUrl(evidenceId: number) {
           </div>
         </div>
       </div>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

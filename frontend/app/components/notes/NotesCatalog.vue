@@ -12,6 +12,7 @@ import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { Row } from '@tanstack/table-core'
 import type { NfseNote } from '~/types/api'
 import { documentKindLabel } from '~/utils/documentKinds'
+import { sortHeader } from '~/utils/table-sort'
 import { DENSE_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 /** Opções de linhas por página (API aceita limit 1–100). */
@@ -75,23 +76,6 @@ const pageSizeModel = computed({
     emit('update:pageSize', next)
   }
 })
-
-function sortHeader(
-  label: string,
-  column: { getIsSorted: () => false | 'asc' | 'desc', toggleSorting: (desc?: boolean) => void }
-) {
-  const isSorted = column.getIsSorted()
-  return h(UButton, {
-    color: 'neutral',
-    variant: 'ghost',
-    label,
-    icon: isSorted
-      ? (isSorted === 'asc' ? 'i-lucide-arrow-up-narrow-wide' : 'i-lucide-arrow-down-wide-narrow')
-      : 'i-lucide-arrow-up-down',
-    class: '-mx-2.5',
-    onClick: () => column.toggleSorting(column.getIsSorted() === 'asc')
-  })
-}
 
 watch(
   () => props.selectedKeys,

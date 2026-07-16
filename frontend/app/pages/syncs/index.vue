@@ -210,29 +210,25 @@ onMounted(refreshAll)
 </script>
 
 <template>
-  <UDashboardPanel id="syncs">
-    <template #header>
-      <UDashboardNavbar data-testid="page-navbar" title="Sincronizações">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <UTooltip text="Atualizar histórico">
-            <UButton
-              icon="i-lucide-refresh-cw"
-              color="neutral"
-              variant="ghost"
-              square
-              aria-label="Atualizar histórico de sincronizações"
-              :loading="loading || cteLoading"
-              @click="refreshAll"
-            />
-          </UTooltip>
-        </template>
-      </UDashboardNavbar>
+  <DashboardListShell
+    panel-id="syncs"
+    title="Sincronizações"
+    navbar-test-id="page-navbar"
+  >
+    <template #navbar-right>
+      <UTooltip text="Atualizar histórico">
+        <UButton
+          icon="i-lucide-refresh-cw"
+          color="neutral"
+          variant="ghost"
+          square
+          aria-label="Atualizar histórico de sincronizações"
+          :loading="loading || cteLoading"
+          @click="refreshAll"
+        />
+      </UTooltip>
     </template>
 
-    <template #body>
       <OfficeAutXmlSyncCard class="mb-4" />
 
       <div
@@ -581,6 +577,5 @@ onMounted(refreshAll)
           </div>
         </template>
       </USlideover>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

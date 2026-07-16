@@ -237,12 +237,11 @@ onMounted(load)
       title="Lançamentos do período"
       description="Somente operações atribuídas a este escritório."
     >
-      <div
+      <UEmpty
         v-if="!entries.length"
-        class="text-sm text-muted"
-      >
-        Nenhum lançamento no período.
-      </div>
+        icon="i-lucide-receipt"
+        title="Nenhum lançamento no período"
+      />
       <template v-else>
         <UTable
           :data="entries"

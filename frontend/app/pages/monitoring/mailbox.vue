@@ -131,37 +131,30 @@ onMounted(load)
 
 <template>
   <div class="flex min-h-0 w-full flex-1">
-    <UDashboardPanel
-      id="mailbox-list"
+    <DashboardListShell
+      panel-id="mailbox-list"
+      title="Caixas Postais"
+      resizable
       :default-size="30"
       :min-size="22"
       :max-size="40"
-      resizable
     >
-      <template #header>
-        <UDashboardNavbar
-          title="Caixas Postais"
-          data-testid="page-navbar"
-        >
-          <template #leading>
-            <UDashboardSidebarCollapse />
-          </template>
-          <template #trailing>
-            <UBadge
-              :label="String(total)"
-              variant="subtle"
-            />
-          </template>
-          <template #right>
-            <FiscalMonitoringPortfolioActions
-              module-key="mailbox"
-              :client-id="clientIdModel"
-              show-enqueue
-              :show-export="true"
-              @refreshed="load"
-            />
-          </template>
-        </UDashboardNavbar>
+      <template #navbar-trailing>
+        <UBadge
+          :label="String(total)"
+          variant="subtle"
+        />
+      </template>
+      <template #navbar-right>
+        <FiscalMonitoringPortfolioActions
+          module-key="mailbox"
+          :client-id="clientIdModel"
+          show-enqueue
+          :show-export="true"
+          @refreshed="load"
+        />
+      </template>
+      <template #toolbar>
         <UDashboardToolbar data-testid="page-toolbar">
           <template #left>
             <div class="flex min-w-0 flex-1 flex-col gap-2">
@@ -193,7 +186,6 @@ onMounted(load)
         </UDashboardToolbar>
       </template>
 
-      <template #body>
         <UAlert
           color="info"
           icon="i-lucide-info"
@@ -241,8 +233,7 @@ onMounted(load)
             size="sm"
           />
         </div>
-      </template>
-    </UDashboardPanel>
+    </DashboardListShell>
 
     <!-- Desktop: detalhe adjacente via NuxtPage -->
     <div class="hidden min-w-0 flex-1 lg:flex">

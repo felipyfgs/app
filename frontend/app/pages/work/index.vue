@@ -172,32 +172,28 @@ watch(sessionEpoch, () => {
 </script>
 
 <template>
-  <UDashboardPanel
-    id="work-queue-list"
+  <DashboardListShell
+    panel-id="work-queue-list"
+    title="Minha fila"
+    panel-test-id="work-queue-panel"
+    resizable
     :default-size="25"
     :min-size="20"
     :max-size="30"
-    resizable
-    data-testid="work-queue-panel"
   >
-    <template #header>
-      <UDashboardNavbar title="Minha fila">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #trailing>
-          <UBadge :label="String(total)" variant="subtle" />
-        </template>
-        <template #right>
-          <UTabs
-            v-model="selectedTab"
-            :items="tabs"
-            :content="false"
-            size="xs"
-            class="max-w-full overflow-x-auto"
-          />
-        </template>
-      </UDashboardNavbar>
+    <template #navbar-trailing>
+      <UBadge :label="String(total)" variant="subtle" />
+    </template>
+    <template #navbar-right>
+      <UTabs
+        v-model="selectedTab"
+        :items="tabs"
+        :content="false"
+        size="xs"
+        class="max-w-full overflow-x-auto"
+      />
+    </template>
+    <template #toolbar>
       <UDashboardToolbar>
         <UInput
           v-model="search"
@@ -209,7 +205,6 @@ watch(sessionEpoch, () => {
       </UDashboardToolbar>
     </template>
 
-    <template #body>
       <h1 data-testid="page-title" class="sr-only">
         Minha fila
       </h1>
@@ -231,9 +226,13 @@ watch(sessionEpoch, () => {
         <USkeleton v-for="i in 6" :key="i" class="h-16 w-full" />
       </div>
 
-      <div v-else-if="!items.length" class="p-6 text-sm text-muted" data-testid="work-queue-empty">
-        Nenhuma tarefa nesta aba. Ajuste filtros ou gere processos a partir de um modelo.
-      </div>
+      <UEmpty
+        v-else-if="!items.length"
+        data-testid="work-queue-empty"
+        icon="i-lucide-inbox"
+        title="Nenhuma tarefa nesta aba"
+        description="Ajuste filtros ou gere processos a partir de um modelo."
+      />
 
       <div
         v-else
@@ -250,8 +249,7 @@ watch(sessionEpoch, () => {
           @select="select"
         />
       </div>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 
   <!-- Desktop: painel adjacente -->
   <WorkTaskDetailPanel

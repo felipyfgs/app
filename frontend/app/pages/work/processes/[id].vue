@@ -81,27 +81,25 @@ watch([id, sessionEpoch], load)
 </script>
 
 <template>
-  <UDashboardPanel id="work-process-detail" :ui="{ body: 'lg:py-8' }" data-testid="work-process-detail">
-    <template #header>
-      <UDashboardNavbar :title="process?.title || 'Processo'">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <UButton
+  <DashboardListShell
+    panel-id="work-process-detail"
+    :title="process?.title || 'Processo'"
+    panel-test-id="work-process-detail"
+    :panel-ui="{ body: 'lg:py-8' }"
+  >
+    <template #navbar-right>
+      <UButton
             to="/work/processes"
             variant="ghost"
             icon="i-lucide-arrow-left"
             label="Voltar"
           />
-        </template>
-      </UDashboardNavbar>
+    </template>
+    <template #toolbar>
       <UDashboardToolbar v-if="process">
         <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
       </UDashboardToolbar>
     </template>
-
-    <template #body>
       <div class="mx-auto flex w-full max-w-3xl flex-col gap-6">
         <div v-if="loading" class="space-y-3">
           <USkeleton class="h-8 w-1/2" />
@@ -110,6 +108,7 @@ watch([id, sessionEpoch], load)
 
         <UAlert
           v-else-if="loadError"
+          data-testid="work-process-error"
           :color="notFound ? 'neutral' : 'error'"
           :title="loadError"
         />
@@ -233,7 +232,7 @@ watch([id, sessionEpoch], load)
                 />
               </li>
               <li v-if="!process.tasks?.length" class="p-4 text-sm text-muted">
-                Nenhuma tarefa neste processo.
+                <UEmpty icon="i-lucide-list-todo" title="Nenhuma tarefa neste processo" size="sm" />
               </li>
             </ul>
           </section>
@@ -254,7 +253,7 @@ watch([id, sessionEpoch], load)
                 </p>
               </li>
               <li v-if="!process.comments?.length" class="text-sm text-muted">
-                Nenhum comentário ainda.
+                <UEmpty icon="i-lucide-message-square" title="Nenhum comentário ainda" size="sm" />
               </li>
             </ul>
           </section>
@@ -281,6 +280,5 @@ watch([id, sessionEpoch], load)
           </section>
         </template>
       </div>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

@@ -33,18 +33,13 @@ const links = [[{
 </script>
 
 <template>
-  <UDashboardPanel
-    id="settings"
-    data-testid="settings-panel"
-    :ui="{ body: 'lg:py-8' }"
+  <DashboardListShell
+    panel-id="settings"
+    title="Configurações"
+    panel-test-id="settings-panel"
+    :panel-ui="{ body: 'lg:py-8' }"
   >
-    <template #header>
-      <UDashboardNavbar title="Configurações">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-      </UDashboardNavbar>
-
+    <template #toolbar>
       <UDashboardToolbar>
         <UNavigationMenu
           :items="links"
@@ -54,7 +49,6 @@ const links = [[{
       </UDashboardToolbar>
     </template>
 
-    <template #body>
       <div class="flex w-full min-w-0 flex-col gap-4 sm:gap-6 lg:gap-8">
         <UAlert
           v-if="!canAccessAdministration"
@@ -65,6 +59,5 @@ const links = [[{
         />
         <NuxtPage v-if="canAccessAdministration" />
       </div>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

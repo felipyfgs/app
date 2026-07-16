@@ -46,35 +46,25 @@ watch(
 </script>
 
 <template>
-  <UDashboardPanel
+  <!--
+    Hierarquia: navbar + tabs Lista/Dashboard (settings.vue / customers).
+    Casca: DashboardListShell.
+  -->
+  <DashboardListShell
     v-if="isCatalog"
-    id="clients"
+    panel-id="clients"
+    title="Clientes"
   >
-    <template #header>
-      <!--
-        Hierarquia: navbar com título (sem ação primária duplicada no shell);
-        "Novo cliente" fica na toolbar do corpo da lista (customers.vue).
-        Tabs Lista/Dashboard = toolbar secundária (settings.vue).
-      -->
-      <UDashboardNavbar
-        data-testid="page-navbar"
-        title="Clientes"
-      >
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <UButton
-            v-if="canManageClients"
-            icon="i-lucide-plus"
-            label="Novo cliente"
-            @click="openClientCreate"
-          />
-        </template>
-      </UDashboardNavbar>
-
+    <template #navbar-right>
+      <UButton
+        v-if="canManageClients"
+        icon="i-lucide-plus"
+        label="Novo cliente"
+        @click="openClientCreate"
+      />
+    </template>
+    <template #toolbar>
       <UDashboardToolbar data-testid="clients-section-tabs">
-        <!-- NOTE: The `-mx-1` class is used to align with the DashboardSidebarCollapse (template settings). -->
         <UNavigationMenu
           :items="links"
           highlight
@@ -83,10 +73,8 @@ watch(
       </UDashboardToolbar>
     </template>
 
-    <template #body>
-      <NuxtPage />
-    </template>
-  </UDashboardPanel>
+    <NuxtPage />
+  </DashboardListShell>
 
   <!-- /clients/:id… — painel próprio em [id].vue -->
   <NuxtPage v-else />

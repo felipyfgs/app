@@ -410,35 +410,29 @@ onMounted(() => {
 </script>
 
 <template>
-  <UDashboardPanel
-    id="monitoring-client-detail"
-    data-testid="settings-panel"
-    :ui="{ body: 'lg:py-8' }"
+  <DashboardListShell
+    panel-id="monitoring-client-detail"
+    :title="client?.name || client?.legal_name || `Cliente #${clientId}`"
+    panel-test-id="settings-panel"
+    :panel-ui="{ body: 'lg:py-8' }"
   >
-    <template #header>
-      <UDashboardNavbar
-        :title="client?.name || client?.legal_name || `Cliente #${clientId}`"
-      >
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <UButton
-            to="/clients"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-users"
-            label="Cadastro"
-          />
-          <UButton
-            to="/monitoring"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-arrow-left"
-            label="Dashboard"
-          />
-        </template>
-      </UDashboardNavbar>
+    <template #navbar-right>
+      <UButton
+        to="/clients"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-users"
+        label="Cadastro"
+      />
+      <UButton
+        to="/monitoring"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-arrow-left"
+        label="Dashboard"
+      />
+    </template>
+    <template #toolbar>
       <UDashboardToolbar>
         <UNavigationMenu
           :items="links"
@@ -448,7 +442,6 @@ onMounted(() => {
       </UDashboardToolbar>
     </template>
 
-    <template #body>
       <div class="mx-auto flex w-full flex-col gap-4 sm:gap-6 lg:max-w-4xl">
         <UAlert
           v-if="clientError"
@@ -531,7 +524,7 @@ onMounted(() => {
                 v-if="!snapshots.length"
                 class="text-sm text-muted"
               >
-                Nenhum snapshot atual retornado pela API.
+                PLACEHOLDER_Nenhum snapshot atual
               </div>
               <UTable
                 v-else
@@ -551,7 +544,7 @@ onMounted(() => {
                 v-if="!runs.length"
                 class="text-sm text-muted"
               >
-                Nenhuma execução retornada.
+                PLACEHOLDER_Nenhuma execução
               </div>
               <ul
                 v-else
@@ -586,7 +579,7 @@ onMounted(() => {
                 v-if="!findings.length"
                 class="text-sm text-muted"
               >
-                Nenhum finding ativo.
+                PLACEHOLDER_Nenhum finding ativo
               </div>
               <ul
                 v-else
@@ -620,7 +613,7 @@ onMounted(() => {
                 v-if="!pending.length"
                 class="text-sm text-muted"
               >
-                Nenhuma pendência aberta.
+                PLACEHOLDER_Nenhuma pendência aberta
               </div>
               <ul
                 v-else
@@ -655,7 +648,7 @@ onMounted(() => {
                 v-if="!installments.length"
                 class="text-sm text-muted"
               >
-                Nenhum pedido de parcelamento retornado.
+                PLACEHOLDER_Nenhum parcelamento
               </div>
               <ul
                 v-else
@@ -703,7 +696,7 @@ onMounted(() => {
                 v-if="!declarations.length"
                 class="text-sm text-muted"
               >
-                Nenhuma declaração retornada.
+                PLACEHOLDER_Nenhuma declaração
               </div>
               <ul
                 v-else
@@ -750,7 +743,7 @@ onMounted(() => {
                 v-if="!guides.length"
                 class="text-sm text-muted"
               >
-                Nenhuma guia retornada.
+                PLACEHOLDER_Nenhuma guia
               </div>
               <ul
                 v-else
@@ -809,7 +802,7 @@ onMounted(() => {
                 v-if="!fgtsCompetences.length"
                 class="text-sm text-muted"
               >
-                Nenhuma competência FGTS retornada.
+                PLACEHOLDER_Nenhuma competência FGTS
               </div>
               <ul
                 v-else
@@ -854,7 +847,7 @@ onMounted(() => {
                 v-if="!sitfis"
                 class="text-sm text-muted"
               >
-                Nenhum snapshot SITFIS retornado.
+                PLACEHOLDER_Nenhum snapshot SITFIS
               </div>
               <dl
                 v-else
@@ -931,6 +924,5 @@ onMounted(() => {
           </div>
         </template>
       </div>
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

@@ -125,19 +125,12 @@ watch(sessionEpoch, () => {
 </script>
 
 <template>
-  <UDashboardPanel id="home">
-    <template #header>
-      <UDashboardNavbar
-        data-testid="page-navbar"
-        title="Dashboard"
-        :ui="{ right: 'gap-3' }"
-      >
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-
-        <template #right>
-          <UTooltip
+  <DashboardListShell
+    panel-id="home"
+    title="Dashboard"
+  >
+    <template #navbar-right>
+      <UTooltip
             text="Alertas"
             :shortcuts="['N']"
           >
@@ -171,9 +164,8 @@ watch(sessionEpoch, () => {
               aria-label="Abrir ações rápidas"
             />
           </UDropdownMenu>
-        </template>
-      </UDashboardNavbar>
-
+    </template>
+    <template #toolbar>
       <UDashboardToolbar data-testid="page-toolbar">
         <template #left>
           <UButton
@@ -202,8 +194,6 @@ watch(sessionEpoch, () => {
         </template>
       </UDashboardToolbar>
     </template>
-
-    <template #body>
       <!-- Área: Operações / infraestrutura (cursores, certs, backup) -->
       <section
         aria-labelledby="home-ops-infra-heading"
@@ -320,6 +310,5 @@ watch(sessionEpoch, () => {
         :summary="summary"
         :loading="loading"
       />
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>

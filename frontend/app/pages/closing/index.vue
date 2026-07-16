@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Visão de fechamento mensal de XMLs de saída (competência / prazo operacional).
- * Arquétipo: lista + filtros + stats (template customers/home + UDashboardPanel).
+ * Arquétipo: lista + filtros + stats (customers/home + DashboardListShell).
  * Não oferece retry remoto, aumento de frequência nem postergação de due_at.
  */
 import type { TableColumn } from '@nuxt/ui'
@@ -390,30 +390,30 @@ onMounted(() => {
 </script>
 
 <template>
-  <UDashboardPanel id="closing">
-    <template #header>
-      <UDashboardNavbar data-testid="page-navbar" title="Fechamento de saídas">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <UTooltip text="Atualizar">
-            <UButton
-              icon="i-lucide-refresh-cw"
-              color="neutral"
-              variant="ghost"
-              square
-              aria-label="Atualizar fechamento"
-              :loading="loading"
-              @click="load"
-            />
-          </UTooltip>
-        </template>
-      </UDashboardNavbar>
+  <!--
+    Arquétipo lista admin (customers.vue) via DashboardListShell.
+    Fontes: .reference/.../customers.vue + clients/index.vue + table-ui presets.
+  -->
+  <DashboardListShell
+    panel-id="closing"
+    title="Fechamento de saídas"
+    navbar-test-id="page-navbar"
+  >
+    <template #navbar-right>
+      <UTooltip text="Atualizar">
+        <UButton
+          icon="i-lucide-refresh-cw"
+          color="neutral"
+          variant="ghost"
+          square
+          aria-label="Atualizar fechamento"
+          :loading="loading"
+          @click="load"
+        />
+      </UTooltip>
     </template>
 
-    <template #body>
-      <UAlert
+    <UAlert
         icon="i-lucide-info"
         color="info"
         variant="subtle"
@@ -764,11 +764,10 @@ onMounted(() => {
         />
       </div>
 
-      <p class="text-xs text-muted mt-3">
-        Escopo: {{ summary?.completeness_scope || 'known_documents_only' }}.
-        Papel atual: {{ me?.role || '—' }}.
-        Atalho: <kbd class="px-1 rounded border">g</kbd> então <kbd class="px-1 rounded border">f</kbd>.
-      </p>
-    </template>
-  </UDashboardPanel>
+    <p class="text-xs text-muted mt-3">
+      Escopo: {{ summary?.completeness_scope || 'known_documents_only' }}.
+      Papel atual: {{ me?.role || '—' }}.
+      Atalho: <kbd class="px-1 rounded border">g</kbd> então <kbd class="px-1 rounded border">f</kbd>.
+    </p>
+  </DashboardListShell>
 </template>

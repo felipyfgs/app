@@ -372,28 +372,24 @@ onMounted(() => {
 </script>
 
 <template>
-  <UDashboardPanel id="monitoring-guides">
-    <template #header>
-      <UDashboardNavbar
-        title="Guias"
-        data-testid="page-navbar"
-      >
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <FiscalMonitoringPortfolioActions
-            module-key="guides"
-            :client-id="clientIdModel"
-            :situation="paymentStatus !== 'all' ? paymentStatus : undefined"
-            :competence="competence || undefined"
-            :q="q || undefined"
-            show-enqueue
-            :show-export="true"
-            @refreshed="refreshAll"
-          />
-        </template>
-      </UDashboardNavbar>
+  <DashboardListShell
+    panel-id="monitoring-guides"
+    title="Guias"
+    navbar-test-id="page-navbar"
+  >
+    <template #navbar-right>
+      <FiscalMonitoringPortfolioActions
+        module-key="guides"
+        :client-id="clientIdModel"
+        :situation="paymentStatus !== 'all' ? paymentStatus : undefined"
+        :competence="competence || undefined"
+        :q="q || undefined"
+        show-enqueue
+        :show-export="true"
+        @refreshed="refreshAll"
+      />
+    </template>
+    <template #toolbar>
       <UDashboardToolbar data-testid="page-toolbar">
         <template #left>
           <div class="flex min-w-0 flex-1 flex-col gap-2">
@@ -434,7 +430,6 @@ onMounted(() => {
       </UDashboardToolbar>
     </template>
 
-    <template #body>
       <FiscalDemoBanner
         :origin="overview?.data_origin"
         :is-synthetic="overview?.is_synthetic"
@@ -672,6 +667,5 @@ onMounted(() => {
         }"
         @success="refreshAll"
       />
-    </template>
-  </UDashboardPanel>
+  </DashboardListShell>
 </template>
