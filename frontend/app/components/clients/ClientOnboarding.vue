@@ -2,10 +2,7 @@
 import type { Client, ClientCredential, Establishment } from '~/types/api'
 import {
   formatSourceDate,
-  registrationSourceLabel,
-  registrationStatusColor,
-  registrationStatusIcon,
-  registrationStatusLabel
+  registrationSourceLabel
 } from '~/utils/registrationLabels'
 
 const props = defineProps<{
@@ -66,10 +63,6 @@ const captureReadyCount = computed(() =>
     && e.capture_enabled !== false
     && (e.capture_eligibility?.eligible !== false)
   ).length
-)
-
-const capturePausedCount = computed(() =>
-  props.establishments.filter(e => e.capture_enabled === false).length
 )
 
 const steps = computed(() => {

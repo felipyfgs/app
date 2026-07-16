@@ -730,7 +730,7 @@ onBeforeUnmount(() => {
       <template #credential-cell="{ row }">
         <div
           v-for="info in [credentialInfo(row.original)]"
-          :key="`cred-${row.original.id}`"
+          :key="`cred-${row.original.id}-${info.chipLabel}`"
           class="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_2rem] items-center gap-1.5"
         >
           <UBadge

@@ -356,7 +356,7 @@ function clearSearch() {
       <template #capture-cell="{ row }">
         <UBadge
           v-for="info in [captureInfo(row.original)]"
-          :key="`cap-${row.original.id}`"
+          :key="`cap-${row.original.id}-${info.chipLabel}`"
           :color="info.color"
           variant="soft"
           size="md"
@@ -370,7 +370,7 @@ function clearSearch() {
       <template #sync-cell="{ row }">
         <UBadge
           v-for="info in [syncInfo(row.original)]"
-          :key="`sync-${row.original.id}`"
+          :key="`sync-${row.original.id}-${info.chipLabel}`"
           :color="info.color"
           variant="soft"
           size="md"

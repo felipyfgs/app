@@ -16,7 +16,7 @@ export interface MailboxListItem {
   attachment_count?: number
 }
 
-const props = defineProps<{
+defineProps<{
   messages: MailboxListItem[]
   selectedId?: number | null
   loading?: boolean
