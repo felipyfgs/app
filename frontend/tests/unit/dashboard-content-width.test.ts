@@ -1,0 +1,43 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+const APP = resolve(__dirname, '../../app')
+
+function source(path: string): string {
+  return readFileSync(resolve(APP, path), 'utf8')
+}
+
+describe('largura responsiva do conteúdo autenticado', () => {
+  it('centraliza as variantes em DashboardContent', () => {
+    const component = source('components/dashboard/DashboardContent.vue')
+
+    expect(component).toContain('comfortable: \'max-w-5xl\'')
+    expect(component).toContain('wide: \'max-w-6xl\'')
+    expect(component).toContain('full: \'max-w-none\'')
+    expect(component).toContain('mx-auto flex w-full min-w-0 flex-col')
+  })
+
+  it.each([
+    ['pages/settings.vue', 'comfortable'],
+    ['pages/admin/index.vue', 'comfortable'],
+    ['pages/admin/serpro.vue', 'comfortable'],
+    ['pages/work/processes/[id].vue', 'comfortable'],
+    ['pages/clients/[id].vue', 'wide'],
+    ['pages/monitoring/clients/[clientId].vue', 'wide']
+  ])('%s usa a variante %s', (path, width) => {
+    const page = source(path)
+
+    expect(page).toContain(`<DashboardContent width="${width}"`)
+    expect(page).not.toMatch(/(?:lg:)?max-w-(?:2xl|3xl|4xl)/)
+  })
+
+  it.each([
+    'pages/index.vue',
+    'pages/clients/index.vue',
+    'pages/work/calendar.vue',
+    'pages/monitoring/mailbox.vue'
+  ])('%s permanece fluida conforme seu arquétipo', (path) => {
+    expect(source(path)).not.toContain('<DashboardContent')
+  })
+})

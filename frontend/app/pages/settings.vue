@@ -2,7 +2,7 @@
 /**
  * Shell de Configurações do escritório.
  * Arquétipo: `.reference/nuxt-dashboard-template/app/pages/settings.vue`
- * Navbar + Toolbar UNavigationMenu + body max-w-2xl + NuxtPage
+ * Navbar + Toolbar UNavigationMenu + DashboardContent + NuxtPage
  *
  * OpenSpec 6.1: superfície tenant = perfil, consentimento, A1, agendas.
  * Sem campos técnicos SERPRO (autor/Termo/token/OAuth).
@@ -53,7 +53,7 @@ const links = [[{
     </template>
 
     <template #body>
-      <div class="mx-auto flex w-full flex-col gap-4 sm:gap-6 lg:max-w-2xl lg:gap-12">
+      <DashboardContent width="comfortable" class="gap-4 sm:gap-6 lg:gap-12">
         <UAlert
           v-if="!canAccessAdministration"
           color="warning"
@@ -63,7 +63,7 @@ const links = [[{
           data-testid="settings-access-denied"
         />
         <NuxtPage v-if="canAccessAdministration" />
-      </div>
+      </DashboardContent>
     </template>
   </UDashboardPanel>
 </template>

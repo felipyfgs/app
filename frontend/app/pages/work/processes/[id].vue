@@ -103,7 +103,7 @@ watch([id, sessionEpoch], load)
     </template>
 
     <template #body>
-      <div class="mx-auto flex w-full max-w-3xl flex-col gap-6">
+      <DashboardContent width="comfortable" class="gap-6">
         <div v-if="loading" class="space-y-3">
           <USkeleton class="h-8 w-1/2" />
           <USkeleton class="h-32 w-full" />
@@ -282,7 +282,7 @@ watch([id, sessionEpoch], load)
             </ul>
           </section>
         </template>
-      </div>
+      </DashboardContent>
     </template>
   </UDashboardPanel>
 </template>

@@ -62,7 +62,7 @@ const links = [[{
     </template>
 
     <template #body>
-      <div class="mx-auto flex w-full flex-col gap-4 sm:gap-6 lg:max-w-4xl lg:gap-12">
+      <DashboardContent width="comfortable" class="gap-4 sm:gap-6 lg:gap-12">
         <UAlert
           v-if="!canAccessPlatformSerpro"
           color="warning"
@@ -72,7 +72,7 @@ const links = [[{
           data-testid="admin-serpro-denied"
         />
         <NuxtPage v-else />
-      </div>
+      </DashboardContent>
     </template>
   </UDashboardPanel>
 </template>

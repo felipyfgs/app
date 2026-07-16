@@ -82,7 +82,7 @@ async function onSelect(office: PlatformOfficeSummary) {
     </template>
 
     <template #body>
-      <div class="mx-auto flex w-full flex-col gap-4 sm:gap-6 lg:max-w-3xl lg:gap-12">
+      <DashboardContent width="comfortable" class="gap-4 sm:gap-6 lg:gap-12">
         <UAlert
           v-if="!canAccessPlatformAdmin"
           color="warning"
@@ -377,7 +377,7 @@ async function onSelect(office: PlatformOfficeSummary) {
             description="Perfil, consentimento, A1 e agendas ficam em Configurações. /admin não exibe mais identidade fiscal do tenant."
           />
         </template>
-      </div>
+      </DashboardContent>
     </template>
   </UDashboardPanel>
 </template>

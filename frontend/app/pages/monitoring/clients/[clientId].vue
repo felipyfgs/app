@@ -480,7 +480,7 @@ onMounted(() => {
     </template>
 
     <template #body>
-      <div class="mx-auto flex w-full flex-col gap-4 sm:gap-6 lg:max-w-4xl">
+      <DashboardContent width="wide" class="gap-4 sm:gap-6">
         <UAlert
           v-if="clientError"
           color="error"
@@ -1044,7 +1044,7 @@ onMounted(() => {
             />
           </div>
         </template>
-      </div>
+      </DashboardContent>
     </template>
   </UDashboardPanel>
 </template>

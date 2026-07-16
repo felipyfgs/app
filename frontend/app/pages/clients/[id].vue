@@ -254,7 +254,7 @@ onMounted(async () => {
     </template>
 
     <template #body>
-      <div class="flex w-full flex-col gap-4 sm:gap-6 lg:gap-12">
+      <DashboardContent width="wide" class="gap-4 sm:gap-6 lg:gap-12">
         <div
           v-if="loading && !item"
           class="space-y-4"
@@ -303,7 +303,7 @@ onMounted(async () => {
             </aside>
           </div>
         </template>
-      </div>
+      </DashboardContent>
     </template>
   </UDashboardPanel>
 </template>
