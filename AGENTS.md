@@ -91,15 +91,20 @@ Qualquer tela autenticada: skill **`panel-ui`** → **`ui-archetype`** (copiar d
 
 ## Skills de agent (canônico)
 
-| Onde | Conteúdo |
-|------|----------|
-| **`.agents/skills/`** | **Única** fonte de skills do projeto (versionar aqui). |
-| **`.grok/skills`** | Symlink → `.agents/skills` (Grok **não** lê `.agents/` nativamente). |
-| **`.grok/config.toml`** | Só MCP Playwright do projeto (Grok). |
-| **`~/.agents/skills/`** | Global: `nuxt`, `nuxt-ui`, `git-commit`, grill/domain-modeling |
+| Onde | Conteúdo | Git |
+|------|----------|-----|
+| **`.agents/skills/`** | Fonte única do projeto | versionar |
+| **`.grok/config.toml`** / **`.codex/config.toml`** | MCP Playwright | versionar |
+| **`.opencode/skills`**, **`.codex/skills`**, **`.grok/skills`** | Symlinks → `.agents/skills` | **gitignore** |
+| **`.opencode/commands`**, **`.grok/commands`** | Slash `/opsx-*` etc. | **gitignore** |
+| **`~/.agents/skills/`** | Global: nuxt, nuxt-ui, git-commit, grill/* | home |
 
-OpenCode e Codex descobrem `.agents/skills` sozinhos — **sem** pasta skills própria.  
-Sem `.opencode/commands` / `.grok/commands`: slash = nome da skill (`/panel-ui`, `/openspec-apply-change`, `/task-loop`).  
+Regenerar espelhos locais (após clone):
+
+```bash
+bash scripts/link-agent-skills.sh
+```
+
 Projeto: `panel-ui`, `ui-archetype`, `openspec-*`, `task-loop`.
 
 ## OpenSpec

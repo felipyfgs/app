@@ -131,16 +131,17 @@ Thumbs.db
 *.swp
 *.swo
 
-# --- Ferramentas locais de agente (manter skills/commands; ignorar lixo) ---
+# --- Ferramentas locais de agente ---
+# Canônico versionado: .agents/skills/ + AGENTS.md
+# Espelhos por engine (symlinks/commands) = locais, regeneráveis — NÃO versionar
 .codex/.tmp/
+.codex/skills/
 .opencode/.tmp/
-# Grok: só config.toml + skills (symlink); resto local ignorado
+.opencode/skills/
+.opencode/commands/
 .grok/*
 !.grok/config.toml
-!.grok/skills
-# .agents/skills = fonte canônica (versionar)
-# .grok/skills = symlink → .agents/skills
-# OpenCode/Codex: sem pasta skills própria (lê .agents/)
+# (skills/ e commands/ do Grok cobertos por .grok/*)
 
 # --- Artefatos locais de review/agente e screenshots de sessão ---
 .playwright-mcp/
