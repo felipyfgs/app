@@ -103,14 +103,13 @@ watch(sessionEpoch, () => {
 
 <template>
   <UDashboardPanel id="home">
-  <template #header>
-    <UDashboardNavbar title="Dashboard" data-testid="page-navbar">
-      <template #leading>
-        <UDashboardSidebarCollapse />
-      </template>
-      <template #right>
-
-      <UTooltip
+    <template #header>
+      <UDashboardNavbar title="Dashboard" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+        <template #right>
+          <UTooltip
             text="Alertas"
             :shortcuts="['N']"
           >
@@ -144,8 +143,8 @@ watch(sessionEpoch, () => {
               aria-label="Abrir ações rápidas"
             />
           </UDropdownMenu>
-      </template>
-    </UDashboardNavbar>
+        </template>
+      </UDashboardNavbar>
 
       <UDashboardToolbar data-testid="page-toolbar">
         <template #left>
@@ -166,13 +165,13 @@ watch(sessionEpoch, () => {
             v-if="lastValidAt"
             class="hidden text-xs text-muted sm:inline"
           >
-            {{ formatDateTime(lastValidAt) }}
+            Última atualização válida: {{ formatDateTime(lastValidAt) }}
           </span>
         </template>
       </UDashboardToolbar>
-  </template>
+    </template>
 
-  <template #body>
+    <template #body>
       <div class="flex flex-col gap-4 sm:gap-6">
         <HomeStats
           :summary="summary"
@@ -242,6 +241,6 @@ watch(sessionEpoch, () => {
           :loading="loading"
         />
       </div>
-  </template>
-</UDashboardPanel>
+    </template>
+  </UDashboardPanel>
 </template>

@@ -59,7 +59,15 @@ test.describe('operações CT-e', () => {
         await expect(resolveBtn).toHaveCount(0)
       } else {
         await expect(resolveBtn).toBeVisible()
-        await resolveBtn.click()
+        const [resolveResponse] = await Promise.all([
+          page.waitForResponse((response) => {
+            const pathname = new URL(response.url()).pathname
+            return response.request().method() === 'POST'
+              && /\/api\/v1\/operations\/quarantine\/\d+\/resolve$/.test(pathname)
+          }),
+          resolveBtn.click()
+        ])
+        expect(resolveResponse.ok()).toBe(true)
         await expect(page.getByTestId('cte-pending-item')).toHaveCount(0, { timeout: 10_000 })
       }
     })
@@ -68,8 +76,16 @@ test.describe('operações CT-e', () => {
   test('/settings/cte redireciona para o catálogo filtrado', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-1440', 'Redirect legado validado no desktop.')
     await installApiFixtures(page, 'OPERATOR')
-    await page.goto('/settings/cte', { waitUntil: 'domcontentloaded', timeout: SPA_READY })
+    await page.goto(
+      '/settings/cte?direction=IN&q=acme&kind=NFSE&unsafe=discard',
+      { waitUntil: 'domcontentloaded', timeout: SPA_READY }
+    )
     await expect(page).toHaveURL(/\/docs\/catalog\?.*kind=CTE/, { timeout: SPA_READY })
+    const redirected = new URL(page.url())
+    expect(redirected.searchParams.get('kind')).toBe('CTE')
+    expect(redirected.searchParams.get('direction')).toBe('IN')
+    expect(redirected.searchParams.get('q')).toBe('acme')
+    expect(redirected.searchParams.has('unsafe')).toBe(false)
     await expect(page.getByTestId('cte-catalog-context')).toBeVisible({ timeout: SPA_READY })
     // Não permanece em shell de Configurações.
     await expect(page.getByTestId('settings-panel')).toHaveCount(0)
@@ -102,7 +118,7 @@ test.describe('operações CT-e', () => {
     await installApiFixtures(page, 'VIEWER')
     await gotoCteReady(page, '/syncs')
     await expect(page.getByTestId('cte-channel-health')).toBeVisible({ timeout: SPA_READY })
-    await expect(page.getByText('CT-e dos clientes', { exact: true })).toBeVisible()
+    await expect(page.getByText('CT-e (clientes)', { exact: true })).toBeVisible()
     await expect(page.getByText('CT-e autXML do escritório', { exact: true })).toBeVisible()
     await expect(page.getByTestId('cte-client-channel-state')).toContainText(/Ocioso|Ativo/i, { timeout: SPA_READY })
     await expect(page.getByTestId('cte-office-channel-state')).toContainText(/Quiet|fila/i)

@@ -442,6 +442,56 @@ async function selectNote(note: NfseNote) {
   await router.push(`/docs/${note.access_key}`)
 }
 
+const pendingNavigationOffset = ref<-1 | 1 | null>(null)
+
+async function selectAdjacentNote(offset: -1 | 1) {
+  const current = selectedAccessKey.value
+  if (!notes.value.length) {
+    // /docs/catalog e /docs/[accessKey] remontam o workspace. O detalhe pode
+    // aparecer antes de a lista terminar de recarregar; preserve a tecla.
+    pendingNavigationOffset.value = offset
+    return
+  }
+  const index = current
+    ? notes.value.findIndex(note => note.access_key === current)
+    : (offset === 1 ? -1 : notes.value.length)
+  if (current && index === -1 && loading.value) {
+    pendingNavigationOffset.value = offset
+    return
+  }
+  const target = notes.value[index + offset]
+  if (!target) return
+  pendingNavigationOffset.value = null
+  await selectNote(target)
+}
+
+watch(
+  [() => notes.value.length, loading, selectedAccessKey],
+  () => {
+    const offset = pendingNavigationOffset.value
+    if (offset === null || loading.value || !notes.value.length) return
+    pendingNavigationOffset.value = null
+    void selectAdjacentNote(offset)
+  }
+)
+
+function onCatalogNavigationKeydown(event: KeyboardEvent) {
+  if (event.altKey || event.ctrlKey || event.metaKey) return
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+
+  const target = event.target instanceof HTMLElement ? event.target : null
+  if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
+
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  void selectAdjacentNote(event.key === 'ArrowDown' ? 1 : -1)
+}
+
+// Um único listener no workspace permanece ativo antes e durante o modal.
+// A fase de captura evita a disputa entre a tabela inerte e o focus trap.
+onMounted(() => window.addEventListener('keydown', onCatalogNavigationKeydown, true))
+onBeforeUnmount(() => window.removeEventListener('keydown', onCatalogNavigationKeydown, true))
+
 async function closeDetail() {
   await router.replace({ path: '/docs/catalog', query: catalogQueryFromFilters() })
 }

@@ -50,10 +50,13 @@ for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] satisfies OfficeRole[]) {
       if (testInfo.project.name !== 'desktop-1440') {
         await page.getByRole('button', { name: 'Abrir barra lateral' }).click()
       }
+      const settings = page.getByRole('button', { name: 'Configurações', exact: true })
       const administration = page.getByRole('link', { name: 'Administração', exact: true })
       if (role === 'ADMIN') {
+        await settings.click()
         await expect(administration).toBeVisible()
       } else {
+        await expect(settings).toHaveCount(0)
         await expect(administration).toHaveCount(0)
       }
     })
@@ -122,8 +125,8 @@ test('modal de cadastro usa dados básicos, contato e campo adicional', async ({
   await dialog.getByRole('button', { name: 'Buscar' }).click()
 
   await expect(page.getByTestId('cnpj-lookup-preview')).toBeVisible()
-  await expect(page.getByLabel('Razão social')).toHaveValue('Empresa Consultada LTDA')
-  await expect(page.getByLabel('Nome fantasia')).toHaveValue('Empresa Consultada')
+  await expect(dialog.getByRole('textbox', { name: 'Razão social*', exact: true })).toHaveValue('Empresa Consultada LTDA')
+  await expect(dialog.getByRole('textbox', { name: 'Nome fantasia', exact: true })).toHaveValue('Empresa Consultada')
 
   await page.getByLabel('Nome do contato').fill('Ana Responsável')
   await page.getByLabel('E-mail', { exact: true }).fill('ana@empresa.invalid')

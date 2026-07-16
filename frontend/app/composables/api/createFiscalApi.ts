@@ -13,7 +13,9 @@ import type {
   FiscalModuleClientsPage,
   FiscalModuleOverviewResponse,
   FiscalModulePortfolioFilters,
-  FiscalPortfolioModuleKey
+  FiscalPortfolioModuleKey,
+  FiscalRegistrationLink,
+  FiscalTaxProcess
 } from '~/types/fiscal-modules'
 import type { ApiClient, ApiUrl } from './types'
 
@@ -182,6 +184,38 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
             method: 'POST',
             body
           })
+      },
+      registrations: {
+        list: (params?: { page?: number, per_page?: number, client_id?: number, status?: string }) =>
+          client<{ data: FiscalRegistrationLink[], meta?: PageMeta }>('/api/v1/fiscal/registrations', {
+            query: params
+          }),
+        forClient: (clientId: number) =>
+          client<{ data: { client_id: number, links: FiscalRegistrationLink[] } }>(
+            `/api/v1/fiscal/clients/${clientId}/registrations`
+          ),
+        refresh: (clientId: number) =>
+          client<{ data: { queued: boolean, client_id: number } }>(
+            `/api/v1/fiscal/clients/${clientId}/registrations/refresh`,
+            { method: 'POST' }
+          )
+      },
+      taxProcesses: {
+        list: (params?: { page?: number, per_page?: number, client_id?: number, status?: string }) =>
+          client<{ data: FiscalTaxProcess[], meta?: PageMeta }>('/api/v1/fiscal/tax-processes', {
+            query: params
+          }),
+        forClient: (clientId: number) =>
+          client<{ data: { client_id: number, processes: FiscalTaxProcess[] } }>(
+            `/api/v1/fiscal/clients/${clientId}/tax-processes`
+          ),
+        get: (id: number) =>
+          client<{ data: Record<string, unknown> }>(`/api/v1/fiscal/tax-processes/${id}`),
+        refresh: (clientId: number) =>
+          client<{ data: { queued: boolean, client_id: number } }>(
+            `/api/v1/fiscal/clients/${clientId}/tax-processes/refresh`,
+            { method: 'POST' }
+          )
       },
       mailbox: {
         list: (params?: {

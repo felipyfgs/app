@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { BackupStatus } from '~/types/api'
 
-const { me, canAccessAdministration } = useDashboard()
+const { me, canAccessAdministration, canAccessPlatformSerpro } = useDashboard()
 const api = useApi()
 
 // Conteúdo administrativo só após confirmação de papel e 2FA (middleware + gate local).
@@ -301,6 +301,28 @@ watch(allowed, (ok) => {
               A API expõe somente metadados públicos e não possui rota de recuperação de PFX, senha ou chave privada.
             </p>
             <UButton class="mt-4" to="/clients" label="Gerenciar por cliente" />
+          </UPageCard>
+
+          <UPageCard
+            v-if="canAccessPlatformSerpro"
+            variant="naked"
+            title="Console SERPRO (plataforma)"
+            description="Contrato global, readiness, kill switch, cobertura e conciliação — PLATFORM_ADMIN."
+            data-testid="admin-serpro-link-card"
+          />
+          <UPageCard
+            v-if="canAccessPlatformSerpro"
+            variant="subtle"
+          >
+            <p class="text-sm text-muted">
+              Superfície global sem dados fiscais de tenants. Requer TOTP.
+            </p>
+            <UButton
+              class="mt-4"
+              to="/admin/serpro"
+              label="Abrir console SERPRO"
+              icon="i-lucide-server-cog"
+            />
           </UPageCard>
 
           <UPageCard

@@ -42,7 +42,7 @@ test.describe('monitoring rotas preenchidas (9.3)', () => {
     await installApiFixtures(page, 'ADMIN')
   })
 
-  test('Dashboard Fiscal: navbar, toolbar, KPIs e banner DEMO', async ({ page }, testInfo) => {
+  test('Dashboard Fiscal: navbar, toolbar, KPIs e origem DEMO', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-1440', 'Rotas funcionais no desktop.')
     await page.goto('/monitoring')
     await expect(page.getByRole('heading', { name: 'Dashboard Fiscal', exact: true })).toBeVisible()
@@ -50,9 +50,10 @@ test.describe('monitoring rotas preenchidas (9.3)', () => {
     await expect(page.getByTestId('page-toolbar')).toBeVisible()
     await expect(page.getByTestId('monitoring-module-nav')).toBeVisible()
     await expect(page.getByTestId('fiscal-kpis')).toBeVisible()
-    await expect(page.getByTestId('fiscal-demo-banner')).toBeVisible()
+    await expect(page.getByTestId('fiscal-data-origin-badge').first()).toBeVisible()
+    await expect(page.getByText('Dados demonstrativos').first()).toBeVisible()
     await expect(page.getByText(FISCAL_CLIENT_OFFICE_A).first()).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Atualizar', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Atualizar dashboard fiscal', exact: true })).toBeVisible()
   })
 
   for (const route of portfolioRoutes) {

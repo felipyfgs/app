@@ -22,8 +22,13 @@ test.describe('regressão visual por zonas', () => {
     await expect(page.getByTestId('page-navbar')).toHaveScreenshot('dashboard-navbar.png')
     await expect(page.getByTestId('page-toolbar')).toHaveScreenshot('dashboard-toolbar.png')
     await expect(page.getByTestId('home-stats')).toHaveScreenshot('dashboard-stats.png')
-    await expect(page.getByTestId('home-operations')).toHaveScreenshot('dashboard-operations.png')
-    await expect(page.getByTestId('home-totals')).toHaveScreenshot('dashboard-totals.png')
+    await expect(page.getByTestId('home-work-kpis')).toBeVisible()
+    const operations = page.getByTestId('home-operations')
+    const totals = page.getByTestId('home-totals')
+    await expect(operations).toBeVisible()
+    await expect(totals).toBeVisible()
+    await expect(operations).toHaveScreenshot('dashboard-operations.png')
+    await expect(totals).toHaveScreenshot('dashboard-totals.png')
   })
 
   test('tabela e modal básico de clientes', async ({ page }, testInfo) => {
@@ -41,16 +46,29 @@ test.describe('regressão visual por zonas', () => {
 
   test('detalhe fiscal sanitizado em modal', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-1440', 'O modal fiscal é validado uma vez no desktop.')
-    await openStable(page, `/docs/${NOTE_ACCESS_KEY}`, 'Documentos')
+    await page.goto(`/docs/${NOTE_ACCESS_KEY}`)
 
     const detail = page.getByTestId('note-detail')
     await expect(detail).toBeVisible()
+    await stabilizeVisualPage(page)
     await expect(detail).toHaveScreenshot('notes-detail.png')
   })
 
   for (const list of [
-    { path: '/exports', heading: 'Exportações', slug: 'exports', action: 'Nova exportação' },
-    { path: '/syncs', heading: 'Sincronizações', slug: 'syncs', action: 'Ver detalhes da execução' }
+    {
+      path: '/exports',
+      heading: 'Exportações',
+      slug: 'exports',
+      action: 'Pedir ZIP',
+      overlay: 'Pedir pacote ZIP'
+    },
+    {
+      path: '/syncs',
+      heading: 'Sincronizações',
+      slug: 'syncs',
+      action: 'Ver detalhes da execução',
+      overlay: 'Execução #51'
+    }
   ] as const) {
     test(`lista e overlay de ${list.heading}`, async ({ page }, testInfo) => {
       test.skip(testInfo.project.name === 'minimum-360', 'Snapshots aprovados usam desktop e mobile de 390 px.')
@@ -60,7 +78,9 @@ test.describe('regressão visual por zonas', () => {
       await expect(page.getByTestId('data-table')).toHaveScreenshot(`${list.slug}-table.png`)
 
       await page.getByRole('button', { name: list.action }).first().click()
-      const dialog = page.getByRole('dialog')
+      const dialog = page.getByRole('dialog').filter({
+        has: page.getByText(list.overlay, { exact: true })
+      })
       await expect(dialog).toBeVisible()
       await expect(dialog).toHaveScreenshot(`${list.slug}-overlay.png`)
     })
@@ -68,10 +88,12 @@ test.describe('regressão visual por zonas', () => {
 
   test('settings de cliente e administração', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name === 'minimum-360', 'Snapshots aprovados usam desktop e mobile de 390 px.')
-    await openStable(page, '/clients/1', 'Cliente Demonstração Segura')
+    await openStable(page, '/clients/1', 'Cliente Demonstração Segura (MATRIZ)')
     await expect(page.getByTestId('settings-panel')).toHaveScreenshot('client-settings.png')
 
-    await page.getByRole('link', { name: 'Certificado A1', exact: true }).click()
+    await page.getByTestId('client-section-tabs')
+      .getByRole('link', { name: 'Certificado A1', exact: true })
+      .click()
     await page.getByRole('button', { name: 'Substituir' }).click()
     const credentialDialog = page.getByRole('dialog', { name: 'Enviar certificado A1' })
     await expect(credentialDialog).toBeVisible()
@@ -83,12 +105,19 @@ test.describe('regressão visual por zonas', () => {
 
   test('catálogo e detalhe móvel de notas', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name === 'minimum-360', 'Snapshots aprovados usam desktop e mobile de 390 px.')
-    await openStable(page, '/docs', 'Documentos')
-    await expect(page.getByTestId('page-navbar')).toHaveScreenshot('notes-navbar.png')
-    await expect(page.getByTestId('data-table')).toHaveScreenshot('notes-table.png')
+    await page.goto('/docs/catalog')
+    const navbar = page.getByTestId('page-navbar')
+    await expect(navbar).toBeVisible()
+    await expect(navbar).toContainText('Documentos')
+    await stabilizeVisualPage(page)
+    await expect(navbar).toHaveScreenshot('notes-navbar.png')
+    const table = page.locator('#dashboard-panel-docs').getByRole('table')
+    await expect(table).toHaveScreenshot('notes-table.png')
 
     if (testInfo.project.name === 'mobile-390') {
-      await page.getByRole('button', { name: 'Abrir nota' }).first().click()
+      const noteAction = page.getByRole('button', { name: 'NFS-e nº 1001', exact: true })
+      await expect(noteAction).toHaveAttribute('title', NOTE_ACCESS_KEY)
+      await noteAction.click()
       await expect(page).toHaveURL(new RegExp(`/docs/${NOTE_ACCESS_KEY}`))
       const dialog = page.getByRole('dialog')
       await expect(dialog).toBeVisible()

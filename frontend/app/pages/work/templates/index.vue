@@ -440,26 +440,31 @@ onMounted(load)
             />
           </div>
         </template>
-      </UModal>
 
-      <div class="flex justify-end gap-2">
-        <UButton variant="ghost" label="Fechar" @click="() => { genOpen = false }" />
-        <UButton
-          v-if="genStep === 1"
-          data-testid="work-gen-preview"
-          :loading="genBusy"
-          label="Pré-visualizar"
-          @click="() => { void runPreview() }"
-        />
-        <UButton
-          v-if="genStep === 2"
-          data-testid="work-gen-confirm"
-          color="primary"
-          :loading="genBusy"
-          label="Confirmar geração"
-          @click="() => { void runConfirm() }"
-        />
-      </div>
+        <template #footer>
+          <div
+            v-if="genOpen"
+            class="flex w-full justify-end gap-2"
+          >
+            <UButton variant="ghost" label="Fechar" @click="() => { genOpen = false }" />
+            <UButton
+              v-if="genStep === 1"
+              data-testid="work-gen-preview"
+              :loading="genBusy"
+              label="Pré-visualizar"
+              @click="() => { void runPreview() }"
+            />
+            <UButton
+              v-if="genStep === 2"
+              data-testid="work-gen-confirm"
+              color="primary"
+              :loading="genBusy"
+              label="Confirmar geração"
+              @click="() => { void runConfirm() }"
+            />
+          </div>
+        </template>
+      </UModal>
     </template>
   </UDashboardPanel>
 </template>

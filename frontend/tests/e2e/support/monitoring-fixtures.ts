@@ -161,6 +161,62 @@ export async function tryFulfillMonitoringApi(
     return true
   }
 
+  const registrationRows = [{
+    id: 701,
+    client_id: 1,
+    link_key: 'VINCULO-DEMO-001',
+    status: 'ACTIVE',
+    evidence_version: 'e'.repeat(32),
+    source_provenance: 'SERPRO_REAL',
+    is_simulated: false,
+    refreshed_at: FISCAL_FIXTURE_NOW
+  }]
+  if (pathname.endsWith('/api/v1/fiscal/registrations') && method === 'GET') {
+    await maybeSlow(scenario)
+    if (scenario === 'error') {
+      await fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
+      return true
+    }
+    await fulfill(route, { data: scenario === 'empty' ? [] : registrationRows, meta: pageMeta(registrationRows.length, 25) })
+    return true
+  }
+  if (/\/api\/v1\/fiscal\/clients\/\d+\/registrations$/.test(pathname) && method === 'GET') {
+    await fulfill(route, { data: { client_id: 1, links: scenario === 'empty' ? [] : registrationRows } })
+    return true
+  }
+  if (/\/api\/v1\/fiscal\/clients\/\d+\/registrations\/refresh$/.test(pathname) && method === 'POST') {
+    await fulfill(route, { data: { queued: true, client_id: 1 } }, 202)
+    return true
+  }
+
+  const taxProcessRows = [{
+    id: 801,
+    client_id: 1,
+    process_number: 'PROC-DEMO-001',
+    status: 'OPEN',
+    evidence_version: 'f'.repeat(32),
+    source_provenance: 'SERPRO_REAL',
+    is_simulated: false,
+    refreshed_at: FISCAL_FIXTURE_NOW
+  }]
+  if (pathname.endsWith('/api/v1/fiscal/tax-processes') && method === 'GET') {
+    await maybeSlow(scenario)
+    if (scenario === 'error') {
+      await fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
+      return true
+    }
+    await fulfill(route, { data: scenario === 'empty' ? [] : taxProcessRows, meta: pageMeta(taxProcessRows.length, 25) })
+    return true
+  }
+  if (/\/api\/v1\/fiscal\/clients\/\d+\/tax-processes$/.test(pathname) && method === 'GET') {
+    await fulfill(route, { data: { client_id: 1, processes: scenario === 'empty' ? [] : taxProcessRows } })
+    return true
+  }
+  if (/\/api\/v1\/fiscal\/clients\/\d+\/tax-processes\/refresh$/.test(pathname) && method === 'POST') {
+    await fulfill(route, { data: { queued: true, client_id: 1 } }, 202)
+    return true
+  }
+
   if (pathname.endsWith('/api/v1/fiscal/mailbox/messages') && method === 'GET') {
     await maybeSlow(scenario)
     if (scenario === 'error') {

@@ -29,6 +29,16 @@ const form = reactive({
   valid_to: ''
 })
 const saving = ref(false)
+/** Seletores tipados (serviço/poder) — espelham o formulário de importação. */
+const typedService = ref<string | undefined>(undefined)
+const typedPower = ref<string | undefined>(undefined)
+
+watch(typedService, (v) => {
+  if (v) form.service_code = v
+})
+watch(typedPower, (v) => {
+  if (v) form.power_code = v
+})
 
 const draftClientId = computed(() => {
   const n = Number(clientId.value)
@@ -247,6 +257,13 @@ onMounted(load)
       title="Importar evidência manual"
       description="Referencie evidência externa — não envie XML completo de procuração."
     >
+      <SerproTypedSelectors
+        v-model:service-code="typedService"
+        v-model:power-code="typedPower"
+        :show-environment="false"
+        :show-client="false"
+        class="mb-4"
+      />
       <div class="grid gap-3 sm:grid-cols-2">
         <UFormField label="Cliente ID">
           <UInput
@@ -259,6 +276,7 @@ onMounted(load)
           <UInput
             v-model="form.power_code"
             class="w-full"
+            data-testid="proxy-power-code"
           />
         </UFormField>
         <UFormField label="Sistema">
@@ -271,6 +289,7 @@ onMounted(load)
           <UInput
             v-model="form.service_code"
             class="w-full"
+            data-testid="proxy-service-code"
           />
         </UFormField>
         <UFormField

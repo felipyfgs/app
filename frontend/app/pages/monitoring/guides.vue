@@ -36,6 +36,11 @@ const paymentStatus = ref(String(route.query.payment_status || 'all'))
 const rows = ref<Record<string, unknown>[]>([])
 const overview = ref<FiscalModuleOverview | null>(null)
 const overviewError = ref<string | null>(null)
+const syntheticDataOriginMeta = computed(() => {
+  const rowOrigin = rows.value.find(row => row.data_origin)?.data_origin
+  const meta = dataOriginMeta(overview.value?.data_origin ?? String(rowOrigin || ''))
+  return meta.synthetic ? meta : null
+})
 
 const detailOpen = ref(false)
 const detail = ref<Record<string, unknown> | null>(null)
@@ -419,6 +424,17 @@ onMounted(() => {
     </template>
 
     <template #body>
+      <UAlert
+        v-if="syntheticDataOriginMeta"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-flask-conical"
+        :title="syntheticDataOriginMeta.label"
+        :description="syntheticDataOriginMeta.description"
+        class="mb-4"
+        data-testid="fiscal-demo-banner"
+      />
+
       <UAlert
         v-if="overviewError"
         color="warning"

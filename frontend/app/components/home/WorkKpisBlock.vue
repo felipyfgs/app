@@ -254,7 +254,7 @@ const lastUpdated = computed(() => {
           :key="r.task_id"
         >
           <NuxtLink
-            :to="`/work?task=${r.task_id}`"
+            :to="`/work/tasks/${r.task_id}`"
             class="flex justify-between gap-2 rounded-md border border-default px-3 py-2 hover:bg-elevated/40"
           >
             <span class="truncate">{{ r.title }}</span>

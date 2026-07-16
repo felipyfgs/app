@@ -19,7 +19,7 @@ async function gotoWork(page: import('@playwright/test').Page, path: string) {
     selector = '[data-testid="work-templates-panel"]'
   } else if (path.startsWith('/work/processes')) {
     selector = '[data-testid="work-processes-panel"]'
-  } else if (path === '/work' || path.startsWith('/work?')) {
+  } else if (path === '/work' || path.startsWith('/work?') || path.startsWith('/work/tasks')) {
     selector = '[data-testid="work-queue-panel"]'
   } else if (path.startsWith('/admin/departments')) {
     selector = '[data-testid="department-name"]'
@@ -27,11 +27,6 @@ async function gotoWork(page: import('@playwright/test').Page, path: string) {
     selector = '[data-testid="home-work-kpis"], [data-testid="page-title"]'
   }
   await expect(page.locator(selector).first()).toBeVisible({ timeout: 45000 })
-}
-
-/** getByTestId com first() — evita strict mode se o attr aparecer em wrapper. */
-function tid(page: import('@playwright/test').Page, id: string) {
-  return page.getByTestId(id).first()
 }
 
 test.describe('Work — ADMIN: departamento → modelo → preview → geração', () => {
@@ -52,13 +47,24 @@ test.describe('Work — ADMIN: departamento → modelo → preview → geração
 
     await gotoWork(page, '/work/templates')
     await expect(page.getByText('DAS mensal').first()).toBeVisible({ timeout: 30000 })
+    await expect(
+      page
+        .getByRole('button', { name: 'Fechar', exact: true })
+        .filter({ hasText: 'Fechar' })
+    ).toBeHidden()
     await page.getByRole('button', { name: 'Gerar' }).first().click()
-    await expect(page.getByRole('dialog')).toBeVisible()
-    await page.getByTestId('work-gen-competence').first().fill('2026-06')
-    await page.getByTestId('work-gen-clients').first().fill('1')
-    await page.getByTestId('work-gen-preview').first().click()
+    const generationDialog = page.getByRole('dialog', { name: 'Gerar — DAS mensal' })
+    await expect(generationDialog).toBeVisible()
+    await expect(
+      generationDialog
+        .getByRole('button', { name: 'Fechar', exact: true })
+        .filter({ hasText: 'Fechar' })
+    ).toBeVisible()
+    await generationDialog.getByTestId('work-gen-competence').fill('2026-06')
+    await generationDialog.getByTestId('work-gen-clients').fill('1')
+    await generationDialog.getByTestId('work-gen-preview').click()
     await expect(page.getByText(/prontos|Batch #|bloqueados/i).first()).toBeVisible({ timeout: 20000 })
-    await page.getByTestId('work-gen-confirm').first().click()
+    await generationDialog.getByTestId('work-gen-confirm').click()
     await expect(page.getByText(/Batch #501|COMPLETED|confirmado|prontos/i).first()).toBeVisible({ timeout: 20000 })
 
     await gotoWork(page, '/')

@@ -16,6 +16,22 @@ export function hasConfirmedAdminAccess(user?: MeUser | null): boolean {
     && !user.requires_two_factor_setup
 }
 
+/** Flag global PLATFORM_ADMIN (sem membership fiscal implícita). */
+export function isPlatformAdmin(user?: MeUser | null): boolean {
+  return Boolean(user?.is_platform_admin)
+}
+
+/**
+ * Console global SERPRO (/admin/serpro/*): PLATFORM_ADMIN + TOTP confirmado.
+ * Não concede dados fiscais de tenant.
+ */
+export function canAccessPlatformSerproConsole(user?: MeUser | null): boolean {
+  if (!isPlatformAdmin(user)) return false
+  if (user?.requires_two_factor_setup) return false
+  if (user?.two_factor_required && !user.two_factor_confirmed) return false
+  return true
+}
+
 function roleCanMutate(role?: OfficeRole | null): boolean {
   return role === 'ADMIN' || role === 'OPERATOR'
 }

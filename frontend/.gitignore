@@ -32,3 +32,5 @@ test-results
 playwright-report
 blob-report
 coverage
+# Baselines visuais Playwright — só local (não versionar; regenerar com --update-snapshots)
+tests/e2e/__screenshots__/

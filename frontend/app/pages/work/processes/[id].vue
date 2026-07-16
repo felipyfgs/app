@@ -82,31 +82,27 @@ watch([id, sessionEpoch], load)
 
 <template>
   <UDashboardPanel id="work-process-detail" data-testid="work-process-detail" :ui="{ body: 'lg:py-8' }">
-  <template #header>
-    <UDashboardNavbar :title="process?.title || 'Processo'" data-testid="page-navbar">
-      <template #leading>
-        <UDashboardSidebarCollapse />
-      </template>
-      <template #right>
-
-      <UButton
+    <template #header>
+      <UDashboardNavbar :title="process?.title || 'Processo'" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+        <template #right>
+          <UButton
             to="/work/processes"
             variant="ghost"
             icon="i-lucide-arrow-left"
             label="Voltar"
           />
-      </template>
-    </UDashboardNavbar>
+        </template>
+      </UDashboardNavbar>
 
       <UDashboardToolbar v-if="process">
         <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
       </UDashboardToolbar>
-  </template>
+    </template>
 
-  <template #body>
-
-    
-    
+    <template #body>
       <div class="mx-auto flex w-full max-w-3xl flex-col gap-6">
         <div v-if="loading" class="space-y-3">
           <USkeleton class="h-8 w-1/2" />
@@ -234,7 +230,7 @@ watch([id, sessionEpoch], load)
                 <UButton
                   size="sm"
                   variant="soft"
-                  :to="`/work?task=${task.id}`"
+                  :to="`/work/tasks/${task.id}`"
                   label="Abrir na fila"
                 />
               </li>
@@ -287,6 +283,6 @@ watch([id, sessionEpoch], load)
           </section>
         </template>
       </div>
-  </template>
-</UDashboardPanel>
+    </template>
+  </UDashboardPanel>
 </template>

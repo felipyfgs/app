@@ -59,22 +59,21 @@ describe('useWorkCalendarRange utils', () => {
 })
 
 describe('useWorkQueueFilters utils', () => {
-  it('normaliza query e omite vazios', () => {
+  it('normaliza query de filtros e nunca serializa task (recurso no path)', () => {
     const parsed = parseWorkQueueQuery({
       tab: 'atrasadas',
-      task: '12',
+      task: '12', // legado ignorado na query de filtros
       q: ' das ',
       page: '2',
       department_id: '3'
     })
     expect(parsed.tab).toBe('atrasadas')
-    expect(parsed.task).toBe(12)
     expect(parsed.department_id).toBe(3)
     expect(parsed.page).toBe(2)
+    expect(parsed).not.toHaveProperty('task')
 
     const serialized = serializeWorkQueueQuery({
       tab: 'open',
-      task: null,
       q: '',
       department_id: null,
       assignee_membership_id: null,
@@ -86,5 +85,6 @@ describe('useWorkQueueFilters utils', () => {
     expect(serialized.tab).toBeUndefined()
     expect(serialized.page).toBeUndefined()
     expect(serialized.q).toBeUndefined()
+    expect(serialized).not.toHaveProperty('task')
   })
 })

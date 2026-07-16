@@ -1,6 +1,7 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { MeUser } from '~/types/api'
 import {
+  canAccessPlatformSerproConsole,
   canCreateExport,
   canManageClients,
   canManageWorkCatalog,
@@ -302,6 +303,48 @@ export function mainDestinations(
     })
   }
 
+  if (canAccessPlatformSerproConsole(user)) {
+    items.push({
+      id: 'platform-serpro',
+      label: 'SERPRO plataforma',
+      icon: 'i-lucide-server-cog',
+      type: 'trigger',
+      defaultOpen: path.startsWith('/admin/serpro'),
+      children: [
+        {
+          id: 'platform-serpro-console',
+          label: 'Console global',
+          icon: 'i-lucide-gauge',
+          to: '/admin/serpro'
+        },
+        {
+          id: 'platform-serpro-contracts',
+          label: 'Contratos',
+          icon: 'i-lucide-file-badge',
+          to: '/admin/serpro/contracts'
+        },
+        {
+          id: 'platform-serpro-catalog',
+          label: 'Cobertura',
+          icon: 'i-lucide-layout-grid',
+          to: '/admin/serpro/catalog'
+        },
+        {
+          id: 'platform-serpro-usage',
+          label: 'Orçamento / conciliação',
+          icon: 'i-lucide-wallet',
+          to: '/admin/serpro/usage'
+        },
+        {
+          id: 'platform-serpro-rollout',
+          label: 'Rollout',
+          icon: 'i-lucide-rocket',
+          to: '/admin/serpro/rollout'
+        }
+      ]
+    })
+  }
+
   return items
 }
 
@@ -391,6 +434,8 @@ export function toNavigationItems(
     if (item.type === 'trigger' && item.children?.length) {
       return {
         ...base,
+        // value estável para Accordion (type=single no sidebar)
+        value: item.id,
         type: 'trigger' as const,
         defaultOpen: item.defaultOpen,
         // grupo pai não navega

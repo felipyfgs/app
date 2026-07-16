@@ -122,14 +122,35 @@ describe('navigation', () => {
     expect(clients?.type).toBe('trigger')
     expect(clients?.children?.length).toBe(2)
     expect(clients?.to).toBeUndefined()
+    // value estável p/ Accordion type=single no sidebar
+    expect(clients?.value).toBe('clients')
     const docs = items.find(i => i.label === 'Documentos')
     expect(docs?.type).toBe('trigger')
     expect(docs?.children?.length).toBe(2)
     expect(docs?.to).toBeUndefined()
+    expect(docs?.value).toBe('docs')
     const ops = items.find(i => i.label === 'Operações')
     expect(ops?.type).toBe('trigger')
     expect(ops?.children?.length).toBe(5)
     expect(ops?.to).toBeUndefined()
+    expect(ops?.value).toBe('operations')
+  })
+
+  it('em uma rota, no máximo um grupo trigger fica defaultOpen (acordeão single)', () => {
+    for (const path of ['/monitoring/sitfis', '/clients', '/docs/catalog', '/work', '/exports', '/']) {
+      const tree = mainDestinations(user('OPERATOR'), { path })
+      const openTriggers = tree.filter(d => d.type === 'trigger' && d.defaultOpen)
+      expect(openTriggers.length).toBeLessThanOrEqual(1)
+      if (path.startsWith('/monitoring')) {
+        expect(openTriggers[0]?.id).toBe('monitoring')
+      }
+      if (path === '/clients' || path.startsWith('/clients/')) {
+        expect(openTriggers[0]?.id).toBe('clients')
+      }
+      if (path === '/') {
+        expect(openTriggers).toHaveLength(0)
+      }
+    }
   })
 
   it('não expõe destino CT-e separado em sidebar nem Configurações', () => {

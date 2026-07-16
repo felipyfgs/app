@@ -45,31 +45,35 @@ const columns: TableColumn<TotalRow>[] = [{
 </script>
 
 <template>
-  <UTable
+  <div
     data-testid="home-totals"
-    :data="data"
-    :columns="columns"
-    :loading="loading"
-    class="shrink-0"
-    :ui="COMPACT_DASHBOARD_TABLE_UI"
+    class="min-w-0 shrink-0"
   >
-    <template #label-cell="{ row }">
-      <span class="font-medium text-highlighted">{{ row.original.label }}</span>
-    </template>
-    <template #value-cell="{ row }">
-      {{ loading && !summary ? '…' : row.original.value }}
-    </template>
-    <template #actions-cell="{ row }">
-      <div class="text-right">
-        <UButton
-          :to="row.original.to"
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-arrow-right"
-          square
-          :aria-label="`Abrir ${row.original.label}`"
-        />
-      </div>
-    </template>
-  </UTable>
+    <UTable
+      :data="data"
+      :columns="columns"
+      :loading="loading"
+      class="min-w-0"
+      :ui="COMPACT_DASHBOARD_TABLE_UI"
+    >
+      <template #label-cell="{ row }">
+        <span class="font-medium text-highlighted">{{ row.original.label }}</span>
+      </template>
+      <template #value-cell="{ row }">
+        {{ loading && !summary ? '…' : row.original.value }}
+      </template>
+      <template #actions-cell="{ row }">
+        <div class="text-right">
+          <UButton
+            :to="row.original.to"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-arrow-right"
+            square
+            :aria-label="`Abrir ${row.original.label}`"
+          />
+        </div>
+      </template>
+    </UTable>
+  </div>
 </template>

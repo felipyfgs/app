@@ -52,6 +52,11 @@ const entryColumns: TableColumn<OfficeUsageEntry>[] = [
     accessorKey: 'client_id',
     header: 'Cliente',
     cell: ({ row }) => row.original.client_id ?? '—'
+  },
+  {
+    id: 'provenance',
+    header: 'Origem',
+    cell: ({ row }) => row.original.consumption_class || (row.original.is_billable_attempt ? 'billable' : '—')
   }
 ]
 
@@ -154,115 +159,129 @@ onMounted(load)
     </UPageCard>
 
     <div class="flex flex-col gap-4 sm:gap-6 lg:gap-12">
-    <UAlert
-      v-if="loadError"
-      color="error"
-      icon="i-lucide-circle-x"
-      :title="loadError"
-    />
+      <UAlert
+        v-if="loadError"
+        color="error"
+        icon="i-lucide-circle-x"
+        :title="loadError"
+      />
 
-    <div
-      v-if="loading && !summary"
-      class="text-sm text-muted"
-    >
-      Carregando…
-    </div>
+      <div
+        v-if="loading && !summary"
+        class="text-sm text-muted"
+      >
+        Carregando…
+      </div>
 
-    <UPageGrid
-      v-else-if="summary"
-      class="gap-4 sm:grid-cols-2"
-      data-testid="usage-kpis"
-    >
-      <UPageCard
-        variant="subtle"
-        title="Período"
+      <UPageGrid
+        v-else-if="summary"
+        class="gap-4 sm:grid-cols-2"
+        data-testid="usage-kpis"
       >
-        <p class="text-2xl font-semibold">
-          {{ summary.period_month }}/{{ summary.period_year }}
-        </p>
-      </UPageCard>
-      <UPageCard
-        variant="subtle"
-        title="Usado"
-      >
-        <p class="text-2xl font-semibold">
-          {{ summary.used_quantity }}
-        </p>
-      </UPageCard>
-      <UPageCard
-        variant="subtle"
-        title="Franquia"
-      >
-        <p class="text-2xl font-semibold">
-          {{ summary.franchise_quota ?? '—' }}
-        </p>
-      </UPageCard>
-      <UPageCard
-        variant="subtle"
-        title="Saldo"
-      >
-        <p class="text-2xl font-semibold">
-          {{ summary.remaining ?? '—' }}
-        </p>
-        <UBadge
-          v-if="summary.alert_threshold_reached"
-          color="warning"
+        <UPageCard
           variant="subtle"
-          class="mt-2"
+          title="Período"
         >
-          Alerta de franquia
-        </UBadge>
-      </UPageCard>
-    </UPageGrid>
+          <p class="text-2xl font-semibold">
+            {{ summary.period_month }}/{{ summary.period_year }}
+          </p>
+        </UPageCard>
+        <UPageCard
+          variant="subtle"
+          title="Usado"
+        >
+          <p class="text-2xl font-semibold">
+            {{ summary.used_quantity }}
+          </p>
+        </UPageCard>
+        <UPageCard
+          variant="subtle"
+          title="Franquia"
+        >
+          <p class="text-2xl font-semibold">
+            {{ summary.franchise_quota ?? '—' }}
+          </p>
+        </UPageCard>
+        <UPageCard
+          variant="subtle"
+          title="Saldo"
+        >
+          <p class="text-2xl font-semibold">
+            {{ summary.remaining ?? '—' }}
+          </p>
+          <UBadge
+            v-if="summary.alert_threshold_reached"
+            color="warning"
+            variant="subtle"
+            class="mt-2"
+          >
+            Alerta de franquia
+          </UBadge>
+        </UPageCard>
+      </UPageGrid>
 
-    <UAlert
-      v-else-if="!loading"
-      color="neutral"
-      icon="i-lucide-inbox"
-      title="Sem dados de consumo"
-    />
-
-    <UPageCard
-      v-if="usage?.by_service?.length"
-      variant="subtle"
-      title="Por serviço"
-    >
-      <UTable
-        :data="usage.by_service as unknown as Record<string, unknown>[]"
-        :columns="serviceColumns"
-        :ui="DASHBOARD_TABLE_UI"
+      <UAlert
+        v-else-if="!loading"
+        color="neutral"
+        icon="i-lucide-inbox"
+        title="Sem dados de consumo"
       />
-      <!-- Intencionalmente sem coluna de preço global / fatura consolidada -->
-    </UPageCard>
 
-    <UPageCard
-      variant="subtle"
-      title="Lançamentos do período"
-      description="Somente operações atribuídas a este escritório."
-    >
-      <UEmpty
-        v-if="!entries.length"
-        icon="i-lucide-receipt"
-        title="Nenhum lançamento no período"
-      />
-      <template v-else>
+      <UPageCard
+        v-if="usage?.by_service?.length"
+        variant="subtle"
+        title="Por serviço"
+      >
         <UTable
-          :data="entries"
-          :columns="entryColumns"
+          :data="usage.by_service as unknown as Record<string, unknown>[]"
+          :columns="serviceColumns"
           :ui="DASHBOARD_TABLE_UI"
         />
-        <div
-          v-if="entriesTotal > perPage"
-          class="mt-4 flex justify-end"
-        >
-          <UPagination
-            v-model="page"
-            :total="entriesTotal"
-            :items-per-page="perPage"
-          />
+      <!-- Intencionalmente sem coluna de preço global / fatura consolidada -->
+      </UPageCard>
+
+      <UPageCard
+        variant="subtle"
+        title="Lançamentos do período"
+        description="Somente operações atribuídas a este escritório."
+      >
+        <div class="mb-3 flex flex-wrap gap-2">
+          <SerproProvenanceBadge code="estimado" />
+          <SerproProvenanceBadge code="real" />
+          <SerproProvenanceBadge code="simulado" />
+          <span class="text-xs text-muted">Badges de origem — sem fatura global.</span>
         </div>
-      </template>
-    </UPageCard>
+        <UEmpty
+          v-if="!entries.length"
+          icon="i-lucide-receipt"
+          title="Nenhum lançamento no período"
+        />
+        <template v-else>
+          <UTable
+            :data="entries"
+            :columns="entryColumns"
+            :ui="DASHBOARD_TABLE_UI"
+          >
+            <template #provenance-cell="{ row }">
+              <SerproProvenanceBadge
+                :consumption-class="row.original.consumption_class"
+                :is-billable-attempt="row.original.is_billable_attempt"
+                :result="row.original.result"
+              />
+            </template>
+          </UTable>
+          <div
+            v-if="entriesTotal > perPage"
+            class="mt-4 flex justify-end"
+          >
+            <UPagination
+              v-model="page"
+              :total="entriesTotal"
+              :items-per-page="perPage"
+            />
+          </div>
+        </template>
+      </UPageCard>
     </div>
   </div>
 </template>

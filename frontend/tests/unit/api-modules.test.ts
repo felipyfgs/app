@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createDocumentsApi } from '../../app/composables/api/createDocumentsApi'
 import { createOfficeApi } from '../../app/composables/api/createOfficeApi'
 import { createOperationsApi } from '../../app/composables/api/createOperationsApi'
+import { createPlatformApi } from '../../app/composables/api/createPlatformApi'
 import { createWorkApi } from '../../app/composables/api/createWorkApi'
 
 type Call = { path: string, opts?: Record<string, unknown> }
@@ -60,5 +61,19 @@ describe('composables/api factories (runtime)', () => {
     expect(calls[0]?.path).toBe('/api/v1/office/autxml')
     expect(calls[0]?.opts?.query).toEqual({ page: 2, per_page: 25 })
     expect(calls[0]?.opts?.signal).toBe(controller.signal)
+  })
+
+  it('platform.serpro usa paths /api/v1/platform/serpro/*', async () => {
+    const { client, calls } = mockClient()
+    const api = createPlatformApi(client as never)
+
+    await api.platform.serpro.health({ environment: 'TRIAL' })
+    await api.platform.serpro.killSwitch.set({ active: true, reason: 'teste' })
+    await api.platform.serpro.usage.consolidation({ year: 2026, month: 1 })
+
+    expect(calls[0]?.path).toBe('/api/v1/platform/serpro/health')
+    expect(calls[1]?.path).toBe('/api/v1/platform/serpro/kill-switch')
+    expect(calls[1]?.opts?.method).toBe('POST')
+    expect(calls[2]?.path).toBe('/api/v1/platform/serpro-usage/consolidation')
   })
 })

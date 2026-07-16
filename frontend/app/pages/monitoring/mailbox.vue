@@ -131,30 +131,35 @@ onMounted(load)
 
 <template>
   <div class="flex min-h-0 w-full flex-1">
-    <UDashboardPanel id="mailbox-list" resizable :default-size="30" :min-size="22" :max-size="40">
-  <template #header>
-    <UDashboardNavbar title="Caixas Postais" data-testid="page-navbar">
-      <template #leading>
-        <UDashboardSidebarCollapse />
-      </template>
-      <template #trailing>
-
-        <UBadge
-          :label="String(total)"
-          variant="subtle"
-        />
-      </template>
-      <template #right>
-
-        <MonitoringPortfolioActions
-          module-key="mailbox"
-          :client-id="clientIdModel"
-          show-enqueue
-          :show-export="true"
-          @refreshed="load"
-        />
-      </template>
-    </UDashboardNavbar>
+    <UDashboardPanel
+      id="mailbox-list"
+      resizable
+      :default-size="30"
+      :min-size="22"
+      :max-size="40"
+    >
+      <template #header>
+        <UDashboardNavbar title="Caixas Postais" data-testid="page-navbar">
+          <template #leading>
+            <UDashboardSidebarCollapse />
+          </template>
+          <template #trailing>
+            <UBadge
+              :label="String(total)"
+              variant="subtle"
+            />
+          </template>
+          <template #right>
+            <MonitoringPortfolioActions
+              module-key="mailbox"
+              :client-id="clientIdModel"
+              compact
+              show-enqueue
+              :show-export="true"
+              @refreshed="load"
+            />
+          </template>
+        </UDashboardNavbar>
 
         <UDashboardToolbar data-testid="page-toolbar">
           <template #left>
@@ -185,14 +190,9 @@ onMounted(load)
             </div>
           </template>
         </UDashboardToolbar>
-  </template>
+      </template>
 
-  <template #body>
-
-      
-      
-      
-
+      <template #body>
         <UAlert
           v-if="loadError"
           color="error"
@@ -233,8 +233,8 @@ onMounted(load)
             size="sm"
           />
         </div>
-  </template>
-</UDashboardPanel>
+      </template>
+    </UDashboardPanel>
 
     <!-- Desktop: detalhe adjacente via NuxtPage -->
     <div class="hidden min-w-0 flex-1 lg:flex">

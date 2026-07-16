@@ -13,6 +13,13 @@ import { upperFirst } from 'scule'
 import { sortHeader } from '~/utils/table-sort'
 import { DENSE_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
+/** Mantém o preset customers.vue e reduz apenas o padding das células em xs. */
+const clientsTableUi = {
+  ...DENSE_DASHBOARD_TABLE_UI,
+  th: `${DENSE_DASHBOARD_TABLE_UI.th} px-1 sm:px-4`,
+  td: `${DENSE_DASHBOARD_TABLE_UI.td} px-1 sm:px-4`
+}
+
 const api = useApi()
 const {
   canManageClients,
@@ -136,8 +143,8 @@ const columns: TableColumn<Client>[] = [
     enableHiding: false,
     meta: {
       class: {
-        th: 'w-[34%] min-w-36',
-        td: 'w-[34%] min-w-36'
+        th: 'w-[32%] min-w-20 sm:w-[34%] sm:min-w-36',
+        td: 'w-[32%] min-w-20 sm:w-[34%] sm:min-w-36'
       }
     }
   },
@@ -160,8 +167,8 @@ const columns: TableColumn<Client>[] = [
     enableHiding: false,
     meta: {
       class: {
-        th: 'w-[24%] min-w-36',
-        td: 'w-[24%] min-w-36'
+        th: 'w-[40%] min-w-24 sm:w-[24%] sm:min-w-36',
+        td: 'w-[40%] min-w-24 sm:w-[24%] sm:min-w-36'
       }
     }
   },
@@ -182,8 +189,8 @@ const columns: TableColumn<Client>[] = [
     enableSorting: false,
     meta: {
       class: {
-        th: 'w-[10%] min-w-20',
-        td: 'w-[10%] min-w-20'
+        th: 'w-[18%] min-w-12 sm:w-[10%] sm:min-w-20',
+        td: 'w-[18%] min-w-12 sm:w-[10%] sm:min-w-20'
       }
     }
   }
@@ -571,7 +578,7 @@ onBeforeUnmount(() => {
         -->
     <UPageGrid
       data-testid="clients-stats"
-      class="lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-px"
+      class="grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-4 lg:gap-px"
     >
       <UPageCard
         v-for="kpi in kpiCards"
@@ -691,7 +698,7 @@ onBeforeUnmount(() => {
       :data="clients"
       :columns="columns"
       :loading="loading"
-      :ui="DENSE_DASHBOARD_TABLE_UI"
+      :ui="clientsTableUi"
     >
       <template #legal_name-cell="{ row }">
         <div class="min-w-0">
@@ -807,12 +814,12 @@ onBeforeUnmount(() => {
             variant="soft"
             size="sm"
             square
-            class="size-8"
+            class="hidden size-8 sm:inline-flex"
             :aria-label="`Abrir ${row.original.legal_name || row.original.name}`"
             @click="openPage(row.original)"
           />
           <span
-            class="h-5 w-px shrink-0 bg-accented"
+            class="hidden h-5 w-px shrink-0 bg-accented sm:block"
             aria-hidden="true"
           />
           <UDropdownMenu

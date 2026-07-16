@@ -225,7 +225,9 @@ describe('MonitoringModuleNav (6.3 / 6.11)', () => {
       'sitfis',
       'mailbox',
       'declarations',
-      'guides'
+      'guides',
+      'registrations',
+      'tax_processes'
     ])
   })
 

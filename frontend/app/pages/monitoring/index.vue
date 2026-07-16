@@ -214,22 +214,21 @@ onMounted(load)
           >
             Atualizado: {{ formatDateTime(lastValidAt) }}
           </span>
+          <UButton
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-refresh-cw"
+            square
+            aria-label="Atualizar dashboard fiscal"
+            :loading="loading"
+            @click="load"
+          />
         </template>
       </UDashboardNavbar>
 
       <UDashboardToolbar data-testid="page-toolbar">
         <template #left>
           <MonitoringModuleNav active="dashboard" />
-        </template>
-        <template #right>
-          <UButton
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-refresh-cw"
-            label="Atualizar"
-            :loading="loading"
-            @click="load"
-          />
         </template>
       </UDashboardToolbar>
     </template>

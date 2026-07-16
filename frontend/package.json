@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:visual": "PLAYWRIGHT_INCLUDE_VISUAL=1 playwright test visual.spec.ts monitoring-visual.spec.ts work-visual.spec.ts",
     "test:artifacts": "node tests/security/scan-artifacts.mjs",
     "test:fidelity": "node scripts/template-fidelity-gate.mjs"
   },

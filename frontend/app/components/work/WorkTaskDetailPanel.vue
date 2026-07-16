@@ -108,29 +108,47 @@ function downloadUrl(evidenceId: number) {
 </script>
 
 <template>
-  <UDashboardPanel id="work-task-detail" data-testid="work-task-detail">
-  <template #header>
-    <UDashboardNavbar :title="detail?.title || 'Tarefa'" data-testid="page-navbar" :toggle="false">
-      <template #leading>
-
-      <UButton
-        icon="i-lucide-x"
-        color="neutral"
-        variant="ghost"
-        class="-ms-1.5"
-        aria-label="Fechar detalhe"
-        @click="emit('close')"
-      />
-      </template>
-      <template #right>
-
-          <template v-if="detail && canExecute">
+  <UDashboardPanel
+    id="work-task-detail"
+    data-testid="work-task-detail"
+    class="min-w-0"
+  >
+    <template #header>
+      <!-- Navbar do detalhe isolado (padrão InboxMail): X + título truncado + ações -->
+      <UDashboardNavbar
+        :title="detail?.title || 'Tarefa'"
+        data-testid="work-task-detail-navbar"
+        :toggle="false"
+        class="min-w-0"
+        :ui="{
+          root: 'min-w-0',
+          left: 'min-w-0 flex-1',
+          title: 'truncate'
+        }"
+      >
+        <template #leading>
+          <UButton
+            icon="i-lucide-x"
+            color="neutral"
+            variant="ghost"
+            class="-ms-1.5 shrink-0"
+            aria-label="Fechar detalhe"
+            data-testid="work-task-detail-close"
+            @click="emit('close')"
+          />
+        </template>
+        <template #right>
+          <div
+            v-if="detail && canExecute"
+            class="flex shrink-0 items-center gap-0.5"
+          >
             <UTooltip v-if="detail.status === 'A_FAZER'" text="Iniciar">
               <UButton
                 icon="i-lucide-play"
                 color="neutral"
                 variant="ghost"
                 :loading="actionBusy"
+                aria-label="Iniciar"
                 @click="runAction('start')"
               />
             </UTooltip>
@@ -140,6 +158,7 @@ function downloadUrl(evidenceId: number) {
                 color="neutral"
                 variant="ghost"
                 :loading="actionBusy"
+                aria-label="Concluir"
                 @click="runAction('complete')"
               />
             </UTooltip>
@@ -149,19 +168,16 @@ function downloadUrl(evidenceId: number) {
                 color="neutral"
                 variant="ghost"
                 :loading="actionBusy"
+                aria-label="Retomar"
                 @click="runAction('resume')"
               />
             </UTooltip>
-          </template>
-      </template>
-    </UDashboardNavbar>
-  </template>
+          </div>
+        </template>
+      </UDashboardNavbar>
+    </template>
 
-  <template #body>
-
-    
-    
-
+    <template #body>
       <div v-if="loading" class="space-y-3 p-4">
         <USkeleton class="h-8 w-1/2" />
         <USkeleton class="h-24 w-full" />
@@ -384,6 +400,6 @@ function downloadUrl(evidenceId: number) {
           </div>
         </div>
       </div>
-  </template>
-</UDashboardPanel>
+    </template>
+  </UDashboardPanel>
 </template>

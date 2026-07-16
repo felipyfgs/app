@@ -18,7 +18,9 @@ describe('MonitoringModuleNav items (6.3)', () => {
       'monitoring-sitfis',
       'monitoring-mailbox',
       'monitoring-declarations',
-      'monitoring-guides'
+      'monitoring-guides',
+      'monitoring-registrations',
+      'monitoring-tax-processes'
     ])
   })
 

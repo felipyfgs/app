@@ -6,6 +6,7 @@
  */
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { Client, FiscalFinding, FiscalMonitoringRun, FiscalPendingItem, FiscalSnapshot } from '~/types/api'
+import type { FiscalRegistrationLink, FiscalTaxProcess } from '~/types/fiscal-modules'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
@@ -20,6 +21,8 @@ type SectionKey
     | 'guides'
     | 'fgts'
     | 'sitfis'
+    | 'registrations'
+    | 'tax_processes'
 
 const SECTION_KEYS: SectionKey[] = [
   'overview',
@@ -30,7 +33,9 @@ const SECTION_KEYS: SectionKey[] = [
   'declarations',
   'guides',
   'fgts',
-  'sitfis'
+  'sitfis',
+  'registrations',
+  'tax_processes'
 ]
 
 function isSectionKey(value: string): value is SectionKey {
@@ -71,6 +76,8 @@ const declarations = ref<Record<string, unknown>[]>([])
 const guides = ref<Record<string, unknown>[]>([])
 const sitfis = ref<Record<string, unknown> | null>(null)
 const fgtsCompetences = ref<Record<string, unknown>[]>([])
+const registrationLinks = ref<FiscalRegistrationLink[]>([])
+const taxProcesses = ref<FiscalTaxProcess[]>([])
 
 interface SectionState {
   loading: boolean
@@ -92,7 +99,9 @@ const sections = reactive<Record<SectionKey, SectionState>>({
   declarations: emptySection(),
   guides: emptySection(),
   fgts: emptySection(),
-  sitfis: emptySection()
+  sitfis: emptySection(),
+  registrations: emptySection(),
+  tax_processes: emptySection()
 })
 
 function cacheKey(): string {
@@ -158,6 +167,18 @@ const links = computed<NavigationMenuItem[][]>(() => {
       value: 'sitfis',
       active: active === 'sitfis',
       onSelect: () => setTab('sitfis')
+    },
+    {
+      label: 'Cadastro / Vínculos',
+      value: 'registrations',
+      active: active === 'registrations',
+      onSelect: () => setTab('registrations')
+    },
+    {
+      label: 'Processos fiscais',
+      value: 'tax_processes',
+      active: active === 'tax_processes',
+      onSelect: () => setTab('tax_processes')
     }
   ]]
 })
@@ -225,6 +246,12 @@ function clearSectionData(key: SectionKey) {
       break
     case 'sitfis':
       sitfis.value = null
+      break
+    case 'registrations':
+      registrationLinks.value = []
+      break
+    case 'tax_processes':
+      taxProcesses.value = []
       break
   }
 }
@@ -361,6 +388,18 @@ async function loadSection(key: SectionKey, force = false) {
         sitfis.value = (res.data as Record<string, unknown>) || null
         break
       }
+      case 'registrations': {
+        const res = await api.fiscal.registrations.forClient(clientId.value)
+        if (cacheKey() !== keyNow) return
+        registrationLinks.value = res.data?.links || []
+        break
+      }
+      case 'tax_processes': {
+        const res = await api.fiscal.taxProcesses.forClient(clientId.value)
+        if (cacheKey() !== keyNow) return
+        taxProcesses.value = res.data?.processes || []
+        break
+      }
     }
     if (cacheKey() === keyNow) {
       state.loadedKey = keyNow
@@ -411,40 +450,36 @@ onMounted(() => {
 
 <template>
   <UDashboardPanel id="monitoring-client-detail" data-testid="settings-panel" :ui="{ body: 'lg:py-12' }">
-  <template #header>
-    <UDashboardNavbar :title="client?.name || client?.legal_name || `Cliente #${clientId}`" data-testid="page-navbar">
-      <template #leading>
-        <UDashboardSidebarCollapse />
-      </template>
-      <template #right>
-      <UButton
-        to="/clients"
-        color="neutral"
-        variant="ghost"
-        icon="i-lucide-users"
-        label="Cadastro"
-      />
-      <UButton
-        to="/monitoring"
-        color="neutral"
-        variant="ghost"
-        icon="i-lucide-arrow-left"
-        label="Dashboard"
-      />
-      </template>
-    </UDashboardNavbar>
+    <template #header>
+      <UDashboardNavbar :title="client?.name || client?.legal_name || `Cliente #${clientId}`" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+        <template #right>
+          <UButton
+            to="/clients"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-users"
+            label="Cadastro"
+          />
+          <UButton
+            to="/monitoring"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-arrow-left"
+            label="Dashboard"
+          />
+        </template>
+      </UDashboardNavbar>
 
       <UDashboardToolbar data-testid="monitoring-client-section-tabs">
         <!-- NOTE: The `-mx-1` class is used to align with the `DashboardSidebarCollapse` button here. -->
         <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
       </UDashboardToolbar>
-  </template>
+    </template>
 
-  <template #body>
-
-    
-    
-
+    <template #body>
       <div class="mx-auto flex w-full flex-col gap-4 sm:gap-6 lg:max-w-4xl">
         <UAlert
           v-if="clientError"
@@ -880,6 +915,102 @@ onMounted(() => {
                 />
               </div>
             </UPageCard>
+
+            <!-- registrations -->
+            <UPageCard
+              v-else-if="tab === 'registrations'"
+              title="Cadastro e vínculos"
+              variant="subtle"
+              data-testid="client-registrations-section"
+            >
+              <div
+                v-if="!registrationLinks.length"
+                class="text-sm text-muted"
+              >
+                Nenhum vínculo projetado para este cliente.
+              </div>
+              <ul
+                v-else
+                class="divide-y divide-default"
+              >
+                <li
+                  v-for="link in registrationLinks"
+                  :key="String(link.id)"
+                  class="flex items-start justify-between gap-3 py-3 text-sm"
+                >
+                  <div>
+                    <p class="font-medium">
+                      {{ link.link_key }}
+                    </p>
+                    <p class="text-xs text-muted">
+                      Atualizado: {{ link.refreshed_at || link.observed_at || '—' }}
+                      · {{ link.is_simulated ? 'Simulado' : 'SERPRO' }}
+                    </p>
+                  </div>
+                  <UBadge
+                    variant="subtle"
+                    :label="String(link.status || '—')"
+                  />
+                </li>
+              </ul>
+              <div class="mt-3">
+                <UButton
+                  size="sm"
+                  color="neutral"
+                  variant="soft"
+                  :to="`/monitoring/registrations`"
+                  label="Abrir carteira de vínculos"
+                />
+              </div>
+            </UPageCard>
+
+            <!-- tax processes -->
+            <UPageCard
+              v-else-if="tab === 'tax_processes'"
+              title="Processos fiscais"
+              variant="subtle"
+              data-testid="client-tax-processes-section"
+            >
+              <div
+                v-if="!taxProcesses.length"
+                class="text-sm text-muted"
+              >
+                Nenhum processo projetado para este cliente.
+              </div>
+              <ul
+                v-else
+                class="divide-y divide-default"
+              >
+                <li
+                  v-for="proc in taxProcesses"
+                  :key="String(proc.id)"
+                  class="flex items-start justify-between gap-3 py-3 text-sm"
+                >
+                  <div>
+                    <p class="font-medium">
+                      {{ proc.process_number }}
+                    </p>
+                    <p class="text-xs text-muted">
+                      Atualizado: {{ proc.refreshed_at || proc.observed_at || '—' }}
+                      · {{ proc.is_simulated ? 'Simulado' : 'SERPRO' }}
+                    </p>
+                  </div>
+                  <UBadge
+                    variant="subtle"
+                    :label="String(proc.status || '—')"
+                  />
+                </li>
+              </ul>
+              <div class="mt-3">
+                <UButton
+                  size="sm"
+                  color="neutral"
+                  variant="soft"
+                  :to="`/monitoring/tax-processes`"
+                  label="Abrir carteira de processos"
+                />
+              </div>
+            </UPageCard>
           </template>
 
           <div class="flex flex-wrap gap-2">
@@ -914,6 +1045,6 @@ onMounted(() => {
           </div>
         </template>
       </div>
-  </template>
-</UDashboardPanel>
+    </template>
+  </UDashboardPanel>
 </template>

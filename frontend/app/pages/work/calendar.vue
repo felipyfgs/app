@@ -186,36 +186,36 @@ watch(sessionEpoch, () => {
 
 <template>
   <UDashboardPanel id="work-calendar-main" data-testid="work-calendar" class="min-w-0">
-  <template #header>
-    <UDashboardNavbar title="Calendário operacional" data-testid="page-navbar">
-      <template #leading>
-        <UDashboardSidebarCollapse />
-      </template>
-      <template #right>
+    <template #header>
+      <UDashboardNavbar title="Calendário operacional" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+      </UDashboardNavbar>
 
-          <div class="flex items-center gap-1">
-            <UButton
-              icon="i-lucide-chevron-left"
-              color="neutral"
-              variant="ghost"
-              aria-label="Período anterior"
-              @click="() => { void navigate(-1) }"
-            />
-            <UButton
-              color="neutral"
-              variant="ghost"
-              size="sm"
-              label="Hoje"
-              @click="() => { void navigate(0) }"
-            />
-            <UButton
-              icon="i-lucide-chevron-right"
-              color="neutral"
-              variant="ghost"
-              aria-label="Próximo período"
-              @click="() => { void navigate(1) }"
-            />
-          </div>
+      <UDashboardToolbar>
+        <div class="flex w-full flex-wrap items-center gap-1">
+          <UButton
+            icon="i-lucide-chevron-left"
+            color="neutral"
+            variant="ghost"
+            aria-label="Período anterior"
+            @click="() => { void navigate(-1) }"
+          />
+          <UButton
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            label="Hoje"
+            @click="() => { void navigate(0) }"
+          />
+          <UButton
+            icon="i-lucide-chevron-right"
+            color="neutral"
+            variant="ghost"
+            aria-label="Próximo período"
+            @click="() => { void navigate(1) }"
+          />
           <span class="ms-2 hidden text-sm font-medium sm:inline" aria-live="polite">
             {{ label }}
           </span>
@@ -224,27 +224,24 @@ watch(sessionEpoch, () => {
             :items="viewItems"
             :content="false"
             size="xs"
-            class="ms-2"
+            class="sm:ms-2"
           />
-      <UButton
-        class="lg:hidden"
-        icon="i-lucide-panel-right"
-        color="neutral"
-        variant="ghost"
-        aria-label="Abrir painel do dia"
-        @click="() => { railOpen = true }"
-      />
-      </template>
-    </UDashboardNavbar>
-  </template>
+          <UButton
+            class="ms-auto lg:hidden"
+            icon="i-lucide-panel-right"
+            color="neutral"
+            variant="ghost"
+            aria-label="Abrir painel do dia"
+            @click="() => { railOpen = true }"
+          />
+        </div>
+      </UDashboardToolbar>
+    </template>
 
-  <template #body>
-
-    
-
-    <h1 class="sr-only">
-      Calendário operacional
-    </h1>
+    <template #body>
+      <h1 class="sr-only">
+        Calendário operacional
+      </h1>
 
       <div v-if="loadError && !days.length" class="p-4">
         <UAlert color="error" :title="loadError">
@@ -314,7 +311,7 @@ watch(sessionEpoch, () => {
                 :key="item.id"
                 type="button"
                 class="w-full rounded border border-default p-1.5 text-left text-xs hover:bg-elevated/50"
-                @click="navigateTo(`/work?task=${item.id}`)"
+                @click="navigateTo(`/work/tasks/${item.id}`)"
               >
                 <p class="truncate font-medium">
                   {{ item.title }}
@@ -348,7 +345,7 @@ watch(sessionEpoch, () => {
             v-for="item in dayItems"
             :key="item.id"
             class="cursor-pointer p-3 hover:bg-elevated/50"
-            @click="navigateTo(`/work?task=${item.id}`)"
+            @click="navigateTo(`/work/tasks/${item.id}`)"
           >
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
@@ -369,22 +366,27 @@ watch(sessionEpoch, () => {
           </li>
         </ul>
       </div>
-  </template>
-</UDashboardPanel>
-
+    </template>
+  </UDashboardPanel>
 
   <!-- Rail desktop -->
-  <UDashboardPanel id="work-calendar-rail" class="hidden lg:flex" resizable :default-size="22" :min-size="18" :max-size="28">
-  <template #header>
-    <UDashboardNavbar title="Dia selecionado" data-testid="page-navbar" :toggle="false">
-      <template #leading>
-        <UDashboardSidebarCollapse />
-      </template>
-    </UDashboardNavbar>
-  </template>
+  <UDashboardPanel
+    id="work-calendar-rail"
+    class="hidden lg:flex"
+    resizable
+    :default-size="22"
+    :min-size="18"
+    :max-size="28"
+  >
+    <template #header>
+      <UDashboardNavbar title="Dia selecionado" data-testid="page-navbar" :toggle="false">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+      </UDashboardNavbar>
+    </template>
 
-  <template #body>
-
+    <template #body>
       <div class="flex flex-col gap-4 p-3">
         <UCalendar v-model="calendarModel" class="w-full" />
         <UTabs
@@ -405,7 +407,7 @@ watch(sessionEpoch, () => {
             v-for="item in railItems"
             :key="item.id"
             class="cursor-pointer rounded-md border border-default p-2 text-sm hover:bg-elevated/50"
-            @click="navigateTo(`/work?task=${item.id}`)"
+            @click="navigateTo(`/work/tasks/${item.id}`)"
           >
             <p class="truncate font-medium">
               {{ item.title }}
@@ -423,8 +425,8 @@ watch(sessionEpoch, () => {
           </li>
         </ul>
       </div>
-  </template>
-</UDashboardPanel>
+    </template>
+  </UDashboardPanel>
 
   <!-- Rail mobile -->
   <USlideover v-model:open="railOpen" title="Dia selecionado" class="lg:hidden">
@@ -436,7 +438,7 @@ watch(sessionEpoch, () => {
             v-for="item in dayItems"
             :key="item.id"
             class="cursor-pointer rounded-md border border-default p-2 text-sm"
-            @click="navigateTo(`/work?task=${item.id}`)"
+            @click="navigateTo(`/work/tasks/${item.id}`)"
           >
             {{ item.title }}
           </li>

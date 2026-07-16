@@ -27,6 +27,8 @@ export interface MeUser {
   two_factor_confirmed: boolean
   two_factor_required: boolean
   requires_two_factor_setup: boolean
+  /** Autorização global PLATFORM_ADMIN — não implica membership fiscal. */
+  is_platform_admin?: boolean
   office: Office | null
   role: OfficeRole | null
 }
@@ -749,6 +751,17 @@ export type InboxItemType
     | 'cte_pending_import'
     | 'sitfis_run_completed'
     | 'sitfis_run_failed'
+    | 'serpro_termo_missing'
+    | 'serpro_termo_expired'
+    | 'serpro_token_expiring'
+    | 'serpro_auth_action_required'
+    | 'serpro_auth_blocked'
+    | 'proxy_power_expired'
+    | 'proxy_power_missing'
+    | 'source_unavailable'
+    | 'query_blocked'
+    | 'usage_franchise_exceeded'
+    | 'usage_high'
 
 /** Recovery SVRS NFC-e (DTOs sanitizados — sem HTML/XML/PFX). */
 export interface SvrsNfceChannelSummary {
@@ -828,6 +841,12 @@ export interface InboxItemLinks {
   client?: string
   sync?: string
   credential?: string
+  /** Paths canônicos tenant-safe (podem vir legados e serem normalizados no FE). */
+  serpro_authorization?: string
+  proxy?: string
+  usage?: string
+  run?: string
+  monitoring?: string
 }
 
 export interface InboxItem {
@@ -1122,8 +1141,179 @@ export interface SerproPlatformHealth {
   environment?: string
   status?: string
   healthy?: boolean
+  available?: boolean
   message?: string | null
+  kill_switch?: boolean | SerproKillSwitchStatus
+  circuit_open?: boolean
+  smoke_status?: string
+  fake_clients?: boolean
   [key: string]: unknown
+}
+
+/** Ambiente Integra Contador. */
+export type SerproEnvironmentCode = 'TRIAL' | 'PRODUCTION' | string
+
+/** Badges de proveniência/billing honestos na UI. */
+export type SerproProvenanceBadge
+  = | 'simulado'
+    | 'real'
+    | 'estimado'
+    | 'conciliado'
+    | 'possivelmente_bilhetavel'
+    | 'nao_bilhetavel'
+
+export interface SerproContractSanitized {
+  id: number
+  environment: SerproEnvironmentCode
+  status: string
+  contractor_cnpj_masked?: string | null
+  contractor_name?: string | null
+  subject_name?: string | null
+  fingerprint_sha256?: string | null
+  cert_valid_from?: string | null
+  cert_valid_to?: string | null
+  activated_at?: string | null
+  superseded_at?: string | null
+  blocked_at?: string | null
+  last_verified_at?: string | null
+  last_auth_at?: string | null
+  health_status?: string | null
+  health_message?: string | null
+  token_expires_at?: string | null
+  consumer_key_hint?: string | null
+  credentials_exposed?: boolean
+  segregation_class?: string | null
+  active_credential_version_id?: number | null
+  has_pfx?: boolean
+  has_oauth?: boolean
+  has_cached_token?: boolean
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface SerproKillSwitchStatus {
+  global: {
+    active: boolean
+    source?: string | null
+  }
+  solutions: Record<string, boolean>
+}
+
+export interface SerproGlobalHealth {
+  environment: SerproEnvironmentCode
+  kill_switch: SerproKillSwitchStatus
+  circuit_breaker?: {
+    state?: string
+    open_until?: number | null
+    failures?: number
+    [key: string]: unknown
+  }
+  active_contract?: SerproContractSanitized | null
+  contracts?: SerproContractSanitized[]
+  smoke_status?: string
+  fake_clients?: boolean
+  readiness?: SerproReadinessSnapshot | null
+}
+
+/** Snapshot de readiness (API pode evoluir — campos opcionais). */
+export interface SerproReadinessSnapshot {
+  overall?: 'READY' | 'BLOCKED' | 'DEGRADED' | 'UNKNOWN' | string
+  environment?: SerproEnvironmentCode
+  gates?: Array<{
+    code: string
+    scope?: 'global' | 'office' | 'client' | 'operation' | string
+    status: 'PASS' | 'FAIL' | 'SKIP' | 'WARN' | string
+    message?: string | null
+    expires_at?: string | null
+  }>
+  evidence_kind?: 'offline' | 'live' | string | null
+  evaluated_at?: string | null
+  expires_at?: string | null
+}
+
+export interface SerproCatalogEntry {
+  id?: number
+  operation_key?: string
+  system_code?: string | null
+  service_code?: string | null
+  operation_code?: string | null
+  power_code?: string | null
+  platform_support?: string | null
+  consumption_class?: string | null
+  route?: string | null
+  billable?: boolean | null
+  label?: string | null
+  [key: string]: unknown
+}
+
+export interface SerproUsageConsolidation {
+  period_year: number
+  period_month: number
+  global?: Array<Record<string, unknown>>
+  by_tenant?: Array<{
+    office_id: number
+    entry_count?: number
+    total_quantity?: number
+    total_estimated_cost_micros?: number
+  }>
+  reconciliations?: SerproUsageReconciliation[]
+  cycle?: Record<string, unknown> | null
+  [key: string]: unknown
+}
+
+export interface SerproUsageReconciliation {
+  id?: number
+  period_year?: number
+  period_month?: number
+  official_total_cost_micros?: number
+  estimated_total_cost_micros?: number | null
+  difference_micros?: number | null
+  status?: string | null
+  official_reference?: string | null
+  difference_cause?: string | null
+  notes?: string | null
+  [key: string]: unknown
+}
+
+export interface SerproRolloutState {
+  smoke_status?: string
+  kill_switch?: SerproKillSwitchStatus
+  fake_clients?: boolean
+  free_smoke_ok?: boolean
+  canary_enabled?: boolean
+  notes?: string | null
+  [key: string]: unknown
+}
+
+/** Passos do checklist tenant de onboarding Integra. */
+export type SerproChecklistStepId
+  = | 'environment'
+    | 'author'
+    | 'certificate_termo'
+    | 'token'
+    | 'proxy_power'
+    | 'client_operation'
+
+export type SerproChecklistStepStatus = 'done' | 'current' | 'blocked' | 'pending' | 'skipped'
+
+export interface SerproChecklistStep {
+  id: SerproChecklistStepId
+  label: string
+  description: string
+  status: SerproChecklistStepStatus
+  href?: string
+  reasons: string[]
+  next_actions: SerproNextAction[]
+}
+
+export interface SerproNextAction {
+  code: string
+  label: string
+  href?: string
+  /** Papéis que podem executar (omitido = qualquer com acesso à tela). */
+  roles?: OfficeRole[]
+  requires_2fa?: boolean
+  severity?: 'info' | 'warning' | 'error'
 }
 
 // ─── Consumo SERPRO (tenant) ─────────────────────────────────────────────────

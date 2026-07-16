@@ -351,20 +351,6 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
   return cols
 })
 
-defineShortcuts({
-  arrowdown: () => {
-    if (!props.notes.length) return
-    const index = props.notes.findIndex(n => n.access_key === props.selectedAccessKey)
-    if (index === -1) emit('select', props.notes[0]!)
-    else if (index < props.notes.length - 1) emit('select', props.notes[index + 1]!)
-  },
-  arrowup: () => {
-    if (!props.notes.length) return
-    const index = props.notes.findIndex(n => n.access_key === props.selectedAccessKey)
-    if (index === -1) emit('select', props.notes[props.notes.length - 1]!)
-    else if (index > 0) emit('select', props.notes[index - 1]!)
-  }
-})
 </script>
 
 <template>

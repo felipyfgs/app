@@ -1,7 +1,12 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3000'
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4173'
 const usesExternalServer = Boolean(process.env.PLAYWRIGHT_BASE_URL)
+// Baselines PNG ficam só em disco local (gitignored). No CI e no `test:e2e`
+// padrão os specs *visual* são pulados; opte com PLAYWRIGHT_INCLUDE_VISUAL=1.
+const includeVisual = ['1', 'true', 'yes'].includes(
+  String(process.env.PLAYWRIGHT_INCLUDE_VISUAL || '').toLowerCase()
+)
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -10,6 +15,8 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'list',
+  // visual.spec.ts + *-visual.spec.ts exigem __screenshots__/ local
+  testIgnore: includeVisual ? undefined : ['**/visual.spec.ts', '**/*-visual.spec.ts'],
   snapshotPathTemplate: '{testDir}/__screenshots__/{projectName}/{testFilePath}/{arg}{ext}',
   expect: {
     timeout: 20_000,
@@ -23,14 +30,19 @@ export default defineConfig({
   webServer: usesExternalServer
     ? undefined
     : {
-        command: 'pnpm dev --host 127.0.0.1 --port 3000',
+        // Gera e serve o mesmo artefato estático publicado, em porta exclusiva,
+        // sem reutilizar por engano um Nuxt dev já aberto pelo desenvolvedor.
+        command: 'pnpm run generate && pnpm exec vite preview --host 127.0.0.1 --port 4173 --strictPort --outDir .output/public',
         url: baseURL,
-        reuseExistingServer: !process.env.CI,
-        timeout: 120_000
+        reuseExistingServer: false,
+        timeout: 180_000
       },
   use: {
     baseURL,
     trace: 'on-first-retry',
+    // As suítes mockam API/Sanctum via page.route; um SW ativo pode contornar
+    // essas rotas e tornar mutations dependentes de uma corrida de ativação.
+    serviceWorkers: 'block',
     colorScheme: 'light',
     locale: 'pt-BR',
     timezoneId: 'America/Sao_Paulo',

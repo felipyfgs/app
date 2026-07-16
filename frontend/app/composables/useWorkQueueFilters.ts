@@ -1,9 +1,15 @@
 /**
- * Filtros e URL da fila `/work` — normalização, paginação e descarte de tenant.
+ * Filtros da fila `/work` na query string.
+ *
+ * Padrão do painel:
+ * - **Recurso (tarefa selecionada)** → path: `/work/tasks/{id}`
+ * - **Filtros de lista** (tab, q, page, …) → query string
+ *
+ * Nunca colocar `task` / `office_id` na query.
  */
+
 export interface WorkQueueFilters {
   tab: string
-  task: number | null
   q: string
   department_id: number | null
   assignee_membership_id: number | null
@@ -15,7 +21,6 @@ export interface WorkQueueFilters {
 
 const EMPTY: WorkQueueFilters = {
   tab: 'open',
-  task: null,
   q: '',
   department_id: null,
   assignee_membership_id: null,
@@ -35,7 +40,6 @@ export function parseWorkQueueQuery(query: Record<string, unknown>): WorkQueueFi
   const tab = String(query.tab || 'open')
   return {
     tab: tab || 'open',
-    task: numOrNull(query.task),
     q: String(query.q || ''),
     department_id: numOrNull(query.department_id),
     assignee_membership_id: numOrNull(query.assignee_membership_id),
@@ -49,7 +53,6 @@ export function parseWorkQueueQuery(query: Record<string, unknown>): WorkQueueFi
 export function serializeWorkQueueQuery(f: WorkQueueFilters): Record<string, string | undefined> {
   return {
     tab: f.tab === 'open' ? undefined : f.tab,
-    task: f.task ? String(f.task) : undefined,
     q: f.q.trim() || undefined,
     department_id: f.department_id ? String(f.department_id) : undefined,
     assignee_membership_id: f.assignee_membership_id ? String(f.assignee_membership_id) : undefined,
@@ -60,11 +63,31 @@ export function serializeWorkQueueQuery(f: WorkQueueFilters): Record<string, str
   }
 }
 
+/** Path canônico do recurso tarefa (deep-link / mestre–detalhe). */
+export function workTaskPath(taskId: number): string {
+  return `/work/tasks/${taskId}`
+}
+
+/** Path da fila sem seleção. */
+export function workQueuePath(): string {
+  return '/work'
+}
+
 export function useWorkQueueFilters() {
   const route = useRoute()
   const router = useRouter()
 
   const filters = computed(() => parseWorkQueueQuery(route.query as Record<string, unknown>))
+
+  /** ID da tarefa no path (`/work/tasks/:id`), nunca na query. */
+  const selectedTaskId = computed((): number | null => {
+    const raw = route.params.id
+    if (typeof raw === 'string' && raw !== '') {
+      return numOrNull(raw)
+    }
+    // Compat legado: ?task=N → redirecionar (middleware na página)
+    return numOrNull((route.query as Record<string, unknown>).task)
+  })
 
   async function patch(partial: Partial<WorkQueueFilters>, opts?: { resetPage?: boolean }) {
     const next: WorkQueueFilters = { ...filters.value, ...partial }
@@ -78,7 +101,23 @@ export function useWorkQueueFilters() {
     ) && partial.page === undefined) {
       next.page = 1
     }
-    await router.replace({ query: serializeWorkQueueQuery(next) })
+    const query = serializeWorkQueueQuery(next)
+    // Mantém o path atual (fila ou tarefa); só atualiza filtros.
+    await router.replace({ path: route.path, query })
+  }
+
+  async function selectTask(taskId: number) {
+    await router.replace({
+      path: workTaskPath(taskId),
+      query: serializeWorkQueueQuery(filters.value)
+    })
+  }
+
+  async function clearTask() {
+    await router.replace({
+      path: workQueuePath(),
+      query: serializeWorkQueueQuery(filters.value)
+    })
   }
 
   function apiParams(): Record<string, string | number> {
@@ -97,8 +136,20 @@ export function useWorkQueueFilters() {
   }
 
   function reset() {
-    return router.replace({ query: serializeWorkQueueQuery({ ...EMPTY }) })
+    return router.replace({ path: workQueuePath(), query: serializeWorkQueueQuery({ ...EMPTY }) })
   }
 
-  return { filters, patch, apiParams, reset, parseWorkQueueQuery, serializeWorkQueueQuery }
+  return {
+    filters,
+    selectedTaskId,
+    patch,
+    selectTask,
+    clearTask,
+    apiParams,
+    reset,
+    parseWorkQueueQuery,
+    serializeWorkQueueQuery,
+    workTaskPath,
+    workQueuePath
+  }
 }

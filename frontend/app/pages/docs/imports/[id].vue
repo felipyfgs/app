@@ -10,7 +10,7 @@ import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 const api = useApi()
 const route = useRoute()
 const toast = useToast()
-const { canImportDocuments } = useDashboard()
+const { canImportDocuments, sessionEpoch } = useDashboard()
 
 const publicId = computed(() => String(route.params.id || ''))
 
@@ -26,6 +26,28 @@ const total = ref(0)
 const statusFilter = ref('all')
 const retrying = ref<number | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let batchLoadSeq = 0
+let itemsLoadSeq = 0
+
+const itemsFeed = {
+  reset() {
+    items.value = []
+    page.value = 1
+    lastPage.value = 1
+    total.value = 0
+    itemsLoading.value = false
+  }
+}
+
+function contextKey(epoch = sessionEpoch.value, requestedPublicId = publicId.value) {
+  return `${epoch}:${requestedPublicId}`
+}
+
+function isCurrentContext(context: string, epoch: number, requestedPublicId: string) {
+  return context === contextKey()
+    && epoch === sessionEpoch.value
+    && requestedPublicId === publicId.value
+}
 
 const statusFilterItems = [
   { label: 'Todos os resultados', value: 'all' },
@@ -80,48 +102,75 @@ function canRetry(row: Record<string, unknown>) {
 }
 
 async function loadBatch(silent = false) {
+  const seq = ++batchLoadSeq
+  const epoch = sessionEpoch.value
+  const requestedPublicId = publicId.value
+  const context = contextKey(epoch, requestedPublicId)
   if (!silent) loading.value = true
   try {
-    const res = await api.documents.importBatchGet(publicId.value)
+    const res = await api.documents.importBatchGet(requestedPublicId)
+    if (seq !== batchLoadSeq || epoch !== sessionEpoch.value) return
+    if (!isCurrentContext(context, epoch, requestedPublicId)) return
     batch.value = res.data
     if (!silent) loadError.value = null
     pollError.value = null
   } catch (caught) {
+    if (seq !== batchLoadSeq || epoch !== sessionEpoch.value) return
+    if (!isCurrentContext(context, epoch, requestedPublicId)) return
     const msg = apiErrorMessage(caught, 'Lote não encontrado ou inacessível.')
     if (silent && batch.value) {
       pollError.value = msg
     } else {
+      batch.value = null
+      itemsLoadSeq += 1
+      itemsFeed.reset()
       loadError.value = msg
     }
   } finally {
-    if (!silent) loading.value = false
+    if (!silent && seq === batchLoadSeq && isCurrentContext(context, epoch, requestedPublicId)) {
+      loading.value = false
+    }
   }
 }
 
 async function loadItems() {
+  const seq = ++itemsLoadSeq
+  const epoch = sessionEpoch.value
+  const requestedPublicId = publicId.value
+  const context = contextKey(epoch, requestedPublicId)
   itemsLoading.value = true
   try {
-    const res = await api.documents.importBatchItems(publicId.value, {
+    const res = await api.documents.importBatchItems(requestedPublicId, {
       page: page.value,
       per_page: 25,
       ...(statusFilter.value !== 'all' ? { status: statusFilter.value } : {})
     })
+    if (seq !== itemsLoadSeq || epoch !== sessionEpoch.value) return
+    if (!isCurrentContext(context, epoch, requestedPublicId)) return
     items.value = res.data || []
     lastPage.value = Number(res.meta?.last_page || 1)
     total.value = Number(res.meta?.total || items.value.length)
   } catch (caught) {
+    if (seq !== itemsLoadSeq || epoch !== sessionEpoch.value) return
+    if (!isCurrentContext(context, epoch, requestedPublicId)) return
     toast.add({ title: apiErrorMessage(caught, 'Falha ao carregar itens.'), color: 'error' })
   } finally {
-    itemsLoading.value = false
+    if (seq === itemsLoadSeq && isCurrentContext(context, epoch, requestedPublicId)) {
+      itemsLoading.value = false
+    }
   }
 }
 
 async function retryItem(row: Record<string, unknown>) {
   if (!canRetry(row) || retrying.value) return
   const id = Number(row.id)
+  const epoch = sessionEpoch.value
+  const requestedPublicId = publicId.value
+  const context = contextKey(epoch, requestedPublicId)
   retrying.value = id
   try {
-    await api.documents.importBatchRetryItem(publicId.value, id)
+    await api.documents.importBatchRetryItem(requestedPublicId, id)
+    if (!isCurrentContext(context, epoch, requestedPublicId)) return
     toast.add({
       title: 'Retentativa enfileirada',
       description: 'Cadastre o estabelecimento do emitente se ainda estiver UNMATCHED.',
@@ -129,9 +178,10 @@ async function retryItem(row: Record<string, unknown>) {
     })
     await Promise.all([loadBatch(true), loadItems()])
   } catch (caught) {
+    if (!isCurrentContext(context, epoch, requestedPublicId)) return
     toast.add({ title: apiErrorMessage(caught, 'Retry não permitido para este item.'), color: 'error' })
   } finally {
-    retrying.value = null
+    if (isCurrentContext(context, epoch, requestedPublicId)) retrying.value = null
   }
 }
 
@@ -167,20 +217,33 @@ function startPoll() {
   }, 4000)
 }
 
+async function reload() {
+  await Promise.all([loadBatch(), loadItems()])
+  startPoll()
+}
+
 watch([page, statusFilter], () => {
   void loadItems()
 })
+
+watch([publicId, sessionEpoch], () => {
+  batchLoadSeq += 1
+  batch.value = null
+  itemsLoadSeq += 1
+  itemsFeed.reset()
+  loadError.value = null
+  pollError.value = null
+  retrying.value = null
+  stopPoll()
+  void reload()
+}, { flush: 'sync' })
 
 watch(isTerminal, (done) => {
   if (done) stopPoll()
   else startPoll()
 })
 
-onMounted(async () => {
-  await loadBatch()
-  await loadItems()
-  startPoll()
-})
+onMounted(() => void reload())
 
 onBeforeUnmount(() => {
   stopPoll()

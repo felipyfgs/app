@@ -8,6 +8,7 @@ import {
   canManageCredentials as userCanManageCredentials,
   canTriageMailbox as userCanTriageMailbox,
   canTriggerSync as userCanTriggerSync,
+  canAccessPlatformSerproConsole as userCanAccessPlatformSerproConsole,
   hasConfirmedAdminAccess,
   unwrapMeUser
 } from '~/utils/permissions'
@@ -32,6 +33,7 @@ const _useDashboard = () => {
   const canCreateExport = computed(() => userCanCreateExport(me.value))
   const canImportDocuments = computed(() => userCanImportDocuments(me.value))
   const canAccessAdministration = computed(() => hasConfirmedAdminAccess(me.value))
+  const canAccessPlatformSerpro = computed(() => userCanAccessPlatformSerproConsole(me.value))
   const canAssociateCategories = computed(() => userCanAssociateCategories(me.value))
   const canTriageMailbox = computed(() => userCanTriageMailbox(me.value))
   const canExecuteHighRiskMutation = computed(() => userCanExecuteHighRiskMutation(me.value))
@@ -110,6 +112,7 @@ const _useDashboard = () => {
   return {
     bumpSessionEpoch,
     canAccessAdministration,
+    canAccessPlatformSerpro,
     canAssociateCategories,
     canCreateExport,
     canExecuteHighRiskMutation,

@@ -26,6 +26,7 @@ export const FISCAL_OFFICE_A_NAME = 'Escritório Contábil Modelo'
 export const FISCAL_OFFICE_B_NAME = 'Escritório Sentinela'
 export const FISCAL_CLIENT_OFFICE_A = 'Cliente Demonstração Segura'
 export const FISCAL_CLIENT_OFFICE_B = 'Cliente Tenant Sentinela'
+export const LIST_ERROR_MESSAGE = 'Falha sintética sanitizada.'
 export type ListScenario = 'ready' | 'empty' | 'error' | 'slow'
 
 /** Reexports dos builders fiscais (E2E + contract tests). */
@@ -396,6 +397,7 @@ function identity(role: OfficeRole, officeId = 1): MeUser {
     two_factor_confirmed: role === 'ADMIN',
     two_factor_required: role === 'ADMIN',
     requires_two_factor_setup: false,
+    is_platform_admin: false,
     office: officeMeta(officeId),
     role
   }
@@ -417,6 +419,8 @@ export async function installApiFixtures(
 ) {
   /** Office ativo da fixture — atualizado em POST /tenants/switch (sobrevive a location.assign). */
   let activeOfficeId = 1
+  /** Estado local da quarentena CT-e para provar a transição OPEN → RESOLVED. */
+  let ctePendingResolved = false
 
   await page.addInitScript(({ now, mode }) => {
     const NativeDate = Date
@@ -435,6 +439,15 @@ export async function installApiFixtures(
     Object.defineProperty(window, 'Date', { value: FixedDate })
     localStorage.setItem('nuxt-color-mode', mode)
   }, { now: FIXED_NOW, mode: colorMode })
+
+  await page.route('**/sanctum/csrf-cookie', async (route) => {
+    await route.fulfill({
+      status: 204,
+      headers: {
+        'set-cookie': 'XSRF-TOKEN=e2e-csrf-token; Path=/; SameSite=Lax'
+      }
+    })
+  })
 
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
@@ -483,6 +496,98 @@ export async function installApiFixtures(
     }
     if (pathname.endsWith('/api/v1/operations/summary')) {
       return fulfill(route, { data: summary })
+    }
+    if (pathname.endsWith('/api/v1/office/fiscal-identity') && method === 'GET') {
+      const cnpj = activeOfficeId === 1 ? '12ABC345678900' : '98XYZ765432100'
+      return fulfill(route, {
+        data: {
+          identity: {
+            id: activeOfficeId,
+            cnpj,
+            legal_name: officeMeta(activeOfficeId).name,
+            status: 'ACTIVE'
+          },
+          credential: {
+            id: activeOfficeId,
+            status: 'ACTIVE',
+            subject_name: 'A1 sintético — somente metadados',
+            holder_cnpj: cnpj,
+            fingerprint_sha256: 'f'.repeat(64),
+            valid_from: FIXED_NOW,
+            valid_to: '2027-07-14T15:00:00.000Z'
+          }
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/office/autxml/cursor') && method === 'GET') {
+      const cnpj = activeOfficeId === 1 ? '12ABC345678900' : '98XYZ765432100'
+      return fulfill(route, {
+        data: {
+          cursor: {
+            id: activeOfficeId,
+            status: 'IDLE',
+            environment: 'production',
+            query_cnpj: cnpj,
+            last_nsu: 42,
+            max_nsu_seen: 42,
+            last_cstat: '137',
+            last_xmotivo: 'Nenhum documento localizado.',
+            circuit_open: false
+          },
+          cursors: [],
+          stream: {
+            stream_ready: true,
+            stream_reason: null,
+            quiet_hours: 1,
+            activated_at: FIXED_NOW,
+            ready_at: FIXED_NOW
+          },
+          recent_runs: []
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/office/autxml') && method === 'GET') {
+      const cnpj = activeOfficeId === 1 ? '12ABC345678900' : '98XYZ765432100'
+      return fulfill(route, {
+        data: {
+          identity: { id: activeOfficeId, cnpj, status: 'ACTIVE' },
+          office_cnpj: cnpj,
+          cursor: { id: activeOfficeId, status: 'IDLE', last_nsu: 42 },
+          stream: {
+            stream_ready: true,
+            stream_reason: null,
+            quiet_hours: 1,
+            activated_at: FIXED_NOW,
+            ready_at: FIXED_NOW
+          },
+          coverage: {
+            channel: 'NFE_AUTXML_DISTDFE',
+            model: '55',
+            label: 'NF-e modelo 55',
+            not_retroactive: true,
+            nfce_note: 'NFC-e modelo 65 requer importação XML/ZIP.'
+          },
+          enrollments: [{
+            id: 601,
+            establishment_id: 11,
+            establishment_cnpj: cnpj,
+            establishment_name: 'Estabelecimento sintético',
+            trade_name: 'Matriz',
+            client_id: activeOfficeId,
+            client_name: activeOfficeId === 1 ? FISCAL_CLIENT_OFFICE_A : FISCAL_CLIENT_OFFICE_B,
+            status: 'CONFIRMED',
+            activated_at: FIXED_NOW,
+            first_seen_at: FIXED_NOW,
+            last_seen_at: FIXED_NOW,
+            observed: true,
+            channel_coverage: 'NFE_55',
+            channel_coverage_label: 'NF-e modelo 55',
+            nfce_hint: 'NFC-e por importação.',
+            erp_instruction: 'Cadastrar o CNPJ do escritório no autXML.'
+          }]
+        },
+        meta: { current_page: 1, last_page: 1, per_page: 10, total: 1 }
+      })
     }
     if (pathname.endsWith('/api/v1/operations/inbox')) {
       return fulfill(route, {
@@ -636,7 +741,7 @@ export async function installApiFixtures(
     }
     if (pathname.endsWith('/api/v1/cte/pending') && method === 'GET') {
       return fulfill(route, {
-        data: activeOfficeId === 1
+        data: activeOfficeId === 1 && !ctePendingResolved
           ? [{
               id: 901,
               sha256: 'a'.repeat(64),
@@ -674,6 +779,7 @@ export async function installApiFixtures(
     }
     if (/\/api\/v1\/operations\/quarantine\/\d+\/resolve$/.test(pathname) && method === 'POST') {
       if (role === 'VIEWER') return fulfill(route, { message: 'Forbidden' }, 403)
+      ctePendingResolved = true
       return fulfill(route, {
         data: {
           id: 901,
@@ -964,7 +1070,7 @@ export async function installApiFixtures(
       })
     }
     if (pathname.endsWith('/api/v1/clients') && method === 'GET') {
-      if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
+      if (listScenario === 'error') return fulfill(route, { message: LIST_ERROR_MESSAGE }, 503)
       if (listScenario === 'slow') await new Promise(resolve => setTimeout(resolve, 1500))
       return fulfill(route, {
         data: listScenario === 'empty' ? [] : clients,
@@ -1083,7 +1189,7 @@ export async function installApiFixtures(
     }
     // Catálogo unificado: /documents (canônico) e /notes (alias)
     if (pathname.endsWith('/api/v1/documents/insights') || pathname.endsWith('/api/v1/notes/insights')) {
-      if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
+      if (listScenario === 'error') return fulfill(route, { message: LIST_ERROR_MESSAGE }, 503)
       return fulfill(route, {
         data: listScenario === 'empty'
           ? { total: 0, active: 0, cancelled: 0, review: 0, missing_party_name: 0, competence_current: 0, competence_current_label: '2026-07' }
@@ -1091,7 +1197,7 @@ export async function installApiFixtures(
       })
     }
     if (pathname.endsWith('/api/v1/documents/by-client') || pathname.endsWith('/api/v1/notes/by-client')) {
-      if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
+      if (listScenario === 'error') return fulfill(route, { message: LIST_ERROR_MESSAGE }, 503)
       return fulfill(route, {
         data: listScenario === 'empty'
           ? []
@@ -1118,7 +1224,7 @@ export async function installApiFixtures(
       })
     }
     if (pathname.endsWith('/api/v1/documents') || pathname.endsWith('/api/v1/notes')) {
-      if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
+      if (listScenario === 'error') return fulfill(route, { message: LIST_ERROR_MESSAGE }, 503)
       if (listScenario === 'slow') await new Promise(resolve => setTimeout(resolve, 1500))
       return fulfill(route, {
         data: listScenario === 'empty' ? [] : notes,
@@ -1139,13 +1245,13 @@ export async function installApiFixtures(
     }
     if (pathname.endsWith('/api/v1/sync-runs')) {
       if (method === 'POST') return fulfill(route, { data: { sync_cursor_id: 61 } }, 201)
-      if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
+      if (listScenario === 'error') return fulfill(route, { message: LIST_ERROR_MESSAGE }, 503)
       if (listScenario === 'slow') await new Promise(resolve => setTimeout(resolve, 1500))
       return fulfill(route, { data: listScenario === 'empty' ? [] : syncRuns, meta: { next_cursor: null } })
     }
     if (pathname.endsWith('/api/v1/exports')) {
       if (method === 'POST') return fulfill(route, { data: exports[0] }, 202)
-      if (listScenario === 'error') return fulfill(route, { message: 'Falha sintética sanitizada.' }, 503)
+      if (listScenario === 'error') return fulfill(route, { message: LIST_ERROR_MESSAGE }, 503)
       if (listScenario === 'slow') await new Promise(resolve => setTimeout(resolve, 1500))
       return fulfill(route, {
         data: listScenario === 'empty' ? [] : exports,

@@ -6,12 +6,19 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 import type { FiscalModuleKey } from '~/types/fiscal-modules'
 import { FISCAL_MODULE_PATHS } from '~/types/fiscal-modules'
 
+export type MonitoringModuleKey = FiscalModuleKey | 'registrations' | 'tax_processes'
+
+const MONITORING_EXTRA_PATHS: Record<Exclude<MonitoringModuleKey, FiscalModuleKey>, string> = {
+  registrations: '/monitoring/registrations',
+  tax_processes: '/monitoring/tax-processes'
+}
+
 export interface MonitoringNavItem {
   id: string
   label: string
   icon: string
   to: string
-  moduleKey: FiscalModuleKey
+  moduleKey: MonitoringModuleKey
   exact?: boolean
 }
 
@@ -79,10 +86,24 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
     icon: 'i-lucide-receipt',
     to: '/monitoring/guides',
     moduleKey: 'guides'
+  },
+  {
+    id: 'monitoring-registrations',
+    label: 'Cadastro / Vínculos',
+    icon: 'i-lucide-link-2',
+    to: '/monitoring/registrations',
+    moduleKey: 'registrations'
+  },
+  {
+    id: 'monitoring-tax-processes',
+    label: 'Processos fiscais',
+    icon: 'i-lucide-scale',
+    to: '/monitoring/tax-processes',
+    moduleKey: 'tax_processes'
   }
 ] as const
 
-export function monitoringNavActiveModule(path: string): FiscalModuleKey {
+export function monitoringNavActiveModule(path: string): MonitoringModuleKey {
   const p = path.split('?')[0] || path
   if (p === '/monitoring' || p === '/monitoring/') return 'dashboard'
   // detalhe de cliente fiscal não é item de nav — cai no dashboard
@@ -106,10 +127,10 @@ export function monitoringNavActiveModule(path: string): FiscalModuleKey {
  */
 export function monitoringNavMenuItems(
   path = '',
-  activeOverride?: FiscalModuleKey | string | null
+  activeOverride?: MonitoringModuleKey | string | null
 ): NavigationMenuItem[] {
   const active = activeOverride
-    ? String(activeOverride) as FiscalModuleKey
+    ? String(activeOverride) as MonitoringModuleKey
     : monitoringNavActiveModule(path)
   return MONITORING_NAV_ITEMS.map(item => ({
     label: item.label,
@@ -120,6 +141,7 @@ export function monitoringNavMenuItems(
   }))
 }
 
-export function monitoringPathForModule(key: FiscalModuleKey): string {
+export function monitoringPathForModule(key: MonitoringModuleKey): string {
+  if (key === 'registrations' || key === 'tax_processes') return MONITORING_EXTRA_PATHS[key]
   return FISCAL_MODULE_PATHS[key]
 }

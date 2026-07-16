@@ -46,13 +46,22 @@ test.describe('monitoramento — regressão visual por zonas', () => {
         testInfo.project.name === 'minimum-360',
         'Snapshots aprovados usam desktop-1440 e mobile-390; overflow em 9.8.'
       )
-      await openStable(page, route.path, route.heading)
+      if (route.slug === 'mailbox') {
+        await page.goto(route.path)
+        await expect(page).toHaveURL(/\/monitoring\/mailbox\/?(?:\?.*)?$/)
+        await expect(page.getByTestId('mailbox-list').filter({ visible: true })).toBeVisible({
+          timeout: 20_000
+        })
+        await stabilizeVisualPage(page)
+      } else {
+        await openStable(page, route.path, route.heading)
+      }
 
       if (route.zones.includes('navbar')) {
-        await expect(page.getByTestId('page-navbar')).toHaveScreenshot(`${route.slug}-navbar.png`)
+        await expect(page.getByTestId('page-navbar').filter({ visible: true }).first()).toHaveScreenshot(`${route.slug}-navbar.png`)
       }
       if (route.zones.includes('toolbar')) {
-        const toolbar = page.getByTestId('page-toolbar')
+        const toolbar = page.getByTestId('page-toolbar').filter({ visible: true })
         if (await toolbar.count()) {
           await expect(toolbar.first()).toHaveScreenshot(`${route.slug}-toolbar.png`)
         }
@@ -67,13 +76,17 @@ test.describe('monitoramento — regressão visual por zonas', () => {
         }
       }
       if (route.zones.includes('table')) {
-        const table = page.getByTestId('fiscal-table')
+        // Algumas tabelas responsivas mantêm uma cópia não renderizada no DOM.
+        // O baseline deve representar a superfície efetivamente exibida.
+        const table = page.getByTestId('fiscal-table').filter({ visible: true })
         if (await table.count()) {
           await expect(table.first()).toHaveScreenshot(`${route.slug}-table.png`)
         }
       }
       if (route.zones.includes('list')) {
-        await expect(page.getByTestId('mailbox-list')).toHaveScreenshot(`${route.slug}-list.png`)
+        const list = page.getByTestId('mailbox-list').filter({ visible: true })
+        await expect(list).toBeVisible()
+        await expect(list).toHaveScreenshot(`${route.slug}-list.png`)
       }
       if (route.zones.includes('panel')) {
         await expect(page.getByTestId('settings-panel')).toHaveScreenshot(`${route.slug}-panel.png`)
@@ -86,25 +99,25 @@ test.describe('monitoramento — regressão visual por zonas', () => {
       testInfo.project.name === 'minimum-360',
       'Snapshots de detalhe em desktop e mobile-390.'
     )
-    await openStable(page, `/monitoring/mailbox/${MAILBOX_MESSAGE_ID}`, 'Caixas Postais')
-    await expect(page.getByTestId('mailbox-detail')).toBeVisible()
+    await page.goto(`/monitoring/mailbox/${MAILBOX_MESSAGE_ID}`)
+    const detail = page.getByTestId('mailbox-detail').filter({ visible: true })
+    await expect(detail).toBeVisible({ timeout: 20_000 })
+    await expect(detail.getByRole('heading', { level: 1 })).toBeVisible()
     await stabilizeVisualPage(page)
-    await expect(page.getByTestId('mailbox-detail')).toHaveScreenshot('mailbox-detail.png')
+    await expect(detail).toHaveScreenshot('mailbox-detail.png')
   })
 
   test('sitfis slideover de achados (desktop)', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-1440', 'Overlay de achados validado no desktop.')
     await openStable(page, '/monitoring/sitfis', 'Situação Fiscal')
-    const openBtn = page.getByRole('button', { name: /achados|detalhe|pendência|abrir/i }).first()
-    if (await openBtn.count()) {
-      await openBtn.click()
-    } else {
-      // Fallback: clica na primeira linha acionável da tabela
-      const rowAction = page.getByTestId('fiscal-table').getByRole('button').first()
-      await expect(rowAction).toBeVisible()
-      await rowAction.click()
-    }
-    const dialog = page.getByRole('dialog').or(page.locator('[data-slot="content"]')).first()
+    const openBtn = page
+      .getByTestId('fiscal-table')
+      .filter({ visible: true })
+      .getByRole('button', { name: 'Achados', exact: true })
+      .first()
+    await expect(openBtn).toBeVisible()
+    await openBtn.click()
+    const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible({ timeout: 10_000 })
     await stabilizeVisualPage(page)
     await expect(dialog).toHaveScreenshot('sitfis-findings-overlay.png')
@@ -175,9 +188,9 @@ test.describe('monitoramento — overflow 360px', () => {
   test('mailbox detalhe sem overflow horizontal', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'minimum-360', 'Inspeção dedicada ao projeto minimum-360.')
     await page.goto(`/monitoring/mailbox/${MAILBOX_MESSAGE_ID}`)
-    await expect(page.getByRole('heading', { name: 'Caixas Postais', exact: true })).toBeVisible({
-      timeout: 20_000
-    })
+    const detail = page.getByTestId('mailbox-detail').filter({ visible: true })
+    await expect(detail).toBeVisible({ timeout: 20_000 })
+    await expect(detail.getByRole('heading', { level: 1 })).toBeVisible()
     await stabilizeVisualPage(page)
     await noDocumentOverflow(page)
   })

@@ -6,12 +6,12 @@
  * Resolve auto-import Nuxt: `MonitoringModuleNav` (pasta monitoring/).
  * Props: `active` opcional força o módulo destacado (páginas legadas).
  */
-import type { FiscalModuleKey } from '~/types/fiscal-modules'
+import type { MonitoringModuleKey } from '~/utils/monitoring-nav'
 import { monitoringNavMenuItems } from '~/utils/monitoring-nav'
 
 const props = defineProps<{
   /** Módulo forçado como ativo (senão deriva de `route.path`). */
-  active?: FiscalModuleKey | string
+  active?: MonitoringModuleKey | string
 }>()
 
 const route = useRoute()

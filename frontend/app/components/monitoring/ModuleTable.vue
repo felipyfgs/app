@@ -6,10 +6,10 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { FiscalKpiKey, FiscalModuleClientRow, FiscalModuleCounters, FiscalTableEmptyKind } from '~/types/fiscal-modules'
-import { fiscalKpiSituationFilter, fiscalSituationToKpiKey } from '~/types/fiscal-modules'
+import { fiscalKpiSituationFilter, fiscalSituationToKpiKey, isSyntheticFiscalOrigin } from '~/types/fiscal-modules'
 import { formatDateTime } from '~/utils/format'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
-import { resolveFiscalEmptyKind } from '~/utils/fiscal-status'
+import { dataOriginMeta, resolveFiscalEmptyKind } from '~/utils/fiscal-status'
 
 const props = withDefaults(defineProps<{
   title: string
@@ -120,6 +120,13 @@ const showEmpty = computed(() =>
 
 const showTable = computed(() => hasRows.value)
 
+const syntheticDataOrigin = computed(() =>
+  props.rows.find(row => isSyntheticFiscalOrigin(row.data_origin))?.data_origin ?? null
+)
+const syntheticDataOriginMeta = computed(() =>
+  syntheticDataOrigin.value ? dataOriginMeta(syntheticDataOrigin.value) : null
+)
+
 function onKpiSelect(key: FiscalKpiKey, situation: string | null = fiscalKpiSituationFilter(key)) {
   emit('kpi-select', key)
   emit('update:situation', situation || 'all')
@@ -210,6 +217,17 @@ const itemsPerPage = computed(() => {
       >
         {{ description }}
       </p>
+
+      <UAlert
+        v-if="syntheticDataOriginMeta"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-flask-conical"
+        :title="syntheticDataOriginMeta.label"
+        :description="syntheticDataOriginMeta.description"
+        class="mb-4"
+        data-testid="fiscal-demo-banner"
+      />
 
       <!-- Submódulos (UTabs etc.) -->
       <div

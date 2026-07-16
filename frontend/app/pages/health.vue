@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { InboxItem, InboxItemType, InboxSeverity } from '~/types/api'
+import { resolveInboxItemLink, SERPRO_INBOX_TYPE_FILTERS } from '~/utils/inbox-links'
 
 const api = useApi()
 const route = useRoute()
@@ -54,7 +55,8 @@ const typeItems = [
   { label: 'Quarentena: evento órfão', value: 'quarantine_orphan_event' },
   { label: 'Quarentena: bytes conflitantes', value: 'quarantine_bytes_diverge' },
   { label: 'Quarentena: schema incompleto', value: 'quarantine_schema' },
-  { label: 'Quarentena: outros', value: 'quarantine_other' }
+  { label: 'Quarentena: outros', value: 'quarantine_other' },
+  ...SERPRO_INBOX_TYPE_FILTERS
 ]
 
 const killSwitch = ref<{
@@ -126,16 +128,7 @@ function typeLabel(type: string): string {
 }
 
 function itemLink(item: InboxItem): string {
-  if (item.type.startsWith('credential') && item.links?.credential) {
-    return item.links.credential
-  }
-  if (item.links?.sync) {
-    return item.links.sync
-  }
-  if (item.links?.client) {
-    return item.links.client
-  }
-  return '/health'
+  return resolveInboxItemLink(item)
 }
 
 async function load(reset = false) {
@@ -252,6 +245,10 @@ onMounted(() => {
     </template>
 
     <template #body>
+      <p class="mb-4 text-sm text-muted">
+        Não há restore pelo painel; recuperação de backup permanece uma operação controlada.
+      </p>
+
       <div data-testid="ma-kill-switch-card" class="mb-4">
         <UPageCard
           title="Kill switch — saídas MA"

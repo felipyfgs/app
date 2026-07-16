@@ -163,17 +163,13 @@ export default defineNuxtConfig({
       globPatterns: ['**/*.{js,css,html,png,svg,ico,woff,woff2,webp}'],
       runtimeCaching: [
         {
-          urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+          // RegExp é serializável pelo generateSW. Callbacks definidos no
+          // nuxt.config eram emitidos como `[native code]` e quebravam o SW.
+          urlPattern: /\/(?:api|sanctum)\//,
           handler: 'NetworkOnly' as const
         },
         {
-          urlPattern: ({ url }) => url.pathname.startsWith('/sanctum/'),
-          handler: 'NetworkOnly' as const
-        },
-        {
-          urlPattern: ({ url }) => url.pathname.startsWith('/login')
-            || url.pathname.startsWith('/logout')
-            || url.pathname.startsWith('/user/'),
+          urlPattern: /\/(?:login|logout)(?:\/|$)|\/user\//,
           handler: 'NetworkOnly' as const
         }
       ]

@@ -33,7 +33,7 @@ type AuthorSchema = z.output<typeof authorSchema>
 
 const api = useApi()
 const toast = useToast()
-const { sessionEpoch } = useDashboard()
+const { sessionEpoch, me } = useDashboard()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -41,6 +41,7 @@ const loadError = ref<string | null>(null)
 const auth = ref<OfficeSerproAuthorization | null>(null)
 const health = ref<SerproPlatformHealth | null>(null)
 const strategy = ref<string | null>(null)
+const hasActiveProxyPower = ref(false)
 
 const authorForm = reactive<AuthorSchema>({
   authorType: 'CNPJ',
@@ -104,20 +105,41 @@ async function load() {
   loading.value = true
   loadError.value = null
   try {
-    const res = await api.office.serproAuthorization.show()
+    const [authRes, powersRes] = await Promise.allSettled([
+      api.office.serproAuthorization.show(),
+      api.office.serproAuthorization.proxyPowers({ per_page: 5 })
+    ])
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
-    auth.value = res.data
-    health.value = res.platform_health || null
-    strategy.value = res.term_representation_strategy || null
-    if (res.data.author_identity_type === 'CNPJ' || res.data.author_identity_type === 'CPF') {
-      authorForm.authorType = res.data.author_identity_type
+
+    if (authRes.status === 'fulfilled') {
+      const res = authRes.value
+      auth.value = res.data
+      health.value = res.platform_health || null
+      strategy.value = res.term_representation_strategy || null
+      if (res.data.author_identity_type === 'CNPJ' || res.data.author_identity_type === 'CPF') {
+        authorForm.authorType = res.data.author_identity_type
+      }
+      if (res.data.author_name) authorForm.authorName = res.data.author_name
+      if (
+        res.data.certificate_mode === 'EXTERNAL_SIGNATURE'
+        || res.data.certificate_mode === 'MANAGED_A1'
+      ) {
+        authorForm.certificateMode = res.data.certificate_mode
+      }
+    } else {
+      auth.value = null
+      health.value = null
+      strategy.value = null
+      loadError.value = apiErrorMessage(authRes.reason, 'Falha ao carregar autorização Integra.')
     }
-    if (res.data.author_name) authorForm.authorName = res.data.author_name
-    if (
-      res.data.certificate_mode === 'EXTERNAL_SIGNATURE'
-      || res.data.certificate_mode === 'MANAGED_A1'
-    ) {
-      authorForm.certificateMode = res.data.certificate_mode
+
+    if (powersRes.status === 'fulfilled') {
+      const powers = powersRes.value.data || []
+      hasActiveProxyPower.value = powers.some(
+        p => p.status === 'ACTIVE' || p.is_currently_valid
+      )
+    } else {
+      hasActiveProxyPower.value = false
     }
   } catch (caught) {
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
@@ -224,344 +246,360 @@ onBeforeUnmount(clearSensitive)
   <div>
     <UPageCard
       title="Onboarding Integra Contador"
-      description="Autor do Pedido, Termo assinado e token do procurador — sem recuperação de material sensível."
+      description="Checklist ambiente → autor → certificado/Termo → token → procuração/poder → cliente/operação. Sem recuperação de material sensível."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
     />
 
     <div class="flex flex-col gap-4 sm:gap-6 lg:gap-12">
-    <UAlert
-      v-if="loadError"
-      color="error"
-      icon="i-lucide-circle-x"
-      :title="loadError"
-    />
-
-    <div
-      v-if="loading && !auth"
-      class="text-sm text-muted"
-    >
-      Carregando…
-    </div>
-
-    <template v-else-if="auth">
       <UAlert
-        v-if="actionsRequired.length"
-        color="warning"
-        icon="i-lucide-list-checks"
-        title="Ações requeridas"
-      >
-        <ul class="mt-2 list-disc space-y-1 ps-4 text-sm">
-          <li
-            v-for="(action, i) in actionsRequired"
-            :key="i"
-          >
-            {{ action }}
-          </li>
-        </ul>
-      </UAlert>
+        v-if="loadError"
+        color="error"
+        icon="i-lucide-circle-x"
+        :title="loadError"
+      />
 
-      <div class="grid gap-4 xl:grid-cols-2">
+      <div
+        v-if="loading && !auth"
+        class="text-sm text-muted"
+      >
+        Carregando…
+      </div>
+
+      <div data-testid="serpro-settings-checklist-card">
         <UPageCard
           variant="subtle"
-          title="Estado atual"
-          description="Situação da autorização deste escritório."
+          title="Checklist de ativação"
+          description="Ordem fixa; passos posteriores ficam bloqueados até o atual."
         >
-          <dl class="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
-            <div>
-              <dt class="text-muted">
-                Status
-              </dt>
-              <dd class="font-medium">
-                {{ authorizationStatusLabel(auth.status) }}
-                <span class="block text-xs text-muted font-normal">{{ auth.status }}</span>
-              </dd>
-            </div>
-            <div v-if="auth.termo_authorization_state || auth.authorization_state">
-              <dt class="text-muted">
-                Validação do Termo
-              </dt>
-              <dd class="font-medium">
-                {{ termoStateLabel(auth.termo_authorization_state || auth.authorization_state) }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-muted">
-                Ambiente
-              </dt>
-              <dd class="font-medium">
-                {{ auth.environment }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-muted">
-                Autor (mascarado)
-              </dt>
-              <dd class="font-medium">
-                {{ auth.author_identity_masked || '—' }}
-                <span
-                  v-if="auth.author_name"
-                  class="text-muted"
-                > · {{ auth.author_name }}</span>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-muted">
-                Termo
-              </dt>
-              <dd class="font-medium">
-                {{ auth.has_termo ? 'Presente' : 'Ausente' }}
-                <span
-                  v-if="auth.termo_sha256"
-                  class="block truncate font-mono text-xs text-muted"
-                >SHA-256 {{ auth.termo_sha256 }}</span>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-muted">
-                A1 gerenciado
-              </dt>
-              <dd class="font-medium">
-                {{ auth.has_managed_a1 ? 'Configurado' : 'Não' }}
+          <SerproOnboardingChecklist
+            :auth="auth"
+            :health="health"
+            :has-active-proxy-power="hasActiveProxyPower"
+            :role="me?.role"
+          />
+        </UPageCard>
+      </div>
+
+      <template v-if="auth">
+        <UAlert
+          v-if="actionsRequired.length"
+          color="warning"
+          icon="i-lucide-list-checks"
+          title="Ações requeridas"
+        >
+          <ul class="mt-2 list-disc space-y-1 ps-4 text-sm">
+            <li
+              v-for="(action, i) in actionsRequired"
+              :key="i"
+            >
+              {{ action }}
+            </li>
+          </ul>
+        </UAlert>
+
+        <div class="grid gap-4 xl:grid-cols-2">
+          <UPageCard
+            variant="subtle"
+            title="Estado atual"
+            description="Situação da autorização deste escritório."
+          >
+            <dl class="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+              <div>
+                <dt class="text-muted">
+                  Status
+                </dt>
+                <dd class="font-medium">
+                  {{ authorizationStatusLabel(auth.status) }}
+                  <span class="block text-xs text-muted font-normal">{{ auth.status }}</span>
+                </dd>
+              </div>
+              <div v-if="auth.termo_authorization_state || auth.authorization_state">
+                <dt class="text-muted">
+                  Validação do Termo
+                </dt>
+                <dd class="font-medium">
+                  {{ termoStateLabel(auth.termo_authorization_state || auth.authorization_state) }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-muted">
+                  Ambiente
+                </dt>
+                <dd class="font-medium">
+                  {{ auth.environment }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-muted">
+                  Autor (mascarado)
+                </dt>
+                <dd class="font-medium">
+                  {{ auth.author_identity_masked || '—' }}
+                  <span
+                    v-if="auth.author_name"
+                    class="text-muted"
+                  > · {{ auth.author_name }}</span>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-muted">
+                  Termo
+                </dt>
+                <dd class="font-medium">
+                  {{ auth.has_termo ? 'Presente' : 'Ausente' }}
+                  <span
+                    v-if="auth.termo_sha256"
+                    class="block truncate font-mono text-xs text-muted"
+                  >SHA-256 {{ auth.termo_sha256 }}</span>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-muted">
+                  A1 gerenciado
+                </dt>
+                <dd class="font-medium">
+                  {{ auth.has_managed_a1 ? 'Configurado' : 'Não' }}
                 <!-- Sem botão de download/recuperação de PFX -->
-              </dd>
-            </div>
-            <div>
-              <dt class="text-muted">
-                Token procurador
-              </dt>
-              <dd class="font-medium">
-                {{ auth.has_procurador_token ? 'Válido' : 'Ausente/expirado' }}
-                <span
-                  v-if="auth.procurador_token_expires_at"
-                  class="block text-xs text-muted"
-                >
-                  Expira {{ formatDateTime(auth.procurador_token_expires_at) }}
-                </span>
-              </dd>
-            </div>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-muted">
+                  Token procurador
+                </dt>
+                <dd class="font-medium">
+                  {{ auth.has_procurador_token ? 'Válido' : 'Ausente/expirado' }}
+                  <span
+                    v-if="auth.procurador_token_expires_at"
+                    class="block text-xs text-muted"
+                  >
+                    Expira {{ formatDateTime(auth.procurador_token_expires_at) }}
+                  </span>
+                </dd>
+              </div>
+              <div
+                v-if="auth.last_validation_message"
+                class="sm:col-span-2"
+              >
+                <dt class="text-muted">
+                  Última validação
+                </dt>
+                <dd>{{ auth.last_validation_result }} — {{ auth.last_validation_message }}</dd>
+              </div>
+            </dl>
+          </UPageCard>
+
+          <UPageCard
+            variant="subtle"
+            title="Saúde da plataforma (sanitizada)"
+            description="Sem Consumer Secret, mTLS material ou e-CNPJ contratante completo desnecessário."
+          >
             <div
-              v-if="auth.last_validation_message"
-              class="sm:col-span-2"
+              v-if="health"
+              class="space-y-2 text-sm"
             >
-              <dt class="text-muted">
-                Última validação
-              </dt>
-              <dd>{{ auth.last_validation_result }} — {{ auth.last_validation_message }}</dd>
+              <p>
+                Status: <strong>{{ health.status ?? (health.healthy ? 'OK' : 'Degradado') }}</strong>
+              </p>
+              <p
+                v-if="health.message"
+                class="text-muted"
+              >
+                {{ health.message }}
+              </p>
+              <p
+                v-if="strategy"
+                class="text-xs text-muted"
+              >
+                Estratégia de representação do Termo: {{ strategy }}
+              </p>
             </div>
-          </dl>
-        </UPageCard>
+            <p
+              v-else
+              class="text-sm text-muted"
+            >
+              Saúde não disponível neste ambiente.
+            </p>
+          </UPageCard>
+        </div>
 
         <UPageCard
           variant="subtle"
-          title="Saúde da plataforma (sanitizada)"
-          description="Sem Consumer Secret, mTLS material ou e-CNPJ contratante completo desnecessário."
+          title="Configurar Autor do Pedido"
+          description="Defina quem assina o pedido e como o certificado será utilizado."
         >
-          <div
-            v-if="health"
-            class="space-y-2 text-sm"
+          <UForm
+            id="author-form"
+            :schema="authorSchema"
+            :state="authorForm"
+            class="space-y-6"
+            @submit="saveAuthor"
           >
-            <p>
-              Status: <strong>{{ health.status ?? (health.healthy ? 'OK' : 'Degradado') }}</strong>
-            </p>
-            <p
-              v-if="health.message"
-              class="text-muted"
-            >
-              {{ health.message }}
-            </p>
-            <p
-              v-if="strategy"
-              class="text-xs text-muted"
-            >
-              Estratégia de representação do Termo: {{ strategy }}
-            </p>
-          </div>
-          <p
-            v-else
-            class="text-sm text-muted"
-          >
-            Saúde não disponível neste ambiente.
-          </p>
-        </UPageCard>
-      </div>
+            <div class="grid gap-4 md:grid-cols-2">
+              <UFormField
+                name="authorType"
+                label="Tipo de identidade"
+                required
+              >
+                <USelect
+                  v-model="authorForm.authorType"
+                  :items="[
+                    { label: 'CNPJ', value: 'CNPJ' },
+                    { label: 'CPF', value: 'CPF' }
+                  ]"
+                  class="w-full"
+                  value-key="value"
+                />
+              </UFormField>
+              <UFormField
+                name="authorIdentity"
+                label="Identidade (sem máscara)"
+                description="CPF (11 dígitos) ou CNPJ (14 caracteres, inclusive alfanumérico)."
+                required
+              >
+                <UInput
+                  v-model="authorForm.authorIdentity"
+                  autocomplete="off"
+                  placeholder="Ex.: 12ABC34501DE35"
+                  class="w-full"
+                  data-testid="serpro-author-identity"
+                />
+              </UFormField>
+              <UFormField
+                name="authorName"
+                label="Nome"
+              >
+                <UInput
+                  v-model="authorForm.authorName"
+                  autocomplete="organization"
+                  placeholder="Nome do responsável ou da empresa"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                name="certificateMode"
+                label="Modo de certificado"
+                required
+              >
+                <USelect
+                  v-model="authorForm.certificateMode"
+                  :items="[
+                    { label: 'Assinatura externa', value: 'EXTERNAL_SIGNATURE' },
+                    { label: 'A1 gerenciado no cofre', value: 'MANAGED_A1' }
+                  ]"
+                  class="w-full"
+                  value-key="value"
+                />
+              </UFormField>
+            </div>
 
-      <UPageCard
-        variant="subtle"
-        title="Configurar Autor do Pedido"
-        description="Defina quem assina o pedido e como o certificado será utilizado."
-      >
-        <UForm
-          id="author-form"
-          :schema="authorSchema"
-          :state="authorForm"
-          class="space-y-6"
-          @submit="saveAuthor"
-        >
-          <div class="grid gap-4 md:grid-cols-2">
-            <UFormField
-              name="authorType"
-              label="Tipo de identidade"
-              required
-            >
-              <USelect
-                v-model="authorForm.authorType"
-                :items="[
-                  { label: 'CNPJ', value: 'CNPJ' },
-                  { label: 'CPF', value: 'CPF' }
-                ]"
-                class="w-full"
-                value-key="value"
-              />
-            </UFormField>
-            <UFormField
-              name="authorIdentity"
-              label="Identidade (sem máscara)"
-              description="Aceita CPF ou CNPJ, conforme o tipo selecionado."
-              required
-            >
-              <UInput
-                v-model="authorForm.authorIdentity"
-                autocomplete="off"
-                placeholder="Somente dígitos/alfanumérico"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              name="authorName"
-              label="Nome"
-            >
-              <UInput
-                v-model="authorForm.authorName"
-                autocomplete="organization"
-                placeholder="Nome do responsável ou da empresa"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField
-              name="certificateMode"
-              label="Modo de certificado"
-              required
-            >
-              <USelect
-                v-model="authorForm.certificateMode"
-                :items="[
-                  { label: 'Assinatura externa', value: 'EXTERNAL_SIGNATURE' },
-                  { label: 'A1 gerenciado no cofre', value: 'MANAGED_A1' }
-                ]"
-                class="w-full"
-                value-key="value"
-              />
-            </UFormField>
-          </div>
-
-          <div class="flex justify-end border-t border-default pt-4">
-            <UButton
-              type="submit"
-              icon="i-lucide-save"
-              label="Salvar Autor"
-              :loading="saving"
-              class="w-full justify-center sm:w-auto"
-            />
-          </div>
-        </UForm>
-      </UPageCard>
-
-      <div class="grid items-start gap-4 xl:grid-cols-2">
-        <UPageCard
-          variant="subtle"
-          title="Enviar Termo de Autorização"
-          description="O XML assinado é armazenado no cofre. Não há download ou recuperação posterior na UI."
-        >
-          <div class="space-y-4">
-            <UFileUpload
-              v-model="termoFile"
-              accept=".xml,text/xml,application/xml"
-              label="Selecione ou arraste o Termo XML"
-              description="Somente arquivo XML assinado."
-              class="w-full"
-            />
-            <div class="flex justify-end">
+            <div class="flex justify-end border-t border-default pt-4">
               <UButton
-                icon="i-lucide-upload"
-                label="Enviar Termo"
+                type="submit"
+                icon="i-lucide-save"
+                label="Salvar Autor"
                 :loading="saving"
-                :disabled="!termoFile"
                 class="w-full justify-center sm:w-auto"
-                @click="uploadTermo"
               />
             </div>
-          </div>
+          </UForm>
         </UPageCard>
 
-        <UPageCard
-          v-if="authorForm.certificateMode === 'MANAGED_A1' || auth.certificate_mode === 'MANAGED_A1'"
-          variant="subtle"
-          title="A1 do Autor (cofre)"
-          description="Upload único. Senha e PFX não são reexibidos nem recuperáveis."
-        >
-          <div class="space-y-4">
-            <UFileUpload
-              v-model="a1File"
-              accept=".pfx,.p12,application/x-pkcs12"
-              label="Selecione ou arraste o certificado A1"
-              description="Arquivo PFX ou P12."
-              color="warning"
-              class="w-full"
-            />
-            <UFormField
-              label="Senha do PFX"
-              required
-            >
-              <UInput
-                v-model="a1Password"
-                type="password"
-                autocomplete="new-password"
+        <div class="grid items-start gap-4 xl:grid-cols-2">
+          <UPageCard
+            variant="subtle"
+            title="Enviar Termo de Autorização"
+            description="O XML assinado é armazenado no cofre. Não há download ou recuperação posterior na UI."
+          >
+            <div class="space-y-4">
+              <UFileUpload
+                v-model="termoFile"
+                accept=".xml,text/xml,application/xml"
+                label="Selecione ou arraste o Termo XML"
+                description="Somente arquivo XML assinado."
                 class="w-full"
               />
-            </UFormField>
-            <UCheckbox
-              v-model="a1Consent"
-              label="Consentimento: autorizo o armazenamento cifrado do A1 do Autor neste escritório."
-            />
-            <div class="flex justify-end">
-              <UButton
-                label="Armazenar A1"
-                icon="i-lucide-shield-check"
+              <div class="flex justify-end">
+                <UButton
+                  icon="i-lucide-upload"
+                  label="Enviar Termo"
+                  :loading="saving"
+                  :disabled="!termoFile"
+                  class="w-full justify-center sm:w-auto"
+                  @click="uploadTermo"
+                />
+              </div>
+            </div>
+          </UPageCard>
+
+          <UPageCard
+            v-if="authorForm.certificateMode === 'MANAGED_A1' || auth.certificate_mode === 'MANAGED_A1'"
+            variant="subtle"
+            title="A1 do Autor (cofre)"
+            description="Upload único. Senha e PFX não são reexibidos nem recuperáveis."
+          >
+            <div class="space-y-4">
+              <UFileUpload
+                v-model="a1File"
+                accept=".pfx,.p12,application/x-pkcs12"
+                label="Selecione ou arraste o certificado A1"
+                description="Arquivo PFX ou P12."
                 color="warning"
+                class="w-full"
+              />
+              <UFormField
+                label="Senha do PFX"
+                required
+              >
+                <UInput
+                  v-model="a1Password"
+                  type="password"
+                  autocomplete="new-password"
+                  class="w-full"
+                />
+              </UFormField>
+              <UCheckbox
+                v-model="a1Consent"
+                label="Consentimento: autorizo o armazenamento cifrado do A1 do Autor neste escritório."
+              />
+              <div class="flex justify-end">
+                <UButton
+                  label="Armazenar A1"
+                  icon="i-lucide-shield-check"
+                  color="warning"
+                  :loading="saving"
+                  :disabled="!a1File || !a1Password || !a1Consent"
+                  class="w-full justify-center sm:w-auto"
+                  @click="uploadA1"
+                />
+              </div>
+            </div>
+          </UPageCard>
+
+          <UPageCard
+            variant="subtle"
+            title="Token do procurador"
+            description="Renove a autorização usada nas consultas sem expor o valor do token."
+            :class="authorForm.certificateMode === 'MANAGED_A1' || auth.certificate_mode === 'MANAGED_A1' ? 'xl:col-span-2' : undefined"
+          >
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <p class="text-sm text-muted">
+                O valor do token nunca é exibido na interface.
+              </p>
+              <UButton
+                label="Renovar token"
+                icon="i-lucide-refresh-cw"
+                color="neutral"
+                variant="soft"
                 :loading="saving"
-                :disabled="!a1File || !a1Password || !a1Consent"
                 class="w-full justify-center sm:w-auto"
-                @click="uploadA1"
+                @click="refreshToken"
               />
             </div>
-          </div>
-        </UPageCard>
-
-        <UPageCard
-          variant="subtle"
-          title="Token do procurador"
-          description="Renove a autorização usada nas consultas sem expor o valor do token."
-          :class="authorForm.certificateMode === 'MANAGED_A1' || auth.certificate_mode === 'MANAGED_A1' ? 'xl:col-span-2' : undefined"
-        >
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <p class="text-sm text-muted">
-              O valor do token nunca é exibido na interface.
-            </p>
-            <UButton
-              label="Renovar token"
-              icon="i-lucide-refresh-cw"
-              color="neutral"
-              variant="soft"
-              :loading="saving"
-              class="w-full justify-center sm:w-auto"
-              @click="refreshToken"
-            />
-          </div>
-        </UPageCard>
-      </div>
-    </template>
+          </UPageCard>
+        </div>
+      </template>
     </div>
   </div>
 </template>

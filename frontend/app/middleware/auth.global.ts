@@ -1,4 +1,8 @@
-import { hasConfirmedAdminAccess, unwrapMeUser } from '~/utils/permissions'
+import {
+  canAccessPlatformSerproConsole,
+  hasConfirmedAdminAccess,
+  unwrapMeUser
+} from '~/utils/permissions'
 import type { MeIdentity } from '~/utils/permissions'
 
 export default defineNuxtRouteMiddleware(async (to) => {
@@ -39,7 +43,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   // CT-e não é Configurações: alias legado → catálogo filtrado (sem layout Settings).
-  if (to.path === '/settings/cte') {
+  if (to.path.replace(/\/+$/, '') === '/settings/cte') {
     const accepted = new Set([
       'kind',
       'direction',
@@ -65,6 +69,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
       if (typeof value === 'string' && value) query[key] = value
     }
     return navigateTo({ path: '/docs/catalog', query }, { replace: true })
+  }
+
+  // Console global SERPRO: PLATFORM_ADMIN (+ TOTP) ou office ADMIN (shell com denied).
+  const isPlatformSerproPath = to.path === '/admin/serpro' || to.path.startsWith('/admin/serpro/')
+  if (isPlatformSerproPath) {
+    if (canAccessPlatformSerproConsole(identity) || hasConfirmedAdminAccess(identity)) {
+      return undefined
+    }
+    return navigateTo('/')
   }
 
   // Gate normal: /settings e /admin exigem ADMIN com 2FA confirmado.

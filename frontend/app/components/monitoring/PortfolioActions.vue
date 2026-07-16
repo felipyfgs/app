@@ -20,6 +20,8 @@ const props = withDefaults(defineProps<{
   showEnqueue?: boolean
   showExport?: boolean
   showAddClient?: boolean
+  /** Mantém as ações no menu mesmo em viewport desktop (painéis mestres estreitos). */
+  compact?: boolean
 }>(), {
   showAssociate: true,
   showEnqueue: true,
@@ -133,7 +135,10 @@ const mobileItems = computed<DropdownMenuItem[]>(() => {
     class="flex items-center gap-2"
     data-testid="monitoring-portfolio-actions"
   >
-    <div class="hidden items-center gap-2 sm:flex">
+    <div
+      v-if="!compact"
+      class="hidden items-center gap-2 sm:flex"
+    >
       <UButton
         v-if="showAdd"
         color="primary"
@@ -189,7 +194,7 @@ const mobileItems = computed<DropdownMenuItem[]>(() => {
         variant="ghost"
         icon="i-lucide-ellipsis-vertical"
         aria-label="Ações da carteira"
-        class="sm:hidden"
+        :class="compact ? undefined : 'sm:hidden'"
         :loading="enqueueing || exporting"
         data-testid="portfolio-actions-mobile"
       />

@@ -11,7 +11,7 @@ describe('operations inbox surface', () => {
   const api = [facade, operationsModule].join('\n')
   const types = readFileSync(resolve(APP_ROOT, 'types/api.ts'), 'utf8')
   const health = readFileSync(resolve(APP_ROOT, 'pages/health.vue'), 'utf8')
-  const notifications = readFileSync(resolve(APP_ROOT, 'components/shell/NotificationsSlideover.vue'), 'utf8')
+  const notifications = readFileSync(resolve(APP_ROOT, 'components/NotificationsSlideover.vue'), 'utf8')
   const admin = readFileSync(resolve(APP_ROOT, 'pages/admin/index.vue'), 'utf8')
 
   it('expõe client tipado de inbox e summary com backup', () => {

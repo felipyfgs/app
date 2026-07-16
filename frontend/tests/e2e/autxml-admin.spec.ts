@@ -1,37 +1,31 @@
 import { test, expect } from '@playwright/test'
+import { installApiFixtures } from './support/api-fixtures'
 
 /**
- * Smoke de presença das superfícies autXML/import (rotas autenticadas).
- * Depende do estado de login do projeto (mesmo padrão dos demais e2e).
+ * Smoke de presença das superfícies autXML/import com sessão ADMIN sintética.
  */
 test.describe('autXML e importações (rotas)', () => {
-  test('admin expõe data-testid do onboarding quando autenticado como ADMIN', async ({ page }) => {
+  test.beforeEach(async ({ page }) => {
+    await installApiFixtures(page, 'ADMIN')
+  })
+
+  test('admin expõe onboarding autXML quando autenticado como ADMIN', async ({ page }) => {
     await page.goto('/admin')
-    // Sem sessão: redireciona login; com sessão: card presente
-    const url = page.url()
-    if (url.includes('login')) {
-      await expect(page.getByRole('button', { name: /entrar|login/i }).or(page.locator('input[type="password"]'))).toBeVisible({ timeout: 10000 })
-      return
-    }
-    await expect(page.getByTestId('admin-autxml-card').or(page.getByTestId('admin-autxml-onboarding'))).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole('heading', { name: 'Administração', exact: true })).toBeVisible()
+    await expect(page.getByText('Onboarding autXML por estabelecimento', { exact: true })).toBeVisible()
+    await expect(page.getByText('autXML cobre NF-e 55 e não é retroativo', { exact: true })).toBeVisible()
   })
 
   test('histórico de importações é navegável', async ({ page }) => {
     await page.goto('/docs/imports')
-    const url = page.url()
-    if (url.includes('login')) {
-      await expect(page.locator('body')).toBeVisible()
-      return
-    }
-    await expect(page.getByTestId('page-navbar').or(page.getByText(/Importações|Lotes/i))).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('page-navbar')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Importações XML/ZIP', exact: true })).toBeVisible()
   })
 
   test('sincronizações exibe card autXML', async ({ page }) => {
     await page.goto('/syncs')
-    const url = page.url()
-    if (url.includes('login')) {
-      return
-    }
-    await expect(page.getByTestId('autxml-sync-card').or(page.getByText(/autXML/i))).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole('heading', { name: 'Sincronizações', exact: true })).toBeVisible()
+    await expect(page.getByText('Sincronização central autXML (escritório)', { exact: true })).toBeVisible()
+    await expect(page.getByText('NF-e 55 · autXML', { exact: true })).toBeVisible()
   })
 })

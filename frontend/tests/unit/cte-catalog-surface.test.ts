@@ -22,7 +22,7 @@ function user(role: MeUser['role'], confirmed = true): MeUser {
 describe('superfície CT-e no catálogo', () => {
   it('middleware redireciona /settings/cte para o catálogo e remove exceção de gate', () => {
     const middleware = readFileSync(resolve(APP_ROOT, 'middleware/auth.global.ts'), 'utf8')
-    expect(middleware).toContain('to.path === \'/settings/cte\'')
+    expect(middleware).toMatch(/settings\/cte/)
     expect(middleware).toContain('path: \'/docs/catalog\'')
     expect(middleware).toContain('kind: \'CTE\'')
     // Gate normal de /settings sem liberar CT-e como página Settings.

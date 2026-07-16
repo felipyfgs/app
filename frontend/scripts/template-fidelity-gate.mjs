@@ -21,6 +21,10 @@ const REPO = path.resolve(__dirname, '../..')
 const PAGES = path.join(REPO, 'frontend/app/pages')
 const APP = path.join(REPO, 'frontend/app')
 const MATRIX = path.join(REPO, 'openspec/changes/ui-template-fidelity-total/parity-matrix.md')
+const CURRENT_CHANGE_LIST_PAGES = [
+  'pages/monitoring/registrations.vue',
+  'pages/monitoring/tax-processes.vue'
+]
 
 const FORBIDDEN_CHROME = [
   ['ShellListShell', 'components/shell/ListShell.vue'],
@@ -176,6 +180,36 @@ function findListContractIssues(file, text) {
   return violations
 }
 
+function findCurrentChangeListIssues(file, text) {
+  const rel = relApp(file)
+  const violations = []
+  const requiredTokens = [
+    '<UDashboardPanel',
+    '<template #header>',
+    '<UDashboardNavbar',
+    '<UDashboardSidebarCollapse',
+    '<template #body>',
+    '<UTable',
+    `base: 'table-fixed border-separate border-spacing-0'`,
+    `thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none'`,
+    `tbody: '[&>tr]:last:[&>td]:border-b-0'`,
+    `th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r'`,
+    `td: 'border-b border-default'`,
+    `separator: 'h-0'`,
+    '<template #empty>',
+    ':loading="loading"',
+    '<DashboardInfiniteTableLoader'
+  ]
+
+  for (const token of requiredTokens) {
+    if (!text.includes(token)) violations.push(`${rel}: lista do change sem contrato canônico (${token})`)
+  }
+  if (/\boffice_id\s*:/.test(text)) violations.push(`${rel}: request controla office_id`)
+  violations.push(...findLooseTableUi(file, text))
+  violations.push(...findNonCanonicalAlerts(file, text))
+  return violations
+}
+
 function runSelfTest() {
   const fixture = path.join(PAGES, 'fixture.vue')
   const validList = `
@@ -219,6 +253,12 @@ function main() {
   // Documentação/OpenSpec reiniciada: matriz é opcional até a nova docs existir.
   if (!hasMatrix) {
     warnings.push(`Matriz ausente (docs reiniciadas): ${path.relative(REPO, MATRIX)}`)
+    warnings.push('Gate amplo legado suspenso; validando as listas do change integrar-serpro-monitoramento-completo.')
+    for (const rel of CURRENT_CHANGE_LIST_PAGES) {
+      const abs = path.join(APP, rel)
+      if (!fs.existsSync(abs)) issues.push(`Página obrigatória ausente: ${rel}`)
+      else issues.push(...findCurrentChangeListIssues(abs, read(abs)))
+    }
   } else {
     for (const f of pageFiles) {
       if (!matrixFiles.has(f)) issues.push(`Página fora da matriz: ${f}`)
@@ -228,33 +268,35 @@ function main() {
     }
   }
 
-  // structural chrome for every non-auth non-redirect page
-  for (const abs of walkVue(PAGES)) {
-    const text = read(abs)
-    const rel = relApp(abs)
-    if (isAuth(text) || isRedirect(text)) continue
-    issues.push(...findForbiddenChrome(abs, text))
-    issues.push(...findNonCanonicalAlerts(abs, text))
-    // child empty placeholders under parent (mailbox empty) still need parent chrome
-    const chrome = pageHasChromeWithParents(abs, text)
-    if (!chrome.ok) {
-      // allow pure content children that only render forms/cards without panel if parent has shell
-      // already checked parents — fail
-      issues.push(`Sem UDashboardPanel/casca (nem no pai): ${rel}`)
-    }
-    issues.push(...findLooseTableUi(abs, text))
-    if (hasMatrix && matrixBundles.get(rel) === 'LIST') {
-      issues.push(...findListContractIssues(abs, text))
-    }
-  }
-
-  // scan components that use UTable
-  const componentsDir = path.join(APP, 'components')
-  if (fs.existsSync(componentsDir)) {
-    for (const abs of walkVue(componentsDir)) {
+  if (hasMatrix) {
+    // structural chrome for every non-auth non-redirect page
+    for (const abs of walkVue(PAGES)) {
       const text = read(abs)
-      issues.push(...findLooseTableUi(abs, text))
+      const rel = relApp(abs)
+      if (isAuth(text) || isRedirect(text)) continue
+      issues.push(...findForbiddenChrome(abs, text))
       issues.push(...findNonCanonicalAlerts(abs, text))
+      // child empty placeholders under parent (mailbox empty) still need parent chrome
+      const chrome = pageHasChromeWithParents(abs, text)
+      if (!chrome.ok) {
+        // allow pure content children that only render forms/cards without panel if parent has shell
+        // already checked parents — fail
+        issues.push(`Sem UDashboardPanel/casca (nem no pai): ${rel}`)
+      }
+      issues.push(...findLooseTableUi(abs, text))
+      if (matrixBundles.get(rel) === 'LIST') {
+        issues.push(...findListContractIssues(abs, text))
+      }
+    }
+
+    // scan components that use UTable
+    const componentsDir = path.join(APP, 'components')
+    if (fs.existsSync(componentsDir)) {
+      for (const abs of walkVue(componentsDir)) {
+        const text = read(abs)
+        issues.push(...findLooseTableUi(abs, text))
+        issues.push(...findNonCanonicalAlerts(abs, text))
+      }
     }
   }
 

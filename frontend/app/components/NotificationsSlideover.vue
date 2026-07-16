@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatTimeAgo } from '@vueuse/core'
 import type { AppNotification, InboxItem } from '~/types/api'
+import { resolveInboxItemLink } from '~/utils/inbox-links'
 
 const { isNotificationsSlideoverOpen, me, sessionEpoch } = useDashboard()
 const api = useApi()
@@ -16,13 +17,7 @@ function severityColor(severity: string): AppNotification['color'] {
 }
 
 function itemTo(item: InboxItem): string {
-  if (String(item.type).startsWith('credential') && item.links?.credential) {
-    return item.links.credential
-  }
-  if (item.links?.sync) return item.links.sync
-  if (item.links?.client) return item.links.client
-  if (String(item.type).startsWith('backup')) return '/health'
-  return '/health'
+  return resolveInboxItemLink(item)
 }
 
 function mapInbox(items: InboxItem[]): AppNotification[] {

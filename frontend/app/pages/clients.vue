@@ -51,32 +51,31 @@ watch(
     Casca: UDashboardPanel (inline template).
   -->
   <UDashboardPanel v-if="isCatalog" id="clients">
-  <template #header>
-    <UDashboardNavbar title="Clientes" data-testid="page-navbar">
-      <template #leading>
-        <UDashboardSidebarCollapse />
-      </template>
-      <template #right>
-
-      <UButton
-        v-if="canManageClients"
-        icon="i-lucide-plus"
-        label="Novo cliente"
-        @click="openClientCreate"
-      />
-      </template>
-    </UDashboardNavbar>
+    <template #header>
+      <UDashboardNavbar title="Clientes" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+        <template #right>
+          <UButton
+            v-if="canManageClients"
+            icon="i-lucide-plus"
+            label="Novo cliente"
+            @click="openClientCreate"
+          />
+        </template>
+      </UDashboardNavbar>
 
       <UDashboardToolbar data-testid="clients-section-tabs">
         <!-- NOTE: The `-mx-1` class is used to align with the `DashboardSidebarCollapse` button here. -->
         <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
       </UDashboardToolbar>
-  </template>
+    </template>
 
-  <template #body>
-    <NuxtPage />
-  </template>
-</UDashboardPanel>
+    <template #body>
+      <NuxtPage />
+    </template>
+  </UDashboardPanel>
 
   <!-- /clients/:id… — painel próprio em [id].vue -->
   <NuxtPage v-else />

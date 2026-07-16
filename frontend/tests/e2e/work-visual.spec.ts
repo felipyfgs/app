@@ -12,7 +12,7 @@ async function openWork(page: import('@playwright/test').Page, path: string) {
   else if (path.startsWith('/work/calendar')) selector = '[data-testid="work-calendar"]'
   else if (path.startsWith('/work/templates')) selector = '[data-testid="work-templates-panel"]'
   else if (path.startsWith('/work/processes')) selector = '[data-testid="work-processes-panel"]'
-  else if (path === '/work' || path.startsWith('/work?')) selector = '[data-testid="work-queue-panel"]'
+  else if (path === '/work' || path.startsWith('/work?') || path.startsWith('/work/tasks')) selector = '[data-testid="work-queue-panel"]'
   await expect(page.locator(selector).first()).toBeVisible({ timeout: 45000 })
   await stabilizeVisualPage(page)
 }

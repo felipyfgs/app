@@ -7,57 +7,62 @@ import type { Client, ClientListStats } from '~/types/api'
 
 const api = useApi()
 const toast = useToast()
+const { sessionEpoch } = useDashboard()
 
 const clients = ref<Client[]>([])
-const stats = ref<ClientListStats>({
-  total: 0,
-  active: 0,
-  with_credential: 0,
-  without_credential: 0,
-  credential_expiring_30d: 0,
-  credential_expired: 0,
-  capture_problem: 0
-})
+function emptyStats(): ClientListStats {
+  return {
+    total: 0,
+    active: 0,
+    with_credential: 0,
+    credential_ok: 0,
+    without_credential: 0,
+    credential_expiring_30d: 0,
+    credential_expired: 0,
+    capture_problem: 0,
+    client_growth_12m: []
+  }
+}
+
+const stats = ref<ClientListStats>(emptyStats())
 const loading = ref(false)
+let loadSeq = 0
 
 async function load() {
+  const seq = ++loadSeq
+  const epoch = sessionEpoch.value
   loading.value = true
   try {
-    const perPage = 100
-    const first = await api.clients.list({ page: 1, per_page: perPage })
-    let all = [...first.data]
-    const lastPage = first.meta.last_page || 1
-    for (let p = 2; p <= lastPage; p++) {
-      const pageRes = await api.clients.list({ page: p, per_page: perPage })
-      all = all.concat(pageRes.data)
-    }
-    clients.value = all
-    stats.value = first.meta.stats || {
-      total: first.meta.total ?? all.length,
-      active: all.filter(c => c.is_active).length,
-      with_credential: all.filter(c => !!c.credential_summary).length,
-      without_credential: all.filter(c => !c.credential_summary).length,
-      credential_expiring_30d: 0,
-      credential_expired: 0,
-      capture_problem: 0
-    }
-    if (!first.meta.stats) {
-      stats.value.total = all.length
-      stats.value.active = all.filter(c => c.is_active).length
-      stats.value.with_credential = all.filter(c => !!c.credential_summary).length
-      stats.value.without_credential = all.filter(c => !c.credential_summary).length
-    }
+    const first = await api.clients.list({
+      page: 1,
+      per_page: 8,
+      sort: 'created_at',
+      direction: 'desc',
+      dashboard: true
+    })
+    if (seq !== loadSeq || epoch !== sessionEpoch.value) return
+    clients.value = first.data
+    stats.value = first.meta.stats || emptyStats()
   } catch (caught) {
+    if (seq !== loadSeq || epoch !== sessionEpoch.value) return
     toast.add({
       title: apiErrorMessage(caught, 'Erro ao carregar dashboard de clientes.'),
       color: 'error'
     })
   } finally {
-    loading.value = false
+    if (seq === loadSeq && epoch === sessionEpoch.value) loading.value = false
   }
 }
 
 onMounted(load)
+
+watch(sessionEpoch, () => {
+  loadSeq += 1
+  clients.value = []
+  stats.value = emptyStats()
+  loading.value = false
+  void load()
+})
 </script>
 
 <template>

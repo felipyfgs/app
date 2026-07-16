@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  canAccessPlatformSerproConsole,
   canCreateExport,
   canManageClients,
   canManageCredentials,
   canTriggerSync,
   hasConfirmedAdminAccess,
+  isPlatformAdmin,
   unwrapMeUser
 } from '../../app/utils/permissions'
 import type { MeUser } from '../../app/types/api'
@@ -68,5 +70,22 @@ describe('permissions', () => {
     expect(canTriggerSync(viewer)).toBe(false)
     expect(canCreateExport(viewer)).toBe(false)
     expect(hasConfirmedAdminAccess(viewer)).toBe(false)
+  })
+
+  it('PLATFORM_ADMIN com TOTP acessa console SERPRO sem membership', () => {
+    const plat = user({
+      role: null,
+      office: null,
+      is_platform_admin: true,
+      two_factor_confirmed: true
+    })
+    expect(isPlatformAdmin(plat)).toBe(true)
+    expect(canAccessPlatformSerproConsole(plat)).toBe(true)
+    expect(hasConfirmedAdminAccess(plat)).toBe(false)
+  })
+
+  it('ADMIN de office sem flag platform não acessa console global', () => {
+    const admin = user({ role: 'ADMIN', is_platform_admin: false })
+    expect(canAccessPlatformSerproConsole(admin)).toBe(false)
   })
 })

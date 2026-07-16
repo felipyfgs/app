@@ -84,6 +84,30 @@ export const FISCAL_MODULE_API_SEGMENTS: Record<FiscalPortfolioModuleKey, string
   fgts: 'fgts'
 }
 
+export interface FiscalRegistrationLink {
+  id: number
+  client_id: number
+  link_key: string
+  status: string
+  evidence_version?: string | null
+  source_provenance?: string | null
+  is_simulated?: boolean
+  refreshed_at?: string | null
+  observed_at?: string | null
+}
+
+export interface FiscalTaxProcess {
+  id: number
+  client_id: number
+  process_number: string
+  status: string
+  evidence_version?: string | null
+  source_provenance?: string | null
+  is_simulated?: boolean
+  refreshed_at?: string | null
+  observed_at?: string | null
+}
+
 /** Situação fiscal — espelho de App\Enums\FiscalSituation. */
 export type FiscalSituationCode
   = | 'UP_TO_DATE'
