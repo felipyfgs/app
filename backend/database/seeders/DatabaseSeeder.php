@@ -76,6 +76,9 @@ class DatabaseSeeder extends Seeder
             ->whereNull('selected_office_id')
             ->update(['selected_office_id' => $office->id]);
 
+        // PLATFORM_ADMIN exclusivamente global (sem OfficeMembership / seats)
+        $this->call(PlatformAdminDemoSeeder::class);
+
         // Catálogo rico: clientes, sync, notas, exportações (só local/testing)
         $this->call(DemoCatalogSeeder::class);
 
