@@ -96,14 +96,14 @@
 - [x] 8.2 Consultar o catálogo/vault por chave antes de criar tentativa remota.
 - [x] 8.3 Cancelar idempotentemente job não iniciado quando XML válido chegar por outra fonte.
 - [x] 8.4 Recusar busca SVRS por período, série, numeração ou chave sem vínculo interno.
-- [ ] 8.5 Encaminhar backlog em massa para `autXML`, XML/ZIP ou pacote oficial em vez de rajada no portal.
+- [x] 8.5 Encaminhar backlog em massa para `autXML`, XML/ZIP ou pacote oficial em vez de rajada no portal.
 - [x] 8.6 Integrar origem SVRS NF-e 55 ao pipeline canônico existente.
 - [x] 8.7 Persistir bytes no vault e aquisição antes de transicionar `XML_PENDING` para `XML_CAPTURED`.
 - [x] 8.8 Reusar bytes seguros do vault quando a persistência falhar após download, evitando nova chamada externa.
 - [x] 8.9 Registrar aquisições duplicadas de mesmo hash sem duplicar documento.
 - [x] 8.10 Preservar canônico e abrir divergência crítica quando hashes válidos diferirem para a mesma chave.
-- [ ] 8.11 Reconciliar upload XML/ZIP/pacote oficial com tentativas SVRS pendentes.
-- [ ] 8.12 Cobrir isolamento entre escritórios em todas as queries, policies, jobs e uniques.
+- [x] 8.11 Reconciliar upload XML/ZIP/pacote oficial com tentativas SVRS pendentes.
+- [x] 8.12 Cobrir isolamento entre escritórios em todas as queries, policies, jobs e uniques.
 
 ## 9. Orquestração Horizon e scheduler
 
@@ -113,9 +113,9 @@
 - [x] 9.4 Mapear resultados tipados para sucesso, reagendamento, bloqueio da raiz, breaker global e fallback.
 - [x] 9.5 Impedir retry automático imediato do Horizon após qualquer exchange consumido.
 - [x] 9.6 Preservar jobs/backlog quando kill switch for ativado durante execução.
-- [ ] 9.7 Distribuir o auto-queue elegível deterministicamente sem ultrapassar budgets.
+- [x] 9.7 Distribuir o auto-queue elegível deterministicamente sem ultrapassar budgets.
 - [x] 9.8 Manter DistDFe e demais canais fiscais independentes do breaker do portal SVRS.
-- [ ] 9.9 Testar crash entre reserva, GET, POST, vault e commit sem duplicar chamadas indevidamente.
+- [x] 9.9 Testar crash entre reserva, GET, POST, vault e commit sem duplicar chamadas indevidamente.
 
 ## 10. API, autorização e auditoria
 
@@ -130,27 +130,27 @@
 
 ## 11. Dashboard Nuxt e contingência
 
-- [ ] 11.1 Usar `/frontend-nuxt-stack` e o arquétipo fixado do dashboard ao implementar as telas.
-- [ ] 11.2 Exibir estados disponível, aguardando fonte, aguardando budget, recuperando, capturado, cooldown e fallback.
-- [ ] 11.3 Exibir breaker, `next_probe_at`, exchanges consumidos/restantes e backlog por modelo.
+- [x] 11.1 Usar `/frontend-nuxt-stack` e o arquétipo fixado do dashboard ao implementar as telas.
+- [x] 11.2 Exibir estados disponível, aguardando fonte, aguardando budget, recuperando, capturado, cooldown e fallback.
+- [x] 11.3 Exibir breaker, `next_probe_at`, exchanges consumidos/restantes e backlog por modelo.
 - [x] 11.4 Explicar na UI que os budgets são preventivos e não limites oficiais publicados do `NFESSL`.
-- [ ] 11.5 Ocultar e bloquear ações administrativas sem papel/2FA recente.
-- [ ] 11.6 Não oferecer retry remoto durante cooldown; priorizar XML/ZIP ou pacote oficial.
-- [ ] 11.7 Permitir extensão de cooldown e seleção de canário sem permitir prova antecipada.
-- [ ] 11.8 Preservar dados válidos durante polling e estados transitórios do governador.
-- [ ] 11.9 Testar responsividade, teclado, foco, contraste, loading, vazio, erro e bloqueio.
+- [x] 11.5 Ocultar e bloquear ações administrativas sem papel/2FA recente.
+- [x] 11.6 Não oferecer retry remoto durante cooldown; priorizar XML/ZIP ou pacote oficial.
+- [x] 11.7 Permitir extensão de cooldown e seleção de canário sem permitir prova antecipada.
+- [x] 11.8 Preservar dados válidos durante polling e estados transitórios do governador.
+- [x] 11.9 Testar responsividade, teclado, foco, contraste, loading, vazio, erro e bloqueio.
 
 ## 12. Observabilidade, segurança e testes
 
-- [ ] 12.1 Criar métricas por coorte para exchanges, reservas negadas, breaker, cooldown, canário e resultados tipados.
-- [ ] 12.2 Criar métricas por escritório somente para backlog e aquisições autorizadas daquele tenant.
-- [ ] 12.3 Criar itens de inbox para bloqueio múltiplas consultas, contrato, A1, assinatura, divergência e budget.
-- [ ] 12.4 Garantir cardinalidade limitada e mascaramento de chave/CNPJ em logs e tracing.
+- [x] 12.1 Criar métricas por coorte para exchanges, reservas negadas, breaker, cooldown, canário e resultados tipados.
+- [x] 12.2 Criar métricas por escritório somente para backlog e aquisições autorizadas daquele tenant.
+- [x] 12.3 Criar itens de inbox para bloqueio múltiplas consultas, contrato, A1, assinatura, divergência e budget.
+- [x] 12.4 Garantir cardinalidade limitada e mascaramento de chave/CNPJ em logs e tracing.
 - [x] 12.5 Executar testes unitários do governador, janelas, relógio, escalonamento e fail-closed.
 - [x] 12.6 Executar testes de integração do fake portal, mTLS simulado, parser e ingestão.
-- [ ] 12.7 Executar testes de concorrência NF-e/NFC-e em múltiplos workers e tenants.
+- [x] 12.7 Executar testes de concorrência NF-e/NFC-e em múltiplos workers e tenants.
 - [x] 12.8 Executar testes de segurança para SSRF, XXE, redirect, template malicioso e exposição de segredo.
-- [ ] 12.9 Executar suíte backend/frontend, análise estática e testes de migrations/rollback.
+- [x] 12.9 Executar suíte backend/frontend, análise estática e testes de migrations/rollback.
 - [x] 12.10 Produzir runbook de bloqueio com kill switch, cooldown, canário, fallback e contato SVRS.
 - [x] 12.11 Executar drill de kill switch e rollback sem apagar backlog, hashes ou documentos.
 

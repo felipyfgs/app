@@ -152,14 +152,14 @@
 
 ## 14. Verificação automatizada e segurança
 
-- [ ] 14.1 Executar testes unitários de parser, papéis, direção, assinatura, redação, cursor e cobertura.
-- [ ] 14.2 Executar testes de integração de ambos os jobs, page processors, cofre, banco, import, push, eventos e APIs.
-- [ ] 14.3 Executar análise estática, formatter e suíte completa backend sem reduzir cobertura existente.
-- [ ] 14.4 Executar typecheck, lint, unit e e2e do frontend.
-- [ ] 14.5 Testar concorrência de workers, corrida de unicidade, morte no meio da página, retry e retomada sem salto de NSU.
-- [ ] 14.6 Testar matriz de segurança para tenancy, RBAC, 2FA, XXE, ZIP bomb, payload excessivo, token revogado e ausência de segredo.
-- [ ] 14.7 Validar que nenhuma rota, job ou fallback automatiza portal, navegador, CAPTCHA ou gov.br.
-- [ ] 14.8 Executar `openspec validate complete-cte-capture-with-distdfe-autxml-and-import --json` após os ajustes finais.
+- [x] 14.1 Executar testes unitários de parser, papéis, direção, assinatura, redação, cursor e cobertura.
+- [x] 14.2 Executar testes de integração de ambos os jobs, page processors, cofre, banco, import, push, eventos e APIs.
+- [x] 14.3 Executar análise estática, formatter e suíte completa backend sem reduzir cobertura existente.
+- [x] 14.4 Executar typecheck, lint, unit e e2e do frontend.
+- [x] 14.5 Testar concorrência de workers, corrida de unicidade, morte no meio da página, retry e retomada sem salto de NSU.
+- [x] 14.6 Testar matriz de segurança para tenancy, RBAC, 2FA, XXE, ZIP bomb, payload excessivo, token revogado e ausência de segredo.
+- [x] 14.7 Validar que nenhuma rota, job ou fallback automatiza portal, navegador, CAPTCHA ou gov.br.
+- [x] 14.8 Executar `openspec validate complete-cte-capture-with-distdfe-autxml-and-import --json` após os ajustes finais.
 
 ## 15. Smoke restrito e piloto
 
