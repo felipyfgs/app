@@ -24,7 +24,11 @@ describe('navigation', () => {
   it('VIEWER não vê Administração nem ações rápidas de criação', () => {
     const ids = flattenDestinations(mainDestinations(user('VIEWER'))).map(d => d.id)
     expect(ids).not.toContain('admin')
-    expect(quickActions(user('VIEWER'))).toEqual([])
+    const actions = quickActions(user('VIEWER')).map(a => a.id)
+    // Fila é navegação permitida; criação de cliente/export continua bloqueada.
+    expect(actions).not.toContain('new-client')
+    expect(actions).not.toContain('new-export')
+    expect(actions).toContain('work-queue')
   })
 
   it('OPERATOR tem ações de cliente e exportação, sem admin', () => {
@@ -33,6 +37,7 @@ describe('navigation', () => {
     const actions = quickActions(user('OPERATOR')).map(a => a.id)
     expect(actions).toContain('new-client')
     expect(actions).toContain('new-export')
+    expect(actions).toContain('work-queue')
   })
 
   it('ADMIN com 2FA vê Administração/Configurações e ações rápidas', () => {
@@ -46,12 +51,21 @@ describe('navigation', () => {
     const ids = flattenDestinations(mainDestinations(user('ADMIN', false))).map(d => d.id)
     expect(ids).not.toContain('admin')
     expect(ids).not.toContain('settings-onboarding')
-    expect(quickActions(user('ADMIN', false))).toEqual([])
+    const actions = quickActions(user('ADMIN', false)).map(a => a.id)
+    expect(actions).not.toContain('new-client')
+    expect(actions).not.toContain('new-export')
+    // Minha fila permanece acessível (consulta).
+    expect(actions).toContain('work-queue')
   })
 
-  it('destinos folha do operador batem com o produto (Clientes, Monitoramento, Documentos e Operações)', () => {
+  it('destinos folha do operador batem com o produto (Trabalho, Clientes, Monitoramento, Documentos e Operações)', () => {
     const tree = mainDestinations(user('OPERATOR'))
-    expect(tree.map(d => d.id)).toEqual(['home', 'clients', 'monitoring', 'docs', 'operations'])
+    expect(tree.map(d => d.id)).toEqual(['home', 'work', 'clients', 'monitoring', 'docs', 'operations'])
+    expect(tree.find(d => d.id === 'work')?.children?.map(c => c.id)).toEqual([
+      'work-queue',
+      'work-processes',
+      'work-calendar'
+    ])
     expect(tree.find(d => d.id === 'clients')?.children?.map(c => c.id)).toEqual([
       'clients-list',
       'clients-dashboard'
@@ -65,11 +79,15 @@ describe('navigation', () => {
       'exports',
       'closing',
       'syncs',
-      'imports',
-      'cte-onboarding'
+      'imports'
     ])
+    // CT-e não é destino próprio — vive no catálogo Documentos.
+    const flatOps = flattenDestinations(tree.find(d => d.id === 'operations')?.children || [])
+    expect(flatOps.map(d => d.to)).not.toContain('/settings/cte')
+    expect(flatOps.map(d => d.id)).not.toContain('cte-onboarding')
     const flat = flattenDestinations(tree).map(d => d.id)
     expect(flat).toContain('home')
+    expect(flat).toContain('work-queue')
     expect(flat).toContain('clients-list')
     expect(flat).toContain('monitoring-dashboard')
     expect(flat).toContain('monitoring-fgts')
@@ -110,7 +128,20 @@ describe('navigation', () => {
     expect(docs?.to).toBeUndefined()
     const ops = items.find(i => i.label === 'Operações')
     expect(ops?.type).toBe('trigger')
-    expect(ops?.children?.length).toBe(6)
+    expect(ops?.children?.length).toBe(5)
     expect(ops?.to).toBeUndefined()
+  })
+
+  it('não expõe destino CT-e separado em sidebar nem Configurações', () => {
+    for (const role of ['VIEWER', 'OPERATOR', 'ADMIN'] as const) {
+      const flat = flattenDestinations(mainDestinations(user(role, role === 'ADMIN')))
+      expect(flat.map(d => d.id)).not.toContain('cte-onboarding')
+      expect(flat.map(d => d.id)).not.toContain('settings-cte')
+      expect(flat.map(d => d.to)).not.toContain('/settings/cte')
+      expect(flat.some(d => d.label === 'CT-e' && d.to === '/settings/cte')).toBe(false)
+    }
+    const adminFlat = flattenDestinations(mainDestinations(user('ADMIN', true)))
+    expect(adminFlat.map(d => d.id)).toContain('docs-catalog')
+    expect(adminFlat.find(d => d.id === 'docs-catalog')?.to).toBe('/docs/catalog')
   })
 })

@@ -1,8 +1,23 @@
 /**
- * Troca explícita de escritório entre memberships autorizadas (15.2).
+ * Troca explícita de escritório entre memberships autorizadas.
  * Invalida stores/queries tenant-scoped via sessionEpoch + refreshIdentity.
+ * Páginas devem: (1) watch sessionEpoch; (2) zerar seleção/paginação/detalhe;
+ * (3) descartar respostas em voo comparando epoch no resolve.
  */
 import type { OfficeMembership } from '~/types/api'
+
+/** Helper para reset local de UI tenant-scoped ao trocar escritório. */
+export function resetTenantScopedUi(handlers: {
+  clearSelection?: () => void
+  clearPagination?: () => void
+  clearDetail?: () => void
+  clearCaches?: () => void
+}) {
+  handlers.clearSelection?.()
+  handlers.clearPagination?.()
+  handlers.clearDetail?.()
+  handlers.clearCaches?.()
+}
 
 export function useTenantSwitch() {
   const api = useApi()

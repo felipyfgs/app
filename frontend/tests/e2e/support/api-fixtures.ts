@@ -10,6 +10,7 @@ import type {
   SyncRun
 } from '../../../app/types/api'
 import { tryFulfillMonitoringApi } from './monitoring-fixtures'
+import { tryFulfillWorkApi } from './work-fixtures'
 
 const FIXED_NOW = '2026-07-14T15:00:00.000Z'
 export const NOTE_ACCESS_KEY = 'NFS20260714000000000000000000000000000000000001'
@@ -1290,6 +1291,11 @@ export async function installApiFixtures(
     // Hub de monitoramento fiscal (carteiras, mailbox, guias, FGTS, etc.)
     // Cenários ready|empty|error|slow alinhados às listagens legadas.
     if (await tryFulfillMonitoringApi(route, pathname, method, listScenario, activeOfficeId)) {
+      return
+    }
+
+    // Módulo operacional Work (fila, processos, modelos, KPIs)
+    if (await tryFulfillWorkApi(route, pathname, method, role, activeOfficeId, listScenario)) {
       return
     }
 

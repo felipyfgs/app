@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import type { AuthFormField, FormSubmitEvent } from '@nuxt/ui'
+import { unwrapMeUser, type MeIdentity } from '~/utils/permissions'
 
 definePageMeta({ layout: 'auth' })
 
 useSeoMeta({ title: 'Verificação em duas etapas · NFS-e ADN' })
 
 const api = useApi()
-const { refreshIdentity } = useSanctumAuth()
+const { refreshIdentity, user } = useSanctumAuth()
 const useRecoveryCode = ref(false)
 const error = ref('')
 const loading = ref(false)
@@ -58,7 +59,8 @@ async function submit(body: { code?: string, recovery_code?: string }) {
   try {
     await api.twoFactor.challenge(body)
     await refreshIdentity()
-    await navigateTo('/')
+    const identity = unwrapMeUser(user.value as MeIdentity)
+    await navigateTo(identity?.role === 'OPERATOR' ? '/work' : '/')
   } catch (caught) {
     error.value = apiErrorMessage(caught, 'Código inválido ou expirado.')
   } finally {

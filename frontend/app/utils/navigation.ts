@@ -3,6 +3,8 @@ import type { MeUser } from '~/types/api'
 import {
   canCreateExport,
   canManageClients,
+  canManageWorkCatalog,
+  canViewWork,
   hasConfirmedAdminAccess
 } from '~/utils/permissions'
 
@@ -124,6 +126,8 @@ export function mainDestinations(
   const isDocsDocumentView = docsCatalog || docsDetail
   const isDocsClientView = path === '/docs'
 
+  const workOpen = !path || path === '/work' || path.startsWith('/work/')
+
   const items: NavDestination[] = [
     {
       id: 'home',
@@ -131,7 +135,49 @@ export function mainDestinations(
       icon: 'i-lucide-house',
       to: '/',
       exact: true
-    },
+    }
+  ]
+
+  if (canViewWork(user)) {
+    items.push({
+      id: 'work',
+      label: 'Trabalho',
+      icon: 'i-lucide-list-todo',
+      type: 'trigger',
+      defaultOpen: workOpen,
+      children: [
+        {
+          id: 'work-queue',
+          label: 'Minha fila',
+          icon: 'i-lucide-inbox',
+          to: '/work',
+          exact: true
+        },
+        {
+          id: 'work-processes',
+          label: 'Processos',
+          icon: 'i-lucide-folder-kanban',
+          to: '/work/processes'
+        },
+        {
+          id: 'work-calendar',
+          label: 'Calendário',
+          icon: 'i-lucide-calendar-days',
+          to: '/work/calendar'
+        },
+        ...(canManageWorkCatalog(user)
+          ? [{
+            id: 'work-templates',
+            label: 'Modelos',
+            icon: 'i-lucide-layout-template',
+            to: '/work/templates'
+          } satisfies NavDestination]
+          : [])
+      ]
+    })
+  }
+
+  items.push(
     {
       id: 'clients',
       label: 'Clientes',
@@ -215,16 +261,10 @@ export function mainDestinations(
           label: 'Importações',
           icon: 'i-lucide-upload',
           to: '/docs/imports'
-        },
-        {
-          id: 'cte-onboarding',
-          label: 'CT-e',
-          icon: 'i-lucide-truck',
-          to: '/settings/cte'
         }
       ]
     }
-  ]
+  )
 
   if (hasConfirmedAdminAccess(user)) {
     items.push({
@@ -241,12 +281,6 @@ export function mainDestinations(
           to: '/settings'
         },
         {
-          id: 'settings-cte',
-          label: 'CT-e',
-          icon: 'i-lucide-truck',
-          to: '/settings/cte'
-        },
-        {
           id: 'settings-usage',
           label: 'Consumo',
           icon: 'i-lucide-chart-pie',
@@ -257,6 +291,12 @@ export function mainDestinations(
           label: 'Administração',
           icon: 'i-lucide-shield',
           to: '/admin'
+        },
+        {
+          id: 'admin-departments',
+          label: 'Departamentos',
+          icon: 'i-lucide-building',
+          to: '/admin/departments'
         }
       ]
     })
@@ -301,6 +341,15 @@ export function quickActions(user?: MeUser | null): QuickAction[] {
       id: 'new-export',
       label: 'Nova exportação',
       icon: 'i-lucide-download'
+    })
+  }
+
+  if (canViewWork(user)) {
+    actions.push({
+      id: 'work-queue',
+      label: 'Minha fila',
+      icon: 'i-lucide-inbox',
+      to: '/work'
     })
   }
 

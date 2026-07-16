@@ -2,9 +2,11 @@
 import { formatTimeAgo } from '@vueuse/core'
 import type { AppNotification, InboxItem } from '~/types/api'
 
-const { isNotificationsSlideoverOpen, me } = useDashboard()
+const { isNotificationsSlideoverOpen, me, sessionEpoch } = useDashboard()
 const api = useApi()
 const notifications = ref<AppNotification[]>([])
+/** Snapshot preservado em falha de refresh (não limpar se já houver dados). */
+const lastGoodNotifications = ref<AppNotification[]>([])
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 const loadState = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
@@ -102,20 +104,35 @@ async function loadFallback(): Promise<AppNotification[]> {
 }
 
 async function load() {
+  const hadData = notifications.value.length > 0 || lastGoodNotifications.value.length > 0
   loading.value = true
-  loadState.value = 'loading'
+  if (!hadData) {
+    loadState.value = 'loading'
+  }
   errorMessage.value = null
+  const epoch = sessionEpoch.value
 
   try {
     const inbox = await api.operations.inbox({ limit: 20 })
-    notifications.value = mapInbox(inbox.data)
+    if (epoch !== sessionEpoch.value) return
+    const mapped = mapInbox(inbox.data)
+    notifications.value = mapped
+    lastGoodNotifications.value = mapped
     errorMessage.value = null
     loadState.value = 'success'
   } catch {
+    if (epoch !== sessionEpoch.value) return
     const fallback = await loadFallback()
+    if (epoch !== sessionEpoch.value) return
     if (fallback.length) {
       notifications.value = fallback
+      lastGoodNotifications.value = fallback
       errorMessage.value = 'Inbox indisponível; exibindo resumo sanitizado.'
+      loadState.value = 'error'
+    } else if (lastGoodNotifications.value.length) {
+      // Falha de refresh: preserva última carga válida.
+      notifications.value = lastGoodNotifications.value
+      errorMessage.value = 'Falha ao atualizar. Exibindo alertas da última carga válida.'
       loadState.value = 'error'
     } else {
       notifications.value = []
@@ -123,19 +140,22 @@ async function load() {
       loadState.value = 'error'
     }
   } finally {
-    loading.value = false
+    if (epoch === sessionEpoch.value) {
+      loading.value = false
+    }
   }
 }
 
 function clearNotifications() {
   notifications.value = []
+  lastGoodNotifications.value = []
   errorMessage.value = null
   loadState.value = 'idle'
 }
 
 watch(isNotificationsSlideoverOpen, (open) => {
   if (open) {
-    load()
+    void load()
   }
 })
 
@@ -143,11 +163,19 @@ watch(() => me.value?.id, (next, prev) => {
   if (prev !== undefined && next !== prev) {
     clearNotifications()
     if (isNotificationsSlideoverOpen.value) {
-      load()
+      void load()
     }
   }
   if (!next) {
     clearNotifications()
+  }
+})
+
+// Troca explícita de escritório: zera e recarrega se aberto.
+watch(sessionEpoch, () => {
+  clearNotifications()
+  if (isNotificationsSlideoverOpen.value) {
+    void load()
   }
 })
 </script>

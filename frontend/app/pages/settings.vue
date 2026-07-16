@@ -2,22 +2,17 @@
 /**
  * Settings onboarding Integra Contador (15.3).
  * Arquétipo: `.reference/nuxt-dashboard-template/app/pages/settings.vue`
+ * CT-e não entra aqui — destino canônico é `/docs/catalog?kind=CTE`.
  */
 import type { NavigationMenuItem } from '@nuxt/ui'
 
-const route = useRoute()
 const { canAccessAdministration } = useDashboard()
-const isCteReadOnlyPage = computed(() => route.path === '/settings/cte')
 
 const links = [[{
   label: 'Integra Contador',
   icon: 'i-lucide-key-round',
   to: '/settings',
   exact: true
-}, {
-  label: 'CT-e',
-  icon: 'i-lucide-truck',
-  to: '/settings/cte'
 }, {
   label: 'Procurações',
   icon: 'i-lucide-file-key',
@@ -68,7 +63,7 @@ const links = [[{
           title="Acesso restrito"
           description="Somente administradores com segundo fator confirmado podem alterar o onboarding Integra."
         />
-        <NuxtPage v-if="canAccessAdministration || isCteReadOnlyPage" />
+        <NuxtPage v-if="canAccessAdministration" />
       </div>
     </template>
   </UDashboardPanel>

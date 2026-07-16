@@ -54,15 +54,17 @@ describe('navigation monitoramento (15.4)', () => {
     }
   })
 
-  it('ADMIN com 2FA vê Configurações (onboarding + consumo)', () => {
+  it('ADMIN com 2FA vê Configurações (onboarding + consumo), sem CT-e', () => {
     const tree = mainDestinations(user('ADMIN', true))
     const settings = tree.find(d => d.id === 'settings')
     expect(settings?.children?.map(c => c.id)).toEqual([
       'settings-onboarding',
-      'settings-cte',
       'settings-usage',
-      'admin'
+      'admin',
+      'admin-departments'
     ])
+    expect(settings?.children?.map(c => c.id)).not.toContain('settings-cte')
+    expect(settings?.children?.map(c => c.to)).not.toContain('/settings/cte')
   })
 
   it('VIEWER não vê Configurações/Admin', () => {
@@ -70,5 +72,6 @@ describe('navigation monitoramento (15.4)', () => {
     expect(ids).not.toContain('admin')
     expect(ids).not.toContain('settings-onboarding')
     expect(ids).not.toContain('settings-usage')
+    expect(ids).not.toContain('settings-cte')
   })
 })

@@ -35,16 +35,16 @@ const year = new Date().getFullYear()
 
       <div class="relative z-10 max-w-md space-y-6">
         <h2 class="text-3xl xl:text-4xl font-semibold text-highlighted text-pretty tracking-tight">
-          Captura e organização de NFS-e para o escritório
+          Painel operacional para o escritório contábil
         </h2>
         <p class="text-base text-muted text-pretty leading-relaxed">
-          Painel interno para sincronização via ADN, gestão de certificados A1,
-          catálogo fiscal e exportações — com isolamento por escritório e trilha de auditoria.
+          Monitoramento fiscal, captura via ADN/SEFAZ, catálogo de documentos, trabalho
+          operacional e exportações — com isolamento por escritório e trilha de auditoria.
         </p>
         <ul class="space-y-3 text-sm text-muted">
           <li class="flex items-start gap-2.5">
             <UIcon name="i-lucide-shield-check" class="size-4 mt-0.5 text-primary shrink-0" />
-            <span>Acesso exclusivo a funcionários do escritório</span>
+            <span>Acesso exclusivo a funcionários do escritório contábil</span>
           </li>
           <li class="flex items-start gap-2.5">
             <UIcon name="i-lucide-lock-keyhole" class="size-4 mt-0.5 text-primary shrink-0" />
@@ -52,7 +52,7 @@ const year = new Date().getFullYear()
           </li>
           <li class="flex items-start gap-2.5">
             <UIcon name="i-lucide-building-2" class="size-4 mt-0.5 text-primary shrink-0" />
-            <span>Dados isolados por escritório — sem portal de cliente final</span>
+            <span>Dados isolados por escritório — produto para o escritório, não portal do contribuinte</span>
           </li>
         </ul>
       </div>

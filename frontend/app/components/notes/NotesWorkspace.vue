@@ -35,6 +35,26 @@ const props = withDefaults(defineProps<{
 })
 const { canCreateExport, canImportDocuments, sessionEpoch } = useDashboard()
 
+/** Query params aceitos no catálogo (deep-links e redirect legado). */
+const CATALOG_QUERY_KEYS = new Set([
+  'kind',
+  'direction',
+  'q',
+  'client_id',
+  'establishment_id',
+  'fiscal_role',
+  'acquisition_source',
+  'artifact_quality',
+  'coverage_status',
+  'status',
+  'competence',
+  'issued_from',
+  'issued_to',
+  'missing_party_name',
+  'issuer_cnpj',
+  'taker_cnpj'
+])
+
 const notes = ref<NfseNote[]>([])
 /** Lista de clientes (API de cadastro) na visão Por cliente — com captura/sync. */
 const byClientRows = ref<Client[]>([])
@@ -70,15 +90,34 @@ const persistedFilters = useState<NotesFilterState>('notes-workspace-filters', e
 const filters = reactive<NotesFilterState>({ ...persistedFilters.value })
 const view = ref<NotesViewMode>(props.initialView)
 
+/** Contexto CT-e (autXML, pendências) só no catálogo com filtro kind=CTE. */
+const showCteContext = computed(() => view.value === 'document' && filters.kind === 'CTE')
+
 watch(filters, (value) => {
   persistedFilters.value = { ...value }
 }, { deep: true })
 
+// Entrada profunda: /docs?import=1 ou /docs/catalog?import=1
+watch(
+  () => route.query.import,
+  (value) => {
+    if (value === '1' && canImportDocuments.value) {
+      importOpen.value = true
+      const { import: _drop, ...rest } = route.query
+      void router.replace({ path: route.path, query: rest })
+    }
+  },
+  { immediate: true }
+)
+
 watch(sessionEpoch, () => {
+  // Mantém kind documental (ex. CTE) como preferência de visão; limpa o resto
+  // tenant-scoped para não repopular CNPJ/cliente/pendências do office anterior.
+  const preserveKind = filters.kind === 'CTE' ? 'CTE' : FILTER_ALL
   const empty = emptyNotesFilters()
+  empty.kind = preserveKind
   Object.assign(filters, empty)
   persistedFilters.value = empty
-  // Limpa dados tenant-scoped e recarrega (não só filtros).
   notes.value = []
   byClientRows.value = []
   byClientTotal.value = 0
@@ -91,6 +130,9 @@ watch(sessionEpoch, () => {
   nextCursor.value = null
   listTotal.value = 0
   loadError.value = null
+  if (view.value === 'document' && !selectedAccessKey.value) {
+    void syncCatalogQuery(true)
+  }
   void reloadActive()
   void loadClients()
 })
@@ -310,19 +352,78 @@ async function onClientChange() {
   }
 }
 
+/** Query reproduzível do catálogo a partir dos filtros ativos. */
+function catalogQueryFromFilters(): Record<string, string> {
+  const query: Record<string, string> = {}
+  for (const key of CATALOG_QUERY_KEYS) {
+    const value = filters[key as keyof NotesFilterState]
+    if (typeof value === 'string' && isActiveFilterValue(value)) {
+      query[key] = value
+    }
+  }
+  return query
+}
+
+/** Aplica query aceita da URL aos filtros (deep-link / redirect legado). */
+function hydrateFiltersFromQuery() {
+  const query = route.query
+  let changed = false
+  for (const key of CATALOG_QUERY_KEYS) {
+    const raw = query[key]
+    const value = Array.isArray(raw) ? raw[0] : raw
+    if (typeof value !== 'string' || !value) continue
+    if (key === 'kind' && !['NFSE', 'NFE', 'NFCE', 'CTE'].includes(value.toUpperCase())) continue
+    const normalized = key === 'kind' ? value.toUpperCase() : value
+    if (filters[key as keyof NotesFilterState] !== normalized) {
+      ;(filters as Record<string, string>)[key] = normalized
+      changed = true
+    }
+  }
+  if (changed) {
+    persistedFilters.value = { ...filters }
+  }
+}
+
+/** Sincroniza filtros ativos na URL do catálogo (sem poluir detalhe por accessKey). */
+async function syncCatalogQuery(replace = true) {
+  if (view.value !== 'document' || selectedAccessKey.value) return
+  const nextQuery = catalogQueryFromFilters()
+  const current: Record<string, string> = {}
+  for (const [key, raw] of Object.entries(route.query)) {
+    if (!CATALOG_QUERY_KEYS.has(key)) continue
+    const value = Array.isArray(raw) ? raw[0] : raw
+    if (typeof value === 'string' && value) current[key] = value
+  }
+  const same
+    = Object.keys(nextQuery).length === Object.keys(current).length
+      && Object.entries(nextQuery).every(([k, v]) => current[k] === v)
+  if (same && !Object.keys(route.query).some(k => !CATALOG_QUERY_KEYS.has(k) && k !== 'view')) {
+    // Ainda pode haver view= legado a limpar
+    if (!('view' in route.query)) return
+  }
+  const nav = replace ? router.replace : router.push
+  await nav({ path: '/docs/catalog', query: nextQuery })
+}
+
 function resetFilters() {
   Object.assign(filters, emptyNotesFilters())
   establishments.value = []
   selectedKeys.value = []
   clientOperationalFilter.value = 'total'
   byClientPage.value = 1
+  void syncCatalogQuery()
   reloadActive()
 }
 
 async function applyFilters() {
   selectedKeys.value = []
   byClientPage.value = 1
+  await syncCatalogQuery()
   await reloadActive()
+}
+
+async function onCtePendingResolved() {
+  await Promise.all([load(true), loadInsights()])
 }
 
 async function onByClientApply() {
@@ -350,7 +451,7 @@ async function selectNote(note: NfseNote) {
 }
 
 async function closeDetail() {
-  await router.replace('/docs/catalog')
+  await router.replace({ path: '/docs/catalog', query: catalogQueryFromFilters() })
 }
 
 async function openClientNotes(client: Client) {
@@ -366,7 +467,6 @@ function buildExportFiltersFromCatalog(): ExportFilters {
   return catalogToExportFilters(filters) as ExportFilters
 }
 
-const importDragOver = ref(false)
 const importTotalBytes = computed(() => importFiles.value.reduce((s, f) => s + f.size, 0))
 const importLimitExceeded = computed(() =>
   importFiles.value.length > 50 || importTotalBytes.value > 20 * 1024 * 1024
@@ -374,21 +474,6 @@ const importLimitExceeded = computed(() =>
 
 function setImportFiles(list: File[]) {
   importFiles.value = list.slice(0, 50)
-}
-
-function onImportFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  setImportFiles(input.files ? Array.from(input.files) : [])
-}
-
-function onImportDrop(event: DragEvent) {
-  event.preventDefault()
-  importDragOver.value = false
-  const files = event.dataTransfer?.files
-  if (!files?.length) return
-  setImportFiles(Array.from(files).filter(f =>
-    /\.(xml|zip)$/i.test(f.name) || f.type.includes('xml') || f.type.includes('zip')
-  ))
 }
 
 function removeImportFile(index: number) {
@@ -549,18 +634,16 @@ async function exportSelection() {
 
 onMounted(async () => {
   const legacyDocumentView = route.query.view === 'document' || route.query.view === 'nfs'
-  if (Object.keys(route.query).length) {
-    const currentPath = route.path
-    const cleanPath = selectedAccessKey.value
-      ? `/docs/${selectedAccessKey.value}`
-      : legacyDocumentView
-        ? '/docs/catalog'
-        : currentPath
-    await router.replace(cleanPath)
-    if (cleanPath !== currentPath) return
+  // Deep-links documentais (ex. kind=CTE) hidratam filtros; params legados/não aceitos saem da URL.
+  if (view.value === 'document' && !selectedAccessKey.value) {
+    hydrateFiltersFromQuery()
+    if (legacyDocumentView || Object.keys(route.query).length) {
+      await syncCatalogQuery(true)
+    }
+  } else if (Object.keys(route.query).length && selectedAccessKey.value) {
+    await router.replace(`/docs/${selectedAccessKey.value}`)
   }
   // Deep link de detalhe: o chrome do modal hidrata via GET da nota.
-  // Filtros de sessão continuam para /docs e /docs/catalog (estado local).
   if (isActiveFilterValue(filters.client_id)) {
     await onClientChange()
   }
@@ -655,28 +738,22 @@ onMounted(async () => {
                 aria-label="Restringir lote a um cliente (opcional)"
               />
             </UFormField>
-            <div
-              class="rounded-lg border border-dashed p-4 transition-colors"
-              :class="importDragOver ? 'border-primary bg-primary/5' : 'border-default'"
-              role="group"
-              aria-labelledby="import-drop-label"
+            <UFileUpload
+              :model-value="importFiles"
+              multiple
+              accept=".xml,.zip,application/xml,application/zip"
+              label="Arraste XML/ZIP ou clique para selecionar"
+              description="Até 50 arquivos · 20 MiB no total"
+              icon="i-lucide-file-up"
+              class="w-full"
+              :ui="{ base: 'min-h-28' }"
               aria-describedby="import-limits-desc"
-              @dragover.prevent="importDragOver = true"
-              @dragleave.prevent="importDragOver = false"
-              @drop="onImportDrop"
-            >
-              <p id="import-drop-label" class="mb-2 text-sm font-medium text-highlighted">
-                Arraste XML/ZIP ou selecione pelo teclado
-              </p>
-              <input
-                type="file"
-                multiple
-                accept=".xml,.zip,application/xml,application/zip"
-                class="block w-full text-sm"
-                aria-label="Selecionar arquivos XML ou ZIP para importar"
-                @change="onImportFileChange"
-              >
-            </div>
+              @update:model-value="(files: File | File[] | null | undefined) => {
+                const list = !files ? [] : Array.isArray(files) ? files : [files]
+                setImportFiles(list)
+              }"
+            />
+
             <ul
               v-if="importFiles.length"
               class="max-h-32 space-y-1 overflow-y-auto text-xs text-muted"
@@ -785,6 +862,12 @@ onMounted(async () => {
         />
 
         <template v-else>
+          <NotesCteCatalogContext
+            v-if="showCteContext"
+            class="shrink-0 rounded-lg border border-default p-4"
+            @pending-resolved="onCtePendingResolved"
+          />
+
           <UAlert
             v-if="!kindCaptureAvailable && !loading"
             color="info"

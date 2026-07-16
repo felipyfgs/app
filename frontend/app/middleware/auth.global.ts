@@ -15,7 +15,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (!isAuthenticated.value) {
-    return guestOnly ? undefined : navigateTo('/login')
+    if (guestOnly) return undefined
+    // Deep-link seguro: login.vue aplica safeRedirectTarget na query redirect.
+    return navigateTo({
+      path: '/login',
+      query: { redirect: to.fullPath }
+    })
   }
 
   const identity = unwrapMeUser(user.value as MeIdentity)
@@ -33,9 +38,38 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo('/')
   }
 
+  // CT-e não é Configurações: alias legado → catálogo filtrado (sem layout Settings).
+  if (to.path === '/settings/cte') {
+    const accepted = new Set([
+      'kind',
+      'direction',
+      'q',
+      'client_id',
+      'establishment_id',
+      'fiscal_role',
+      'acquisition_source',
+      'artifact_quality',
+      'coverage_status',
+      'status',
+      'competence',
+      'issued_from',
+      'issued_to',
+      'missing_party_name',
+      'issuer_cnpj',
+      'taker_cnpj'
+    ])
+    const query: Record<string, string> = { kind: 'CTE' }
+    for (const [key, raw] of Object.entries(to.query)) {
+      if (!accepted.has(key) || key === 'kind') continue
+      const value = Array.isArray(raw) ? raw[0] : raw
+      if (typeof value === 'string' && value) query[key] = value
+    }
+    return navigateTo({ path: '/docs/catalog', query }, { replace: true })
+  }
+
+  // Gate normal: /settings e /admin exigem ADMIN com 2FA confirmado.
   if (
-    (to.path.startsWith('/admin')
-      || (to.path.startsWith('/settings') && to.path !== '/settings/cte'))
+    (to.path.startsWith('/admin') || to.path.startsWith('/settings'))
     && !hasConfirmedAdminAccess(identity)
   ) {
     return navigateTo('/')

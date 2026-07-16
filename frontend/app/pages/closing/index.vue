@@ -18,7 +18,7 @@ const api = useApi()
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const { canCreateExport, canAccessAdministration, canImportDocuments, me } = useDashboard()
+const { canCreateExport, canAccessAdministration, canImportDocuments, me, sessionEpoch } = useDashboard()
 
 const FILTER_ALL = 'all'
 const pendingPage = ref(1)
@@ -225,6 +225,7 @@ function technicalLabel(row: OutboundDeadlinePendingItem): string {
 }
 
 async function load() {
+  const epoch = sessionEpoch.value
   loading.value = true
   try {
     const comp = competence.value
@@ -248,6 +249,8 @@ async function load() {
       }),
       api.outbound.deadline.metrics(comp)
     ])
+
+    if (epoch !== sessionEpoch.value) return
 
     if (sumRes.status === 'fulfilled') {
       summary.value = sumRes.value.data
@@ -367,6 +370,17 @@ watch(
 )
 
 watch(pendingPage, () => void load())
+
+watch(sessionEpoch, () => {
+  summary.value = null
+  capacity.value = null
+  metrics.value = null
+  items.value = []
+  pendingPage.value = 1
+  pendingTotal.value = 0
+  loadError.value = null
+  void load()
+})
 
 onMounted(() => {
   if (Object.keys(route.query).length) {

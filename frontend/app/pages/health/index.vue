@@ -71,7 +71,7 @@ const killSwitch = ref<{
 })
 const killReason = ref('')
 const killLoading = ref(false)
-const { canManageCredentials } = useDashboard()
+const { canManageCredentials, sessionEpoch } = useDashboard()
 
 async function loadKillSwitch() {
   try {
@@ -140,6 +140,7 @@ function itemLink(item: InboxItem): string {
 }
 
 async function load(reset = false) {
+  const epoch = sessionEpoch.value
   if (reset) {
     cursor.value = null
   }
@@ -155,18 +156,20 @@ async function load(reset = false) {
         ? { type: typeFilter.value as InboxItemType }
         : {})
     })
+    if (epoch !== sessionEpoch.value) return
     items.value = reset ? response.data : [...items.value, ...response.data]
     cursor.value = response.meta.next_cursor
     totalEstimate.value = response.meta.total_estimate ?? null
     generatedAt.value = response.meta.generated_at
     loadError.value = null
   } catch (caught) {
+    if (epoch !== sessionEpoch.value) return
     loadError.value = apiErrorMessage(caught, 'Erro ao carregar a inbox operacional.')
     if (reset) {
       toast.add({ title: loadError.value, color: 'error' })
     }
   } finally {
-    loading.value = false
+    if (epoch === sessionEpoch.value) loading.value = false
   }
 }
 
@@ -184,6 +187,13 @@ watch(
   },
   { immediate: true }
 )
+
+watch(sessionEpoch, () => {
+  items.value = []
+  cursor.value = null
+  loadError.value = null
+  void load(true)
+})
 
 onMounted(() => {
   if (Object.keys(route.query).length) {

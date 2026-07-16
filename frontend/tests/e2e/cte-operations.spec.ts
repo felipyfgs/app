@@ -9,29 +9,24 @@ const SPA_READY = 60_000
 
 async function gotoCteReady(page: import('@playwright/test').Page, path: string) {
   await page.goto(path, { waitUntil: 'domcontentloaded', timeout: SPA_READY })
-  // Aguarda o shell autenticado (painel) ou a página alvo — evita assert cego no skeleton.
-  await expect(
-    page.getByTestId('settings-panel')
-      .or(page.getByTestId('cte-onboarding-page'))
-      .or(page.getByTestId('data-table'))
-      .or(page.getByTestId('batch-items-table'))
-      .or(page.getByTestId('cte-channel-health'))
-      .or(page.getByRole('heading', { name: 'Sincronizações', exact: true }))
-  ).toBeVisible({ timeout: SPA_READY })
+  // Aguarda o shell autenticado sem OR amplo (evita strict-mode com heading+tabela).
+  await expect(page.getByTestId('office-identity')).toBeVisible({ timeout: SPA_READY })
 }
 
 test.describe('operações CT-e', () => {
   // Overlay Vite/HMR e cold-start do dev server ocasionalmente mascaram o 1º teste.
-  test.describe.configure({ retries: 1 })
+  // SPA cold-start + fixtures superam o default 30s com frequência.
+  test.describe.configure({ retries: 1, timeout: SPA_READY * 2 })
 
   for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] as const) {
-    test(`${role} consulta checklist sem material sensível`, async ({ page }, testInfo) => {
+    test(`${role} consulta contexto CT-e no catálogo sem material sensível`, async ({ page }, testInfo) => {
       test.skip(testInfo.project.name !== 'desktop-1440', 'Matriz de papel validada uma vez no desktop.')
       await installApiFixtures(page, role)
-      await gotoCteReady(page, '/settings/cte')
+      await gotoCteReady(page, '/docs/catalog?kind=CTE')
 
-      await expect(page.getByTestId('cte-onboarding-page')).toBeVisible({ timeout: SPA_READY })
-      await expect(page.getByText('Onboarding CT-e', { exact: true })).toBeVisible()
+      await expect(page).toHaveURL(/\/docs\/catalog/, { timeout: SPA_READY })
+      await expect(page.getByTestId('cte-catalog-context')).toBeVisible({ timeout: SPA_READY })
+      await expect(page.getByText('Contexto CT-e', { exact: true })).toBeVisible()
       await expect(page.getByText('O autXML não é retroativo')).toBeVisible()
       await expect(page.getByTestId('cte-office-cnpj')).toContainText('12.ABC.345/6789-00')
       await expect(page.getByTestId('cte-a1-metadata')).toContainText(/Válido até/i)
@@ -42,12 +37,15 @@ test.describe('operações CT-e', () => {
       const adminAction = page.getByRole('link', { name: 'Administrar identidade' })
       if (role === 'ADMIN') await expect(adminAction).toBeVisible()
       else await expect(adminAction).toHaveCount(0)
+
+      // Navegação não aponta para a rota antiga de Configurações.
+      await expect(page.locator('a[href="/settings/cte"]')).toHaveCount(0)
     })
 
     test(`${role} vê pendências com ações conforme papel`, async ({ page }, testInfo) => {
       test.skip(testInfo.project.name !== 'desktop-1440', 'Matriz de papel validada uma vez no desktop.')
       await installApiFixtures(page, role)
-      await gotoCteReady(page, '/settings/cte')
+      await gotoCteReady(page, '/docs/catalog?kind=CTE')
 
       await expect(page.getByTestId('cte-pending-panel')).toBeVisible({ timeout: SPA_READY })
       await expect(page.getByTestId('cte-pending-item')).toBeVisible()
@@ -67,22 +65,39 @@ test.describe('operações CT-e', () => {
     })
   }
 
+  test('/settings/cte redireciona para o catálogo filtrado', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop-1440', 'Redirect legado validado no desktop.')
+    await installApiFixtures(page, 'OPERATOR')
+    await page.goto('/settings/cte', { waitUntil: 'domcontentloaded', timeout: SPA_READY })
+    await expect(page).toHaveURL(/\/docs\/catalog\?.*kind=CTE/, { timeout: SPA_READY })
+    await expect(page.getByTestId('cte-catalog-context')).toBeVisible({ timeout: SPA_READY })
+    // Não permanece em shell de Configurações.
+    await expect(page.getByTestId('settings-panel')).toHaveCount(0)
+    await expect(page.getByTestId('cte-onboarding-page')).toHaveCount(0)
+  })
+
   test('troca de escritório descarta o CNPJ CT-e anterior', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-1440', 'Isolamento validado no desktop.')
+    // switchTo faz location.assign (reload completo) — precisa de teto maior que o default 30s.
+    test.setTimeout(SPA_READY * 2)
     await installApiFixtures(page, 'ADMIN')
-    await gotoCteReady(page, '/settings/cte')
+    await gotoCteReady(page, '/docs/catalog?kind=CTE')
+    await expect(page.getByTestId('cte-catalog-context')).toBeVisible({ timeout: SPA_READY })
     await expect(page.getByTestId('cte-office-cnpj')).toContainText('12.ABC.345/6789-00')
     await expect(page.getByTestId('cte-pending-item')).toBeVisible()
 
     await page.getByTestId('office-identity').click()
     await page.getByText(FISCAL_OFFICE_B_NAME, { exact: true }).first().click()
-    await expect(page.getByTestId('office-identity')).toContainText(FISCAL_OFFICE_B_NAME, { timeout: 30_000 })
+    // Reload pós-troca: re-hidrata o catálogo com kind=CTE e novo tenant.
+    await expect(page.getByTestId('office-identity')).toContainText(FISCAL_OFFICE_B_NAME, { timeout: SPA_READY })
+    await expect(page).toHaveURL(/\/docs\/catalog/, { timeout: SPA_READY })
+    await expect(page.getByTestId('cte-catalog-context')).toBeVisible({ timeout: SPA_READY })
     await expect(page.getByTestId('cte-office-cnpj')).toContainText('98.XYZ.765/4321-00', { timeout: SPA_READY })
     await expect(page.getByTestId('cte-office-cnpj')).not.toContainText('12.ABC.345/6789-00')
     await expect(page.getByText('Nenhuma pendência CT-e aberta')).toBeVisible({ timeout: SPA_READY })
   })
 
-  test('sincronizações distingue canais e estados honestos', async ({ page }, testInfo) => {
+  test('sincronizações distingue canais e deep-link documental para o catálogo', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-1440', 'Superfície validada no desktop.')
     await installApiFixtures(page, 'VIEWER')
     await gotoCteReady(page, '/syncs')
@@ -91,9 +106,14 @@ test.describe('operações CT-e', () => {
     await expect(page.getByText('CT-e autXML do escritório', { exact: true })).toBeVisible()
     await expect(page.getByTestId('cte-client-channel-state')).toContainText(/Ocioso|Ativo/i, { timeout: SPA_READY })
     await expect(page.getByTestId('cte-office-channel-state')).toContainText(/Quiet|fila/i)
+    await expect(page.locator('a[href="/settings/cte"]')).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'Abrir documentos CT-e' })).toHaveAttribute(
+      'href',
+      /\/docs\/catalog\?kind=CTE/
+    )
   })
 
-  test('catálogo exibe CT-e redigido e filtros de cobertura alinhados', async ({ page }, testInfo) => {
+  test('catálogo misto e filtrado por CT-e com cobertura e sem segredos', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-1440', 'Superfície validada no desktop.')
     await installApiFixtures(page, 'OPERATOR')
     await gotoCteReady(page, '/docs/catalog')

@@ -66,3 +66,37 @@ export function canTriageMailbox(user?: MeUser | null): boolean {
 export function canExecuteHighRiskMutation(user?: MeUser | null): boolean {
   return hasConfirmedAdminAccess(user)
 }
+
+// ── Módulo operacional (Work) — ocultação UI ≠ autorização ────────────────
+
+export function canViewWork(user?: MeUser | null): boolean {
+  return !!user?.role
+}
+
+export function canManageWorkCatalog(user?: MeUser | null): boolean {
+  return hasConfirmedAdminAccess(user)
+}
+
+export function canCreateWorkProcesses(user?: MeUser | null): boolean {
+  return hasMutationAccess(user)
+}
+
+export function canExecuteWorkTasks(user?: MeUser | null): boolean {
+  return hasMutationAccess(user)
+}
+
+export function canAdministerWork(user?: MeUser | null): boolean {
+  return hasConfirmedAdminAccess(user)
+}
+
+export function canExportWork(user?: MeUser | null): boolean {
+  return hasMutationAccess(user)
+}
+
+export function canDownloadWorkEvidence(user?: MeUser | null): boolean {
+  return hasMutationAccess(user)
+}
+
+export function isWorkOperator(user?: MeUser | null): boolean {
+  return user?.role === 'OPERATOR'
+}

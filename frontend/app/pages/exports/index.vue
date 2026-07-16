@@ -11,7 +11,7 @@ import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 const api = useApi()
 const route = useRoute()
 const router = useRouter()
-const { canCreateExport, isExportFormOpen } = useDashboard()
+const { canCreateExport, isExportFormOpen, sessionEpoch } = useDashboard()
 const toast = useToast()
 
 const items = ref<ExportJob[]>([])
@@ -334,20 +334,23 @@ function applyPreset(next: ExportPreset) {
 }
 
 async function load(silent = false) {
+  const epoch = sessionEpoch.value
   if (!silent) loading.value = true
   try {
     const response = await api.exports.list({ page: page.value, per_page: perPage })
+    if (epoch !== sessionEpoch.value) return
     items.value = response.data
     total.value = response.meta.total
     lastPage.value = response.meta.last_page
     loadError.value = null
   } catch (caught) {
+    if (epoch !== sessionEpoch.value) return
     loadError.value = apiErrorMessage(caught, 'Erro ao listar exportações.')
     if (!silent) {
       toast.add({ title: loadError.value, color: 'error' })
     }
   } finally {
-    loading.value = false
+    if (epoch === sessionEpoch.value) loading.value = false
   }
 }
 
@@ -461,6 +464,15 @@ watch(page, () => void load())
 watch(createOpen, (open) => {
   if (!open) resetForm()
 })
+watch(sessionEpoch, () => {
+  items.value = []
+  page.value = 1
+  total.value = 0
+  loadError.value = null
+  createOpen.value = false
+  void load()
+})
+
 onMounted(async () => {
   const shouldOpenCreate = canCreateExport.value && route.query.new === '1'
   if (Object.keys(route.query).length) {

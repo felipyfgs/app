@@ -19,7 +19,8 @@ const {
   canManageClients,
   canManageCredentials,
   isClientFormOpen,
-  clientFormCreateNonce
+  clientFormCreateNonce,
+  sessionEpoch
 } = useDashboard()
 const toast = useToast()
 
@@ -453,6 +454,7 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null
 /** Carrega somente o recorte solicitado; filtros e ordenação são aplicados pela API. */
 async function load() {
   const sequence = ++loadSequence
+  const epoch = sessionEpoch.value
   loading.value = true
   loadError.value = null
   try {
@@ -469,7 +471,7 @@ async function load() {
       sort: sortId,
       direction: sort?.desc ? 'desc' : 'asc'
     })
-    if (sequence !== loadSequence) return
+    if (sequence !== loadSequence || epoch !== sessionEpoch.value) return
     clients.value = response.data
     total.value = response.meta.total
     lastPage.value = response.meta.last_page
@@ -478,12 +480,29 @@ async function load() {
       total: response.meta.total
     }
   } catch (caught) {
-    if (sequence !== loadSequence) return
+    if (sequence !== loadSequence || epoch !== sessionEpoch.value) return
     loadError.value = apiErrorMessage(caught, 'Erro ao listar clientes.')
     toast.add({ title: loadError.value, color: 'error' })
   } finally {
-    if (sequence === loadSequence) loading.value = false
+    if (sequence === loadSequence && epoch === sessionEpoch.value) loading.value = false
   }
+}
+
+function resetTenantScopedList() {
+  clients.value = []
+  total.value = 0
+  lastPage.value = 1
+  page.value = 1
+  search.value = ''
+  kpiFilter.value = 'total'
+  statusFilter.value = 'all'
+  stats.value = { ...emptyStats }
+  formOpen.value = false
+  formClient.value = null
+  detailOpen.value = false
+  detailClientId.value = null
+  loadError.value = null
+  void load()
 }
 
 function openCreateForm() {
@@ -543,6 +562,10 @@ watch(sorting, () => {
 }, { deep: true })
 
 onMounted(() => void load())
+
+watch(sessionEpoch, () => {
+  resetTenantScopedList()
+})
 
 onBeforeUnmount(() => {
   if (searchTimer) clearTimeout(searchTimer)

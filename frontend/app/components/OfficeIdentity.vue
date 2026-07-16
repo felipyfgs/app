@@ -122,9 +122,11 @@ watch(officeId, () => {
       :ui="{
         trailingIcon: 'text-dimmed'
       }"
-      :aria-label="`Escritório ativo: ${officeLabel}${multiMembership ? '. Abrir seletor de escritórios autorizados' : ''}`"
+      :aria-label="`Escritório ativo: ${officeLabel}${multiMembership ? '. Abrir seletor entre memberships autorizadas' : '. Única membership da sessão'}`"
       :aria-haspopup="multiMembership ? 'listbox' : 'menu'"
+      :title="collapsed ? officeLabel : undefined"
       data-testid="office-identity"
+      data-office-id="session"
     />
   </UDropdownMenu>
 </template>

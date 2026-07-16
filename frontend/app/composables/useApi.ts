@@ -66,6 +66,16 @@ import type {
   FiscalModulePortfolioFilters,
   FiscalPortfolioModuleKey
 } from '~/types/fiscal-modules'
+import type {
+  GenerationBatch,
+  OperationalExportJob,
+  OperationalProcess,
+  OperationalTaskDetail,
+  OperationalTaskSummary,
+  ProcessTemplate,
+  WorkDepartment,
+  WorkKpis
+} from '~/types/work'
 
 export interface InboxListParams {
   severity?: InboxSeverity | ''
@@ -849,6 +859,157 @@ export function useApi() {
       summary: () => client<{ data: OperationsSummary }>('/api/v1/operations/summary'),
       inbox: (params?: InboxListParams) =>
         client<{ data: InboxItem[], meta: InboxMeta }>('/api/v1/operations/inbox', { query: params })
+    },
+    work: {
+      departments: {
+        list: (params?: { page?: number, per_page?: number, is_active?: boolean }) =>
+          client<{ data: WorkDepartment[], meta: PageMeta }>('/api/v1/work/departments', { query: params }),
+        create: (body: { name: string, code: string, color?: string, is_active?: boolean }) =>
+          client<{ data: WorkDepartment }>('/api/v1/work/departments', { method: 'POST', body }),
+        update: (id: number, body: Partial<WorkDepartment>) =>
+          client<{ data: WorkDepartment }>(`/api/v1/work/departments/${id}`, { method: 'PATCH', body }),
+        assignMembership: (id: number, membershipId: number) =>
+          client<{ data: { membership_id: number, work_department_id: number } }>(
+            `/api/v1/work/departments/${id}/assign-membership`,
+            { method: 'POST', body: { membership_id: membershipId } }
+          )
+      },
+      templates: {
+        list: (params?: { page?: number, per_page?: number, is_active?: boolean, q?: string }) =>
+          client<{ data: ProcessTemplate[], meta: PageMeta }>('/api/v1/work/templates', { query: params }),
+        get: (id: number) =>
+          client<{ data: ProcessTemplate }>(`/api/v1/work/templates/${id}`),
+        create: (body: Record<string, unknown>) =>
+          client<{ data: ProcessTemplate }>('/api/v1/work/templates', { method: 'POST', body }),
+        update: (id: number, body: Record<string, unknown>) =>
+          client<{ data: ProcessTemplate }>(`/api/v1/work/templates/${id}`, { method: 'PATCH', body }),
+        preview: (id: number, body: {
+          competence: string
+          client_ids: number[]
+          overrides?: Record<string, unknown>
+          idempotency_key?: string
+        }) =>
+          client<{ data: GenerationBatch }>(`/api/v1/work/templates/${id}/preview`, { method: 'POST', body })
+      },
+      generation: {
+        get: (id: number) =>
+          client<{ data: GenerationBatch }>(`/api/v1/work/generation-batches/${id}`),
+        confirm: (id: number, body?: { idempotency_key?: string }) =>
+          client<{ data: GenerationBatch }>(`/api/v1/work/generation-batches/${id}/confirm`, {
+            method: 'POST',
+            body: body || {}
+          })
+      },
+      queue: (params?: Record<string, unknown>) =>
+        client<{ data: OperationalTaskSummary[], meta: PageMeta }>('/api/v1/work/queue', { query: params }),
+      processes: {
+        list: (params?: Record<string, unknown>) =>
+          client<{ data: OperationalProcess[], meta: PageMeta }>('/api/v1/work/processes', { query: params }),
+        get: (id: number) =>
+          client<{ data: OperationalProcess }>(`/api/v1/work/processes/${id}`),
+        create: (body: Record<string, unknown>) =>
+          client<{ data: OperationalProcess }>('/api/v1/work/processes', { method: 'POST', body }),
+        update: (id: number, body: Record<string, unknown>) =>
+          client<{ data: OperationalProcess }>(`/api/v1/work/processes/${id}`, { method: 'PATCH', body }),
+        archive: (id: number, lockVersion: number) =>
+          client<{ data: OperationalProcess }>(`/api/v1/work/processes/${id}/archive`, {
+            method: 'POST',
+            body: { lock_version: lockVersion }
+          }),
+        comment: (id: number, body: string) =>
+          client<{ data: { id: number, body: string } }>(`/api/v1/work/processes/${id}/comments`, {
+            method: 'POST',
+            body: { body }
+          }),
+        timeline: (id: number) =>
+          client<{ data: Array<Record<string, unknown>> }>(`/api/v1/work/processes/${id}/timeline`)
+      },
+      tasks: {
+        get: (id: number) =>
+          client<{ data: OperationalTaskDetail }>(`/api/v1/work/tasks/${id}`),
+        start: (id: number, lockVersion: number) =>
+          client<{ data: OperationalTaskDetail }>(`/api/v1/work/tasks/${id}/start`, {
+            method: 'POST',
+            body: { lock_version: lockVersion }
+          }),
+        block: (id: number, lockVersion: number, reason: string) =>
+          client<{ data: OperationalTaskDetail }>(`/api/v1/work/tasks/${id}/block`, {
+            method: 'POST',
+            body: { lock_version: lockVersion, reason }
+          }),
+        resume: (id: number, lockVersion: number) =>
+          client<{ data: OperationalTaskDetail }>(`/api/v1/work/tasks/${id}/resume`, {
+            method: 'POST',
+            body: { lock_version: lockVersion }
+          }),
+        complete: (id: number, lockVersion: number) =>
+          client<{ data: OperationalTaskDetail }>(`/api/v1/work/tasks/${id}/complete`, {
+            method: 'POST',
+            body: { lock_version: lockVersion }
+          }),
+        dispense: (id: number, lockVersion: number, justification: string) =>
+          client<{ data: OperationalTaskDetail }>(`/api/v1/work/tasks/${id}/dispense`, {
+            method: 'POST',
+            body: { lock_version: lockVersion, justification }
+          }),
+        claim: (id: number, lockVersion: number) =>
+          client<{ data: OperationalTaskDetail }>(`/api/v1/work/tasks/${id}/claim`, {
+            method: 'POST',
+            body: { lock_version: lockVersion }
+          }),
+        comment: (id: number, body: string) =>
+          client<{ data: { id: number, body: string } }>(`/api/v1/work/tasks/${id}/comments`, {
+            method: 'POST',
+            body: { body }
+          }),
+        uploadEvidence: (id: number, file: File) => {
+          const fd = new FormData()
+          fd.append('file', file)
+          return client<{ data: { id: number, original_filename: string } }>(
+            `/api/v1/work/tasks/${id}/evidences`,
+            { method: 'POST', body: fd }
+          )
+        },
+        downloadEvidenceUrl: (taskId: number, evidenceId: number) =>
+          apiUrl(`/api/v1/work/tasks/${taskId}/evidences/${evidenceId}/download`)
+      },
+      kpis: () => client<{ data: WorkKpis }>('/api/v1/work/kpis'),
+      calendar: (from: string, to: string, params?: Record<string, string | number>) =>
+        client<{
+          data: {
+            office_timezone: string
+            today?: string
+            from: string
+            to: string
+            days: Array<{
+              date: string
+              total: number
+              overdue?: number
+              fine?: number
+              completed?: number
+              open?: number
+              max_severity?: number
+              items?: OperationalTaskSummary[]
+            }>
+          }
+        }>(
+          '/api/v1/work/calendar',
+          { query: { from, to, ...params } }
+        ),
+      calendarDay: (date: string, params?: Record<string, string | number>) =>
+        client<{ data: OperationalTaskSummary[], meta: PageMeta }>('/api/v1/work/calendar/day', {
+          query: { date, ...params }
+        }),
+      exports: {
+        create: (filters?: Record<string, unknown>) =>
+          client<{ data: OperationalExportJob }>('/api/v1/work/exports', {
+            method: 'POST',
+            body: { filters: filters || {} }
+          }),
+        get: (id: number) =>
+          client<{ data: OperationalExportJob }>(`/api/v1/work/exports/${id}`),
+        downloadUrl: (id: number) => apiUrl(`/api/v1/work/exports/${id}/download`)
+      }
     },
     outbound: {
       profiles: (params?: { client_id?: number, establishment_id?: number }) =>

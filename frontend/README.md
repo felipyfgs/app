@@ -22,12 +22,13 @@ Não remover. Orquestração e arquétipo:
 |------|--------|
 | `/` | Dashboard operacional |
 | `/clients` | Lista + detalhe aninhado (cadastro, estabelecimentos, certificado, sync, saídas) |
-| `/docs` | Catálogo de documentos (URLs legadas `/notes` redirecionam) |
+| `/docs` | Documentos por cliente (URLs legadas `/notes` redirecionam) |
+| `/docs/catalog` | Catálogo por documento (NF-e, NFC-e, CT-e, NFS-e); `?kind=CTE` para contexto autXML/pendências |
 | `/docs/imports` | Import em massa |
 | `/monitoring/*` | Hub fiscal (SITFIS, Simples/MEI, DCTFWeb, mailbox, guias, …) |
-| `/syncs` | Saúde de canais DistDFe / autXML / CT-e |
-| `/settings` | Integra Contador, CT-e autXML, procurações, uso, assinatura |
-| `/admin` | Administração de escritório (ADMIN + 2FA) |
+| `/syncs` | Saúde de canais DistDFe / autXML / CT-e (cursor, maxNSU, quiet, 656) |
+| `/settings` | Integra Contador, procurações, uso, assinatura (sem CT-e; alias `/settings/cte` → catálogo) |
+| `/admin` | Administração de escritório (ADMIN + 2FA; identidade/A1) |
 | `/exports`, `/health`, `/closing` | Exportações, saúde, fechamento |
 
 ### Hierarquia de ações

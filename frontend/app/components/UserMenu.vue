@@ -29,33 +29,66 @@ async function onLogout() {
 
 const { $pwa } = useNuxtApp()
 
+const roleLabel = computed(() => {
+  const role = me.value?.role
+  if (role === 'ADMIN') return 'Administrador'
+  if (role === 'OPERATOR') return 'Operador'
+  if (role === 'VIEWER') return 'Visualizador'
+  return null
+})
+
+const needsTwoFactorSetup = computed(() => Boolean(me.value?.requires_two_factor_setup))
+const twoFactorConfirmed = computed(() => Boolean(me.value?.two_factor_confirmed))
+
 const items = computed<DropdownMenuItem[][]>(() => {
   const account: DropdownMenuItem[] = [{
     type: 'label',
     label: displayUser.value.name,
-    avatar: displayUser.value.avatar
+    avatar: displayUser.value.avatar,
+    ...(roleLabel.value
+      ? { description: roleLabel.value }
+      : {})
   }]
 
-  const middle: DropdownMenuItem[] = []
+  const profile: DropdownMenuItem[] = [{
+    label: me.value?.email || 'Conta',
+    icon: 'i-lucide-user',
+    disabled: true,
+    ...(roleLabel.value
+      ? { description: `Papel: ${roleLabel.value}` }
+      : {})
+  }]
+
+  if (needsTwoFactorSetup.value) {
+    profile.push({
+      label: 'Configurar 2FA',
+      icon: 'i-lucide-shield-alert',
+      to: '/two-factor/setup',
+      description: 'Obrigatório para administração'
+    })
+  } else if (me.value?.role === 'ADMIN') {
+    profile.push({
+      label: twoFactorConfirmed.value ? '2FA ativo' : 'Segundo fator',
+      icon: twoFactorConfirmed.value ? 'i-lucide-shield-check' : 'i-lucide-shield',
+      to: '/two-factor/setup',
+      disabled: twoFactorConfirmed.value
+    })
+  }
+
   if (canAccessAdministration.value) {
-    middle.push({
+    profile.push({
       label: 'Configurações',
       icon: 'i-lucide-sliders-horizontal',
       to: '/settings'
     })
-    middle.push({
+    profile.push({
       label: 'Administração',
       icon: 'i-lucide-shield',
       to: '/admin'
     })
   }
-  middle.push({
-    label: me.value?.email || 'Conta',
-    icon: 'i-lucide-user',
-    disabled: true
-  })
 
-  const groups: DropdownMenuItem[][] = [account, middle]
+  const groups: DropdownMenuItem[][] = [account, profile]
 
   if ($pwa?.showInstallPrompt) {
     groups.push([{
@@ -92,6 +125,7 @@ const items = computed<DropdownMenuItem[][]>(() => {
   }], [{
     label: 'Sair',
     icon: 'i-lucide-log-out',
+    color: 'error',
     onSelect: () => {
       onLogout()
     }

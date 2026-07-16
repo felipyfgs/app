@@ -9,6 +9,7 @@ import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 const api = useApi()
 const router = useRouter()
 const toast = useToast()
+const { sessionEpoch, canImportDocuments } = useDashboard()
 
 const items = ref<Array<Record<string, unknown>>>([])
 const loading = ref(false)
@@ -52,18 +53,21 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'info' |
 }
 
 async function load() {
+  const epoch = sessionEpoch.value
   loading.value = true
   try {
     const res = await api.documents.importBatches({ page: page.value, per_page: 20 })
+    if (epoch !== sessionEpoch.value) return
     items.value = res.data || []
     lastPage.value = Number(res.meta?.last_page || 1)
     total.value = Number(res.meta?.total || items.value.length)
     loadError.value = null
   } catch (caught) {
+    if (epoch !== sessionEpoch.value) return
     loadError.value = apiErrorMessage(caught, 'Erro ao carregar lotes de importação.')
     toast.add({ title: loadError.value, color: 'error' })
   } finally {
-    loading.value = false
+    if (epoch === sessionEpoch.value) loading.value = false
   }
 }
 
@@ -81,6 +85,14 @@ watch(page, () => {
   void load()
 })
 
+watch(sessionEpoch, () => {
+  items.value = []
+  page.value = 1
+  total.value = 0
+  loadError.value = null
+  void load()
+})
+
 onMounted(() => {
   void load()
 })
@@ -94,14 +106,6 @@ onMounted(() => {
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
-          <UButton
-            to="/docs"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-arrow-left"
-            label="Documentos"
-            size="sm"
-          />
           <UTooltip text="Atualizar histórico">
             <UButton
               icon="i-lucide-refresh-cw"
@@ -113,6 +117,12 @@ onMounted(() => {
               @click="load"
             />
           </UTooltip>
+          <UButton
+            v-if="canImportDocuments"
+            icon="i-lucide-upload"
+            label="Nova importação"
+            to="/docs?import=1"
+          />
         </template>
       </UDashboardNavbar>
     </template>

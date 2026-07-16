@@ -4,6 +4,7 @@ import type { CteChannelCursor, CteHealth, SyncRun } from '~/types/api'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()
+const { sessionEpoch } = useDashboard()
 const items = ref<SyncRun[]>([])
 const cursor = ref<string | null>(null)
 const loading = ref(false)
@@ -141,6 +142,7 @@ const officeChannelSummary = computed(() =>
 )
 
 async function load(reset = false) {
+  const epoch = sessionEpoch.value
   if (reset) {
     cursor.value = null
   }
@@ -150,14 +152,16 @@ async function load(reset = false) {
       limit: 50,
       ...(cursor.value ? { cursor: cursor.value } : {})
     })
+    if (epoch !== sessionEpoch.value) return
     items.value = reset ? response.data : [...items.value, ...response.data]
     cursor.value = response.meta.next_cursor
     loadError.value = null
   } catch (caught) {
+    if (epoch !== sessionEpoch.value) return
     loadError.value = apiErrorMessage(caught, 'Erro ao carregar sincronizações.')
     toast.add({ title: loadError.value, color: 'error' })
   } finally {
-    loading.value = false
+    if (epoch === sessionEpoch.value) loading.value = false
   }
 }
 
@@ -191,6 +195,16 @@ function isBlocked(run: SyncRun) {
   const message = (run.error_message || '').toLowerCase()
   return run.status === 'FAILED' && (message.includes('bloque') || message.includes('block'))
 }
+
+watch(sessionEpoch, () => {
+  items.value = []
+  cursor.value = null
+  selected.value = null
+  detailOpen.value = false
+  cteHealth.value = null
+  loadError.value = null
+  void refreshAll()
+})
 
 onMounted(refreshAll)
 </script>
@@ -369,15 +383,15 @@ onMounted(refreshAll)
               v-else-if="!cteError"
               class="mt-2 text-sm text-muted"
             >
-              Stream central ainda não inicializado — conclua o onboarding CT-e.
+              Stream central ainda não inicializado — configure o autXML no catálogo de documentos CT-e.
             </p>
             <div class="mt-3">
               <UButton
-                to="/settings/cte"
+                to="/docs/catalog?kind=CTE"
                 color="neutral"
                 variant="outline"
                 size="sm"
-                label="Ver onboarding"
+                label="Abrir documentos CT-e"
               />
             </div>
           </template>

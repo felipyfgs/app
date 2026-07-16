@@ -16,6 +16,7 @@ useSeoMeta({
   description: 'Acesso interno ao painel de captura NFS-e via ADN'
 })
 
+const route = useRoute()
 const { login, refreshIdentity, user } = useSanctumAuth()
 const error = ref('')
 const loading = ref(false)
@@ -43,6 +44,24 @@ const fields: AuthFormField[] = [{
   autocomplete: 'current-password'
 }]
 
+/** Redirect só para path interno relativo (sem open redirect). */
+function safeRedirectTarget(): string | null {
+  const raw = route.query.redirect
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) {
+    return null
+  }
+  if (value.startsWith('/login') || value.startsWith('/two-factor')) {
+    return null
+  }
+  return value
+}
+
+function homeForRole(role?: string | null): string {
+  if (role === 'OPERATOR') return '/work'
+  return '/'
+}
+
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   error.value = ''
   loading.value = true
@@ -59,7 +78,12 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
     await refreshIdentity()
     const identity = unwrapMeUser(user.value as MeIdentity)
-    await navigateTo(identity?.requires_two_factor_setup ? '/two-factor/setup' : '/')
+    if (identity?.requires_two_factor_setup) {
+      await navigateTo('/two-factor/setup')
+      return
+    }
+    const redirect = safeRedirectTarget()
+    await navigateTo(redirect || homeForRole(identity?.role))
   } catch (caught) {
     error.value = apiErrorMessage(caught, 'Credenciais inválidas ou sessão não iniciada.')
   } finally {
