@@ -47,12 +47,11 @@ backend/storage/*.key
 backend/storage/pail
 backend/storage/logs/*
 !backend/storage/logs/.gitignore
+# XML de smoke/fiscal em logs (defesa além de *)
 backend/storage/logs/*.xml
 backend/storage/app/certs/
 backend/storage/app/tmp-manual-nfce/
 backend/storage/app/backups/
-frontend/blob-report/
-.review-reports/
 backend/storage/framework/cache/data/*
 !backend/storage/framework/cache/data/.gitignore
 backend/storage/framework/sessions/*
@@ -141,6 +140,8 @@ Thumbs.db
 !.grok/skills/**
 !.grok/commands/
 !.grok/commands/**
+# .agents/skills é versionado de propósito (espelho multi-tool) — NÃO ignorar
+# .codex/skills e .opencode/skills também são versionados
 
 # --- Artefatos locais de review/agente e screenshots de sessão ---
 .review-reports/
@@ -150,3 +151,7 @@ Thumbs.db
 frontend/pw-clients.mjs
 frontend/test-results/
 frontend/playwright-report/
+frontend/blob-report/
+# merge/patch leftovers
+*.orig
+*.rej
