@@ -15,6 +15,7 @@ use App\Services\Clients\CaptureEligibilityService;
 use App\Services\Clients\ClientRootConflictException;
 use App\Services\Clients\CreateClientWithEstablishment;
 use App\Support\CurrentOffice;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
@@ -90,6 +91,22 @@ class ClientController extends Controller
             })
             ->count();
 
+        $dashboardStats = [];
+        if ($request->boolean('dashboard')) {
+            $dashboardStats = [
+                'credential_ok' => (clone $statsQuery)
+                    ->whereHas('credentials', function ($q): void {
+                        $q->where('status', 'ACTIVE')
+                            ->where('valid_to', '>', now()->addDays(30))
+                            ->where('expires_alert_30', false)
+                            ->where('expires_alert_7', false)
+                            ->where('expires_alert_1', false);
+                    })
+                    ->count(),
+                'client_growth_12m' => $this->clientGrowthLastTwelveMonths($statsQuery),
+            ];
+        }
+
         // Filtro de estado só na lista (USelect do template)
         if ($request->filled('is_active')) {
             $base->where('is_active', $request->boolean('is_active'));
@@ -119,6 +136,7 @@ class ClientController extends Controller
         $sort = match ($request->string('sort')->toString()) {
             'cnpj' => 'root_cnpj',
             'is_active' => 'is_active',
+            'created_at' => 'created_at',
             default => 'legal_name',
         };
         $direction = $request->string('direction')->lower()->toString() === 'desc' ? 'desc' : 'asc';
@@ -171,9 +189,39 @@ class ClientController extends Controller
                     'credential_expiring_30d' => $credentialExpiring,
                     'credential_expired' => $credentialExpired,
                     'capture_problem' => $captureProblem,
+                    ...$dashboardStats,
                 ],
             ],
         ]);
+    }
+
+    /**
+     * @param  Builder<Client>  $query
+     * @return list<array{month: string, total: int}>
+     */
+    private function clientGrowthLastTwelveMonths(Builder $query): array
+    {
+        $start = now()->startOfMonth()->subMonths(11);
+        $driver = $query->getConnection()->getDriverName();
+        $monthExpression = $driver === 'sqlite'
+            ? "strftime('%Y-%m', created_at)"
+            : "to_char(created_at, 'YYYY-MM')";
+
+        $counts = (clone $query)
+            ->where('created_at', '>=', $start)
+            ->selectRaw("{$monthExpression} as month_key, COUNT(*) as aggregate")
+            ->groupByRaw($monthExpression)
+            ->pluck('aggregate', 'month_key');
+
+        $cumulative = (clone $query)->where('created_at', '<', $start)->count();
+        $series = [];
+        for ($offset = 0; $offset < 12; $offset++) {
+            $month = $start->copy()->addMonths($offset)->format('Y-m');
+            $cumulative += (int) ($counts[$month] ?? 0);
+            $series[] = ['month' => $month, 'total' => $cumulative];
+        }
+
+        return $series;
     }
 
     public function store(

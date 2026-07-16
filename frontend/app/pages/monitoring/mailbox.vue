@@ -131,22 +131,22 @@ onMounted(load)
 
 <template>
   <div class="flex min-h-0 w-full flex-1">
-    <DashboardListShell
-      panel-id="mailbox-list"
-      title="Caixas Postais"
-      resizable
-      :default-size="30"
-      :min-size="22"
-      :max-size="40"
-    >
-      <template #navbar-trailing>
+    <UDashboardPanel id="mailbox-list" resizable :default-size="30" :min-size="22" :max-size="40">
+  <template #header>
+    <UDashboardNavbar title="Caixas Postais" data-testid="page-navbar">
+      <template #leading>
+        <UDashboardSidebarCollapse />
+      </template>
+      <template #trailing>
+
         <UBadge
           :label="String(total)"
           variant="subtle"
         />
       </template>
-      <template #navbar-right>
-        <FiscalMonitoringPortfolioActions
+      <template #right>
+
+        <MonitoringPortfolioActions
           module-key="mailbox"
           :client-id="clientIdModel"
           show-enqueue
@@ -154,7 +154,8 @@ onMounted(load)
           @refreshed="load"
         />
       </template>
-      <template #toolbar>
+    </UDashboardNavbar>
+
         <UDashboardToolbar data-testid="page-toolbar">
           <template #left>
             <div class="flex min-w-0 flex-1 flex-col gap-2">
@@ -184,15 +185,14 @@ onMounted(load)
             </div>
           </template>
         </UDashboardToolbar>
-      </template>
+  </template>
 
-        <UAlert
-          color="info"
-          icon="i-lucide-info"
-          title="Triagem ≠ leitura oficial"
-          description="NEW / IN_REVIEW / RESOLVED são internos. Não marcam ciência no canal da RFB."
-          class="mb-3"
-        />
+  <template #body>
+
+      
+      
+      
+
         <UAlert
           v-if="loadError"
           color="error"
@@ -233,7 +233,8 @@ onMounted(load)
             size="sm"
           />
         </div>
-    </DashboardListShell>
+  </template>
+</UDashboardPanel>
 
     <!-- Desktop: detalhe adjacente via NuxtPage -->
     <div class="hidden min-w-0 flex-1 lg:flex">

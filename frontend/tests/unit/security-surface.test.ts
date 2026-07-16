@@ -44,8 +44,8 @@ describe('superfície sem material sensível', () => {
   })
 
   it('páginas de detalhe de nota não renderizam XML bruto', () => {
-    const detail = readFileSync(resolve(APP_ROOT, 'components/notes/NotesDetail.vue'), 'utf8')
-    const modal = readFileSync(resolve(APP_ROOT, 'components/notes/NotesDetailModal.vue'), 'utf8')
+    const detail = readFileSync(resolve(APP_ROOT, 'components/docs/Detail.vue'), 'utf8')
+    const modal = readFileSync(resolve(APP_ROOT, 'components/docs/DetailModal.vue'), 'utf8')
     expect(detail).not.toMatch(/v-html/i)
     expect(modal).not.toMatch(/v-html/i)
     expect(modal).toContain('Baixar XML')
@@ -71,8 +71,9 @@ describe('superfície sem material sensível', () => {
   it('FGTS é rotulado parcial e sem portal humano', () => {
     const fgts = readFileSync(resolve(APP_ROOT, 'pages/monitoring/fgts.vue'), 'utf8')
     expect(fgts).toMatch(/parcial/i)
-    expect(fgts).toMatch(/portal_fallback|sem API pública|Não suportado/i)
-    expect(fgts).toContain('fgts-partial-banner')
+    // Sem banner permanente de cobertura (alerta removido da UI)
+    expect(fgts).not.toContain('fgts-partial-banner')
+    expect(fgts).not.toMatch(/guia e pagamento do FGTS Digital não são suportados/i)
     // Sem deep-link operacional a portal/CAPTCHA
     expect(fgts).not.toMatch(/to="https?:\/\/.*gov\.br/i)
     expect(fgts).not.toMatch(/label="Abrir portal/i)

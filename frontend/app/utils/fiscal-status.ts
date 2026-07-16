@@ -93,15 +93,91 @@ export function normalizeFiscalSituation(value?: string | null): FiscalSituation
   return String(value).trim().toUpperCase()
 }
 
+/**
+ * Aliases de emissão/pagamento/eixos oficiais → meta fiscal.
+ * Evita badges em inglês cru (CONFIRMED, TRANSMITTED, …) na UI.
+ */
+const ALIASES: Record<string, Omit<FiscalStatusMeta, 'code'>> = {
+  CONFIRMED: {
+    label: 'Confirmado',
+    description: 'Confirmação oficial registrada.',
+    icon: 'i-lucide-circle-check',
+    color: 'success'
+  },
+  NOT_CONFIRMED: {
+    label: 'Sem confirmação',
+    description: 'Ainda sem confirmação oficial de pagamento.',
+    icon: 'i-lucide-circle-dashed',
+    color: 'neutral'
+  },
+  PARTIAL: {
+    label: 'Parcial',
+    description: 'Confirmação parcial.',
+    icon: 'i-lucide-circle-minus',
+    color: 'warning'
+  },
+  REJECTED: {
+    label: 'Rejeitado',
+    description: 'Emissão ou operação rejeitada.',
+    icon: 'i-lucide-circle-x',
+    color: 'error'
+  },
+  TRANSMITTED: {
+    label: 'Transmitido',
+    description: 'Transmissão registrada.',
+    icon: 'i-lucide-send',
+    color: 'success'
+  },
+  ENCERRADO: {
+    label: 'Encerrado',
+    description: 'Encerramento registrado.',
+    icon: 'i-lucide-flag',
+    color: 'success'
+  },
+  CLOSED: {
+    label: 'Encerrado',
+    description: 'Encerramento registrado.',
+    icon: 'i-lucide-flag',
+    color: 'success'
+  },
+  EMITTED: {
+    label: 'Emitido',
+    description: 'Emissão registrada.',
+    icon: 'i-lucide-file-check',
+    color: 'success'
+  },
+  AVAILABLE: {
+    label: 'Disponível',
+    description: 'Disponível para download ou uso.',
+    icon: 'i-lucide-download',
+    color: 'success'
+  },
+  READY: {
+    label: 'Pronto',
+    description: 'Pronto para a próxima ação.',
+    icon: 'i-lucide-circle-check',
+    color: 'success'
+  }
+}
+
 export function fiscalStatusMeta(value?: string | null): FiscalStatusMeta {
   const code = normalizeFiscalSituation(value)
   const known = CATALOG[code as FiscalSituationCode]
   if (known) {
     return { code, ...known }
   }
+  const alias = ALIASES[String(code)]
+  if (alias) {
+    return { code, ...alias }
+  }
+  // Fallback legível em pt-BR (nunca código cru em UPPERCASE na UI).
+  const human = String(code || 'Desconhecido')
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, c => c.toUpperCase())
   return {
     code,
-    label: code || 'Desconhecido',
+    label: human,
     description: 'Situação não catalogada.',
     icon: 'i-lucide-help-circle',
     color: 'neutral'
@@ -219,7 +295,6 @@ export interface FiscalOriginMeta {
   icon: string
   color: FiscalOriginTone
   synthetic: boolean
-  banner: string | null
 }
 
 export function dataOriginMeta(value?: string | null): FiscalOriginMeta {
@@ -232,8 +307,7 @@ export function dataOriginMeta(value?: string | null): FiscalOriginMeta {
         description: 'Dataset sintético do office demo — sem validade fiscal.',
         icon: 'i-lucide-flask-conical',
         color: 'warning',
-        synthetic: true,
-        banner: 'Dados demonstrativos — sem validade fiscal'
+        synthetic: true
       }
     case 'SIMULATED':
       return {
@@ -242,8 +316,7 @@ export function dataOriginMeta(value?: string | null): FiscalOriginMeta {
         description: 'Resposta simulada localmente — sem validade fiscal.',
         icon: 'i-lucide-sparkles',
         color: 'info',
-        synthetic: true,
-        banner: 'Dados demonstrativos — sem validade fiscal'
+        synthetic: true
       }
     case 'LIVE':
       return {
@@ -252,8 +325,7 @@ export function dataOriginMeta(value?: string | null): FiscalOriginMeta {
         description: 'Dados provenientes de fontes oficiais no tenant ativo.',
         icon: 'i-lucide-radio-tower',
         color: 'success',
-        synthetic: false,
-        banner: null
+        synthetic: false
       }
     default:
       return {
@@ -262,8 +334,7 @@ export function dataOriginMeta(value?: string | null): FiscalOriginMeta {
         description: 'Origem do dado não catalogada.',
         icon: 'i-lucide-help-circle',
         color: 'neutral',
-        synthetic: false,
-        banner: null
+        synthetic: false
       }
   }
 }

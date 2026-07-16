@@ -185,13 +185,14 @@ watch(sessionEpoch, () => {
 </script>
 
 <template>
-  <DashboardListShell
-    panel-id="work-calendar-main"
-    title="Calendário operacional"
-    panel-test-id="work-calendar"
-    panel-class="min-w-0"
-  >
-    <template #navbar-right>
+  <UDashboardPanel id="work-calendar-main" data-testid="work-calendar" class="min-w-0">
+  <template #header>
+    <UDashboardNavbar title="Calendário operacional" data-testid="page-navbar">
+      <template #leading>
+        <UDashboardSidebarCollapse />
+      </template>
+      <template #right>
+
           <div class="flex items-center gap-1">
             <UButton
               icon="i-lucide-chevron-left"
@@ -233,7 +234,13 @@ watch(sessionEpoch, () => {
         aria-label="Abrir painel do dia"
         @click="() => { railOpen = true }"
       />
-    </template>
+      </template>
+    </UDashboardNavbar>
+  </template>
+
+  <template #body>
+
+    
 
     <h1 class="sr-only">
       Calendário operacional
@@ -362,21 +369,22 @@ watch(sessionEpoch, () => {
           </li>
         </ul>
       </div>
-  </DashboardListShell>
+  </template>
+</UDashboardPanel>
 
 
   <!-- Rail desktop -->
-  <DashboardListShell
-    panel-id="work-calendar-rail"
-    title="Dia selecionado"
-    panel-class="hidden lg:flex"
-    resizable
-    :default-size="22"
-    :min-size="18"
-    :max-size="28"
-    :show-collapse="false"
-    :navbar-toggle="false"
-  >
+  <UDashboardPanel id="work-calendar-rail" class="hidden lg:flex" resizable :default-size="22" :min-size="18" :max-size="28">
+  <template #header>
+    <UDashboardNavbar title="Dia selecionado" data-testid="page-navbar" :toggle="false">
+      <template #leading>
+        <UDashboardSidebarCollapse />
+      </template>
+    </UDashboardNavbar>
+  </template>
+
+  <template #body>
+
       <div class="flex flex-col gap-4 p-3">
         <UCalendar v-model="calendarModel" class="w-full" />
         <UTabs
@@ -415,7 +423,8 @@ watch(sessionEpoch, () => {
           </li>
         </ul>
       </div>
-  </DashboardListShell>
+  </template>
+</UDashboardPanel>
 
   <!-- Rail mobile -->
   <USlideover v-model:open="railOpen" title="Dia selecionado" class="lg:hidden">

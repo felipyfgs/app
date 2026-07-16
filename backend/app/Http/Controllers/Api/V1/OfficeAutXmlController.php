@@ -24,6 +24,7 @@ use Illuminate\Http\Request;
 class OfficeAutXmlController extends Controller
 {
     public function overview(
+        Request $request,
         CurrentOffice $office,
         OfficeFiscalIdentityService $identities,
     ): JsonResponse {
@@ -32,28 +33,35 @@ class OfficeAutXmlController extends Controller
         $cursor = $this->primaryCursor($office->id());
         $stream = $this->streamGate($cursor);
 
-        $enrollmentsByEst = collect();
-        if ($identity !== null) {
-            $enrollmentsByEst = OfficeAutXmlEnrollment::query()
-                ->where('office_id', $office->id())
-                ->where('office_fiscal_identity_id', $identity->id)
-                ->get()
-                ->keyBy('establishment_id');
-        }
-
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
         $establishments = Establishment::query()
             ->where('office_id', $office->id())
             ->where('is_active', true)
             ->with('client:id,legal_name,display_name')
             ->orderBy('cnpj')
-            ->get();
+            ->orderBy('id')
+            ->paginate($perPage);
 
-        $checklist = [];
-        foreach ($establishments as $est) {
-            /** @var OfficeAutXmlEnrollment|null $enr */
-            $enr = $enrollmentsByEst->get($est->id);
-            $checklist[] = $this->enrollmentArray($est, $enr);
+        $establishmentIds = collect($establishments->items())->pluck('id');
+        $enrollmentsByEst = collect();
+        if ($identity !== null && $establishmentIds->isNotEmpty()) {
+            $enrollmentsByEst = OfficeAutXmlEnrollment::query()
+                ->where('office_id', $office->id())
+                ->where('office_fiscal_identity_id', $identity->id)
+                ->whereIn('establishment_id', $establishmentIds)
+                ->get()
+                ->keyBy('establishment_id');
         }
+
+        $checklist = collect($establishments->items())
+            ->map(function (Establishment $est) use ($enrollmentsByEst): array {
+                /** @var OfficeAutXmlEnrollment|null $enrollment */
+                $enrollment = $enrollmentsByEst->get($est->id);
+
+                return $this->enrollmentArray($est, $enrollment);
+            })
+            ->values()
+            ->all();
 
         return response()->json([
             'data' => [
@@ -79,6 +87,12 @@ class OfficeAutXmlController extends Controller
                     'quiet_hours' => $stream['quiet_hours'],
                     'ready_at' => $stream['ready_at'],
                 ],
+            ],
+            'meta' => [
+                'current_page' => $establishments->currentPage(),
+                'last_page' => $establishments->lastPage(),
+                'per_page' => $establishments->perPage(),
+                'total' => $establishments->total(),
             ],
         ]);
     }

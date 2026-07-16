@@ -7,16 +7,20 @@ use App\Enums\AuthorIdentityType;
 use App\Enums\OfficeRole;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproEnvironment;
+use App\Enums\TaxProxyPowerSource;
+use App\Enums\TaxProxyPowerStatus;
 use App\Enums\TermRePresentationStrategy;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
+use App\Models\TaxProxyPower;
 use App\Models\User;
 use App\Services\Integra\OfficeSerproAuthorizationService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RobRichards\XMLSecLibs\XMLSecurityDSig;
 use RobRichards\XMLSecLibs\XMLSecurityKey;
+use Tests\Support\ApiSecretScanner;
 use Tests\TestCase;
 
 class OfficeSerproAuthorizationTest extends TestCase
@@ -198,6 +202,142 @@ class OfficeSerproAuthorizationTest extends TestCase
         $elig->assertOk();
         $this->assertFalse($elig->json('data.eligible'));
         $this->assertContains('CONTRACT_UNAVAILABLE', $elig->json('data.codes'));
+    }
+
+    public function test_lista_proxy_powers_pagina_sem_corte_isola_tenant_e_ordena_com_desempate(): void
+    {
+        $officeA = Office::factory()->create();
+        $officeB = Office::factory()->create();
+        $admin = User::factory()->forOffice($officeA, OfficeRole::Admin)->withTwoFactorConfirmed()->create();
+        $clientA = Client::factory()->forOffice($officeA)->create();
+        $otherClientA = Client::factory()->forOffice($officeA)->create();
+        $clientB = Client::factory()->forOffice($officeB)->create();
+        $now = now();
+
+        $rows = [];
+        for ($index = 0; $index < 205; $index++) {
+            $rows[] = [
+                'office_id' => $officeA->id,
+                'client_id' => $clientA->id,
+                'office_serpro_authorization_id' => null,
+                'author_identity' => '12345678901',
+                'contributor_cnpj' => '12345678000195',
+                'system_code' => 'INTEGRA',
+                'service_code' => null,
+                'power_code' => sprintf('POWER-%03d', $index),
+                'source' => TaxProxyPowerSource::ManualOfficialEvidence->value,
+                'status' => TaxProxyPowerStatus::Active->value,
+                'valid_from' => null,
+                'valid_to' => null,
+                'evidence_ref' => sprintf('EVIDENCE-%03d', $index),
+                'evidence_sha256' => null,
+                'verified_at' => null,
+                'last_check_result' => null,
+                'metadata' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        $rows[] = [
+            'office_id' => $officeA->id,
+            'client_id' => $otherClientA->id,
+            'office_serpro_authorization_id' => null,
+            'author_identity' => '12345678901',
+            'contributor_cnpj' => '98765432000198',
+            'system_code' => 'OUTRO',
+            'service_code' => null,
+            'power_code' => 'POWER-OTHER-CLIENT',
+            'source' => TaxProxyPowerSource::ManualOfficialEvidence->value,
+            'status' => TaxProxyPowerStatus::Active->value,
+            'valid_from' => null,
+            'valid_to' => null,
+            'evidence_ref' => 'EVIDENCE-OTHER-CLIENT',
+            'evidence_sha256' => null,
+            'verified_at' => null,
+            'last_check_result' => null,
+            'metadata' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+        $rows[] = [
+            'office_id' => $officeB->id,
+            'client_id' => $clientB->id,
+            'office_serpro_authorization_id' => null,
+            'author_identity' => '12345678901',
+            'contributor_cnpj' => '12345678000195',
+            'system_code' => 'INTEGRA',
+            'service_code' => null,
+            'power_code' => 'POWER-CROSS-TENANT',
+            'source' => TaxProxyPowerSource::ManualOfficialEvidence->value,
+            'status' => TaxProxyPowerStatus::Active->value,
+            'valid_from' => null,
+            'valid_to' => null,
+            'evidence_ref' => 'EVIDENCE-CROSS-TENANT',
+            'evidence_sha256' => null,
+            'verified_at' => null,
+            'last_check_result' => null,
+            'metadata' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+        TaxProxyPower::withoutGlobalScopes()->insert($rows);
+
+        $this->actingAs($admin);
+        app(CurrentOffice::class)->resolve($admin);
+
+        $firstPage = $this->getJson('/api/v1/office/serpro-authorization/proxy-powers?per_page=100');
+        $firstPage->assertOk()
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 3)
+            ->assertJsonPath('meta.per_page', 100)
+            ->assertJsonPath('meta.total', 206)
+            ->assertJsonCount(100, 'data');
+        ApiSecretScanner::assertClean((string) $firstPage->getContent(), 'proxy-powers.first-page');
+
+        $thirdPage = $this->getJson(sprintf(
+            '/api/v1/office/serpro-authorization/proxy-powers?client_id=%d&page=3&per_page=100',
+            $clientA->id,
+        ));
+        $thirdPage->assertOk()
+            ->assertJsonPath('meta.current_page', 3)
+            ->assertJsonPath('meta.last_page', 3)
+            ->assertJsonPath('meta.total', 205)
+            ->assertJsonCount(5, 'data');
+        $expectedThirdPageIds = TaxProxyPower::query()
+            ->where('office_id', $officeA->id)
+            ->where('client_id', $clientA->id)
+            ->orderByDesc('id')
+            ->skip(200)
+            ->take(100)
+            ->pluck('id')
+            ->all();
+        $this->assertSame($expectedThirdPageIds, $thirdPage->json('data.*.id'));
+
+        $sorted = $this->getJson(sprintf(
+            '/api/v1/office/serpro-authorization/proxy-powers?client_id=%d&sort=status&direction=asc&per_page=3',
+            $clientA->id,
+        ));
+        $sorted->assertOk()->assertJsonCount(3, 'data');
+        $expectedSortedIds = TaxProxyPower::query()
+            ->where('office_id', $officeA->id)
+            ->where('client_id', $clientA->id)
+            ->orderBy('status')
+            ->orderBy('id')
+            ->limit(3)
+            ->pluck('id')
+            ->all();
+        $this->assertSame($expectedSortedIds, $sorted->json('data.*.id'));
+
+        $this->getJson(sprintf(
+            '/api/v1/office/serpro-authorization/proxy-powers?client_id=%d',
+            $clientB->id,
+        ))->assertOk()
+            ->assertJsonPath('meta.total', 0)
+            ->assertJsonCount(0, 'data');
+
+        $this->getJson('/api/v1/office/serpro-authorization/proxy-powers?sort=metadata')
+            ->assertUnprocessable();
     }
 
     public function test_saude_tenant_sem_detalhe_comercial(): void

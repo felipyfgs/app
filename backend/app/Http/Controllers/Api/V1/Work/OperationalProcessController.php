@@ -35,8 +35,7 @@ class OperationalProcessController extends Controller
                 'assigneeMembership:id,user_id,office_id',
                 'assigneeMembership.user:id,name',
             ])
-            ->where('office_id', $currentOffice->id())
-            ->orderByDesc('id');
+            ->where('office_id', $currentOffice->id());
 
         if ($request->filled('competence')) {
             $q->where('competence', $request->string('competence')->toString());
@@ -55,7 +54,26 @@ class OperationalProcessController extends Controller
         }
         if ($request->filled('q')) {
             $needle = '%'.mb_strtolower($request->string('q')->toString()).'%';
-            $q->whereRaw('LOWER(title) LIKE ?', [$needle]);
+            $q->where(function ($search) use ($needle): void {
+                $search->whereRaw('LOWER(title) LIKE ?', [$needle])
+                    ->orWhereHas('client', function ($client) use ($needle): void {
+                        $client->whereRaw('LOWER(legal_name) LIKE ?', [$needle])
+                            ->orWhereRaw('LOWER(COALESCE(display_name, \'\')) LIKE ?', [$needle]);
+                    });
+            });
+        }
+
+        $sort = match ($request->string('sort')->toString()) {
+            'title' => 'title',
+            'competence' => 'competence',
+            'status' => 'status',
+            'due_date' => 'due_date',
+            default => 'id',
+        };
+        $direction = $request->string('direction')->lower()->toString() === 'asc' ? 'asc' : 'desc';
+        $q->orderBy($sort, $direction);
+        if ($sort !== 'id') {
+            $q->orderBy('id', $direction);
         }
 
         $paginator = $q->paginate($perPage);

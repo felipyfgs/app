@@ -133,11 +133,62 @@ export interface ClientListStats {
   active: number
   /** Clientes com credencial ACTIVE. */
   with_credential?: number
+  /** Credencial ACTIVE, válida e fora das janelas de alerta. */
+  credential_ok?: number
   without_credential: number
   credential_expiring_30d: number
   credential_expired: number
   /** Clientes com cursor BLOCKED/ERROR. */
   capture_problem?: number
+  /** Série acumulada mensal dos últimos 12 meses, calculada no servidor. */
+  client_growth_12m?: Array<{ month: string, total: number }>
+}
+
+export type OfficeAutXmlEnrollmentStatus = 'NONE' | 'PENDING' | 'CONFIRMED' | 'INACTIVE'
+
+export interface OfficeAutXmlEnrollment {
+  id: number | null
+  establishment_id: number
+  establishment_cnpj: string
+  establishment_name: string | null
+  trade_name: string | null
+  client_id: number
+  client_name: string | null
+  status: OfficeAutXmlEnrollmentStatus
+  activated_at: string | null
+  first_seen_at: string | null
+  last_seen_at: string | null
+  observed: boolean
+  channel_coverage: string
+  channel_coverage_label: string
+  nfce_hint: string
+  erp_instruction: string
+}
+
+export interface OfficeAutXmlStream {
+  stream_ready: boolean
+  stream_reason: string | null
+  quiet_hours: number
+  activated_at: string | null
+  ready_at: string | null
+}
+
+export interface OfficeAutXmlCoverage {
+  channel: string
+  model: string
+  label: string
+  not_retroactive: boolean
+  nfce_note: string
+}
+
+export interface OfficeAutXmlOverview {
+  identity: Record<string, unknown> | null
+  office_cnpj: string | null
+  cursor: Record<string, unknown> | null
+  stream: OfficeAutXmlStream
+  coverage: OfficeAutXmlCoverage
+  enrollments: OfficeAutXmlEnrollment[]
+  checklist?: Record<string, unknown>
 }
 
 /** Resumo de matriz/filial vinculada (cada uma tem cadastro próprio). */

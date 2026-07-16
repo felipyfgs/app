@@ -119,19 +119,22 @@ watch(allowed, (ok) => {
 </script>
 
 <template>
-  <DashboardListShell
-    panel-id="admin"
-    title="Administração"
-    panel-test-id="settings-panel"
-    :panel-ui="{ body: 'lg:py-12' }"
-  >
+  <UDashboardPanel id="admin" data-testid="settings-panel" :ui="{ body: 'lg:py-12' }">
+    <template #header>
+      <UDashboardNavbar title="Administração" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+      </UDashboardNavbar>
+    </template>
+
+    <template #body>
       <div class="mx-auto flex w-full flex-col gap-4 sm:gap-6 lg:max-w-2xl lg:gap-12">
         <UAlert
           v-if="!allowed"
           color="warning"
           icon="i-lucide-shield-off"
           title="Acesso restrito"
-          description="Somente administradores com segundo fator confirmado podem acessar esta área."
         />
 
         <template v-else-if="me">
@@ -200,8 +203,7 @@ watch(allowed, (ok) => {
               v-else-if="fiscalError"
               color="warning"
               icon="i-lucide-wifi-off"
-              title="Identidade indisponível"
-              :description="fiscalError"
+              :title="fiscalError"
               :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: loadFiscal }]"
             />
             <div v-else class="space-y-4 text-sm">
@@ -283,7 +285,6 @@ watch(allowed, (ok) => {
           <UPageCard
             variant="naked"
             title="Onboarding autXML por estabelecimento"
-            description="Checklist PENDING / CONFIRMED / INACTIVE · CNPJ do escritório no ERP · NF-e 55 · não retroativo · quiet mínimo."
             data-testid="admin-autxml-onboarding"
           />
           <UPageCard variant="subtle" data-testid="admin-autxml-card">
@@ -305,7 +306,6 @@ watch(allowed, (ok) => {
           <UPageCard
             variant="naked"
             title="Backup da instância"
-            description="Somente leitura. Restore e drill são comandos operacionais (CLI), não rotas da API."
           />
           <UPageCard variant="subtle" data-testid="admin-backup-card">
             <div
@@ -321,8 +321,7 @@ watch(allowed, (ok) => {
               v-else-if="backupError"
               color="warning"
               icon="i-lucide-wifi-off"
-              title="Status de backup indisponível"
-              :description="backupError"
+              :title="backupError"
               :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: loadBackup }]"
             />
             <dl v-else-if="backup" class="space-y-3 text-sm">
@@ -381,10 +380,10 @@ watch(allowed, (ok) => {
           <UAlert
             color="warning"
             icon="i-lucide-lock-keyhole"
-            title="Chave mestra fora da aplicação"
-            description="A VAULT_MASTER_KEY deve permanecer separada do banco e dos backups comuns. A perda da chave torna os objetos irrecuperáveis."
+            title="VAULT_MASTER_KEY externa e separada dos backups é obrigatória"
           />
         </template>
       </div>
-  </DashboardListShell>
+    </template>
+  </UDashboardPanel>
 </template>

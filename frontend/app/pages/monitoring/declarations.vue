@@ -30,8 +30,6 @@ const {
   rows,
   counters,
   totalClients,
-  dataOrigin,
-  isSynthetic,
   lastValidAt,
   refresh,
   selectKpi
@@ -328,10 +326,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <FiscalModuleTable
+  <MonitoringModuleTable
     title="Declarações"
     panel-id="monitoring-declarations"
-    description="Carteira de obrigações com aplicabilidade, competência, vencimento, entrega e evidência — sem inventar dados."
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -347,15 +344,12 @@ onMounted(() => {
     :delivery-status="deliveryStatus"
     :total-clients="totalClients"
     :counters="counters"
-    :data-origin="dataOrigin"
-    :is-synthetic="isSynthetic"
     :last-good-at="lastValidAt"
     show-competence-filter
     show-delivery-status-filter
     show-client-picker
     :delivery-status-items="deliveryStatusItems"
     empty-title="Nenhuma declaração na carteira"
-    empty-description="A API do read model não retornou linhas. Nada foi inventado."
     @update:page="page = $event"
     @update:q="q = $event"
     @update:situation="situation = $event"
@@ -366,7 +360,7 @@ onMounted(() => {
     @kpi-select="selectKpi"
   >
     <template #navbar-actions>
-      <FiscalMonitoringPortfolioActions
+      <MonitoringPortfolioActions
         module-key="declarations"
         :client-id="clientId"
         :competence="competence"
@@ -397,8 +391,7 @@ onMounted(() => {
       <UPageCard
         v-else-if="summary.length"
         variant="subtle"
-        title="Resumo real (API)"
-        description="Totais por obrigação, aplicabilidade e status de entrega."
+        title="Resumo por obrigação"
         class="w-full"
       >
         <div class="overflow-x-auto">
@@ -615,5 +608,5 @@ onMounted(() => {
         </template>
       </USlideover>
     </template>
-  </FiscalModuleTable>
+  </MonitoringModuleTable>
 </template>

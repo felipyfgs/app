@@ -189,50 +189,53 @@ onBeforeUnmount(() => {
 
 <template>
   <!--
-    Detalhe de lote — casca DashboardListShell (lista/settings híbrido).
+    Detalhe de lote — casca UDashboardPanel (inline template) (lista/settings híbrido).
     Tabela de itens: DASHBOARD_TABLE_UI (customers.vue).
   -->
-  <DashboardListShell
-    panel-id="import-batch-detail"
-    :title="`Lote ${publicId.slice(0, 8)}…`"
-    navbar-test-id="page-navbar"
-  >
-    <template #navbar-right>
-      <UButton
-        to="/docs/imports"
-        color="neutral"
-        variant="ghost"
-        icon="i-lucide-arrow-left"
-        label="Histórico"
-        size="sm"
-      />
-      <UButton
-        v-if="batch"
-        color="neutral"
-        variant="subtle"
-        icon="i-lucide-download"
-        label="CSV"
-        size="sm"
-        aria-label="Exportar relatório CSV do lote"
-        @click="downloadCsv"
-      />
-      <UButton
-        icon="i-lucide-refresh-cw"
-        color="neutral"
-        variant="ghost"
-        square
-        aria-label="Atualizar lote"
-        :loading="loading || itemsLoading"
-        @click="() => { loadBatch(); loadItems() }"
-      />
+  <UDashboardPanel id="import-batch-detail">
+    <template #header>
+      <UDashboardNavbar :title="`Lote ${publicId.slice(0, 8)}…`" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+        <template #right>
+          <UButton
+            to="/docs/imports"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-arrow-left"
+            label="Histórico"
+            size="sm"
+          />
+          <UButton
+            v-if="batch"
+            color="neutral"
+            variant="subtle"
+            icon="i-lucide-download"
+            label="CSV"
+            size="sm"
+            aria-label="Exportar relatório CSV do lote"
+            @click="downloadCsv"
+          />
+          <UButton
+            icon="i-lucide-refresh-cw"
+            color="neutral"
+            variant="ghost"
+            square
+            aria-label="Atualizar lote"
+            :loading="loading || itemsLoading"
+            @click="() => { loadBatch(); loadItems() }"
+          />
+        </template>
+      </UDashboardNavbar>
     </template>
 
-    <UAlert
-      v-if="loadError"
-      color="error"
-      icon="i-lucide-wifi-off"
-      title="Lote indisponível"
-        :description="loadError"
+    <template #body>
+      <UAlert
+        v-if="loadError"
+        color="error"
+        icon="i-lucide-wifi-off"
+        :title="loadError"
         :actions="[{ label: 'Voltar', to: '/docs/imports' }]"
       />
 
@@ -268,8 +271,7 @@ onBeforeUnmount(() => {
           v-if="pollError"
           color="warning"
           icon="i-lucide-wifi-off"
-          title="Falha ao atualizar progresso"
-          :description="`${pollError} — último estado conhecido preservado.`"
+          :title="pollError"
           :actions="[{ label: 'Atualizar', color: 'neutral', variant: 'subtle', onClick: () => loadBatch(true) }]"
         />
 
@@ -352,8 +354,7 @@ onBeforeUnmount(() => {
           v-if="batch.error_message"
           color="error"
           icon="i-lucide-alert-triangle"
-          title="Erro do lote"
-          :description="String(batch.error_message)"
+          :title="String(batch.error_message)"
         />
 
         <div class="flex flex-wrap items-end gap-3">
@@ -465,13 +466,14 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
-    <div
-      v-else-if="loading"
-      class="space-y-2"
-      role="status"
-    >
-      <USkeleton class="h-8 w-1/3" />
-      <USkeleton class="h-24 w-full" />
-    </div>
-  </DashboardListShell>
+      <div
+        v-else-if="loading"
+        class="space-y-2"
+        role="status"
+      >
+        <USkeleton class="h-8 w-1/3" />
+        <USkeleton class="h-24 w-full" />
+      </div>
+    </template>
+  </UDashboardPanel>
 </template>

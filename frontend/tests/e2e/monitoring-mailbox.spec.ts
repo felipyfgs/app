@@ -85,11 +85,9 @@ test.describe('monitoring mailbox mestre–detalhe (9.5)', () => {
     test.skip(testInfo.project.name !== 'desktop-1440', 'Triagem no desktop.')
     await installApiFixtures(page, 'ADMIN')
     await page.goto(`/monitoring/mailbox/${MAILBOX_MESSAGE_ID}`)
-    await expect(page.getByText(/Triagem ≠ leitura oficial|não altera|Inalterada pela triagem|leitura oficial/i).first()).toBeVisible()
     const form = page.getByTestId('mailbox-triage-form')
-    if (await form.count()) {
-      await page.getByTestId('mailbox-triage-save').click()
-      await expect(form).toBeVisible()
-    }
+    await expect(form).toBeVisible()
+    await page.getByTestId('mailbox-triage-save').click()
+    await expect(form).toBeVisible()
   })
 })

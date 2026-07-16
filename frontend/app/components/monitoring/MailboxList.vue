@@ -2,6 +2,8 @@
 /**
  * Lista de mensagens da Caixa Postal (arquétipo InboxList).
  */
+import { mailboxTriageLabel } from '~/utils/mailbox-triage'
+
 export interface MailboxListItem {
   id: number
   client_id?: number | null
@@ -46,8 +48,11 @@ defineExpose({ focusMessage })
 
 <template>
   <div
-    class="overflow-y-auto divide-y divide-default"
+    class="min-h-0 flex-1 overflow-y-auto divide-y divide-default"
     data-testid="mailbox-list"
+    role="listbox"
+    aria-label="Mensagens da Caixa Postal"
+    :aria-busy="loading || undefined"
   >
     <div
       v-if="loading && !messages.length"
@@ -82,6 +87,8 @@ defineExpose({ focusMessage })
           : 'border-transparent hover:border-primary hover:bg-primary/5'
       ]"
       :aria-current="selectedId === mail.id ? 'true' : undefined"
+      :aria-selected="selectedId === mail.id"
+      role="option"
       @click="emit('select', mail.id)"
     >
       <div class="flex items-center justify-between gap-2">
@@ -105,7 +112,7 @@ defineExpose({ focusMessage })
           variant="subtle"
           size="sm"
         >
-          {{ mail.triage_status || '—' }}
+          {{ mailboxTriageLabel(mail.triage_status) }}
         </UBadge>
         <span v-if="mail.due_at">Prazo: {{ formatDateTime(mail.due_at) }}</span>
         <span v-if="(mail.attachment_count || 0) > 0">

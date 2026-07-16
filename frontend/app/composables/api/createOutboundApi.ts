@@ -158,6 +158,8 @@ export function createOutboundApi(client: ApiClient) {
           source?: string
           page?: number
           per_page?: number
+          sort?: 'due_at' | 'urgency_band' | 'model' | 'target_at' | 'id'
+          direction?: 'asc' | 'desc'
         }) =>
           client<{ data: OutboundDeadlinePendingItem[], meta: PageMeta }>('/api/v1/outbound/deadline/pending', {
             query: params

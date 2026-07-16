@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   applyTriageQueue,
   catalogToExportFilters,
-  emptyNotesFilters,
+  emptyDocsFilters,
   hasActiveCatalogFilters,
   hasExportableCatalogFilters
 } from '../../app/utils/notes-filters'
 
 describe('notes-filters', () => {
   it('inicia filtros locais com sentinelas adequadas', () => {
-    const filters = emptyNotesFilters()
+    const filters = emptyDocsFilters()
     expect(filters.q).toBe('')
     expect(filters.kind).toBe('all')
     expect(filters.client_id).toBe('all')
@@ -20,7 +20,7 @@ describe('notes-filters', () => {
   })
 
   it('reconhece filtros específicos de CT-e como ativos', () => {
-    const filters = emptyNotesFilters()
+    const filters = emptyDocsFilters()
     filters.kind = 'CTE'
     filters.fiscal_role = 'SENDER'
     filters.acquisition_source = 'CTE_AUTXML_DIST_NSU'
@@ -44,18 +44,18 @@ describe('notes-filters', () => {
       'DEGRADED_CHANNEL'
     ] as const
     for (const status of allowed) {
-      const filters = emptyNotesFilters()
+      const filters = emptyDocsFilters()
       filters.coverage_status = status
       expect(hasActiveCatalogFilters(filters)).toBe(true)
     }
     for (const status of legacy) {
       // Legados não devem ser o valor default do empty state.
-      expect(emptyNotesFilters().coverage_status).not.toBe(status)
+      expect(emptyDocsFilters().coverage_status).not.toBe(status)
     }
   })
 
   it('catalogToExportFilters e hasExportableCatalogFilters', () => {
-    const empty = emptyNotesFilters()
+    const empty = emptyDocsFilters()
     expect(hasActiveCatalogFilters(empty)).toBe(false)
     expect(hasExportableCatalogFilters(empty)).toBe(false)
     empty.q = 'Acme'
@@ -71,7 +71,7 @@ describe('notes-filters', () => {
   })
 
   it('applyTriageQueue define filas de status e missing_party', () => {
-    const base = emptyNotesFilters()
+    const base = emptyDocsFilters()
     expect(applyTriageQueue(base, 'cancelled').status).toBe('CANCELLED')
     expect(applyTriageQueue(base, 'review').status).toBe('UNKNOWN')
     expect(applyTriageQueue(base, 'missing_party').missing_party_name).toBe('1')
@@ -80,7 +80,7 @@ describe('notes-filters', () => {
   })
 
   it('trocar ou desligar fila limpa a competência controlada pela triagem', () => {
-    const competence = applyTriageQueue(emptyNotesFilters(), 'competence', '2026-07')
+    const competence = applyTriageQueue(emptyDocsFilters(), 'competence', '2026-07')
     expect(competence.competence).toBe('2026-07')
 
     const cancelled = applyTriageQueue(competence, 'cancelled')

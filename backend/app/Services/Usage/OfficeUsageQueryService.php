@@ -26,8 +26,14 @@ final class OfficeUsageQueryService
     /**
      * @return LengthAwarePaginator<int, array<string, mixed>>
      */
-    public function entries(int $officeId, int $perPage = 50, ?int $year = null, ?int $month = null): LengthAwarePaginator
-    {
-        return $this->reports->tenantEntries($officeId, $perPage, $year, $month);
+    public function entries(
+        int $officeId,
+        int $perPage = 50,
+        ?int $year = null,
+        ?int $month = null,
+        string $sort = '',
+        string $direction = '',
+    ): LengthAwarePaginator {
+        return $this->reports->tenantEntries($officeId, $perPage, $year, $month, $sort, $direction);
     }
 }

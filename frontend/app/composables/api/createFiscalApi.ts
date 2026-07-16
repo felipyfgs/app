@@ -58,10 +58,14 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
             `/api/v1/fiscal/modules/${encodeURIComponent(module)}/overview`,
             { query: params }
           ),
-        clients: <M extends FiscalPortfolioModuleKey>(module: M, params?: FiscalModulePortfolioFilters) =>
+        clients: <M extends FiscalPortfolioModuleKey>(
+          module: M,
+          params?: FiscalModulePortfolioFilters,
+          options?: { signal?: AbortSignal }
+        ) =>
           client<FiscalModuleClientsPage<M>>(
             `/api/v1/fiscal/modules/${encodeURIComponent(module)}/clients`,
-            { query: params }
+            { query: params, signal: options?.signal }
           )
       },
       runs: {
@@ -232,13 +236,14 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           page?: number
           per_page?: number
           client_id?: number
-          status?: string
-          payment_status?: string
           competence?: string
-        }) =>
+          payment_status?: string
+          sort?: 'client_id' | 'system_code' | 'competence' | 'amount' | 'due_at' | 'payment_status'
+          direction?: 'asc' | 'desc'
+        }, options?: { signal?: AbortSignal }) =>
           client<{ data: Array<Record<string, unknown>>, meta?: PageMeta, current_page?: number, last_page?: number, total?: number }>(
             '/api/v1/fiscal/guides',
-            { query: params }
+            { query: params, signal: options?.signal }
           ),
         get: (id: number) =>
           client<{ data: Record<string, unknown> }>(`/api/v1/fiscal/guides/${id}`),

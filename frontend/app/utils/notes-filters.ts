@@ -38,7 +38,7 @@ const SELECT_KEYS = new Set<keyof NotesFilterState>([
   'status'
 ])
 
-export function emptyNotesFilters(): NotesFilterState {
+export function emptyDocsFilters(): NotesFilterState {
   return {
     q: '',
     kind: FILTER_ALL,

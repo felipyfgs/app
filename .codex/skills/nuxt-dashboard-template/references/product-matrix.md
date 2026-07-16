@@ -28,12 +28,18 @@
 | Rota produto | Arquétipo | Arquivo(s) template a copiar | Pontos dinâmicos |
 |--------------|-----------|------------------------------|------------------|
 | `/` | Home | `pages/index.vue`, `components/home/*` (só se chart/stats) | KPIs ops, refresh API, quick actions |
-| `/clients` | Lista | `pages/customers.vue`, `customers/AddModal.vue` | list/page/q server-side, create modal, row → `/clients/:id` |
+| `/clients` | Lista | `pages/customers.vue`, `customers/AddModal.vue` | blocos incrementais/q/sorting server-side, create modal, row → `/clients/:id` |
+| `/clients/dashboard` | Home de clientes | `pages/index.vue`, `components/home/*` | oito clientes recentes; KPIs e série global agregados no servidor, sem varrer todas as páginas |
 | `/clients/[id]` | Settings seções | `pages/settings.vue` + cards de `settings/index.vue` / members | seções resumo/estab/cert/sync; sem PFX raw |
-| `/notes` | Mestre–detalhe | `pages/inbox.vue`, `inbox/*` | filtros, cursor, preview nota |
+| `/notes` | Mestre–detalhe | `pages/inbox.vue`, `inbox/*` | filtros, cursor incremental, seleção só para exportação, preview nota |
 | `/notes/[accessKey]` | Detalhe (mail) ou página full | `InboxMail.vue` como base visual | XML/projeções; sem material sensível |
-| `/exports` | Lista | `customers.vue` | jobs export, status badge |
-| `/syncs` | Lista | `customers.vue` | cursores, bloqueios, last NSU |
+| `/exports` | Lista | `customers.vue` | jobs incrementais, polling sem duplicação, status badge |
+| `/syncs` | Lista | `customers.vue` | cursor incremental, bloqueios, last NSU |
+| `/work/processes`, `/work/templates` | Lista | `customers.vue` | blocos incrementais, filtros server-side, ações operacionais |
+| `/monitoring/*`, `/monitoring/guides` | Lista | `customers.vue` | carteira incremental, sorting manual/server-side, filtros fixos |
+| `/closing` | Lista + KPIs | `customers.vue`, `components/home/*` | indicadores pequenos + pendências incrementais |
+| `/docs/imports*`, `/settings/usage` | Lista / settings | `customers.vue`, `settings/*` | resumo fora do feed; lotes/itens/lançamentos incrementais |
+| `/settings/proxies` | Lista + formulário | `customers.vue`, `settings/*` | procurações incrementais, sorting server-side, virtualização; sem seleção decorativa |
 | `/admin` | Lista ou settings | `customers.vue` ou `settings/*` | só ADMIN confirmado |
 | Login / 2FA | Auth (fora) | — | `layouts/auth.vue` |
 
@@ -49,6 +55,9 @@
 | `notes/NotesCatalog.vue` | Lista | `InboxList` |
 | `notes/NotesDetail.vue` | Painel | `InboxMail` |
 | `notes/NotesFilters.vue` | Toolbar filtros | toolbar home/customers |
+| `DashboardStickyTableFilters.vue` | Filtros fixos de lista | navbar/toolbar de `customers.vue` |
+| `DashboardInfiniteTableLoader.vue` | Indicador transitório do feed | adaptação sem footer do `customers.vue` |
+| `office/AutXmlOnboardingChecklist.vue` | Checklist incremental no Admin | settings/members + `customers.vue`; ações por linha, sem footer ou checkbox |
 
 ## Regras de domínio que a UI deve respeitar
 

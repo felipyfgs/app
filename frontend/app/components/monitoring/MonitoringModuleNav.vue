@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Navegação horizontal do Monitoramento — canônico (UNavigationMenu highlight
- * em UDashboardToolbar). Mobile: scroll-x sem overflow do documento.
+ * diretamente em UDashboardToolbar, como settings.vue do template).
  *
  * Resolve auto-import Nuxt: `MonitoringModuleNav` (pasta monitoring/).
  * Props: `active` opcional força o módulo destacado (páginas legadas).
@@ -22,14 +22,10 @@ const items = computed(() => [
 </script>
 
 <template>
-  <div
-    class="min-w-0 flex-1 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+  <UNavigationMenu
+    :items="items"
+    highlight
+    class="-mx-1 flex-1"
     data-testid="monitoring-module-nav"
-  >
-    <UNavigationMenu
-      :items="items"
-      highlight
-      class="-mx-1 min-w-max"
-    />
-  </div>
+  />
 </template>

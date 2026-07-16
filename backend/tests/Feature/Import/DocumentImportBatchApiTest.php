@@ -119,6 +119,40 @@ class DocumentImportBatchApiTest extends TestCase
         $this->assertStringNotContainsString('vault_object_id', $content);
     }
 
+    public function test_listagem_ordena_no_servidor_com_desempate_estavel(): void
+    {
+        $office = Office::factory()->create();
+        $op = User::factory()->forOffice($office, OfficeRole::Operator)->withTwoFactorConfirmed()->create();
+        $otherOffice = Office::factory()->create();
+        $otherOp = User::factory()->forOffice($otherOffice, OfficeRole::Operator)->withTwoFactorConfirmed()->create();
+
+        $batches = collect([
+            DocumentImportBatch::factory()->forOffice($office, $op)->create(['file_count' => 2]),
+            DocumentImportBatch::factory()->forOffice($office, $op)->create(['file_count' => 2]),
+            DocumentImportBatch::factory()->forOffice($office, $op)->create(['file_count' => 5]),
+        ]);
+        DocumentImportBatch::factory()->forOffice($otherOffice, $otherOp)->create(['file_count' => 1]);
+
+        $this->actingAs($op);
+        app(CurrentOffice::class)->resolve($op);
+
+        $asc = $this->getJson('/api/v1/documents/import-batches?per_page=10&sort=file_count&direction=asc')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame(
+            [$batches[0]->public_id, $batches[1]->public_id, $batches[2]->public_id],
+            collect($asc)->pluck('public_id')->all(),
+        );
+
+        $desc = $this->getJson('/api/v1/documents/import-batches?per_page=10&sort=file_count&direction=desc')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame(
+            [$batches[2]->public_id, $batches[1]->public_id, $batches[0]->public_id],
+            collect($desc)->pluck('public_id')->all(),
+        );
+    }
+
     public function test_viewer_403_e_cross_tenant_404(): void
     {
         $officeA = Office::factory()->create();

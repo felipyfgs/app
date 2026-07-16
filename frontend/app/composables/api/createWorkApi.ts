@@ -28,7 +28,14 @@ export function createWorkApi(client: ApiClient, apiUrl: ApiUrl) {
           )
       },
       templates: {
-        list: (params?: { page?: number, per_page?: number, is_active?: boolean, q?: string }) =>
+        list: (params?: {
+          page?: number
+          per_page?: number
+          is_active?: boolean
+          q?: string
+          sort?: 'name' | 'is_active' | 'id'
+          direction?: 'asc' | 'desc'
+        }) =>
           client<{ data: ProcessTemplate[], meta: PageMeta }>('/api/v1/work/templates', { query: params }),
         get: (id: number) =>
           client<{ data: ProcessTemplate }>(`/api/v1/work/templates/${id}`),

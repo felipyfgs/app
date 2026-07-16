@@ -2,12 +2,17 @@
 /**
  * Settings onboarding Integra Contador (15.3).
  * Arquétipo: `.reference/nuxt-dashboard-template/app/pages/settings.vue`
+ *   Navbar + Toolbar com UNavigationMenu highlight + body max-w-2xl + NuxtPage
  * CT-e não entra aqui — destino canônico é `/docs/catalog?kind=CTE`.
  */
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 const { canAccessAdministration } = useDashboard()
 
+/**
+ * Mesmo contrato do template: NavigationMenuItem[][] (grupo principal + secundário).
+ * Labels/rotas adaptados ao produto; sem Documentation externa do demo.
+ */
 const links = [[{
   label: 'Integra Contador',
   icon: 'i-lucide-key-round',
@@ -33,31 +38,30 @@ const links = [[{
 </script>
 
 <template>
-  <DashboardListShell
-    panel-id="settings"
-    title="Configurações"
-    panel-test-id="settings-panel"
-    :panel-ui="{ body: 'lg:py-8' }"
-  >
-    <template #toolbar>
-      <UDashboardToolbar>
-        <UNavigationMenu
-          :items="links"
-          highlight
-          class="-mx-1 flex-1"
-        />
+  <UDashboardPanel id="settings" data-testid="settings-panel" :ui="{ body: 'lg:py-12' }">
+    <template #header>
+      <UDashboardNavbar title="Configurações" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+      </UDashboardNavbar>
+
+      <UDashboardToolbar data-testid="settings-section-tabs">
+        <!-- NOTE: The `-mx-1` class is used to align with the `DashboardSidebarCollapse` button here. -->
+        <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
       </UDashboardToolbar>
     </template>
 
-      <div class="flex w-full min-w-0 flex-col gap-4 sm:gap-6 lg:gap-8">
+    <template #body>
+      <div class="flex flex-col gap-4 sm:gap-6 lg:gap-12 w-full lg:max-w-2xl mx-auto">
         <UAlert
           v-if="!canAccessAdministration"
           color="warning"
           icon="i-lucide-shield-off"
           title="Acesso restrito"
-          description="Somente administradores com segundo fator confirmado podem alterar o onboarding Integra."
         />
         <NuxtPage v-if="canAccessAdministration" />
       </div>
-  </DashboardListShell>
+    </template>
+  </UDashboardPanel>
 </template>

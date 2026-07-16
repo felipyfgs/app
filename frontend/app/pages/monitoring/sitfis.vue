@@ -33,8 +33,6 @@ const {
   rows,
   counters,
   totalClients,
-  dataOrigin,
-  isSynthetic,
   lastValidAt,
   refresh,
   selectKpi
@@ -249,10 +247,9 @@ const columns: TableColumn<SitfisClientRow>[] = [
 </script>
 
 <template>
-  <FiscalModuleTable
+  <MonitoringModuleTable
     title="Situação Fiscal"
     panel-id="monitoring-sitfis"
-    description="Snapshot com idade/TTL e achados normalizados. Abrir a carteira não dispara consulta nova."
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -266,12 +263,9 @@ const columns: TableColumn<SitfisClientRow>[] = [
     :situation="situation"
     :total-clients="totalClients"
     :counters="counters"
-    :data-origin="dataOrigin"
-    :is-synthetic="isSynthetic"
     :last-good-at="lastValidAt"
     show-client-picker
     empty-title="Nenhum cliente com SITFIS na carteira"
-    empty-description="A API do read model não retornou linhas. Nada foi inventado."
     @update:page="page = $event"
     @update:q="q = $event"
     @update:situation="situation = $event"
@@ -280,7 +274,7 @@ const columns: TableColumn<SitfisClientRow>[] = [
     @kpi-select="selectKpi"
   >
     <template #navbar-actions>
-      <FiscalMonitoringPortfolioActions
+      <MonitoringPortfolioActions
         module-key="sitfis"
         :client-id="clientId"
         :situation="situation"
@@ -289,16 +283,11 @@ const columns: TableColumn<SitfisClientRow>[] = [
       />
     </template>
 
-    <template #utilities>
+    <template
+      v-if="overviewError"
+      #utilities
+    >
       <UAlert
-        color="info"
-        icon="i-lucide-info"
-        title="Snapshot com idade"
-        description="Use «Solicitar atualização» no detalhe apenas se o TTL permitir. Achados e pendências são listados de forma normalizada — sem JSON bruto."
-        class="w-full"
-      />
-      <UAlert
-        v-if="overviewError"
         color="warning"
         icon="i-lucide-triangle-alert"
         :title="overviewError"
@@ -505,5 +494,5 @@ const columns: TableColumn<SitfisClientRow>[] = [
         </template>
       </USlideover>
     </template>
-  </FiscalModuleTable>
+  </MonitoringModuleTable>
 </template>

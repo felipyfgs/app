@@ -108,7 +108,7 @@ watch(open, (value) => {
     <UPageCard variant="subtle">
       <div v-if="!canManageCredentials" class="space-y-3">
         <template v-if="hasCredential">
-          <AppStatusBadge v-if="summaryStatus" :status="summaryStatus" />
+          <ShellStatusBadge v-if="summaryStatus" :status="summaryStatus" />
           <dl class="space-y-2 text-sm">
             <div v-if="summaryValidTo">
               <dt class="text-muted">
@@ -123,7 +123,6 @@ watch(open, (value) => {
             color="info"
             icon="i-lucide-lock-keyhole"
             title="Gerenciado por ADMIN"
-            description="Metadados públicos do A1. Somente administradores com 2FA podem substituir o certificado."
           />
         </template>
         <UAlert
@@ -131,11 +130,10 @@ watch(open, (value) => {
           color="info"
           icon="i-lucide-lock-keyhole"
           title="Gerenciado por ADMIN"
-          description="Somente administradores com segundo fator confirmado podem consultar metadados ou substituir o A1. Isso não é uma falha operacional."
         />
       </div>
       <div v-else-if="credential" class="space-y-3 text-sm">
-        <AppStatusBadge :status="credential.status" />
+        <ShellStatusBadge :status="credential.status" />
         <dl class="space-y-2">
           <div>
             <dt class="text-muted">
@@ -229,7 +227,6 @@ watch(open, (value) => {
             color="warning"
             icon="i-lucide-shield-alert"
             title="Substituição atômica"
-            description="O certificado atual só será substituído se o novo arquivo passar por todas as validações."
           />
           <div class="flex justify-end gap-2">
             <UButton

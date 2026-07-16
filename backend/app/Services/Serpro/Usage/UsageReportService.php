@@ -68,12 +68,29 @@ final class UsageReportService
     /**
      * @return LengthAwarePaginator<int, array<string, mixed>>
      */
-    public function tenantEntries(int $officeId, int $perPage = 50, ?int $year = null, ?int $month = null): LengthAwarePaginator
-    {
+    public function tenantEntries(
+        int $officeId,
+        int $perPage = 50,
+        ?int $year = null,
+        ?int $month = null,
+        string $sort = '',
+        string $direction = '',
+    ): LengthAwarePaginator {
+        $sortColumn = match ($sort) {
+            'quantity' => 'quantity',
+            'result' => 'result',
+            'client_id' => 'client_id',
+            'id' => 'id',
+            default => 'occurred_at',
+        };
+        $sortDirection = strtolower($direction) === 'asc' ? 'asc' : 'desc';
         $query = SerproApiUsageEntry::query()
             ->withoutGlobalScopes()
             ->where('office_id', $officeId)
-            ->orderByDesc('occurred_at');
+            ->orderBy($sortColumn, $sortDirection);
+        if ($sortColumn !== 'id') {
+            $query->orderBy('id', $sortDirection);
+        }
 
         if ($year !== null && $month !== null) {
             $start = Carbon::create($year, $month, 1)->startOfMonth();

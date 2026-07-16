@@ -48,33 +48,35 @@ watch(
 <template>
   <!--
     Hierarquia: navbar + tabs Lista/Dashboard (settings.vue / customers).
-    Casca: DashboardListShell.
+    Casca: UDashboardPanel (inline template).
   -->
-  <DashboardListShell
-    v-if="isCatalog"
-    panel-id="clients"
-    title="Clientes"
-  >
-    <template #navbar-right>
+  <UDashboardPanel v-if="isCatalog" id="clients">
+  <template #header>
+    <UDashboardNavbar title="Clientes" data-testid="page-navbar">
+      <template #leading>
+        <UDashboardSidebarCollapse />
+      </template>
+      <template #right>
+
       <UButton
         v-if="canManageClients"
         icon="i-lucide-plus"
         label="Novo cliente"
         @click="openClientCreate"
       />
-    </template>
-    <template #toolbar>
-      <UDashboardToolbar data-testid="clients-section-tabs">
-        <UNavigationMenu
-          :items="links"
-          highlight
-          class="-mx-1 flex-1"
-        />
-      </UDashboardToolbar>
-    </template>
+      </template>
+    </UDashboardNavbar>
 
+      <UDashboardToolbar data-testid="clients-section-tabs">
+        <!-- NOTE: The `-mx-1` class is used to align with the `DashboardSidebarCollapse` button here. -->
+        <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
+      </UDashboardToolbar>
+  </template>
+
+  <template #body>
     <NuxtPage />
-  </DashboardListShell>
+  </template>
+</UDashboardPanel>
 
   <!-- /clients/:id… — painel próprio em [id].vue -->
   <NuxtPage v-else />

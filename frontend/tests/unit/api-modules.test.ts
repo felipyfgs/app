@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createDocumentsApi } from '../../app/composables/api/createDocumentsApi'
+import { createOfficeApi } from '../../app/composables/api/createOfficeApi'
 import { createOperationsApi } from '../../app/composables/api/createOperationsApi'
 import { createWorkApi } from '../../app/composables/api/createWorkApi'
 
@@ -47,5 +48,17 @@ describe('composables/api factories (runtime)', () => {
     await api.work.processes.list({ page: 1 })
     expect(calls[0]?.path).toBe('/api/v1/work/processes')
     expect(calls[0]?.opts?.query).toEqual({ page: 1 })
+  })
+
+  it('officeAutXml.overview encaminha recorte incremental e cancelamento', async () => {
+    const { client, calls } = mockClient()
+    const api = createOfficeApi(client as never)
+    const controller = new AbortController()
+
+    await api.officeAutXml.overview({ page: 2, per_page: 25 }, { signal: controller.signal })
+
+    expect(calls[0]?.path).toBe('/api/v1/office/autxml')
+    expect(calls[0]?.opts?.query).toEqual({ page: 2, per_page: 25 })
+    expect(calls[0]?.opts?.signal).toBe(controller.signal)
   })
 })

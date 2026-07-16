@@ -11,10 +11,12 @@ export interface ClientListParams {
   q?: string
   page?: number
   per_page?: number
+  /** Inclui agregados leves usados exclusivamente no dashboard de clientes. */
+  dashboard?: boolean | 0 | 1
   /** Filtro de estado no escritório (true/false) */
   is_active?: boolean | 0 | 1
   operational_filter?: 'with_credential' | 'without_credential' | 'expiring' | 'capture_problem'
-  sort?: 'legal_name' | 'cnpj' | 'is_active'
+  sort?: 'legal_name' | 'cnpj' | 'is_active' | 'created_at'
   direction?: 'asc' | 'desc'
 }
 

@@ -97,21 +97,23 @@ onMounted(load)
 </script>
 
 <template>
-  <DashboardListShell
-    panel-id="work-processes"
-    title="Processos"
-    panel-test-id="work-processes-panel"
-  >
-    <template #navbar-right>
+  <UDashboardPanel id="work-processes" data-testid="work-processes-panel">
+  <template #header>
+    <UDashboardNavbar title="Processos" data-testid="page-navbar">
+      <template #leading>
+        <UDashboardSidebarCollapse />
+      </template>
+      <template #right>
+
       <UButton
         v-if="canOpenTemplates"
         icon="i-lucide-plus"
         label="Modelos / lote"
         to="/work/templates"
       />
-    </template>
+      </template>
+    </UDashboardNavbar>
 
-    <template #toolbar>
       <UDashboardToolbar>
         <div class="flex flex-wrap gap-2 p-1">
           <UInput
@@ -142,7 +144,13 @@ onMounted(load)
           />
         </div>
       </UDashboardToolbar>
-    </template>
+  </template>
+
+  <template #body>
+
+    
+
+    
 
     <h1 data-testid="page-title" class="sr-only">
       Processos
@@ -217,5 +225,6 @@ onMounted(load)
         />
       </div>
     </template>
-  </DashboardListShell>
+  </template>
+</UDashboardPanel>
 </template>

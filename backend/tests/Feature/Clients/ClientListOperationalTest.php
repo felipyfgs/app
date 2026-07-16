@@ -183,4 +183,97 @@ class ClientListOperationalTest extends TestCase
 
         $this->assertSame(2, $first->json('meta.stats.active'));
     }
+
+    public function test_ordenacao_tem_desempate_estavel_em_ambas_direcoes(): void
+    {
+        $office = Office::factory()->create();
+        $otherOffice = Office::factory()->create();
+        $user = User::factory()->forOffice($office, OfficeRole::Operator)->withTwoFactorConfirmed()->create();
+
+        $first = Client::factory()->forOffice($office)->create([
+            'legal_name' => 'Mesmo Nome',
+            'root_cnpj' => '11111111',
+            'is_active' => true,
+        ]);
+        $second = Client::factory()->forOffice($office)->create([
+            'legal_name' => 'Mesmo Nome',
+            'root_cnpj' => '22222222',
+            'is_active' => true,
+        ]);
+        Client::factory()->forOffice($otherOffice)->create([
+            'legal_name' => 'Mesmo Nome',
+            'root_cnpj' => '33333333',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user);
+        app(CurrentOffice::class)->resolve($user);
+
+        foreach (['asc', 'desc'] as $direction) {
+            $ids = collect([1, 2])
+                ->map(fn (int $page) => $this
+                    ->getJson("/api/v1/clients?sort=legal_name&direction={$direction}&per_page=1&page={$page}")
+                    ->assertOk()
+                    ->json('data.0.id'))
+                ->all();
+
+            $this->assertSame([$first->id, $second->id], $ids);
+            $this->assertSame($ids, array_values(array_unique($ids)));
+        }
+    }
+
+    public function test_dashboard_limita_recentes_e_entrega_kpis_e_serie_globais(): void
+    {
+        $office = Office::factory()->create();
+        $user = User::factory()->forOffice($office, OfficeRole::Operator)->withTwoFactorConfirmed()->create();
+        $clients = collect();
+
+        foreach (range(0, 9) as $offset) {
+            $clients->push(Client::factory()->forOffice($office)->create([
+                'legal_name' => 'Cliente '.str_pad((string) $offset, 2, '0', STR_PAD_LEFT),
+                'root_cnpj' => str_pad((string) ($offset + 1), 8, '0', STR_PAD_LEFT),
+                'created_at' => now()->subDays(9 - $offset),
+            ]));
+        }
+
+        $credentialClient = $clients->first();
+        ClientCredential::query()->create([
+            'office_id' => $office->id,
+            'client_id' => $credentialClient->id,
+            'status' => CredentialStatus::Active,
+            'subject_name' => 'CN=Dashboard',
+            'holder_cnpj' => '11222333000181',
+            'fingerprint_sha256' => str_repeat('d', 64),
+            'valid_from' => now()->subYear(),
+            'valid_to' => now()->addMonths(6),
+            'vault_object_id' => 'vaultobj-dashboard-contract',
+            'activated_at' => now()->subMonth(),
+            'expires_alert_30' => false,
+            'expires_alert_7' => false,
+            'expires_alert_1' => false,
+        ]);
+
+        $this->actingAs($user);
+        app(CurrentOffice::class)->resolve($user);
+
+        $first = $this->getJson('/api/v1/clients?dashboard=1&sort=created_at&direction=desc&per_page=8&page=1')
+            ->assertOk()
+            ->assertJsonCount(8, 'data')
+            ->assertJsonPath('data.0.id', $clients->last()->id)
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.total', 10)
+            ->assertJsonPath('meta.stats.total', 10)
+            ->assertJsonPath('meta.stats.credential_ok', 1)
+            ->assertJsonCount(12, 'meta.stats.client_growth_12m')
+            ->assertJsonPath('meta.stats.client_growth_12m.11.total', 10);
+
+        $second = $this->getJson('/api/v1/clients?dashboard=1&sort=created_at&direction=desc&per_page=8&page=2')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $ids = collect($first->json('data'))->pluck('id')
+            ->concat(collect($second->json('data'))->pluck('id'));
+        $this->assertCount(10, $ids->unique());
+    }
 }

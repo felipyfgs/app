@@ -27,11 +27,32 @@ class ProcessTemplateController extends Controller
         $perPage = min(max((int) $request->input('per_page', 25), 1), 100);
         $q = ProcessTemplate::query()
             ->with('tasks')
-            ->where('office_id', $currentOffice->id())
-            ->orderBy('name');
+            ->where('office_id', $currentOffice->id());
 
         if ($request->filled('is_active')) {
             $q->where('is_active', $request->boolean('is_active'));
+        }
+        if ($request->filled('q')) {
+            $needle = '%'.mb_strtolower($request->string('q')->toString()).'%';
+            $q->where(function ($search) use ($needle): void {
+                $search->whereRaw('LOWER(name) LIKE ?', [$needle])
+                    ->orWhereRaw('LOWER(COALESCE(description, \'\')) LIKE ?', [$needle]);
+            });
+        }
+
+        $sort = match ($request->string('sort')->toString()) {
+            'is_active' => 'is_active',
+            'id' => 'id',
+            default => 'name',
+        };
+        $defaultDirection = $sort === 'name' ? 'asc' : 'desc';
+        $requestedDirection = $request->string('direction')->lower()->toString();
+        $direction = in_array($requestedDirection, ['asc', 'desc'], true)
+            ? $requestedDirection
+            : $defaultDirection;
+        $q->orderBy($sort, $direction);
+        if ($sort !== 'id') {
+            $q->orderBy('id', $direction);
         }
 
         $paginator = $q->paginate($perPage);

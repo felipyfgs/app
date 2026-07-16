@@ -3,7 +3,7 @@ import type { DropdownMenuItem } from '@nuxt/ui'
 
 /**
  * Rodapé da sidebar — estrutura de
- * `.reference/nuxt-dashboard-template/app/components/UserMenu.vue`
+ * `.reference/nuxt-dashboard-template/app/components/shell/UserMenu.vue`
  * (dropdown + botão block/ghost + chevrons; sem seletor de cores de marca).
  */
 defineProps<{

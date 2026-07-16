@@ -108,14 +108,11 @@ function downloadUrl(evidenceId: number) {
 </script>
 
 <template>
-  <DashboardListShell
-    panel-id="work-task-detail"
-    :title="detail?.title || 'Tarefa'"
-    panel-test-id="work-task-detail"
-    :show-collapse="false"
-    :navbar-toggle="false"
-  >
-    <template #navbar-leading>
+  <UDashboardPanel id="work-task-detail" data-testid="work-task-detail">
+  <template #header>
+    <UDashboardNavbar :title="detail?.title || 'Tarefa'" data-testid="page-navbar" :toggle="false">
+      <template #leading>
+
       <UButton
         icon="i-lucide-x"
         color="neutral"
@@ -124,8 +121,9 @@ function downloadUrl(evidenceId: number) {
         aria-label="Fechar detalhe"
         @click="emit('close')"
       />
-    </template>
-    <template #navbar-right>
+      </template>
+      <template #right>
+
           <template v-if="detail && canExecute">
             <UTooltip v-if="detail.status === 'A_FAZER'" text="Iniciar">
               <UButton
@@ -155,7 +153,14 @@ function downloadUrl(evidenceId: number) {
               />
             </UTooltip>
           </template>
-    </template>
+      </template>
+    </UDashboardNavbar>
+  </template>
+
+  <template #body>
+
+    
+    
 
       <div v-if="loading" class="space-y-3 p-4">
         <USkeleton class="h-8 w-1/2" />
@@ -379,5 +384,6 @@ function downloadUrl(evidenceId: number) {
           </div>
         </div>
       </div>
-  </DashboardListShell>
+  </template>
+</UDashboardPanel>
 </template>

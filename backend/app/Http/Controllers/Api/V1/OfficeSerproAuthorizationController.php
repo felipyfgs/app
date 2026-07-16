@@ -186,17 +186,48 @@ class OfficeSerproAuthorizationController extends Controller
         $this->assertAdminOrOperator();
         $office = $this->currentOffice->office();
 
-        $query = TaxProxyPower::query()
-            ->where('office_id', $office->id)
-            ->orderByDesc('id');
+        $data = $request->validate([
+            'client_id' => ['sometimes', 'integer', 'min:1'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'sort' => ['sometimes', 'string', Rule::in([
+                'id',
+                'client_id',
+                'power_code',
+                'system_code',
+                'status',
+            ])],
+            'direction' => ['sometimes', 'string', Rule::in(['asc', 'desc'])],
+        ]);
 
-        if ($request->query('client_id')) {
-            $query->where('client_id', (int) $request->query('client_id'));
+        $sort = $data['sort'] ?? 'id';
+        $direction = $data['direction'] ?? 'desc';
+
+        $query = TaxProxyPower::query()
+            ->where('office_id', $office->id);
+
+        if (isset($data['client_id'])) {
+            $query->where('client_id', $data['client_id']);
         }
 
-        $items = $query->limit(200)->get()->map->toPublicArray();
+        $query->orderBy($sort, $direction);
+        if ($sort !== 'id') {
+            $query->orderBy('id', $direction);
+        }
 
-        return response()->json(['data' => $items]);
+        $paginator = $query->paginate($data['per_page'] ?? 50);
+
+        return response()->json([
+            'data' => collect($paginator->items())
+                ->map(fn (TaxProxyPower $power): array => $power->toPublicArray())
+                ->values(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ],
+        ]);
     }
 
     public function importProxyPower(Request $request): JsonResponse

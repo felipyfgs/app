@@ -98,7 +98,7 @@ async function submit() {
   <UModal
     v-model:open="open"
     title="Associar categorias"
-    description="Vincula clientes do escritório ativo a uma categoria fiscal (POST /fiscal/category-links/batch)."
+    description="Vincule clientes a uma categoria fiscal."
     :ui="{ content: 'sm:max-w-md' }"
   >
     <template #body>

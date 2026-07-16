@@ -13,7 +13,7 @@ import {
 } from '../../app/types/fiscal-modules'
 import { monitoringNavMenuItems, MONITORING_NAV_ITEMS } from '../../app/utils/monitoring-nav'
 
-/** Espelha resolução de props do FiscalKpiStrip (API unificada). */
+/** Espelha resolução de props do MonitoringKpiStrip (API unificada). */
 function resolveKpiTotal(input: { total?: number | null, totalClients?: number | null }) {
   if (input.total != null && Number.isFinite(Number(input.total))) return Number(input.total)
   if (input.totalClients != null && Number.isFinite(Number(input.totalClients))) {
@@ -33,7 +33,7 @@ function resolveActiveKey(input: {
   return 'total'
 }
 
-/** Espelha onKpiSelect do FiscalModuleTable. */
+/** Espelha onKpiSelect do MonitoringModuleTable. */
 function onKpiSelect(key: FiscalKpiKey) {
   return {
     key,
@@ -41,7 +41,7 @@ function onKpiSelect(key: FiscalKpiKey) {
   }
 }
 
-describe('FiscalKpiStrip mapping (6.4 / 6.11)', () => {
+describe('MonitoringKpiStrip mapping (6.4 / 6.11)', () => {
   it('clique em Pendências/Atenção produz filtro de situação', () => {
     expect(fiscalKpiSituationFilter('pending')).toBe('PENDING')
     expect(fiscalKpiSituationFilter('attention')).toBe('ATTENTION')
@@ -58,7 +58,7 @@ describe('FiscalKpiStrip mapping (6.4 / 6.11)', () => {
     expect(resolveActiveKey({ activeKey: 'error', activeSituation: 'PENDING' })).toBe('error')
   })
 
-  it('@select emite key + situation (contrato das páginas e FiscalModuleTable)', () => {
+  it('@select emite key + situation (contrato das páginas e MonitoringModuleTable)', () => {
     function onSelect(key: 'pending' | 'total') {
       return [key, fiscalKpiSituationFilter(key)] as const
     }
@@ -73,7 +73,7 @@ describe('FiscalKpiStrip mapping (6.4 / 6.11)', () => {
     expect(fiscalSituationToKpiKey(null)).toBe('total')
   })
 
-  it('FiscalModuleTable: totalClients preferido no strip; situation→activeKey', () => {
+  it('MonitoringModuleTable: totalClients preferido no strip; situation→activeKey', () => {
     const counters: FiscalModuleCounters = {
       up_to_date: 5,
       processing: 1,
@@ -125,15 +125,13 @@ describe('badges cobertura, origem e status (6.6 / 6.11)', () => {
     expect(coverageMeta('FULL').color).toBe('success')
   })
 
-  it('dataOriginMeta marca DEMO/SIMULATED como sintético com banner', () => {
+  it('dataOriginMeta marca DEMO/SIMULATED sem criar banner persistente', () => {
     const demo = dataOriginMeta('DEMO')
     expect(demo.synthetic).toBe(true)
-    expect(demo.banner).toMatch(/demonstrativ/i)
     expect(demo.icon).toMatch(/^i-lucide-/)
 
     const live = dataOriginMeta('LIVE')
     expect(live.synthetic).toBe(false)
-    expect(live.banner).toBeNull()
   })
 
   it('fiscalStatusMeta distingue situação por label+ícone (badge)', () => {
@@ -176,7 +174,7 @@ describe('empty states distintos (6.9 / 6.11)', () => {
     expect(kind).toBe('filtered')
   })
 
-  it('aliases title / emptyTitle (FiscalTableEmptyState)', () => {
+  it('aliases title / emptyTitle (MonitoringTableEmptyState)', () => {
     function resolveTitle(input: { title?: string, emptyTitle?: string }, kind: string) {
       const custom = input.title || input.emptyTitle || ''
       if (custom) return custom
@@ -206,28 +204,6 @@ describe('empty states distintos (6.9 / 6.11)', () => {
     expect(showTableSkeleton({ loading: true, hasRows: true, hasPrevious: true })).toBe(false)
     expect(showTableSkeleton({ loading: true, hasRows: false, hasPrevious: true })).toBe(false)
     expect(showTableSkeleton({ loading: false, hasRows: false, hasPrevious: false })).toBe(false)
-  })
-})
-
-describe('demo banner gate (6.10 / 6.11)', () => {
-  it('só considera sintético com origem DEMO/SIMULATED', () => {
-    expect(dataOriginMeta('DEMO').banner).toBeTruthy()
-    expect(dataOriginMeta('LIVE').banner).toBeNull()
-    expect(dataOriginMeta(null).synthetic).toBe(false)
-  })
-
-  it('não ativa banner a partir de erro ou vazio produtivo', () => {
-    const show = (input: { origin?: string | null, isSynthetic?: boolean | null }) => {
-      if (input.isSynthetic === true) return true
-      if (input.isSynthetic === false) return false
-      const v = String(input.origin || '').toUpperCase()
-      return v === 'DEMO' || v === 'SIMULATED'
-    }
-    expect(show({ origin: null, isSynthetic: null })).toBe(false)
-    expect(show({ origin: 'LIVE' })).toBe(false)
-    expect(show({ origin: 'DEMO' })).toBe(true)
-    expect(show({ isSynthetic: true, origin: 'LIVE' })).toBe(true)
-    expect(show({ isSynthetic: false, origin: 'DEMO' })).toBe(false)
   })
 })
 

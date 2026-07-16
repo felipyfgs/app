@@ -10,6 +10,7 @@ import type {
   SvrsNfceProfileSummary,
   SvrsNfceRecovery
 } from '~/types/api'
+import { laravelPageBatch, usePagedTable } from '~/composables/usePagedTable'
 
 const props = defineProps<{
   clientId: number
@@ -24,12 +25,10 @@ const toast = useToast()
 /** Sentinela USelect — Reka UI proíbe SelectItem com value "". */
 const STATUS_ALL = 'all'
 
-const loading = ref(true)
-const error = ref<string | null>(null)
+const overviewLoading = ref(true)
+const overviewError = ref<string | null>(null)
 const channel = ref<SvrsNfceChannelSummary | null>(null)
 const profileSummary = ref<SvrsNfceProfileSummary | null>(null)
-const recoveries = ref<SvrsNfceRecovery[]>([])
-const meta = ref({ current_page: 1, last_page: 1, total: 0 })
 const busyId = ref<number | null>(null)
 
 const statusFilterItems = [
@@ -44,7 +43,6 @@ const statusFilterItems = [
   { label: 'Fallback', value: 'RESOLVED_BY_OTHER_SOURCE' }
 ] as const
 const statusFilter = ref<(typeof statusFilterItems)[number]['value']>(STATUS_ALL)
-const page = ref(1)
 const killReason = ref('')
 const killBusy = ref(false)
 const breakerReason = ref('')
@@ -75,6 +73,28 @@ const profile65 = computed(() =>
   || profile65List.value[0]
   || null
 )
+
+const recoveryList = useTemplateRef('recoveryList')
+const recoveriesFeed = usePagedTable<SvrsNfceRecovery>({
+  getKey: row => row.id,
+  load: async ({ page }) => laravelPageBatch(await api.outbound.svrsNfce.recoveries({
+    status: statusFilter.value && statusFilter.value !== STATUS_ALL
+      ? statusFilter.value
+      : undefined,
+    client_id: props.clientId,
+    profile_id: profile65.value?.id,
+    page,
+    per_page: 10
+  }))
+})
+
+const recoveriesFeedTotal = recoveriesFeed.total
+const recoveriesFeedPage = recoveriesFeed.page
+const recoveries = recoveriesFeed.rows
+const loading = computed(() => overviewLoading.value || recoveriesFeed.pendingInitial.value)
+const error = computed(() => recoveriesFeed.error.value
+  ? apiErrorMessage(recoveriesFeed.error.value, 'Falha ao carregar recuperações SVRS.')
+  : overviewError.value)
 
 const reprocessable = (status?: string | null) =>
   ['ELIGIBLE', 'RETRY_SCHEDULED', 'NOT_AVAILABLE_VISIBLE', 'BLOCKED', 'QUEUED'].includes(status || '')
@@ -119,26 +139,16 @@ async function load() {
   // Não carregar lista office-wide: exige clientId
   if (!props.clientId) return
 
-  loading.value = true
+  overviewLoading.value = true
   // Mantém dados anteriores em erro (não limpar channel/recoveries no início)
-  const previousError = error.value
-  error.value = null
+  const previousError = overviewError.value
+  overviewError.value = null
   try {
-    const [sum, list] = await Promise.all([
+    const [sum] = await Promise.all([
       api.outbound.svrsNfce.summary(),
-      api.outbound.svrsNfce.recoveries({
-        status: statusFilter.value && statusFilter.value !== STATUS_ALL
-          ? statusFilter.value
-          : undefined,
-        client_id: props.clientId,
-        profile_id: profile65.value?.id,
-        page: page.value,
-        per_page: 10
-      })
+      recoveriesFeed.resetAndLoad()
     ])
     channel.value = sum.data
-    recoveries.value = list.data || []
-    meta.value = list.meta || meta.value
 
     if (profile65.value) {
       try {
@@ -151,23 +161,17 @@ async function load() {
       profileSummary.value = null
     }
   } catch (caught) {
-    error.value = apiErrorMessage(caught, 'Falha ao carregar canal SVRS.')
+    overviewError.value = apiErrorMessage(caught, 'Falha ao carregar canal SVRS.')
     if (!channel.value && previousError) {
       // keep previous
     }
   } finally {
-    loading.value = false
+    overviewLoading.value = false
   }
 }
 
 async function applyFilter() {
-  page.value = 1
-  await load()
-}
-
-async function goPage(p: number) {
-  page.value = p
-  await load()
+  await recoveriesFeed.resetAndLoad()
 }
 
 async function retry(id: number) {
@@ -292,15 +296,6 @@ watch(
     <UPageCard
       variant="naked"
       title="XML NFC-e via SVRS"
-      description="Recuperação de nfeProc modelo 65 (MA) por chave descoberta e A1. Lista deste cliente; badges de canal são do escritório."
-    />
-
-    <UAlert
-      color="neutral"
-      variant="subtle"
-      icon="i-lucide-shield"
-      title="Sem RPA / sem HTML remoto"
-      description="O portal SVRS é chamado só no backend com mTLS. Esta tela nunca renderiza HTML ou XML da SVRS."
     />
 
     <UAlert
@@ -308,8 +303,7 @@ watch(
       color="warning"
       variant="subtle"
       icon="i-lucide-wifi-off"
-      title="Falha ao atualizar"
-      :description="error"
+      :title="error"
       class="mb-2"
       :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
     />
@@ -398,21 +392,11 @@ watch(
         </div>
 
         <UAlert
-          v-if="egress?.budgets_are_preventive"
-          color="neutral"
-          variant="subtle"
-          icon="i-lucide-gauge"
-          title="Budgets internos preventivos"
-          description="Não representam limites oficiais publicados do NFESSL/NFCESSL e não são elevados por urgência."
-        />
-
-        <UAlert
           v-if="cooldownActive"
           color="warning"
           variant="subtle"
           icon="i-lucide-timer-off"
-          title="Retry remoto suspenso durante o cooldown"
-          description="Use XML/ZIP, pacote oficial ou aguarde next_probe_at. Dados já capturados permanecem visíveis."
+          title="Retry remoto suspenso; aguarde o fim do cooldown"
         />
 
         <div
@@ -445,8 +429,7 @@ watch(
           color="error"
           variant="subtle"
           icon="i-lucide-octagon-x"
-          title="Kill switch SVRS ativo"
-          description="Nenhum GET/POST novo. Estado fiscal e tentativas são preservados. Use upload assistido."
+          title="Kill switch SVRS ativo; novas consultas estão bloqueadas"
         />
 
         <UAlert
@@ -454,8 +437,7 @@ watch(
           color="neutral"
           variant="subtle"
           icon="i-lucide-info"
-          title="Sem perfil NFC-e 65"
-          description="Cadastre semente/perfil de saída modelo 65 em Captura de saídas para habilitar recovery por chave."
+          title="Cadastre um perfil NFC-e 65 para habilitar a recuperação"
         />
       </div>
     </UPageCard>
@@ -476,6 +458,7 @@ watch(
         <UButton
           color="neutral"
           variant="subtle"
+          icon="i-lucide-list-filter"
           label="Filtrar"
           @click="applyFilter"
         />
@@ -483,19 +466,26 @@ watch(
           color="neutral"
           variant="ghost"
           icon="i-lucide-refresh-cw"
+          square
+          aria-label="Atualizar canal e recuperações SVRS"
           :loading="loading"
           @click="load"
         />
       </div>
 
       <UEmpty
-        v-if="!loading && recoveries.length === 0"
+        v-if="!loading && !error && recoveries.length === 0"
         icon="i-lucide-inbox"
         title="Nenhuma recuperação"
         description="Quando houver chave descoberta elegível neste cliente, ela aparecerá aqui."
       />
 
-      <ul v-else class="divide-y divide-default" data-testid="svrs-nfce-recovery-list">
+      <ul
+        v-else
+        ref="recoveryList"
+        class="max-h-[32rem] divide-y divide-default overflow-y-auto"
+        data-testid="svrs-nfce-recovery-list"
+      >
         <li
           v-for="row in recoveries"
           :key="row.id"
@@ -526,6 +516,7 @@ watch(
               size="sm"
               color="primary"
               variant="soft"
+              icon="i-lucide-refresh-cw"
               label="Reprocessar"
               :loading="busyId === row.id"
               data-testid="svrs-nfce-retry"
@@ -536,36 +527,13 @@ watch(
               size="sm"
               color="neutral"
               variant="ghost"
+              icon="i-lucide-upload"
               label="Fallback upload"
               :to="`/clients/${clientId}/saidas`"
             />
           </div>
         </li>
       </ul>
-
-      <div v-if="meta.total > 0" class="flex items-center justify-between mt-3 gap-2">
-        <p class="text-xs text-muted">
-          {{ meta.total }} item(ns) · página {{ meta.current_page }}/{{ meta.last_page }}
-        </p>
-        <div class="flex gap-1">
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            label="Anterior"
-            :disabled="meta.current_page <= 1"
-            @click="goPage(meta.current_page - 1)"
-          />
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            label="Próxima"
-            :disabled="meta.current_page >= meta.last_page"
-            @click="goPage(meta.current_page + 1)"
-          />
-        </div>
-      </div>
     </UPageCard>
 
     <UPageCard
@@ -652,5 +620,12 @@ watch(
         </div>
       </div>
     </UPageCard>
+
+    <ShellTableFooter
+      :total="recoveriesFeedTotal"
+      :page="recoveriesFeedPage"
+      :items-per-page="10"
+      @update:page="(p) => recoveriesFeed.setPage(p)"
+    />
   </div>
 </template>

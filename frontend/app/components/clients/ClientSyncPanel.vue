@@ -64,14 +64,6 @@ function syncHint(establishment: Establishment): string | null {
       description="A captura ADN é deste CNPJ. A primeira sincronização começa no NSU zero."
     />
 
-    <UAlert
-      color="neutral"
-      variant="subtle"
-      icon="i-lucide-info"
-      title="Cobertura do ADN"
-      description="O cursor só avança após persistir a página integral. Não há salto manual de NSU. Filiais são clientes separados — sincronize cada um no próprio cadastro."
-    />
-
     <UPageCard variant="subtle">
       <div v-if="!canTriggerSync" class="space-y-3">
         <UAlert
@@ -79,7 +71,6 @@ function syncHint(establishment: Establishment): string | null {
           variant="subtle"
           icon="i-lucide-eye"
           title="Somente leitura"
-          description="Seu perfil pode acompanhar o histórico, mas não disparar sincronizações manuais."
         />
       </div>
 
@@ -87,7 +78,6 @@ function syncHint(establishment: Establishment): string | null {
         <UEmpty
           icon="i-lucide-building-2"
           title="CNPJ não encontrado"
-          description="O cadastro do cliente deve incluir o CNPJ completo. Edite o cliente ou recadastre."
         />
       </div>
 

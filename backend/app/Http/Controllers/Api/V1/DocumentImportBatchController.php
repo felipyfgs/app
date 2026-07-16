@@ -93,13 +93,28 @@ class DocumentImportBatchController extends Controller
     {
         $model = $this->findBatch($batch, $currentOffice);
         $status = $request->query('status');
+        $sort = match ($request->string('sort')->toString()) {
+            'status' => 'status',
+            'source_name' => 'source_name',
+            'id' => 'id',
+            default => 'item_index',
+        };
+        $defaultDirection = $sort === 'item_index' ? 'asc' : 'desc';
+        $requestedDirection = $request->string('direction')->lower()->toString();
+        $direction = in_array($requestedDirection, ['asc', 'desc'], true)
+            ? $requestedDirection
+            : $defaultDirection;
 
         $q = DocumentImportBatchItem::query()
-            ->where('document_import_batch_id', $model->id)
-            ->orderBy('item_index');
+            ->where('document_import_batch_id', $model->id);
 
         if (is_string($status) && $status !== '') {
             $q->where('status', strtoupper($status));
+        }
+
+        $q->orderBy($sort, $direction);
+        if ($sort !== 'id') {
+            $q->orderBy('id', $direction);
         }
 
         $page = $q->paginate(min(100, max(1, (int) $request->query('per_page', 25))));
@@ -201,10 +216,21 @@ class DocumentImportBatchController extends Controller
     public function index(Request $request, CurrentOffice $currentOffice): JsonResponse
     {
         $office = $currentOffice->office();
-        $page = DocumentImportBatch::query()
+        $sort = match ($request->string('sort')->toString()) {
+            'status' => 'status',
+            'created_at' => 'created_at',
+            'file_count' => 'file_count',
+            'imported_count' => 'imported_count',
+            default => 'id',
+        };
+        $direction = $request->string('direction')->lower()->toString() === 'asc' ? 'asc' : 'desc';
+        $query = DocumentImportBatch::query()
             ->where('office_id', $office->id)
-            ->orderByDesc('id')
-            ->paginate(min(50, max(1, (int) $request->query('per_page', 20))));
+            ->orderBy($sort, $direction);
+        if ($sort !== 'id') {
+            $query->orderBy('id', $direction);
+        }
+        $page = $query->paginate(min(50, max(1, (int) $request->query('per_page', 20))));
 
         return response()->json([
             'data' => collect($page->items())->map(fn (DocumentImportBatch $b) => $b->toPublicArray())->values(),

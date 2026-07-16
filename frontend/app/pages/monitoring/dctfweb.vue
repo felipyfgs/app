@@ -41,8 +41,6 @@ const {
   rows,
   counters,
   totalClients,
-  dataOrigin,
-  isSynthetic,
   lastValidAt,
   refresh,
   selectKpi
@@ -224,10 +222,9 @@ const columns: TableColumn<DctfwebClientRow>[] = [
 </script>
 
 <template>
-  <FiscalModuleTable
+  <MonitoringModuleTable
     title="DCTFWeb / MIT"
     panel-id="monitoring-dctfweb"
-    description="Estados de encerramento, transmissão, recibo, evidência, DARF e pagamento são independentes — não se inferem mutuamente."
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -243,13 +240,10 @@ const columns: TableColumn<DctfwebClientRow>[] = [
     :submodule="submodule"
     :total-clients="totalClients"
     :counters="counters"
-    :data-origin="dataOrigin"
-    :is-synthetic="isSynthetic"
     :last-good-at="lastValidAt"
     show-competence-filter
     show-client-picker
     empty-title="Nenhum cliente DCTFWeb/MIT"
-    empty-description="A API do read model não retornou linhas. Nada foi inventado."
     @update:page="page = $event"
     @update:q="q = $event"
     @update:situation="situation = $event"
@@ -260,7 +254,7 @@ const columns: TableColumn<DctfwebClientRow>[] = [
     @kpi-select="selectKpi"
   >
     <template #navbar-actions>
-      <FiscalMonitoringPortfolioActions
+      <MonitoringPortfolioActions
         module-key="dctfweb"
         :client-id="clientId"
         :competence="competence"
@@ -281,16 +275,11 @@ const columns: TableColumn<DctfwebClientRow>[] = [
       />
     </template>
 
-    <template #utilities>
+    <template
+      v-if="overviewError"
+      #utilities
+    >
       <UAlert
-        color="info"
-        icon="i-lucide-info"
-        title="Eixos independentes"
-        description="Encerramento MIT, transmissão DCTFWeb, recibo, evidência, DARF e pagamento são estados separados."
-        class="w-full"
-      />
-      <UAlert
-        v-if="overviewError"
         color="warning"
         icon="i-lucide-triangle-alert"
         :title="overviewError"
@@ -309,5 +298,5 @@ const columns: TableColumn<DctfwebClientRow>[] = [
         @success="refresh"
       />
     </template>
-  </FiscalModuleTable>
+  </MonitoringModuleTable>
 </template>

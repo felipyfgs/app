@@ -410,13 +410,13 @@ onMounted(() => {
 </script>
 
 <template>
-  <DashboardListShell
-    panel-id="monitoring-client-detail"
-    :title="client?.name || client?.legal_name || `Cliente #${clientId}`"
-    panel-test-id="settings-panel"
-    :panel-ui="{ body: 'lg:py-8' }"
-  >
-    <template #navbar-right>
+  <UDashboardPanel id="monitoring-client-detail" data-testid="settings-panel" :ui="{ body: 'lg:py-12' }">
+  <template #header>
+    <UDashboardNavbar :title="client?.name || client?.legal_name || `Cliente #${clientId}`" data-testid="page-navbar">
+      <template #leading>
+        <UDashboardSidebarCollapse />
+      </template>
+      <template #right>
       <UButton
         to="/clients"
         color="neutral"
@@ -431,16 +431,19 @@ onMounted(() => {
         icon="i-lucide-arrow-left"
         label="Dashboard"
       />
-    </template>
-    <template #toolbar>
-      <UDashboardToolbar>
-        <UNavigationMenu
-          :items="links"
-          highlight
-          class="-mx-1 flex-1"
-        />
+      </template>
+    </UDashboardNavbar>
+
+      <UDashboardToolbar data-testid="monitoring-client-section-tabs">
+        <!-- NOTE: The `-mx-1` class is used to align with the `DashboardSidebarCollapse` button here. -->
+        <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
       </UDashboardToolbar>
-    </template>
+  </template>
+
+  <template #body>
+
+    
+    
 
       <div class="mx-auto flex w-full flex-col gap-4 sm:gap-6 lg:max-w-4xl">
         <UAlert
@@ -517,7 +520,6 @@ onMounted(() => {
             <UPageCard
               v-if="tab === 'overview'"
               title="Snapshots atuais"
-              description="Competência e cobertura por serviço (carregado sob demanda)."
               variant="subtle"
             >
               <div
@@ -641,7 +643,6 @@ onMounted(() => {
             <UPageCard
               v-else-if="tab === 'installments'"
               title="Parcelamentos"
-              description="Pedidos do cliente — lazy load desta aba."
               variant="subtle"
             >
               <div
@@ -689,7 +690,6 @@ onMounted(() => {
             <UPageCard
               v-else-if="tab === 'declarations'"
               title="Declarações"
-              description="Projeções do cliente — lazy load desta aba."
               variant="subtle"
             >
               <div
@@ -736,7 +736,6 @@ onMounted(() => {
             <UPageCard
               v-else-if="tab === 'guides'"
               title="Guias"
-              description="amount_cents e payment_status independentes da emissão."
               variant="subtle"
             >
               <div
@@ -788,16 +787,8 @@ onMounted(() => {
             <UPageCard
               v-else-if="tab === 'fgts'"
               title="FGTS / eSocial"
-              description="Cobertura parcial — competências do cliente (lazy)."
               variant="subtle"
             >
-              <UAlert
-                color="warning"
-                icon="i-lucide-info"
-                title="Cobertura parcial"
-                description="Guia e pagamento FGTS Digital permanecem UNSUPPORTED sem fonte M2M oficial."
-                class="mb-3"
-              />
               <div
                 v-if="!fgtsCompetences.length"
                 class="text-sm text-muted"
@@ -840,7 +831,6 @@ onMounted(() => {
             <UPageCard
               v-else-if="tab === 'sitfis'"
               title="Situação fiscal (SITFIS)"
-              description="Snapshot do cliente — lazy load desta aba."
               variant="subtle"
             >
               <div
@@ -924,5 +914,6 @@ onMounted(() => {
           </div>
         </template>
       </div>
-  </DashboardListShell>
+  </template>
+</UDashboardPanel>
 </template>

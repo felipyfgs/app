@@ -4,8 +4,9 @@
  * Não mistura sinais fiscais nem de infraestrutura.
  */
 import type { WorkDepartment, WorkKpis } from '~/types/work'
+import type { DashboardKpiItem } from '~/utils/kpi-ui'
 import { apiErrorMessage } from '~/utils/api-error'
-import { formatDueDate } from '~/utils/work-labels'
+import { formatDueDate, workRiskLabel } from '~/utils/work-labels'
 
 const api = useApi()
 const toast = useToast()
@@ -69,16 +70,16 @@ watch(sessionEpoch, () => {
   void load()
 })
 
-const cards = computed(() => {
+const cards = computed((): DashboardKpiItem[] => {
   const k = data.value?.kpis
   if (!k) return []
   return [
-    { label: 'Abertas', value: k.total_open, to: '/work', icon: 'i-lucide-inbox' },
-    { label: 'Atrasadas', value: k.atrasadas, to: '/work?tab=atrasadas', icon: 'i-lucide-clock-alert', color: 'warning' as const },
-    { label: 'Em multa', value: k.em_multa, to: '/work?tab=atrasadas', icon: 'i-lucide-siren', color: 'error' as const },
-    { label: 'Vencem hoje', value: k.vence_hoje, to: '/work?tab=hoje', icon: 'i-lucide-calendar-days' },
-    { label: 'Em progresso', value: k.em_progresso, to: '/work', icon: 'i-lucide-loader' },
-    { label: 'Sem responsável', value: k.sem_responsavel, to: '/work', icon: 'i-lucide-user-x' }
+    { key: 'open', title: 'Abertas', value: k.total_open, to: '/work', icon: 'i-lucide-inbox' },
+    { key: 'atrasadas', title: 'Atrasadas', value: k.atrasadas, to: '/work?tab=atrasadas', icon: 'i-lucide-clock-alert', tone: 'warning' },
+    { key: 'em_multa', title: 'Em multa', value: k.em_multa, to: '/work?tab=atrasadas', icon: 'i-lucide-siren', tone: 'error' },
+    { key: 'vence_hoje', title: 'Vencem hoje', value: k.vence_hoje, to: '/work?tab=hoje', icon: 'i-lucide-calendar-days' },
+    { key: 'em_progresso', title: 'Em progresso', value: k.em_progresso, to: '/work', icon: 'i-lucide-loader', tone: 'info' },
+    { key: 'sem_responsavel', title: 'Sem responsável', value: k.sem_responsavel, to: '/work', icon: 'i-lucide-user-x' }
   ]
 })
 
@@ -158,8 +159,7 @@ const lastUpdated = computed(() => {
       color="warning"
       variant="subtle"
       icon="i-lucide-wifi-off"
-      title="Falha ao atualizar trabalho"
-      :description="error"
+      :title="error"
       :actions="[{
         label: 'Tentar novamente',
         color: 'neutral',
@@ -190,34 +190,12 @@ const lastUpdated = computed(() => {
         onClick: () => load()
       }]"
     />
-    <div
+    <ShellKpiStrip
       v-else
-      class="grid gap-3 sm:grid-cols-3 lg:grid-cols-6"
-    >
-      <UPageCard
-        v-for="card in cards"
-        :key="card.label"
-        :to="card.to"
-        :icon="card.icon"
-        :title="card.label"
-        variant="subtle"
-        :ui="{
-          container: 'gap-y-1',
-          title: 'font-normal text-muted text-xs',
-          leading: 'p-2 rounded-full bg-primary/10 ring ring-inset ring-primary/25'
-        }"
-      >
-        <span
-          class="text-2xl font-semibold text-highlighted"
-          :class="{
-            'text-warning': card.color === 'warning' && card.value > 0,
-            'text-error': card.color === 'error' && card.value > 0
-          }"
-        >
-          {{ card.value }}
-        </span>
-      </UPageCard>
-    </div>
+      test-id="home-work-kpi-cards"
+      :items="cards"
+      :columns="6"
+    />
 
     <div
       v-if="departmentRows.length"
@@ -280,7 +258,9 @@ const lastUpdated = computed(() => {
             class="flex justify-between gap-2 rounded-md border border-default px-3 py-2 hover:bg-elevated/40"
           >
             <span class="truncate">{{ r.title }}</span>
-            <span class="shrink-0 text-xs text-muted">{{ r.risks.join(', ') }}</span>
+            <span class="shrink-0 text-xs text-muted">
+              {{ (r.risks || []).map(workRiskLabel).join(' · ') }}
+            </span>
           </NuxtLink>
         </li>
       </ul>

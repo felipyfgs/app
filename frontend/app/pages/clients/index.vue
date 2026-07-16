@@ -677,8 +677,7 @@ onBeforeUnmount(() => {
       color="warning"
       variant="subtle"
       icon="i-lucide-wifi-off"
-      :title="clients.length ? 'Falha ao atualizar clientes' : 'Não foi possível carregar clientes'"
-      :description="loadError"
+      :title="loadError"
       :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
     />
 

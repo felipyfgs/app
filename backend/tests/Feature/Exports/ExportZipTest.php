@@ -193,6 +193,7 @@ class ExportZipTest extends TestCase
         $this->actingAs($user);
         app(CurrentOffice::class)->resolve($user);
 
+        $tiedAt = now()->startOfSecond();
         foreach (range(1, 3) as $index) {
             Export::query()->create([
                 'office_id' => $office->id,
@@ -200,6 +201,8 @@ class ExportZipTest extends TestCase
                 'status' => 'PENDING',
                 'filters' => ['competence' => "2026-0{$index}"],
                 'include_events' => false,
+                'created_at' => $tiedAt,
+                'updated_at' => $tiedAt,
             ]);
         }
         Export::query()->create([
@@ -223,6 +226,23 @@ class ExportZipTest extends TestCase
 
         $ids = collect($first->json('data'))->merge($second->json('data'))->pluck('id');
         $this->assertCount(3, $ids->unique());
+
+        $expectedAsc = Export::query()
+            ->where('office_id', $office->id)
+            ->where('user_id', $user->id)
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+
+        $asc = $this->getJson('/api/v1/exports?per_page=10&sort=status&direction=asc')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame($expectedAsc, collect($asc)->pluck('id')->all());
+
+        $desc = $this->getJson('/api/v1/exports?per_page=10&sort=status&direction=desc')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame(array_reverse($expectedAsc), collect($desc)->pluck('id')->all());
     }
 
     /**

@@ -295,7 +295,6 @@ const kpis = computed(() => [
       variant="subtle"
       icon="i-lucide-badge-alert"
       title="Próximo passo: certificado A1"
-      description="Ative o e-CNPJ para habilitar a captura ADN deste CNPJ."
     >
       <template #actions>
         <UButton

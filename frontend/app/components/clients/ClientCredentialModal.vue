@@ -153,7 +153,6 @@ watch(open, async (value) => {
           color="info"
           icon="i-lucide-lock-keyhole"
           title="Somente administradores"
-          description="Apenas ADMIN com 2FA pode enviar ou atualizar o A1."
         />
 
         <UForm
@@ -192,13 +191,6 @@ watch(open, async (value) => {
               class="w-full"
             />
           </UFormField>
-          <UAlert
-            v-if="credential"
-            color="warning"
-            icon="i-lucide-shield-alert"
-            title="Atualização atômica"
-            description="O A1 atual só é trocado se o novo arquivo passar na validação."
-          />
           <div class="flex justify-end gap-2">
             <UButton
               color="neutral"

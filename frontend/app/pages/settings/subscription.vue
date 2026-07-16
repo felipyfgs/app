@@ -41,18 +41,29 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="space-y-6">
+  <!-- Padrão members: naked header + subtle card de conteúdo -->
+  <div>
     <UPageCard
-      variant="naked"
       title="Assinatura"
-      description="Plano e limites do escritório ativo. Precificação comercial interna da plataforma não é exposta."
-    />
+      description="Plano e limites do escritório ativo na sessão."
+      variant="naked"
+      orientation="horizontal"
+      class="mb-4"
+    >
+      <UButton
+        to="/settings/usage"
+        color="neutral"
+        label="Ver consumo"
+        class="w-fit lg:ms-auto"
+      />
+    </UPageCard>
 
     <UAlert
       v-if="loadError"
       color="error"
       icon="i-lucide-circle-x"
       :title="loadError"
+      class="mb-4"
     />
 
     <div
@@ -126,13 +137,6 @@ onMounted(load)
           </dd>
         </div>
       </dl>
-      <UButton
-        class="mt-4"
-        to="/settings/usage"
-        color="neutral"
-        variant="soft"
-        label="Ver consumo do período"
-      />
     </UPageCard>
   </div>
 </template>

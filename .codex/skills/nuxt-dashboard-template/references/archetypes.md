@@ -84,9 +84,9 @@ UDashboardPanel#customers
     └── footer: contagem selected + UPagination
 ```
 
-Padrões de coluna: checkbox select, avatar+nome, sort no header (botão ghost), badge status, actions ellipsis.
+Padrões de coluna: checkbox apenas com ação em massa real e ID estável, avatar+nome, sort no header (botão ghost com direção acessível), badge status, actions ellipsis.
 
-**Produto:** paginação **server-side** (meta da API); manter visual do footer e do `UTable` `:ui`.
+**Produto:** blocos **server-side** (meta/cursor da API); manter o `UTable` `:ui`, mas omitir o footer nas listas auto-carregáveis por decisão de produto.
 
 ## Mestre–detalhe (`pages/inbox.vue`)
 

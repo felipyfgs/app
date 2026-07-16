@@ -1,4 +1,6 @@
 import type {
+  OfficeAutXmlEnrollment,
+  OfficeAutXmlOverview,
   OfficeSerproAuthorization,
   OfficeSubscription,
   OfficeUsageEntry,
@@ -47,9 +49,16 @@ export function createOfficeApi(client: ApiClient) {
             method: 'POST',
             body: params || {}
           }),
-        proxyPowers: (params?: { client_id?: number }) =>
-          client<{ data: TaxProxyPower[] }>('/api/v1/office/serpro-authorization/proxy-powers', {
-            query: params
+        proxyPowers: (params?: {
+          client_id?: number
+          page?: number
+          per_page?: number
+          sort?: 'id' | 'client_id' | 'power_code' | 'system_code' | 'status'
+          direction?: 'asc' | 'desc'
+        }, options?: { signal?: AbortSignal }) =>
+          client<{ data: TaxProxyPower[], meta: PageMeta }>('/api/v1/office/serpro-authorization/proxy-powers', {
+            query: params,
+            signal: options?.signal
           }),
         importProxyPower: (body: Record<string, unknown>) =>
           client<{ data: TaxProxyPower }>('/api/v1/office/serpro-authorization/proxy-powers', {
@@ -74,7 +83,14 @@ export function createOfficeApi(client: ApiClient) {
       serproUsage: {
         summary: (params?: { year?: number, month?: number }) =>
           client<{ data: OfficeUsageSummary }>('/api/v1/office/serpro-usage', { query: params }),
-        entries: (params?: { year?: number, month?: number, page?: number, per_page?: number }) =>
+        entries: (params?: {
+          year?: number
+          month?: number
+          page?: number
+          per_page?: number
+          sort?: 'occurred_at' | 'quantity' | 'result' | 'client_id' | 'id'
+          direction?: 'asc' | 'desc'
+        }) =>
           client<{ data: OfficeUsageEntry[], meta?: PageMeta, current_page?: number, last_page?: number, total?: number, per_page?: number }>(
             '/api/v1/office/serpro-usage/entries',
             { query: params }
@@ -103,24 +119,14 @@ export function createOfficeApi(client: ApiClient) {
         })
     },
     officeAutXml: {
-      overview: () =>
-        client<{
-          data: {
-            identity: Record<string, unknown> | null
-            office_cnpj: string | null
-            cursor: Record<string, unknown> | null
-            stream: {
-              stream_ready: boolean
-              stream_reason: string | null
-              quiet_hours: number
-              activated_at: string | null
-              ready_at: string | null
-            }
-            coverage: Record<string, unknown>
-            enrollments: Array<Record<string, unknown>>
-            checklist?: Record<string, unknown>
-          }
-        }>('/api/v1/office/autxml'),
+      overview: (
+        params?: { page?: number, per_page?: number },
+        options?: { signal?: AbortSignal }
+      ) =>
+        client<{ data: OfficeAutXmlOverview, meta: PageMeta }>('/api/v1/office/autxml', {
+          query: params,
+          signal: options?.signal
+        }),
       cursor: () =>
         client<{
           data: {
@@ -137,17 +143,17 @@ export function createOfficeApi(client: ApiClient) {
           }
         }>('/api/v1/office/autxml/cursor'),
       enroll: (establishmentId: number) =>
-        client<{ data: Record<string, unknown> }>('/api/v1/office/autxml/enrollments', {
+        client<{ data: OfficeAutXmlEnrollment }>('/api/v1/office/autxml/enrollments', {
           method: 'POST',
           body: { establishment_id: establishmentId }
         }),
       confirm: (enrollmentId: number) =>
-        client<{ data: Record<string, unknown> }>(
+        client<{ data: OfficeAutXmlEnrollment }>(
           `/api/v1/office/autxml/enrollments/${enrollmentId}/confirm`,
           { method: 'POST' }
         ),
       inactivate: (enrollmentId: number) =>
-        client<{ data: Record<string, unknown> }>(
+        client<{ data: OfficeAutXmlEnrollment }>(
           `/api/v1/office/autxml/enrollments/${enrollmentId}/inactivate`,
           { method: 'POST' }
         )

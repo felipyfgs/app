@@ -54,6 +54,56 @@ class OfficeAutXmlApiTest extends TestCase
         $this->assertSame('NONE', $enrollments[0]['status']);
     }
 
+    public function test_overview_pagina_estabelecimentos_ativos_com_ordem_estavel_e_isolamento(): void
+    {
+        $office = Office::factory()->create();
+        $otherOffice = Office::factory()->create();
+        $operator = User::factory()->forOffice($office, OfficeRole::Operator)->withTwoFactorConfirmed()->create();
+        $identity = OfficeFiscalIdentity::factory()->forOffice($office)->create();
+
+        $establishments = collect(range(1, 3))->map(function () use ($office) {
+            $client = Client::factory()->forOffice($office)->create();
+
+            return Establishment::factory()->forClient($client)->create(['is_active' => true]);
+        });
+        $inactiveClient = Client::factory()->forOffice($office)->create();
+        Establishment::factory()->forClient($inactiveClient)->create(['is_active' => false]);
+        $otherClient = Client::factory()->forOffice($otherOffice)->create();
+        $otherEstablishment = Establishment::factory()->forClient($otherClient)->create(['is_active' => true]);
+
+        OfficeAutXmlEnrollment::query()->create([
+            'office_id' => $office->id,
+            'office_fiscal_identity_id' => $identity->id,
+            'establishment_id' => $establishments->first()->id,
+            'status' => OfficeAutXmlEnrollmentStatus::Pending,
+        ]);
+
+        $this->actingAs($operator);
+        app(CurrentOffice::class)->resolve($operator);
+
+        $first = $this->getJson('/api/v1/office/autxml?per_page=2&page=1')
+            ->assertOk()
+            ->assertJsonCount(2, 'data.enrollments')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.per_page', 2)
+            ->assertJsonPath('meta.total', 3);
+        $second = $this->getJson('/api/v1/office/autxml?per_page=2&page=2')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.enrollments')
+            ->assertJsonPath('meta.current_page', 2);
+
+        $rows = collect($first->json('data.enrollments'))
+            ->concat($second->json('data.enrollments'));
+        $this->assertSame(
+            $establishments->sortBy('cnpj')->pluck('id')->values()->all(),
+            $rows->pluck('establishment_id')->all(),
+        );
+        $this->assertCount(3, $rows->pluck('establishment_id')->unique());
+        $this->assertFalse($rows->pluck('establishment_id')->contains($otherEstablishment->id));
+        $this->assertSame('PENDING', $rows->firstWhere('establishment_id', $establishments->first()->id)['status']);
+    }
+
     public function test_enroll_e_confirm_bloqueado_antes_do_quiet(): void
     {
         $office = Office::factory()->create();

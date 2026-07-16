@@ -22,7 +22,7 @@ const EMPTY: WorkQueueFilters = {
   client_id: null,
   scope: 'default',
   page: 1,
-  per_page: 25
+  per_page: 10
 }
 
 function numOrNull(v: unknown): number | null {
@@ -42,7 +42,7 @@ export function parseWorkQueueQuery(query: Record<string, unknown>): WorkQueueFi
     client_id: numOrNull(query.client_id),
     scope: String(query.scope || 'default'),
     page: Math.max(1, Number(query.page) || 1),
-    per_page: Math.min(100, Math.max(1, Number(query.per_page) || 25))
+    per_page: Math.min(100, Math.max(1, Number(query.per_page) || 10))
   }
 }
 
@@ -56,7 +56,7 @@ export function serializeWorkQueueQuery(f: WorkQueueFilters): Record<string, str
     client_id: f.client_id ? String(f.client_id) : undefined,
     scope: f.scope === 'default' ? undefined : f.scope,
     page: f.page > 1 ? String(f.page) : undefined,
-    per_page: f.per_page !== 25 ? String(f.per_page) : undefined
+    per_page: f.per_page !== 10 ? String(f.per_page) : undefined
   }
 }
 

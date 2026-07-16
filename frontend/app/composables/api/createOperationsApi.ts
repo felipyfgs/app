@@ -59,7 +59,12 @@ export function createOperationsApi(client: ApiClient, apiUrl: ApiUrl) {
         }>('/api/v1/cte/repairs', { method: 'POST', body })
     },
     exports: {
-      list: (params?: { page?: number, per_page?: number }) =>
+      list: (params?: {
+        page?: number
+        per_page?: number
+        sort?: 'id' | 'status' | 'created_at' | 'files_count'
+        direction?: 'asc' | 'desc'
+      }) =>
         client<{ data: ExportJob[], meta: PageMeta }>('/api/v1/exports', { query: params }),
       create: (body: { filters?: ExportFilters, include_events?: boolean }) =>
         client<{ data: ExportJob }>('/api/v1/exports', { method: 'POST', body }),

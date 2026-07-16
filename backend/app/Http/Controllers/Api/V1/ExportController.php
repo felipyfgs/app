@@ -21,11 +21,22 @@ class ExportController extends Controller
     public function index(Request $request, CurrentOffice $currentOffice): JsonResponse
     {
         $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
-        $paginator = Export::query()
+        $sort = match ($request->string('sort')->toString()) {
+            'status' => 'status',
+            'created_at' => 'created_at',
+            'files_count' => 'files_count',
+            default => 'id',
+        };
+        $direction = $request->string('direction')->lower()->toString() === 'asc' ? 'asc' : 'desc';
+
+        $query = Export::query()
             ->where('office_id', $currentOffice->id())
             ->where('user_id', auth()->id())
-            ->orderByDesc('id')
-            ->paginate($perPage);
+            ->orderBy($sort, $direction);
+        if ($sort !== 'id') {
+            $query->orderBy('id', $direction);
+        }
+        $paginator = $query->paginate($perPage);
 
         return response()->json([
             'data' => collect($paginator->items())->map(fn (Export $e) => $this->public($e)),

@@ -23,6 +23,5 @@ const {
     color="neutral"
     variant="subtle"
     title="Cliente indisponível"
-    description="Carregue o detalhe do cliente para configurar saídas MA."
   />
 </template>

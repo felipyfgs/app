@@ -172,19 +172,18 @@ watch(sessionEpoch, () => {
 </script>
 
 <template>
-  <DashboardListShell
-    panel-id="work-queue-list"
-    title="Minha fila"
-    panel-test-id="work-queue-panel"
-    resizable
-    :default-size="25"
-    :min-size="20"
-    :max-size="30"
-  >
-    <template #navbar-trailing>
+  <UDashboardPanel id="work-queue-list" data-testid="work-queue-panel" resizable :default-size="25" :min-size="20" :max-size="30">
+  <template #header>
+    <UDashboardNavbar title="Minha fila" data-testid="page-navbar">
+      <template #leading>
+        <UDashboardSidebarCollapse />
+      </template>
+      <template #trailing>
+
       <UBadge :label="String(total)" variant="subtle" />
-    </template>
-    <template #navbar-right>
+      </template>
+      <template #right>
+
       <UTabs
         v-model="selectedTab"
         :items="tabs"
@@ -192,8 +191,9 @@ watch(sessionEpoch, () => {
         size="xs"
         class="max-w-full overflow-x-auto"
       />
-    </template>
-    <template #toolbar>
+      </template>
+    </UDashboardNavbar>
+
       <UDashboardToolbar>
         <UInput
           v-model="search"
@@ -203,7 +203,13 @@ watch(sessionEpoch, () => {
           aria-label="Buscar na fila"
         />
       </UDashboardToolbar>
-    </template>
+  </template>
+
+  <template #body>
+
+    
+    
+    
 
       <h1 data-testid="page-title" class="sr-only">
         Minha fila
@@ -249,7 +255,8 @@ watch(sessionEpoch, () => {
           @select="select"
         />
       </div>
-  </DashboardListShell>
+  </template>
+</UDashboardPanel>
 
   <!-- Desktop: painel adjacente -->
   <WorkTaskDetailPanel

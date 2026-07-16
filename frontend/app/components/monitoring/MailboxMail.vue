@@ -150,7 +150,7 @@ async function saveTriage() {
       official_read_unchanged: true
     }
     toast.add({
-      title: 'Triagem atualizada (não altera leitura oficial)',
+      title: 'Triagem atualizada',
       color: 'success'
     })
     emit('triaged')
@@ -191,14 +191,11 @@ watch(sessionEpoch, () => {
 </script>
 
 <template>
-  <DashboardListShell
-    panel-id="mailbox-detail"
-    :title="String(message?.subject_preview || `Mensagem #${messageId}`)"
-    panel-test-id="mailbox-detail"
-    :show-collapse="false"
-    :navbar-toggle="false"
-  >
-    <template #navbar-leading>
+  <UDashboardPanel id="mailbox-detail" data-testid="mailbox-detail">
+  <template #header>
+    <UDashboardNavbar :title="String(message?.subject_preview || `Mensagem #${messageId}`)" data-testid="page-navbar" :toggle="false">
+      <template #leading>
+
       <UButton
         v-if="showClose"
         icon="i-lucide-x"
@@ -212,8 +209,9 @@ watch(sessionEpoch, () => {
         v-else
         class="lg:hidden"
       />
-    </template>
-    <template #navbar-right>
+      </template>
+      <template #right>
+
       <UButton
         v-if="message?.has_body"
         color="neutral"
@@ -230,7 +228,14 @@ watch(sessionEpoch, () => {
         label="Lista"
         class="lg:hidden"
       />
-    </template>
+      </template>
+    </UDashboardNavbar>
+  </template>
+
+  <template #body>
+
+    
+    
 
     <div class="flex flex-1 flex-col overflow-y-auto">
       <UAlert
@@ -375,9 +380,6 @@ watch(sessionEpoch, () => {
           <h3 class="mb-1 text-sm font-medium">
             Triagem interna
           </h3>
-          <p class="mb-3 text-xs text-muted">
-            Valores: NEW / IN_REVIEW / RESOLVED. Não substitui ciência no canal oficial.
-          </p>
           <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
             <UFormField
               label="Status"
@@ -395,7 +397,7 @@ watch(sessionEpoch, () => {
             >
               <UInput
                 v-model="triageNote"
-                placeholder="Opcional — não altera leitura oficial"
+                placeholder="Opcional"
               />
             </UFormField>
             <UButton
@@ -408,5 +410,6 @@ watch(sessionEpoch, () => {
         </div>
       </template>
     </div>
-  </DashboardListShell>
+  </template>
+</UDashboardPanel>
 </template>

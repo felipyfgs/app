@@ -114,42 +114,46 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="space-y-6">
+  <!-- Padrão members: naked header horizontal + conteúdo em cards subtle -->
+  <div>
     <UPageCard
-      variant="naked"
       title="Consumo do plano"
-      description="Uso e franquia do escritório ativo. Não exibe fatura consolidada da plataforma nem dados de outros tenants."
-    />
-
-    <div class="flex flex-wrap items-end gap-2">
-      <UFormField label="Ano">
-        <UInput
-          v-model.number="year"
-          type="number"
-          min="2020"
-          max="2100"
-          class="w-28"
+      description="Uso atribuído a este escritório — sem fatura consolidada da plataforma."
+      variant="naked"
+      orientation="horizontal"
+      class="mb-4"
+    >
+      <div class="flex w-full flex-wrap items-end gap-2 lg:ms-auto lg:w-fit">
+        <UFormField label="Ano">
+          <UInput
+            v-model.number="year"
+            type="number"
+            min="2020"
+            max="2100"
+            class="w-28"
+          />
+        </UFormField>
+        <UFormField label="Mês">
+          <UInput
+            v-model.number="month"
+            type="number"
+            min="1"
+            max="12"
+            class="w-24"
+          />
+        </UFormField>
+        <UButton
+          color="neutral"
+          icon="i-lucide-refresh-cw"
+          label="Atualizar"
+          :loading="loading"
+          class="w-fit"
+          @click="load"
         />
-      </UFormField>
-      <UFormField label="Mês">
-        <UInput
-          v-model.number="month"
-          type="number"
-          min="1"
-          max="12"
-          class="w-24"
-        />
-      </UFormField>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        icon="i-lucide-refresh-cw"
-        label="Atualizar"
-        :loading="loading"
-        @click="load"
-      />
-    </div>
+      </div>
+    </UPageCard>
 
+    <div class="flex flex-col gap-4 sm:gap-6 lg:gap-12">
     <UAlert
       v-if="loadError"
       color="error"
@@ -166,7 +170,7 @@ onMounted(load)
 
     <UPageGrid
       v-else-if="summary"
-      class="lg:grid-cols-4 gap-4"
+      class="gap-4 sm:grid-cols-2"
       data-testid="usage-kpis"
     >
       <UPageCard
@@ -216,7 +220,6 @@ onMounted(load)
       color="neutral"
       icon="i-lucide-inbox"
       title="Sem dados de consumo"
-      description="A API não retornou resumo para o período. Nada foi inventado."
     />
 
     <UPageCard
@@ -260,5 +263,6 @@ onMounted(load)
         </div>
       </template>
     </UPageCard>
+    </div>
   </div>
 </template>

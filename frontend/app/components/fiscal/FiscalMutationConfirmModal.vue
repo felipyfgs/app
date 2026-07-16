@@ -174,8 +174,7 @@ async function submit() {
           v-if="preflight && !eligible"
           color="warning"
           icon="i-lucide-shield-off"
-          title="Operação não elegível"
-          :description="preflight.denial_message || 'A coorte ou a elegibilidade bloqueiam a mutação (piloto somente leitura).'"
+          :title="preflight.denial_message || 'Operação não elegível'"
         />
 
         <dl class="grid gap-2 rounded-lg bg-elevated/50 p-3">

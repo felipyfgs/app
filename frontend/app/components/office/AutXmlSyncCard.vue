@@ -63,7 +63,6 @@ onMounted(() => {
   <UPageCard
     data-testid="autxml-sync-card"
     title="Sincronização central autXML (escritório)"
-    description="Cursor NFE_AUTXML_DISTDFE por CNPJ-base do escritório — separado dos canais por cliente. NSU não é editável."
   >
     <div
       v-if="loading"
@@ -79,8 +78,7 @@ onMounted(() => {
       v-else-if="error"
       color="warning"
       icon="i-lucide-wifi-off"
-      title="Cursor autXML indisponível"
-      :description="error"
+      :title="error"
       :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
     />
 
@@ -190,8 +188,7 @@ onMounted(() => {
         v-if="cStatHint"
         :color="cursor.circuit_open ? 'error' : 'neutral'"
         icon="i-lucide-info"
-        :title="cursor.circuit_open ? 'Sem retry antecipado' : 'Último resultado sanitizado'"
-        :description="cStatHint"
+        :title="cStatHint"
       />
 
       <p class="text-xs text-muted">

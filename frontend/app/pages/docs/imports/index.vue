@@ -100,115 +100,113 @@ onMounted(() => {
 
 <template>
   <!--
-    Arquétipo lista admin (customers.vue) via DashboardListShell.
+    Arquétipo lista admin (customers.vue) via UDashboardPanel (inline template).
     Empty: UEmpty (Nuxt UI) · tabela: DASHBOARD_TABLE_UI · paginação: UPagination.
   -->
-  <DashboardListShell
-    panel-id="import-batches"
-    title="Importações XML/ZIP"
-    navbar-test-id="page-navbar"
-  >
-    <template #navbar-right>
-      <UTooltip text="Atualizar histórico">
-        <UButton
-          icon="i-lucide-refresh-cw"
-          color="neutral"
-          variant="ghost"
-          square
-          aria-label="Atualizar histórico de lotes"
-          :loading="loading"
-          @click="load"
-        />
-      </UTooltip>
-      <UButton
-        v-if="canImportDocuments"
-        icon="i-lucide-upload"
-        label="Nova importação"
-        to="/docs?import=1"
-      />
+  <UDashboardPanel id="import-batches">
+    <template #header>
+      <UDashboardNavbar title="Importações XML/ZIP" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+        <template #right>
+          <UTooltip text="Atualizar histórico">
+            <UButton
+              icon="i-lucide-refresh-cw"
+              color="neutral"
+              variant="ghost"
+              square
+              aria-label="Atualizar histórico de lotes"
+              :loading="loading"
+              @click="load"
+            />
+          </UTooltip>
+          <UButton
+            v-if="canImportDocuments"
+            icon="i-lucide-upload"
+            label="Nova importação"
+            to="/docs?import=1"
+          />
+        </template>
+      </UDashboardNavbar>
     </template>
 
-    <UAlert
-      icon="i-lucide-info"
-      title="Lotes assíncronos de saída"
-      description="Upload e processamento são estágios distintos. Feche o modal de envio sem perder o progresso — reabra o lote por esta lista ou URL."
-    />
-
-    <UAlert
-      v-if="loadError"
-      color="error"
-      icon="i-lucide-wifi-off"
-      title="Não foi possível carregar lotes"
-      :description="loadError"
-      :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
-    />
-
-    <UTable
-      v-if="loading || items.length"
-      data-testid="data-table"
-      :data="items"
-      :loading="loading"
-      :columns="columns"
-      class="shrink-0"
-      :ui="DASHBOARD_TABLE_UI"
-      @select="selectRow"
-    >
-      <template #id-cell="{ row }">
-        <span class="font-mono text-xs">
-          {{ String(row.original.public_id || row.original.id || '').slice(0, 12) }}…
-        </span>
-      </template>
-      <template #status-cell="{ row }">
-        <div class="flex flex-wrap items-center gap-1">
-          <UBadge :color="statusColor(String(row.original.status))" variant="subtle">
-            {{ statusLabel(String(row.original.status)) }}
-          </UBadge>
-          <UBadge
-            v-if="row.original.upload_complete && !row.original.processing_complete"
-            color="info"
-            variant="outline"
-            size="sm"
-          >
-            Processando
-          </UBadge>
-        </div>
-      </template>
-      <template #created_at-cell="{ row }">
-        {{ row.original.created_at ? formatDateTime(String(row.original.created_at)) : '—' }}
-      </template>
-      <template #actions-cell="{ row }">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-eye"
-          square
-          aria-label="Abrir detalhe do lote"
-          @click.stop="openBatch(row.original)"
-        />
-      </template>
-    </UTable>
-
-    <UEmpty
-      v-if="!loading && !loadError && !items.length"
-      icon="i-lucide-upload"
-      title="Nenhum lote ainda"
-      description="Importe XML/ZIP em Documentos para criar o primeiro lote."
-      :actions="[{ label: 'Ir a Documentos', to: '/docs' }]"
-    />
-
-    <div
-      v-if="lastPage > 1"
-      class="flex items-center justify-between border-t border-default pt-4"
-    >
-      <p class="text-sm text-muted">
-        {{ total }} lote(s)
-      </p>
-      <UPagination
-        v-model:page="page"
-        :total="total"
-        :items-per-page="20"
-        :sibling-count="1"
+    <template #body>
+      <UAlert
+        v-if="loadError"
+        color="error"
+        icon="i-lucide-wifi-off"
+        :title="loadError"
+        :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
       />
-    </div>
-  </DashboardListShell>
+
+      <UTable
+        v-if="loading || items.length"
+        data-testid="data-table"
+        :data="items"
+        :loading="loading"
+        :columns="columns"
+        class="shrink-0"
+        :ui="DASHBOARD_TABLE_UI"
+        @select="selectRow"
+      >
+        <template #id-cell="{ row }">
+          <span class="font-mono text-xs">
+            {{ String(row.original.public_id || row.original.id || '').slice(0, 12) }}…
+          </span>
+        </template>
+        <template #status-cell="{ row }">
+          <div class="flex flex-wrap items-center gap-1">
+            <UBadge :color="statusColor(String(row.original.status))" variant="subtle">
+              {{ statusLabel(String(row.original.status)) }}
+            </UBadge>
+            <UBadge
+              v-if="row.original.upload_complete && !row.original.processing_complete"
+              color="info"
+              variant="outline"
+              size="sm"
+            >
+              Processando
+            </UBadge>
+          </div>
+        </template>
+        <template #created_at-cell="{ row }">
+          {{ row.original.created_at ? formatDateTime(String(row.original.created_at)) : '—' }}
+        </template>
+        <template #actions-cell="{ row }">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-eye"
+            square
+            aria-label="Abrir detalhe do lote"
+            @click.stop="openBatch(row.original)"
+          />
+        </template>
+      </UTable>
+
+      <UEmpty
+        v-if="!loading && !loadError && !items.length"
+        icon="i-lucide-upload"
+        title="Nenhum lote ainda"
+        description="Importe XML/ZIP em Documentos para criar o primeiro lote."
+        :actions="[{ label: 'Ir a Documentos', to: '/docs' }]"
+      />
+
+      <div
+        v-if="lastPage > 1"
+        class="flex items-center justify-between border-t border-default pt-4"
+      >
+        <p class="text-sm text-muted">
+          {{ total }} lote(s)
+        </p>
+        <UPagination
+          v-model:page="page"
+          :total="total"
+          :items-per-page="20"
+          :sibling-count="1"
+        />
+      </div>
+    </template>
+  </UDashboardPanel>
 </template>

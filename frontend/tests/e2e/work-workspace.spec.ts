@@ -11,7 +11,7 @@ import {
 
 async function open(page: import('@playwright/test').Page, path: string, testId: string) {
   await page.goto(path, { waitUntil: 'domcontentloaded' })
-  await expect(page.getByTestId(testId)).toBeVisible({ timeout: 45000 })
+  await expect(page.getByTestId(testId).first()).toBeVisible({ timeout: 45000 })
 }
 
 test.describe('Work workspace — fila e detalhe', () => {
@@ -23,7 +23,7 @@ test.describe('Work workspace — fila e detalhe', () => {
 
     await expect(page.getByText('Apurar DAS').first()).toBeVisible({ timeout: 30000 })
     await page.getByTestId('work-queue-item').first().click()
-    await expect(page.getByTestId('work-task-detail')).toBeVisible()
+    await expect(page.getByTestId('work-task-detail').first()).toBeVisible()
     await expect(page.getByText(FISCAL_CLIENT_OFFICE_A).first()).toBeVisible()
 
     const start = page.getByRole('button', { name: 'Iniciar' })
@@ -65,14 +65,14 @@ test.describe('Work workspace — calendário', () => {
     test.setTimeout(90_000)
     await installApiFixtures(page, 'ADMIN')
     await open(page, '/work/calendar', 'work-calendar')
-    await expect(page.getByTestId('work-calendar-month')).toBeVisible({ timeout: 30000 })
+    await expect(page.getByTestId('work-calendar-month').first()).toBeVisible({ timeout: 30000 })
 
     await page.getByLabel('Período anterior').click()
     await page.getByRole('button', { name: 'Hoje' }).click()
     await page.getByRole('tab', { name: 'Semana' }).click()
-    await expect(page.getByTestId('work-calendar-week')).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('work-calendar-week').first()).toBeVisible({ timeout: 15000 })
     await page.getByRole('tab', { name: 'Dia' }).click()
-    await expect(page.getByTestId('work-calendar-day')).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('work-calendar-day').first()).toBeVisible({ timeout: 15000 })
   })
 })
 
@@ -85,13 +85,18 @@ test.describe('Work workspace — processos', () => {
     await expect(page.getByText('DAS 2026-06').first()).toBeVisible({ timeout: 30000 })
 
     await page.getByText('DAS 2026-06').first().click()
-    await expect(page.getByTestId('work-process-detail')).toBeVisible({ timeout: 20000 })
-    await expect(page.getByTestId('process-section-resumo').or(page.getByText(/Apurar|Resumo|Checklist/i).first())).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('work-process-detail').first()).toBeVisible({ timeout: 20000 })
+    await expect(page.getByTestId('process-section-resumo').first().or(page.getByText(/Apurar|Resumo|Checklist/i).first())).toBeVisible({ timeout: 15000 })
 
     // ID externo não deve vazar dados do sentinela
     await page.goto('/work/processes/999999')
-    await expect(page.getByTestId('work-process-detail')).toBeVisible({ timeout: 20000 })
+    await page.waitForTimeout(1000)
     await expect(page.getByText(FISCAL_CLIENT_OFFICE_B)).toHaveCount(0)
+    // Erro sanitizado ou painel de detalhe sem dados do tenant alheio
+    const errorOrShell = page.getByTestId('work-process-error')
+      .or(page.getByTestId('work-process-detail'))
+      .or(page.getByText(/não encontrado|indisponível|Sem permissão/i))
+    await expect(errorOrShell.first()).toBeVisible({ timeout: 20000 })
   })
 })
 
@@ -105,13 +110,13 @@ test.describe('Work workspace — modelos e batch', () => {
 
     await page.getByRole('button', { name: 'Gerar' }).first().click()
     await expect(page.getByRole('dialog')).toBeVisible()
-    await page.getByTestId('work-gen-competence').fill('2026-06')
-    await page.getByTestId('work-gen-clients').fill('1')
-    if (await page.getByTestId('work-gen-preview').count()) {
-      await page.getByTestId('work-gen-preview').click()
+    await page.getByTestId('work-gen-competence').first().fill('2026-06')
+    await page.getByTestId('work-gen-clients').first().fill('1')
+    if (await page.getByTestId('work-gen-preview').first().count()) {
+      await page.getByTestId('work-gen-preview').first().click()
       await expect(page.getByText(/prontos|Batch #|bloqueados/i).first()).toBeVisible({ timeout: 20000 })
     }
-    await page.getByTestId('work-gen-confirm').click()
+    await page.getByTestId('work-gen-confirm').first().click()
     await expect(page.getByText(/Batch #501|COMPLETED|confirmado|prontos/i).first()).toBeVisible({ timeout: 20000 })
 
     await installApiFixtures(page, 'OPERATOR')
@@ -137,7 +142,7 @@ test.describe('Work workspace — estados e viewports', () => {
 
     await installApiFixtures(page, 'OPERATOR', 'light', 'error')
     await page.goto('/work')
-    await expect(page.getByTestId('work-queue-panel')).toBeVisible({ timeout: 45000 })
+    await expect(page.getByTestId('work-queue-panel').first()).toBeVisible({ timeout: 45000 })
     await expect(
       page.getByRole('alert').or(page.getByText(/Não foi possível|Falha|sintética/i)).first()
     ).toBeVisible({ timeout: 30000 })

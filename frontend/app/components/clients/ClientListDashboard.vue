@@ -11,12 +11,9 @@ import type { TableColumn } from '@nuxt/ui'
 import type { Client, ClientListStats } from '~/types/api'
 import { COMPACT_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 import {
-  eachMonthOfInterval,
   format,
   isValid,
-  parseISO,
-  startOfMonth,
-  subMonths
+  parseISO
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
@@ -39,22 +36,11 @@ const UBadge = resolveComponent('UBadge')
 // ─── Stats (HomeStats) ───────────────────────────────────────────────────────
 
 const statsCards = computed(() => {
-  const ok = props.clients.filter((c) => {
-    const s = c.credential_summary
-    if (!s) return false
-    const expired = s.status === 'EXPIRED'
-      || !!(s.valid_to && new Date(s.valid_to) < new Date())
-    return !expired
-      && !s.expires_alert_1
-      && !s.expires_alert_7
-      && !s.expires_alert_30
-  }).length
-
   return [
     {
       title: 'Clientes',
       icon: 'i-lucide-users',
-      value: props.stats.total || props.clients.length
+      value: props.stats.total
     },
     {
       title: 'Ativos',
@@ -64,7 +50,7 @@ const statsCards = computed(() => {
     {
       title: 'A1 OK',
       icon: 'i-lucide-badge-check',
-      value: ok
+      value: props.stats.credential_ok ?? 0
     },
     {
       title: 'A vencer / sem A1',
@@ -86,42 +72,12 @@ const chartWidth = computed(() => Math.max(measuredWidth.value || 0, 320))
 const chartReady = computed(() => (measuredWidth.value || 0) > 40)
 
 const chartData = computed((): DataRecord[] => {
-  const dates = props.clients
-    .map((c) => {
-      if (!c.created_at) return null
-      const d = parseISO(c.created_at)
-      return isValid(d) ? d : null
-    })
-    .filter((d): d is Date => !!d)
-    .sort((a, b) => a.getTime() - b.getTime())
-
-  const end = startOfMonth(new Date())
-  // Sempre 12 meses para a linha ter extensão (demo costuma nascer no mesmo dia).
-  const start = startOfMonth(subMonths(end, 11))
-  const months = eachMonthOfInterval({ start, end })
-
-  const byMonth = new Map<string, number>()
-  for (const d of dates) {
-    const key = format(startOfMonth(d), 'yyyy-MM')
-    byMonth.set(key, (byMonth.get(key) || 0) + 1)
-  }
-
-  // Conta cadastros anteriores à janela para o acumulado não “começar do zero” no meio.
-  let cumulative = 0
-  for (const d of dates) {
-    if (d < start) cumulative += 1
-  }
-
-  return months.map((m) => {
-    cumulative += byMonth.get(format(m, 'yyyy-MM')) || 0
-    return { date: m, amount: cumulative }
-  })
+  return (props.stats.client_growth_12m || [])
+    .map(({ month, total }) => ({ date: parseISO(`${month}-01`), amount: total }))
+    .filter(record => isValid(record.date))
 })
 
-const chartTotal = computed(() =>
-  props.stats.total || props.clients.length
-  || (chartData.value.length ? chartData.value[chartData.value.length - 1]!.amount : 0)
-)
+const chartTotal = computed(() => props.stats.total)
 
 const x = (_: DataRecord, i: number) => i
 const y = (d: DataRecord) => d.amount
@@ -152,21 +108,18 @@ type RecentRow = {
 }
 
 const recentRows = computed((): RecentRow[] => {
-  return [...props.clients]
-    .sort((a, b) => {
-      const ta = a.created_at ? new Date(a.created_at).getTime() : 0
-      const tb = b.created_at ? new Date(b.created_at).getTime() : 0
-      return tb - ta
-    })
+  return props.clients
     .slice(0, 8)
     .map((c) => {
       const s = c.credential_summary
       let a1 = 'Sem A1'
       if (s) {
+        const validTo = s.valid_to ? new Date(s.valid_to) : null
         const expired = s.status === 'EXPIRED'
-          || !!(s.valid_to && new Date(s.valid_to) < new Date())
+          || !!(validTo && validTo < new Date())
+        const expiring = !!(validTo && validTo <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
         if (expired) a1 = 'Vencido'
-        else if (s.expires_alert_1 || s.expires_alert_7 || s.expires_alert_30) a1 = 'A vencer'
+        else if (expiring || s.expires_alert_1 || s.expires_alert_7 || s.expires_alert_30) a1 = 'A vencer'
         else a1 = 'OK'
       }
       return {
@@ -239,7 +192,7 @@ const columns: TableColumn<RecentRow>[] = [
     data-testid="clients-dashboard"
   >
     <!-- HomeStats -->
-    <UPageGrid class="lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-px">
+    <UPageGrid class="grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4 lg:gap-px">
       <UPageCard
         v-for="(stat, index) in statsCards"
         :key="index"
@@ -247,12 +200,12 @@ const columns: TableColumn<RecentRow>[] = [
         :title="stat.title"
         variant="subtle"
         :ui="{
-          container: 'gap-y-1.5',
-          wrapper: 'items-start',
-          leading: 'p-2.5 rounded-full bg-primary/10 ring ring-inset ring-primary/25 flex-col',
-          title: 'font-normal text-muted text-xs uppercase'
+          container: 'min-w-0 gap-y-1.5 p-3 sm:p-6',
+          wrapper: 'min-w-0 items-start',
+          leading: 'mb-1.5 p-2 sm:mb-2.5 sm:p-2.5 rounded-full bg-primary/10 ring ring-inset ring-primary/25 flex-col',
+          title: 'w-full truncate font-normal text-muted text-xs uppercase'
         }"
-        class="lg:rounded-none first:rounded-l-lg last:rounded-r-lg"
+        class="min-w-0 lg:rounded-none first:rounded-l-lg last:rounded-r-lg"
       >
         <div class="flex items-center gap-2">
           <span class="text-2xl font-semibold text-highlighted tabular-nums">

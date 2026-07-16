@@ -74,20 +74,6 @@ function emissionOf(row: Record<string, unknown>): string {
   return String(v?.emission_status || row.emission_status || '')
 }
 
-function isDemoGuide(row: Record<string, unknown> | null | undefined): boolean {
-  if (!row) return false
-  const src = String(row.payment_source || '').toUpperCase()
-  if (src.includes('DEMO')) return true
-  const v = versionOf(row)
-  const summary = v?.confirmation_summary
-  if (summary && typeof summary === 'object') {
-    const s = summary as Record<string, unknown>
-    if (s.simulated === true) return true
-    if (String(s.disclaimer || '').toUpperCase().includes('DEMONSTRA')) return true
-  }
-  return false
-}
-
 async function syncGuidesUrl() {
   const query: Record<string, string | undefined> = { ...route.query as Record<string, string> }
 
@@ -372,24 +358,26 @@ onMounted(() => {
 </script>
 
 <template>
-  <DashboardListShell
-    panel-id="monitoring-guides"
-    title="Guias"
-    navbar-test-id="page-navbar"
-  >
-    <template #navbar-right>
-      <FiscalMonitoringPortfolioActions
-        module-key="guides"
-        :client-id="clientIdModel"
-        :situation="paymentStatus !== 'all' ? paymentStatus : undefined"
-        :competence="competence || undefined"
-        :q="q || undefined"
-        show-enqueue
-        :show-export="true"
-        @refreshed="refreshAll"
-      />
-    </template>
-    <template #toolbar>
+  <UDashboardPanel id="monitoring-guides">
+    <template #header>
+      <UDashboardNavbar title="Guias" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+        <template #right>
+          <MonitoringPortfolioActions
+            module-key="guides"
+            :client-id="clientIdModel"
+            :situation="paymentStatus !== 'all' ? paymentStatus : undefined"
+            :competence="competence || undefined"
+            :q="q || undefined"
+            show-enqueue
+            :show-export="true"
+            @refreshed="refreshAll"
+          />
+        </template>
+      </UDashboardNavbar>
+
       <UDashboardToolbar data-testid="page-toolbar">
         <template #left>
           <div class="flex min-w-0 flex-1 flex-col gap-2">
@@ -430,20 +418,7 @@ onMounted(() => {
       </UDashboardToolbar>
     </template>
 
-      <FiscalDemoBanner
-        :origin="overview?.data_origin"
-        :is-synthetic="overview?.is_synthetic"
-        :source-label="overview?.source_label"
-      />
-
-      <UAlert
-        color="warning"
-        icon="i-lucide-shield"
-        title="Emissão mutante"
-        description="Emissão exige preflight, custo, consequência e TOTP. Download usa token efêmero. Emissão e pagamento são dimensões independentes."
-        class="mb-4"
-      />
-
+    <template #body>
       <UAlert
         v-if="overviewError"
         color="warning"
@@ -462,7 +437,7 @@ onMounted(() => {
         </template>
       </UAlert>
 
-      <FiscalKpiStrip
+      <MonitoringKpiStrip
         v-if="overview"
         :total-clients="overview.total_clients"
         :counters="overview.counters"
@@ -504,7 +479,7 @@ onMounted(() => {
       >
         Carregando…
       </div>
-      <FiscalTableEmptyState
+      <MonitoringTableEmptyState
         v-else-if="!rows.length && !loadError"
         :kind="paymentStatus !== 'all' || clientId ? 'filtered' : 'empty'"
         title="Nenhuma guia retornada pela API"
@@ -562,13 +537,6 @@ onMounted(() => {
             v-else-if="detail"
             class="flex flex-col gap-4 text-sm"
           >
-            <FiscalDemoBanner
-              v-if="isDemoGuide(detail) || overview?.is_synthetic"
-              origin="DEMO"
-              :is-synthetic="true"
-              source-label="Guia do dataset demonstrativo"
-              compact
-            />
             <dl class="grid gap-2 sm:grid-cols-2">
               <div>
                 <dt class="text-muted">
@@ -667,5 +635,6 @@ onMounted(() => {
         }"
         @success="refreshAll"
       />
-  </DashboardListShell>
+    </template>
+  </UDashboardPanel>
 </template>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Simples Nacional / MEI — carteira via FiscalModuleTable + tabs PGDAS-D/PGMEI/DASN/Regime.
+ * Simples Nacional / MEI — carteira via MonitoringModuleTable + tabs PGDAS-D/PGMEI/DASN/Regime.
  * Task 7.2 · deep-links para /monitoring/clients/{id}?tab=overview
  */
 import type { TableColumn } from '@nuxt/ui'
@@ -38,8 +38,6 @@ const {
   rows,
   counters,
   totalClients,
-  dataOrigin,
-  isSynthetic,
   lastValidAt,
   refresh,
   selectKpi
@@ -138,10 +136,9 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
 </script>
 
 <template>
-  <FiscalModuleTable
+  <MonitoringModuleTable
     title="Simples Nacional / MEI"
     panel-id="monitoring-simples-mei"
-    description="Carteira de leitura PGDAS-D, PGMEI, DASN-SIMEI e regime — sem inventar dados quando a API estiver vazia."
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -157,13 +154,10 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
     :submodule="submodule"
     :total-clients="totalClients"
     :counters="counters"
-    :data-origin="dataOrigin"
-    :is-synthetic="isSynthetic"
     :last-good-at="lastValidAt"
     show-competence-filter
     show-client-picker
     empty-title="Nenhum cliente Simples/MEI"
-    empty-description="A API do read model não retornou linhas. Nada foi inventado."
     @update:page="page = $event"
     @update:q="q = $event"
     @update:situation="situation = $event"
@@ -174,7 +168,7 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
     @kpi-select="selectKpi"
   >
     <template #navbar-actions>
-      <FiscalMonitoringPortfolioActions
+      <MonitoringPortfolioActions
         module-key="simples_mei"
         :client-id="clientId"
         :competence="competence"
@@ -204,7 +198,6 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
         color="warning"
         icon="i-lucide-triangle-alert"
         :title="overviewError"
-        description="KPIs indisponíveis; a carteira tenta carregar independentemente."
         class="w-full"
       >
         <template #actions>
@@ -218,5 +211,5 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
         </template>
       </UAlert>
     </template>
-  </FiscalModuleTable>
+  </MonitoringModuleTable>
 </template>

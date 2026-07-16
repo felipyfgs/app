@@ -28,12 +28,16 @@ const registrationEditRequested = ref(false)
 
 const establishments = computed(() => item.value?.establishments || [])
 
-const sectionLinks = computed<NavigationMenuItem[]>(() => {
+/**
+ * Subnav horizontal no toolbar — mesmo contrato do template settings.vue
+ * (`NavigationMenuItem[][]` + `UNavigationMenu` highlight).
+ */
+const sectionLinks = computed<NavigationMenuItem[][]>(() => {
   const id = clientId.value
   const path = route.path.replace(/\/$/, '')
   const base = `/clients/${id}`
 
-  return [{
+  return [[{
     label: 'Resumo',
     icon: 'i-lucide-layout-dashboard',
     to: base,
@@ -64,7 +68,7 @@ const sectionLinks = computed<NavigationMenuItem[]>(() => {
     icon: 'i-lucide-arrow-up-from-line',
     to: `${base}/saidas`,
     active: path.endsWith('/saidas')
-  }]
+  }]]
 })
 
 async function load() {
@@ -191,117 +195,115 @@ onMounted(async () => {
 
 <template>
   <!--
-    Arquétipo settings seções (template settings.vue) via DashboardListShell.
+    Arquétipo settings seções (template settings.vue):
+    Navbar + Toolbar UNavigationMenu highlight + body com NuxtPage.
+    Header de identidade e aside são adaptação de domínio (não do demo).
   -->
-  <DashboardListShell
-    panel-id="client-detail"
-    title="Clientes"
-    panel-test-id="settings-panel"
-    :panel-ui="{ body: 'lg:py-8' }"
-    :show-collapse="false"
-  >
-    <template #navbar-leading>
-      <div class="flex items-center gap-1">
-        <UDashboardSidebarCollapse />
-        <UButton
-          to="/clients"
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-arrow-left"
-          label="Voltar aos clientes"
-          class="hidden sm:inline-flex"
-        />
-        <UButton
-          to="/clients"
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-arrow-left"
-          square
-          class="sm:hidden"
-          aria-label="Voltar aos clientes"
-        />
-      </div>
-    </template>
-    <template #navbar-right>
-      <UButton
-        v-if="item && canManageClients"
-        color="primary"
-        variant="soft"
-        icon="i-lucide-pencil"
-        label="Editar cliente"
-        class="hidden sm:inline-flex"
-        @click="goEditCadastro"
-      />
-      <UButton
-        v-if="item && canManageClients"
-        color="primary"
-        variant="soft"
-        icon="i-lucide-pencil"
-        square
-        class="sm:hidden"
-        aria-label="Editar cliente"
-        @click="goEditCadastro"
-      />
+  <UDashboardPanel id="client-detail" data-testid="settings-panel" :ui="{ body: 'lg:py-12' }">
+    <template #header>
+      <UDashboardNavbar title="Clientes" data-testid="page-navbar">
+        <template #leading>
+          <div class="flex items-center gap-1">
+            <UDashboardSidebarCollapse />
+            <UButton
+              to="/clients"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-arrow-left"
+              label="Voltar aos clientes"
+              class="hidden sm:inline-flex"
+            />
+            <UButton
+              to="/clients"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-arrow-left"
+              square
+              class="sm:hidden"
+              aria-label="Voltar aos clientes"
+            />
+          </div>
+        </template>
+        <template #right>
+          <UButton
+            v-if="item && canManageClients"
+            color="primary"
+            variant="soft"
+            icon="i-lucide-pencil"
+            label="Editar cliente"
+            class="hidden sm:inline-flex"
+            @click="goEditCadastro"
+          />
+          <UButton
+            v-if="item && canManageClients"
+            color="primary"
+            variant="soft"
+            icon="i-lucide-pencil"
+            square
+            class="sm:hidden"
+            aria-label="Editar cliente"
+            @click="goEditCadastro"
+          />
+        </template>
+      </UDashboardNavbar>
+
+      <UDashboardToolbar v-if="item" data-testid="client-section-tabs">
+        <!-- NOTE: The `-mx-1` class is used to align with the `DashboardSidebarCollapse` button here. -->
+        <UNavigationMenu :items="sectionLinks" highlight class="-mx-1 flex-1" />
+      </UDashboardToolbar>
     </template>
 
-    <div class="flex w-full flex-col gap-4 sm:gap-5">
-      <div
-        v-if="loading && !item"
-        class="space-y-4"
-        role="status"
-        aria-label="Carregando cliente"
-      >
-        <USkeleton class="h-28 w-full rounded-lg" />
-        <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-          <USkeleton class="h-96 w-full rounded-lg" />
-          <div class="space-y-4">
-            <USkeleton class="h-40 w-full rounded-lg" />
-            <USkeleton class="h-32 w-full rounded-lg" />
+    <template #body>
+      <div class="flex w-full flex-col gap-4 sm:gap-6 lg:gap-12">
+        <div
+          v-if="loading && !item"
+          class="space-y-4"
+          role="status"
+          aria-label="Carregando cliente"
+        >
+          <USkeleton class="h-28 w-full rounded-lg" />
+          <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+            <USkeleton class="h-96 w-full rounded-lg" />
+            <div class="space-y-4">
+              <USkeleton class="h-40 w-full rounded-lg" />
+              <USkeleton class="h-32 w-full rounded-lg" />
+            </div>
           </div>
         </div>
-      </div>
 
-      <UEmpty
-        v-else-if="!item"
-        icon="i-lucide-building-2"
-        title="Cliente não encontrado"
-        description="O registro não existe ou pertence a outro escritório."
-      >
-        <UButton to="/clients" label="Voltar para clientes" />
-      </UEmpty>
+        <UEmpty
+          v-else-if="!item"
+          icon="i-lucide-building-2"
+          title="Cliente não encontrado"
+          description="O registro não existe ou pertence a outro escritório."
+        >
+          <UButton to="/clients" label="Voltar para clientes" />
+        </UEmpty>
 
-      <template v-else>
-        <ClientsClientDetailHeader
-          :client="item"
-          :establishments="establishments"
-          :can-manage-clients="canManageClients"
-          @edit="goEditCadastro"
-        />
+        <template v-else>
+          <ClientsClientDetailHeader
+            :client="item"
+            :establishments="establishments"
+            :can-manage-clients="canManageClients"
+            @edit="goEditCadastro"
+          />
 
-        <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
-          <div class="min-w-0 rounded-lg ring ring-default bg-elevated/25">
-            <div class="border-b border-default px-2 sm:px-3">
-              <UNavigationMenu
-                :items="sectionLinks"
-                highlight
-                class="-mx-1 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-              />
-            </div>
-            <div class="p-4 sm:p-5 lg:p-6">
+          <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+            <div class="min-w-0">
               <NuxtPage />
             </div>
-          </div>
 
-          <aside class="xl:sticky xl:top-4">
-            <ClientsClientDetailAside
-              :client="item"
-              :credential="credential"
-              :establishments="establishments"
-              :can-manage-credentials="canManageCredentials"
-            />
-          </aside>
-        </div>
-      </template>
-    </div>
-  </DashboardListShell>
+            <aside class="xl:sticky xl:top-4">
+              <ClientsClientDetailAside
+                :client="item"
+                :credential="credential"
+                :establishments="establishments"
+                :can-manage-credentials="canManageCredentials"
+              />
+            </aside>
+          </div>
+        </template>
+      </div>
+    </template>
+  </UDashboardPanel>
 </template>

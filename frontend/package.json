@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:artifacts": "node tests/security/scan-artifacts.mjs"
+    "test:artifacts": "node tests/security/scan-artifacts.mjs",
+    "test:fidelity": "node scripts/template-fidelity-gate.mjs"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.116",

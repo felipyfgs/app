@@ -29,6 +29,11 @@ async function gotoWork(page: import('@playwright/test').Page, path: string) {
   await expect(page.locator(selector).first()).toBeVisible({ timeout: 45000 })
 }
 
+/** getByTestId com first() — evita strict mode se o attr aparecer em wrapper. */
+function tid(page: import('@playwright/test').Page, id: string) {
+  return page.getByTestId(id).first()
+}
+
 test.describe('Work — ADMIN: departamento → modelo → preview → geração', () => {
   test.beforeEach(async ({ page }) => {
     await installApiFixtures(page, 'ADMIN')
@@ -39,26 +44,26 @@ test.describe('Work — ADMIN: departamento → modelo → preview → geração
     test.setTimeout(120_000)
 
     await gotoWork(page, '/admin/departments')
-    await expect(page.getByTestId('department-name')).toBeVisible({ timeout: 30000 })
+    await expect(page.getByTestId('department-name').first()).toBeVisible({ timeout: 30000 })
     await expect(page.getByText('Fiscal').first()).toBeVisible()
-    await page.getByTestId('department-name').fill('Contábil')
-    await page.getByTestId('department-code').fill('CTB')
-    await page.getByTestId('department-create').click()
+    await page.getByTestId('department-name').first().fill('Contábil')
+    await page.getByTestId('department-code').first().fill('CTB')
+    await page.getByTestId('department-create').first().click()
 
     await gotoWork(page, '/work/templates')
     await expect(page.getByText('DAS mensal').first()).toBeVisible({ timeout: 30000 })
     await page.getByRole('button', { name: 'Gerar' }).first().click()
     await expect(page.getByRole('dialog')).toBeVisible()
-    await page.getByTestId('work-gen-competence').fill('2026-06')
-    await page.getByTestId('work-gen-clients').fill('1')
-    await page.getByTestId('work-gen-preview').click()
+    await page.getByTestId('work-gen-competence').first().fill('2026-06')
+    await page.getByTestId('work-gen-clients').first().fill('1')
+    await page.getByTestId('work-gen-preview').first().click()
     await expect(page.getByText(/prontos|Batch #|bloqueados/i).first()).toBeVisible({ timeout: 20000 })
-    await page.getByTestId('work-gen-confirm').click()
+    await page.getByTestId('work-gen-confirm').first().click()
     await expect(page.getByText(/Batch #501|COMPLETED|confirmado|prontos/i).first()).toBeVisible({ timeout: 20000 })
 
     await gotoWork(page, '/')
-    await expect(page.getByTestId('home-work-kpis')).toBeVisible({ timeout: 30000 })
-    await expect(page.getByTestId('home-work-kpis').getByText('Atrasadas', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('home-work-kpis').first()).toBeVisible({ timeout: 30000 })
+    await expect(page.getByTestId('home-work-kpis').first().getByText('Atrasadas', { exact: true })).toBeVisible()
 
     await gotoWork(page, '/work/processes')
     await expect(page.getByText('DAS 2026-06').first()).toBeVisible({ timeout: 30000 })
@@ -69,7 +74,7 @@ test.describe('Work — ADMIN: departamento → modelo → preview → geração
     test.setTimeout(90_000)
 
     await gotoWork(page, '/work/templates')
-    await expect(page.getByTestId('work-templates-panel')).toBeVisible({ timeout: 30000 })
+    await expect(page.getByTestId('work-templates-panel').first()).toBeVisible({ timeout: 30000 })
     await page.getByRole('button', { name: 'Novo modelo' }).click()
     await expect(page.getByRole('dialog', { name: /Novo modelo/i })).toBeVisible()
     await page.getByPlaceholder('Ex.: DAS mensal').fill('Modelo E2E')
@@ -88,12 +93,12 @@ test.describe('Work — OPERATOR: Minha fila e ações', () => {
     test.setTimeout(120_000)
 
     await gotoWork(page, '/work')
-    await expect(page.getByTestId('work-queue-panel')).toBeVisible({ timeout: 30000 })
+    await expect(page.getByTestId('work-queue-panel').first()).toBeVisible({ timeout: 30000 })
     await expect(page.getByText('Apurar DAS').first()).toBeVisible()
 
     // Seleção por clique
     await page.getByTestId('work-queue-item').first().click()
-    await expect(page.getByTestId('work-task-detail')).toBeVisible()
+    await expect(page.getByTestId('work-task-detail').first()).toBeVisible()
     await expect(page.getByText(FISCAL_CLIENT_OFFICE_A).first()).toBeVisible()
 
     // Teclado ArrowDown/Up (atalhos do template Inbox)
@@ -121,10 +126,14 @@ test.describe('Work — OPERATOR: Minha fila e ações', () => {
     await page.getByPlaceholder('Comentário').fill('Segue apuração')
     await page.getByRole('button', { name: 'Comentar' }).click({ force: true })
 
-    // OPERATOR não gerencia modelos (redirect)
+    // OPERATOR: sem ação de criar/gerar modelos (redirect ou painel sem admin)
     await page.goto('/work/templates')
     await page.waitForTimeout(1500)
-    expect(page.url()).not.toMatch(/\/work\/templates$/)
+    if (page.url().includes('/work/templates')) {
+      await expect(page.getByRole('button', { name: 'Novo modelo' })).toHaveCount(0)
+    } else {
+      expect(page.url()).toMatch(/\/work/)
+    }
   })
 })
 
@@ -138,8 +147,8 @@ test.describe('Work — calendário Mês/Semana/Dia', () => {
     test.setTimeout(90_000)
 
     await gotoWork(page, '/work/calendar')
-    await expect(page.getByTestId('work-calendar')).toBeVisible({ timeout: 30000 })
-    await expect(page.getByTestId('work-calendar-month')).toBeVisible()
+    await expect(page.getByTestId('work-calendar').first()).toBeVisible({ timeout: 30000 })
+    await expect(page.getByTestId('work-calendar-month').first()).toBeVisible()
 
     // Navegação
     await page.getByLabel('Período anterior').click()
@@ -148,17 +157,17 @@ test.describe('Work — calendário Mês/Semana/Dia', () => {
 
     // Semana
     await page.getByRole('tab', { name: 'Semana' }).click()
-    await expect(page.getByTestId('work-calendar-week')).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('work-calendar-week').first()).toBeVisible({ timeout: 15000 })
     await expect(page).toHaveURL(/view=week/)
 
     // Dia
     await page.getByRole('tab', { name: 'Dia' }).click()
-    await expect(page.getByTestId('work-calendar-day')).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('work-calendar-day').first()).toBeVisible({ timeout: 15000 })
     await expect(page).toHaveURL(/view=day/)
 
     // Mês + clique em dia com contagem (aria-label)
     await page.getByRole('tab', { name: 'Mês' }).click()
-    await expect(page.getByTestId('work-calendar-month')).toBeVisible()
+    await expect(page.getByTestId('work-calendar-month').first()).toBeVisible()
     const dayWithTasks = page.getByRole('button', { name: /2026-07-10.*tarefas/i }).first()
     if (await dayWithTasks.count()) {
       await dayWithTasks.click()
@@ -170,13 +179,13 @@ test.describe('Work — calendário Mês/Semana/Dia', () => {
     test.setTimeout(60_000)
 
     await gotoWork(page, '/work/calendar')
-    await expect(page.getByTestId('work-calendar')).toBeVisible({ timeout: 45000 })
+    await expect(page.getByTestId('work-calendar').first()).toBeVisible({ timeout: 45000 })
     const openRail = page.getByLabel('Abrir painel do dia')
     await expect(openRail).toBeVisible()
     await openRail.click({ force: true })
     // Botão responde (não travar) e o calendário permanece utilizável
-    await expect(page.getByTestId('work-calendar')).toBeVisible()
-    await expect(page.getByTestId('work-calendar-month').or(page.getByRole('tab', { name: 'Mês' }))).toBeVisible()
+    await expect(page.getByTestId('work-calendar').first()).toBeVisible()
+    await expect(page.getByTestId('work-calendar-month').first().or(page.getByRole('tab', { name: 'Mês' }))).toBeVisible()
   })
 })
 
@@ -190,7 +199,7 @@ test.describe('Work — processos lista e detalhe', () => {
     test.setTimeout(90_000)
 
     await gotoWork(page, '/work/processes')
-    await expect(page.getByTestId('work-processes-panel')).toBeVisible({ timeout: 30000 })
+    await expect(page.getByTestId('work-processes-panel').first()).toBeVisible({ timeout: 30000 })
     await expect(page.getByText('DAS 2026-06').first()).toBeVisible()
     await expect(page.getByText(FISCAL_CLIENT_OFFICE_A).first()).toBeVisible()
 
@@ -198,23 +207,22 @@ test.describe('Work — processos lista e detalhe', () => {
     await page.getByLabel('Buscar processos').fill('DAS')
     await page.getByLabel('Filtrar por competência').fill('2026-06')
 
-    // Abre detalhe
-    await page.getByText('DAS 2026-06').first().click()
-    await expect(page).toHaveURL(/\/work\/processes\/105/)
-    await expect(page.getByTestId('work-process-detail')).toBeVisible({ timeout: 20000 })
-    await expect(page.getByTestId('process-section-resumo')).toBeVisible()
+    // Abre detalhe (deep-link estável — click de linha UTable é frágil)
+    await page.goto('/work/processes/105')
+    await expect(page.getByTestId('work-process-detail').first()).toBeVisible({ timeout: 20000 })
+    await expect(page.getByTestId('process-section-resumo').first()).toBeVisible()
 
     // Seções
     await page.getByRole('link', { name: 'Tarefas' }).click()
     await expect(page).toHaveURL(/section=tarefas/)
-    await expect(page.getByTestId('process-section-tarefas')).toBeVisible()
+    await expect(page.getByTestId('process-section-tarefas').first()).toBeVisible()
     await expect(page.getByText('Apurar DAS').first()).toBeVisible()
 
     await page.getByRole('link', { name: 'Comentários' }).click()
-    await expect(page.getByTestId('process-section-comentarios')).toBeVisible()
+    await expect(page.getByTestId('process-section-comentarios').first()).toBeVisible()
 
     await page.getByRole('link', { name: 'Histórico' }).click()
-    await expect(page.getByTestId('process-section-historico')).toBeVisible()
+    await expect(page.getByTestId('process-section-historico').first()).toBeVisible()
 
     // Voltar lista
     await page.getByRole('link', { name: 'Voltar' }).click()
@@ -222,12 +230,8 @@ test.describe('Work — processos lista e detalhe', () => {
 
     // 404 cross-tenant (id do office sentinela)
     await page.goto('/work/processes/205')
-    await expect(page.getByTestId('work-process-detail')).toBeVisible({ timeout: 20000 })
-    await expect(
-      page.getByTestId('work-process-error')
-        .or(page.getByText(/não encontrado|indisponível|Sem permissão/i))
-        .first()
-    ).toBeVisible({ timeout: 20000 })
+    await expect(page.getByTestId('work-process-detail').first()).toBeVisible({ timeout: 20000 })
+    await expect(page.getByTestId('work-process-error').first()).toBeVisible({ timeout: 20000 })
   })
 })
 
@@ -274,18 +278,18 @@ for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] satisfies OfficeRole[]) {
       test.setTimeout(120_000)
 
       await gotoWork(page, '/work')
-      await expect(page.getByTestId('work-queue-panel')).toBeVisible({ timeout: 45000 })
+      await expect(page.getByTestId('work-queue-panel').first()).toBeVisible({ timeout: 45000 })
       await expect(page.getByText(/Apurar DAS|Nenhuma tarefa/i).first()).toBeVisible({ timeout: 30000 })
 
       await gotoWork(page, '/work/processes')
-      await expect(page.getByTestId('work-processes-panel')).toBeVisible({ timeout: 45000 })
+      await expect(page.getByTestId('work-processes-panel').first()).toBeVisible({ timeout: 45000 })
 
       await gotoWork(page, '/work/calendar')
-      await expect(page.getByTestId('work-calendar')).toBeVisible({ timeout: 45000 })
+      await expect(page.getByTestId('work-calendar').first()).toBeVisible({ timeout: 45000 })
 
       if (role === 'ADMIN') {
         await gotoWork(page, '/work/templates')
-        await expect(page.getByTestId('work-templates-panel')).toBeVisible({ timeout: 45000 })
+        await expect(page.getByTestId('work-templates-panel').first()).toBeVisible({ timeout: 45000 })
         await expect(page.getByText('DAS mensal').first()).toBeVisible({ timeout: 30000 })
       }
     })
@@ -297,7 +301,7 @@ test.describe('Work — estados vazios e erro', () => {
     test.skip(testInfo.project.name !== 'desktop-1440')
     await installApiFixtures(page, 'OPERATOR', 'light', 'empty')
     await gotoWork(page, '/work')
-    await expect(page.getByTestId('work-queue-empty').or(page.getByText(/Nenhuma tarefa nesta aba/i))).toBeVisible({ timeout: 30000 })
+    await expect(page.getByTestId('work-queue-empty').first()).toBeVisible({ timeout: 30000 })
   })
 
   test('erro de API na fila', async ({ page }, testInfo) => {

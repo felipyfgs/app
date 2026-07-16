@@ -212,23 +212,24 @@ onMounted(load)
 
 <template>
   <!--
-    Arquétipo lista admin (customers.vue) via DashboardListShell.
+    Arquétipo lista admin (customers.vue) via UDashboardPanel (inline template).
     Fontes: .reference/.../customers.vue + clients + table-ui.
   -->
-  <DashboardListShell
-    panel-id="work-templates"
-    title="Modelos de processo"
-    panel-test-id="work-templates-panel"
-  >
-    <template #navbar-right>
-      <UButton
-        icon="i-lucide-plus"
-        label="Novo modelo"
-        @click="() => { createOpen = true }"
-      />
-    </template>
+  <UDashboardPanel id="work-templates" data-testid="work-templates-panel">
+    <template #header>
+      <UDashboardNavbar title="Modelos de processo" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+        <template #right>
+          <UButton
+            icon="i-lucide-plus"
+            label="Novo modelo"
+            @click="() => { createOpen = true }"
+          />
+        </template>
+      </UDashboardNavbar>
 
-    <template #toolbar>
       <UDashboardToolbar>
         <UInput
           v-model="q"
@@ -240,54 +241,55 @@ onMounted(load)
       </UDashboardToolbar>
     </template>
 
-    <h1 class="sr-only">
-      Modelos de processo
-    </h1>
+    <template #body>
+      <h1 class="sr-only">
+        Modelos de processo
+      </h1>
 
-    <div v-if="loading" class="space-y-2 p-4">
-      <USkeleton v-for="i in 4" :key="i" class="h-10 w-full" />
-    </div>
-    <UEmpty
-      v-else-if="!items.length"
-      icon="i-lucide-layout-template"
-      title="Nenhum modelo"
-      description="Crie o primeiro para gerar processos em lote."
-    />
-    <template v-else>
-      <UTable :data="items" :columns="columns" :ui="DASHBOARD_TABLE_UI">
-        <template #is_active-cell="{ row }">
-          <UBadge
-            size="sm"
-            variant="subtle"
-            :color="row.original.is_active ? 'success' : 'neutral'"
-            :label="row.original.is_active ? 'Ativo' : 'Inativo'"
-          />
-        </template>
-        <template #tasks-cell="{ row }">
-          {{ row.original.tasks?.length ?? 0 }}
-        </template>
-        <template #actions-cell="{ row }">
-          <UButton
-            size="xs"
-            variant="soft"
-            label="Gerar"
-            @click="openGeneration(row.original)"
-          />
-        </template>
-      </UTable>
-      <div class="flex justify-between border-t border-default p-3 text-sm text-muted">
-        <span>{{ total }} modelo(s)</span>
-        <UPagination
-          v-if="total > 25"
-          v-model:page="page"
-          :total="total"
-          :items-per-page="25"
-        />
+      <div v-if="loading" class="space-y-2 p-4">
+        <USkeleton v-for="i in 4" :key="i" class="h-10 w-full" />
       </div>
-    </template>
+      <UEmpty
+        v-else-if="!items.length"
+        icon="i-lucide-layout-template"
+        title="Nenhum modelo"
+        description="Crie o primeiro para gerar processos em lote."
+      />
+      <template v-else>
+        <UTable :data="items" :columns="columns" :ui="DASHBOARD_TABLE_UI">
+          <template #is_active-cell="{ row }">
+            <UBadge
+              size="sm"
+              variant="subtle"
+              :color="row.original.is_active ? 'success' : 'neutral'"
+              :label="row.original.is_active ? 'Ativo' : 'Inativo'"
+            />
+          </template>
+          <template #tasks-cell="{ row }">
+            {{ row.original.tasks?.length ?? 0 }}
+          </template>
+          <template #actions-cell="{ row }">
+            <UButton
+              size="xs"
+              variant="soft"
+              label="Gerar"
+              @click="openGeneration(row.original)"
+            />
+          </template>
+        </UTable>
+        <div class="flex justify-between border-t border-default p-3 text-sm text-muted">
+          <span>{{ total }} modelo(s)</span>
+          <UPagination
+            v-if="total > 25"
+            v-model:page="page"
+            :total="total"
+            :items-per-page="25"
+          />
+        </div>
+      </template>
 
-    <!-- Modal criar (AddModal-like) -->
-    <UModal v-model:open="createOpen" title="Novo modelo de processo">
+      <!-- Modal criar (AddModal-like) -->
+      <UModal v-model:open="createOpen" title="Novo modelo de processo">
         <template #body>
           <div class="space-y-4">
             <UFormField label="Nome" required>
@@ -337,12 +339,20 @@ onMounted(load)
                 />
               </div>
             </div>
-          </div>
-        </template>
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton variant="ghost" label="Cancelar" @click="() => { createOpen = false }" />
-            <UButton :loading="creating" label="Criar" @click="() => { void createTemplate() }" />
+            <div class="flex justify-end gap-2">
+              <UButton
+                label="Cancelar"
+                color="neutral"
+                variant="subtle"
+                @click="() => { createOpen = false }"
+              />
+              <UButton
+                label="Criar"
+                :loading="creating"
+                :disabled="!formName.trim()"
+                @click="createTemplate"
+              />
+            </div>
           </div>
         </template>
       </UModal>
@@ -374,12 +384,6 @@ onMounted(load)
                 class="w-full"
               />
             </UFormField>
-            <UAlert
-              color="info"
-              variant="subtle"
-              title="Preview real no servidor"
-              description="Nenhum processo é criado até a confirmação explícita."
-            />
           </div>
 
           <div v-else-if="genStep === 2 && genBatch" class="space-y-3">
@@ -409,8 +413,7 @@ onMounted(load)
           <div v-else-if="genStep === 4 && genBatch" class="space-y-3">
             <UAlert
               color="success"
-              title="Batch confirmado"
-              :description="`Status: ${genBatch.status}`"
+              :title="`Batch confirmado: ${genBatch.status}`"
             />
             <ul class="space-y-1 text-sm">
               <li
@@ -437,26 +440,26 @@ onMounted(load)
             />
           </div>
         </template>
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton variant="ghost" label="Fechar" @click="() => { genOpen = false }" />
-            <UButton
-              v-if="genStep === 1"
-              data-testid="work-gen-preview"
-              :loading="genBusy"
-              label="Pré-visualizar"
-              @click="() => { void runPreview() }"
-            />
-            <UButton
-              v-if="genStep === 2"
-              data-testid="work-gen-confirm"
-              color="primary"
-              :loading="genBusy"
-              label="Confirmar geração"
-              @click="() => { void runConfirm() }"
-            />
-          </div>
-        </template>
-    </UModal>
-  </DashboardListShell>
+      </UModal>
+
+      <div class="flex justify-end gap-2">
+        <UButton variant="ghost" label="Fechar" @click="() => { genOpen = false }" />
+        <UButton
+          v-if="genStep === 1"
+          data-testid="work-gen-preview"
+          :loading="genBusy"
+          label="Pré-visualizar"
+          @click="() => { void runPreview() }"
+        />
+        <UButton
+          v-if="genStep === 2"
+          data-testid="work-gen-confirm"
+          color="primary"
+          :loading="genBusy"
+          label="Confirmar geração"
+          @click="() => { void runConfirm() }"
+        />
+      </div>
+    </template>
+  </UDashboardPanel>
 </template>

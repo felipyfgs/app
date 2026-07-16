@@ -240,8 +240,7 @@ async function onLogout() {
           color="success"
           variant="subtle"
           icon="i-lucide-circle-check"
-          title="2FA ativado"
-          description="Guarde estes códigos em local seguro. Cada código funciona uma única vez. Não compartilhe nem armazene em canal inseguro."
+          title="2FA ativado; guarde os códigos de recuperação em local seguro"
         />
         <ul
           aria-label="Códigos de recuperação"

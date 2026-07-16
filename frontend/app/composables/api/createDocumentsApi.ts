@@ -121,11 +121,22 @@ export function createDocumentsApi(client: ApiClient, apiUrl: ApiUrl) {
           }
         }>('/api/v1/documents/import-batches', { method: 'POST', body })
       },
-      importBatches: (params?: { page?: number, per_page?: number }) =>
+      importBatches: (params?: {
+        page?: number
+        per_page?: number
+        sort?: 'id' | 'status' | 'created_at' | 'file_count' | 'imported_count'
+        direction?: 'asc' | 'desc'
+      }) =>
         client<{ data: Array<Record<string, unknown>>, meta?: PageMeta }>('/api/v1/documents/import-batches', { query: params }),
       importBatchGet: (publicId: string) =>
         client<{ data: Record<string, unknown> }>(`/api/v1/documents/import-batches/${encodeURIComponent(publicId)}`),
-      importBatchItems: (publicId: string, params?: { page?: number, per_page?: number, status?: string }) =>
+      importBatchItems: (publicId: string, params?: {
+        page?: number
+        per_page?: number
+        status?: string
+        sort?: 'item_index' | 'status' | 'source_name' | 'id'
+        direction?: 'asc' | 'desc'
+      }) =>
         client<{ data: Array<Record<string, unknown>>, meta?: PageMeta }>(
           `/api/v1/documents/import-batches/${encodeURIComponent(publicId)}/items`,
           { query: params }

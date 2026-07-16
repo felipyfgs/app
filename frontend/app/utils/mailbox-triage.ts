@@ -35,6 +35,13 @@ export function isMailboxTriageStatus(value: unknown): value is MailboxTriageSta
     && (MAILBOX_TRIAGE_STATUSES as readonly string[]).includes(value.toUpperCase())
 }
 
+/** Label pt-BR da triagem interna (nunca expor NEW/IN_REVIEW cru na UI). */
+export function mailboxTriageLabel(value?: string | null): string {
+  const parsed = parseMailboxTriageStatus(value)
+  if (parsed) return MAILBOX_TRIAGE_LABELS[parsed]
+  return value?.trim() || '—'
+}
+
 /** Normaliza e valida; retorna null se inválido (ex.: DISMISSED / UNTRIAGED). */
 export function parseMailboxTriageStatus(value: unknown): MailboxTriageStatus | null {
   if (typeof value !== 'string') return null

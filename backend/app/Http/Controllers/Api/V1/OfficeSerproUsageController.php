@@ -56,6 +56,8 @@ class OfficeSerproUsageController extends Controller
             perPage: $perPage,
             year: is_numeric($year) ? (int) $year : null,
             month: is_numeric($month) ? (int) $month : null,
+            sort: $request->string('sort')->toString(),
+            direction: $request->string('direction')->lower()->toString(),
         );
 
         return response()->json($paginator);

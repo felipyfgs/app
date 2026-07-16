@@ -30,8 +30,6 @@ const {
   rows,
   counters,
   totalClients,
-  dataOrigin,
-  isSynthetic,
   lastValidAt,
   refresh,
   selectKpi
@@ -65,18 +63,6 @@ function parseStatusId(row: FgtsClientRow): number | null {
   if (!link) return null
   const m = String(link).match(/\/competences\/(\d+)/)
   return m ? Number(m[1]) : null
-}
-
-function formatLimitations(items: FgtsCoverageManifest['limitations'] | undefined): string {
-  if (!Array.isArray(items) || !items.length) return '—'
-  return items.map((l) => {
-    if (typeof l === 'string') return l
-    if (l && typeof l === 'object') {
-      const o = l as Record<string, unknown>
-      return String(o.title || o.detail || o.message || o.code || 'limitação')
-    }
-    return String(l)
-  }).join(' · ')
 }
 
 async function loadCoverage() {
@@ -259,10 +245,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <FiscalModuleTable
+  <MonitoringModuleTable
     title="FGTS (parcial eSocial)"
     panel-id="monitoring-fgts"
-    description="Monitoramento parcial via eventos eSocial. Guia e pagamento do FGTS Digital permanecem Não suportado."
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -277,13 +262,10 @@ onMounted(() => {
     :competence="competence"
     :total-clients="totalClients"
     :counters="counters"
-    :data-origin="dataOrigin"
-    :is-synthetic="isSynthetic"
     :last-good-at="lastValidAt"
     show-competence-filter
     show-client-picker
     empty-title="Nenhum cliente FGTS/eSocial na carteira"
-    empty-description="A API do read model não retornou linhas. Nada foi inventado."
     @update:page="page = $event"
     @update:q="q = $event"
     @update:situation="situation = $event"
@@ -293,7 +275,7 @@ onMounted(() => {
     @kpi-select="selectKpi"
   >
     <template #navbar-actions>
-      <FiscalMonitoringPortfolioActions
+      <MonitoringPortfolioActions
         module-key="fgts"
         :client-id="clientId"
         :competence="competence"
@@ -304,18 +286,6 @@ onMounted(() => {
     </template>
 
     <template #utilities>
-      <!-- Banner permanente de cobertura parcial — task 7.10 -->
-      <UAlert
-        color="warning"
-        icon="i-lucide-ban"
-        title="Cobertura parcial — FGTS Digital não integrado"
-        :description="coverage?.coverage_label
-          || (rows[0] ? detailOf(rows[0]).partial_coverage_notice : null)
-          || 'Monitoramento via eventos eSocial. Guia e pagamento do FGTS Digital são Não suportado (sem API pública M2M). Não há automação de portal humano.'"
-        class="w-full"
-        data-testid="fgts-partial-banner"
-      />
-
       <UAlert
         v-if="coverageError"
         color="warning"
@@ -323,37 +293,6 @@ onMounted(() => {
         :title="coverageError"
         class="w-full"
       />
-
-      <UPageCard
-        v-if="coverage"
-        variant="subtle"
-        class="w-full"
-        title="Estados independentes"
-        description="Cada eixo tem situação própria — nunca inferimos «em dia» para guia/pagamento."
-      >
-        <ul class="grid gap-2 text-sm sm:grid-cols-2">
-          <li
-            v-for="(label, key) in coverage.independent_states || {}"
-            :key="key"
-            class="rounded-md bg-elevated/50 px-3 py-2"
-          >
-            <span class="font-medium text-highlighted">{{ key }}</span>
-            <span class="mt-0.5 block text-muted">{{ label }}</span>
-          </li>
-        </ul>
-        <p
-          v-if="coverage.limitations?.length"
-          class="mt-3 text-xs text-muted"
-        >
-          Limitações:
-          {{ formatLimitations(coverage.limitations) }}
-        </p>
-        <p class="mt-2 text-xs text-muted">
-          Portal fallback: {{ coverage.portal_fallback ? 'sim' : 'não' }}
-          · Scraping: {{ coverage.scraping_allowed ? 'sim' : 'não' }}
-          · Declara débito FGTS Digital: {{ coverage.declares_fgts_digital_debt ? 'sim' : 'não' }}
-        </p>
-      </UPageCard>
 
       <UAlert
         v-if="overviewError"
@@ -387,13 +326,6 @@ onMounted(() => {
             v-else
             class="flex flex-col gap-4"
           >
-            <UAlert
-              color="warning"
-              icon="i-lucide-ban"
-              title="Guia e pagamento: Não suportado"
-              description="Sem API pública M2M do FGTS Digital. Não há scraping, CAPTCHA ou portal Gov.br."
-            />
-
             <dl
               v-if="detailStatus"
               class="grid gap-2 text-sm sm:grid-cols-2"
@@ -561,5 +493,5 @@ onMounted(() => {
         </template>
       </USlideover>
     </template>
-  </FiscalModuleTable>
+  </MonitoringModuleTable>
 </template>

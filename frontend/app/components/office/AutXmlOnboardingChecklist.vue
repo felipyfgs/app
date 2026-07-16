@@ -5,27 +5,48 @@
  * Cobertura: NF-e 55 apenas; NFC-e 65 → import XML/ZIP.
  */
 import type { TableColumn } from '@nuxt/ui'
+import type {
+  OfficeAutXmlCoverage,
+  OfficeAutXmlEnrollment,
+  OfficeAutXmlStream
+} from '~/types/api'
+import { laravelPageBatch, usePagedTable } from '~/composables/usePagedTable'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()
 const toast = useToast()
-const { canManageClients } = useDashboard()
+const { canManageClients, sessionEpoch } = useDashboard()
 
-const loading = ref(false)
 const acting = ref<number | null>(null)
-const error = ref<string | null>(null)
 const officeCnpj = ref<string | null>(null)
-const stream = ref<{
-  stream_ready: boolean
-  stream_reason: string | null
-  quiet_hours: number
-  activated_at: string | null
-  ready_at: string | null
-} | null>(null)
-const coverage = ref<Record<string, unknown> | null>(null)
-const rows = ref<Array<Record<string, unknown>>>([])
+const stream = ref<OfficeAutXmlStream | null>(null)
+const coverage = ref<OfficeAutXmlCoverage | null>(null)
 
-const columns: TableColumn<Record<string, unknown>>[] = [
+const table = useTemplateRef('table')
+const feed = usePagedTable<OfficeAutXmlEnrollment>({
+  getKey: row => row.establishment_id,
+  load: async ({ page, signal }) => {
+    const epoch = sessionEpoch.value
+    const response = await api.officeAutXml.overview({ page, per_page: 10 }, { signal })
+    if (epoch === sessionEpoch.value) {
+      officeCnpj.value = response.data.office_cnpj
+      stream.value = response.data.stream
+      coverage.value = response.data.coverage
+    }
+
+    return laravelPageBatch({ data: response.data.enrollments, meta: response.meta })
+  }
+})
+
+const feedTotal = feed.total
+const feedPage = feed.page
+const rows = feed.rows
+const loading = feed.pendingInitial
+const error = computed(() => feed.error.value
+  ? apiErrorMessage(feed.error.value, 'Não foi possível carregar o onboarding autXML.')
+  : null)
+
+const columns: TableColumn<OfficeAutXmlEnrollment>[] = [
   { accessorKey: 'establishment_cnpj', header: 'Estabelecimento' },
   { accessorKey: 'status', header: 'Estado' },
   {
@@ -55,19 +76,17 @@ const streamHint = computed(() => {
 })
 
 async function load() {
-  loading.value = true
-  try {
-    const res = await api.officeAutXml.overview()
-    officeCnpj.value = res.data.office_cnpj
-    stream.value = res.data.stream
-    coverage.value = res.data.coverage
-    rows.value = res.data.enrollments || []
-    error.value = null
-  } catch (caught) {
-    error.value = apiErrorMessage(caught, 'Não foi possível carregar o onboarding autXML.')
-  } finally {
-    loading.value = false
-  }
+  await feed.resetAndLoad()
+}
+
+async function retry() {
+  await feed.retry()
+}
+
+function updateEnrollment(updated: OfficeAutXmlEnrollment) {
+  rows.value = rows.value.map(row =>
+    row.establishment_id === updated.establishment_id ? updated : row
+  )
 }
 
 async function copyOfficeCnpj() {
@@ -98,52 +117,70 @@ function statusLabel(status: string) {
   return map[status] || status
 }
 
-async function enroll(row: Record<string, unknown>) {
+async function enroll(row: OfficeAutXmlEnrollment) {
   if (!canManageClients.value || acting.value) return
+  const epoch = sessionEpoch.value
   const estId = Number(row.establishment_id)
   acting.value = estId
   try {
-    await api.officeAutXml.enroll(estId)
+    const response = await api.officeAutXml.enroll(estId)
+    if (epoch !== sessionEpoch.value) return
+    updateEnrollment(response.data)
     toast.add({ title: 'Enrollment PENDING criado — inclua o CNPJ no ERP do emitente', color: 'success' })
-    await load()
   } catch (caught) {
+    if (epoch !== sessionEpoch.value) return
     toast.add({ title: apiErrorMessage(caught, 'Falha ao enrollar.'), color: 'error' })
   } finally {
-    acting.value = null
+    if (epoch === sessionEpoch.value) acting.value = null
   }
 }
 
-async function confirm(row: Record<string, unknown>) {
+async function confirm(row: OfficeAutXmlEnrollment) {
   if (!canManageClients.value || acting.value || !streamReady.value) return
+  const epoch = sessionEpoch.value
   const id = Number(row.id)
   if (!id) return
   acting.value = id
   try {
-    await api.officeAutXml.confirm(id)
+    const response = await api.officeAutXml.confirm(id)
+    if (epoch !== sessionEpoch.value) return
+    updateEnrollment(response.data)
     toast.add({ title: 'Enrollment confirmado operacionalmente', color: 'success' })
-    await load()
   } catch (caught) {
+    if (epoch !== sessionEpoch.value) return
     toast.add({ title: apiErrorMessage(caught, 'Confirmação bloqueada.'), color: 'error' })
   } finally {
-    acting.value = null
+    if (epoch === sessionEpoch.value) acting.value = null
   }
 }
 
-async function inactivate(row: Record<string, unknown>) {
+async function inactivate(row: OfficeAutXmlEnrollment) {
   if (!canManageClients.value || acting.value) return
+  const epoch = sessionEpoch.value
   const id = Number(row.id)
   if (!id) return
   acting.value = id
   try {
-    await api.officeAutXml.inactivate(id)
+    const response = await api.officeAutXml.inactivate(id)
+    if (epoch !== sessionEpoch.value) return
+    updateEnrollment(response.data)
     toast.add({ title: 'Enrollment inativado', color: 'neutral' })
-    await load()
   } catch (caught) {
+    if (epoch !== sessionEpoch.value) return
     toast.add({ title: apiErrorMessage(caught, 'Falha ao inativar.'), color: 'error' })
   } finally {
-    acting.value = null
+    if (epoch === sessionEpoch.value) acting.value = null
   }
 }
+
+watch(sessionEpoch, () => {
+  acting.value = null
+  officeCnpj.value = null
+  stream.value = null
+  coverage.value = null
+  feed.reset()
+  void feed.resetAndLoad()
+})
 
 onMounted(() => {
   void load()
@@ -155,8 +192,7 @@ onMounted(() => {
     <UAlert
       color="warning"
       icon="i-lucide-info"
-      title="autXML não é retroativo · cobertura NF-e 55"
-      description="Inclua o CNPJ completo do escritório em autXML no ERP do emitente antes da autorização. Novo usuário distNSU não recebe NSU retroativo. NFC-e 65 e histórico/lacunas: import XML/ZIP."
+      title="autXML cobre NF-e 55 e não é retroativo"
     />
 
     <UPageCard variant="subtle">
@@ -193,17 +229,15 @@ onMounted(() => {
       v-if="streamHint"
       color="warning"
       icon="i-lucide-clock"
-      title="Confirmação operacional bloqueada"
-      :description="streamHint"
+      :title="streamHint"
     />
 
     <UAlert
       v-if="error"
       color="error"
       icon="i-lucide-wifi-off"
-      title="Onboarding indisponível"
-      :description="error"
-      :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
+      :title="error"
+      :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: retry }]"
     />
 
     <div
@@ -218,6 +252,7 @@ onMounted(() => {
 
     <UTable
       v-else-if="rows.length"
+      ref="table"
       data-testid="autxml-enrollment-table"
       :data="rows"
       :columns="columns"
@@ -301,6 +336,13 @@ onMounted(() => {
       icon="i-lucide-building-2"
       title="Nenhum estabelecimento ativo"
       description="Cadastre clientes/estabelecimentos para montar o checklist autXML."
+    />
+
+    <ShellTableFooter
+      :total="feedTotal"
+      :page="feedPage"
+      :items-per-page="10"
+      @update:page="(p) => feed.setPage(p)"
     />
   </div>
 </template>

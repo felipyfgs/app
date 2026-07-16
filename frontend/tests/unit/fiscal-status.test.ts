@@ -61,6 +61,15 @@ describe('fiscal-status vocabulary (15.8)', () => {
     const meta = fiscalStatusMeta('SOMETHING_NEW')
     expect(meta.code).toBe('SOMETHING_NEW')
     expect(meta.color).toBe('neutral')
+    // Label humanizado (não código cru UPPERCASE na UI)
+    expect(meta.label).toBe('Something New')
+  })
+
+  it('aliases de pagamento/emissão em pt-BR', () => {
+    expect(fiscalStatusLabel('CONFIRMED')).toBe('Confirmado')
+    expect(fiscalStatusLabel('NOT_CONFIRMED')).toBe('Sem confirmação')
+    expect(fiscalStatusLabel('TRANSMITTED')).toBe('Transmitido')
+    expect(fiscalStatusLabel('REJECTED')).toBe('Rejeitado')
   })
 
   it('coverageMeta e dataOriginMeta (6.6 / 6.10)', () => {

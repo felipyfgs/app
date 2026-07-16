@@ -22,7 +22,12 @@ Usar ao finalizar qualquer página/componente derivado do template.
 - [ ] Estado vazio com ícone/texto (como empty do inbox)
 - [ ] Erro de rede/API com toast ou banner; não engolir falha
 - [ ] 422 mapeado em `UFormField` quando formulário
-- [ ] Paginação coerente com API (server-side se a API for paginada)
+- [ ] Lista grande usa blocos server-side com auto-load e indicador transitório; sem footer, `UPagination`, `Carregar mais` ou “Fim da lista”
+- [ ] Mudança de filtro/sorting/tenant reseta o feed e ignora resposta obsoleta
+- [ ] Sorting visível é global/manual no servidor; ordem fixa não simula sorting local
+- [ ] Header ordenável anuncia coluna, direção atual e próxima ação no nome acessível
+- [ ] Checkbox existe só com ação em massa real e `getRowId` estável
+- [ ] Virtualização só em linhas previsíveis dentro de contêiner com altura controlada
 
 ## Auth e segurança
 

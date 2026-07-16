@@ -25,8 +25,6 @@ const {
   rows,
   counters,
   totalClients,
-  dataOrigin,
-  isSynthetic,
   lastValidAt,
   refresh,
   selectKpi
@@ -199,10 +197,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <FiscalModuleTable
+  <MonitoringModuleTable
     title="Parcelamentos"
     panel-id="monitoring-installments"
-    description="Modalidades, pedidos, saldo, parcelas, atrasos e guias relacionadas — detalhe navegável por pedido."
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -216,12 +213,9 @@ onMounted(() => {
     :situation="situation"
     :total-clients="totalClients"
     :counters="counters"
-    :data-origin="dataOrigin"
-    :is-synthetic="isSynthetic"
     :last-good-at="lastValidAt"
     show-client-picker
     empty-title="Nenhum parcelamento na carteira"
-    empty-description="A API do read model não retornou clientes com parcelamentos. Nada foi inventado."
     @update:page="page = $event"
     @update:q="q = $event"
     @update:situation="situation = $event"
@@ -230,7 +224,7 @@ onMounted(() => {
     @kpi-select="selectKpi"
   >
     <template #navbar-actions>
-      <FiscalMonitoringPortfolioActions
+      <MonitoringPortfolioActions
         module-key="installments"
         :client-id="clientId"
         :situation="situation"
@@ -360,5 +354,5 @@ onMounted(() => {
         </template>
       </USlideover>
     </template>
-  </FiscalModuleTable>
+  </MonitoringModuleTable>
 </template>

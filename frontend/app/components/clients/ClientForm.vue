@@ -2,7 +2,7 @@
 import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Client, CnpjLookupResult } from '~/types/api'
-import { formatSourceDate, registrationStatusLabel } from '~/utils/registrationLabels'
+import { registrationStatusLabel } from '~/utils/registrationLabels'
 
 const props = defineProps<{
   /** null/undefined = criar; Client = editar o mesmo formulário */
@@ -429,9 +429,6 @@ defineExpose({ reset, clearSensitive, saving })
         variant="subtle"
         icon="i-lucide-link"
         title="Filial vinculada à matriz"
-        :description="matrixLabel
-          ? `Este cadastro será um cliente próprio e aparecerá na aba Estabelecimentos de ${matrixLabel}.`
-          : 'Este cadastro será um cliente próprio vinculado à matriz selecionada.'"
       />
 
       <!-- Identidade / CNPJ -->
@@ -487,8 +484,7 @@ defineExpose({ reset, clearSensitive, saving })
         color="success"
         variant="subtle"
         icon="i-lucide-database-zap"
-        title="Dados sugeridos pela consulta"
-        :description="`${registrationStatusLabel(preview.establishment.registration_status)} · fonte ${preview.source} · ${formatSourceDate(preview.source_updated_at)}. Revise os nomes.`"
+        :title="`Dados sugeridos: ${registrationStatusLabel(preview.establishment.registration_status)}`"
         data-testid="cnpj-lookup-preview"
       />
       <UAlert
@@ -496,8 +492,7 @@ defineExpose({ reset, clearSensitive, saving })
         color="warning"
         variant="subtle"
         icon="i-lucide-pencil-line"
-        title="Preenchimento manual"
-        :description="lookupWarning"
+        :title="lookupWarning"
       />
       <UAlert
         v-if="existingClientId && !isEdit"
@@ -505,7 +500,6 @@ defineExpose({ reset, clearSensitive, saving })
         variant="subtle"
         icon="i-lucide-link"
         title="Cliente já existe"
-        description="Abra o cadastro existente para continuar."
       >
         <template #actions>
           <UButton

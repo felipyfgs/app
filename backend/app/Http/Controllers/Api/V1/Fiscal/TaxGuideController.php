@@ -47,6 +47,8 @@ class TaxGuideController extends Controller
             $perPage,
             is_numeric($clientId) ? (int) $clientId : null,
             is_string($paymentStatus) ? $paymentStatus : null,
+            $request->string('sort')->toString(),
+            $request->string('direction')->lower()->toString(),
         );
         $page->getCollection()->transform(fn ($g) => $g->toPublicArray());
 

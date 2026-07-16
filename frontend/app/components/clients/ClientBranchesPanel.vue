@@ -77,7 +77,6 @@ function openClient(id: number) {
       variant="subtle"
       icon="i-lucide-link"
       title="Este cliente é filial"
-      :description="`Vinculado à matriz ${client.matrix.legal_name || client.matrix.name} (${client.matrix.cnpj || client.matrix.root_cnpj}).`"
     >
       <template #actions>
         <UButton
@@ -220,7 +219,7 @@ function openClient(id: number) {
           v-else
           icon="i-lucide-git-branch"
           title="Nenhuma filial vinculada"
-          description="Cadastre a filial como cliente próprio e vincule a esta matriz. Ela terá certificado e sincronização independentes."
+          description="Cadastre uma filial vinculada a esta matriz."
         >
           <UButton
             v-if="canManageClients"
@@ -240,7 +239,6 @@ function openClient(id: number) {
       variant="subtle"
       icon="i-lucide-info"
       title="Filiais não se aninham"
-      description="Somente o cadastro da matriz lista filiais. Para outra filial da mesma raiz, cadastre a partir da matriz."
     />
 
     <ClientsClientFormModal

@@ -218,14 +218,19 @@ onBeforeUnmount(clearSensitive)
 </script>
 
 <template>
-  <div class="space-y-6 lg:space-y-8">
+  <!--
+    Padrão members/index do template: UPageCard naked horizontal (título) + cards subtle.
+  -->
+  <div>
     <UPageCard
+      title="Onboarding Integra Contador"
+      description="Autor do Pedido, Termo assinado e token do procurador — sem recuperação de material sensível."
       variant="naked"
       orientation="horizontal"
-      title="Onboarding Integra Contador"
-      description="Autor do Pedido, Termo e saúde sanitizada. Credenciais SERPRO da plataforma nunca são expostas ao tenant."
+      class="mb-4"
     />
 
+    <div class="flex flex-col gap-4 sm:gap-6 lg:gap-12">
     <UAlert
       v-if="loadError"
       color="error"
@@ -557,5 +562,6 @@ onBeforeUnmount(clearSensitive)
         </UPageCard>
       </div>
     </template>
+    </div>
   </div>
 </template>

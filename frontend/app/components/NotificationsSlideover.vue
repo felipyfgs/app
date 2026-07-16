@@ -196,8 +196,7 @@ watch(sessionEpoch, () => {
         <UAlert
           color="error"
           icon="i-lucide-circle-x"
-          title="Falha ao consultar alertas"
-          :description="errorMessage || 'Tente novamente em instantes.'"
+          :title="errorMessage || 'Falha ao consultar alertas'"
         />
         <UButton
           icon="i-lucide-refresh-cw"
@@ -214,8 +213,7 @@ watch(sessionEpoch, () => {
           color="warning"
           icon="i-lucide-triangle-alert"
           class="mb-4"
-          title="Carga parcial"
-          :description="errorMessage"
+          :title="errorMessage"
           :actions="[{
             label: 'Tentar novamente',
             color: 'neutral',

@@ -27,8 +27,6 @@ const loading = ref(false)
 const inboxLoading = ref(false)
 const refreshError = ref<string | null>(null)
 
-const officeLabel = computed(() => me.value?.office?.name || null)
-
 const actionItems = computed<DropdownMenuItem[][]>(() => [[
   ...quickActions(me.value).map(action => ({
     label: action.label,
@@ -48,27 +46,6 @@ const alertCount = computed(() => {
     return summary.value.inbox_total
   }
   return (summary.value.sync_blocked || 0) + (summary.value.sync_failures_24h || 0)
-})
-
-const contextItems = computed(() => {
-  const items: Array<{ key: string, label: string, value: string, icon?: string }> = []
-  if (officeLabel.value) {
-    items.push({
-      key: 'office',
-      label: 'Escritório',
-      value: officeLabel.value,
-      icon: 'i-lucide-building-2'
-    })
-  }
-  if (lastValidAt.value) {
-    items.push({
-      key: 'updated',
-      label: 'Atualizado',
-      value: formatDateTime(lastValidAt.value),
-      icon: 'i-lucide-clock'
-    })
-  }
-  return items
 })
 
 async function load() {
@@ -125,11 +102,14 @@ watch(sessionEpoch, () => {
 </script>
 
 <template>
-  <DashboardListShell
-    panel-id="home"
-    title="Dashboard"
-  >
-    <template #navbar-right>
+  <UDashboardPanel id="home">
+  <template #header>
+    <UDashboardNavbar title="Dashboard" data-testid="page-navbar">
+      <template #leading>
+        <UDashboardSidebarCollapse />
+      </template>
+      <template #right>
+
       <UTooltip
             text="Alertas"
             :shortcuts="['N']"
@@ -164,138 +144,90 @@ watch(sessionEpoch, () => {
               aria-label="Abrir ações rápidas"
             />
           </UDropdownMenu>
-    </template>
-    <template #toolbar>
+      </template>
+    </UDashboardNavbar>
+
       <UDashboardToolbar data-testid="page-toolbar">
         <template #left>
           <UButton
             color="neutral"
             variant="ghost"
             icon="i-lucide-refresh-cw"
-            label="Atualizar resumo"
+            :label="undefined"
             :loading="loading"
+            square
             class="-ms-1"
+            aria-label="Atualizar"
             @click="load"
           />
-          <OperationalContext
-            :items="contextItems"
-            density="compact"
-            class="hidden sm:flex"
-          />
         </template>
-
         <template #right>
           <span
             v-if="lastValidAt"
-            class="text-xs text-muted"
+            class="hidden text-xs text-muted sm:inline"
           >
-            Última atualização válida: {{ formatDateTime(lastValidAt) }}
+            {{ formatDateTime(lastValidAt) }}
           </span>
         </template>
       </UDashboardToolbar>
-    </template>
-      <!-- Área: Operações / infraestrutura (cursores, certs, backup) -->
-      <section
-        aria-labelledby="home-ops-infra-heading"
-        class="space-y-2"
-      >
-        <h2
-          id="home-ops-infra-heading"
-          class="sr-only"
-        >
-          Operações e infraestrutura
-        </h2>
+  </template>
+
+  <template #body>
+      <div class="flex flex-col gap-4 sm:gap-6">
         <HomeStats
           :summary="summary"
           :loading="loading"
         />
-      </section>
 
-      <!-- Área: Trabalho operacional -->
-      <div class="px-4 pb-2 pt-6 lg:px-6">
         <HomeWorkKpisBlock />
-      </div>
 
-      <!-- Área: Monitoramento fiscal (deep-links; sem inventar métricas) -->
-      <section
-        class="px-4 pb-2 pt-4 lg:px-6"
-        aria-labelledby="home-fiscal-heading"
-      >
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2
-              id="home-fiscal-heading"
-              class="text-base font-semibold text-highlighted"
-            >
-              Monitoramento fiscal
-            </h2>
-            <p class="text-xs text-muted">
-              Atalhos para módulos com dados reais — sem somar indicadores distintos
-            </p>
-          </div>
+        <!-- Atalhos compactos (sem texto instrutivo) -->
+        <div class="flex min-w-0 flex-wrap gap-1.5">
           <UButton
-            size="sm"
-            color="neutral"
-            variant="ghost"
             to="/monitoring"
-            label="Dashboard fiscal"
-            trailing-icon="i-lucide-arrow-right"
+            size="xs"
+            color="neutral"
+            variant="soft"
+            icon="i-lucide-layout-dashboard"
+            label="Fiscal"
           />
-        </div>
-        <div class="flex flex-wrap gap-2">
           <UButton
             to="/monitoring/simples-mei"
-            size="sm"
+            size="xs"
             color="neutral"
-            variant="subtle"
-            icon="i-lucide-badge-percent"
-            label="Simples / MEI"
+            variant="ghost"
+            label="Simples"
           />
           <UButton
             to="/monitoring/dctfweb"
-            size="sm"
+            size="xs"
             color="neutral"
-            variant="subtle"
-            icon="i-lucide-file-input"
+            variant="ghost"
             label="DCTFWeb"
           />
           <UButton
-            to="/monitoring/sitfis"
-            size="sm"
-            color="neutral"
-            variant="subtle"
-            icon="i-lucide-clipboard-check"
-            label="Situação fiscal"
-          />
-          <UButton
             to="/monitoring/mailbox"
-            size="sm"
+            size="xs"
             color="neutral"
-            variant="subtle"
-            icon="i-lucide-mail"
+            variant="ghost"
             label="Caixa postal"
           />
           <UButton
             to="/monitoring/guides"
-            size="sm"
+            size="xs"
             color="neutral"
-            variant="subtle"
-            icon="i-lucide-receipt"
+            variant="ghost"
             label="Guias"
           />
           <UButton
-            to="/monitoring/fgts"
-            size="sm"
+            to="/monitoring/sitfis"
+            size="xs"
             color="neutral"
-            variant="subtle"
-            icon="i-lucide-landmark"
-            label="FGTS (parcial)"
+            variant="ghost"
+            label="SITFIS"
           />
         </div>
-      </section>
 
-      <!-- Área: Atenção operacional (inbox / backup) -->
-      <div class="pt-4">
         <HomeOperations
           :summary="summary"
           :loading="loading"
@@ -304,11 +236,12 @@ watch(sessionEpoch, () => {
           :error="refreshError"
           @retry="load"
         />
-      </div>
 
-      <HomeTotals
-        :summary="summary"
-        :loading="loading"
-      />
-  </DashboardListShell>
+        <HomeTotals
+          :summary="summary"
+          :loading="loading"
+        />
+      </div>
+  </template>
+</UDashboardPanel>
 </template>

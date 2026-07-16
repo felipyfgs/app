@@ -150,6 +150,8 @@ Thumbs.db
 /image.png
 /image copy.png
 /pw-*.png
+# PNGs acidentais na raiz (screenshots de sessão / debug visual)
+/*.png
 frontend/pw-clients.mjs
 frontend/test-results/
 frontend/playwright-report/

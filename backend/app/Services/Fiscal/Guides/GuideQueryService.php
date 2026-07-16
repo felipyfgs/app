@@ -15,12 +15,27 @@ final class GuideQueryService
         int $perPage = 50,
         ?int $clientId = null,
         ?string $paymentStatus = null,
+        string $sort = '',
+        string $direction = '',
     ): LengthAwarePaginator {
+        $sortColumn = match ($sort) {
+            'client_id' => 'client_id',
+            'system_code' => 'system_code',
+            'competence' => 'competence_period_key',
+            'amount' => 'amount_cents',
+            'due_at' => 'due_at',
+            'payment_status' => 'payment_status',
+            default => 'id',
+        };
+        $sortDirection = strtolower($direction) === 'asc' ? 'asc' : 'desc';
         $q = TaxGuide::query()
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->with(['currentVersion' => fn ($q) => $q->withoutGlobalScopes()])
-            ->orderByDesc('id');
+            ->orderBy($sortColumn, $sortDirection);
+        if ($sortColumn !== 'id') {
+            $q->orderBy('id', $sortDirection);
+        }
 
         if ($clientId !== null) {
             $q->where('client_id', $clientId);

@@ -13,7 +13,7 @@ const MONITORING_ROUTES = [
   { path: '/monitoring/mailbox', heading: 'Caixas Postais', slug: 'mailbox', zones: ['navbar', 'toolbar', 'list'] as const },
   { path: '/monitoring/declarations', heading: 'Declarações', slug: 'declarations', zones: ['navbar', 'toolbar', 'table'] as const },
   { path: '/monitoring/guides', heading: 'Guias', slug: 'guides', zones: ['navbar', 'toolbar', 'table'] as const },
-  { path: '/monitoring/fgts', heading: 'FGTS (parcial eSocial)', slug: 'fgts', zones: ['navbar', 'toolbar', 'banner', 'table'] as const },
+  { path: '/monitoring/fgts', heading: 'FGTS (parcial eSocial)', slug: 'fgts', zones: ['navbar', 'toolbar', 'table'] as const },
   { path: '/monitoring/clients/1', heading: 'Cliente Demonstração Segura', slug: 'client-detail', zones: ['panel'] as const }
 ] as const
 
@@ -128,6 +128,50 @@ test.describe('monitoramento — overflow 360px', () => {
     })
   }
 
+  test('dctfweb mantém título, tabs e ações acessíveis no mobile', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'minimum-360', 'Inspeção dedicada ao projeto minimum-360.')
+    await page.goto('/monitoring/dctfweb')
+
+    await expect(page.getByRole('heading', { name: 'DCTFWeb / MIT', exact: true })).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(page.getByTestId('monitoring-module-nav')).toBeVisible()
+    await expect(page.getByTestId('portfolio-actions-mobile')).toBeVisible()
+    await expect(page.getByTestId('action-add-client')).toBeHidden()
+
+    const search = page.getByTestId('fiscal-filter-q')
+    const searchBox = await search.boundingBox()
+    expect(searchBox?.width).toBeGreaterThanOrEqual(300)
+
+    const filtersToggle = page.getByTestId('mobile-filters-toggle')
+    await expect(filtersToggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('fiscal-filter-situation')).toBeHidden()
+    await filtersToggle.click()
+    await expect(filtersToggle).toHaveAttribute('aria-expanded', 'true')
+
+    const stackedFilters = [
+      page.getByTestId('fiscal-filter-situation'),
+      page.getByTestId('fiscal-filter-competence')
+    ]
+    for (const filter of stackedFilters) {
+      await expect(filter).toBeVisible()
+      const box = await filter.boundingBox()
+      expect(box?.width).toBeGreaterThanOrEqual(300)
+    }
+
+    const controlsFitViewport = await page.getByTestId('page-toolbar').evaluate((toolbar) => {
+      const viewportWidth = document.documentElement.clientWidth
+      return [...toolbar.querySelectorAll<HTMLElement>('input, button')]
+        .filter(element => element.getClientRects().length > 0)
+        .every((element) => {
+          const rect = element.getBoundingClientRect()
+          return rect.left >= 0 && rect.right <= viewportWidth + 1
+        })
+    })
+    expect(controlsFitViewport).toBe(true)
+    await noDocumentOverflow(page)
+  })
+
   test('mailbox detalhe sem overflow horizontal', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'minimum-360', 'Inspeção dedicada ao projeto minimum-360.')
     await page.goto(`/monitoring/mailbox/${MAILBOX_MESSAGE_ID}`)
@@ -136,5 +180,23 @@ test.describe('monitoramento — overflow 360px', () => {
     })
     await stabilizeVisualPage(page)
     await noDocumentOverflow(page)
+  })
+})
+
+test.describe('monitoramento — filtros responsivos', () => {
+  test.beforeEach(async ({ page }) => {
+    await installApiFixtures(page, 'ADMIN')
+  })
+
+  test('dctfweb mantém filtros abertos no desktop', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop-1440', 'Inspeção dedicada ao desktop.')
+    await page.goto('/monitoring/dctfweb')
+
+    await expect(page.getByRole('heading', { name: 'DCTFWeb / MIT', exact: true })).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(page.getByTestId('mobile-filters-toggle')).toBeHidden()
+    await expect(page.getByTestId('fiscal-filter-situation')).toBeVisible()
+    await expect(page.getByTestId('fiscal-filter-competence')).toBeVisible()
   })
 })

@@ -87,8 +87,7 @@ Produção vazia permanece vazia; erro de API não ativa fallback demo.
 
 Cobertura **parcial** via eSocial (S-1299 / S-5003).
 
-- `guide_status` e `payment_status` = `UNSUPPORTED` (sem API pública FGTS Digital M2M)
-- Banner permanente na UI (`fgts-partial-banner`)
+- `guide_status` e `payment_status` = `UNSUPPORTED` (sem API pública FGTS Digital M2M) — refletido nos estados da tabela/detalhe, sem banner permanente na UI
 - Sem scraping, CAPTCHA, portal ou Gov.br
 
 ## Diagnóstico

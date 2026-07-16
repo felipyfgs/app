@@ -1,3 +1,3 @@
 <template>
-  <NotesWorkspace initial-view="document" />
+  <DocsWorkspace initial-view="document" />
 </template>

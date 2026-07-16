@@ -73,7 +73,6 @@ const coverageRows = computed(() =>
       pending: o?.counters?.pending ?? null,
       error: o?.counters?.error ?? null,
       origin: o?.data_origin ?? null,
-      isSynthetic: o?.is_synthetic ?? false,
       loadError: m.error || null
     }
   })
@@ -202,19 +201,22 @@ onMounted(load)
 </script>
 
 <template>
-  <DashboardListShell
-    panel-id="monitoring-dashboard"
-    title="Dashboard Fiscal"
-  >
-    <template #navbar-right>
-      <span
+  <UDashboardPanel id="monitoring-dashboard">
+    <template #header>
+      <UDashboardNavbar title="Dashboard Fiscal" data-testid="page-navbar">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+        <template #right>
+          <span
             v-if="lastValidAt"
             class="hidden text-xs text-muted sm:inline"
           >
             Atualizado: {{ formatDateTime(lastValidAt) }}
           </span>
-    </template>
-    <template #toolbar>
+        </template>
+      </UDashboardNavbar>
+
       <UDashboardToolbar data-testid="page-toolbar">
         <template #left>
           <MonitoringModuleNav active="dashboard" />
@@ -231,6 +233,8 @@ onMounted(load)
         </template>
       </UDashboardToolbar>
     </template>
+
+    <template #body>
       <UAlert
         v-if="loadError"
         color="error"
@@ -253,8 +257,7 @@ onMounted(load)
         v-else-if="partialErrors.length"
         color="warning"
         icon="i-lucide-triangle-alert"
-        title="Falha parcial ao carregar o dashboard"
-        :description="`Seções com erro: ${partialErrors.join(', ')}. Os demais dados da API permanecem visíveis.`"
+        :title="`Falha parcial: ${partialErrors.join(', ')}`"
         class="mb-4"
       >
         <template #actions>
@@ -267,12 +270,6 @@ onMounted(load)
           />
         </template>
       </UAlert>
-
-      <FiscalDemoBanner
-        v-if="moduleOverviews.some(m => m.overview?.is_synthetic)"
-        origin="DEMO"
-        :is-synthetic="true"
-      />
 
       <UPageGrid
         data-testid="fiscal-kpis"
@@ -309,7 +306,6 @@ onMounted(load)
 
       <UPageCard
         title="Cobertura por módulo"
-        description="Overview do read model — contadores no escopo completo da carteira."
         variant="subtle"
         class="mb-4 lg:mb-6"
       >
@@ -375,7 +371,6 @@ onMounted(load)
       <div class="grid gap-4 lg:grid-cols-2 lg:gap-6">
         <UPageCard
           title="Carteira em atenção"
-          description="Findings e pendências retornados pela API."
           variant="subtle"
         >
           <div
@@ -417,7 +412,6 @@ onMounted(load)
 
         <UPageCard
           title="Últimas execuções"
-          description="Runs do núcleo de monitoramento."
           variant="subtle"
         >
           <div
@@ -477,5 +471,6 @@ onMounted(load)
           :label="FISCAL_MODULE_LABELS[key]"
         />
       </div>
-  </DashboardListShell>
+    </template>
+  </UDashboardPanel>
 </template>

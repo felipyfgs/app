@@ -124,6 +124,55 @@ class SerproUsageApiTest extends TestCase
         $this->assertSame($entry->estimated_cost_micros, $entry->fresh()->estimated_cost_micros);
     }
 
+    public function test_lancamentos_ordenam_globalmente_e_mantem_isolamento(): void
+    {
+        $office = Office::factory()->create();
+        $otherOffice = Office::factory()->create();
+        $user = User::factory()->forOffice($office, OfficeRole::Admin)->withTwoFactorConfirmed()->create();
+        $ledger = app(UsageLedgerService::class);
+
+        $entries = collect();
+        foreach ([1, 1, 3] as $index => $quantity) {
+            $reserved = $ledger->reserve(new UsageReserveRequest(
+                officeId: $office->id,
+                idempotencyKey: 'sort-'.($index + 1),
+                systemCode: 'INTEGRA_CONTADOR',
+                serviceCode: 'SITFIS',
+                operationCode: 'CONSULTAR_SITUACAO',
+                quantity: $quantity,
+            ));
+            $entries->push($ledger->finalize($reserved->reservation, SerproUsageResult::Success));
+        }
+
+        $other = $ledger->reserve(new UsageReserveRequest(
+            officeId: $otherOffice->id,
+            idempotencyKey: 'sort-other',
+            systemCode: 'INTEGRA_CONTADOR',
+            serviceCode: 'SITFIS',
+            operationCode: 'CONSULTAR_SITUACAO',
+            quantity: 1,
+        ));
+        $ledger->finalize($other->reservation, SerproUsageResult::Success);
+
+        $this->actingAs($user);
+
+        $asc = $this->getJson('/api/v1/office/serpro-usage/entries?per_page=10&sort=quantity&direction=asc')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame(
+            [$entries[0]->id, $entries[1]->id, $entries[2]->id],
+            collect($asc)->pluck('id')->all(),
+        );
+
+        $desc = $this->getJson('/api/v1/office/serpro-usage/entries?per_page=10&sort=quantity&direction=desc')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame(
+            [$entries[2]->id, $entries[1]->id, $entries[0]->id],
+            collect($desc)->pluck('id')->all(),
+        );
+    }
+
     public function test_viewer_pode_ler_consumo_do_office(): void
     {
         $office = Office::factory()->create();

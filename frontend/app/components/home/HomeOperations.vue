@@ -44,24 +44,34 @@ function itemLink(item: InboxItem): string {
 </script>
 
 <template>
-  <UCard data-testid="home-operations" class="shrink-0" :ui="{ body: 'pt-3!' }">
+  <UPageCard
+    data-testid="home-operations"
+    class="min-w-0 shrink-0 overflow-hidden"
+    variant="subtle"
+    title="Atenção"
+    :ui="{
+      container: 'min-w-0 gap-y-2 p-3 sm:p-4',
+      title: 'text-xs font-normal uppercase text-muted truncate'
+    }"
+  >
     <template #header>
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="text-xs text-muted uppercase mb-1.5">
-            Atenção operacional
+      <div class="flex min-w-0 items-center justify-between gap-2">
+        <div class="min-w-0">
+          <p class="text-xs uppercase text-muted">
+            Atenção
           </p>
-          <p class="text-3xl text-highlighted font-semibold">
-            {{ loading && !summary ? '---' : attentionTotal }}
+          <p class="text-2xl font-semibold tabular-nums text-highlighted sm:text-3xl">
+            {{ loading && !summary ? '—' : attentionTotal }}
           </p>
         </div>
         <UButton
           to="/health"
           color="neutral"
           variant="ghost"
-          size="sm"
-          label="Ver todos"
-          trailing-icon="i-lucide-arrow-right"
+          size="xs"
+          icon="i-lucide-arrow-right"
+          square
+          aria-label="Ver saúde"
         />
       </div>
     </template>
@@ -71,8 +81,7 @@ function itemLink(item: InboxItem): string {
       color="warning"
       variant="subtle"
       icon="i-lucide-wifi-off"
-      title="Falha ao atualizar"
-      :description="error"
+      :title="error"
       class="mb-4"
       :actions="[{
         label: 'Tentar novamente',
@@ -87,22 +96,20 @@ function itemLink(item: InboxItem): string {
       color="error"
       variant="subtle"
       icon="i-lucide-database-zap"
-      title="Nenhum backup bem-sucedido"
-      description="A instância ainda não registrou backup SUCCESS. Execute o backup operacional antes do piloto com dados reais."
-      class="mb-4"
-      :actions="[{ label: 'Ver saúde', to: '/health', color: 'neutral', variant: 'outline' }]"
+      title="Nenhum backup operacional concluído"
+      class="mb-3"
+      :actions="[{ label: 'Saúde', to: '/health', color: 'neutral', variant: 'ghost' }]"
     />
     <UAlert
       v-else-if="backup?.stale"
       color="warning"
       variant="subtle"
       icon="i-lucide-database-backup"
-      title="Backup da instância atrasado"
-      :description="backup.last_success_at
-        ? `Último sucesso: ${formatDateTime(backup.last_success_at)}. Mais de 24 horas sem backup OK.`
-        : 'Mais de 24 horas sem backup SUCCESS registrado.'"
-      class="mb-4"
-      :actions="[{ label: 'Ver saúde', to: '/health', color: 'neutral', variant: 'outline' }]"
+      :title="backup.last_success_at
+        ? `Último backup: ${formatDateTime(backup.last_success_at)} (>24h).`
+        : 'Mais de 24h sem backup OK.'"
+      class="mb-3"
+      :actions="[{ label: 'Saúde', to: '/health', color: 'neutral', variant: 'ghost' }]"
     />
 
     <div v-if="topItems.length" class="space-y-2 mb-4">
@@ -137,44 +144,39 @@ function itemLink(item: InboxItem): string {
         color="error"
         variant="subtle"
         icon="i-lucide-circle-x"
-        title="Falhas de sincronização nas últimas 24 horas"
-        :description="`${summary.sync_failures_24h} execução(ões) exigem revisão do histórico.`"
-        :actions="[{ label: 'Ver histórico', to: '/syncs', color: 'neutral', variant: 'outline' }]"
+        :title="`Falhas de sincronização (24h): ${summary.sync_failures_24h}`"
+        :actions="[{ label: 'Syncs', to: '/syncs', color: 'neutral', variant: 'ghost' }]"
       />
       <UAlert
         v-if="summary.sync_blocked"
         color="error"
         variant="subtle"
         icon="i-lucide-ban"
-        title="Cursores bloqueados"
-        :description="`${summary.sync_blocked} estabelecimento(s) com cursor bloqueado após falhas de decodificação.`"
-        :actions="[{ label: 'Ver sincronizações', to: '/syncs', color: 'neutral', variant: 'outline' }]"
+        :title="`Cursores bloqueados: ${summary.sync_blocked}`"
+        :actions="[{ label: 'Syncs', to: '/syncs', color: 'neutral', variant: 'ghost' }]"
       />
       <UAlert
         v-if="summary.credentials_expiring_30d"
         color="warning"
         variant="subtle"
         icon="i-lucide-badge-alert"
-        title="Certificados próximos do vencimento"
-        :description="`${summary.credentials_expiring_30d} certificado(s) vencem em até 30 dias.`"
-        :actions="[{ label: 'Ver clientes', to: '/clients', color: 'neutral', variant: 'outline' }]"
+        :title="`Certificados A1 a vencer (30d): ${summary.credentials_expiring_30d}`"
+        :actions="[{ label: 'Clientes', to: '/clients', color: 'neutral', variant: 'ghost' }]"
       />
       <UAlert
         v-if="summary.exports_pending"
         color="primary"
         variant="subtle"
         icon="i-lucide-loader-circle"
-        title="Exportações em processamento"
-        :description="`${summary.exports_pending} solicitação(ões) estão na fila.`"
-        :actions="[{ label: 'Acompanhar', to: '/exports', color: 'neutral', variant: 'outline' }]"
+        :title="`Exportações na fila: ${summary.exports_pending}`"
+        :actions="[{ label: 'Export', to: '/exports', color: 'neutral', variant: 'ghost' }]"
       />
       <UAlert
         v-if="attentionTotal === 0 && !backup?.stale && !backup?.never"
         color="success"
         variant="subtle"
         icon="i-lucide-circle-check"
-        title="Operação sem alertas críticos"
-        description="Nenhuma falha recente, cursor bloqueado, certificado ou backup exigindo atenção."
+        title="Sem alertas críticos"
         class="sm:col-span-2"
       />
     </div>
@@ -182,8 +184,7 @@ function itemLink(item: InboxItem): string {
     <UEmpty
       v-else-if="!loading && error"
       icon="i-lucide-cloud-off"
-      title="Resumo indisponível"
-      :description="error"
+      :title="error"
     >
       <UButton
         color="neutral"
@@ -201,5 +202,5 @@ function itemLink(item: InboxItem): string {
     >
       <USkeleton v-for="index in 4" :key="index" class="h-24 w-full" />
     </div>
-  </UCard>
+  </UPageCard>
 </template>

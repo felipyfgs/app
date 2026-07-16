@@ -14,7 +14,14 @@ test.describe('superfície pública e shell', () => {
     const body = await page.locator('body').innerText()
     expect(body).not.toMatch(/BEGIN (RSA |EC )?PRIVATE KEY/)
     expect(body).not.toMatch(/<\?xml[\s\S]*InfNFSe/)
-    expect(body.toLowerCase()).not.toMatch(/portal do (cliente|contribuinte)/)
+    // Copy legítimo: "não portal do contribuinte". Falha só se houver oferta positiva.
+    const lower = body.toLowerCase()
+    const portalMentions = [...lower.matchAll(/\bportal do (cliente|contribuinte)\b/g)]
+    for (const match of portalMentions) {
+      const idx = match.index ?? 0
+      const window = lower.slice(Math.max(0, idx - 24), idx)
+      expect(window).toMatch(/\bn[aã]o\b|\bnunca\b|\bsem\b/)
+    }
   })
 
   test('rotas autenticadas redirecionam para login', async ({ page }) => {

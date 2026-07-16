@@ -3,7 +3,6 @@
 namespace Tests\Feature\Work;
 
 use App\Enums\OfficeRole;
-use App\Enums\PlatformRole;
 use App\Enums\Work\DueRuleType;
 use App\Enums\Work\TaskStatus;
 use App\Models\Client;
@@ -11,7 +10,6 @@ use App\Models\Office;
 use App\Models\OfficeMembership;
 use App\Models\OperationalProcess;
 use App\Models\OperationalTask;
-use App\Models\PlatformMembership;
 use App\Models\ProcessTemplate;
 use App\Models\ProcessTemplateTask;
 use App\Models\User;
@@ -21,6 +19,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\InteractsWithSpaAuth;
+use Tests\Support\ApiSecretScanner;
 use Tests\TestCase;
 
 class OperationalWorkCoreTest extends TestCase
@@ -293,6 +292,51 @@ class OperationalWorkCoreTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_busca_de_processos_e_modelos_respeita_o_contrato_da_ui(): void
+    {
+        $this->clientA->forceFill(['legal_name' => 'Cliente Agulha'])->save();
+        OperationalProcess::factory()->create([
+            'office_id' => $this->officeA->id,
+            'client_id' => $this->clientA->id,
+            'title' => 'Rotina mensal',
+        ]);
+        OperationalProcess::factory()->create([
+            'office_id' => $this->officeA->id,
+            'client_id' => $this->clientA->id,
+            'title' => 'Processo Farol',
+        ]);
+        OperationalProcess::factory()->create([
+            'office_id' => $this->officeB->id,
+            'client_id' => $this->clientBSameCnpj->id,
+            'title' => 'Processo Farol',
+        ]);
+
+        ProcessTemplate::factory()->create([
+            'office_id' => $this->officeA->id,
+            'name' => 'Modelo mensal',
+            'description' => 'Descrição Farol',
+        ]);
+        ProcessTemplate::factory()->create([
+            'office_id' => $this->officeB->id,
+            'name' => 'Modelo Farol externo',
+        ]);
+
+        $this->loginAs($this->adminA)
+            ->getJson('/api/v1/work/processes?q=agulha')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $this->getJson('/api/v1/work/processes?q=farol')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.title', 'Processo Farol');
+
+        $this->getJson('/api/v1/work/templates?q=farol')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Modelo mensal');
+    }
+
     public function test_fila_e_kpis_tenant_scoped(): void
     {
         $process = OperationalProcess::factory()->create([
@@ -366,17 +410,17 @@ class OperationalWorkCoreTest extends TestCase
         $queue = $this->loginAs($this->operatorA)
             ->getJson('/api/v1/work/queue')
             ->assertOk();
-        \Tests\Support\ApiSecretScanner::assertClean(json_encode($queue->json()) ?: '', 'work.queue');
+        ApiSecretScanner::assertClean(json_encode($queue->json()) ?: '', 'work.queue');
 
         $show = $this->loginAs($this->operatorA)
             ->getJson("/api/v1/work/tasks/{$task->id}")
             ->assertOk();
-        \Tests\Support\ApiSecretScanner::assertClean(json_encode($show->json()) ?: '', 'work.task');
+        ApiSecretScanner::assertClean(json_encode($show->json()) ?: '', 'work.task');
 
         $kpis = $this->loginAs($this->adminA)
             ->getJson('/api/v1/work/kpis')
             ->assertOk();
-        \Tests\Support\ApiSecretScanner::assertClean(json_encode($kpis->json()) ?: '', 'work.kpis');
+        ApiSecretScanner::assertClean(json_encode($kpis->json()) ?: '', 'work.kpis');
     }
 
     public function test_concorrencia_otimista_409(): void

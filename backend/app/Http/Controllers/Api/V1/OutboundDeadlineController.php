@@ -150,12 +150,19 @@ class OutboundDeadlineController extends Controller
         $clientId = $request->query('client_id');
         $source = $request->query('source');
         $perPage = min(100, max(1, (int) $request->query('per_page', 50)));
+        $sort = match ($request->string('sort')->toString()) {
+            'urgency_band' => 'urgency_band',
+            'model' => 'model',
+            'target_at' => 'target_at',
+            'id' => 'id',
+            default => 'due_at',
+        };
+        $direction = $request->string('direction')->lower()->toString() === 'desc' ? 'desc' : 'asc';
 
         $q = MaOutboundRetrievalRequest::query()
             ->where('office_id', $officeId)
             ->where('origin', OutboundRetrievalOrigin::SvrsPortalByKey)
-            ->whereNotIn('urgency_band', [OutboundUrgencyBand::Captured->value])
-            ->orderBy('due_at');
+            ->whereNotIn('urgency_band', [OutboundUrgencyBand::Captured->value]);
 
         if (is_string($competence) && $competence !== '') {
             $q->where('competence', $competence);
@@ -183,6 +190,11 @@ class OutboundDeadlineController extends Controller
         }
         if (is_string($source) && $source !== '') {
             $q->where('capture_source', 'like', '%'.strtoupper($source).'%');
+        }
+
+        $q->orderBy($sort, $direction);
+        if ($sort !== 'id') {
+            $q->orderBy('id', $direction);
         }
 
         $paginator = $q->paginate($perPage);

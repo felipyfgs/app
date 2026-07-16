@@ -159,7 +159,6 @@ defineExpose({ startEdit, cancelEdit, editing })
   <div class="space-y-6" data-testid="client-registration">
     <UPageCard
       title="Cadastro do cliente"
-      description="Dados gerais nos campos do formulário. Edição liberada apenas ao clicar em Editar."
       variant="naked"
       orientation="horizontal"
       class="mb-2"

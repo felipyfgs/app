@@ -336,6 +336,59 @@ class TaxGuideManagementTest extends TestCase
         $this->assertTrue(app(GuideHighRiskGate::class)->hasRecentChallenge($this->admin));
     }
 
+    public function test_listagem_de_guias_ordena_globalmente_e_isola_tenant(): void
+    {
+        $otherOffice = Office::factory()->create();
+        $otherClient = Client::factory()->forOffice($otherOffice)->create();
+
+        $guides = collect();
+        foreach ([1000, 1000, 2500] as $index => $amount) {
+            $guides->push(TaxGuide::query()->withoutGlobalScopes()->create([
+                'office_id' => $this->office->id,
+                'client_id' => $this->client->id,
+                'system_code' => 'INTEGRA_PAGAMENTO',
+                'service_code' => 'SICALC',
+                'operation_code' => 'EMITIR_GUIA',
+                'competence_period_key' => '2026-0'.($index + 1),
+                'logical_key' => 'sort-guide-'.($index + 1),
+                'payment_status' => TaxGuidePaymentStatus::NotConfirmed,
+                'amount_cents' => $amount,
+                'currency' => 'BRL',
+                'created_by' => $this->admin->id,
+            ]));
+        }
+        TaxGuide::query()->withoutGlobalScopes()->create([
+            'office_id' => $otherOffice->id,
+            'client_id' => $otherClient->id,
+            'system_code' => 'INTEGRA_PAGAMENTO',
+            'service_code' => 'SICALC',
+            'operation_code' => 'EMITIR_GUIA',
+            'logical_key' => 'sort-guide-other',
+            'payment_status' => TaxGuidePaymentStatus::NotConfirmed,
+            'amount_cents' => 1,
+            'currency' => 'BRL',
+        ]);
+
+        $this->actingAs($this->admin);
+        app(CurrentOffice::class)->resolve($this->admin);
+
+        $asc = $this->getJson('/api/v1/fiscal/guides?per_page=10&sort=amount&direction=asc')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame(
+            [$guides[0]->id, $guides[1]->id, $guides[2]->id],
+            collect($asc)->pluck('id')->all(),
+        );
+
+        $desc = $this->getJson('/api/v1/fiscal/guides?per_page=10&sort=amount&direction=desc')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame(
+            [$guides[2]->id, $guides[1]->id, $guides[0]->id],
+            collect($desc)->pluck('id')->all(),
+        );
+    }
+
     public function test_payment_service_nao_infere_por_download(): void
     {
         $this->enableChallenge();

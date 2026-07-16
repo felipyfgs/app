@@ -46,9 +46,9 @@ describe('superfície CT-e no catálogo', () => {
     expect(settings).not.toContain('isCteReadOnlyPage')
   })
 
-  it('NotesWorkspace monta contexto CT-e no catálogo', () => {
-    const workspace = readFileSync(resolve(APP_ROOT, 'components/notes/NotesWorkspace.vue'), 'utf8')
-    expect(workspace).toContain('NotesCteCatalogContext')
+  it('DocsWorkspace monta contexto CT-e no catálogo', () => {
+    const workspace = readFileSync(resolve(APP_ROOT, 'components/docs/Workspace.vue'), 'utf8')
+    expect(workspace).toContain('DocsCteCatalogContext')
     expect(workspace).toContain('showCteContext')
     expect(workspace).toContain('filters.kind === \'CTE\'')
     expect(workspace).toContain('hydrateFiltersFromQuery')
@@ -56,7 +56,7 @@ describe('superfície CT-e no catálogo', () => {
   })
 
   it('contexto CT-e não carrega saúde de cursor nem material sensível', () => {
-    const ctx = readFileSync(resolve(APP_ROOT, 'components/notes/NotesCteCatalogContext.vue'), 'utf8')
+    const ctx = readFileSync(resolve(APP_ROOT, 'components/docs/CteCatalogContext.vue'), 'utf8')
     expect(ctx).toContain('api.cte.onboarding')
     expect(ctx).toContain('api.cte.pending')
     expect(ctx).not.toContain('api.cte.health')
@@ -72,7 +72,7 @@ describe('superfície CT-e no catálogo', () => {
   })
 
   it('sincronizações apontam deep-link documental para o catálogo', () => {
-    const syncs = readFileSync(resolve(APP_ROOT, 'pages/syncs/index.vue'), 'utf8')
+    const syncs = readFileSync(resolve(APP_ROOT, 'pages/syncs.vue'), 'utf8')
     expect(syncs).toContain('/docs/catalog?kind=CTE')
     expect(syncs).not.toContain('to="/settings/cte"')
   })

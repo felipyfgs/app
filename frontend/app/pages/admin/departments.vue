@@ -58,14 +58,20 @@ onMounted(load)
 
 <template>
   <!--
-    Arquétipo settings/lista em card (members.vue) + casca DashboardListShell.
+    Arquétipo settings/lista em card (members.vue) + UDashboardPanel inline.
     Fonte: .reference/.../settings/members.vue (search + lista).
   -->
-  <DashboardListShell
-    panel-id="admin-departments"
-    title="Departamentos"
-    panel-test-id="admin-departments-panel"
-  >
+  <UDashboardPanel id="admin-departments" data-testid="admin-departments-panel">
+  <template #header>
+    <UDashboardNavbar title="Departamentos" data-testid="page-navbar">
+      <template #leading>
+        <UDashboardSidebarCollapse />
+      </template>
+    </UDashboardNavbar>
+  </template>
+
+  <template #body>
+
     <h1 data-testid="page-title" class="sr-only">
       Departamentos
     </h1>
@@ -119,5 +125,6 @@ onMounted(load)
         </ul>
       </div>
     </div>
-  </DashboardListShell>
+  </template>
+</UDashboardPanel>
 </template>

@@ -107,12 +107,13 @@ test.describe('monitoring estados (9.4)', () => {
     await expect(page.getByText(/bloquead/i).first()).toBeVisible()
   })
 
-  test('FGTS: banner de cobertura parcial permanente', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'desktop-1440', 'Banner FGTS no desktop.')
+  test('FGTS: sem banner permanente de cobertura parcial', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop-1440', 'FGTS no desktop.')
     await installApiFixtures(page, 'ADMIN')
     await page.goto('/monitoring/fgts')
-    await expect(page.getByTestId('fgts-partial-banner')).toBeVisible()
-    await expect(page.getByText(/FGTS Digital não integrado|cobertura parcial/i).first()).toBeVisible()
+    await expect(page.getByTestId('page-navbar')).toBeVisible()
+    await expect(page.getByTestId('fgts-partial-banner')).toHaveCount(0)
+    await expect(page.getByText(/guia e pagamento do FGTS Digital não são suportados/i)).toHaveCount(0)
   })
 
   test('Mailbox empty: lista vazia honesta', async ({ page }, testInfo) => {

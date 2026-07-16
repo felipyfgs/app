@@ -162,7 +162,18 @@ const labels: Record<string, string> = {
   UNMATCHED: 'Sem vínculo',
   UNSUPPORTED: 'Não suportado',
   UNKNOWN: 'Em revisão',
-  WAITING: 'Na fila'
+  WAITING: 'Na fila',
+  // Pagamento / emissão / eixos (monitoring Guias, DCTFWeb, etc.)
+  CONFIRMED: 'Confirmado',
+  NOT_CONFIRMED: 'Sem confirmação',
+  REJECTED: 'Rejeitado',
+  TRANSMITTED: 'Transmitido',
+  ENCERRADO: 'Encerrado',
+  CLOSED: 'Encerrado',
+  EMITTED: 'Emitido',
+  AVAILABLE: 'Disponível',
+  GLOBAL_OFF: 'Global off',
+  GLOBAL_ACTIVE: 'Global ativo'
 }
 
 /** Grupo operacional da nota NFS-e (lista / filtro / insight). */
