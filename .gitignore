@@ -134,15 +134,13 @@ Thumbs.db
 # --- Ferramentas locais de agente (manter skills/commands; ignorar lixo) ---
 .codex/.tmp/
 .opencode/.tmp/
-# Grok: versionar skills e commands OpenSpec; ignorar resto local
+# Grok: só config.toml + skills (symlink); resto local ignorado
 .grok/*
 !.grok/config.toml
-!.grok/skills/
-!.grok/skills/**
-!.grok/commands/
-!.grok/commands/**
-# .agents/skills = fonte canônica de skills do projeto (versionar)
-# .codex/skills e .opencode/skills e .grok/skills = symlinks → .agents/skills (versionar os links)
+!.grok/skills
+# .agents/skills = fonte canônica (versionar)
+# .grok/skills = symlink → .agents/skills
+# OpenCode/Codex: sem pasta skills própria (lê .agents/)
 
 # --- Artefatos locais de review/agente e screenshots de sessão ---
 .playwright-mcp/

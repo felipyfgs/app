@@ -93,11 +93,14 @@ Qualquer tela autenticada: skill **`panel-ui`** → **`ui-archetype`** (copiar d
 
 | Onde | Conteúdo |
 |------|----------|
-| **`.agents/skills/`** | Fonte única do **projeto** (versionada). Outros engines usam symlink. |
-| **`~/.agents/skills/`** | Global do usuário: `nuxt`, `nuxt-ui`, `git-commit`, grill/domain-modeling |
+| **`.agents/skills/`** | **Única** fonte de skills do projeto (versionar aqui). |
+| **`.grok/skills`** | Symlink → `.agents/skills` (Grok **não** lê `.agents/` nativamente). |
+| **`.grok/config.toml`** | Só MCP Playwright do projeto (Grok). |
+| **`~/.agents/skills/`** | Global: `nuxt`, `nuxt-ui`, `git-commit`, grill/domain-modeling |
 
-Projeto: `panel-ui`, `ui-archetype`, `openspec-*`, `task-loop`.  
-Não editar cópias em `.opencode/skills`, `.codex/skills`, `.grok/skills` — são links para `.agents/skills`.
+OpenCode e Codex descobrem `.agents/skills` sozinhos — **sem** pasta skills própria.  
+Sem `.opencode/commands` / `.grok/commands`: slash = nome da skill (`/panel-ui`, `/openspec-apply-change`, `/task-loop`).  
+Projeto: `panel-ui`, `ui-archetype`, `openspec-*`, `task-loop`.
 
 ## OpenSpec
 
