@@ -24,6 +24,8 @@ export const MAILBOX_SECOND_MESSAGE_ID = 9002
 /** Nomes estáveis para assert de troca de office (não misturar tenants). */
 export const FISCAL_OFFICE_A_NAME = 'Escritório Contábil Modelo'
 export const FISCAL_OFFICE_B_NAME = 'Escritório Sentinela'
+export const PLATFORM_OFFICE_NAME = 'Plataforma'
+export const GENERIC_ACCOUNTANT_OFFICE_NAME = 'Contador Genérico'
 export const FISCAL_CLIENT_OFFICE_A = 'Cliente Demonstração Segura'
 export const FISCAL_CLIENT_OFFICE_B = 'Cliente Tenant Sentinela'
 export const LIST_ERROR_MESSAGE = 'Falha sintética sanitizada.'
@@ -410,6 +412,95 @@ async function fulfill(route: Route, body: unknown, status = 200) {
     status,
     contentType: 'application/json; charset=utf-8',
     body: JSON.stringify(body)
+  })
+}
+
+/**
+ * Identidade global usada no smoke do seletor PLATFORM_ADMIN.
+ * Parte da fixture tenant existente e sobrescreve somente os contratos globais.
+ */
+export async function installPlatformApiFixtures(page: Page) {
+  await installApiFixtures(page, 'ADMIN')
+
+  let activeOfficeId = 1
+  const office = () => activeOfficeId === 1
+    ? { id: 1, name: PLATFORM_OFFICE_NAME, slug: 'plataforma' }
+    : { id: 2, name: GENERIC_ACCOUNTANT_OFFICE_NAME, slug: 'demo' }
+
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const pathname = new URL(request.url()).pathname
+    const method = request.method()
+
+    if (pathname.endsWith('/api/v1/me')) {
+      return fulfill(route, {
+        data: {
+          id: 99,
+          name: 'Admin Plataforma Demo',
+          email: 'plataforma@example.com',
+          two_factor_confirmed: false,
+          two_factor_required: false,
+          requires_two_factor_setup: false,
+          is_platform_admin: true,
+          access_mode: 'platform_privileged',
+          real_office_role: null,
+          has_real_membership: false,
+          context_status: 'ok',
+          platform_organization_name: 'Plataforma',
+          office: office(),
+          current_office: office(),
+          role: null,
+          default_office_id: activeOfficeId
+        }
+      })
+    }
+
+    if (pathname.endsWith('/api/v1/platform/offices') && method === 'GET') {
+      return fulfill(route, {
+        data: {
+          offices: [
+            {
+              id: 1,
+              name: PLATFORM_OFFICE_NAME,
+              slug: 'plataforma',
+              is_active: true,
+              selectable: true,
+              status: 'active',
+              plan: 'Professional'
+            },
+            {
+              id: 2,
+              name: GENERIC_ACCOUNTANT_OFFICE_NAME,
+              slug: 'demo',
+              is_active: true,
+              selectable: true,
+              status: 'active',
+              plan: 'Professional'
+            }
+          ],
+          selected_office_id: activeOfficeId,
+          default_office_id: activeOfficeId
+        }
+      })
+    }
+
+    if (pathname.endsWith('/api/v1/platform/offices/select') && method === 'POST') {
+      const body = request.postDataJSON() as { office_id?: number }
+      const nextId = Number(body?.office_id)
+      if (nextId !== 1 && nextId !== 2) {
+        return fulfill(route, { message: 'Escritório inválido.' }, 422)
+      }
+      activeOfficeId = nextId
+      return fulfill(route, {
+        data: {
+          office: office(),
+          access_mode: 'platform_privileged',
+          default_office_id: activeOfficeId
+        }
+      })
+    }
+
+    return route.fallback()
   })
 }
 

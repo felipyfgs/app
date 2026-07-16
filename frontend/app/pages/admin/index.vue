@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
- * Hub da plataforma (`/admin`) — reservado a PLATFORM_ADMIN (OpenSpec 6.2).
- * Sem configuração de escritório (movida para /settings).
- * Seletor global no OfficeIdentity; banner de contexto privilegiado no shell.
+ * Hub da plataforma (`/admin`) — reservado a PLATFORM_ADMIN.
+ * Sem Office: empty state para cadastrar o primeiro escritório (sem resumo tenant).
  */
 import type { BackupStatus, PlatformOfficeSummary } from '~/types/api'
+import { lacksOfficeContext } from '~/utils/auth-redirect'
 
 const api = useApi()
 const { me, canAccessPlatformAdmin, isPlatformPrivileged } = useDashboard()
@@ -25,6 +25,9 @@ const backup = ref<BackupStatus | null>(null)
 const backupLoading = ref(false)
 const backupError = ref<string | null>(null)
 
+const noOfficeContext = computed(() => lacksOfficeContext(me.value))
+const organizationName = computed(() => me.value?.platform_organization_name || null)
+
 const filtered = computed(() => {
   const term = q.value.trim().toLowerCase()
   if (!term) return offices.value
@@ -36,7 +39,7 @@ const filtered = computed(() => {
 })
 
 async function loadBackup() {
-  if (!canAccessPlatformAdmin.value) {
+  if (!canAccessPlatformAdmin.value || noOfficeContext.value) {
     backup.value = null
     return
   }
@@ -96,7 +99,7 @@ async function onSelect(office: PlatformOfficeSummary) {
           <UPageCard
             variant="naked"
             title="Administração da plataforma"
-            description="Contrato SERPRO, saúde técnica, orçamento e seletor global de escritórios. Sem TOTP global na navegação."
+            description="Contrato SERPRO, saúde técnica, orçamento e seletor global de escritórios."
           />
 
           <UPageCard
@@ -104,6 +107,17 @@ async function onSelect(office: PlatformOfficeSummary) {
             data-testid="admin-actor-card"
           >
             <dl class="grid gap-3 text-sm sm:grid-cols-2">
+              <div v-if="organizationName">
+                <dt class="text-muted">
+                  Organização
+                </dt>
+                <dd
+                  class="text-highlighted"
+                  data-testid="admin-organization-name"
+                >
+                  {{ organizationName }}
+                </dd>
+              </div>
               <div>
                 <dt class="text-muted">
                   Administrador
@@ -217,11 +231,27 @@ async function onSelect(office: PlatformOfficeSummary) {
               data-testid="admin-offices-error"
             />
             <UEmpty
-              v-else-if="!filtered.length"
+              v-else-if="!filtered.length && offices.length === 0"
               icon="i-lucide-building-2"
-              title="Nenhum escritório encontrado"
-              description="Quando a API de offices da plataforma estiver disponível, a lista aparece aqui e no seletor da sidebar."
+              title="Nenhum escritório cadastrado"
+              description="Cadastre o primeiro Office para começar a operar a plataforma."
               data-testid="admin-offices-empty"
+            >
+              <template #actions>
+                <UButton
+                  to="/admin/offices/new"
+                  label="Cadastrar primeiro escritório"
+                  icon="i-lucide-plus"
+                  data-testid="admin-first-office-cta"
+                />
+              </template>
+            </UEmpty>
+            <UEmpty
+              v-else-if="!filtered.length"
+              icon="i-lucide-search-x"
+              title="Nenhum escritório encontrado"
+              description="Ajuste a busca ou limpe o filtro para ver todos os escritórios."
+              data-testid="admin-offices-filter-empty"
             />
             <ul
               v-else

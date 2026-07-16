@@ -5,16 +5,13 @@
 import type { SerproGlobalHealth, SerproRolloutState } from '~/types/api'
 
 const api = useApi()
-const toast = useToast()
 const { sessionEpoch } = useDashboard()
 
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const rollout = ref<SerproRolloutState | null>(null)
 const health = ref<SerproGlobalHealth | null>(null)
-const rolloutMissing = ref(false)
-const notes = ref('')
-const saving = ref(false)
+const pendingApprovals = ref<Array<Record<string, unknown>>>([])
 
 function deriveFromHealth(h: SerproGlobalHealth | null): SerproRolloutState {
   return {
@@ -35,55 +32,32 @@ async function load() {
   loading.value = true
   loadError.value = null
   try {
-    const [rollRes, healthRes] = await Promise.allSettled([
-      api.platform.serpro.rollout.show(),
-      api.platform.serpro.health()
+    // API real: GET /serpro/health + GET /serpro/rollouts (lista de aprovações).
+    // Não existe GET /serpro/rollout singular — evita 404 no console.
+    const [healthRes, rolloutsRes] = await Promise.allSettled([
+      api.platform.serpro.health(),
+      api.platform.serpro.rollouts.list()
     ])
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
 
     if (healthRes.status === 'fulfilled') {
       health.value = healthRes.value.data
+      rollout.value = deriveFromHealth(healthRes.value.data)
     } else {
       health.value = null
+      rollout.value = deriveFromHealth(null)
+      loadError.value = apiErrorMessage(healthRes.reason, 'Falha ao carregar health SERPRO.')
     }
 
-    if (rollRes.status === 'fulfilled') {
-      rollout.value = rollRes.value.data
-      rolloutMissing.value = false
+    if (rolloutsRes.status === 'fulfilled') {
+      pendingApprovals.value = Array.isArray(rolloutsRes.value.data) ? rolloutsRes.value.data : []
     } else {
-      rolloutMissing.value = true
-      rollout.value = deriveFromHealth(health.value)
-      if (!health.value) {
-        loadError.value = apiErrorMessage(
-          healthRes.status === 'rejected' ? healthRes.reason : rollRes.status === 'rejected' ? rollRes.reason : null,
-          'Falha ao carregar estado de rollout.'
-        )
-      }
+      pendingApprovals.value = []
     }
   } finally {
     if (seq === loadSeq && epoch === sessionEpoch.value) {
       loading.value = false
     }
-  }
-}
-
-async function saveNotes() {
-  if (rolloutMissing.value) {
-    toast.add({
-      title: 'Endpoint de rollout ainda não disponível; use readiness/kill switch.',
-      color: 'warning'
-    })
-    return
-  }
-  saving.value = true
-  try {
-    const res = await api.platform.serpro.rollout.update({ notes: notes.value })
-    rollout.value = res.data
-    toast.add({ title: 'Rollout atualizado', color: 'success' })
-  } catch (caught) {
-    toast.add({ title: apiErrorMessage(caught, 'Falha ao atualizar rollout.'), color: 'error' })
-  } finally {
-    saving.value = false
   }
 }
 
@@ -123,11 +97,10 @@ onMounted(load)
     />
 
     <UAlert
-      v-if="rolloutMissing && rollout"
       color="info"
       icon="i-lucide-info"
-      title="Rollout derivado do health"
-      description="A rota /platform/serpro/rollout ainda não responde; exibindo snapshot sanitizado do readiness."
+      title="Snapshot de smoke e kill switch"
+      description="Estado operacional derivado de /platform/serpro/health. Aprovações de rollout (quatro olhos) vêm de /platform/serpro/rollouts."
       class="mb-4"
     />
 
@@ -211,24 +184,28 @@ onMounted(load)
       </UPageCard>
 
       <UPageCard
+        v-if="pendingApprovals.length"
         variant="subtle"
-        title="Notas operacionais"
+        title="Aprovações de rollout"
+        description="Pedidos recentes (metadados sanitizados)."
       >
-        <UTextarea
-          v-model="notes"
-          class="w-full"
-          :rows="3"
-          placeholder="Registro operacional (sem segredos, sem PII de cliente)…"
-        />
-        <div class="mt-3 flex justify-end">
-          <UButton
-            color="primary"
-            label="Salvar notas"
-            :loading="saving"
-            :disabled="rolloutMissing"
-            @click="saveNotes"
-          />
-        </div>
+        <ul class="divide-y divide-default text-sm">
+          <li
+            v-for="(item, idx) in pendingApprovals.slice(0, 10)"
+            :key="String(item.id ?? idx)"
+            class="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0"
+          >
+            <span class="font-medium text-highlighted">
+              {{ item.action || '—' }}
+              <span class="text-muted font-normal">
+                · {{ item.status || '—' }}
+              </span>
+            </span>
+            <span class="text-xs text-muted">
+              #{{ item.id ?? '—' }}
+            </span>
+          </li>
+        </ul>
       </UPageCard>
     </div>
   </div>

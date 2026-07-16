@@ -16,10 +16,11 @@ const rows = ref<SerproContractSanitized[]>([])
 const environment = ref('TRIAL')
 const actingId = ref<number | null>(null)
 
+// Reka/USelect proíbe value "" nos items (reserva para limpar seleção).
 const envItems = [
   { label: 'Trial', value: 'TRIAL' },
   { label: 'Produção', value: 'PRODUCTION' },
-  { label: 'Todos', value: '' }
+  { label: 'Todos', value: 'all' }
 ]
 
 const columns: TableColumn<SerproContractSanitized>[] = [
@@ -60,7 +61,7 @@ async function load() {
   loadError.value = null
   try {
     const res = await api.platform.serpro.contracts.list({
-      environment: environment.value || undefined
+      environment: environment.value === 'all' ? undefined : environment.value
     })
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
     rows.value = res.data || []

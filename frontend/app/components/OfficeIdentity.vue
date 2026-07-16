@@ -36,13 +36,17 @@ const officeSlug = computed(() => me.value?.current_office?.slug || me.value?.of
 const officeId = computed(() => me.value?.current_office?.id ?? me.value?.office?.id ?? null)
 const isPlatform = computed(() => isPlatformAdmin(me.value))
 
-/** Selo compacto: "Plataforma · <Office>" quando privilegiado; só o nome no modo membership. */
+/** Perfil e contexto em linhas distintas para não confundir PLATFORM_ADMIN com Office. */
 const displayLabel = computed(() => {
   if (privileged.value && officeLabel.value) {
-    return `Plataforma · ${officeLabel.value}`
+    return `PLATFORM_ADMIN\n${officeLabel.value}`
   }
   return officeLabel.value
 })
+
+const accessibleLabel = computed(() => privileged.value
+  ? `Perfil PLATFORM_ADMIN. Escritório ativo: ${officeLabel.value}. Abrir seletor global de escritórios`
+  : `Escritório ativo: ${officeLabel.value}${multiMembership.value ? '. Abrir seletor entre memberships autorizadas' : '. Única membership da sessão'}`)
 
 const selectedOffice = computed(() => ({
   label: displayLabel.value,
@@ -63,7 +67,7 @@ const items = computed<DropdownMenuItem[][]>(() => {
     const officeRows: DropdownMenuItem[] = selectable.length
       ? selectable.map(o => ({
           label: o.name || `Escritório #${o.id}`,
-          description: [o.slug, o.status].filter(Boolean).join(' · ') || 'Seletor global',
+          description: ['Escritório', o.slug, o.status].filter(Boolean).join(' · '),
           avatar: {
             alt: o.name || 'Escritório',
             icon: 'i-lucide-building-2' as const
@@ -84,11 +88,11 @@ const items = computed<DropdownMenuItem[][]>(() => {
         }]
 
     const footer: DropdownMenuItem[] = [{
-      label: privileged.value ? `Plataforma · ${officeLabel.value}` : 'Selecione um escritório',
+      label: privileged.value ? 'Perfil PLATFORM_ADMIN' : 'Selecione um escritório',
       icon: 'i-lucide-shield',
       disabled: true,
       description: privileged.value
-        ? (officeSlug.value ? `Ativo: ${officeSlug.value}` : 'Office resolvido no servidor')
+        ? `Atuando em: ${officeLabel.value}`
         : 'Contexto global da plataforma'
     }]
 
@@ -202,15 +206,15 @@ watch(isPlatform, (v) => {
       class="data-[state=open]:bg-elevated"
       :class="[!collapsed && 'py-2', privileged && 'ring-1 ring-warning/50']"
       :ui="{
+        label: privileged ? 'min-w-0 whitespace-pre-line text-left leading-tight' : undefined,
         trailingIcon: 'text-dimmed'
       }"
-      :aria-label="isPlatform
-        ? (privileged ? `Plataforma · ${officeLabel}` : `Seletor global de escritórios. ${officeLabel}`)
-        : `Escritório ativo: ${officeLabel}${multiMembership ? '. Abrir seletor entre memberships autorizadas' : '. Única membership da sessão'}`"
+      :aria-label="isPlatform && !privileged ? `Seletor global de escritórios. ${officeLabel}` : accessibleLabel"
       :aria-haspopup="(isPlatform || multiMembership) ? 'listbox' : 'menu'"
-      :title="collapsed ? displayLabel : undefined"
+      :title="collapsed ? displayLabel.replace('\n', ' · ') : undefined"
       data-testid="office-identity"
       :data-office-id="isPlatform ? 'platform-global' : 'session'"
+      :data-office-name="officeLabel"
       :data-privileged="privileged ? 'true' : 'false'"
       :data-platform-seal="privileged ? 'true' : 'false'"
     />

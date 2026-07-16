@@ -15,10 +15,11 @@ const loading = ref(false)
 const loadError = ref<string | null>(null)
 const rows = ref<PlatformOfficeAdminSummary[]>([])
 const q = ref('')
-const lifecycleFilter = ref('')
+// Reka/USelect proíbe value "" nos items (reserva para limpar seleção).
+const lifecycleFilter = ref('all')
 
 const filterItems = [
-  { label: 'Todos', value: '' },
+  { label: 'Todos', value: 'all' },
   { label: 'Pendentes', value: 'PENDING_ACTIVATION' },
   { label: 'Ativos', value: 'ACTIVE' }
 ]
@@ -82,7 +83,7 @@ async function load() {
   loadError.value = null
   try {
     const res = await api.platform.offices.adminList({
-      lifecycle_status: lifecycleFilter.value || undefined
+      lifecycle_status: lifecycleFilter.value === 'all' ? undefined : lifecycleFilter.value
     })
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
     rows.value = res.data || []

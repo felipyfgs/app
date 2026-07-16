@@ -9,12 +9,17 @@ import {
 } from '~/utils/navigation'
 
 /**
- * Shell autenticado — UDashboardSidebar + UNavigationMenu (padrão Nuxt UI).
+ * Shell autenticado — copiado de
+ * `.reference/nuxt-dashboard-template/app/layouts/default.vue`
  *
- * type="single": um grupo aberto por vez.
- * Fechar tudo → reabre a seção da rota ativa (tela atual).
- * Navegação de rota → abre o grupo da rota.
+ * UNavigationMenu vertical (docs Nuxt UI):
+ * - estado aberto via `defaultOpen` nos items (Accordion interno)
+ * - SEM v-model / modelValue / remount / handlers de “nudge”
+ * - type padrão = multiple (como o template e o default do componente)
  *
+ * Só adaptamos: OfficeIdentity, destinos/permissões, command palette, slot flex.
+ *
+ * @see .reference/nuxt-dashboard-template/app/layouts/default.vue
  * @see https://ui.nuxt.com/docs/components/navigation-menu#orientation
  * @see https://ui.nuxt.com/docs/components/dashboard-sidebar
  */
@@ -26,61 +31,42 @@ const closeSidebar = () => {
   open.value = false
 }
 
-/** value do trigger aberto (ids em navigation.ts). */
-const openSection = ref<string | undefined>()
-
-/** Seção que corresponde à rota atual (ex.: /monitoring/* → 'monitoring'). */
-function sectionForPath(path: string): string | undefined {
-  return mainDestinations(me.value, { path })
-    .find(d => d.type === 'trigger' && d.defaultOpen)
-    ?.id
-}
-
-function syncOpenToRoute() {
-  openSection.value = sectionForPath(route.path)
-}
-
-watch(() => route.path, syncOpenToRoute, { immediate: true })
-
 /**
- * Clique no accordion:
- * - abriu outra seção → troca (single)
- * - fechou tudo (collapsible) → volta para a seção da tela ativa
+ * Items estáveis: só reconstroem quando path ou papéis mudam.
+ * Recriar o array a cada tick de `me` faz o Accordion “piscar”.
  */
-function onOpenSectionChange(value: string | undefined) {
-  if (value === undefined || value === null || value === '') {
-    const active = sectionForPath(route.path)
-    openSection.value = active
-    return
-  }
-  openSection.value = value
-}
+const primaryItems = shallowRef<NavigationMenuItem[]>([])
+const secondaryItems = shallowRef<NavigationMenuItem[]>([])
 
-const links = computed(() => {
-  const navOptions = { path: route.path }
-  // Sem defaultOpen: v-model é a única fonte de verdade (evita estado misto).
-  const primary = toNavigationItems(
-    mainDestinations(me.value, navOptions),
+function rebuildNav() {
+  primaryItems.value = toNavigationItems(
+    mainDestinations(me.value, { path: route.path }),
     closeSidebar
-  ).map((item) => {
-    if (item.type !== 'trigger') {
-      return item
-    }
-    const next = { ...item } as NavigationMenuItem & {
-      defaultOpen?: boolean
-      open?: boolean
-    }
-    delete next.defaultOpen
-    delete next.open
-    return next
-  })
-
-  const secondary = toNavigationItems(
+  )
+  secondaryItems.value = toNavigationItems(
     secondaryDestinations(),
     closeSidebar
   )
-  return [primary, secondary] as NavigationMenuItem[][]
-})
+}
+
+watch(
+  () => [
+    route.path,
+    me.value?.id,
+    me.value?.role,
+    me.value?.access_mode,
+    me.value?.is_platform_admin,
+    me.value?.has_real_membership,
+    me.value?.real_office_role,
+    // lacksOfficeContext / quickActions dependem destes campos
+    me.value?.context_status,
+    me.value?.current_office?.id ?? me.value?.office?.id ?? null
+  ] as const,
+  () => {
+    rebuildNav()
+  },
+  { immediate: true }
+)
 
 const groups = computed(() => {
   const destinations = [
@@ -136,24 +122,24 @@ const groups = computed(() => {
       </template>
 
       <template #default="{ collapsed }">
-        <UDashboardSearchButton :collapsed="collapsed" class="bg-transparent ring-default" />
-
-        <UNavigationMenu
-          :model-value="openSection"
-          type="single"
-          collapsible
+        <UDashboardSearchButton
           :collapsed="collapsed"
-          :items="links[0]"
+          class="bg-transparent ring-default"
+        />
+
+        <!-- Igual ao template: sem type/v-model/key/default-value externos -->
+        <UNavigationMenu
+          :collapsed="collapsed"
+          :items="primaryItems"
           orientation="vertical"
           tooltip
           popover
           data-testid="shell-sidebar-primary"
-          @update:model-value="onOpenSectionChange"
         />
 
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="links[1]"
+          :items="secondaryItems"
           orientation="vertical"
           tooltip
           class="mt-auto"

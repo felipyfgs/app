@@ -15,7 +15,6 @@ import type {
   SerproGlobalHealth,
   SerproKillSwitchStatus,
   SerproReadinessSnapshot,
-  SerproRolloutState,
   SerproUsageConsolidation,
   SerproUsageReconciliation
 } from '~/types/api'
@@ -25,8 +24,8 @@ import type { ApiClient } from './types'
  * API global PLATFORM_ADMIN (prefixo /api/v1/platform/*).
  * Sem office context; respostas sanitizadas — nunca segredo/XML/vault id.
  *
- * Rotas de readiness/rollout além das existentes usam paths esperados pelo design;
- * se a API ainda não as expuser, a UI trata 404 com degradacao.
+ * Paths alinhados às rotas Laravel em /api/v1/platform/* (sem inventar singular
+ * quando a API só expõe o plural, ex.: /serpro/rollouts).
  */
 export function createPlatformApi(client: ApiClient) {
   return {
@@ -169,13 +168,16 @@ export function createPlatformApi(client: ApiClient) {
             body
           }),
         /**
-         * Rollout/canário (design). Path esperado; degradável se ausente.
+         * Aprovações de rollout (quatro olhos) — API real: /serpro/rollouts.
+         * Snapshot de smoke/canário não existe como GET singular; a UI deriva de health/readiness.
          */
-        rollout: {
-          show: () =>
-            client<{ data: SerproRolloutState }>('/api/v1/platform/serpro/rollout'),
-          update: (body: Record<string, unknown>) =>
-            client<{ data: SerproRolloutState }>('/api/v1/platform/serpro/rollout', {
+        rollouts: {
+          list: (params?: { status?: string }) =>
+            client<{ data: Array<Record<string, unknown>> }>('/api/v1/platform/serpro/rollouts', {
+              query: params
+            }),
+          request: (body: Record<string, unknown>) =>
+            client<{ data: Record<string, unknown> }>('/api/v1/platform/serpro/rollouts', {
               method: 'POST',
               body
             })

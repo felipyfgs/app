@@ -77,8 +77,12 @@ export function usePlatformOfficeSelect() {
       }
       return true
     } catch (caught) {
+      const code = (caught as { data?: { code?: string } })?.data?.code
+      const msg = code === 'privileged_context_disabled'
+        ? 'Contexto privilegiado desligado (PLATFORM_PRIVILEGED_CONTEXT). Habilite no backend/.env e reinicie o PHP.'
+        : apiErrorMessage(caught, 'Falha ao selecionar escritório.')
       toast.add({
-        title: apiErrorMessage(caught, 'Falha ao selecionar escritório.'),
+        title: msg,
         color: 'error'
       })
       return false
