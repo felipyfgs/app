@@ -9,7 +9,8 @@ describe('inbox deep-links SERPRO', () => {
   it('normaliza paths legados para rotas existentes', () => {
     expect(normalizeTenantPath('/settings/integracao-serpro')).toBe('/settings')
     expect(normalizeTenantPath('/settings/consumo')).toBe('/settings/usage')
-    expect(normalizeTenantPath('/clients/42/procuracoes')).toBe('/settings/proxies')
+    expect(normalizeTenantPath('/clients/42/procuracoes')).toBe('/clients/42')
+    expect(normalizeTenantPath('/settings/proxies')).toBe('/settings')
     expect(normalizeTenantPath('/fiscal/runs/99')).toBe('/monitoring')
   })
 
@@ -29,13 +30,13 @@ describe('inbox deep-links SERPRO', () => {
     })).toBe('/settings')
   })
 
-  it('resolve procurações para proxies ou detalhe do cliente', () => {
+  it('resolve procurações para detalhe do cliente (sem importação manual)', () => {
     expect(resolveInboxItemLink({
       type: 'proxy_power_expired',
       links: { proxy: '/clients/7/procuracoes' },
       client_id: 7,
       reasons: []
-    })).toBe('/settings/proxies')
+    })).toBe('/clients/7')
 
     expect(resolveInboxItemLink({
       type: 'proxy_power_missing',

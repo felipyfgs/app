@@ -1,5 +1,6 @@
 import {
-  canAccessPlatformSerproConsole,
+  canAccessOfficeSettings,
+  canAccessPlatformAdmin,
   hasConfirmedAdminAccess,
   unwrapMeUser
 } from '~/utils/permissions'
@@ -71,20 +72,35 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo({ path: '/docs/catalog', query }, { replace: true })
   }
 
-  // Console global SERPRO: PLATFORM_ADMIN (+ TOTP) ou office ADMIN (shell com denied).
-  const isPlatformSerproPath = to.path === '/admin/serpro' || to.path.startsWith('/admin/serpro/')
-  if (isPlatformSerproPath) {
-    if (canAccessPlatformSerproConsole(identity) || hasConfirmedAdminAccess(identity)) {
+  // Procurações manuais removidas do tenant — redireciona para settings unificado.
+  if (to.path.replace(/\/+$/, '') === '/settings/proxies') {
+    return navigateTo('/settings', { replace: true })
+  }
+
+  // `/admin/*` reservado à plataforma (PLATFORM_ADMIN).
+  // Exceção: departamentos do módulo Trabalho permanecem para ADMIN de office.
+  const isAdminPath = to.path === '/admin' || to.path.startsWith('/admin/')
+  const isDepartmentsPath = to.path === '/admin/departments' || to.path.startsWith('/admin/departments/')
+  if (isAdminPath) {
+    if (isDepartmentsPath) {
+      if (hasConfirmedAdminAccess(identity) || canAccessPlatformAdmin(identity)) {
+        return undefined
+      }
+      return navigateTo('/')
+    }
+    // Console e hub de plataforma: sem TOTP global.
+    if (canAccessPlatformAdmin(identity)) {
       return undefined
+    }
+    // Office ADMIN que ainda aponte para /admin → settings unificado.
+    if (hasConfirmedAdminAccess(identity)) {
+      return navigateTo('/settings', { replace: true })
     }
     return navigateTo('/')
   }
 
-  // Gate normal: /settings e /admin exigem ADMIN com 2FA confirmado.
-  if (
-    (to.path.startsWith('/admin') || to.path.startsWith('/settings'))
-    && !hasConfirmedAdminAccess(identity)
-  ) {
+  // Configuração do escritório: ADMIN office (2FA) ou PLATFORM_ADMIN privilegiado.
+  if (to.path.startsWith('/settings') && !canAccessOfficeSettings(identity)) {
     return navigateTo('/')
   }
 })

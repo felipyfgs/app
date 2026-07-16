@@ -84,14 +84,14 @@ onMounted(() => {
 
     <div v-else-if="!cursor" class="space-y-3 text-sm text-muted">
       <p>
-        Nenhum cursor central ainda. Cadastre a identidade fiscal e o A1 do escritório em Administração.
+        Nenhum cursor central ainda. Cadastre o perfil institucional e o A1 do escritório em Configurações.
       </p>
       <UButton
-        to="/admin"
+        to="/settings"
         color="neutral"
         variant="subtle"
-        icon="i-lucide-shield"
-        label="Abrir Administração"
+        icon="i-lucide-sliders-horizontal"
+        label="Abrir Configurações"
         size="sm"
       />
     </div>

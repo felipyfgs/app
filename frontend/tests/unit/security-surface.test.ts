@@ -59,13 +59,15 @@ describe('superfície sem material sensível', () => {
     expect(panel).toContain('state.password = \'\'')
   })
 
-  it('onboarding Integra não oferece recuperação de PFX/Termo/token', () => {
+  it('settings unificado não oferece recuperação de PFX/Termo/token', () => {
     const onboarding = readFileSync(resolve(APP_ROOT, 'pages/settings/index.vue'), 'utf8')
-    expect(onboarding).toMatch(/sem recuperação|nunca é exibido|não há download/i)
-    expect(onboarding).toContain('clearSensitive')
+    const credential = readFileSync(resolve(APP_ROOT, 'components/settings/OfficeCredentialSection.vue'), 'utf8')
+    expect(onboarding + credential).toMatch(/sem recuperação|nunca são recuperáveis|Sem download|não há download/i)
+    expect(credential).toContain('clearSensitive')
     // Sem rotas/ações de download de material sensível
     expect(onboarding).not.toMatch(/href=.*\/(pfx|termo|token)/i)
-    expect(onboarding).not.toMatch(/label="Baixar (PFX|Termo|token)"/i)
+    expect(credential).not.toMatch(/label="Baixar (PFX|Termo|token)"/i)
+    expect(onboarding).not.toMatch(/Autor do Pedido|uploadTermo|refreshToken/i)
   })
 
   it('FGTS é rotulado parcial e sem portal humano', () => {

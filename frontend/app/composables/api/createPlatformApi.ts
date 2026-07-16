@@ -1,4 +1,6 @@
 import type {
+  PlatformOfficeSelectResult,
+  PlatformOfficeSummary,
   SerproCatalogEntry,
   SerproContractSanitized,
   SerproGlobalHealth,
@@ -25,6 +27,25 @@ export function createPlatformApi(client: ApiClient) {
           client<{ data: Array<Record<string, unknown>> }>('/api/v1/platform/tenants', { query: params }),
         show: (officeId: number) =>
           client<{ data: Record<string, unknown> }>(`/api/v1/platform/tenants/${officeId}`)
+      },
+      /**
+       * Seletor global de escritórios (PLATFORM_ADMIN).
+       * Seleção privilegiada — não cria membership nem altera selected_office_id.
+       */
+      offices: {
+        list: (params?: { page?: number, per_page?: number, q?: string }) =>
+          client<{ data: PlatformOfficeSummary[] }>('/api/v1/platform/offices', {
+            query: params
+          }),
+        select: (officeId: number) =>
+          client<{ data: PlatformOfficeSelectResult }>('/api/v1/platform/offices/select', {
+            method: 'POST',
+            body: { office_id: officeId }
+          }),
+        clear: () =>
+          client<{ data: { access_mode: string | null } }>('/api/v1/platform/offices/select', {
+            method: 'DELETE'
+          })
       },
       serpro: {
         contracts: {

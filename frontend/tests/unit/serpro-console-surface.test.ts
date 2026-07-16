@@ -23,13 +23,14 @@ function user(partial: Partial<MeUser> = {}): MeUser {
 }
 
 describe('console global SERPRO (superfície)', () => {
-  it('gates PLATFORM_ADMIN + TOTP', () => {
+  it('gates PLATFORM_ADMIN sem TOTP global na navegação', () => {
     expect(isPlatformAdmin(user({ is_platform_admin: true }))).toBe(true)
     expect(canAccessPlatformSerproConsole(user({ is_platform_admin: true }))).toBe(true)
+    // OpenSpec 6.2/4.3: navegação de plataforma não exige TOTP global.
     expect(canAccessPlatformSerproConsole(user({
       is_platform_admin: true,
       two_factor_confirmed: false
-    }))).toBe(false)
+    }))).toBe(true)
     expect(canAccessPlatformSerproConsole(user({ is_platform_admin: false, role: 'ADMIN' }))).toBe(false)
   })
 
@@ -69,11 +70,15 @@ describe('console global SERPRO (superfície)', () => {
     }
   })
 
-  it('settings checklist e health usam utilitários tenant-safe', () => {
+  it('settings unificado e health usam superfícies tenant-safe', () => {
     const settings = readFileSync(resolve(APP, 'pages/settings/index.vue'), 'utf8')
-    expect(settings).toContain('SerproOnboardingChecklist')
-    expect(settings).toMatch(/alfanumérico|12ABC34501DE35/i)
-    expect(settings).toContain('clearSensitive')
+    expect(settings).toContain('settings-office-unified')
+    expect(settings).toContain('SettingsOfficeCredentialSection')
+    expect(settings).not.toContain('SerproOnboardingChecklist')
+    expect(settings).not.toMatch(/Autor do Pedido|uploadTermo/i)
+
+    const credential = readFileSync(resolve(APP, 'components/settings/OfficeCredentialSection.vue'), 'utf8')
+    expect(credential).toContain('clearSensitive')
 
     const health = readFileSync(resolve(APP, 'pages/health.vue'), 'utf8')
     expect(health).toContain('resolveInboxItemLink')

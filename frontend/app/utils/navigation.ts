@@ -1,7 +1,8 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { MeUser } from '~/types/api'
 import {
-  canAccessPlatformSerproConsole,
+  canAccessOfficeSettings,
+  canAccessPlatformAdmin,
   canCreateExport,
   canManageClients,
   canManageWorkCatalog,
@@ -279,19 +280,21 @@ export function mainDestinations(
     }
   )
 
-  if (hasConfirmedAdminAccess(user)) {
+  // Configuração do escritório (perfil, A1, consentimento, agendas) — tenant ou privilegiado.
+  if (canAccessOfficeSettings(user)) {
     items.push({
       id: 'settings',
       label: 'Configurações',
       icon: 'i-lucide-sliders-horizontal',
       type: 'trigger',
-      defaultOpen: path.startsWith('/settings') || path.startsWith('/admin'),
+      defaultOpen: path.startsWith('/settings'),
       children: [
         {
-          id: 'settings-onboarding',
-          label: 'Integra Contador',
-          icon: 'i-lucide-key-round',
-          to: '/settings'
+          id: 'settings-office',
+          label: 'Escritório',
+          icon: 'i-lucide-building-2',
+          to: '/settings',
+          exact: true
         },
         {
           id: 'settings-usage',
@@ -300,32 +303,42 @@ export function mainDestinations(
           to: '/settings/usage'
         },
         {
-          id: 'admin',
-          label: 'Administração',
-          icon: 'i-lucide-shield',
-          to: '/admin'
+          id: 'settings-subscription',
+          label: 'Assinatura',
+          icon: 'i-lucide-badge-check',
+          to: '/settings/subscription'
         },
-        {
-          id: 'admin-departments',
-          label: 'Departamentos',
-          icon: 'i-lucide-building',
-          to: '/admin/departments'
-        }
+        ...(hasConfirmedAdminAccess(user) || canAccessPlatformAdmin(user)
+          ? [{
+            id: 'admin-departments',
+            label: 'Departamentos',
+            icon: 'i-lucide-building',
+            to: '/admin/departments'
+          } satisfies NavDestination]
+          : [])
       ]
     })
   }
 
-  if (canAccessPlatformSerproConsole(user)) {
+  // `/admin/*` reservado à plataforma (sem TOTP global na navegação).
+  if (canAccessPlatformAdmin(user)) {
     items.push({
-      id: 'platform-serpro',
-      label: 'SERPRO plataforma',
-      icon: 'i-lucide-server-cog',
+      id: 'platform-admin',
+      label: 'Plataforma',
+      icon: 'i-lucide-shield',
       type: 'trigger',
-      defaultOpen: path.startsWith('/admin/serpro'),
+      defaultOpen: path === '/admin' || path.startsWith('/admin/'),
       children: [
         {
+          id: 'admin',
+          label: 'Hub plataforma',
+          icon: 'i-lucide-layout-dashboard',
+          to: '/admin',
+          exact: true
+        },
+        {
           id: 'platform-serpro-console',
-          label: 'Console global',
+          label: 'Console SERPRO',
           icon: 'i-lucide-gauge',
           to: '/admin/serpro'
         },

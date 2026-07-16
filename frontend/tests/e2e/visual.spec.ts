@@ -99,7 +99,8 @@ test.describe('regressão visual por zonas', () => {
     await expect(credentialDialog).toBeVisible()
     await expect(credentialDialog).toHaveScreenshot('client-credential-modal.png')
 
-    await openStable(page, '/admin', 'Administração')
+    // Configuração unificada do escritório (antes em /admin para office ADMIN).
+    await openStable(page, '/settings', 'Configurações')
     await expect(page.getByTestId('settings-panel')).toHaveScreenshot('admin-settings.png')
   })
 

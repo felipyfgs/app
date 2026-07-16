@@ -76,4 +76,19 @@ describe('composables/api factories (runtime)', () => {
     expect(calls[1]?.opts?.method).toBe('POST')
     expect(calls[2]?.path).toBe('/api/v1/platform/serpro-usage/consolidation')
   })
+
+  it('office.profile e platform.offices usam paths unificados', async () => {
+    const { client, calls } = mockClient()
+    const officeApi = createOfficeApi(client as never)
+    await officeApi.office.profile.show()
+    await officeApi.office.canonicalCredential.show()
+    expect(calls[0]?.path).toBe('/api/v1/office/profile')
+    expect(calls[1]?.path).toBe('/api/v1/office/canonical-credential')
+
+    const { client: pClient, calls: pCalls } = mockClient()
+    const platformApi = createPlatformApi(pClient as never)
+    await platformApi.platform.offices.select(7)
+    expect(pCalls[0]?.path).toBe('/api/v1/platform/offices/select')
+    expect(pCalls[0]?.opts?.method).toBe('POST')
+  })
 })

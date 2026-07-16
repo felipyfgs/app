@@ -7,6 +7,7 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { FiscalFinding, FiscalPendingItem } from '~/types/api'
 import type { SitfisClientDetail, SitfisClientRow } from '~/types/fiscal-modules'
+import { commercialBlockLabel } from '~/utils/monitor-commercial'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
@@ -149,25 +150,43 @@ async function openDetail(row: SitfisClientRow) {
   }
 }
 
-async function refreshSelected() {
+const recentConfirmOpen = ref(false)
+
+async function doRefreshSelected(force = false) {
   if (!selected.value || !canTriggerSync.value) return
   detailRefreshing.value = true
   try {
     await api.fiscal.sitfis.refresh({
-      client_id: selected.value.client_id
+      client_id: selected.value.client_id,
+      force
     })
     toast.add({ title: 'Atualização SITFIS solicitada', color: 'success' })
+    recentConfirmOpen.value = false
     await openDetail(selected.value)
     await refresh()
   } catch (caught) {
     toast.add({
-      title: apiErrorMessage(caught, 'Falha ao solicitar refresh SITFIS.'),
+      title: apiErrorMessage(caught, 'Falha ao solicitar refresh SITFIS. Verifique procuração e franquia.'),
       color: 'error'
     })
   } finally {
     detailRefreshing.value = false
   }
 }
+
+async function refreshSelected() {
+  if (!selected.value || !canTriggerSync.value) return
+  const recent = selected.value.is_recent_snapshot
+    || sitfisMeta.value?.is_within_ttl === true
+  if (recent) {
+    recentConfirmOpen.value = true
+    return
+  }
+  await doRefreshSelected(false)
+}
+
+const ClientProcuracaoBadge = resolveComponent('ClientsClientProcuracaoBadge')
+const CommercialMetaCell = resolveComponent('MonitoringCommercialMetaCell')
 
 const columns: TableColumn<SitfisClientRow>[] = [
   {
@@ -185,6 +204,28 @@ const columns: TableColumn<SitfisClientRow>[] = [
     id: 'situation',
     header: 'Situação',
     cell: ({ row }) => h(FiscalStatusBadge, { status: row.original.situation, showHint: true })
+  },
+  {
+    id: 'procuracao',
+    header: 'Procuração',
+    cell: ({ row }) => h(ClientProcuracaoBadge, {
+      status: row.original.procuracao_status,
+      showHint: false
+    })
+  },
+  {
+    id: 'franchise',
+    header: 'Franquia / agenda',
+    cell: ({ row }) => h(CommercialMetaCell, {
+      remaining: row.original.commercial_quota?.remaining,
+      limit: row.original.commercial_quota?.limit,
+      used: row.original.commercial_quota?.used,
+      blockReason: row.original.block_reason || row.original.commercial_quota?.block_reason,
+      blockMessage: row.original.block_message,
+      lastSnapshotAt: row.original.last_snapshot_at || row.original.last_consulted_at,
+      nextScheduledAt: row.original.next_scheduled_at,
+      isRecent: row.original.is_recent_snapshot
+    })
   },
   {
     id: 'age',
@@ -219,7 +260,7 @@ const columns: TableColumn<SitfisClientRow>[] = [
     id: 'observed',
     header: 'Observado',
     cell: ({ row }) => formatDateTime(
-      String(detailOf(row.original).observed_at || row.original.last_consulted_at || '') || null
+      String(detailOf(row.original).observed_at || row.original.last_snapshot_at || row.original.last_consulted_at || '') || null
     )
   },
   {
@@ -352,6 +393,7 @@ const columns: TableColumn<SitfisClientRow>[] = [
                 icon="i-lucide-refresh-cw"
                 label="Solicitar atualização"
                 :loading="detailRefreshing"
+                data-testid="sitfis-request-refresh"
                 @click="refreshSelected()"
               />
               <span
@@ -360,6 +402,14 @@ const columns: TableColumn<SitfisClientRow>[] = [
               >
                 Dados recentes · próxima atualização a partir de {{ formatDateTime(sitfisMeta.next_refresh_at) }}
               </span>
+              <UAlert
+                v-if="selected?.block_message || selected?.block_reason"
+                color="warning"
+                icon="i-lucide-triangle-alert"
+                class="w-full"
+                :title="selected.block_message || commercialBlockLabel(selected.block_reason) || 'Bloqueio operacional'"
+                description="Corrija procuração no e-CAC, aguarde o período da franquia ou contate o suporte da plataforma."
+              />
               <UButton
                 v-if="selected"
                 size="xs"
@@ -495,4 +545,12 @@ const columns: TableColumn<SitfisClientRow>[] = [
       </USlideover>
     </template>
   </MonitoringModuleTable>
+
+  <MonitoringRecentRefreshConfirmModal
+    v-model:open="recentConfirmOpen"
+    :last-at="sitfisMeta?.observed_at || selected?.last_snapshot_at || selected?.last_consulted_at"
+    :remaining="selected?.commercial_quota?.remaining"
+    :loading="detailRefreshing"
+    @confirm="doRefreshSelected(true)"
+  />
 </template>

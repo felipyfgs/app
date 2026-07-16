@@ -56,23 +56,27 @@ describe('navigation monitoramento (15.4)', () => {
     }
   })
 
-  it('ADMIN com 2FA vê Configurações (onboarding + consumo), sem CT-e', () => {
+  it('ADMIN com 2FA vê Configurações unificadas (escritório + consumo), sem hub /admin', () => {
     const tree = mainDestinations(user('ADMIN', true))
     const settings = tree.find(d => d.id === 'settings')
     expect(settings?.children?.map(c => c.id)).toEqual([
-      'settings-onboarding',
+      'settings-office',
       'settings-usage',
-      'admin',
+      'settings-subscription',
       'admin-departments'
     ])
     expect(settings?.children?.map(c => c.id)).not.toContain('settings-cte')
+    expect(settings?.children?.map(c => c.id)).not.toContain('admin')
     expect(settings?.children?.map(c => c.to)).not.toContain('/settings/cte')
+    // Hub plataforma fica fora da árvore do office ADMIN
+    const flat = flattenDestinations(tree).map(d => d.id)
+    expect(flat).not.toContain('platform-serpro-console')
   })
 
   it('VIEWER não vê Configurações/Admin', () => {
     const ids = flattenDestinations(mainDestinations(user('VIEWER'))).map(d => d.id)
     expect(ids).not.toContain('admin')
-    expect(ids).not.toContain('settings-onboarding')
+    expect(ids).not.toContain('settings-office')
     expect(ids).not.toContain('settings-usage')
     expect(ids).not.toContain('settings-cte')
   })

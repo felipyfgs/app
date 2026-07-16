@@ -133,7 +133,7 @@ const kpiCards = computed(() => [
 
 /**
  * Cadastro de clientes — colunas P0:
- * Razão social / nome · CNPJ/CPF · Certificado digital · Estado · Ações
+ * Razão social / nome · CNPJ/CPF · Certificado · Procuração · Estado · Ações
  * Mobile: nome + certificado + ações. Captura/sync ficam em Documentos.
  */
 const columns: TableColumn<Client>[] = [
@@ -143,8 +143,8 @@ const columns: TableColumn<Client>[] = [
     enableHiding: false,
     meta: {
       class: {
-        th: 'w-[32%] min-w-20 sm:w-[34%] sm:min-w-36',
-        td: 'w-[32%] min-w-20 sm:w-[34%] sm:min-w-36'
+        th: 'w-[28%] min-w-20 sm:w-[28%] sm:min-w-36',
+        td: 'w-[28%] min-w-20 sm:w-[28%] sm:min-w-36'
       }
     }
   },
@@ -154,8 +154,8 @@ const columns: TableColumn<Client>[] = [
     header: ({ column }) => sortHeader('CNPJ/CPF', column),
     meta: {
       class: {
-        th: 'hidden sm:table-cell w-[18%] min-w-36',
-        td: 'hidden sm:table-cell w-[18%] min-w-36'
+        th: 'hidden sm:table-cell w-[14%] min-w-32',
+        td: 'hidden sm:table-cell w-[14%] min-w-32'
       }
     }
   },
@@ -167,8 +167,20 @@ const columns: TableColumn<Client>[] = [
     enableHiding: false,
     meta: {
       class: {
-        th: 'w-[40%] min-w-24 sm:w-[24%] sm:min-w-36',
-        td: 'w-[40%] min-w-24 sm:w-[24%] sm:min-w-36'
+        th: 'w-[28%] min-w-24 sm:w-[18%] sm:min-w-32',
+        td: 'w-[28%] min-w-24 sm:w-[18%] sm:min-w-32'
+      }
+    }
+  },
+  {
+    id: 'procuracao',
+    accessorFn: row => row.procuracao_status || '',
+    header: 'Procuração',
+    enableSorting: false,
+    meta: {
+      class: {
+        th: 'hidden lg:table-cell w-[14%]',
+        td: 'hidden lg:table-cell w-[14%]'
       }
     }
   },
@@ -177,8 +189,8 @@ const columns: TableColumn<Client>[] = [
     header: ({ column }) => sortHeader('Estado', column),
     meta: {
       class: {
-        th: 'hidden md:table-cell w-[12%]',
-        td: 'hidden md:table-cell w-[12%]'
+        th: 'hidden md:table-cell w-[10%]',
+        td: 'hidden md:table-cell w-[10%]'
       }
     }
   },
@@ -189,8 +201,8 @@ const columns: TableColumn<Client>[] = [
     enableSorting: false,
     meta: {
       class: {
-        th: 'w-[18%] min-w-12 sm:w-[10%] sm:min-w-20',
-        td: 'w-[18%] min-w-12 sm:w-[10%] sm:min-w-20'
+        th: 'w-[16%] min-w-12 sm:w-[10%] sm:min-w-20',
+        td: 'w-[16%] min-w-12 sm:w-[10%] sm:min-w-20'
       }
     }
   }
@@ -787,6 +799,13 @@ onBeforeUnmount(() => {
             </UDropdownMenu>
           </div>
         </div>
+      </template>
+
+      <template #procuracao-cell="{ row }">
+        <ClientsClientProcuracaoBadge
+          :status="row.original.procuracao_status"
+          :checked-at="row.original.procuracao_checked_at"
+        />
       </template>
 
       <template #is_active-cell="{ row }">

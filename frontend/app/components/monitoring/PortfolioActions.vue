@@ -67,7 +67,10 @@ const showExp = computed(() =>
   && moduleSupportsPortfolioExport.value
 )
 
-async function onEnqueue() {
+const recentConfirmOpen = ref(false)
+const pendingForce = ref(false)
+
+async function runEnqueue(force = false) {
   if (!clientIdNum.value) {
     useToast().add({
       title: 'Informe o cliente (filtro Cliente ID) para solicitar consulta.',
@@ -77,9 +80,23 @@ async function onEnqueue() {
   }
   const result = await enqueueReadUpdate({
     client_id: clientIdNum.value,
-    competence: props.competence || undefined
+    competence: props.competence || undefined,
+    force
   })
+  recentConfirmOpen.value = false
   if (result) emit('refreshed')
+}
+
+async function onEnqueue() {
+  // Confirmação informada quando o usuário re-solicita (pode consumir franquia).
+  // O modal é opcional se o backend sinalizar recência via query futura; por padrão
+  // pedimos confirmação leve sempre que já há client filtrado e o módulo é de leitura.
+  if (clientIdNum.value) {
+    pendingForce.value = false
+    recentConfirmOpen.value = true
+    return
+  }
+  await runEnqueue(false)
 }
 
 async function onExport() {
@@ -206,6 +223,12 @@ const mobileItems = computed<DropdownMenuItem[]>(() => {
       :module-key="moduleKey"
       :default-client-ids="clientIdNum ? [clientIdNum] : []"
       @success="emit('refreshed')"
+    />
+
+    <MonitoringRecentRefreshConfirmModal
+      v-model:open="recentConfirmOpen"
+      :loading="enqueueing"
+      @confirm="runEnqueue(pendingForce)"
     />
   </div>
 </template>

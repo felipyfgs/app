@@ -22,14 +22,36 @@ export function isPlatformAdmin(user?: MeUser | null): boolean {
 }
 
 /**
- * Console global SERPRO (/admin/serpro/*): PLATFORM_ADMIN + TOTP confirmado.
- * Não concede dados fiscais de tenant.
+ * Área de plataforma `/admin/*` e console SERPRO.
+ * Navegação comum de PLATFORM_ADMIN NÃO exige TOTP global (OpenSpec 6.2 / 4.3).
+ * Setup pendente de 2FA do Fortify ainda bloqueia o painel inteiro via middleware.
  */
-export function canAccessPlatformSerproConsole(user?: MeUser | null): boolean {
+export function canAccessPlatformAdmin(user?: MeUser | null): boolean {
   if (!isPlatformAdmin(user)) return false
   if (user?.requires_two_factor_setup) return false
-  if (user?.two_factor_required && !user.two_factor_confirmed) return false
   return true
+}
+
+/**
+ * @deprecated Prefer `canAccessPlatformAdmin` — TOTP não é mais gate global de plataforma.
+ * Mantido como alias para compatibilidade de imports de testes legados.
+ */
+export function canAccessPlatformSerproConsole(user?: MeUser | null): boolean {
+  return canAccessPlatformAdmin(user)
+}
+
+/** Contexto privilegiado ativo (seletor global com office resolvido). */
+export function isPlatformPrivilegedContext(user?: MeUser | null): boolean {
+  return isPlatformAdmin(user) && user?.access_mode === 'platform_privileged' && !!user?.office
+}
+
+/**
+ * Configuração do escritório (`/settings`): ADMIN com 2FA, ou PLATFORM_ADMIN
+ * em contexto privilegiado com office selecionado.
+ */
+export function canAccessOfficeSettings(user?: MeUser | null): boolean {
+  if (hasConfirmedAdminAccess(user)) return true
+  return isPlatformPrivilegedContext(user)
 }
 
 function roleCanMutate(role?: OfficeRole | null): boolean {

@@ -10,31 +10,26 @@ test.describe('SERPRO console e checklist (rotas)', () => {
     await installApiFixtures(page, 'ADMIN')
   })
 
-  test('settings expõe checklist de onboarding Integra', async ({ page }) => {
+  test('settings unificado expõe perfil e certificado (sem checklist técnico)', async ({ page }) => {
     await page.goto('/settings')
     await expect(page.getByTestId('page-navbar')).toBeVisible()
-    await expect(page.getByTestId('serpro-settings-checklist-card')).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByTestId('serpro-onboarding-checklist')).toBeVisible()
-    await expect(page.getByTestId('serpro-checklist-step-environment')).toBeVisible()
-    await expect(page.getByTestId('serpro-checklist-step-author')).toBeVisible()
-    await expect(page.getByTestId('serpro-checklist-step-certificate_termo')).toBeVisible()
-    await expect(page.getByTestId('serpro-checklist-step-token')).toBeVisible()
-    await expect(page.getByTestId('serpro-checklist-step-proxy_power')).toBeVisible()
-    await expect(page.getByTestId('serpro-checklist-step-client_operation')).toBeVisible()
+    await expect(page.getByTestId('settings-office-unified')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('settings-profile-section')).toBeVisible()
+    await expect(page.getByTestId('settings-credential-section')).toBeVisible()
+    await expect(page.getByTestId('serpro-onboarding-checklist')).toHaveCount(0)
   })
 
-  test('proxies expõe seletores tipados de serviço/poder', async ({ page }) => {
+  test('proxies legado redireciona para settings unificado', async ({ page }) => {
     await page.goto('/settings/proxies')
-    await expect(page.getByTestId('page-navbar')).toBeVisible()
-    await expect(page.getByTestId('serpro-typed-selectors')).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByTestId('serpro-select-service')).toBeVisible()
-    await expect(page.getByTestId('serpro-select-power')).toBeVisible()
+    await expect(page).toHaveURL(/\/settings\/?$/, { timeout: 15_000 })
+    await expect(page.getByTestId('settings-office-unified')).toBeVisible({ timeout: 15_000 })
   })
 
-  test('console platform nega ADMIN sem is_platform_admin', async ({ page }) => {
+  test('console platform nega ADMIN sem is_platform_admin (redirect ou denied)', async ({ page }) => {
     await page.goto('/admin/serpro')
-    await expect(page.getByTestId('admin-serpro-panel')).toBeVisible()
-    await expect(page.getByTestId('admin-serpro-denied')).toBeVisible({ timeout: 15_000 })
+    // Office ADMIN (sem PLATFORM_ADMIN) → middleware redireciona /admin/* para settings.
+    await expect(page).toHaveURL(/\/settings/, { timeout: 15_000 })
+    await expect(page.getByTestId('settings-panel')).toBeVisible()
   })
 
   test('health lista filtros SERPRO na toolbar', async ({ page }) => {

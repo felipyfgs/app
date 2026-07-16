@@ -6,7 +6,8 @@ import type { InboxItem, InboxItemLinks } from '~/types/api'
  */
 export const SERPRO_INBOX_ROUTES = {
   authorization: '/settings',
-  proxies: '/settings/proxies',
+  /** Importação manual de procurações removida — redireciona ao settings unificado. */
+  proxies: '/settings',
   usage: '/settings/usage',
   subscription: '/settings/subscription',
   monitoring: '/monitoring',
@@ -17,9 +18,10 @@ export const SERPRO_INBOX_ROUTES = {
 
 const LEGACY_PATH_REWRITES: Array<{ pattern: RegExp, to: string | ((m: RegExpMatchArray) => string) }> = [
   { pattern: /^\/settings\/integracao-serpro\/?$/i, to: SERPRO_INBOX_ROUTES.authorization },
+  { pattern: /^\/settings\/proxies\/?$/i, to: SERPRO_INBOX_ROUTES.authorization },
   { pattern: /^\/settings\/consumo\/?$/i, to: SERPRO_INBOX_ROUTES.usage },
   { pattern: /^\/settings\/usage\/?$/i, to: SERPRO_INBOX_ROUTES.usage },
-  { pattern: /^\/clients\/(\d+)\/procuracoes\/?$/i, to: SERPRO_INBOX_ROUTES.proxies },
+  { pattern: /^\/clients\/(\d+)\/procuracoes\/?$/i, to: m => `/clients/${m[1]}` },
   { pattern: /^\/fiscal\/runs\/\d+\/?$/i, to: SERPRO_INBOX_ROUTES.monitoring },
   { pattern: /^\/integracao-serpro\/?$/i, to: SERPRO_INBOX_ROUTES.authorization }
 ]

@@ -1,8 +1,13 @@
 import type {
   OfficeAutXmlEnrollment,
   OfficeAutXmlOverview,
+  OfficeCanonicalCredential,
+  OfficeInstitutionalProfile,
+  OfficeMonitorSchedulePolicy,
+  OfficeOnboardingActionable,
   OfficeSerproAuthorization,
   OfficeSubscription,
+  OfficeTechnicalConsent,
   OfficeUsageEntry,
   OfficeUsageSummary,
   PageMeta,
@@ -16,6 +21,90 @@ export function createOfficeApi(client: ApiClient) {
     office: {
       subscription: () =>
         client<{ data: OfficeSubscription }>('/api/v1/office/subscription'),
+      /**
+       * Perfil institucional unificado (OpenSpec configuracao-escritorio-unificada).
+       * Paths canônicos; se a API ainda não existir, a UI trata 404 com empty state.
+       */
+      profile: {
+        show: () =>
+          client<{ data: OfficeInstitutionalProfile }>('/api/v1/office/profile'),
+        update: (body: {
+          cnpj?: string
+          legal_name?: string
+          institutional_email?: string
+          institutional_phone?: string
+          /** Confirmação forte obrigatória na troca de CNPJ. */
+          confirm_cnpj_change?: boolean
+        }) =>
+          client<{ data: OfficeInstitutionalProfile }>('/api/v1/office/profile', {
+            method: 'PUT',
+            body
+          })
+      },
+      technicalConsent: {
+        show: () =>
+          client<{ data: OfficeTechnicalConsent }>('/api/v1/office/technical-consent'),
+        accept: (body?: { version?: string }) =>
+          client<{ data: OfficeTechnicalConsent }>('/api/v1/office/technical-consent', {
+            method: 'POST',
+            body: body || {}
+          }),
+        revoke: () =>
+          client<{ data: OfficeTechnicalConsent }>('/api/v1/office/technical-consent/revoke', {
+            method: 'POST',
+            body: {}
+          })
+      },
+      canonicalCredential: {
+        show: () =>
+          client<{ data: OfficeCanonicalCredential | null }>('/api/v1/office/canonical-credential'),
+        upload: (pfx: File, password: string, options?: { password_confirmation?: string }) => {
+          const body = new FormData()
+          body.append('pfx', pfx)
+          body.append('password', password)
+          if (options?.password_confirmation) {
+            body.append('password_confirmation', options.password_confirmation)
+          }
+          return client<{ data: OfficeCanonicalCredential }>(
+            '/api/v1/office/canonical-credential',
+            { method: 'POST', body }
+          )
+        },
+        replace: (pfx: File, password: string, options?: {
+          password_confirmation?: string
+          reconfirm_password?: string
+        }) => {
+          const body = new FormData()
+          body.append('pfx', pfx)
+          body.append('password', password)
+          if (options?.password_confirmation) {
+            body.append('password_confirmation', options.password_confirmation)
+          }
+          if (options?.reconfirm_password) {
+            body.append('reconfirm_password', options.reconfirm_password)
+          }
+          return client<{ data: OfficeCanonicalCredential }>(
+            '/api/v1/office/canonical-credential/replace',
+            { method: 'POST', body }
+          )
+        },
+        remove: (body?: { confirm?: boolean, reconfirm_password?: string }) =>
+          client<{ data: null }>('/api/v1/office/canonical-credential/remove', {
+            method: 'POST',
+            body: { confirm: true, ...body }
+          })
+      },
+      monitorSchedules: {
+        list: () =>
+          client<{ data: OfficeMonitorSchedulePolicy[] }>('/api/v1/office/monitor-schedules'),
+        update: (monitorKey: string, body: { day_of_month: number }) =>
+          client<{ data: OfficeMonitorSchedulePolicy }>(
+            `/api/v1/office/monitor-schedules/${encodeURIComponent(monitorKey)}`,
+            { method: 'PUT', body }
+          )
+      },
+      onboardingStatus: () =>
+        client<{ data: OfficeOnboardingActionable }>('/api/v1/office/onboarding-status'),
       serproAuthorization: {
         show: (params?: { environment?: string }) =>
           client<{

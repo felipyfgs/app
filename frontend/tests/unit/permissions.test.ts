@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  canAccessOfficeSettings,
+  canAccessPlatformAdmin,
   canAccessPlatformSerproConsole,
   canCreateExport,
   canManageClients,
@@ -7,6 +9,7 @@ import {
   canTriggerSync,
   hasConfirmedAdminAccess,
   isPlatformAdmin,
+  isPlatformPrivilegedContext,
   unwrapMeUser
 } from '../../app/utils/permissions'
 import type { MeUser } from '../../app/types/api'
@@ -72,20 +75,35 @@ describe('permissions', () => {
     expect(hasConfirmedAdminAccess(viewer)).toBe(false)
   })
 
-  it('PLATFORM_ADMIN com TOTP acessa console SERPRO sem membership', () => {
+  it('PLATFORM_ADMIN acessa console/admin sem membership e sem TOTP global', () => {
     const plat = user({
       role: null,
       office: null,
       is_platform_admin: true,
-      two_factor_confirmed: true
+      two_factor_confirmed: false,
+      two_factor_required: true
     })
     expect(isPlatformAdmin(plat)).toBe(true)
+    expect(canAccessPlatformAdmin(plat)).toBe(true)
     expect(canAccessPlatformSerproConsole(plat)).toBe(true)
     expect(hasConfirmedAdminAccess(plat)).toBe(false)
+    expect(canAccessOfficeSettings(plat)).toBe(false)
+  })
+
+  it('PLATFORM_ADMIN privilegiado acessa settings do office', () => {
+    const plat = user({
+      role: null,
+      is_platform_admin: true,
+      access_mode: 'platform_privileged',
+      office: { id: 2, name: 'Tenant', slug: 'tenant' }
+    })
+    expect(isPlatformPrivilegedContext(plat)).toBe(true)
+    expect(canAccessOfficeSettings(plat)).toBe(true)
   })
 
   it('ADMIN de office sem flag platform não acessa console global', () => {
     const admin = user({ role: 'ADMIN', is_platform_admin: false })
     expect(canAccessPlatformSerproConsole(admin)).toBe(false)
+    expect(canAccessPlatformAdmin(admin)).toBe(false)
   })
 })

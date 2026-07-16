@@ -40,22 +40,41 @@ describe('navigation', () => {
     expect(actions).toContain('work-queue')
   })
 
-  it('ADMIN com 2FA vê Administração/Configurações e ações rápidas', () => {
+  it('ADMIN com 2FA vê Configurações do escritório (não hub plataforma)', () => {
     const ids = flattenDestinations(mainDestinations(user('ADMIN', true))).map(d => d.id)
-    expect(ids).toContain('admin')
-    expect(ids).toContain('settings-onboarding')
+    expect(ids).toContain('settings-office')
+    expect(ids).toContain('settings-usage')
+    expect(ids).not.toContain('admin')
+    expect(ids).not.toContain('platform-serpro-console')
     expect(quickActions(user('ADMIN', true)).length).toBeGreaterThan(0)
   })
 
-  it('ADMIN sem 2FA não vê Administração nem ações de mutação', () => {
+  it('ADMIN sem 2FA não vê Configurações nem ações de mutação', () => {
     const ids = flattenDestinations(mainDestinations(user('ADMIN', false))).map(d => d.id)
     expect(ids).not.toContain('admin')
-    expect(ids).not.toContain('settings-onboarding')
+    expect(ids).not.toContain('settings-office')
     const actions = quickActions(user('ADMIN', false)).map(a => a.id)
     expect(actions).not.toContain('new-client')
     expect(actions).not.toContain('new-export')
     // Minha fila permanece acessível (consulta).
     expect(actions).toContain('work-queue')
+  })
+
+  it('PLATFORM_ADMIN vê hub Plataforma e console SERPRO', () => {
+    const plat: MeUser = {
+      id: 9,
+      name: 'Plat',
+      email: 'p@example.com',
+      two_factor_confirmed: false,
+      two_factor_required: true,
+      requires_two_factor_setup: false,
+      is_platform_admin: true,
+      office: null,
+      role: null
+    }
+    const ids = flattenDestinations(mainDestinations(plat)).map(d => d.id)
+    expect(ids).toContain('admin')
+    expect(ids).toContain('platform-serpro-console')
   })
 
   it('destinos folha do operador batem com o produto (Trabalho, Clientes, Monitoramento, Documentos e Operações)', () => {

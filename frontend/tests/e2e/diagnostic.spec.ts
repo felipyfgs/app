@@ -9,7 +9,7 @@ const routes = [
   { slug: 'doc', path: `/docs/${NOTE_ACCESS_KEY}`, role: 'dialog', name: 'NFS-e nº 1001' },
   { slug: 'exports', path: '/exports', role: 'heading', name: 'Exportações' },
   { slug: 'syncs', path: '/syncs', role: 'heading', name: 'Sincronizações' },
-  { slug: 'admin', path: '/admin', role: 'heading', name: 'Administração' }
+  { slug: 'settings', path: '/settings', role: 'heading', name: 'Configurações' }
 ] as const
 
 test('captura diagnóstica do frontend sem promover baseline', async ({ page }, testInfo) => {

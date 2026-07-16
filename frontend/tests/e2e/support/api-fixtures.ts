@@ -63,6 +63,8 @@ const clients: Client[] = [{
   is_active: true,
   registration_source: 'LEGACY',
   establishments_count: 2,
+  procuracao_status: 'authorized',
+  procuracao_checked_at: FIXED_NOW,
   credential_summary: {
     status: 'ACTIVE',
     valid_to: '2027-01-01T00:00:00.000Z',
@@ -517,6 +519,114 @@ export async function installApiFixtures(
             valid_to: '2027-07-14T15:00:00.000Z'
           }
         }
+      })
+    }
+    // Configuração unificada do escritório (OpenSpec 6.1)
+    if (pathname.endsWith('/api/v1/office/profile') && method === 'GET') {
+      const cnpj = activeOfficeId === 1 ? '12ABC345678900' : '98XYZ765432100'
+      return fulfill(route, {
+        data: {
+          cnpj,
+          legal_name: officeMeta(activeOfficeId).name,
+          institutional_email: 'contato@escritorio.example',
+          institutional_phone: '+55 98 3000-0000'
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/office/technical-consent') && method === 'GET') {
+      return fulfill(route, {
+        data: {
+          version: '1',
+          accepted: true,
+          requires_reacceptance: false,
+          accepted_at: FIXED_NOW,
+          purposes: [
+            { code: 'SERPRO_TERM_SIGNING', label: 'Assinatura do Termo' },
+            { code: 'NFE_AUTXML_DISTDFE', label: 'autXML DistDFe' }
+          ]
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/office/canonical-credential') && method === 'GET') {
+      const cnpj = activeOfficeId === 1 ? '12ABC345678900' : '98XYZ765432100'
+      return fulfill(route, {
+        data: {
+          id: activeOfficeId,
+          status: 'ACTIVE',
+          subject_name: 'A1 sintético — somente metadados',
+          holder_cnpj: cnpj,
+          fingerprint_sha256: 'f'.repeat(64),
+          valid_to: '2027-07-14T15:00:00.000Z',
+          expires_alert_30: false,
+          expires_alert_7: false,
+          expires_alert_1: false
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/office/monitor-schedules') && method === 'GET') {
+      return fulfill(route, {
+        data: [{
+          monitor_key: 'sitfis',
+          monitor_label: 'Situação fiscal',
+          day_of_month: 7,
+          is_default: true,
+          next_run_at: FIXED_NOW,
+          last_run_at: null,
+          timezone: 'America/Sao_Paulo'
+        }]
+      })
+    }
+    if (pathname.endsWith('/api/v1/office/onboarding-status') && method === 'GET') {
+      return fulfill(route, {
+        data: {
+          status: 'authorized',
+          message: 'Integrações ativas (fixture).',
+          actions: [],
+          correlation_id: null
+        }
+      })
+    }
+    // Seletor global PLATFORM_ADMIN (OpenSpec 6.2)
+    if (pathname.endsWith('/api/v1/platform/offices') && method === 'GET') {
+      if (role !== 'PLATFORM_ADMIN' && !pathname.includes('platform')) {
+        // role string from fixtures is OfficeRole | PLATFORM-like — check identity below via me
+      }
+      return fulfill(route, {
+        data: [
+          {
+            id: 1,
+            name: FISCAL_OFFICE_A_NAME,
+            slug: 'escritorio-modelo',
+            is_active: true,
+            plan: 'Professional'
+          },
+          {
+            id: 2,
+            name: FISCAL_OFFICE_B_NAME,
+            slug: 'escritorio-sentinela',
+            is_active: true,
+            plan: 'Starter'
+          }
+        ]
+      })
+    }
+    if (pathname.endsWith('/api/v1/platform/offices/select') && method === 'POST') {
+      const body = request.postDataJSON() as { office_id?: number }
+      const nextId = Number(body?.office_id)
+      if (nextId !== 1 && nextId !== 2) {
+        return fulfill(route, { message: 'Escritório inválido.' }, 422)
+      }
+      activeOfficeId = nextId
+      return fulfill(route, {
+        data: {
+          office: officeMeta(activeOfficeId),
+          access_mode: 'platform_privileged'
+        }
+      })
+    }
+    if (pathname.endsWith('/api/v1/platform/offices/select') && method === 'DELETE') {
+      return fulfill(route, {
+        data: { access_mode: null }
       })
     }
     if (pathname.endsWith('/api/v1/office/autxml/cursor') && method === 'GET') {

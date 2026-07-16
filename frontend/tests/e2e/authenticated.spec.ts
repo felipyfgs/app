@@ -34,10 +34,12 @@ for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] satisfies OfficeRole[]) {
       })
     }
 
-    test('administração respeita perfil e confirmação de 2FA', async ({ page }) => {
+    test('administração da plataforma e settings respeitam perfil', async ({ page }) => {
       await page.goto('/admin')
       if (role === 'ADMIN') {
-        await expect(page.getByRole('heading', { name: 'Administração', exact: true })).toBeVisible()
+        // Office ADMIN não acessa /admin/* — redireciona para settings unificado.
+        await expect(page).toHaveURL(/\/settings/, { timeout: 15_000 })
+        await expect(page.getByTestId('settings-panel')).toBeVisible()
       } else {
         await expect(page).toHaveURL(/\/$/)
         await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible()
@@ -51,13 +53,15 @@ for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] satisfies OfficeRole[]) {
         await page.getByRole('button', { name: 'Abrir barra lateral' }).click()
       }
       const settings = page.getByRole('button', { name: 'Configurações', exact: true })
-      const administration = page.getByRole('link', { name: 'Administração', exact: true })
+      const platformHub = page.getByRole('link', { name: 'Hub plataforma', exact: true })
       if (role === 'ADMIN') {
         await settings.click()
-        await expect(administration).toBeVisible()
+        await expect(page.getByRole('link', { name: 'Escritório', exact: true })).toBeVisible()
+        // Hub /admin é exclusivo PLATFORM_ADMIN
+        await expect(platformHub).toHaveCount(0)
       } else {
         await expect(settings).toHaveCount(0)
-        await expect(administration).toHaveCount(0)
+        await expect(platformHub).toHaveCount(0)
       }
     })
   })

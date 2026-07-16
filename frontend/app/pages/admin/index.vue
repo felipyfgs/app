@@ -1,29 +1,42 @@
 <script setup lang="ts">
-import type { BackupStatus } from '~/types/api'
+/**
+ * Hub da plataforma (`/admin`) — reservado a PLATFORM_ADMIN (OpenSpec 6.2).
+ * Sem configuração de escritório (movida para /settings).
+ * Seletor global no OfficeIdentity; banner de contexto privilegiado no shell.
+ */
+import type { BackupStatus, PlatformOfficeSummary } from '~/types/api'
 
-const { me, canAccessAdministration, canAccessPlatformSerpro } = useDashboard()
 const api = useApi()
+const { me, canAccessPlatformAdmin, isPlatformPrivileged } = useDashboard()
+const {
+  offices,
+  loading,
+  loadError,
+  loadOffices,
+  selectOffice,
+  clearSelection,
+  switching,
+  privileged
+} = usePlatformOfficeSelect()
 
-// Conteúdo administrativo só após confirmação de papel e 2FA (middleware + gate local).
-const allowed = computed(() => canAccessAdministration.value)
+const q = ref('')
 
 const backup = ref<BackupStatus | null>(null)
 const backupLoading = ref(false)
 const backupError = ref<string | null>(null)
 
-const fiscalIdentity = ref<Record<string, unknown> | null>(null)
-const fiscalCredential = ref<Record<string, unknown> | null>(null)
-const fiscalLoading = ref(false)
-const fiscalError = ref<string | null>(null)
-const fiscalCnpj = ref('')
-const fiscalLegalName = ref('')
-const fiscalPfx = ref<File | null>(null)
-const fiscalPassword = ref('')
-const fiscalSaving = ref(false)
-const toast = useToast()
+const filtered = computed(() => {
+  const term = q.value.trim().toLowerCase()
+  if (!term) return offices.value
+  return offices.value.filter(o =>
+    o.name.toLowerCase().includes(term)
+    || o.slug.toLowerCase().includes(term)
+    || String(o.id).includes(term)
+  )
+})
 
 async function loadBackup() {
-  if (!allowed.value) {
+  if (!canAccessPlatformAdmin.value) {
     backup.value = null
     return
   }
@@ -39,89 +52,29 @@ async function loadBackup() {
   }
 }
 
-async function loadFiscal() {
-  if (!allowed.value) {
-    fiscalIdentity.value = null
-    fiscalCredential.value = null
-    return
-  }
-  fiscalLoading.value = true
-  try {
-    const res = await api.officeFiscal.get()
-    fiscalIdentity.value = res.data.identity
-    fiscalCredential.value = res.data.credential
-    fiscalError.value = null
-    if (res.data.identity?.cnpj) {
-      fiscalCnpj.value = String(res.data.identity.cnpj)
-    }
-    if (res.data.identity?.legal_name) {
-      fiscalLegalName.value = String(res.data.identity.legal_name)
-    }
-  } catch (caught) {
-    fiscalError.value = apiErrorMessage(caught, 'Não foi possível carregar a identidade fiscal do escritório.')
-  } finally {
-    fiscalLoading.value = false
-  }
-}
-
-async function saveIdentity() {
-  if (fiscalSaving.value) return
-  fiscalSaving.value = true
-  try {
-    const res = await api.officeFiscal.upsertIdentity({
-      cnpj: fiscalCnpj.value,
-      legal_name: fiscalLegalName.value || undefined
-    })
-    fiscalIdentity.value = res.data
-    toast.add({ title: 'Identidade fiscal salva', color: 'success' })
-    await loadFiscal()
-  } catch (caught) {
-    toast.add({ title: apiErrorMessage(caught, 'Falha ao salvar identidade.'), color: 'error' })
-  } finally {
-    fiscalSaving.value = false
-  }
-}
-
-async function uploadOfficeA1() {
-  if (fiscalSaving.value || !fiscalPfx.value) return
-  fiscalSaving.value = true
-  try {
-    await api.officeFiscal.uploadCredential(fiscalPfx.value, fiscalPassword.value)
-    fiscalPassword.value = ''
-    fiscalPfx.value = null
-    toast.add({ title: 'A1 do escritório atualizado (sem recuperação de PFX)', color: 'success' })
-    await loadFiscal()
-  } catch (caught) {
-    toast.add({ title: apiErrorMessage(caught, 'Falha ao enviar A1.'), color: 'error' })
-  } finally {
-    fiscalSaving.value = false
-  }
-}
-
-function onPfxChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  fiscalPfx.value = input.files?.[0] ?? null
-}
-
-function copyCnpj() {
-  const c = String(fiscalIdentity.value?.cnpj || fiscalCnpj.value || '')
-  if (!c) return
-  void navigator.clipboard.writeText(c)
-  toast.add({ title: 'CNPJ copiado', color: 'success' })
-}
-
-watch(allowed, (ok) => {
-  if (ok) {
+onMounted(() => {
+  if (canAccessPlatformAdmin.value) {
+    void loadOffices()
     void loadBackup()
-    void loadFiscal()
   }
-}, { immediate: true })
+})
+
+async function onSelect(office: PlatformOfficeSummary) {
+  await selectOffice(office.id)
+}
 </script>
 
 <template>
-  <UDashboardPanel id="admin" data-testid="settings-panel" :ui="{ body: 'lg:py-12' }">
+  <UDashboardPanel
+    id="admin"
+    data-testid="admin-platform-panel"
+    :ui="{ body: 'lg:py-12' }"
+  >
     <template #header>
-      <UDashboardNavbar title="Administração" data-testid="page-navbar">
+      <UDashboardNavbar
+        title="Plataforma"
+        data-testid="page-navbar"
+      >
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
@@ -129,207 +82,219 @@ watch(allowed, (ok) => {
     </template>
 
     <template #body>
-      <div class="mx-auto flex w-full flex-col gap-4 sm:gap-6 lg:max-w-2xl lg:gap-12">
+      <div class="mx-auto flex w-full flex-col gap-4 sm:gap-6 lg:max-w-3xl lg:gap-12">
         <UAlert
-          v-if="!allowed"
+          v-if="!canAccessPlatformAdmin"
           color="warning"
           icon="i-lucide-shield-off"
-          title="Acesso restrito"
+          title="Acesso restrito à plataforma"
+          description="/admin/* é exclusivo de PLATFORM_ADMIN. A configuração do escritório está em Configurações."
+          data-testid="admin-access-denied"
         />
 
-        <template v-else-if="me">
+        <template v-else>
           <UPageCard
             variant="naked"
-            title="Conta administrativa"
-            description="Identidade da sessão e estado do segundo fator."
+            title="Administração da plataforma"
+            description="Contrato SERPRO, saúde técnica, orçamento e seletor global de escritórios. Sem TOTP global na navegação."
           />
-          <UPageCard variant="subtle">
-            <dl class="space-y-3 text-sm">
-              <div>
-                <dt class="text-muted">
-                  Usuário
-                </dt>
-                <dd class="text-highlighted">
-                  {{ me.name }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  E-mail
-                </dt>
-                <dd class="text-highlighted">
-                  {{ me.email }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Escritório
-                </dt>
-                <dd class="text-highlighted">
-                  {{ me.office?.name || '—' }}
-                </dd>
-              </div>
-              <div class="flex items-center justify-between">
-                <dt class="text-muted">
-                  Segundo fator
-                </dt>
-                <UBadge
-                  :color="!me.two_factor_required || me.two_factor_confirmed ? 'success' : 'error'"
-                  variant="subtle"
-                >
-                  <UIcon
-                    :name="!me.two_factor_required || me.two_factor_confirmed ? 'i-lucide-check' : 'i-lucide-x'"
-                    class="mr-1 size-3"
-                    aria-hidden="true"
-                  />
-                  {{ !me.two_factor_required ? 'Desativado em desenvolvimento' : me.two_factor_confirmed ? 'Confirmado' : 'Pendente' }}
-                </UBadge>
-              </div>
-            </dl>
-          </UPageCard>
 
           <UPageCard
-            variant="naked"
-            title="Identidade fiscal do escritório"
-            description="CNPJ do contador para autXML DistDFe e A1 do escritório (ADMIN + 2FA)."
-            data-testid="admin-office-fiscal"
-          />
-          <UPageCard variant="subtle">
-            <div v-if="fiscalLoading" class="space-y-2" role="status">
-              <USkeleton class="h-4 w-1/2" />
-              <USkeleton class="h-4 w-2/3" />
-            </div>
-            <UAlert
-              v-else-if="fiscalError"
-              color="warning"
-              icon="i-lucide-wifi-off"
-              :title="fiscalError"
-              :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: loadFiscal }]"
-            />
-            <div v-else class="space-y-4 text-sm">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="text-muted">CNPJ ativo:</span>
-                <code class="rounded bg-elevated px-2 py-0.5 text-highlighted">
-                  {{ fiscalIdentity?.cnpj || '—' }}
-                </code>
-                <UButton
-                  size="xs"
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-copy"
-                  label="Copiar"
-                  :disabled="!fiscalIdentity?.cnpj"
-                  @click="copyCnpj"
-                />
+            variant="subtle"
+            data-testid="admin-actor-card"
+          >
+            <dl class="grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <dt class="text-muted">
+                  Administrador
+                </dt>
+                <dd class="text-highlighted">
+                  {{ me?.name }} · {{ me?.email }}
+                </dd>
               </div>
-              <p class="text-muted">
-                A1 do escritório:
-                <UBadge
-                  class="ml-1"
-                  :color="fiscalCredential ? 'success' : 'neutral'"
-                  variant="subtle"
-                >
-                  {{ fiscalCredential ? 'Configurado' : 'Ausente' }}
-                </UBadge>
-                <span v-if="fiscalCredential?.valid_to" class="ml-2 text-xs">
-                  válido até {{ formatDateTime(String(fiscalCredential.valid_to)) }}
-                </span>
-              </p>
-              <div class="grid gap-3 sm:grid-cols-2">
-                <UFormField label="CNPJ do escritório">
-                  <UInput v-model="fiscalCnpj" placeholder="14 caracteres" autocomplete="off" />
-                </UFormField>
-                <UFormField label="Razão social (opcional)">
-                  <UInput v-model="fiscalLegalName" autocomplete="organization" />
-                </UFormField>
-              </div>
-              <UButton
-                color="primary"
-                label="Salvar identidade"
-                :loading="fiscalSaving"
-                :disabled="!fiscalCnpj"
-                @click="saveIdentity"
-              />
-              <USeparator />
-              <p class="text-xs text-muted">
-                Upload de A1: a senha só trafega nesta requisição; não há download nem recuperação de PFX/PEM.
-              </p>
-              <div class="grid gap-3 sm:grid-cols-2">
-                <UFormField label="Arquivo PFX/P12">
-                  <input
-                    type="file"
-                    accept=".pfx,.p12,application/x-pkcs12"
-                    class="block w-full text-sm"
-                    @change="onPfxChange"
+              <div>
+                <dt class="text-muted">
+                  Modo de acesso
+                </dt>
+                <dd>
+                  <UBadge
+                    :color="isPlatformPrivileged ? 'warning' : 'neutral'"
+                    variant="subtle"
                   >
-                </UFormField>
-                <UFormField label="Senha do PFX">
-                  <UInput
-                    v-model="fiscalPassword"
-                    type="password"
-                    autocomplete="new-password"
-                  />
-                </UFormField>
+                    {{ isPlatformPrivileged ? 'Contexto privilegiado' : 'Plataforma (sem office)' }}
+                  </UBadge>
+                </dd>
               </div>
+              <div v-if="me?.office">
+                <dt class="text-muted">
+                  Office resolvido
+                </dt>
+                <dd class="text-highlighted">
+                  {{ me.office.name }}
+                  <span
+                    v-if="me.office.slug"
+                    class="text-muted"
+                  > ({{ me.office.slug }})</span>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-muted">
+                  Capacidades efetivas
+                </dt>
+                <dd class="text-highlighted">
+                  {{ isPlatformPrivileged ? 'Equivalente a Office ADMIN no office selecionado' : 'Somente superfícies /admin e console SERPRO' }}
+                </dd>
+              </div>
+            </dl>
+            <UAlert
+              v-if="isPlatformPrivileged"
+              class="mt-4"
+              color="warning"
+              icon="i-lucide-shield-alert"
+              title="Auditoria interna ativa"
+              description="Leituras e mutações relevantes são registradas com o administrador real. A trilha não aparece para o escritório."
+            />
+            <div
+              v-if="privileged"
+              class="mt-4 flex justify-end"
+            >
               <UButton
                 color="neutral"
                 variant="outline"
-                label="Substituir A1 do escritório"
-                :loading="fiscalSaving"
-                :disabled="!fiscalPfx || !fiscalPassword"
-                @click="uploadOfficeA1"
+                icon="i-lucide-log-out"
+                label="Encerrar contexto privilegiado"
+                :loading="switching"
+                data-testid="admin-clear-privileged"
+                @click="() => { void clearSelection() }"
               />
             </div>
           </UPageCard>
 
           <UPageCard
             variant="naked"
-            title="Onboarding autXML por estabelecimento"
-            data-testid="admin-autxml-onboarding"
+            title="Seletor global de escritórios"
+            description="Lista qualquer office ativo. Não cria membership nem personifica usuário."
           />
-          <UPageCard variant="subtle" data-testid="admin-autxml-card">
-            <OfficeAutXmlOnboardingChecklist />
+          <UPageCard
+            variant="subtle"
+            data-testid="admin-global-office-selector"
+          >
+            <div class="mb-4 flex flex-wrap items-center gap-2">
+              <UInput
+                v-model="q"
+                icon="i-lucide-search"
+                placeholder="Buscar por nome, slug ou id…"
+                class="w-full sm:max-w-sm"
+                aria-label="Filtrar escritórios da plataforma"
+                data-testid="admin-office-search"
+              />
+              <UButton
+                color="neutral"
+                variant="soft"
+                icon="i-lucide-refresh-cw"
+                label="Atualizar"
+                :loading="loading"
+                @click="() => { void loadOffices() }"
+              />
+            </div>
+
+            <div
+              v-if="loading && !offices.length"
+              class="space-y-2"
+              role="status"
+              aria-label="Carregando escritórios"
+            >
+              <USkeleton class="h-10 w-full" />
+              <USkeleton class="h-10 w-full" />
+              <USkeleton class="h-10 w-2/3" />
+            </div>
+            <UAlert
+              v-else-if="loadError"
+              color="warning"
+              icon="i-lucide-wifi-off"
+              :title="loadError"
+              :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: () => loadOffices() }]"
+              data-testid="admin-offices-error"
+            />
+            <UEmpty
+              v-else-if="!filtered.length"
+              icon="i-lucide-building-2"
+              title="Nenhum escritório encontrado"
+              description="Quando a API de offices da plataforma estiver disponível, a lista aparece aqui e no seletor da sidebar."
+              data-testid="admin-offices-empty"
+            />
+            <ul
+              v-else
+              class="divide-y divide-default"
+              role="listbox"
+              aria-label="Escritórios da plataforma"
+            >
+              <li
+                v-for="office in filtered"
+                :key="office.id"
+                class="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0"
+              >
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-medium text-highlighted">
+                    {{ office.name }}
+                  </p>
+                  <p class="text-xs text-muted">
+                    #{{ office.id }}
+                    <span v-if="office.slug"> · {{ office.slug }}</span>
+                    <span v-if="office.plan"> · {{ office.plan }}</span>
+                  </p>
+                </div>
+                <UButton
+                  size="sm"
+                  :color="me?.office?.id === office.id && privileged ? 'warning' : 'neutral'"
+                  :variant="me?.office?.id === office.id && privileged ? 'soft' : 'outline'"
+                  :label="me?.office?.id === office.id && privileged ? 'Selecionado' : 'Operar'"
+                  icon="i-lucide-shield"
+                  :loading="switching"
+                  :aria-label="`Selecionar escritório ${office.name} em contexto privilegiado`"
+                  @click="onSelect(office)"
+                />
+              </li>
+            </ul>
           </UPageCard>
 
           <UPageCard
             variant="naked"
-            title="Certificados A1 dos clientes"
-            description="Gerenciados no detalhe de cada cliente."
+            title="Console SERPRO"
+            description="Contrato global, readiness, kill switch, cobertura e conciliação."
           />
           <UPageCard variant="subtle">
             <p class="text-sm text-muted">
-              A API expõe somente metadados públicos e não possui rota de recuperação de PFX, senha ou chave privada.
+              Superfície global sanitizada — sem PFX, Consumer Secret, token ou XML.
             </p>
-            <UButton class="mt-4" to="/clients" label="Gerenciar por cliente" />
-          </UPageCard>
-
-          <UPageCard
-            v-if="canAccessPlatformSerpro"
-            variant="naked"
-            title="Console SERPRO (plataforma)"
-            description="Contrato global, readiness, kill switch, cobertura e conciliação — PLATFORM_ADMIN."
-            data-testid="admin-serpro-link-card"
-          />
-          <UPageCard
-            v-if="canAccessPlatformSerpro"
-            variant="subtle"
-          >
-            <p class="text-sm text-muted">
-              Superfície global sem dados fiscais de tenants. Requer TOTP.
-            </p>
-            <UButton
-              class="mt-4"
-              to="/admin/serpro"
-              label="Abrir console SERPRO"
-              icon="i-lucide-server-cog"
-            />
+            <div class="mt-4 flex flex-wrap gap-2">
+              <UButton
+                to="/admin/serpro"
+                label="Abrir console"
+                icon="i-lucide-server-cog"
+                data-testid="admin-open-serpro"
+              />
+              <UButton
+                v-if="isPlatformPrivileged"
+                to="/settings"
+                color="neutral"
+                variant="outline"
+                label="Configuração do office"
+                icon="i-lucide-sliders-horizontal"
+                data-testid="admin-open-office-settings"
+              />
+            </div>
           </UPageCard>
 
           <UPageCard
             variant="naked"
             title="Backup da instância"
+            description="Somente leitura — sem restore pelo painel."
           />
-          <UPageCard variant="subtle" data-testid="admin-backup-card">
+          <UPageCard
+            variant="subtle"
+            data-testid="admin-backup-card"
+          >
             <div
               v-if="backupLoading"
               class="space-y-2"
@@ -346,7 +311,10 @@ watch(allowed, (ok) => {
               :title="backupError"
               :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: loadBackup }]"
             />
-            <dl v-else-if="backup" class="space-y-3 text-sm">
+            <dl
+              v-else-if="backup"
+              class="space-y-3 text-sm"
+            >
               <div class="flex items-center justify-between gap-3">
                 <dt class="text-muted">
                   Estado
@@ -389,20 +357,24 @@ watch(allowed, (ok) => {
                 </dd>
               </div>
             </dl>
-            <p v-else class="text-sm text-muted">
+            <p
+              v-else
+              class="text-sm text-muted"
+            >
               Sem dados de backup.
             </p>
             <p class="mt-4 text-xs text-muted">
               Comandos: <code class="text-highlighted">php artisan ops:backup-run</code>
               e <code class="text-highlighted">php artisan ops:backup-restore-drill</code>.
-              A chave mestra permanece em custódia offline.
+              A chave mestra permanece em custódia offline. Não há restore pelo painel.
             </p>
           </UPageCard>
 
           <UAlert
-            color="warning"
-            icon="i-lucide-lock-keyhole"
-            title="VAULT_MASTER_KEY externa e separada dos backups é obrigatória"
+            color="info"
+            icon="i-lucide-info"
+            title="Configuração do escritório mudou de lugar"
+            description="Perfil, consentimento, A1 e agendas ficam em Configurações. /admin não exibe mais identidade fiscal do tenant."
           />
         </template>
       </div>

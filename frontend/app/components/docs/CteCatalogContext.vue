@@ -295,12 +295,12 @@ defineExpose({ reload: load, clearState })
               </div>
               <UButton
                 v-if="canAccessAdministration"
-                to="/admin"
+                to="/settings"
                 color="neutral"
                 variant="link"
                 size="xs"
-                icon="i-lucide-shield"
-                label="Administrar identidade"
+                icon="i-lucide-sliders-horizontal"
+                label="Configurar escritório"
                 class="mt-2 px-0"
               />
             </UPageCard>
@@ -312,12 +312,12 @@ defineExpose({ reload: load, clearState })
             >
               <UButton
                 v-if="canAccessAdministration"
-                to="/admin"
+                to="/settings"
                 color="neutral"
                 variant="subtle"
                 size="sm"
-                icon="i-lucide-shield"
-                label="Administrar identidade"
+                icon="i-lucide-sliders-horizontal"
+                label="Configurar escritório"
               />
             </UPageCard>
           </div>

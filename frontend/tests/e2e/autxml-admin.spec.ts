@@ -3,17 +3,17 @@ import { installApiFixtures } from './support/api-fixtures'
 
 /**
  * Smoke de presença das superfícies autXML/import com sessão ADMIN sintética.
+ * Onboarding autXML/sync permanece em Sincronizações; /admin é plataforma.
  */
 test.describe('autXML e importações (rotas)', () => {
   test.beforeEach(async ({ page }) => {
     await installApiFixtures(page, 'ADMIN')
   })
 
-  test('admin expõe onboarding autXML quando autenticado como ADMIN', async ({ page }) => {
+  test('office ADMIN em /admin é redirecionado para settings', async ({ page }) => {
     await page.goto('/admin')
-    await expect(page.getByRole('heading', { name: 'Administração', exact: true })).toBeVisible()
-    await expect(page.getByText('Onboarding autXML por estabelecimento', { exact: true })).toBeVisible()
-    await expect(page.getByText('autXML cobre NF-e 55 e não é retroativo', { exact: true })).toBeVisible()
+    await expect(page).toHaveURL(/\/settings/, { timeout: 15_000 })
+    await expect(page.getByTestId('settings-panel')).toBeVisible()
   })
 
   test('histórico de importações é navegável', async ({ page }) => {

@@ -12,7 +12,7 @@ defineProps<{
 
 const colorMode = useColorMode()
 const { logout } = useSanctumAuth()
-const { me, canAccessAdministration } = useDashboard()
+const { me, canAccessAdministration, canAccessPlatformAdmin } = useDashboard()
 
 const displayUser = computed(() => ({
   name: me.value?.name || 'Usuário',
@@ -81,8 +81,12 @@ const items = computed<DropdownMenuItem[][]>(() => {
       icon: 'i-lucide-sliders-horizontal',
       to: '/settings'
     })
+  }
+
+  // /admin/* é exclusivo PLATFORM_ADMIN (OpenSpec 6.2).
+  if (canAccessPlatformAdmin.value) {
     profile.push({
-      label: 'Administração',
+      label: 'Plataforma',
       icon: 'i-lucide-shield',
       to: '/admin'
     })

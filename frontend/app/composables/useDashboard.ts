@@ -8,8 +8,10 @@ import {
   canManageCredentials as userCanManageCredentials,
   canTriageMailbox as userCanTriageMailbox,
   canTriggerSync as userCanTriggerSync,
+  canAccessOfficeSettings as userCanAccessOfficeSettings,
+  canAccessPlatformAdmin as userCanAccessPlatformAdmin,
   canAccessPlatformSerproConsole as userCanAccessPlatformSerproConsole,
-  hasConfirmedAdminAccess,
+  isPlatformPrivilegedContext as userIsPlatformPrivilegedContext,
   unwrapMeUser
 } from '~/utils/permissions'
 import type { MeIdentity } from '~/utils/permissions'
@@ -28,15 +30,22 @@ const _useDashboard = () => {
   const me = computed(() => unwrapMeUser(user.value as MeIdentity))
 
   const canManageClients = computed(() => userCanManageClients(me.value))
-  const canManageCredentials = computed(() => userCanManageCredentials(me.value))
+  const canManageCredentials = computed(() =>
+    userCanManageCredentials(me.value) || userIsPlatformPrivilegedContext(me.value)
+  )
   const canTriggerSync = computed(() => userCanTriggerSync(me.value))
   const canCreateExport = computed(() => userCanCreateExport(me.value))
   const canImportDocuments = computed(() => userCanImportDocuments(me.value))
-  const canAccessAdministration = computed(() => hasConfirmedAdminAccess(me.value))
+  /** Configuração do escritório (perfil/A1) — não é mais sinônimo de /admin. */
+  const canAccessAdministration = computed(() => userCanAccessOfficeSettings(me.value))
+  const canAccessPlatformAdmin = computed(() => userCanAccessPlatformAdmin(me.value))
   const canAccessPlatformSerpro = computed(() => userCanAccessPlatformSerproConsole(me.value))
+  const isPlatformPrivileged = computed(() => userIsPlatformPrivilegedContext(me.value))
   const canAssociateCategories = computed(() => userCanAssociateCategories(me.value))
   const canTriageMailbox = computed(() => userCanTriageMailbox(me.value))
-  const canExecuteHighRiskMutation = computed(() => userCanExecuteHighRiskMutation(me.value))
+  const canExecuteHighRiskMutation = computed(() =>
+    userCanExecuteHighRiskMutation(me.value) || userIsPlatformPrivilegedContext(me.value)
+  )
 
   async function openClientCreate() {
     if (!canManageClients.value) return
@@ -74,8 +83,10 @@ const _useDashboard = () => {
     'g-k': () => router.push('/work/calendar'),
     'g-u': () => router.push('/settings/usage'),
     'g-a': () => {
-      if (canAccessAdministration.value) {
+      if (canAccessPlatformAdmin.value) {
         void router.push('/admin')
+      } else if (canAccessAdministration.value) {
+        void router.push('/settings')
       }
     },
     'n': () => {
@@ -112,6 +123,7 @@ const _useDashboard = () => {
   return {
     bumpSessionEpoch,
     canAccessAdministration,
+    canAccessPlatformAdmin,
     canAccessPlatformSerpro,
     canAssociateCategories,
     canCreateExport,
@@ -125,6 +137,7 @@ const _useDashboard = () => {
     isClientFormOpen,
     isExportFormOpen,
     isNotificationsSlideoverOpen,
+    isPlatformPrivileged,
     me,
     openClientCreate,
     openExportCreate,

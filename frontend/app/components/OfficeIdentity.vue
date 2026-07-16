@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
+import { isPlatformAdmin } from '~/utils/permissions'
 
 /**
  * Cabeçalho da sidebar — arquétipo TeamsMenu do template
  * (`.reference/nuxt-dashboard-template/app/components/TeamsMenu.vue`).
- * Troca apenas entre memberships autorizadas (API tenants/*) — 15.2.
+ * Memberships autorizadas OU seletor global (PLATFORM_ADMIN).
  */
 defineProps<{
   collapsed?: boolean
@@ -13,27 +14,100 @@ defineProps<{
 const { me } = useDashboard()
 const {
   memberships,
-  loading,
-  switching,
+  loading: membershipsLoading,
+  switching: membershipSwitching,
   loadMemberships,
   switchTo
 } = useTenantSwitch()
 
-const officeLabel = computed(() => me.value?.office?.name || 'Escritório')
+const {
+  offices: platformOffices,
+  loading: platformLoading,
+  switching: platformSwitching,
+  loadError: platformLoadError,
+  loadOffices,
+  selectOffice,
+  clearSelection,
+  enabled: platformEnabled,
+  privileged
+} = usePlatformOfficeSelect()
+
+const officeLabel = computed(() => me.value?.office?.name || (platformEnabled.value ? 'Selecione um escritório' : 'Escritório'))
 const officeSlug = computed(() => me.value?.office?.slug || '')
 const officeId = computed(() => me.value?.office?.id ?? null)
+const isPlatform = computed(() => isPlatformAdmin(me.value))
 
 const selectedOffice = computed(() => ({
   label: officeLabel.value,
   avatar: {
     alt: officeLabel.value,
-    icon: 'i-lucide-building-2' as const
+    icon: (privileged.value ? 'i-lucide-shield' : 'i-lucide-building-2') as 'i-lucide-shield' | 'i-lucide-building-2'
   }
 }))
 
 const multiMembership = computed(() => memberships.value.length > 1)
+const switching = computed(() => membershipSwitching.value || platformSwitching.value)
+const loading = computed(() => membershipsLoading.value || platformLoading.value)
 
 const items = computed<DropdownMenuItem[][]>(() => {
+  // PLATFORM_ADMIN: seletor global (qualquer office ativo).
+  if (isPlatform.value) {
+    const officeRows: DropdownMenuItem[] = platformOffices.value.length
+      ? platformOffices.value.map(o => ({
+          label: o.name || `Escritório #${o.id}`,
+          description: [o.slug, o.plan].filter(Boolean).join(' · ') || 'Seletor global',
+          avatar: {
+            alt: o.name || 'Escritório',
+            icon: 'i-lucide-building-2' as const
+          },
+          type: 'checkbox' as const,
+          checked: o.id === officeId.value && privileged.value,
+          disabled: switching.value,
+          onSelect(e: Event) {
+            e.preventDefault()
+            if (o.id === officeId.value && privileged.value) return
+            void selectOffice(o.id)
+          }
+        }))
+      : [{
+          label: platformLoadError.value || 'Nenhum escritório listado',
+          icon: 'i-lucide-building-2',
+          disabled: true
+        }]
+
+    const footer: DropdownMenuItem[] = [{
+      label: privileged.value ? 'Contexto privilegiado ativo' : 'Seletor global PLATFORM_ADMIN',
+      icon: 'i-lucide-shield',
+      disabled: true,
+      description: privileged.value
+        ? (officeSlug.value ? `Ativo: ${officeSlug.value}` : 'Office resolvido no servidor')
+        : 'Sem membership fictícia · auditoria interna'
+    }]
+
+    if (privileged.value) {
+      footer.unshift({
+        label: 'Encerrar contexto privilegiado',
+        icon: 'i-lucide-log-out',
+        disabled: switching.value,
+        onSelect(e: Event) {
+          e.preventDefault()
+          void clearSelection()
+        }
+      })
+    }
+
+    if (loading.value) {
+      footer.unshift({
+        label: 'Carregando escritórios…',
+        icon: 'i-lucide-loader-circle',
+        disabled: true
+      })
+    }
+
+    return [officeRows, footer]
+  }
+
+  // Memberships do escritório (usuário comum).
   const officeRows: DropdownMenuItem[] = memberships.value.length
     ? memberships.value.map(m => ({
         label: m.office_name || `Escritório #${m.office_id}`,
@@ -91,12 +165,24 @@ const items = computed<DropdownMenuItem[][]>(() => {
 })
 
 onMounted(() => {
-  void loadMemberships()
+  if (isPlatform.value) {
+    void loadOffices()
+  } else {
+    void loadMemberships()
+  }
 })
 
-// Recarrega lista quando o escritório da sessão muda (ex.: outra aba).
 watch(officeId, () => {
-  void loadMemberships()
+  if (isPlatform.value) {
+    void loadOffices()
+  } else {
+    void loadMemberships()
+  }
+})
+
+watch(isPlatform, (v) => {
+  if (v) void loadOffices()
+  else void loadMemberships()
 })
 </script>
 
@@ -118,15 +204,18 @@ watch(officeId, () => {
       :square="collapsed"
       :loading="switching"
       class="data-[state=open]:bg-elevated"
-      :class="[!collapsed && 'py-2']"
+      :class="[!collapsed && 'py-2', privileged && 'ring-1 ring-warning/50']"
       :ui="{
         trailingIcon: 'text-dimmed'
       }"
-      :aria-label="`Escritório ativo: ${officeLabel}${multiMembership ? '. Abrir seletor entre memberships autorizadas' : '. Única membership da sessão'}`"
-      :aria-haspopup="multiMembership ? 'listbox' : 'menu'"
+      :aria-label="isPlatform
+        ? `Seletor global de escritórios. Ativo: ${officeLabel}${privileged ? ' (contexto privilegiado)' : ''}`
+        : `Escritório ativo: ${officeLabel}${multiMembership ? '. Abrir seletor entre memberships autorizadas' : '. Única membership da sessão'}`"
+      :aria-haspopup="(isPlatform || multiMembership) ? 'listbox' : 'menu'"
       :title="collapsed ? officeLabel : undefined"
       data-testid="office-identity"
-      data-office-id="session"
+      :data-office-id="isPlatform ? 'platform-global' : 'session'"
+      :data-privileged="privileged ? 'true' : 'false'"
     />
   </UDropdownMenu>
 </template>

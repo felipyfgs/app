@@ -251,8 +251,27 @@ export interface FiscalClientRowBase<
   coverage: string
   data_origin?: FiscalDataOrigin | string | null
   last_consulted_at?: string | null
+  /** Último snapshot/consulta lógica (alias operacional). */
+  last_snapshot_at?: string | null
+  /** Próxima execução automática do monitor (office+monitor policy). */
+  next_scheduled_at?: string | null
   next_deadline_at?: string | null
   next_action?: string | null
+  /** Snapshot considerado recente (UI pede confirmação antes de refresh). */
+  is_recent_snapshot?: boolean
+  /** Estado oficial de procuração (sync e-CAC). */
+  procuracao_status?: 'authorized' | 'missing' | 'expired' | 'unverified' | string | null
+  /** Saldo comercial do monitor no período (franquia). */
+  commercial_quota?: {
+    remaining?: number | null
+    limit?: number | null
+    used?: number | null
+    period_ends_at?: string | null
+    block_reason?: string | null
+  } | null
+  /** Motivo de bloqueio acionável (procuração, franquia, flag…) — sem stack técnico. */
+  block_reason?: string | null
+  block_message?: string | null
   links?: Record<string, string | null | undefined>
   detail: D
 }

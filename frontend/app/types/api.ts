@@ -20,6 +20,9 @@ export interface Office {
   slug: string
 }
 
+/** Modo de resolução do CurrentOffice na sessão. */
+export type OfficeAccessMode = 'membership' | 'platform_privileged'
+
 export interface MeUser {
   id: number
   name: string
@@ -29,6 +32,11 @@ export interface MeUser {
   requires_two_factor_setup: boolean
   /** Autorização global PLATFORM_ADMIN — não implica membership fiscal. */
   is_platform_admin?: boolean
+  /**
+   * Contexto de office resolvido no servidor.
+   * `platform_privileged` = PLATFORM_ADMIN com seletor global (sem membership fictícia).
+   */
+  access_mode?: OfficeAccessMode | null
   office: Office | null
   role: OfficeRole | null
 }
@@ -244,9 +252,19 @@ export interface Client {
   credential_summary?: ClientCredentialSummary | null
   capture_summary?: ClientCaptureSummary | null
   sync_summary?: ClientSyncSummary | null
+  /**
+   * Estado oficial de procuração e-CAC (sincronizado; sem override manual).
+   * authorized | missing | expired | unverified
+   */
+  procuracao_status?: ClientProcuracaoStatus | null
+  procuracao_checked_at?: string | null
+  procuracao_valid_to?: string | null
   created_at?: string | null
   updated_at?: string | null
 }
+
+/** Estado sincronizado da procuração do cliente (evidência oficial). */
+export type ClientProcuracaoStatus = 'authorized' | 'missing' | 'expired' | 'unverified'
 
 export interface CnpjLookupClient {
   root_cnpj: string
@@ -1055,6 +1073,104 @@ export interface TenantMembershipsPayload {
 export interface TenantSwitchResult {
   office: Office
   role: OfficeRole | string | null
+}
+
+// ─── Configuração unificada do escritório (OpenSpec) ─────────────────────────
+
+/** Perfil institucional do Office (4 campos). */
+export interface OfficeInstitutionalProfile {
+  cnpj: string | null
+  legal_name: string | null
+  institutional_email: string | null
+  institutional_phone: string | null
+  updated_at?: string | null
+}
+
+/** Consentimento técnico versionado para uso do A1. */
+export interface OfficeTechnicalConsent {
+  version: string
+  accepted: boolean
+  accepted_at?: string | null
+  accepted_by_name?: string | null
+  purposes: Array<{ code: string, label: string, description?: string | null }>
+  requires_reacceptance: boolean
+  text_summary?: string | null
+}
+
+/** Credencial canônica e-CNPJ A1 (somente metadados públicos). */
+export interface OfficeCanonicalCredential {
+  id?: number | null
+  status: string
+  subject_name?: string | null
+  holder_cnpj?: string | null
+  fingerprint_sha256?: string | null
+  valid_from?: string | null
+  valid_to?: string | null
+  purposes?: string[]
+  expires_alert_30?: boolean
+  expires_alert_7?: boolean
+  expires_alert_1?: boolean
+  activated_at?: string | null
+}
+
+/** Estado de onboarding acionável (sem jargão técnico SERPRO). */
+export type OfficeOnboardingStatus
+  = | 'incomplete'
+    | 'ready'
+    | 'provisioning'
+    | 'authorized'
+    | 'action_required'
+    | 'technical_error'
+    | 'revoked'
+
+export interface OfficeOnboardingActionable {
+  status: OfficeOnboardingStatus | string
+  actions: Array<{
+    code: string
+    label: string
+    description?: string | null
+    href?: string | null
+  }>
+  /** Correlation id sanitizado quando houver falha técnica. */
+  correlation_id?: string | null
+  message?: string | null
+}
+
+/** Política mensal de execução automática por monitor (dia 1–28). */
+export interface OfficeMonitorSchedulePolicy {
+  monitor_key: string
+  monitor_label?: string | null
+  day_of_month: number
+  is_default: boolean
+  timezone?: string | null
+  next_run_at?: string | null
+  last_run_at?: string | null
+}
+
+/** Franquia comercial cliente+monitor no período da assinatura. */
+export interface MonitorCommercialBalance {
+  remaining?: number | null
+  limit?: number | null
+  used?: number | null
+  period_starts_at?: string | null
+  period_ends_at?: string | null
+  block_reason?: string | null
+  inaugural_available?: boolean
+}
+
+/** Office listado no seletor global da plataforma. */
+export interface PlatformOfficeSummary {
+  id: number
+  name: string
+  slug: string
+  is_active?: boolean
+  plan?: string | null
+}
+
+export interface PlatformOfficeSelectResult {
+  office: Office
+  access_mode: OfficeAccessMode
+  role?: OfficeRole | string | null
 }
 
 // ─── Assinatura / Integra Contador (tenant) ──────────────────────────────────

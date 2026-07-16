@@ -30,8 +30,8 @@ const links = [[{
   icon: 'i-lucide-rocket',
   to: '/admin/serpro/rollout'
 }], [{
-  label: 'Administração office',
-  icon: 'i-lucide-shield',
+  label: 'Hub plataforma',
+  icon: 'i-lucide-layout-dashboard',
   to: '/admin'
 }]] satisfies NavigationMenuItem[][]
 </script>
@@ -68,7 +68,7 @@ const links = [[{
           color="warning"
           icon="i-lucide-shield-off"
           title="Acesso restrito à plataforma"
-          description="Requer PLATFORM_ADMIN com segundo fator confirmado. Não concede dados fiscais de tenants."
+          description="Requer PLATFORM_ADMIN. Navegação sem TOTP global; mutações sensíveis pedem reconfirmação de senha."
           data-testid="admin-serpro-denied"
         />
         <NuxtPage v-else />
