@@ -33,7 +33,7 @@ test.describe('monitoring mailbox mestre–detalhe (9.5)', () => {
     await page.goto(`/monitoring/mailbox/${MAILBOX_MESSAGE_ID}`)
 
     await expect(page.getByTestId('mailbox-list')).toBeVisible()
-    const detail = page.getByTestId('mailbox-detail')
+    const detail = page.getByTestId('mailbox-detail').filter({ visible: true })
     if (await detail.count()) {
       const close = page.getByRole('button', { name: /Fechar detalhe|Fechar/i }).first()
       if (await close.count()) {
@@ -56,7 +56,7 @@ test.describe('monitoring mailbox mestre–detalhe (9.5)', () => {
     await expect(page).toHaveURL(new RegExp(`/monitoring/mailbox/${MAILBOX_MESSAGE_ID}`))
 
     // Detalhe no slideover (USlideover / dialog)
-    const detail = page.getByTestId('mailbox-detail')
+    const detail = page.getByTestId('mailbox-detail').filter({ visible: true })
     await expect(detail).toBeVisible()
 
     await page.keyboard.press('Escape')
