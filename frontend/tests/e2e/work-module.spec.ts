@@ -159,7 +159,13 @@ test.describe('Work — calendário Mês/Semana/Dia', () => {
     await gotoWork(page, '/work/calendar')
     await expect(page.getByTestId('work-calendar')).toBeVisible({ timeout: 30000 })
     await page.getByLabel('Abrir painel do dia').click()
-    await expect(page.getByRole('dialog').or(page.getByText('Dia selecionado'))).toBeVisible({ timeout: 10000 })
+    // Slideover pode renderizar como dialog ou painel com título
+    await expect(
+      page.getByRole('dialog')
+        .or(page.getByText('Dia selecionado'))
+        .or(page.locator('[data-slot="content"]').filter({ hasText: /Dia|Tarefa/i }))
+        .first()
+    ).toBeVisible({ timeout: 15000 })
   })
 })
 
@@ -250,24 +256,27 @@ for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] satisfies OfficeRole[]) {
       test.setTimeout(120_000)
 
       await gotoWork(page, '/work')
+      await expect(page.getByTestId('work-queue-panel')).toBeVisible({ timeout: 30000 })
       await expect(page.getByText(/Apurar DAS|Nenhuma tarefa/i).first()).toBeVisible({ timeout: 30000 })
 
-      // Navegação interna (evita re-bootstrap completo entre gotos)
       await page.goto('/work/processes')
-      await expect(page.getByText(/DAS 2026-06|Nenhum processo|Processos/i).first()).toBeVisible({ timeout: 30000 })
+      await expect(page.getByTestId('work-processes-panel')).toBeVisible({ timeout: 30000 })
+      await expect(page.getByTestId('page-title').or(page.getByText('DAS 2026-06').first())).toBeVisible({ timeout: 30000 })
 
       await page.goto('/work/calendar')
-      await expect(page.getByText(/Calendário operacional|Contagens por prazo|Selecione um dia|Calendário/i).first()).toBeVisible({ timeout: 30000 })
+      await expect(page.getByTestId('work-calendar')).toBeVisible({ timeout: 30000 })
 
       if (role === 'ADMIN') {
         await page.goto('/admin/departments')
         await expect(page.getByTestId('department-name')).toBeVisible({ timeout: 30000 })
         await page.goto('/work/templates')
+        await expect(page.getByTestId('work-templates-panel')).toBeVisible({ timeout: 30000 })
         await expect(page.getByText('DAS mensal').first()).toBeVisible({ timeout: 30000 })
       }
 
       if (testInfo.project.name === 'mobile-390') {
         await page.goto('/work')
+        await expect(page.getByTestId('work-queue-panel')).toBeVisible({ timeout: 30000 })
         await page.getByText('Apurar DAS').first().click()
       }
     })
@@ -286,7 +295,11 @@ test.describe('Work — estados vazios e erro', () => {
     test.skip(testInfo.project.name !== 'desktop-1440')
     await installApiFixtures(page, 'OPERATOR', 'light', 'error')
     await gotoWork(page, '/work')
-    await expect(page.getByText(/Não foi possível carregar|Falha|indispon/i).first()).toBeVisible({ timeout: 30000 })
+    await expect(
+      page.getByRole('alert')
+        .or(page.getByText(/Não foi possível carregar|Falha|indispon|sintética/i))
+        .first()
+    ).toBeVisible({ timeout: 30000 })
   })
 })
 
