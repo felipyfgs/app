@@ -89,20 +89,19 @@ CI frontend: `lint` → `typecheck` → `generate` (não roda vitest/e2e no work
 
 Qualquer tela autenticada: skill **`panel-ui`** → **`ui-archetype`** (copiar de `.reference/nuxt-dashboard-template` @ `0f30c09`). Não compor dashboard “do zero” com Nuxt UI de memória. Prod = SPA estática + nginx, **não** SSR Node.
 
-## Skills de agent (canônico)
+## Skills de agent (por engine)
 
 | Onde | Conteúdo | Git |
 |------|----------|-----|
-| **`.opencode/skills/`** | Fonte **real** das skills do projeto | versionar |
-| **`.agents/skills`** | Symlink → `.opencode/skills` (Codex + OpenCode) | versionar o link |
-| **`.grok/skills`** | Symlink → `.opencode/skills` (Grok) | versionar o link |
+| **`.opencode/skills/`** | Skills do projeto (OpenCode) | versionar |
+| **`.grok/skills/`** | Skills do projeto (Grok) | versionar |
+| **`.codex/skills/`** | Skills do projeto (Codex) | versionar |
 | **`.opencode/commands/`**, **`.grok/commands/`** | Slash `/opsx-*` etc. | versionar |
 | **`.codex/config.toml`**, **`.grok/config.toml`** | MCP Playwright | versionar |
-| **`~/.agents/skills/`** | Global: nuxt, nuxt-ui, git-commit, grill/* | home |
+| **`~/.agents/skills/`** | Global do **usuário** (nuxt, nuxt-ui, git-commit, grill/*) — não é pasta do repo | home |
 
 Projeto: `panel-ui`, `ui-archetype`, `openspec-*`, `task-loop`.  
-Editar só em **`.opencode/skills/`** — os outros paths são o mesmo conteúdo via symlink.
-
+Manter as três pastas `skills/` alinhadas ao editar (mesmo conteúdo por engine).
 
 ## OpenSpec
 
