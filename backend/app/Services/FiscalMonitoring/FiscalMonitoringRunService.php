@@ -11,16 +11,20 @@ use App\Enums\FiscalRunResult;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
 use App\Enums\FiscalTrigger;
+use App\Enums\MonitorCommercialOrigin;
 use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
 use App\Models\Client;
 use App\Models\FiscalCompetence;
 use App\Models\FiscalMonitoringRun;
 use App\Models\FiscalMonitoringSchedule;
+use App\Models\MonitorCommercialLedgerEntry;
 use App\Models\Office;
 use App\Services\Audit\AuditLogger;
 use App\Services\Operations\OperationsMetrics;
 use App\Services\Operations\StructuredLogger;
 use App\Services\Platform\OfficeSubscriptionGate;
+use App\Services\Usage\CommercialMonitorCatalog;
+use App\Services\Usage\MonitorCommercialLedgerService;
 use App\Support\FeatureFlags;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -41,6 +45,7 @@ final class FiscalMonitoringRunService
         private readonly AuditLogger $audit,
         private readonly StructuredLogger $structuredLog,
         private readonly OperationsMetrics $metrics,
+        private readonly MonitorCommercialLedgerService $commercialLedger,
     ) {}
 
     /**
@@ -237,7 +242,21 @@ final class FiscalMonitoringRunService
                         'FEATURE_DISABLED',
                     );
                 } else {
-                    $result = $adapter->execute($request);
+                    // Franquia comercial: débito só no primeiro despacho remoto real.
+                    $commercialBlock = $this->authorizeCommercialBeforeRemote(
+                        $office,
+                        $client,
+                        $run,
+                        $module,
+                    );
+                    if ($commercialBlock !== null) {
+                        $result = FiscalAdapterResult::blocked(
+                            $commercialBlock['message'],
+                            $commercialBlock['code'],
+                        );
+                    } else {
+                        $result = $adapter->execute($request);
+                    }
                 }
             }
 
@@ -406,6 +425,134 @@ final class FiscalMonitoringRunService
 
         if (! $office->is_active) {
             return ['code' => 'OFFICE_INACTIVE', 'message' => 'Escritório inativo.'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Consome franquia comercial imediatamente antes do transporte remoto.
+     * NFS-e/SEFAZ/autXML e monitores fora do catálogo não debitam.
+     * Retry/polling com o mesmo correlation_id reutiliza a entrada (sem reconsumo).
+     *
+     * @return array{code:string,message:string}|null
+     */
+    private function authorizeCommercialBeforeRemote(
+        Office $office,
+        Client $client,
+        FiscalMonitoringRun $run,
+        ?string $moduleKey,
+    ): ?array {
+        if (! (bool) config('fiscal_monitoring.commercial.enabled', false)) {
+            return null;
+        }
+
+        if (CommercialMonitorCatalog::isRealtimeNonFranchiseChannel(
+            $run->system_code,
+            $run->service_code,
+        )) {
+            return null;
+        }
+
+        $progress = is_array($run->progress) ? $run->progress : [];
+        $monitorKey = isset($progress['monitor_key']) && is_string($progress['monitor_key'])
+            ? strtolower(trim($progress['monitor_key']))
+            : CommercialMonitorCatalog::resolveMonitorKey(
+                $run->system_code,
+                $run->service_code,
+                $moduleKey,
+            );
+
+        if ($monitorKey === null || ! CommercialMonitorCatalog::isCommercialMonitor($monitorKey)) {
+            return null;
+        }
+
+        $origin = match (true) {
+            isset($progress['commercial_origin'])
+                && is_string($progress['commercial_origin'])
+                && MonitorCommercialOrigin::tryFrom($progress['commercial_origin']) !== null => MonitorCommercialOrigin::from($progress['commercial_origin']),
+            $run->trigger === FiscalTrigger::Scheduled => MonitorCommercialOrigin::Scheduled,
+            default => MonitorCommercialOrigin::Manual,
+        };
+
+        $existingEntryId = isset($progress['commercial_ledger_entry_id'])
+            ? (int) $progress['commercial_ledger_entry_id']
+            : null;
+
+        // Intervalo mínimo oficial: bloqueia despacho sem consumo (confirmação UI não contorna).
+        if ((bool) config('fiscal_monitoring.commercial.enforce_min_interval', true)
+            && $run->trigger === FiscalTrigger::Manual
+            && $existingEntryId === null) {
+            $intervalBlock = $this->commercialLedger->assertMinIntervalOrBlock(
+                (int) $office->id,
+                (int) $client->id,
+                $monitorKey,
+            );
+            if ($intervalBlock !== null) {
+                return [
+                    'code' => $intervalBlock,
+                    'message' => 'Intervalo mínimo oficial entre consultas deste monitor ainda não passou.',
+                ];
+            }
+        }
+
+        $idempotency = match ($origin) {
+            MonitorCommercialOrigin::Scheduled => $this->commercialLedger->scheduledIdempotencyKey(
+                (int) $office->id,
+                (int) $client->id,
+                $monitorKey,
+                // period_key resolvido no serviço a partir da assinatura; slot estável do run.
+                (string) ($progress['period_key'] ?? $run->correlation_id ?? $run->idempotency_key),
+            ),
+            MonitorCommercialOrigin::Inaugural => $this->commercialLedger->inauguralIdempotencyKey(
+                (int) $office->id,
+                (int) $client->id,
+                $monitorKey,
+            ),
+            default => $this->commercialLedger->manualIdempotencyKey(
+                (int) $office->id,
+                (int) $client->id,
+                $monitorKey,
+                (string) ($progress['period_key'] ?? 'open'),
+                (string) ($run->correlation_id ?? $run->idempotency_key),
+            ),
+        };
+
+        // Preferir idempotency já materializada no ledger (scheduled/inaugural pending).
+        if ($existingEntryId !== null) {
+            $idempotency = (string) (
+                MonitorCommercialLedgerEntry::query()
+                    ->withoutGlobalScopes()
+                    ->whereKey($existingEntryId)
+                    ->value('idempotency_key')
+                ?? $idempotency
+            );
+        }
+
+        $outcome = $this->commercialLedger->authorizeAndDebitBeforeRemoteDispatch(
+            officeId: (int) $office->id,
+            clientId: (int) $client->id,
+            monitorKey: $monitorKey,
+            origin: $origin,
+            idempotencyKey: $idempotency,
+            technicalCorrelationId: $run->correlation_id,
+            existingEntryId: $existingEntryId,
+        );
+
+        if (! $outcome['allowed']) {
+            return [
+                'code' => $outcome['block_reason'] ?? MonitorCommercialLedgerService::BLOCK_QUOTA,
+                'message' => 'Franquia comercial do monitor esgotada para este período.',
+            ];
+        }
+
+        if ($outcome['entry'] !== null) {
+            $progress['commercial_ledger_entry_id'] = $outcome['entry']->id;
+            $progress['monitor_key'] = $monitorKey;
+            $progress['commercial_origin'] = $outcome['entry']->origin->value;
+            $progress['commercial_debited'] = $outcome['debited'];
+            $progress['commercial_inaugural'] = $outcome['inaugural'];
+            $run->forceFill(['progress' => $progress])->save();
         }
 
         return null;

@@ -114,4 +114,16 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Password reconfirmation window (privileged sensitive actions)
+    |--------------------------------------------------------------------------
+    |
+    | Minutes during which a PLATFORM_ADMIN password reconfirmation remains
+    | valid for A1 replace/remove and privileged fiscal mutations.
+    |
+    */
+
+    'password_confirmation_window_minutes' => (int) env('AUTH_PASSWORD_CONFIRMATION_WINDOW_MINUTES', 15),
+
 ];

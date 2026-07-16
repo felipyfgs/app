@@ -25,6 +25,12 @@ class EnsureAdminTwoFactor
             return $next($request);
         }
 
+        // Contexto privilegiado: navegação sem TOTP; ações sensíveis usam
+        // reconfirmação de senha (EnsurePrivilegedPasswordConfirmation).
+        if ($this->currentOffice->isPlatformPrivileged()) {
+            return $next($request);
+        }
+
         $role = $this->currentOffice->role();
 
         if ($role !== OfficeRole::Admin) {

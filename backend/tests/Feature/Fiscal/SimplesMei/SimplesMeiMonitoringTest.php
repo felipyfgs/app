@@ -356,14 +356,20 @@ class SimplesMeiMonitoringTest extends TestCase
             'procurador_token_expires_at' => now()->addHours(6),
         ]);
 
-        foreach (['PGDASD', 'DEFIS', 'REGIME_APURACAO', 'PGMEI', 'CCMEI', 'DASN_SIMEI'] as $power) {
-            $system = str_starts_with($power, 'PG') && $power !== 'PGDASD' || in_array($power, ['CCMEI', 'DASN_SIMEI'], true)
-                ? 'INTEGRA_MEI'
-                : 'INTEGRA_SN';
-            if ($power === 'PGMEI') {
-                $system = 'INTEGRA_MEI';
-            }
+        // Legado (elegibilidade por service_code) + códigos e-CAC oficiais do manifesto
+        // (gate SerproOperationService via required_proxy_powers da operation_key).
+        $powers = [
+            ['PGDASD', 'INTEGRA_SN', 'PGDASD'],
+            ['DEFIS', 'INTEGRA_SN', 'DEFIS'],
+            ['REGIME_APURACAO', 'INTEGRA_SN', 'REGIME_APURACAO'],
+            ['PGMEI', 'INTEGRA_MEI', 'PGMEI'],
+            ['CCMEI', 'INTEGRA_MEI', 'CCMEI'],
+            ['DASN_SIMEI', 'INTEGRA_MEI', 'DASN_SIMEI'],
+            ['00146', 'INTEGRA_SN', 'PGDASD'], // pgdasd.*
+            ['00060', 'INTEGRA_SN', 'REGIME_APURACAO'], // regimeapuracao.*
+        ];
 
+        foreach ($powers as [$powerCode, $system, $service]) {
             TaxProxyPower::query()->create([
                 'office_id' => $this->office->id,
                 'client_id' => $this->client->id,
@@ -371,8 +377,8 @@ class SimplesMeiMonitoringTest extends TestCase
                 'author_identity' => '52998224725',
                 'contributor_cnpj' => '11222333000181',
                 'system_code' => $system,
-                'service_code' => $power,
-                'power_code' => $power,
+                'service_code' => $service,
+                'power_code' => $powerCode,
                 'source' => TaxProxyPowerSource::ManualOfficialEvidence,
                 'status' => TaxProxyPowerStatus::Active,
                 'valid_from' => now()->subDay(),

@@ -108,10 +108,12 @@ class DctfwebMitMonitoringTest extends TestCase
             'procurador_token_expires_at' => now()->addHours(6),
         ]);
 
+        // Legado (catálogo por service) + código e-CAC 00103 (dctfweb.* / mit.* no manifesto).
         foreach (
             [
                 ['INTEGRA_DCTFWEB', 'DCTFWEB', 'DCTFWEB'],
                 ['INTEGRA_MIT', 'MIT', 'MIT'],
+                ['INTEGRA_DCTFWEB', 'DCTFWEB', '00103'],
             ] as [$system, $service, $power]
         ) {
             TaxProxyPower::query()->create([

@@ -13,6 +13,7 @@ use App\Models\OfficeSerproAuthorization;
 use App\Models\SerproServiceCatalogEntry;
 use App\Models\TaxProxyPower;
 use App\Models\User;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use App\Services\Fiscal\Demo\FiscalDataOriginResolver;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\TaxProxyPowerService;
@@ -21,6 +22,7 @@ use App\Services\Serpro\SerproKillSwitchService;
 use App\Services\Serpro\Usage\OperationCatalog;
 use App\Services\Serpro\Usage\PriceCalculator;
 use App\Services\Serpro\Usage\UsageBudgetGate;
+use App\Support\CurrentOffice;
 use App\Support\FeatureFlags;
 
 /**
@@ -31,6 +33,8 @@ final class FiscalMutationPolicy
 {
     public function __construct(
         private readonly RecentTwoFactorGate $totp,
+        private readonly RecentPasswordConfirmationGate $passwordGate,
+        private readonly CurrentOffice $currentOffice,
         private readonly OfficeSubscriptionGate $subscriptionGate,
         private readonly IntegraEligibilityService $eligibility,
         private readonly TaxProxyPowerService $proxyPowers,
@@ -112,21 +116,33 @@ final class FiscalMutationPolicy
             $codes[] = FiscalMutationDenialCode::OperationCohortDisabled;
         }
 
-        // 3. Papel — mutações fiscais: somente ADMIN
-        $role = $user->roleIn($office);
+        // 3. Papel — mutações fiscais: somente ADMIN (membership ou platform_privileged)
+        $role = $this->effectiveRole($user, $office);
         if ($role !== OfficeRole::Admin) {
             $codes[] = FiscalMutationDenialCode::RoleForbidden;
         }
 
-        // 4. 2FA recente
+        // 4. Reconfirmação recente: TOTP (membership ADMIN) ou senha (platform_privileged)
         $requireTotp = $options['require_totp'] ?? true;
+        $privilegedOnOffice = $this->currentOffice->isPlatformPrivileged()
+            && $this->currentOffice->id() === $office->id;
+
         if ($requireTotp) {
-            if (! $user->hasConfirmedTwoFactor() && config('fortify.two_factor_required', true)) {
-                $codes[] = FiscalMutationDenialCode::TotpRequired;
-            } elseif (! $this->totp->isRecentlyConfirmed($user)) {
-                $codes[] = FiscalMutationDenialCode::TotpExpired;
+            if ($privilegedOnOffice) {
+                if (! $this->passwordGate->isRecentlyConfirmed($user)) {
+                    $codes[] = FiscalMutationDenialCode::PasswordConfirmationRequired;
+                }
+                $context['password_seconds_remaining'] = $this->passwordGate->secondsRemaining(user: $user);
+                $context['auth_challenge'] = 'password';
+            } else {
+                if (! $user->hasConfirmedTwoFactor() && config('fortify.two_factor_required', true)) {
+                    $codes[] = FiscalMutationDenialCode::TotpRequired;
+                } elseif (! $this->totp->isRecentlyConfirmed($user)) {
+                    $codes[] = FiscalMutationDenialCode::TotpExpired;
+                }
+                $context['totp_seconds_remaining'] = $this->totp->secondsRemaining();
+                $context['auth_challenge'] = 'totp';
             }
-            $context['totp_seconds_remaining'] = $this->totp->secondsRemaining();
         }
 
         // 5. Plano / assinatura
@@ -357,5 +373,21 @@ final class FiscalMutationPolicy
         }
 
         return MutationPolicyResult::allow($context, confirmationRequired: true);
+    }
+
+    /**
+     * ADMIN efetivo: membership no office ou PLATFORM_ADMIN em platform_privileged no mesmo office.
+     */
+    private function effectiveRole(User $user, Office $office): ?OfficeRole
+    {
+        if (
+            $this->currentOffice->isPlatformPrivileged()
+            && $this->currentOffice->id() === $office->id
+            && $this->currentOffice->actor()?->id === $user->id
+        ) {
+            return OfficeRole::Admin;
+        }
+
+        return $user->roleIn($office);
     }
 }

@@ -46,6 +46,49 @@ final class FeatureFlags
     }
 
     /**
+     * Seleção privilegiada de tenant por PLATFORM_ADMIN (default OFF; kill switch vence).
+     */
+    public static function isPlatformPrivilegedContextEnabled(): bool
+    {
+        if (self::isKillSwitchActive()) {
+            return false;
+        }
+
+        return (bool) config('features.platform_privileged_context.enabled', false);
+    }
+
+    /**
+     * Configuração unificada do escritório (perfil + A1 canônico + consentimento).
+     * Default OFF; kill switch vence; allowlist vazia exige allow_all_offices.
+     */
+    public static function isUnifiedOfficeConfigEnabled(?int $officeId = null): bool
+    {
+        if (self::isKillSwitchActive()) {
+            return false;
+        }
+
+        if (! (bool) config('features.unified_office_config.enabled', false)) {
+            return false;
+        }
+
+        if ($officeId === null) {
+            return true;
+        }
+
+        /** @var list<int> $allowlist */
+        $allowlist = config('features.unified_office_config.office_allowlist', []);
+        if (! is_array($allowlist)) {
+            $allowlist = [];
+        }
+
+        if ($allowlist === []) {
+            return (bool) config('features.unified_office_config.allow_all_offices', false);
+        }
+
+        return in_array($officeId, $allowlist, true);
+    }
+
+    /**
      * @return list<string>
      */
     public static function knownModules(): array
@@ -131,6 +174,8 @@ final class FeatureFlags
      * @return array{
      *     kill_switch: bool,
      *     global_enabled: bool,
+     *     platform_privileged_context: bool,
+     *     unified_office_config: bool,
      *     mutating: array{enabled: bool, kill_switch: bool},
      *     modules: array<string, array{enabled: bool, mutating_enabled: bool, allow_all_offices: bool, allowlist_count: int}>
      * }
@@ -153,6 +198,8 @@ final class FeatureFlags
         return [
             'kill_switch' => self::isKillSwitchActive(),
             'global_enabled' => (bool) config('features.global_enabled', false),
+            'platform_privileged_context' => self::isPlatformPrivilegedContextEnabled(),
+            'unified_office_config' => self::isUnifiedOfficeConfigEnabled(),
             'mutating' => [
                 'enabled' => (bool) config('features.mutating.enabled', false),
                 'kill_switch' => (bool) config('features.mutating.kill_switch', false),

@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\OfficeCredential;
+use App\Models\PlatformPrivilegedAuditEvent;
 use App\Policies\OfficeFiscalCredentialPolicy;
 use App\Services\Audit\AuditLogger;
 use App\Services\Certificates\OfficeCredentialService;
 use App\Services\Certificates\OfficeFiscalIdentityService;
+use App\Services\Platform\PlatformPrivilegedAuditor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -124,6 +126,13 @@ class OfficeFiscalCredentialController extends Controller
             'purpose' => $credential->purpose->value,
         ]);
 
+        app(PlatformPrivilegedAuditor::class)->recordIfPrivileged(
+            PlatformPrivilegedAuditEvent::ACTION_MUTATE,
+            PlatformPrivilegedAuditEvent::RESULT_SUCCESS,
+            $credential,
+            ['reason' => 'office_credential.activate'],
+        );
+
         return response()->json(['data' => $credential->toPublicArray()], 201);
     }
 
@@ -144,6 +153,13 @@ class OfficeFiscalCredentialController extends Controller
             'fingerprint_sha256' => $credential->fingerprint_sha256,
             'purpose' => $credential->purpose->value,
         ]);
+
+        app(PlatformPrivilegedAuditor::class)->recordIfPrivileged(
+            PlatformPrivilegedAuditEvent::ACTION_MUTATE,
+            PlatformPrivilegedAuditEvent::RESULT_SUCCESS,
+            $credential,
+            ['reason' => 'office_credential.revoke'],
+        );
 
         return response()->json([
             'data' => $credential->fresh()?->toPublicArray(),

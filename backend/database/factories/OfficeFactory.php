@@ -44,6 +44,7 @@ class OfficeFactory extends Factory
 
             $plan = SubscriptionPlan::Professional;
             $limits = $plan->defaultLimits();
+            $commercial = $plan->commercialEntitlements();
             $now = now();
 
             // create() direto (não factory) para não reentrar no ciclo office→subscription.
@@ -54,12 +55,16 @@ class OfficeFactory extends Factory
                 'trial_ends_at' => null,
                 'starts_at' => $now,
                 'ends_at' => null,
-                'current_period_starts_at' => $now->copy()->startOfMonth(),
-                'current_period_ends_at' => $now->copy()->endOfMonth(),
+                'current_period_starts_at' => $now,
+                'current_period_ends_at' => $now->copy()->addMonthNoOverflow()->subSecond(),
                 'monthly_api_quota' => $limits['monthly_api_quota'],
-                'max_clients' => $limits['max_clients'],
+                'commercial_monitor_units' => $commercial['commercial_monitor_units'],
+                'max_clients' => $plan->commercialMaxClients(),
+                'negotiated_client_limit' => null,
                 'max_users' => $limits['max_users'],
-                'limits' => $limits,
+                'limits' => array_merge($limits, $commercial, [
+                    'max_clients' => $plan->commercialMaxClients(),
+                ]),
                 'notes' => null,
             ]);
         });

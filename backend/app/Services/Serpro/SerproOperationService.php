@@ -15,8 +15,10 @@ use App\Enums\SerproUsageResult;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
+use App\Services\Integra\ClientProcuracaoSyncService;
 use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Integra\IntegraEligibilityService;
+use App\Services\Integra\SerproTechnicalParameterGuard;
 use App\Services\Platform\OfficeSubscriptionGate;
 use App\Services\Serpro\Catalog\OperationCoordinateResolver;
 use App\Services\Serpro\Catalog\OperationCoverageMatrix;
@@ -54,6 +56,8 @@ final class SerproOperationService implements SerproOperationExecutor
         private readonly SerproOperationAttemptStore $attempts,
         private readonly SerproRequestTagGenerator $requestTags,
         private readonly OperationCoverageMatrix $coverage,
+        private readonly SerproTechnicalParameterGuard $technicalParams,
+        private readonly ClientProcuracaoSyncService $procuracaoGate,
     ) {}
 
     /**
@@ -190,16 +194,29 @@ final class SerproOperationService implements SerproOperationExecutor
             return $this->blocked($operationKey, 'CIRCUIT_OPEN', 'Circuit breaker aberto para a solução.', $correlationId, 503);
         }
 
-        // 10. Autor / contribuinte
+        // 10. Recusar parâmetros técnicos tenant-facing (autor/termo/OAuth/token/ETag…)
+        try {
+            $this->technicalParams->assertClean($command->businessData, 'businessData');
+            $this->technicalParams->assertClean($command->payload, 'payload');
+            $this->technicalParams->assertClean($command->headers, 'headers');
+        } catch (Throwable $e) {
+            return $this->blocked(
+                $operationKey,
+                'TECHNICAL_PARAM_REJECTED',
+                $e->getMessage(),
+                $correlationId,
+                422,
+            );
+        }
+
+        // 11. Autor / contribuinte — derivados do Office (CurrentOffice no HTTP layer)
         $contractOnly = (string) ($coords['auth_mode'] ?? '') === 'CONTRACT_ONLY';
         $authorization = OfficeSerproAuthorization::query()
             ->where('office_id', $office->id)
             ->where('environment', $environment->value)
             ->first();
 
-        if ($command->authorIdentityOverride !== null && $command->authorIdentityOverride !== '') {
-            $author = strtoupper(trim($command->authorIdentityOverride));
-        } elseif ($contractOnly) {
+        if ($contractOnly) {
             $author = (string) $contract->contractor_cnpj;
         } else {
             // Nunca fallback silencioso para CNPJ do contratante.
@@ -212,6 +229,20 @@ final class SerproOperationService implements SerproOperationExecutor
                 );
             }
             $author = strtoupper(trim((string) ($authorization->author_identity ?? '')));
+
+            // Override interno só se coincidir com o autor do office (ignora tentativa tenant-facing).
+            if ($command->authorIdentityOverride !== null && $command->authorIdentityOverride !== '') {
+                $override = strtoupper(trim($command->authorIdentityOverride));
+                if ($override !== $author && $override !== '' && $override !== '00000000000000') {
+                    return $this->blocked(
+                        $operationKey,
+                        'TECHNICAL_PARAM_REJECTED',
+                        'Autor do pedido deve ser derivado da autorização do escritório.',
+                        $correlationId,
+                        422,
+                    );
+                }
+            }
         }
 
         if ($author === '' || $author === '00000000000000') {
@@ -220,8 +251,22 @@ final class SerproOperationService implements SerproOperationExecutor
 
         if ($client !== null) {
             try {
-                $contributor = $command->contributorIdentityOverride
-                    ?? $this->contributors->resolve($client);
+                // Contributor vem do cadastro do cliente; override só se idêntico (legado interno).
+                $resolvedContributor = $this->contributors->resolve($client);
+                if (
+                    $command->contributorIdentityOverride !== null
+                    && $command->contributorIdentityOverride !== ''
+                    && strtoupper(trim($command->contributorIdentityOverride)) !== strtoupper(trim($resolvedContributor))
+                ) {
+                    return $this->blocked(
+                        $operationKey,
+                        'TECHNICAL_PARAM_REJECTED',
+                        'Contribuinte deve ser derivado do cliente do escritório.',
+                        $correlationId,
+                        422,
+                    );
+                }
+                $contributor = $resolvedContributor;
             } catch (Throwable) {
                 return $this->blocked(
                     $operationKey,
@@ -234,7 +279,37 @@ final class SerproOperationService implements SerproOperationExecutor
             $contributor = $command->contributorIdentityOverride ?? $author;
         }
 
-        // 11. Termo / token / poder (eligibility) — egress real com cliente
+        // 12. Gate de procuração por metadado da operation_key (antes do transporte)
+        if ($client !== null && ! $contractOnly) {
+            $proxyRule = (string) ($coords['proxy_rule'] ?? 'NOT_APPLICABLE');
+            /** @var list<string> $requiredPowers */
+            $requiredPowers = $coords['required_proxy_powers'] ?? [];
+            if ($requiredPowers === [] && ! empty($coords['required_proxy_power'])) {
+                $requiredPowers = preg_split('/[\s,]+/', (string) $coords['required_proxy_power']) ?: [];
+            }
+            if ($proxyRule === 'REQUIRED_WHEN_REPRESENTING' && $author === $contributor) {
+                // autor = contribuinte: poder não se aplica
+            } else {
+                $gate = $this->procuracaoGate->gateForOperation(
+                    $office,
+                    $client,
+                    $environment,
+                    array_values(array_filter(array_map('strval', $requiredPowers))),
+                    $proxyRule,
+                );
+                if (! $gate['allowed']) {
+                    return $this->blocked(
+                        $operationKey,
+                        $gate['code'] ?? 'PROXY_POWER_MISSING',
+                        $gate['message'] ?? 'Procuração insuficiente para a operação.',
+                        $correlationId,
+                        422,
+                    );
+                }
+            }
+        }
+
+        // 13. Termo / token / poder (eligibility) — egress real com cliente
         if ($client !== null && ! $contractOnly && $driver->value === 'real') {
             $elig = $this->eligibility->evaluate(
                 $office,

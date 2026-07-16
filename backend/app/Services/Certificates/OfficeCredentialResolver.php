@@ -12,6 +12,7 @@ use RuntimeException;
 
 /**
  * Resolve e materializa somente credencial ACTIVE do escritório para NFE_AUTXML_DISTDFE.
+ * Preferência: vínculo de finalidade → canônica; fallback legado por purpose na identity.
  * Rejeita credenciais de clientes ou de outro office.
  */
 final class OfficeCredentialResolver
@@ -22,7 +23,7 @@ final class OfficeCredentialResolver
 
     /**
      * @return array{
-     *   identity: OfficeFiscalIdentity,
+     *   identity: OfficeFiscalIdentity|null,
      *   credential: OfficeCredential,
      *   material: array{pfx: string, password: string}
      * }
@@ -35,18 +36,31 @@ final class OfficeCredentialResolver
             ->orderBy('id')
             ->first();
 
-        if ($identity === null) {
-            throw new RuntimeException('Identidade fiscal do escritório ausente ou inativa.');
+        // 1) Vínculo canônico SERPRO/autXML → mesma credencial física.
+        $credential = $this->credentials->activeForPurpose(
+            $officeId,
+            OfficeCredentialPurpose::NfeAutXmlDistDfe,
+        );
+
+        // 2) Fallback legado: purpose NFE_AUTXML_DISTDFE na identity.
+        if ($credential === null && $identity !== null) {
+            $credential = OfficeCredential::query()
+                ->where('office_id', $officeId)
+                ->where('office_fiscal_identity_id', $identity->id)
+                ->where('purpose', OfficeCredentialPurpose::NfeAutXmlDistDfe->value)
+                ->where('status', CredentialStatus::Active)
+                ->first();
         }
 
-        $credential = OfficeCredential::query()
-            ->where('office_id', $officeId)
-            ->where('office_fiscal_identity_id', $identity->id)
-            ->where('purpose', OfficeCredentialPurpose::NfeAutXmlDistDfe->value)
-            ->where('status', CredentialStatus::Active)
-            ->first();
+        // 3) Fallback: canônica direta se existir (sem link — migração parcial).
+        if ($credential === null) {
+            $credential = $this->credentials->activeCanonical($officeId);
+        }
 
         if ($credential === null) {
+            if ($identity === null) {
+                throw new RuntimeException('Identidade fiscal do escritório ausente ou inativa.');
+            }
             throw new RuntimeException('Credencial A1 do escritório ausente ou inativa para autXML.');
         }
 
@@ -66,6 +80,40 @@ final class OfficeCredentialResolver
 
         return [
             'identity' => $identity,
+            'credential' => $credential,
+            'material' => $material,
+        ];
+    }
+
+    /**
+     * Resolve material para assinatura do Termo SERPRO (mesma canônica).
+     *
+     * @return array{
+     *   credential: OfficeCredential,
+     *   material: array{pfx: string, password: string}
+     * }
+     */
+    public function resolveForSerproTermSigning(int $officeId): array
+    {
+        $credential = $this->credentials->activeForPurpose(
+            $officeId,
+            OfficeCredentialPurpose::SerproTermSigning,
+        ) ?? $this->credentials->activeCanonical($officeId);
+
+        if ($credential === null) {
+            throw new RuntimeException('Credencial A1 do escritório ausente ou inativa para assinatura do Termo.');
+        }
+
+        if ($credential->office_id !== $officeId) {
+            throw new RuntimeException('Credencial do escritório não pertence ao office solicitado.');
+        }
+
+        $material = $this->credentials->loadPfxMaterial($credential);
+        if ($material === null) {
+            throw new RuntimeException('Não foi possível materializar a credencial A1 do escritório.');
+        }
+
+        return [
             'credential' => $credential,
             'material' => $material,
         ];

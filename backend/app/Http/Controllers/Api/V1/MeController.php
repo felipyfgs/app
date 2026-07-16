@@ -30,6 +30,7 @@ class MeController extends Controller
                 'two_factor_required' => (bool) config('fortify.two_factor_required', true),
                 'requires_two_factor_setup' => $user->requiresTwoFactorForAdmin(),
                 'is_platform_admin' => $user->isPlatformAdmin(),
+                'access_mode' => $currentOffice->accessMode()?->value,
                 'office' => $office === null ? null : [
                     'id' => $office->id,
                     'name' => $office->name,

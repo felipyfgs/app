@@ -36,6 +36,28 @@ return [
         'spread_minutes' => 60,
         /** Intervalo padrão entre execuções agendadas (minutos). */
         'default_interval_minutes' => (int) env('FISCAL_MONITORING_DEFAULT_INTERVAL_MINUTES', 60),
+        /**
+         * Política mensal office+monitor (dia 1–28) — default OFF até rollout.
+         * Quando true, cria itens comerciais scheduled e despacha spillover via Horizon.
+         */
+        'commercial_monthly_enabled' => filter_var(
+            env('FISCAL_MONITORING_COMMERCIAL_MONTHLY_ENABLED', false),
+            FILTER_VALIDATE_BOOL
+        ),
+    ],
+
+    /**
+     * Franquia comercial de monitores SERPRO (ledger separado do UsageBudgetGate).
+     * Default OFF: run service não debita; testes e rollout habilitam explicitamente.
+     */
+    'commercial' => [
+        'enabled' => filter_var(env('FISCAL_MONITORING_COMMERCIAL_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'min_interval_seconds' => (int) env('FISCAL_MONITORING_COMMERCIAL_MIN_INTERVAL', 86_400),
+        /** Enforce intervalo mínimo oficial mesmo após confirmação manual. */
+        'enforce_min_interval' => filter_var(
+            env('FISCAL_MONITORING_COMMERCIAL_ENFORCE_MIN_INTERVAL', true),
+            FILTER_VALIDATE_BOOL
+        ),
     ],
 
     'job' => [

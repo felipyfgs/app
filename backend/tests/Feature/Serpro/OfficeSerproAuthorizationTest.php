@@ -175,6 +175,7 @@ class OfficeSerproAuthorizationTest extends TestCase
         ])->assertCreated();
         $this->postJson('/api/v1/office/serpro-authorization/refresh-token')->assertOk();
 
+        // F-3.3: importação/override manual de procuração é proibida na API tenant.
         $this->postJson('/api/v1/office/serpro-authorization/proxy-powers', [
             'client_id' => $clientA->id,
             'power_code' => 'PGDASD',
@@ -183,16 +184,30 @@ class OfficeSerproAuthorizationTest extends TestCase
             'evidence_ref' => 'MANUAL-001',
             'valid_from' => now()->subDay()->toIso8601String(),
             'valid_to' => now()->addYear()->toIso8601String(),
-        ])->assertCreated()
-            ->assertJsonMissingPath('data.evidence_xml');
+        ])->assertStatus(422)
+            ->assertJsonFragment(['message' => 'Override/importação manual de procuração é proibido; use sincronização oficial.']);
 
-        // Client de outro tenant → 404 (scoped) ou isolado
+        // Mesmo com client de outro tenant, o endpoint recusa o override (não cria poder).
         $this->postJson('/api/v1/office/serpro-authorization/proxy-powers', [
             'client_id' => $clientB->id,
             'power_code' => 'PGDASD',
             'system_code' => 'INTEGRA_SN',
             'evidence_ref' => 'X',
-        ])->assertNotFound();
+        ])->assertStatus(422);
+
+        $this->assertDatabaseMissing('tax_proxy_powers', [
+            'office_id' => $officeA->id,
+            'client_id' => $clientA->id,
+            'power_code' => 'PGDASD',
+        ]);
+
+        // Sync oficial (fake transport) + projeção acionável
+        $sync = $this->postJson('/api/v1/office/serpro-authorization/proxy-powers/sync', [
+            'client_id' => $clientA->id,
+        ]);
+        $sync->assertOk();
+        $this->assertArrayHasKey('procuracao', $sync->json());
+        $this->assertArrayHasKey('status', $sync->json('procuracao'));
 
         // Sem contrato ACTIVE a elegibilidade bloqueia
         $elig = $this->postJson('/api/v1/office/serpro-authorization/eligibility', [

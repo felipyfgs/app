@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'office_id', 'office_fiscal_identity_id', 'purpose', 'status',
@@ -45,6 +46,16 @@ class OfficeCredential extends Model
         return $this->belongsTo(OfficeFiscalIdentity::class, 'office_fiscal_identity_id');
     }
 
+    public function purposeLinks(): HasMany
+    {
+        return $this->hasMany(OfficeCredentialPurposeLink::class, 'office_credential_id');
+    }
+
+    public function isCanonical(): bool
+    {
+        return $this->purpose === OfficeCredentialPurpose::CanonicalECnpjA1;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -65,6 +76,7 @@ class OfficeCredential extends Model
             'expires_alert_30' => $this->expires_alert_30,
             'expires_alert_7' => $this->expires_alert_7,
             'expires_alert_1' => $this->expires_alert_1,
+            'is_canonical' => $this->isCanonical(),
         ];
     }
 }

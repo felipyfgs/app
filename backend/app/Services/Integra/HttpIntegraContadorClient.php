@@ -7,10 +7,12 @@ use App\Contracts\SecureObjectStore;
 use App\Contracts\SerproContractAuthenticator;
 use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
+use App\Enums\ClientProcuracaoSyncStatus;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\SecureObjectPurpose;
 use App\Enums\SerproEnvironment;
 use App\Enums\SerproFunctionalRoute;
+use App\Models\ClientProcuracaoSnapshot;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\TaxProxyPower;
 use App\Services\Serpro\Catalog\OperationCoordinateResolver;
@@ -312,7 +314,38 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             return null;
         }
 
+        // Preferir projeção oficial ClientProcuracaoSnapshot quando existir.
         try {
+            $snapshot = ClientProcuracaoSnapshot::query()
+                ->where('office_id', $request->officeId)
+                ->where('client_id', $request->clientId)
+                ->where('environment', $request->environment)
+                ->first();
+
+            if ($snapshot !== null) {
+                if ($snapshot->status === ClientProcuracaoSyncStatus::Expired) {
+                    return $this->fail(
+                        $request,
+                        422,
+                        'PROXY_POWER_EXPIRED',
+                        'Procuração vencida para a operação.',
+                    );
+                }
+                if ($snapshot->status === ClientProcuracaoSyncStatus::Missing) {
+                    return $this->fail(
+                        $request,
+                        422,
+                        'PROXY_POWER_MISSING',
+                        'Poder e-CAC obrigatório ausente: '.implode(',', $powers),
+                    );
+                }
+                if ($snapshot->status === ClientProcuracaoSyncStatus::Authorized
+                    && $snapshot->isUsableForRequiredPower()
+                ) {
+                    return null;
+                }
+            }
+
             $has = TaxProxyPower::query()
                 ->where('office_id', $request->officeId)
                 ->where('client_id', $request->clientId)

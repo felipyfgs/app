@@ -10,12 +10,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\TaxProxyPower;
 use App\Services\Audit\AuditLogger;
+use App\Services\Integra\ClientProcuracaoSyncService;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\OfficeSerproAuthorizationService;
+use App\Services\Integra\SerproTenantActionableStatusService;
 use App\Services\Integra\TaxProxyPowerService;
 use App\Services\Integra\TenantIntegraHealthService;
 use App\Support\CurrentOffice;
-use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -36,6 +37,8 @@ class OfficeSerproAuthorizationController extends Controller
         private readonly TaxProxyPowerService $proxyPowers,
         private readonly IntegraEligibilityService $eligibility,
         private readonly TenantIntegraHealthService $health,
+        private readonly SerproTenantActionableStatusService $actionableStatus,
+        private readonly ClientProcuracaoSyncService $procuracaoSync,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -46,10 +49,15 @@ class OfficeSerproAuthorizationController extends Controller
         $env = $this->environment($request);
 
         $auth = $this->authorizations->getOrCreate($office, $env);
+        $tenantStatus = $this->actionableStatus->forOffice($office, $env);
 
         return response()->json([
             'data' => $auth->toPublicArray(),
+            // Saúde sanitizada (sem detalhes OAuth/mTLS/contrato global)
             'platform_health' => $this->health->forEnvironment($env),
+            'onboarding' => $tenantStatus['onboarding'],
+            'actionable' => $tenantStatus['actionable'],
+            'platform_available' => $tenantStatus['platform_available'],
             'term_representation_strategy' => $this->authorizations->representationStrategy($env)->value,
         ]);
     }
@@ -331,46 +339,14 @@ class OfficeSerproAuthorizationController extends Controller
     public function importProxyPower(Request $request): JsonResponse
     {
         $this->assertAdmin();
-        $office = $this->currentOffice->office();
-
-        $data = $request->validate([
-            'environment' => ['sometimes', 'string', Rule::enum(SerproEnvironment::class)],
-            'client_id' => ['required', 'integer'],
-            'power_code' => ['required', 'string', 'max:120'],
-            'system_code' => ['required', 'string', 'max:80'],
-            'service_code' => ['nullable', 'string', 'max:120'],
-            'valid_from' => ['nullable', 'date'],
-            'valid_to' => ['nullable', 'date'],
-            'evidence_ref' => ['required', 'string', 'max:120'],
-            'evidence_sha256' => ['nullable', 'string', 'size:64'],
-        ]);
-
-        $env = isset($data['environment'])
-            ? SerproEnvironment::from($data['environment'])
-            : SerproEnvironment::from((string) config('serpro.default_environment', 'TRIAL'));
-
-        $client = Client::query()->where('office_id', $office->id)->findOrFail($data['client_id']);
-        $auth = $this->authorizations->getOrCreate($office, $env);
-
+        // F-3.3: projeção oficial não admite importação/override manual.
         try {
-            $power = $this->proxyPowers->importManualEvidence(
-                $office,
-                $client,
-                $auth,
-                $data['power_code'],
-                $data['system_code'],
-                $data['service_code'] ?? null,
-                isset($data['valid_from']) ? CarbonImmutable::parse($data['valid_from']) : null,
-                isset($data['valid_to']) ? CarbonImmutable::parse($data['valid_to']) : null,
-                $data['evidence_ref'],
-                $data['evidence_sha256'] ?? null,
-                $request->user()?->id,
-            );
+            $this->procuracaoSync->rejectManualOverride();
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['data' => $power->toPublicArray()], 201);
+        return response()->json(['message' => 'Importação manual proibida.'], 422);
     }
 
     public function syncProxyPowers(Request $request): JsonResponse
@@ -389,15 +365,13 @@ class OfficeSerproAuthorizationController extends Controller
             : SerproEnvironment::from((string) config('serpro.default_environment', 'TRIAL'));
 
         $client = Client::query()->where('office_id', $office->id)->findOrFail($data['client_id']);
-        $auth = $this->authorizations->getOrCreate($office, $env);
 
         try {
-            $powers = $this->proxyPowers->syncFromApi(
+            // Sync oficial completo → atualiza TaxProxyPower + ClientProcuracaoSnapshot
+            $result = $this->procuracaoSync->syncOfficial(
                 $office,
                 $client,
-                $auth,
                 $env,
-                $data['power_code'] ?? null,
                 $request->user()?->id,
             );
         } catch (RuntimeException $e) {
@@ -405,7 +379,8 @@ class OfficeSerproAuthorizationController extends Controller
         }
 
         return response()->json([
-            'data' => array_map(fn ($p) => $p->toPublicArray(), $powers),
+            'data' => array_map(fn ($p) => $p->toPublicArray(), $result['powers']),
+            'procuracao' => $result['snapshot']->toClientProjection(),
         ]);
     }
 

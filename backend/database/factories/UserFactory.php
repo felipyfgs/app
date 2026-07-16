@@ -58,7 +58,7 @@ class UserFactory extends Factory
 
     /**
      * PLATFORM_ADMIN global — sem membership de office e sem acesso fiscal implícito.
-     * Inclui TOTP confirmado (rotas platform/* exigem EnsurePlatformAdminTwoFactor).
+     * Navegação platform/* não exige TOTP; factory ainda confirma 2FA para cenários legados.
      */
     public function asPlatformAdmin(): static
     {

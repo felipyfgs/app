@@ -94,6 +94,7 @@ class DatabaseSeeder extends Seeder
 
         $plan = SubscriptionPlan::Professional;
         $limits = $plan->defaultLimits();
+        $commercial = $plan->commercialEntitlements();
         $now = now();
 
         OfficeSubscription::query()->create([
@@ -104,9 +105,11 @@ class DatabaseSeeder extends Seeder
             'current_period_starts_at' => $now->copy()->startOfMonth(),
             'current_period_ends_at' => $now->copy()->endOfMonth(),
             'monthly_api_quota' => $limits['monthly_api_quota'],
+            'commercial_monitor_units' => $commercial['commercial_monitor_units'],
             'max_clients' => $limits['max_clients'],
+            'negotiated_client_limit' => null,
             'max_users' => $limits['max_users'],
-            'limits' => $limits,
+            'limits' => array_merge($limits, $commercial),
             'notes' => 'Assinatura ACTIVE criada no DatabaseSeeder (local/testing).',
         ]);
     }

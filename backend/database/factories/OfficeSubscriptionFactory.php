@@ -19,6 +19,7 @@ class OfficeSubscriptionFactory extends Factory
     {
         $plan = SubscriptionPlan::Professional;
         $limits = $plan->defaultLimits();
+        $commercial = $plan->commercialEntitlements();
         $now = now();
 
         return [
@@ -36,12 +37,16 @@ class OfficeSubscriptionFactory extends Factory
             'trial_ends_at' => null,
             'starts_at' => $now,
             'ends_at' => null,
-            'current_period_starts_at' => $now->copy()->startOfMonth(),
-            'current_period_ends_at' => $now->copy()->endOfMonth(),
+            'current_period_starts_at' => $now,
+            'current_period_ends_at' => $now->copy()->addMonthNoOverflow()->subSecond(),
             'monthly_api_quota' => $limits['monthly_api_quota'],
-            'max_clients' => $limits['max_clients'],
+            'commercial_monitor_units' => $commercial['commercial_monitor_units'],
+            'max_clients' => $plan->commercialMaxClients(),
+            'negotiated_client_limit' => null,
             'max_users' => $limits['max_users'],
-            'limits' => $limits,
+            'limits' => array_merge($limits, $commercial, [
+                'max_clients' => $plan->commercialMaxClients(),
+            ]),
             'notes' => null,
         ];
     }
@@ -54,29 +59,43 @@ class OfficeSubscriptionFactory extends Factory
     public function plan(SubscriptionPlan $plan): static
     {
         $limits = $plan->defaultLimits();
+        $commercial = $plan->commercialEntitlements();
 
         return $this->state(fn () => [
             'plan' => $plan,
             'monthly_api_quota' => $limits['monthly_api_quota'],
-            'max_clients' => $limits['max_clients'],
+            'commercial_monitor_units' => $commercial['commercial_monitor_units'],
+            'max_clients' => $plan->commercialMaxClients(),
             'max_users' => $limits['max_users'],
-            'limits' => $limits,
+            'limits' => array_merge($limits, $commercial, [
+                'max_clients' => $plan->commercialMaxClients(),
+            ]),
         ]);
     }
 
     public function trial(): static
     {
-        $limits = SubscriptionPlan::Starter->defaultLimits();
+        $plan = SubscriptionPlan::Starter;
+        $limits = $plan->defaultLimits();
+        $commercial = $plan->commercialEntitlements();
 
         return $this->state(fn () => [
             'status' => SubscriptionStatus::Trial,
             'trial_ends_at' => now()->addDays(14),
-            'plan' => SubscriptionPlan::Starter,
+            'plan' => $plan,
             'monthly_api_quota' => $limits['monthly_api_quota'],
-            'max_clients' => $limits['max_clients'],
+            'commercial_monitor_units' => $commercial['commercial_monitor_units'],
+            'max_clients' => $plan->commercialMaxClients(),
             'max_users' => $limits['max_users'],
-            'limits' => $limits,
+            'limits' => array_merge($limits, $commercial, [
+                'max_clients' => $plan->commercialMaxClients(),
+            ]),
         ]);
+    }
+
+    public function withNegotiatedClientLimit(int $limit): static
+    {
+        return $this->state(fn () => ['negotiated_client_limit' => $limit]);
     }
 
     public function active(): static

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Auth\ConfirmPasswordController;
 use App\Http\Controllers\Api\V1\ClientContactController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\ClientCredentialController;
@@ -33,11 +34,13 @@ use App\Http\Controllers\Api\V1\OfficeAutXmlController;
 use App\Http\Controllers\Api\V1\OfficeFiscalCredentialController;
 use App\Http\Controllers\Api\V1\OfficeSerproAuthorizationController;
 use App\Http\Controllers\Api\V1\OfficeSerproUsageController;
+use App\Http\Controllers\Api\V1\OfficeSettingsController;
 use App\Http\Controllers\Api\V1\OfficeSubscriptionController;
 use App\Http\Controllers\Api\V1\OperationsInboxController;
 use App\Http\Controllers\Api\V1\OperationsSummaryController;
 use App\Http\Controllers\Api\V1\OutboundCaptureController;
 use App\Http\Controllers\Api\V1\OutboundDeadlineController;
+use App\Http\Controllers\Api\V1\Platform\PlatformOfficeSelectController;
 use App\Http\Controllers\Api\V1\Platform\SerproContractController;
 use App\Http\Controllers\Api\V1\Platform\SerproPlatformOpsController;
 use App\Http\Controllers\Api\V1\Platform\SerproUsageAdminController;
@@ -57,7 +60,7 @@ use App\Http\Middleware\EnsureAdminTwoFactor;
 use App\Http\Middleware\EnsureOfficeContext;
 use App\Http\Middleware\EnsureOfficeSubscriptionWritable;
 use App\Http\Middleware\EnsurePlatformAdmin;
-use App\Http\Middleware\EnsurePlatformAdminTwoFactor;
+use App\Http\Middleware\EnsurePrivilegedPasswordConfirmation;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
@@ -73,11 +76,24 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/tenants/switch', [TenantSwitchController::class, 'switch'])
             ->middleware('throttle:30,1');
 
-        // Administração global da plataforma (SEM office context; SEM conteúdo fiscal; TOTP obrigatório)
+        // Reconfirmação de senha (janela curta) — usada por ações privilegiadas sensíveis
+        Route::post('/auth/confirm-password', ConfirmPasswordController::class)
+            ->middleware('throttle:10,1');
+
+        // Administração global da plataforma (SEM office context de membership).
+        // Navegação comum NÃO exige TOTP (spec acesso-global-platform-admin).
+        // Ações sensíveis privilegiadas: reconfirmação de senha + demais gates fail-closed.
         Route::middleware([
             EnsurePlatformAdmin::class,
-            EnsurePlatformAdminTwoFactor::class,
         ])->prefix('platform')->group(function (): void {
+            // Seletor global de office (platform_privileged; flag default OFF)
+            Route::get('/offices', [PlatformOfficeSelectController::class, 'index']);
+            Route::get('/offices/current', [PlatformOfficeSelectController::class, 'current']);
+            Route::post('/offices/select', [PlatformOfficeSelectController::class, 'select'])
+                ->middleware('throttle:30,1');
+            Route::delete('/offices/select', [PlatformOfficeSelectController::class, 'clear'])
+                ->middleware('throttle:30,1');
+
             Route::get('/tenants', [TenantAdminController::class, 'index']);
             Route::get('/tenants/{office}', [TenantAdminController::class, 'show']);
             Route::patch('/tenants/{office}/subscription', [TenantAdminController::class, 'updateSubscription']);
@@ -187,16 +203,17 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/fiscal/installments/guides', [TaxInstallmentController::class, 'guides']);
             Route::post('/fiscal/installments/runs', [TaxInstallmentController::class, 'enqueue']);
 
-            // Operações fiscais mutantes (OFF por default; 2FA recente + confirmação + idempotência)
+            // Operações fiscais mutantes (OFF por default; 2FA recente + confirmação + idempotência;
+            // em platform_privileged: reconfirmação de senha em vez de TOTP)
             Route::post('/auth/confirm-totp', [FiscalMutationController::class, 'confirmTotp'])
                 ->middleware('throttle:10,1');
             Route::post('/fiscal/mutations/preflight', [FiscalMutationController::class, 'preflight'])
                 ->middleware('throttle:30,1');
             Route::post('/fiscal/mutations', [FiscalMutationController::class, 'execute'])
-                ->middleware('throttle:20,1');
+                ->middleware(['throttle:20,1', EnsurePrivilegedPasswordConfirmation::class]);
             Route::get('/fiscal/mutations/{mutation}', [FiscalMutationController::class, 'show']);
             Route::post('/fiscal/mutations/{mutation}/reconcile', [FiscalMutationController::class, 'reconcile'])
-                ->middleware('throttle:20,1');
+                ->middleware(['throttle:20,1', EnsurePrivilegedPasswordConfirmation::class]);
 
             // Situação Fiscal (SITFIS) — snapshot com idade; refresh respeita TTL
             Route::get('/fiscal/sitfis', [SitfisSituationController::class, 'show']);
@@ -286,8 +303,24 @@ Route::prefix('v1')->group(function (): void {
             // Identidade fiscal e A1 do escritório (sem rota de recuperação/download)
             Route::get('/office/fiscal-identity', [OfficeFiscalCredentialController::class, 'showIdentity']);
             Route::post('/office/fiscal-identity', [OfficeFiscalCredentialController::class, 'storeIdentity']);
-            Route::post('/office/fiscal-identity/credential', [OfficeFiscalCredentialController::class, 'storeCredential']);
-            Route::post('/office/fiscal-identity/credentials/{credential}/revoke', [OfficeFiscalCredentialController::class, 'revokeCredential']);
+            Route::post('/office/fiscal-identity/credential', [OfficeFiscalCredentialController::class, 'storeCredential'])
+                ->middleware(EnsurePrivilegedPasswordConfirmation::class);
+            Route::post('/office/fiscal-identity/credentials/{credential}/revoke', [OfficeFiscalCredentialController::class, 'revokeCredential'])
+                ->middleware(EnsurePrivilegedPasswordConfirmation::class);
+
+            // Configuração unificada /settings: perfil, consentimento, A1 canônico (sem download)
+            Route::get('/office/settings', [OfficeSettingsController::class, 'show']);
+            Route::patch('/office/settings/profile', [OfficeSettingsController::class, 'updateProfile']);
+            Route::get('/office/settings/consent', [OfficeSettingsController::class, 'showConsent']);
+            Route::post('/office/settings/consent', [OfficeSettingsController::class, 'grantConsent']);
+            Route::post('/office/settings/consent/revoke', [OfficeSettingsController::class, 'revokeConsent']);
+            Route::get('/office/settings/credential', [OfficeSettingsController::class, 'showCredential']);
+            Route::post('/office/settings/credential', [OfficeSettingsController::class, 'storeCredential'])
+                ->middleware(EnsurePrivilegedPasswordConfirmation::class);
+            Route::post('/office/settings/credential/replace', [OfficeSettingsController::class, 'replaceCredential'])
+                ->middleware(EnsurePrivilegedPasswordConfirmation::class);
+            Route::post('/office/settings/credential/remove', [OfficeSettingsController::class, 'removeCredential'])
+                ->middleware(EnsurePrivilegedPasswordConfirmation::class);
 
             // Onboarding autXML + cursor central (sem reset de NSU)
             Route::get('/office/autxml', [OfficeAutXmlController::class, 'overview']);

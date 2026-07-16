@@ -124,8 +124,42 @@ class FeatureFlagsTest extends TestCase
         $snap = FeatureFlags::snapshot();
         $this->assertArrayHasKey('kill_switch', $snap);
         $this->assertArrayHasKey('modules', $snap);
+        $this->assertArrayHasKey('platform_privileged_context', $snap);
+        $this->assertArrayHasKey('unified_office_config', $snap);
+        $this->assertFalse($snap['platform_privileged_context']);
+        $this->assertFalse($snap['unified_office_config']);
         $this->assertCount(count(FeatureFlags::MODULES), $snap['modules']);
         $this->assertArrayNotHasKey('secrets', $snap);
+    }
+
+    public function test_platform_privileged_context_default_off(): void
+    {
+        $this->assertFalse(FeatureFlags::isPlatformPrivilegedContextEnabled());
+
+        config(['features.platform_privileged_context.enabled' => true]);
+        $this->assertTrue(FeatureFlags::isPlatformPrivilegedContextEnabled());
+
+        config(['features.kill_switch' => true]);
+        $this->assertFalse(FeatureFlags::isPlatformPrivilegedContextEnabled());
+    }
+
+    public function test_unified_office_config_default_off(): void
+    {
+        $this->assertFalse(FeatureFlags::isUnifiedOfficeConfigEnabled());
+        $this->assertFalse(FeatureFlags::isUnifiedOfficeConfigEnabled(1));
+
+        config([
+            'features.unified_office_config.enabled' => true,
+            'features.unified_office_config.office_allowlist' => [10],
+            'features.unified_office_config.allow_all_offices' => false,
+            'features.kill_switch' => false,
+        ]);
+        $this->assertTrue(FeatureFlags::isUnifiedOfficeConfigEnabled());
+        $this->assertTrue(FeatureFlags::isUnifiedOfficeConfigEnabled(10));
+        $this->assertFalse(FeatureFlags::isUnifiedOfficeConfigEnabled(99));
+
+        config(['features.kill_switch' => true]);
+        $this->assertFalse(FeatureFlags::isUnifiedOfficeConfigEnabled(10));
     }
 
     /**

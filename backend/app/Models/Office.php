@@ -40,4 +40,29 @@ class Office extends Model
     {
         return $this->hasOne(OfficeSubscription::class);
     }
+
+    public function institutionalProfile(): HasOne
+    {
+        return $this->hasOne(OfficeInstitutionalProfile::class);
+    }
+
+    public function technicalConsents(): HasMany
+    {
+        return $this->hasMany(OfficeTechnicalConsent::class);
+    }
+
+    public function credentialPurposeLinks(): HasMany
+    {
+        return $this->hasMany(OfficeCredentialPurposeLink::class);
+    }
+
+    public function credentials(): HasMany
+    {
+        return $this->hasMany(OfficeCredential::class);
+    }
+
+    public function serproOnboardingStates(): HasMany
+    {
+        return $this->hasMany(OfficeSerproOnboardingState::class);
+    }
 }

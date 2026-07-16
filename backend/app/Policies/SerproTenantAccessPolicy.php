@@ -7,8 +7,9 @@ use App\Models\User;
 use App\Support\CurrentOffice;
 
 /**
- * PLATFORM_ADMIN sem membership NÃO obtém dados fiscais/tenant SERPRO.
- * Dados fiscais exigem membership ativa no office corrente.
+ * Dados fiscais/tenant SERPRO exigem CurrentOffice resolvido (membership ou
+ * platform_privileged). PLATFORM_ADMIN sem seleção privilegiada e sem membership
+ * não obtém acesso fiscal implícito.
  */
 final class SerproTenantAccessPolicy
 {
@@ -18,8 +19,7 @@ final class SerproTenantAccessPolicy
 
     public function viewTenantSerpro(User $user): bool
     {
-        // Platform admin sozinho não basta
-        if ($user->isPlatformAdmin() && $user->activeMembership() === null) {
+        if ($this->currentOffice->resolve($user) === null) {
             return false;
         }
 
@@ -30,18 +30,16 @@ final class SerproTenantAccessPolicy
 
     public function mutateTenantSerpro(User $user): bool
     {
-        if ($user->isPlatformAdmin() && $user->activeMembership() === null) {
+        if ($this->currentOffice->resolve($user) === null) {
             return false;
         }
 
-        $role = $this->currentOffice->role();
-
-        return $role === OfficeRole::Admin;
+        return $this->currentOffice->role() === OfficeRole::Admin;
     }
 
     public function operateTenantSerpro(User $user): bool
     {
-        if ($user->isPlatformAdmin() && $user->activeMembership() === null) {
+        if ($this->currentOffice->resolve($user) === null) {
             return false;
         }
 

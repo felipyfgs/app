@@ -11,6 +11,7 @@ use App\Models\ClientContact;
 use App\Models\ClientCustomField;
 use App\Models\Establishment;
 use App\Services\Audit\AuditLogger;
+use App\Services\Usage\CommercialEntitlementService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -30,6 +31,7 @@ final class CreateClientWithEstablishment
         private readonly CnpjWsRegistrationLookup $lookup,
         private readonly AuditLogger $audit,
         private readonly SecureObjectStore $secureObjectStore,
+        private readonly CommercialEntitlementService $commercialEntitlements,
     ) {}
 
     /**
@@ -103,6 +105,9 @@ final class CreateClientWithEstablishment
                 $createdNewClient = $client === null;
 
                 if ($createdNewClient) {
+                    // Franquia comercial de carteira — só no novo Cliente-raiz (não em filial/estabelecimento).
+                    $this->commercialEntitlements->assertCanCreateClient($officeId);
+
                     $client = Client::query()->create([
                         'office_id' => $officeId,
                         'legal_name' => (string) $payload['legal_name'],

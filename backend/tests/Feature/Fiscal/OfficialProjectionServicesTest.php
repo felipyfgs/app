@@ -8,6 +8,8 @@ use App\Enums\AuthorIdentityType;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproContractStatus;
 use App\Enums\SerproEnvironment;
+use App\Enums\TaxProxyPowerSource;
+use App\Enums\TaxProxyPowerStatus;
 use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\FiscalRegistrationLink;
@@ -15,6 +17,7 @@ use App\Models\FiscalTaxProcess;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\SerproContract;
+use App\Models\TaxProxyPower;
 use App\Services\Integra\FakeIntegraContadorClient;
 use App\Services\Integra\Registrations\RegistrationLinkProjectionService;
 use App\Services\Integra\TaxProcesses\TaxProcessProjectionService;
@@ -62,13 +65,29 @@ final class OfficialProjectionServicesTest extends TestCase
             'cert_valid_to' => now()->addYear(),
             'activated_at' => now(),
         ]);
-        OfficeSerproAuthorization::query()->create([
+        $auth = OfficeSerproAuthorization::query()->create([
             'office_id' => $this->office->id,
             'environment' => SerproEnvironment::Trial,
             'status' => SerproAuthorizationStatus::TokenActive,
             'author_identity_type' => AuthorIdentityType::Cpf,
             'author_identity' => '52998224725',
             'certificate_mode' => AuthorCertificateMode::ExternalSignature,
+        ]);
+
+        // eprocesso.consultar_por_interessado exige poder e-CAC 00051 (manifesto oficial).
+        TaxProxyPower::query()->create([
+            'office_id' => $this->office->id,
+            'client_id' => $this->client->id,
+            'office_serpro_authorization_id' => $auth->id,
+            'author_identity' => '52998224725',
+            'contributor_cnpj' => '11222333000181',
+            'system_code' => 'EPROCESSO',
+            'service_code' => 'EPROCESSO',
+            'power_code' => '00051',
+            'source' => TaxProxyPowerSource::ManualOfficialEvidence,
+            'status' => TaxProxyPowerStatus::Active,
+            'valid_from' => now()->subDay(),
+            'valid_to' => now()->addYear(),
         ]);
 
         $this->integra = app(FakeIntegraContadorClient::class);

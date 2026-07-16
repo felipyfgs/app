@@ -57,4 +57,15 @@ class OfficeCredentialFactory extends Factory
             'superseded_at' => now(),
         ]);
     }
+
+    /**
+     * Credencial física canônica e-CNPJ A1 (office-scoped; identity opcional).
+     */
+    public function canonical(): static
+    {
+        return $this->state(fn () => [
+            'purpose' => OfficeCredentialPurpose::CanonicalECnpjA1,
+            'office_fiscal_identity_id' => null,
+        ]);
+    }
 }

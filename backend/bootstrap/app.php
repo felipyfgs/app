@@ -5,6 +5,7 @@ use App\Http\Middleware\EnsureOfficeContext;
 use App\Http\Middleware\EnsureOfficeSubscriptionWritable;
 use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\EnsurePlatformAdminTwoFactor;
+use App\Http\Middleware\EnsurePrivilegedPasswordConfirmation;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.2fa' => EnsureAdminTwoFactor::class,
             'platform.admin' => EnsurePlatformAdmin::class,
             'platform.2fa' => EnsurePlatformAdminTwoFactor::class,
+            'privileged.password' => EnsurePrivilegedPasswordConfirmation::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -1,6 +1,7 @@
 <?php
 
 use App\Support\FeatureFlags;
+use App\Support\PlatformPrivilegedContext;
 
 /**
  * Feature flags do hub de monitoramento fiscal (SaaS multi-escritório).
@@ -55,6 +56,26 @@ return [
     'mutating' => [
         'enabled' => filter_var(env('FEATURES_MUTATING_ENABLED', false), FILTER_VALIDATE_BOOL),
         'kill_switch' => filter_var(env('FEATURES_MUTATING_KILL_SWITCH', false), FILTER_VALIDATE_BOOL),
+    ],
+
+    /**
+     * Contexto privilegiado PLATFORM_ADMIN (seletor global de office, sem membership fictícia).
+     * Default OFF até aprovação jurídica/segurança e plano de rollout.
+     *
+     * @see PlatformPrivilegedContext
+     */
+    'platform_privileged_context' => [
+        'enabled' => filter_var(env('PLATFORM_PRIVILEGED_CONTEXT', false), FILTER_VALIDATE_BOOL),
+    ],
+
+    /**
+     * Configuração unificada do escritório (perfil institucional, A1 canônico, consentimento).
+     * Default OFF — rollout por coorte via allowlist.
+     */
+    'unified_office_config' => [
+        'enabled' => filter_var(env('FEATURE_UNIFIED_OFFICE_CONFIG_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'office_allowlist' => $parseIdList(env('FEATURE_UNIFIED_OFFICE_CONFIG_OFFICE_ALLOWLIST')),
+        'allow_all_offices' => filter_var(env('FEATURE_UNIFIED_OFFICE_CONFIG_ALLOW_ALL_OFFICES', false), FILTER_VALIDATE_BOOL),
     ],
 
     /**

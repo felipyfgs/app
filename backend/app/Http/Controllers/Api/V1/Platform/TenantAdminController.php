@@ -57,6 +57,8 @@ class TenantAdminController extends Controller
             'status' => ['sometimes', 'string', Rule::enum(SubscriptionStatus::class)],
             'plan' => ['sometimes', 'string', Rule::enum(SubscriptionPlan::class)],
             'notes' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            /** Limite negociado de clientes (>200); null limpa o override. Somente plataforma. */
+            'negotiated_client_limit' => ['sometimes', 'nullable', 'integer', 'min:201', 'max:100000'],
         ]);
 
         $subscription = OfficeSubscription::query()->where('office_id', $office->id)->first();
@@ -104,7 +106,23 @@ class TenantAdminController extends Controller
                             notes: $validated['notes'] ?? null,
                         ),
                     };
-                } elseif (isset($validated['notes'])) {
+                }
+
+                if (array_key_exists('negotiated_client_limit', $validated)) {
+                    $limit = $validated['negotiated_client_limit'];
+                    if ($limit === null) {
+                        $subscription->negotiated_client_limit = null;
+                        $subscription->save();
+                    } else {
+                        $subscription = $this->subscriptions->setNegotiatedClientLimit(
+                            $subscription,
+                            (int) $limit,
+                            $request->user()?->id,
+                        );
+                    }
+                }
+
+                if (isset($validated['notes']) && ! isset($validated['status'])) {
                     $subscription->notes = $validated['notes'];
                     $subscription->save();
                 }

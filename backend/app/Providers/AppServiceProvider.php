@@ -49,6 +49,7 @@ use App\Policies\ClientCredentialPolicy;
 use App\Policies\ClientPolicy;
 use App\Policies\EstablishmentPolicy;
 use App\Policies\OfficeFiscalCredentialPolicy;
+use App\Policies\OfficeSettingsPolicy;
 use App\Policies\OutboundCaptureProfilePolicy;
 use App\Policies\Work\OperationalExportPolicy;
 use App\Policies\Work\OperationalProcessPolicy;
@@ -407,6 +408,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(OutboundCaptureProfile::class, OutboundCaptureProfilePolicy::class);
         Gate::policy(OfficeFiscalIdentity::class, OfficeFiscalCredentialPolicy::class);
         Gate::policy(OfficeCredential::class, OfficeFiscalCredentialPolicy::class);
+        Gate::define('office-settings.view', [OfficeSettingsPolicy::class, 'view']);
+        Gate::define('office-settings.manage', [OfficeSettingsPolicy::class, 'manage']);
 
         // Módulo operacional (Work) — plano de dados tenant-scoped
         Gate::policy(WorkDepartment::class, WorkDepartmentPolicy::class);

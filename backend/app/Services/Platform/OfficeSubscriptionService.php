@@ -7,17 +7,22 @@ use App\Enums\SubscriptionStatus;
 use App\Models\Office;
 use App\Models\OfficeSubscription;
 use App\Services\Audit\AuditLogger;
+use App\Services\Usage\CommercialEntitlementService;
+use App\Services\Usage\SubscriptionPeriodService;
 use InvalidArgumentException;
 use RuntimeException;
 
 /**
  * Ciclo de vida comercial do tenant: TRIAL → ACTIVE → PAST_DUE → SUSPENDED → CANCELED.
  * Não apaga ledger, auditoria, snapshots nem evidências fiscais.
+ * Período comercial = aniversário da assinatura (não mês-calendário).
  */
 final class OfficeSubscriptionService
 {
     public function __construct(
         private readonly AuditLogger $audit,
+        private readonly SubscriptionPeriodService $periods,
+        private readonly CommercialEntitlementService $commercial,
     ) {}
 
     /**
@@ -46,8 +51,9 @@ final class OfficeSubscriptionService
             throw new RuntimeException('Escritório já possui assinatura.');
         }
 
-        $limits = $plan->defaultLimits();
+        $defaults = $this->commercial->commercialDefaultsForPlan($plan);
         $now = now();
+        [$periodStart, $periodEnd] = $this->periods->initialBounds($now->toImmutable());
 
         $subscription = OfficeSubscription::query()->create([
             'office_id' => $office->id,
@@ -58,12 +64,15 @@ final class OfficeSubscriptionService
                 : null,
             'starts_at' => $now,
             'ends_at' => null,
-            'current_period_starts_at' => $now->copy()->startOfMonth(),
-            'current_period_ends_at' => $now->copy()->endOfMonth(),
-            'monthly_api_quota' => $limits['monthly_api_quota'],
-            'max_clients' => $limits['max_clients'],
-            'max_users' => $limits['max_users'],
-            'limits' => $limits,
+            // Aniversário comercial — NÃO startOfMonth/endOfMonth.
+            'current_period_starts_at' => $periodStart,
+            'current_period_ends_at' => $periodEnd,
+            'monthly_api_quota' => $defaults['monthly_api_quota'],
+            'commercial_monitor_units' => $defaults['commercial_monitor_units'],
+            'max_clients' => $defaults['max_clients'],
+            'negotiated_client_limit' => null,
+            'max_users' => $defaults['max_users'],
+            'limits' => $defaults['limits'],
         ]);
 
         $this->audit->record(
@@ -127,15 +136,17 @@ final class OfficeSubscriptionService
             throw new InvalidArgumentException('Não é possível alterar plano de assinatura cancelada.');
         }
 
-        $limits = $plan->defaultLimits();
+        $defaults = $this->commercial->commercialDefaultsForPlan($plan);
         $from = $subscription->plan->value;
 
+        // Troca de plano NÃO recria inaugural nem limpa limite negociado.
         $subscription->fill([
             'plan' => $plan,
-            'monthly_api_quota' => $limits['monthly_api_quota'],
-            'max_clients' => $limits['max_clients'],
-            'max_users' => $limits['max_users'],
-            'limits' => array_merge($subscription->limits ?? [], $limits),
+            'monthly_api_quota' => $defaults['monthly_api_quota'],
+            'commercial_monitor_units' => $defaults['commercial_monitor_units'],
+            'max_clients' => $defaults['max_clients'],
+            'max_users' => $defaults['max_users'],
+            'limits' => array_merge($subscription->limits ?? [], $defaults['limits']),
         ]);
         $subscription->save();
 
@@ -147,11 +158,32 @@ final class OfficeSubscriptionService
                 'from_plan' => $from,
                 'to_plan' => $plan->value,
                 'status' => $subscription->status->value,
+                'commercial_monitor_units' => $defaults['commercial_monitor_units'],
+                'negotiated_client_limit' => $subscription->negotiated_client_limit,
             ],
             officeId: $subscription->office_id,
         );
 
         return $subscription->refresh();
+    }
+
+    /**
+     * Garante que o período corrente cobre $at (renovação por aniversário, sem rollover).
+     */
+    public function ensureCurrentPeriod(OfficeSubscription $subscription, mixed $at = null): OfficeSubscription
+    {
+        return $this->periods->ensureCurrent($subscription, $at);
+    }
+
+    /**
+     * Limite negociado >200 — somente PLATFORM_ADMIN (via API de plataforma).
+     */
+    public function setNegotiatedClientLimit(
+        OfficeSubscription $subscription,
+        int $limit,
+        ?int $actorUserId = null,
+    ): OfficeSubscription {
+        return $this->commercial->setNegotiatedClientLimit($subscription, $limit, $actorUserId);
     }
 
     /**

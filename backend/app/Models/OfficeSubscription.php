@@ -24,7 +24,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'current_period_starts_at',
     'current_period_ends_at',
     'monthly_api_quota',
+    'commercial_monitor_units',
     'max_clients',
+    'negotiated_client_limit',
     'max_users',
     'limits',
     'notes',
@@ -45,7 +47,9 @@ class OfficeSubscription extends Model
             'current_period_starts_at' => 'datetime',
             'current_period_ends_at' => 'datetime',
             'monthly_api_quota' => 'integer',
+            'commercial_monitor_units' => 'integer',
             'max_clients' => 'integer',
+            'negotiated_client_limit' => 'integer',
             'max_users' => 'integer',
             'limits' => 'array',
         ];
@@ -72,6 +76,28 @@ class OfficeSubscription extends Model
     }
 
     /**
+     * Unidades comerciais por cliente+monitor no período (coluna ou default do plano).
+     */
+    public function resolvedCommercialMonitorUnits(): int
+    {
+        return $this->commercial_monitor_units
+            ?? $this->plan->commercialMonitorUnits();
+    }
+
+    /**
+     * Teto efetivo de clientes: override negociado da plataforma ou máximo comercial do plano.
+     * Não altera monthly_api_quota técnico.
+     */
+    public function effectiveCommercialMaxClients(): int
+    {
+        if ($this->negotiated_client_limit !== null && $this->negotiated_client_limit > 0) {
+            return $this->negotiated_client_limit;
+        }
+
+        return $this->plan->commercialMaxClients();
+    }
+
+    /**
      * Payload sanitizado para API tenant-scoped (sem dados fiscais).
      *
      * @return array<string, mixed>
@@ -92,6 +118,8 @@ class OfficeSubscription extends Model
                 'monthly_api_quota' => $this->monthly_api_quota,
                 'max_clients' => $this->max_clients,
                 'max_users' => $this->max_users,
+                'commercial_monitor_units' => $this->resolvedCommercialMonitorUnits(),
+                'commercial_max_clients' => $this->effectiveCommercialMaxClients(),
             ],
             'allows_mutations' => $this->allowsMutations(),
             'allows_external_calls' => $this->allowsExternalCalls(),
@@ -107,6 +135,7 @@ class OfficeSubscription extends Model
     {
         return array_merge($this->toPublicArray(), [
             'notes' => $this->notes,
+            'negotiated_client_limit' => $this->negotiated_client_limit,
             'updated_at' => $this->updated_at?->toIso8601String(),
         ]);
     }

@@ -272,6 +272,18 @@ class ClientController extends Controller
                 'message' => $e->getMessage(),
                 'errors' => ['cnpj' => [$e->getMessage()]],
             ], 422);
+        } catch (\RuntimeException $e) {
+            // Limite comercial de clientes (franquia do plano / negociado).
+            if (str_contains($e->getMessage(), 'Limite de clientes')
+                || str_contains($e->getMessage(), 'sem assinatura')) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'errors' => ['max_clients' => [$e->getMessage()]],
+                    'code' => 'MAX_CLIENTS_REACHED',
+                ], 422);
+            }
+
+            throw $e;
         }
 
         return response()->json([

@@ -150,8 +150,9 @@ class PlatformAdminTest extends TestCase
         $this->assertNotSame($active->id, $suspended->id);
     }
 
-    public function test_platform_admin_sem_totp_e_bloqueado_em_mutacoes(): void
+    public function test_platform_admin_sem_totp_navega_area_plataforma(): void
     {
+        // Spec: login/navegação PLATFORM_ADMIN não exige TOTP global.
         config()->set('fortify.two_factor_required', true);
 
         $office = Office::factory()->create();
@@ -165,29 +166,22 @@ class PlatformAdminTest extends TestCase
         $this->assertFalse($admin->hasConfirmedTwoFactor());
 
         $this->actingAs($admin)
-            ->postJson('/api/v1/platform/serpro/kill-switch', ['enabled' => true])
-            ->assertForbidden()
-            ->assertJsonPath('code', 'platform_two_factor_required');
+            ->getJson('/api/v1/platform/tenants')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $office->id);
 
         $this->actingAs($admin)
-            ->postJson('/api/v1/platform/serpro/breaker/reset')
-            ->assertForbidden()
-            ->assertJsonPath('code', 'platform_two_factor_required');
+            ->getJson('/api/v1/platform/offices')
+            ->assertOk();
 
         $this->actingAs($admin)
             ->patchJson('/api/v1/platform/tenants/'.$office->id.'/subscription', [
                 'status' => 'SUSPENDED',
+                'notes' => 'sem totp',
             ])
-            ->assertForbidden()
-            ->assertJsonPath('code', 'platform_two_factor_required');
+            ->assertOk()
+            ->assertJsonPath('data.subscription.status', SubscriptionStatus::Suspended->value);
 
-        // Leitura platform também bloqueada (grupo inteiro exige 2FA)
-        $this->actingAs($admin)
-            ->getJson('/api/v1/platform/tenants')
-            ->assertForbidden()
-            ->assertJsonPath('code', 'platform_two_factor_required');
-
-        // /me continua acessível (fora do grupo platform)
         $this->actingAs($admin)
             ->getJson('/api/v1/me')
             ->assertOk()
@@ -195,7 +189,7 @@ class PlatformAdminTest extends TestCase
             ->assertJsonPath('data.two_factor_confirmed', false);
     }
 
-    public function test_platform_admin_com_totp_acessa_mutacoes_quando_config_exige(): void
+    public function test_platform_admin_com_totp_continua_acessando_plataforma(): void
     {
         config()->set('fortify.two_factor_required', true);
 
@@ -207,24 +201,9 @@ class PlatformAdminTest extends TestCase
         $this->actingAs($admin)
             ->patchJson('/api/v1/platform/tenants/'.$office->id.'/subscription', [
                 'status' => 'SUSPENDED',
-                'notes' => '2fa ok',
+                'notes' => 'com totp',
             ])
             ->assertOk()
             ->assertJsonPath('data.subscription.status', SubscriptionStatus::Suspended->value);
-    }
-
-    public function test_platform_admin_sem_totp_acessa_quando_2fa_desativado(): void
-    {
-        config()->set('fortify.two_factor_required', false);
-
-        $admin = User::factory()->asPlatformAdmin()->create([
-            'two_factor_secret' => null,
-            'two_factor_recovery_codes' => null,
-            'two_factor_confirmed_at' => null,
-        ]);
-
-        $this->actingAs($admin)
-            ->getJson('/api/v1/platform/tenants')
-            ->assertOk();
     }
 }
