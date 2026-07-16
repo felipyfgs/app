@@ -60,6 +60,9 @@
         <server name="SEFAZ_SVRS_NFE55_XML_KILL_SWITCH" value="false"/>
         <server name="SVRS_EGRESS_COHORT_ID" value="test-cohort"/>
         <server name="SEFAZ_CTE_REQUIRE_SIGNATURE" value="false"/>
+        <server name="PLATFORM_PRIVILEGED_CONTEXT" value="false"/>
+        <server name="INITIAL_ONBOARDING_ENABLED" value="false"/>
+        <server name="INITIAL_ONBOARDING_TOKEN" value=""/>
 
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="AUTH_TWO_FACTOR_REQUIRED" value="false" force="true"/>
@@ -110,6 +113,9 @@
         <env name="SEFAZ_SVRS_NFE55_XML_KILL_SWITCH" value="false" force="true"/>
         <env name="SVRS_EGRESS_COHORT_ID" value="test-cohort" force="true"/>
         <env name="SEFAZ_CTE_REQUIRE_SIGNATURE" value="false" force="true"/>
+        <env name="PLATFORM_PRIVILEGED_CONTEXT" value="false" force="true"/>
+        <env name="INITIAL_ONBOARDING_ENABLED" value="false" force="true"/>
+        <env name="INITIAL_ONBOARDING_TOKEN" value="" force="true"/>
         <env name="SVRS_EGRESS_MIN_INTERVAL_GLOBAL" value="120" force="true"/>
         <env name="SVRS_EGRESS_MIN_INTERVAL_ROOT" value="900" force="true"/>
         <env name="SVRS_EGRESS_MAX_KEYS_PER_JOB" value="1" force="true"/>

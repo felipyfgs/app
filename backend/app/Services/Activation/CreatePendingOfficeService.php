@@ -7,6 +7,7 @@ use App\Enums\ActivationMethod;
 use App\Enums\ActivationPurpose;
 use App\Enums\OfficeLifecycleStatus;
 use App\Enums\OfficeRole;
+use App\Enums\PlatformRole;
 use App\Enums\SubscriptionPlan;
 use App\Enums\SubscriptionStatus;
 use App\Models\AccountActivation;
@@ -14,6 +15,7 @@ use App\Models\Office;
 use App\Models\OfficeInstitutionalProfile;
 use App\Models\OfficeMembership;
 use App\Models\OfficeSubscription;
+use App\Models\PlatformMembership;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use App\Services\Usage\CommercialEntitlementService;
@@ -133,6 +135,16 @@ final class CreatePendingOfficeService
                 'lifecycle_status' => OfficeLifecycleStatus::PendingActivation,
             ]);
 
+            // O primeiro PLATFORM_ADMIN nasce antes de existir qualquer Office.
+            // Converge o perfil global para o primeiro Office cadastrado sem criar
+            // membership tenant nem alterar users.selected_office_id.
+            $platformDefaultAssigned = PlatformMembership::query()
+                ->where('user_id', $actor->id)
+                ->where('role', PlatformRole::PlatformAdmin->value)
+                ->where('is_active', true)
+                ->whereNull('default_office_id')
+                ->update(['default_office_id' => $office->id]) === 1;
+
             OfficeInstitutionalProfile::query()->create([
                 'office_id' => $office->id,
                 'cnpj' => $cnpj,
@@ -208,6 +220,8 @@ final class CreatePendingOfficeService
                     'method' => $method->value,
                     'admin_email_masked' => AccountActivation::maskEmail($adminEmail),
                     'lifecycle_status' => OfficeLifecycleStatus::PendingActivation->value,
+                    'platform_default_office_assigned' => $platformDefaultAssigned,
+                    'platform_office_membership_created' => false,
                 ],
                 userId: $actor->id,
                 officeId: $office->id,

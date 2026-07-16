@@ -8,6 +8,8 @@ use App\Enums\SubscriptionPlan;
 use App\Enums\SubscriptionStatus;
 use App\Models\AccountActivation;
 use App\Models\Office;
+use App\Models\OfficeMembership;
+use App\Models\PlatformMembership;
 use App\Models\User;
 use App\Services\Auth\RecentPasswordConfirmationGate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -90,6 +92,31 @@ class CreatePendingOfficeTest extends TestCase
 
         // Nenhum job fiscal enfileirado
         Queue::assertNothingPushed();
+    }
+
+    public function test_primeiro_office_converge_padrao_do_platform_admin_sem_membership_tenant(): void
+    {
+        Queue::fake();
+        $admin = User::factory()->asPlatformAdmin()->create([
+            'password' => bcrypt('admin-secret-12'),
+            'selected_office_id' => null,
+        ]);
+        $platformMembership = PlatformMembership::query()
+            ->where('user_id', $admin->id)
+            ->firstOrFail();
+        $this->assertNull($platformMembership->default_office_id);
+
+        $this->confirmPassword($admin);
+
+        $response = $this->actingAs($admin)
+            ->postJson('/api/v1/platform/offices', $this->validPayload('first-office-default'))
+            ->assertCreated();
+
+        $officeId = (int) $response->json('data.office.id');
+        $this->assertGreaterThan(0, $officeId);
+        $this->assertSame($officeId, (int) $platformMembership->fresh()->default_office_id);
+        $this->assertNull($admin->fresh()->selected_office_id);
+        $this->assertFalse(OfficeMembership::query()->where('user_id', $admin->id)->exists());
     }
 
     public function test_plano_obrigatorio(): void

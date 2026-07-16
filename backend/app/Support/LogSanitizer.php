@@ -27,7 +27,7 @@ final class LogSanitizer
         'pfx_password',
         // Ativação / primeiro acesso
         'temporary_password', 'activation_url', 'activation_token',
-        'reconfirm_password', 'secret_hash', 'link_token',
+        'reconfirm_password', 'secret_hash', 'link_token', 'onboarding_token',
     ];
 
     /**

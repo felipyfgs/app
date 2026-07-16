@@ -42,6 +42,7 @@ use App\Http\Controllers\Api\V1\OperationsInboxController;
 use App\Http\Controllers\Api\V1\OperationsSummaryController;
 use App\Http\Controllers\Api\V1\OutboundCaptureController;
 use App\Http\Controllers\Api\V1\OutboundDeadlineController;
+use App\Http\Controllers\Api\V1\Platform\InitialOnboardingController;
 use App\Http\Controllers\Api\V1\Platform\PlatformAdminUserController;
 use App\Http\Controllers\Api\V1\Platform\PlatformOfficeController;
 use App\Http\Controllers\Api\V1\Platform\PlatformOfficeSelectController;
@@ -78,6 +79,12 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/activations/complete', [PublicActivationController::class, 'complete']);
         Route::post('/first-access/complete', [PublicActivationController::class, 'completeFirstAccess']);
     });
+
+    // Onboarding inicial da plataforma (fail-closed; token no body; no-store no controller)
+    Route::get('/onboarding/status', [InitialOnboardingController::class, 'status'])
+        ->middleware('throttle:20,1');
+    Route::post('/onboarding', [InitialOnboardingController::class, 'complete'])
+        ->middleware('throttle:5,1');
 
     Route::middleware(['auth:sanctum', EnsureActiveUser::class])->group(function (): void {
         Route::get('/me', MeController::class);

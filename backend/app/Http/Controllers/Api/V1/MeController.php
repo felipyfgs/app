@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\PlatformSetting;
 use App\Models\User;
 use App\Services\Platform\TenantSwitchService;
 use App\Support\CurrentOffice;
@@ -24,6 +25,10 @@ class MeController extends Controller
         $contextStatus = $currentOffice->contextStatus()
             ?? ($office !== null ? CurrentOffice::CONTEXT_STATUS_OK : CurrentOffice::CONTEXT_STATUS_REQUIRED);
 
+        $organizationName = PlatformSetting::query()
+            ->whereKey(PlatformSetting::SINGLETON_ID)
+            ->value('organization_name');
+
         return response()->json([
             'data' => [
                 'id' => $user->id,
@@ -38,6 +43,9 @@ class MeController extends Controller
                 'real_office_role' => $realRole?->value,
                 'has_real_membership' => $currentOffice->hasRealMembership(),
                 'context_status' => $contextStatus,
+                'platform_organization_name' => is_string($organizationName) && $organizationName !== ''
+                    ? $organizationName
+                    : null,
                 // Alias histórico: office === current_office
                 'office' => $office === null ? null : [
                     'id' => $office->id,
