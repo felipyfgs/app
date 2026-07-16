@@ -33,7 +33,7 @@ class PlatformAdminDemoSeederTest extends TestCase
     {
         $office = Office::factory()->create([
             'slug' => PlatformAdminDemoSeeder::OFFICE_SLUG,
-            'name' => 'Escritório Demo',
+            'name' => PlatformAdminDemoSeeder::OFFICE_NAME,
             'is_active' => $active,
         ]);
 
@@ -107,7 +107,7 @@ class PlatformAdminDemoSeederTest extends TestCase
         ]);
     }
 
-    public function test_login_e_grupo_admin_com_office_demo_padrao(): void
+    public function test_login_e_grupo_admin_com_office_da_plataforma_padrao(): void
     {
         $office = $this->createDemoOffice();
         $this->seedPlatformAdmin();
@@ -227,16 +227,16 @@ class PlatformAdminDemoSeederTest extends TestCase
         $this->assertFalse($orphan->fresh()->isPlatformAdmin());
     }
 
-    public function test_office_demo_ausente_falha_sem_escrita_parcial(): void
+    public function test_office_da_plataforma_ausente_falha_sem_escrita_parcial(): void
     {
         $usersBefore = User::query()->count();
         $pmBefore = PlatformMembership::query()->count();
 
         try {
             $this->seedPlatformAdmin();
-            $this->fail('Esperava RuntimeException por Office demo ausente.');
+            $this->fail('Esperava RuntimeException por Office da Plataforma ausente.');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('demo', $e->getMessage());
+            $this->assertStringContainsString(PlatformAdminDemoSeeder::OFFICE_SLUG, $e->getMessage());
         }
 
         $this->assertSame($usersBefore, User::query()->count());
@@ -244,7 +244,7 @@ class PlatformAdminDemoSeederTest extends TestCase
         $this->assertNull(User::query()->where('email', PlatformAdminDemoSeeder::EMAIL)->first());
     }
 
-    public function test_office_demo_inativo_falha_sem_escrita_parcial(): void
+    public function test_office_da_plataforma_inativo_falha_sem_escrita_parcial(): void
     {
         $this->createDemoOffice(active: false);
 
@@ -253,9 +253,9 @@ class PlatformAdminDemoSeederTest extends TestCase
 
         try {
             $this->seedPlatformAdmin();
-            $this->fail('Esperava RuntimeException por Office demo inativo.');
+            $this->fail('Esperava RuntimeException por Office da Plataforma inativo.');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('demo', $e->getMessage());
+            $this->assertStringContainsString(PlatformAdminDemoSeeder::OFFICE_SLUG, $e->getMessage());
         }
 
         $this->assertSame($usersBefore, User::query()->count());

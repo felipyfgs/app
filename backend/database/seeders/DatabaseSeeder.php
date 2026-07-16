@@ -16,17 +16,34 @@ class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
 
+    public const ACCOUNTANT_OFFICE_SLUG = 'demo';
+
+    public const ACCOUNTANT_OFFICE_NAME = 'Contador Genérico';
+
+    /** @var list<string> */
+    private const LEGACY_SENTINEL_SLUGS = [
+        'demo-sentinel',
+        'demo-work-sentinel',
+    ];
+
     public function run(): void
     {
         if (! app()->environment(['local', 'testing'])) {
             throw new LogicException('O seeder de demonstração só pode ser executado em local/testing.');
         }
 
-        $office = Office::query()->firstOrCreate(
-            ['slug' => 'demo'],
-            ['name' => 'Escritório Demo', 'is_active' => true],
+        $this->retireLegacySentinelOffices();
+
+        $platformOffice = Office::query()->updateOrCreate(
+            ['slug' => PlatformAdminDemoSeeder::OFFICE_SLUG],
+            ['name' => PlatformAdminDemoSeeder::OFFICE_NAME, 'is_active' => true],
+        );
+        $office = Office::query()->updateOrCreate(
+            ['slug' => self::ACCOUNTANT_OFFICE_SLUG],
+            ['name' => self::ACCOUNTANT_OFFICE_NAME, 'is_active' => true],
         );
 
+        $this->ensureActiveSubscription($platformOffice);
         $this->ensureActiveSubscription($office);
 
         // Operador: acessa o painel sem exigir TOTP
@@ -47,7 +64,7 @@ class DatabaseSeeder extends Seeder
                 ->forOffice($office, OfficeRole::Admin)
                 ->withTwoFactorConfirmed()
                 ->create([
-                    'name' => 'Admin Demo',
+                    'name' => self::ACCOUNTANT_OFFICE_NAME,
                     'email' => 'admin@example.com',
                     'password' => 'password',
                     'selected_office_id' => $office->id,
@@ -87,6 +104,15 @@ class DatabaseSeeder extends Seeder
 
         // Massa operacional /work no office demo (guard interno; âncora DEMO_WORK_ANCHOR_DATE)
         $this->call(OperationalWorkDemoSeeder::class);
+    }
+
+    private function retireLegacySentinelOffices(): void
+    {
+        // Fixtures antigas criavam dois Offices técnicos visíveis no seletor.
+        // Mantemos os dados para diagnóstico local, mas eles deixam de ser selecionáveis.
+        Office::query()
+            ->whereIn('slug', self::LEGACY_SENTINEL_SLUGS)
+            ->update(['is_active' => false]);
     }
 
     private function ensureActiveSubscription(Office $office): void

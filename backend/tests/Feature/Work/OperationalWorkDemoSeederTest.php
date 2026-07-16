@@ -43,9 +43,36 @@ class OperationalWorkDemoSeederTest extends TestCase
     {
         config(['work_demo.anchor_date' => '2026-06-15']);
 
+        Office::factory()->create([
+            'slug' => 'demo-sentinel',
+            'name' => 'Office Sentinela Demo',
+            'is_active' => true,
+        ]);
+        Office::factory()->create([
+            'slug' => 'demo-work-sentinel',
+            'name' => 'Demo Work Sentinel',
+            'is_active' => true,
+        ]);
+
         $this->seed(DatabaseSeeder::class);
 
         $office = Office::query()->where('slug', 'demo')->firstOrFail();
+        $this->assertSame('Contador Genérico', $office->name);
+        $this->assertSame(
+            ['Contador Genérico', 'Plataforma'],
+            Office::query()->where('is_active', true)->orderBy('name')->pluck('name')->all(),
+        );
+        $this->assertSame(
+            0,
+            Office::query()
+                ->whereIn('slug', ['demo-sentinel', 'demo-work-sentinel'])
+                ->where('is_active', true)
+                ->count(),
+        );
+        $this->assertSame(
+            'Contador Genérico',
+            User::query()->where('email', 'admin@example.com')->value('name'),
+        );
         $this->assertGreaterThanOrEqual(4, WorkDepartment::query()->where('office_id', $office->id)->count());
         $this->assertGreaterThanOrEqual(4, ProcessTemplate::query()->where('office_id', $office->id)->count());
         $this->assertGreaterThanOrEqual(5, OperationalProcess::query()->where('office_id', $office->id)->count());

@@ -24,7 +24,7 @@ return [
     'office_slug' => env('FISCAL_DEMO_OFFICE_SLUG', 'demo'),
 
     /** Office sentinela de isolamento (mesmo CNPJ, nunca na carteira demo). */
-    'sentinel_office_slug' => env('FISCAL_DEMO_SENTINEL_SLUG', 'demo-sentinel'),
+    'sentinel_office_slug' => env('FISCAL_DEMO_SENTINEL_SLUG', 'plataforma'),
 
     /**
      * Data-âncora determinística (ISO-8601). Competências, vencimentos e

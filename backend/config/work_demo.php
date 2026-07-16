@@ -24,7 +24,7 @@ return [
     'office_slug' => env('WORK_DEMO_OFFICE_SLUG', 'demo'),
 
     /** Office sentinela de isolamento (mesmo CNPJ/rótulo, sem membership demo). */
-    'sentinel_office_slug' => env('WORK_DEMO_SENTINEL_SLUG', 'demo-work-sentinel'),
+    'sentinel_office_slug' => env('WORK_DEMO_SENTINEL_SLUG', 'plataforma'),
 
     /**
      * Data-âncora civil (Y-m-d). Prazos e competências relativas derivam dela.

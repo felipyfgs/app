@@ -25,7 +25,9 @@ class PlatformAdminDemoSeeder extends Seeder
 
     public const PASSWORD = 'password';
 
-    public const OFFICE_SLUG = 'demo';
+    public const OFFICE_SLUG = 'plataforma';
+
+    public const OFFICE_NAME = 'Plataforma';
 
     public function run(): void
     {
@@ -42,7 +44,7 @@ class PlatformAdminDemoSeeder extends Seeder
 
         if ($office === null) {
             throw new RuntimeException(
-                'Office demo ativo (slug "demo") é obrigatório. Execute o DatabaseSeeder completo antes do PlatformAdminDemoSeeder.',
+                'Office da Plataforma ativo (slug "'.self::OFFICE_SLUG.'") é obrigatório. Execute o DatabaseSeeder completo antes do PlatformAdminDemoSeeder.',
             );
         }
 
