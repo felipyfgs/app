@@ -29,7 +29,6 @@ interface DayAgg {
 
 const api = useApi()
 const route = useRoute()
-const router = useRouter()
 const toast = useToast()
 const { sessionEpoch } = useDashboard()
 const {
@@ -297,7 +296,13 @@ watch(sessionEpoch, () => {
               @click="openDay(lane.date)"
             >
               {{ formatDueDate(lane.date) }}
-              <UBadge v-if="lane.agg?.total" size="sm" variant="subtle" class="ms-1" :label="String(lane.agg.total)" />
+              <UBadge
+                v-if="lane.agg?.total"
+                size="sm"
+                variant="subtle"
+                class="ms-1"
+                :label="String(lane.agg.total)"
+              />
             </button>
             <div class="space-y-1">
               <button

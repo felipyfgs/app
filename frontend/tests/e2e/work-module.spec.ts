@@ -236,7 +236,7 @@ test.describe('Work — VIEWER somente leitura e troca de office', () => {
     await page.evaluate(async () => {
       await fetch('/api/v1/tenants/switch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ office_id: 2 })
       })
     })

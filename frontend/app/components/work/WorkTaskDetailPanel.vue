@@ -186,8 +186,18 @@ function downloadUrl(evidenceId: number) {
               :color="highestRiskColor([r])"
               :label="workRiskLabel(r)"
             />
-            <UBadge v-if="detail.is_critical" color="warning" variant="subtle" label="Crítica" />
-            <UBadge v-if="detail.requires_evidence" color="info" variant="subtle" label="Exige evidência" />
+            <UBadge
+              v-if="detail.is_critical"
+              color="warning"
+              variant="subtle"
+              label="Crítica"
+            />
+            <UBadge
+              v-if="detail.requires_evidence"
+              color="info"
+              variant="subtle"
+              label="Exige evidência"
+            />
           </div>
         </div>
 
@@ -290,7 +300,13 @@ function downloadUrl(evidenceId: number) {
             class="flex-1"
             aria-label="Motivo do impedimento"
           />
-          <UButton color="warning" variant="soft" :loading="actionBusy" label="Impedir" @click="runAction('block')" />
+          <UButton
+            color="warning"
+            variant="soft"
+            :loading="actionBusy"
+            label="Impedir"
+            @click="runAction('block')"
+          />
         </div>
 
         <div v-if="canExecute" class="space-y-2">
@@ -333,7 +349,13 @@ function downloadUrl(evidenceId: number) {
             :rows="2"
             aria-label="Novo comentário"
           />
-          <UButton size="sm" variant="soft" :loading="actionBusy" label="Comentar" @click="addComment" />
+          <UButton
+            size="sm"
+            variant="soft"
+            :loading="actionBusy"
+            label="Comentar"
+            @click="addComment"
+          />
         </div>
 
         <div v-if="detail.comments?.length" class="space-y-2">

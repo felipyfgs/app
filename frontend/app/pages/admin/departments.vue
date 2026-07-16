@@ -84,7 +84,12 @@ onMounted(load)
             <UFormField label="Sigla">
               <UInput v-model="code" data-testid="department-code" aria-label="Sigla" />
             </UFormField>
-            <UButton data-testid="department-create" :loading="creating" block @click="create">
+            <UButton
+              data-testid="department-create"
+              :loading="creating"
+              block
+              @click="create"
+            >
               Criar
             </UButton>
           </div>

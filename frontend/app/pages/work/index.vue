@@ -217,7 +217,12 @@ watch(sessionEpoch, () => {
       <div v-if="loadError" class="p-4">
         <UAlert color="error" :title="loadError">
           <template #actions>
-            <UButton size="xs" variant="soft" label="Tentar de novo" @click="loadQueue" />
+            <UButton
+              size="xs"
+              variant="soft"
+              label="Tentar de novo"
+              @click="loadQueue"
+            />
           </template>
         </UAlert>
       </div>

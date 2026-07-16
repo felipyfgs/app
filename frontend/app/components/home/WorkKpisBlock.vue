@@ -90,7 +90,7 @@ const deptName = (id: number | null) => {
 const departmentRows = computed(() => {
   const rows = data.value?.by_department || []
   return rows
-    .map(row => {
+    .map((row) => {
       const open = row.open ?? row.total ?? 0
       return {
         id: row.work_department_id,

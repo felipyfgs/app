@@ -292,7 +292,13 @@ onMounted(load)
                 <p class="text-sm font-medium">
                   Tarefas do modelo
                 </p>
-                <UButton size="xs" variant="ghost" icon="i-lucide-plus" label="Tarefa" @click="() => addTaskRow()" />
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  icon="i-lucide-plus"
+                  label="Tarefa"
+                  @click="() => addTaskRow()"
+                />
               </div>
               <div
                 v-for="(t, idx) in formTasks"
@@ -416,7 +422,13 @@ onMounted(load)
                 <span v-if="item.error_message" class="text-error"> — {{ item.error_message }}</span>
               </li>
             </ul>
-            <UButton size="sm" variant="soft" label="Atualizar status" :loading="genBusy" @click="refreshBatch" />
+            <UButton
+              size="sm"
+              variant="soft"
+              label="Atualizar status"
+              :loading="genBusy"
+              @click="refreshBatch"
+            />
           </div>
         </template>
         <template #footer>

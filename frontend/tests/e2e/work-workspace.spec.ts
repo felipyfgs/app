@@ -81,8 +81,6 @@ test.describe('Work workspace — calendário', () => {
 
     await expect(page.getByText(/Contagens por prazo|Calendário|Selecione/i).first()).toBeVisible({ timeout: 30000 })
 
-    const prev = page.getByRole('button').filter({ has: page.locator('[class*="chevron-left"], .i-lucide-chevron-left') }).first()
-      .or(page.locator('button').filter({ hasText: '' }).nth(0))
     // Navega mês com botões de chevron se existirem
     const chevrons = page.locator('button').filter({ has: page.locator('svg, .iconify, [class*="lucide"]') })
     if (await chevrons.count() >= 2) {

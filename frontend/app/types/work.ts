@@ -3,20 +3,20 @@
 export type ProcessOrigin = 'TEMPLATE' | 'MANUAL'
 export type ProcessStatus = 'A_FAZER' | 'EM_PROGRESSO' | 'IMPEDIDO' | 'CONCLUIDO' | 'ARQUIVADO'
 export type TaskStatus = 'A_FAZER' | 'EM_PROGRESSO' | 'IMPEDIDA' | 'CONCLUIDA' | 'DISPENSADA'
-export type DueRuleType =
-  | 'FIXED_DAY_OF_COMPETENCE'
-  | 'DAYS_AFTER_COMPETENCE_START'
-  | 'DAYS_BEFORE_PROCESS_DUE'
+export type DueRuleType
+  = | 'FIXED_DAY_OF_COMPETENCE'
+    | 'DAYS_AFTER_COMPETENCE_START'
+    | 'DAYS_BEFORE_PROCESS_DUE'
 export type WorkRisk = 'ATRASADA' | 'EM_MULTA' | 'SEM_PRAZO' | 'SEM_RESPONSAVEL'
-export type QueueBucket =
-  | 'EM_MULTA'
-  | 'ATRASADA'
-  | 'VENCE_HOJE'
-  | 'VENCE_EM_TRES_DIAS'
-  | 'IMPEDIDA'
-  | 'SEM_RESPONSAVEL'
-  | 'DEMAIS_ABERTAS'
-  | 'CONCLUIDAS'
+export type QueueBucket
+  = | 'EM_MULTA'
+    | 'ATRASADA'
+    | 'VENCE_HOJE'
+    | 'VENCE_EM_TRES_DIAS'
+    | 'IMPEDIDA'
+    | 'SEM_RESPONSAVEL'
+    | 'DEMAIS_ABERTAS'
+    | 'CONCLUIDAS'
 
 export interface WorkDepartment {
   id: number
