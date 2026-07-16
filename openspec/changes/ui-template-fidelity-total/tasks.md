@@ -2,7 +2,7 @@
 
 - [x] 0.1 Registrar em `evidence/SUPERSESSION.md` a decisão de 2026-07-16: `ui-template-fidelity-total` substitui `padronizar-tabelas-carregamento-incremental`, sem sync/archive como concluída
 - [x] 0.2 Ler integralmente os arquivos canônicos de shell, Home, Customers, Inbox, Settings, card-list e modais no commit `0f30c09` e registrar em `evidence/TEMPLATE-SOURCES.md`
-- [ ] 0.3 Retirar `padronizar-tabelas-carregamento-incremental` do diretório de changes ativas sem sincronizar seus delta specs, preservando o registro histórico de supersessão
+- [x] 0.3 Retirar `padronizar-tabelas-carregamento-incremental` do diretório de changes ativas sem sincronizar seus delta specs, preservando o registro histórico de supersessão
 - [ ] 0.4 Atualizar `AGENTS.md` e as cópias versionadas das skills `nuxt-dashboard-template`/`frontend-nuxt-stack` para remover auto-load, footerless e outras regras revogadas
 - [ ] 0.5 Reler as main specs e garantir que todo conflito histórico seja explicitamente modificado ou removido pelos deltas desta change
 
