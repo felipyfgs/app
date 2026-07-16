@@ -3,7 +3,8 @@ export const AUTH_PUBLIC_PATHS = [
   '/login',
   '/two-factor-challenge',
   '/activate',
-  '/first-access'
+  '/first-access',
+  '/onboarding'
 ] as const
 
 export function isAuthPublicPath(path: string): boolean {

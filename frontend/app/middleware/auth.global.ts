@@ -6,10 +6,15 @@ import {
 } from '~/utils/permissions'
 import type { MeIdentity } from '~/utils/permissions'
 import { isAuthPublicPath } from '~/utils/auth-public'
+import {
+  homeForIdentity,
+  isPlatformAdminPath,
+  requiresPlatformAdminHome
+} from '~/utils/auth-redirect'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   const { isAuthenticated, refreshIdentity, user } = useSanctumAuth()
-  // Rotas públicas de auth/ativação; 2FA legado redireciona para home/login.
+  // Rotas públicas de auth/ativação/onboarding; 2FA legado redireciona.
   const guestOnly = isAuthPublicPath(to.path)
   const legacyTwoFactor = to.path === '/two-factor/setup' || to.path.startsWith('/two-factor/')
 
@@ -32,10 +37,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   const identity = unwrapMeUser(user.value as MeIdentity)
 
-  // Já autenticado: login/challenge vão para home; activate/first-access
-  // também (sessão já existe). Setup 2FA legado → home.
+  // Já autenticado: rotas guest e setup 2FA legado → home do papel.
   if (guestOnly || legacyTwoFactor) {
-    return navigateTo('/')
+    return navigateTo(homeForIdentity(identity))
   }
 
   // CT-e não é Configurações: alias legado → catálogo filtrado (sem layout Settings).
@@ -78,7 +82,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   // `/admin/*` reservado à plataforma (PLATFORM_ADMIN).
-  const isAdminPath = to.path === '/admin' || to.path.startsWith('/admin/')
+  const isAdminPath = isPlatformAdminPath(to.path)
   if (isAdminPath) {
     if (canAccessPlatformAdmin(identity)) {
       return undefined
@@ -88,6 +92,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
       return navigateTo('/settings', { replace: true })
     }
     return navigateTo('/')
+  }
+
+  // O perfil global sem Office só pode usar superfícies de /admin.
+  if (requiresPlatformAdminHome(identity, to.path)) {
+    return navigateTo('/admin', { replace: true })
   }
 
   // Configuração do escritório: ADMIN office ou PLATFORM_ADMIN privilegiado.

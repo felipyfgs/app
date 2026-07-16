@@ -2,6 +2,7 @@ import type { ApiClient, ApiUrl } from './api/types'
 
 import { createAuthApi } from './api/createAuthApi'
 import { createActivationApi } from './api/createActivationApi'
+import { createOnboardingApi } from './api/createOnboardingApi'
 import { createOfficeApi } from './api/createOfficeApi'
 import { createFiscalApi } from './api/createFiscalApi'
 import { createClientsApi } from './api/createClientsApi'
@@ -24,6 +25,7 @@ export function useApi() {
 
   const auth = createAuthApi(client)
   const activationApi = createActivationApi(client)
+  const onboardingApi = createOnboardingApi(client)
   const officeApi = createOfficeApi(client)
   const fiscalApi = createFiscalApi(client, apiUrl)
   const clientsApi = createClientsApi(client)
@@ -39,6 +41,7 @@ export function useApi() {
     tenants: auth.tenants,
     confirmPassword: auth.confirmPassword,
     activations: activationApi.activations,
+    onboarding: onboardingApi.onboarding,
     office: officeApi.office,
     fiscal: fiscalApi.fiscal,
     clients: clientsApi.clients,

@@ -42,11 +42,33 @@ export interface MeUser {
   has_real_membership?: boolean
   /** ok | office_context_required */
   context_status?: string | null
+  /** Nome da organização (platform_settings) — somente leitura. */
+  platform_organization_name?: string | null
   /** Alias de current_office (legado). */
   office: Office | null
   current_office?: Office | null
   role: OfficeRole | null
   default_office_id?: number | null
+}
+
+/** GET /api/v1/onboarding/status */
+export interface OnboardingStatusResult {
+  available: boolean
+}
+
+export interface CompleteInitialOnboardingBody {
+  organization_name: string
+  email: string
+  password: string
+  password_confirmation: string
+  onboarding_token: string
+}
+
+export interface CompleteInitialOnboardingResult {
+  authenticated: boolean
+  user_id: number
+  redirect: string
+  platform_organization_name?: string | null
 }
 
 export interface MeResponse {

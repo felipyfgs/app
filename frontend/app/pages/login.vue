@@ -3,6 +3,7 @@ import * as z from 'zod'
 import type { AuthFormField, FormSubmitEvent } from '@nuxt/ui'
 import type { LoginResponse } from '~/types/api'
 import type { MeIdentity } from '~/utils/permissions'
+import { homeForIdentity, safeRedirectForIdentity } from '~/utils/auth-redirect'
 
 /**
  * Login no padrão oficial Nuxt UI:
@@ -44,29 +45,6 @@ const fields: AuthFormField[] = [{
   autocomplete: 'current-password'
 }]
 
-/** Redirect só para path interno relativo (sem open redirect). */
-function safeRedirectTarget(): string | null {
-  const raw = route.query.redirect
-  const value = Array.isArray(raw) ? raw[0] : raw
-  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) {
-    return null
-  }
-  if (
-    value.startsWith('/login')
-    || value.startsWith('/two-factor')
-    || value.startsWith('/activate')
-    || value.startsWith('/first-access')
-  ) {
-    return null
-  }
-  return value
-}
-
-function homeForRole(role?: string | null): string {
-  if (role === 'OPERATOR') return '/work'
-  return '/'
-}
-
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   error.value = ''
   loading.value = true
@@ -79,8 +57,8 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     // TOTP/2FA descontinuado: login e-mail+senha entra direto no painel.
     await refreshIdentity()
     const identity = unwrapMeUser(user.value as MeIdentity)
-    const redirect = safeRedirectTarget()
-    await navigateTo(redirect || homeForRole(identity?.role))
+    const redirect = safeRedirectForIdentity(route.query.redirect, identity)
+    await navigateTo(redirect || homeForIdentity(identity))
   } catch (caught) {
     error.value = apiErrorMessage(caught, 'Credenciais inválidas ou sessão não iniciada.')
   } finally {

@@ -63,8 +63,8 @@ describe('navigation monitoramento (15.4)', () => {
       'settings-office',
       'settings-usage',
       'settings-subscription',
-      'settings-team',
-      'settings-departments'
+      'settings-departments',
+      'settings-team'
     ])
     expect(settings?.children?.map(c => c.id)).not.toContain('settings-cte')
     expect(settings?.children?.map(c => c.id)).not.toContain('admin-departments')

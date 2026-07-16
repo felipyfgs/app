@@ -1,5 +1,6 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { MeUser } from '~/types/api'
+import { lacksOfficeContext } from '~/utils/auth-redirect'
 import {
   canAccessOfficeSettings,
   canAccessPlatformAdmin,
@@ -118,11 +119,78 @@ export function monitoringDestinations(path = ''): NavDestination[] {
   }]
 }
 
+function platformAdminDestinations(path = ''): NavDestination[] {
+  return [{
+    id: 'platform-admin',
+    label: 'Admin',
+    icon: 'i-lucide-shield',
+    type: 'trigger',
+    defaultOpen: path === '/admin' || path.startsWith('/admin/'),
+    children: [
+      {
+        id: 'admin',
+        label: 'Hub',
+        icon: 'i-lucide-layout-dashboard',
+        to: '/admin',
+        exact: true
+      },
+      {
+        id: 'platform-offices',
+        label: 'Escritórios',
+        icon: 'i-lucide-building-2',
+        to: '/admin/offices'
+      },
+      {
+        id: 'platform-admins',
+        label: 'Administradores',
+        icon: 'i-lucide-shield-user',
+        to: '/admin/admins'
+      },
+      {
+        id: 'platform-serpro-console',
+        label: 'Console SERPRO',
+        icon: 'i-lucide-gauge',
+        to: '/admin/serpro'
+      },
+      {
+        id: 'platform-serpro-contracts',
+        label: 'Contratos',
+        icon: 'i-lucide-file-badge',
+        to: '/admin/serpro/contracts'
+      },
+      {
+        id: 'platform-serpro-catalog',
+        label: 'Cobertura',
+        icon: 'i-lucide-layout-grid',
+        to: '/admin/serpro/catalog'
+      },
+      {
+        id: 'platform-serpro-usage',
+        label: 'Orçamento / conciliação',
+        icon: 'i-lucide-wallet',
+        to: '/admin/serpro/usage'
+      },
+      {
+        id: 'platform-serpro-rollout',
+        label: 'Rollout',
+        icon: 'i-lucide-rocket',
+        to: '/admin/serpro/rollout'
+      }
+    ]
+  }]
+}
+
 export function mainDestinations(
   user?: MeUser | null,
   options?: { path?: string }
 ): NavDestination[] {
   const path = options?.path || ''
+
+  // PLATFORM_ADMIN sem Office: somente superfícies globais /admin.
+  if (lacksOfficeContext(user) && canAccessPlatformAdmin(user)) {
+    return platformAdminDestinations(path)
+  }
+
   // Mantém o grupo expandido quando a rota atual está dentro do módulo.
   const clientsOpen = !path || path === '/clients' || path.startsWith('/clients/')
   const docsCatalog = path === '/docs/catalog'
@@ -330,64 +398,7 @@ export function mainDestinations(
 
   // `/admin/*` reservado à plataforma — grupo Admin só para PLATFORM_ADMIN.
   if (canAccessPlatformAdmin(user)) {
-    items.push({
-      id: 'platform-admin',
-      label: 'Admin',
-      icon: 'i-lucide-shield',
-      type: 'trigger',
-      defaultOpen: path === '/admin' || path.startsWith('/admin/'),
-      children: [
-        {
-          id: 'admin',
-          label: 'Hub',
-          icon: 'i-lucide-layout-dashboard',
-          to: '/admin',
-          exact: true
-        },
-        {
-          id: 'platform-offices',
-          label: 'Escritórios',
-          icon: 'i-lucide-building-2',
-          to: '/admin/offices'
-        },
-        {
-          id: 'platform-admins',
-          label: 'Administradores',
-          icon: 'i-lucide-shield-user',
-          to: '/admin/admins'
-        },
-        {
-          id: 'platform-serpro-console',
-          label: 'Console SERPRO',
-          icon: 'i-lucide-gauge',
-          to: '/admin/serpro'
-        },
-        {
-          id: 'platform-serpro-contracts',
-          label: 'Contratos',
-          icon: 'i-lucide-file-badge',
-          to: '/admin/serpro/contracts'
-        },
-        {
-          id: 'platform-serpro-catalog',
-          label: 'Cobertura',
-          icon: 'i-lucide-layout-grid',
-          to: '/admin/serpro/catalog'
-        },
-        {
-          id: 'platform-serpro-usage',
-          label: 'Orçamento / conciliação',
-          icon: 'i-lucide-wallet',
-          to: '/admin/serpro/usage'
-        },
-        {
-          id: 'platform-serpro-rollout',
-          label: 'Rollout',
-          icon: 'i-lucide-rocket',
-          to: '/admin/serpro/rollout'
-        }
-      ]
-    })
+    items.push(...platformAdminDestinations(path))
   }
 
   return items
@@ -414,6 +425,10 @@ export function secondaryDestinations(): NavDestination[] {
 
 /** Ações rápidas da command palette — somente as autorizadas. */
 export function quickActions(user?: MeUser | null): QuickAction[] {
+  if (lacksOfficeContext(user)) {
+    return []
+  }
+
   const actions: QuickAction[] = []
 
   if (canManageClients(user)) {
@@ -479,7 +494,7 @@ export function toNavigationItems(
     if (item.type === 'trigger' && item.children?.length) {
       return {
         ...base,
-        // value estável para Accordion (type=single no sidebar)
+        // value estável p/ Accordion (defaultOpen + type multiple no shell)
         value: item.id,
         type: 'trigger' as const,
         defaultOpen: item.defaultOpen,
