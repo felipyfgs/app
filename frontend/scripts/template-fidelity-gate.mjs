@@ -210,20 +210,22 @@ function main() {
   const issues = []
   const warnings = []
 
-  if (!fs.existsSync(MATRIX)) {
-    issues.push(`Matriz ausente: ${path.relative(REPO, MATRIX)}`)
-  }
-
   const pageFiles = walkVue(PAGES).map(f => relApp(f)).sort()
-  const matrixMd = fs.existsSync(MATRIX) ? read(MATRIX) : ''
+  const hasMatrix = fs.existsSync(MATRIX)
+  const matrixMd = hasMatrix ? read(MATRIX) : ''
   const matrixFiles = parseMatrixFiles(matrixMd)
   const matrixBundles = parseMatrixBundles(matrixMd)
 
-  for (const f of pageFiles) {
-    if (!matrixFiles.has(f)) issues.push(`Página fora da matriz: ${f}`)
-  }
-  for (const f of matrixFiles) {
-    if (!pageFiles.includes(f)) issues.push(`Entrada fantasma na matriz: ${f}`)
+  // Documentação/OpenSpec reiniciada: matriz é opcional até a nova docs existir.
+  if (!hasMatrix) {
+    warnings.push(`Matriz ausente (docs reiniciadas): ${path.relative(REPO, MATRIX)}`)
+  } else {
+    for (const f of pageFiles) {
+      if (!matrixFiles.has(f)) issues.push(`Página fora da matriz: ${f}`)
+    }
+    for (const f of matrixFiles) {
+      if (!pageFiles.includes(f)) issues.push(`Entrada fantasma na matriz: ${f}`)
+    }
   }
 
   // structural chrome for every non-auth non-redirect page
@@ -241,7 +243,7 @@ function main() {
       issues.push(`Sem UDashboardPanel/casca (nem no pai): ${rel}`)
     }
     issues.push(...findLooseTableUi(abs, text))
-    if (matrixBundles.get(rel) === 'LIST') {
+    if (hasMatrix && matrixBundles.get(rel) === 'LIST') {
       issues.push(...findListContractIssues(abs, text))
     }
   }
