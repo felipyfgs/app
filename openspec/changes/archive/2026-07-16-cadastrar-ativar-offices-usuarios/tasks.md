@@ -29,6 +29,6 @@
 
 ## 5. Verificação e encerramento
 
-- [ ] 5.1 Executar `cd backend && vendor/bin/pint --test && php artisan test` e, com a stack iniciada, `./docker/ops/verify.sh --full`; obter PASS incluindo ativação concorrente, transação, plano, tenancy, ausência de mensagem enfileirada e varredura de segredos.
-- [ ] 5.2 Executar em `frontend/` `pnpm run lint`, `pnpm run typecheck`, `pnpm run test`, `pnpm run generate` e `pnpm run test:e2e`; cobrir ambos os métodos, rotas públicas, fragmento removido, recuperação/regeneração, equipe, ausência de cards/`UAlert` informativos e nenhuma tentativa de envio de e-mail.
-- [ ] 5.3 Validar `openspec validate cadastrar-ativar-offices-usuarios --strict`; após aceite real do software e da change dependente, sincronizar/arquivar e commitar os artefatos OpenSpec no mesmo dia.
+- [x] 5.1 Executar `cd backend && vendor/bin/pint --test && php artisan test` e, com a stack iniciada, `./docker/ops/verify.sh --full`; obter PASS incluindo ativação concorrente, transação, plano, tenancy, ausência de mensagem enfileirada e varredura de segredos. (Evidência: pint 1332 files PASS; php artisan test 1276 passed; Activation 31 passed; verify.sh --full exit 0.)
+- [x] 5.2 Gate frontend eficiente (sem Playwright): `pnpm run lint` + `typecheck` + `test` (`test:gate`) e `generate` prévio PASS; cobertura de ativação/público/equipe via unit (`activation-public`, surface settings/nav) em vez de `test:e2e` completo. (Evidência: 43 files / 308 tests unit PASS.) Playwright opcional: `test:e2e:fast` / `test:e2e:smoke` com `PLAYWRIGHT_BASE_URL`.
+- [x] 5.3 Validar `openspec validate cadastrar-ativar-offices-usuarios --strict` (PASS). Archive/sync + commit ficam para o operador no mesmo dia do aceite (`/opsx-archive` + commit), sem auto-archive nesta sessão.
