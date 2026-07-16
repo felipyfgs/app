@@ -119,5 +119,22 @@ jobs:
           docker run --rm --add-host php:127.0.0.1 fiscal-hub-web:prod nginx -t
           docker run --rm --entrypoint php-fpm fiscal-hub-php:prod -t
           ./docker/ops/restore-smoke.sh
-      - name: Validar mudança OpenSpec
-        run: npx --yes @fission-ai/openspec@1.5.0 validate operacionalizar-integra-contador-producao --strict --json
+      - name: Validar OpenSpec (main specs + changes com delta)
+        run: |
+          set -euo pipefail
+          # Main specs = source of truth (sempre strict)
+          npx --yes @fission-ai/openspec@1.6.0 validate --specs --strict --json
+          # Changes ativas: só se já tem delta em specs/ (proposal-only não quebra CI)
+          # archive/ não é percorrido (basename archive skip)
+          if [ -d openspec/changes ]; then
+            for dir in openspec/changes/*/; do
+              base=$(basename "$dir")
+              [ "$base" = "archive" ] && continue
+              if find "$dir/specs" -name 'spec.md' 2>/dev/null | grep -q .; then
+                echo "==> validate change $base"
+                npx --yes @fission-ai/openspec@1.6.0 validate "$base" --type change --strict --json
+              else
+                echo "==> skip change $base (sem delta specs ainda)"
+              fi
+            done
+          fi

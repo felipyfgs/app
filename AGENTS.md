@@ -112,7 +112,16 @@ Use em OAuth/mTLS, envelope, `idSistema`/`idServico`, termo/procurador, bilhetag
 
 ## OpenSpec
 
-Skills: `openspec-explore` / `propose` / `apply-change` / `archive-change` / `sync-specs`. Artefatos em `openspec/`. Não inventar escopo fora de change ativo.
+Skills: `openspec-explore` / `propose` / `apply-change` / `archive-change` / `sync-specs` (slash `/opsx-*`).  
+Artefatos em `openspec/` — **versionados no git** (specs + changes ativas + `changes/archive/`).  
+Config e regras de escopo: `openspec/config.yaml`. Playbook: `openspec/README.md`.
+
+Ciclo: propose (change pequena) → apply → verify → archive (sync main specs) → **commit no mesmo dia**.  
+Não inventar escopo fora de change ativa; 1 capability principal (máx. 2); `[x]` só com evidência real.  
+Live smoke SERPRO / ticket externo / jurídico = non-goal ou change ops separada.  
+CI valida main specs e/ou change **ativa** — nunca path já em `archive/`.
+
+Produto: confiar em **código + CI + `openspec/specs/`**. Ops SERPRO: `docs/ops/runbooks/` quando existir. Não inventar docs/runbooks ausentes.
 
 ## Não fazer
 
@@ -121,5 +130,6 @@ Skills: `openspec-explore` / `propose` / `apply-change` / `archive-change` / `sy
 - Aceitar `office_id` do body/query para escopo de dados.
 - `make restore` sem `CONFIRM_RESTORE=SIM` (destrutivo).
 - Scaffold Nuxt novo; estender `frontend/`.
-- Assumir que `docs/` ou changes OpenSpec antigas existem — confiar em código, CI e specs versionadas.
+- Archive OpenSpec sem commit de `openspec/specs/` + `changes/archive/` (ou CI apontando change arquivada).
+- Epic OpenSpec (dezenas de tasks / 5+ capabilities) sem fatiar; `[x]` em live ops sem evidence.
 - Commitar pastas de engine de agente (`.grok/`, `.codex/`, `.opencode/`) — gitignored; só local.

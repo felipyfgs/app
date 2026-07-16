@@ -1,10 +1,38 @@
 schema: spec-driven
 
-# Injetado nas instruções de artefatos (proposal/specs/design/tasks).
-# Detalhe operacional de agent: AGENTS.md na raiz.
+# Injetado nas instruções de artefatos (proposal / specs / design / tasks).
+# Detalhe operacional de agent e stack: AGENTS.md na raiz.
+# Playbook curto: openspec/README.md
 context: |
   Produto: hub fiscal multi-escritório (NFS-e ADN, SEFAZ, SERPRO Integra, monitoramento).
   Monorepo sem package.json na raiz — orquestração Makefile + Docker Compose.
+
+  ## OpenSpec neste monorepo (fonte de verdade versionada)
+
+  Layout (tudo sob `openspec/` **vai pro git** — não é lixo local de agent):
+  - `openspec/specs/<capability>/spec.md` — contrato permanente (SHALL do produto **agora**)
+  - `openspec/changes/<change>/` — change **ativa** (proposal → design → delta specs → tasks)
+  - `openspec/changes/archive/YYYY-MM-DD-<change>/` — histórico pós-archive (auditoria)
+
+  Ciclo obrigatório:
+  1. propose (change pequena) e **commitar** artefatos cedo
+  2. apply código em commits focados (não monólito)
+  3. verify (testes/gates reais)
+  4. archive: sync delta → main specs + mover para archive/
+  5. **commitar no mesmo dia** archive + main specs (+ ajustar CI se validava a change)
+
+  Anti-padrões (histórico real deste repo — evitar):
+  - Epic de 50–100+ tasks / 5+ capabilities numa única change
+  - `[x]` em task de live ops / ticket SERPRO / jurídico sem evidence real
+  - Archive no disco sem commit (main specs somem do remote)
+  - CI validando change já arquivada
+  - Promover SHALL ao main se o código ainda não atende (main spec mente pro próximo agent)
+
+  Escopo de change (default):
+  - 1 capability principal (máx. 2 se inseparáveis)
+  - Preferir ≤ ~20 tasks verificáveis; fatiar se passar disso
+  - Live smoke SERPRO, ticket externo, aceite jurídico = non-goal **ou** change ops separada
+  - Platform vs tenant: não misturar mutação fiscal de Office com ops global sem tasks/seções claras
 
   Stack:
   - backend/: Laravel 13, PHP 8.4, Horizon, Sanctum/Fortify, Postgres, Redis
@@ -31,7 +59,7 @@ context: |
   UI:
   - Telas autenticadas: skill panel-ui → ui-archetype
   - Copiar arquétipo de .reference/nuxt-dashboard-template @ 0f30c09 (gitignored)
-  - Skills de projeto: .opencode/skills, .grok/skills, .codex/skills (sem .agents/)
+  - Skills de agent: locais em `.grok|opencode|codex/skills/` (gitignored — não versionar engines)
   - Não scaffold Nuxt novo; estender frontend/
   - Prod = SPA estática + nginx, não SSR Node
 
@@ -39,18 +67,29 @@ context: |
   - Backend: vendor/bin/pint --test; php artisan test (--filter=…)
   - Frontend CI: pnpm lint → typecheck → generate (pnpm@11.9.0)
   - Hub: ./docker/ops/verify.sh
+  - OpenSpec CI: validar main specs e/ou change **ativa** (nunca path em archive/)
+  - Ops SERPRO: runbooks em docs/ops/runbooks/ quando existirem; código + openspec/specs para produto
+
+  Specs principais atuais (checar antes de inventar capability):
+  - serpro-cadastro-processos-ui, serpro-catalogo-oficial, serpro-gateway-seguro
+  - serpro-monitoramento-familias, serpro-credenciais-produtivas, serpro-go-live-controlado
+  - serpro-onboarding-procuracoes, serpro-operacao-observavel, serpro-termo-procurador
 
 rules:
   proposal:
     - "Preferir português (pt-BR) nos artefatos."
-    - "Explicitar Non-goals e o que fica fora (canais SEFAZ, mutações, flags)."
+    - "Uma intenção de produto por change; 1 capability principal (máx. 2 se inseparáveis). Preferir fatiar a epicar."
+    - "Explicitar Non-goals: live smoke SERPRO, tickets externos, jurídico/LGPD, mutações, flags ON, canais SEFAZ fora de escopo."
     - "Se tocar multi-tenant, declarar isolamento por Office e proibição de office_id do client."
     - "Se tocar segredos/XML/credenciais, declarar vault e superfície de API sanitizada."
-    - "Capabilities em kebab-case; checar openspec/specs/ antes de inventar nomes."
-    - "Manter proposal enxuta (por que/o quê); como fica em design."
+    - "Capabilities em kebab-case; listar openspec/specs/ existentes antes de inventar nomes (reusar MODIFIED)."
+    - "Manter proposal enxuta (por que/o quê); como fica em design. Não copiar tasks para a proposal."
+    - "Se o trabalho for só tooling/docs/ops sem novo SHALL, declarar e preferir archive com --skip-specs."
   specs:
     - "Requisitos com SHALL/MUST; cada requirement com ao menos um Scenario WHEN/THEN (header ####)."
     - "MODIFIED deve copiar o bloco inteiro do spec main antes de editar."
+    - "Delta = o que esta change entrega de verdade; não reescrever o produto inteiro no delta."
+    - "Só promover ao main (sync/archive) requisitos que o código + testes da change cobrem; gaps ficam fora ou em change futura."
     - "Cobrir isolamento de tenant, papéis e fail-closed de flags quando aplicável."
     - "Não exigir defaults ON de feature flags ou canais SEFAZ."
   design:
@@ -58,9 +97,13 @@ rules:
     - "Decidir middleware/rotas Sanctum e se é platform vs office context."
     - "Jobs assíncronos usam Horizon; não assumir sync em produção."
     - "UI: skill ui-archetype (template dashboard); não redesenhar shell."
-    - "Listar riscos: vazamento entre offices, segredos em log/API, kill switches."
+    - "Listar riscos: vazamento entre offices, segredos em log/API, kill switches, bilhetagem acidental."
+    - "Separar o que é implementável em CI do que é ops-gated (SERPRO real, dual approval prod)."
   tasks:
-    - "Tarefas pequenas e verificáveis (comando de teste ou gate explícito)."
-    - "Ordem típica: migrations/domínio → API/policies → jobs → UI → testes."
-    - "Incluir evidência: php artisan test --filter=… e/ou pnpm lint|typecheck."
-    - "Não misturar change de plataforma global com mutação fiscal tenant sem tasks separadas."
+    - "Tarefas pequenas e verificáveis (comando de teste, lint ou gate explícito na própria task)."
+    - "Ordem típica: migrations/domínio → API/policies → jobs → UI → testes → (opcional) docs/runbooks."
+    - "Preferir ≤ ~20 tasks; se passar, fatiar em nova change em vez de epic."
+    - "[x] só com evidência real (teste passou, PR, evidence preenchida). Ticket SERPRO / live smoke / jurídico: [ ] até existir."
+    - "Não marcar scaffold de CLI/runbook como conclusão de go-live live; use sub-bullet 'Scaffold' vs 'Live ops-gated'."
+    - "Não misturar change de plataforma global com mutação fiscal tenant sem seções de tasks separadas."
+    - "Incluir task final de archive/sync + commit docs(openspec) quando a change fechar software."
