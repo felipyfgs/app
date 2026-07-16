@@ -696,6 +696,8 @@ export type InboxItemType
     | 'cte_redaction'
     | 'cte_conflict'
     | 'cte_pending_import'
+    | 'sitfis_run_completed'
+    | 'sitfis_run_failed'
 
 /** Recovery SVRS NFC-e (DTOs sanitizados — sem HTML/XML/PFX). */
 export interface SvrsNfceChannelSummary {
@@ -1028,7 +1030,10 @@ export interface OfficeSerproAuthorization {
   termo_destination_cnpj_masked?: string | null
   termo_signed_by_masked?: string | null
   termo_uploaded_at?: string | null
+  termo_authorization_state?: 'LOCAL_VALIDATED' | 'SERPRO_ACCEPTED' | 'SIMULATED' | 'REJECTED' | string | null
+  authorization_state?: string | null
   has_procurador_token: boolean
+  has_procurador_etag?: boolean
   procurador_token_expires_at?: string | null
   last_token_refresh_at?: string | null
   last_validation_result?: string | null
@@ -1162,6 +1167,9 @@ export interface FiscalMonitoringRun {
   system_code?: string | null
   service_code?: string | null
   operation_code?: string | null
+  operation_key?: string | null
+  source_provenance?: 'SERPRO_REAL' | 'SIMULATED' | 'UNVERIFIED' | string | null
+  verification_state?: 'VERIFIED' | 'UNVERIFIED' | 'PARSE_ALERT' | string | null
   trigger?: string | null
   status?: string | null
   result?: string | null
@@ -1190,6 +1198,9 @@ export interface FiscalSnapshot {
   system_code?: string | null
   service_code?: string | null
   operation_code?: string | null
+  operation_key?: string | null
+  source_provenance?: 'SERPRO_REAL' | 'SIMULATED' | 'UNVERIFIED' | string | null
+  verification_state?: 'VERIFIED' | 'UNVERIFIED' | 'PARSE_ALERT' | string | null
   situation?: FiscalSituationCode | null
   coverage?: string | null
   version?: number | null

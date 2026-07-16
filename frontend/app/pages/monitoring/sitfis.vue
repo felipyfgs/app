@@ -151,13 +151,12 @@ async function openDetail(row: SitfisClientRow) {
   }
 }
 
-async function refreshSelected(force = false) {
+async function refreshSelected() {
   if (!selected.value || !canTriggerSync.value) return
   detailRefreshing.value = true
   try {
     await api.fiscal.sitfis.refresh({
-      client_id: selected.value.client_id,
-      force
+      client_id: selected.value.client_id
     })
     toast.add({ title: 'Atualização SITFIS solicitada', color: 'success' })
     await openDetail(selected.value)
@@ -364,7 +363,7 @@ const columns: TableColumn<SitfisClientRow>[] = [
                 icon="i-lucide-refresh-cw"
                 label="Solicitar atualização"
                 :loading="detailRefreshing"
-                @click="refreshSelected(false)"
+                @click="refreshSelected()"
               />
               <span
                 v-else-if="sitfisMeta?.block_reason === 'WITHIN_TTL' && sitfisMeta?.next_refresh_at"
