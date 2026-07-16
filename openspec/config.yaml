@@ -46,7 +46,7 @@ context: |
   - EnsureOfficeContext remove office_id do request; troca só POST /api/v1/tenants/switch
   - OfficeRole: ADMIN | OPERATOR | VIEWER (capacidades no enum)
   - PLATFORM_ADMIN é global e NÃO concede acesso fiscal implícito a tenants
-  - Rotas platform em /api/v1/platform/* sem office context; TOTP obrigatório
+  - Rotas platform em /api/v1/platform/* sem office context; senha recente (15 min) nas ações sensíveis (TOTP descontinuado)
 
   Segurança / dados:
   - Segredos e XML canônico em SecureObjectStore (vault); VAULT_MASTER_KEY fora do git

@@ -81,8 +81,9 @@ CI frontend: `lint` → `typecheck` → `generate` (não roda vitest/e2e no work
 
 - Tenant = **`Office`**. Contexto via `CurrentOffice` (sessão → `users.selected_office_id` → 1ª membership). **Nunca** confiar `office_id` do client HTTP — `EnsureOfficeContext` remove do request; troca só em `POST /api/v1/tenants/switch`.
 - Papéis office: `ADMIN` | `OPERATOR` | `VIEWER` (`OfficeRole`). Capacidades em métodos do enum (credenciais/mutações fiscais → ADMIN; sync/export/import → ADMIN|OPERATOR).
-- Plataforma: `PLATFORM_ADMIN` **não** dá acesso fiscal implícito a tenants. Rotas `/api/v1/platform/*` sem office context; TOTP obrigatório.
-- API tenant sob `auth:sanctum` + `EnsureActiveUser` + `EnsureOfficeContext` (+ 2FA admin + assinatura writable).
+- Plataforma: `PLATFORM_ADMIN` **não** dá acesso fiscal implícito a tenants. Rotas `/api/v1/platform/*` sem office context; senha recente (15 min) nas ações sensíveis (TOTP descontinuado).
+- API tenant sob `auth:sanctum` + `EnsureActiveUser` + `EnsureOfficeContext` (+ assinatura writable). Ações sensíveis: reconfirmação de senha.
+- Work: leitura global privilegiada ok; mutação/export exige `OfficeMembership` real no Office.
 - Feature flags hub fiscal (`FeatureFlags` / `config/features.php`): **default OFF**; kill switch global vence; mutações exigem flags mutantes + allowlist de office. Canais SEFAZ MA/SVRS/autXML também default off em env.
 - Segredos (PFX, OAuth, XML canônico): `SecureObjectStore` / vault — **não** logar, não devolver em JSON de API, não commitar `.pfx`/`.pem`/vault.
 - Controllers tenant-scoped não devem importar SERPRO global (há testes em `tests/Architecture/`).
