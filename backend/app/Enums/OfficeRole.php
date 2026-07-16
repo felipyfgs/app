@@ -50,4 +50,50 @@ enum OfficeRole: string
     {
         return $this === self::Admin;
     }
+
+    // ── Capacidades do módulo operacional (Work) ──────────────────────────
+    // Personas: gestor → ADMIN; executor → OPERATOR; consulta → VIEWER.
+    // Não cria papéis novos; não concede acesso a cliente final.
+
+    /** Administrar departamentos e modelos de processo. */
+    public function canManageWorkCatalog(): bool
+    {
+        return $this === self::Admin;
+    }
+
+    /** Criar processos manuais e gerar a partir de modelos. */
+    public function canCreateWorkProcesses(): bool
+    {
+        return $this === self::Admin || $this === self::Operator;
+    }
+
+    /** Executar tarefas (iniciar, impedir, concluir, comentar, anexar). */
+    public function canExecuteWorkTasks(): bool
+    {
+        return $this === self::Admin || $this === self::Operator;
+    }
+
+    /** Reatribuir, alterar prazos, dispensar, reabrir e ações em lote. */
+    public function canAdministerWork(): bool
+    {
+        return $this === self::Admin;
+    }
+
+    /** Consultar fila, processos, calendário e KPIs operacionais. */
+    public function canViewWork(): bool
+    {
+        return true;
+    }
+
+    /** Download de evidências de tarefa (VIEWER somente leitura sem download). */
+    public function canDownloadWorkEvidence(): bool
+    {
+        return $this === self::Admin || $this === self::Operator;
+    }
+
+    /** Export CSV operacional. */
+    public function canExportWork(): bool
+    {
+        return $this === self::Admin || $this === self::Operator;
+    }
 }

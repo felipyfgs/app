@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'slug', 'is_active', 'deadline_timezone'])]
+#[Fillable(['name', 'slug', 'is_active', 'deadline_timezone', 'timezone'])]
 class Office extends Model
 {
     /** @use HasFactory<OfficeFactory> */
@@ -27,7 +27,7 @@ class Office extends Model
     {
         return $this->belongsToMany(User::class)
             ->using(OfficeMembership::class)
-            ->withPivot(['role', 'is_active'])
+            ->withPivot(['role', 'is_active', 'work_department_id'])
             ->withTimestamps();
     }
 

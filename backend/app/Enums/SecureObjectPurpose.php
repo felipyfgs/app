@@ -41,6 +41,9 @@ enum SecureObjectPurpose: string
     /** Evidência oficial de pagamento de guia (independente da emissão). */
     case TaxGuidePaymentEvidence = 'TAX_GUIDE_PAYMENT_EVIDENCE';
 
+    /** Evidência de tarefa operacional (PDF/imagem/texto — tenant-scoped, sem fiscal). */
+    case OperationalTaskEvidence = 'OPERATIONAL_TASK_EVIDENCE';
+
     public function label(): string
     {
         return match ($this) {
@@ -55,6 +58,7 @@ enum SecureObjectPurpose: string
             self::MailboxAttachment => 'Anexo Caixa Postal',
             self::TaxGuideDocument => 'Documento de guia fiscal',
             self::TaxGuidePaymentEvidence => 'Evidência de pagamento de guia',
+            self::OperationalTaskEvidence => 'Evidência de tarefa operacional',
         };
     }
 

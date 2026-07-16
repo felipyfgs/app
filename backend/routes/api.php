@@ -10,6 +10,12 @@ use App\Http\Controllers\Api\V1\DocumentImportBatchController;
 use App\Http\Controllers\Api\V1\DocumentImportController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ExportController;
+use App\Http\Controllers\Api\V1\Work\OperationalDashboardController;
+use App\Http\Controllers\Api\V1\Work\OperationalProcessController;
+use App\Http\Controllers\Api\V1\Work\OperationalTaskController;
+use App\Http\Controllers\Api\V1\Work\ProcessGenerationController;
+use App\Http\Controllers\Api\V1\Work\ProcessTemplateController;
+use App\Http\Controllers\Api\V1\Work\WorkDepartmentController;
 use App\Http\Controllers\Api\V1\Fiscal\DctfwebController;
 use App\Http\Controllers\Api\V1\Fiscal\DeclarationHubController;
 use App\Http\Controllers\Api\V1\Fiscal\FgtsEsocialController;
@@ -295,6 +301,52 @@ Route::prefix('v1')->group(function (): void {
 
             Route::get('/operations/summary', OperationsSummaryController::class);
             Route::get('/operations/inbox', OperationsInboxController::class);
+
+            // ── Work: processos operacionais (plano de dados; sem SERPRO/ADN/SEFAZ) ──
+            Route::prefix('work')->group(function (): void {
+                Route::get('/departments', [WorkDepartmentController::class, 'index']);
+                Route::post('/departments', [WorkDepartmentController::class, 'store']);
+                Route::patch('/departments/{department}', [WorkDepartmentController::class, 'update']);
+                Route::post('/departments/{department}/assign-membership', [WorkDepartmentController::class, 'assignMembership']);
+
+                Route::get('/templates', [ProcessTemplateController::class, 'index']);
+                Route::post('/templates', [ProcessTemplateController::class, 'store']);
+                Route::get('/templates/{template}', [ProcessTemplateController::class, 'show']);
+                Route::patch('/templates/{template}', [ProcessTemplateController::class, 'update']);
+                Route::post('/templates/{template}/preview', [ProcessGenerationController::class, 'preview']);
+                Route::post('/generation-batches/{batch}/confirm', [ProcessGenerationController::class, 'confirm']);
+                Route::get('/generation-batches/{batch}', [ProcessGenerationController::class, 'show']);
+
+                Route::get('/queue', [OperationalTaskController::class, 'queue']);
+                Route::get('/processes', [OperationalProcessController::class, 'index']);
+                Route::post('/processes', [OperationalProcessController::class, 'store']);
+                Route::get('/processes/{process}', [OperationalProcessController::class, 'show']);
+                Route::patch('/processes/{process}', [OperationalProcessController::class, 'update']);
+                Route::post('/processes/{process}/archive', [OperationalProcessController::class, 'archive']);
+                Route::post('/processes/{process}/comments', [OperationalProcessController::class, 'comment']);
+
+                Route::get('/tasks/{task}', [OperationalTaskController::class, 'show']);
+                Route::post('/tasks/{task}/start', [OperationalTaskController::class, 'start']);
+                Route::post('/tasks/{task}/block', [OperationalTaskController::class, 'block']);
+                Route::post('/tasks/{task}/resume', [OperationalTaskController::class, 'resume']);
+                Route::post('/tasks/{task}/complete', [OperationalTaskController::class, 'complete']);
+                Route::post('/tasks/{task}/dispense', [OperationalTaskController::class, 'dispense']);
+                Route::post('/tasks/{task}/reopen', [OperationalTaskController::class, 'reopen']);
+                Route::post('/tasks/{task}/claim', [OperationalTaskController::class, 'claim']);
+                Route::post('/tasks/{task}/assign', [OperationalTaskController::class, 'assign']);
+                Route::post('/tasks/{task}/comments', [OperationalTaskController::class, 'comment']);
+                Route::post('/tasks/{task}/evidences', [OperationalTaskController::class, 'uploadEvidence']);
+                Route::get('/tasks/{task}/evidences/{evidence}/download', [OperationalTaskController::class, 'downloadEvidence']);
+                Route::delete('/tasks/{task}/evidences/{evidence}', [OperationalTaskController::class, 'removeEvidence']);
+                Route::post('/tasks/bulk', [OperationalTaskController::class, 'bulk']);
+
+                Route::get('/kpis', [OperationalDashboardController::class, 'kpis']);
+                Route::get('/calendar', [OperationalDashboardController::class, 'calendar']);
+                Route::get('/calendar/day', [OperationalDashboardController::class, 'calendarDay']);
+                Route::post('/exports', [OperationalDashboardController::class, 'createExport']);
+                Route::get('/exports/{export}', [OperationalDashboardController::class, 'showExport']);
+                Route::get('/exports/{export}/download', [OperationalDashboardController::class, 'downloadExport']);
+            });
 
             // Quarentena fiscal (sem XML bruto)
             Route::get('/operations/quarantine', [FiscalDocumentQuarantineController::class, 'index']);

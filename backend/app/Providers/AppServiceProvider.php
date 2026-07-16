@@ -35,14 +35,24 @@ use App\Models\ClientCredential;
 use App\Models\Establishment;
 use App\Models\OfficeCredential;
 use App\Models\OfficeFiscalIdentity;
+use App\Models\OperationalExport;
+use App\Models\OperationalProcess;
+use App\Models\OperationalTask;
 use App\Models\OutboundCaptureProfile;
+use App\Models\ProcessTemplate;
 use App\Models\User;
+use App\Models\WorkDepartment;
 use App\Policies\ClientContactPolicy;
 use App\Policies\ClientCredentialPolicy;
 use App\Policies\ClientPolicy;
 use App\Policies\EstablishmentPolicy;
 use App\Policies\OfficeFiscalCredentialPolicy;
 use App\Policies\OutboundCaptureProfilePolicy;
+use App\Policies\Work\OperationalExportPolicy;
+use App\Policies\Work\OperationalProcessPolicy;
+use App\Policies\Work\OperationalTaskPolicy;
+use App\Policies\Work\ProcessTemplatePolicy;
+use App\Policies\Work\WorkDepartmentPolicy;
 use App\Services\Adn\CurlMtlsTransport;
 use App\Services\Adn\HttpAdnContributorClient;
 use App\Services\Certificates\PfxReader;
@@ -339,6 +349,13 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(OutboundCaptureProfile::class, OutboundCaptureProfilePolicy::class);
         Gate::policy(OfficeFiscalIdentity::class, OfficeFiscalCredentialPolicy::class);
         Gate::policy(OfficeCredential::class, OfficeFiscalCredentialPolicy::class);
+
+        // Módulo operacional (Work) — plano de dados tenant-scoped
+        Gate::policy(WorkDepartment::class, WorkDepartmentPolicy::class);
+        Gate::policy(ProcessTemplate::class, ProcessTemplatePolicy::class);
+        Gate::policy(OperationalProcess::class, OperationalProcessPolicy::class);
+        Gate::policy(OperationalTask::class, OperationalTaskPolicy::class);
+        Gate::policy(OperationalExport::class, OperationalExportPolicy::class);
 
         // PLATFORM_ADMIN é global e separado dos papéis do tenant (ADMIN/OPERATOR/VIEWER).
         // NÃO concede leitura fiscal implícita.
