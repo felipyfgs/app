@@ -16,10 +16,10 @@ Se 2 e 3 conflitarem, **ganha o template** na estrutura/slots/classes; MCP só p
 
 | Skill | Escopo | Papel |
 |-------|--------|-------|
-| **`ui-archetype`** | Projeto (`.agents/skills/`) | Forma visual. Obrigatória em UI autenticada. |
-| **`panel-ui`** | Projeto (`.agents/skills/`) | Orquestra domínio + arquétipo + nuxt/nuxt-ui. |
-| **`nuxt-ui`** | Global (`~/.agents/skills/nuxt-ui`) | Theming, forms, overlays, 125+ componentes. |
-| **`nuxt`** | Global (`~/.agents/skills/nuxt`) | Framework Nuxt 4. |
+| **`ui-archetype`** | Projeto (``.opencode/skills/` / discovery `.agents/skills/``) | Forma visual. Obrigatória em UI autenticada. |
+| **`panel-ui`** | Projeto (``.opencode/skills/` / discovery `.agents/skills/``) | Orquestra domínio + arquétipo + nuxt/nuxt-ui. |
+| **`nuxt-ui`** | Global (`~/`.opencode/skills/` / discovery `.agents/skills/`nuxt-ui`) | Theming, forms, overlays, 125+ componentes. |
+| **`nuxt`** | Global (`~/`.opencode/skills/` / discovery `.agents/skills/`nuxt`) | Framework Nuxt 4. |
 
 Invocação: `/ui-archetype`, `/panel-ui`, `/nuxt-ui`, `/nuxt`.
 
@@ -56,15 +56,15 @@ F. checklist.md
 
 ```text
 Projeto (canônico, multi-agent):
-  .agents/skills/ui-archetype/
-  .agents/skills/panel-ui/
+  `.opencode/skills/` / discovery `.agents/skills/`ui-archetype/
+  `.opencode/skills/` / discovery `.agents/skills/`panel-ui/
   .reference/nuxt-dashboard-template/
   frontend/
 
 User (global):
-  ~/.agents/skills/nuxt/
-  ~/.agents/skills/nuxt-ui/
-  ~/.agents/skills/git-commit/
+  ~/`.opencode/skills/` / discovery `.agents/skills/`nuxt/
+  ~/`.opencode/skills/` / discovery `.agents/skills/`nuxt-ui/
+  ~/`.opencode/skills/` / discovery `.agents/skills/`git-commit/
 
 MCP:
   ~/.config/opencode/opencode.jsonc  → nuxt + nuxt-ui

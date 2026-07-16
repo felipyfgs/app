@@ -93,19 +93,16 @@ Qualquer tela autenticada: skill **`panel-ui`** → **`ui-archetype`** (copiar d
 
 | Onde | Conteúdo | Git |
 |------|----------|-----|
-| **`.agents/skills/`** | Fonte única do projeto | versionar |
-| **`.grok/config.toml`** / **`.codex/config.toml`** | MCP Playwright | versionar |
-| **`.opencode/skills`**, **`.codex/skills`**, **`.grok/skills`** | Symlinks → `.agents/skills` | **gitignore** |
-| **`.opencode/commands`**, **`.grok/commands`** | Slash `/opsx-*` etc. | **gitignore** |
+| **`.opencode/skills/`** | Fonte **real** das skills do projeto | versionar |
+| **`.agents/skills`** | Symlink → `.opencode/skills` (Codex + OpenCode) | versionar o link |
+| **`.grok/skills`** | Symlink → `.opencode/skills` (Grok) | versionar o link |
+| **`.opencode/commands/`**, **`.grok/commands/`** | Slash `/opsx-*` etc. | versionar |
+| **`.codex/config.toml`**, **`.grok/config.toml`** | MCP Playwright | versionar |
 | **`~/.agents/skills/`** | Global: nuxt, nuxt-ui, git-commit, grill/* | home |
 
-Regenerar espelhos locais (após clone):
+Projeto: `panel-ui`, `ui-archetype`, `openspec-*`, `task-loop`.  
+Editar só em **`.opencode/skills/`** — os outros paths são o mesmo conteúdo via symlink.
 
-```bash
-bash scripts/link-agent-skills.sh
-```
-
-Projeto: `panel-ui`, `ui-archetype`, `openspec-*`, `task-loop`.
 
 ## OpenSpec
 

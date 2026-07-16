@@ -14,7 +14,7 @@ Ponto de entrada para **qualquer** trabalho de UI em `frontend/`. Encadeia as pe
 
 | Peça | Tipo | Onde |
 |------|------|------|
-| **ui-archetype** | Skill **projeto** | `.agents/skills/ui-archetype/` |
+| **ui-archetype** | Skill **projeto** | `.opencode/skills/ui-archetype/` |
 | **nuxt-ui** | Skill global + MCP | `~/.agents/skills/nuxt-ui` · MCP `https://ui.nuxt.com/mcp` |
 | **nuxt** | Skill global + MCP | `~/.agents/skills/nuxt` · MCP `https://nuxt.com/mcp` |
 | Template código | Referência fixa | `.reference/nuxt-dashboard-template` @ `0f30c09` |
