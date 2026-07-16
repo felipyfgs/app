@@ -1,0 +1,240 @@
+x-php: &php
+  image: fiscal-hub-php:prod
+  build:
+    context: ./docker/php
+    target: prod
+    additional_contexts:
+      app: ./backend
+  env_file:
+    - path: ${PROD_ENV_FILE:-.env.prod}
+      required: true
+  environment:
+    APP_ENV: production
+    APP_DEBUG: "false"
+    APP_URL: https://app.inovaicontabil.com.br
+    DB_CONNECTION: pgsql
+    DB_HOST: postgres
+    DB_PORT: 5432
+    DB_DATABASE: ${DB_DATABASE:-nfse}
+    DB_USERNAME: ${DB_USERNAME:-nfse}
+    DB_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD em .env.prod}
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    QUEUE_CONNECTION: redis
+    CACHE_STORE: redis
+    SESSION_DRIVER: redis
+    SESSION_DOMAIN: app.inovaicontabil.com.br
+    SESSION_SECURE_COOKIE: "true"
+    SESSION_SAME_SITE: lax
+    SANCTUM_STATEFUL_DOMAINS: app.inovaicontabil.com.br
+    VAULT_DISK_ROOT: /var/vault
+  volumes:
+    - vault_data:/var/vault
+    - private_storage:/var/www/html/storage/app/private
+  restart: unless-stopped
+  networks:
+    - app
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  acme-init:
+    build:
+      context: ./docker/traefik
+      target: init
+    volumes:
+      - acme:/letsencrypt
+    restart: "no"
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+
+  traefik:
+    image: fiscal-hub-traefik:prod
+    build:
+      context: ./docker/traefik
+      target: prod
+    command:
+      - --api.dashboard=false
+      - --ping=true
+      - --providers.docker=true
+      - --providers.docker.endpoint=tcp://socket-proxy:2375
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=${EDGE_NETWORK:-fiscal-hub-edge}
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.forwardedheaders.insecure=false
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.forwardedheaders.insecure=false
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?defina ACME_EMAIL em .env.prod}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - acme:/letsencrypt
+    depends_on:
+      acme-init:
+        condition: service_completed_successfully
+      socket-proxy:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      edge:
+        ipv4_address: 172.31.255.2
+      socket:
+
+  socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:v0.4.2@sha256:1f3a6f303320723d199d2316a3e82b2e2685d86c275d5e3deeaf182573b47476
+    environment:
+      CONTAINERS: 1
+      EVENTS: 1
+      NETWORKS: 1
+      PING: 1
+      POST: 0
+      VERSION: 1
+      LOG_LEVEL: warning
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:2375/_ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - socket
+
+  web:
+    image: fiscal-hub-web:prod
+    build:
+      context: ./docker/nginx
+      target: prod
+      additional_contexts:
+        ui: ./frontend
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${EDGE_NETWORK:-fiscal-hub-edge}
+      traefik.http.routers.app.rule: Host(`app.inovaicontabil.com.br`)
+      traefik.http.routers.app.entrypoints: websecure
+      traefik.http.routers.app.tls: "true"
+      traefik.http.routers.app.tls.certresolver: letsencrypt
+      traefik.http.services.app.loadbalancer.server.port: "80"
+    depends_on:
+      php:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/index.html"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - edge
+      - app
+
+  php:
+    <<: *php
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  horizon:
+    <<: *php
+    command: ["php", "artisan", "horizon"]
+    depends_on:
+      php:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    <<: *php
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      php:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-nfse}
+      POSTGRES_USER: ${DB_USERNAME:-nfse}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD em .env.prod}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - app
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - app
+
+volumes:
+  acme:
+  postgres_data:
+  redis_data:
+  vault_data:
+  private_storage:
+
+networks:
+  edge:
+    name: ${EDGE_NETWORK:-fiscal-hub-edge}
+    ipam:
+      config:
+        - subnet: 172.31.255.0/29
+  app:
+    name: ${APP_NETWORK:-fiscal-hub-app}
+  socket:
+    name: ${SOCKET_NETWORK:-fiscal-hub-socket}
+    internal: true

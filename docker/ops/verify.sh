@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Verificação backend do hub fiscal (task 16.1).
+# Verificação backend do hub fiscal.
 # Uso (na raiz do monorepo):
-#   bash ./docker/ops/fiscal-hub-verify-backend.sh
-#   bash ./docker/ops/fiscal-hub-verify-backend.sh --full
-#   bash ./docker/ops/fiscal-hub-verify-backend.sh --preflight-strict
+#   ./docker/ops/verify.sh
+#   ./docker/ops/verify.sh --full
+#   ./docker/ops/verify.sh --preflight-strict
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -38,13 +38,29 @@ else
   docker compose exec -T php php artisan ops:preflight-tenant-isolation || true
 fi
 
+echo "==> Secret scan (paths + colunas; sem conteúdo)"
+if [[ -x "$ROOT/docker/ops/secret-scan.sh" ]]; then
+  if ! "$ROOT/docker/ops/secret-scan.sh"; then
+    if [[ "$FULL" -eq 1 ]]; then
+      echo "secret-scan falhou em --full — remova artefatos sensíveis do tree" >&2
+      exit 1
+    fi
+    echo "AVISO: secret-scan com findings (não bloqueia modo filtrado; bloqueia --full)" >&2
+  fi
+else
+  docker compose exec -T php php artisan fiscal-model:secret-scan || true
+fi
+
+echo "==> Integridade da cadeia de auditoria"
+docker compose exec -T php php artisan audit:verify-chain --json || true
+
 if [[ "$FULL" -eq 1 ]]; then
   echo "==> Suite completa backend (php artisan test)"
   docker compose exec -T php php artisan test
 else
-  echo "==> Suite filtrada Fiscal|Serpro|Platform|Architecture|Integra|Tenant"
+  echo "==> Suite filtrada Fiscal|Serpro|Platform|Architecture|Integra|Tenant|Audit"
   docker compose exec -T php php artisan test \
-    --filter='Fiscal|Serpro|Platform|Architecture|Integra|Tenant'
+    --filter='Fiscal|Serpro|Platform|Architecture|Integra|Tenant|Audit'
 fi
 
-echo "==> OK — ver docs/ops/fiscal-hub-verification-2026-07-15.md para registrar evidência"
+echo "==> OK — registre esta execução como evidência do gate backend"

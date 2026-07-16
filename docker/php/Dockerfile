@@ -1,4 +1,6 @@
-FROM php:8.4-fpm-bookworm
+# syntax=docker/dockerfile:1
+
+FROM php:8.4-fpm-bookworm AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -32,16 +34,36 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-COPY docker/php/php.ini /usr/local/etc/php/conf.d/99-app.ini
-COPY docker/php/www.conf /usr/local/etc/php-fpm.d/zz-app.conf
-COPY docker/php/app-entrypoint.sh /usr/local/bin/app-entrypoint
+COPY app.ini /usr/local/etc/php/conf.d/99-app.ini
+COPY fpm.conf /usr/local/etc/php-fpm.d/zz-app.conf
+COPY --chmod=755 entrypoint.sh /usr/local/bin/app-entrypoint
 
 WORKDIR /var/www/html
 
 RUN usermod -u 1000 www-data && groupmod -g 1000 www-data \
   && mkdir -p /var/vault \
-  && chown -R www-data:www-data /var/vault \
-  && chmod 755 /usr/local/bin/app-entrypoint
+  && chown -R www-data:www-data /var/vault
 
 ENTRYPOINT ["app-entrypoint"]
 CMD ["php-fpm"]
+
+FROM runtime AS prod
+
+ENV APP_ENV=production \
+    APP_DEBUG=false \
+    COMPOSER_ALLOW_SUPERUSER=1
+
+COPY --from=app --chown=www-data:www-data . /var/www/html
+
+RUN composer install \
+      --no-dev \
+      --no-interaction \
+      --no-progress \
+      --prefer-dist \
+      --no-scripts \
+      --classmap-authoritative \
+  && chown -R www-data:www-data \
+      /var/www/html/bootstrap/cache \
+      /var/www/html/storage
+
+FROM runtime AS dev

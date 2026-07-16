@@ -3,10 +3,12 @@
 .reference
 .codex
 .opencode
+.grok
 
 **/.env
 **/.env.*
 !**/.env.example
+!.env.prod.example
 **/auth.json
 
 **/node_modules
@@ -30,4 +32,3 @@ vault
 *.log
 .DS_Store
 Thumbs.db
-

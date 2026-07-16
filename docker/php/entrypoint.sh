@@ -16,6 +16,10 @@ if [ "$(id -u)" = "0" ]; then
         /var/www/html/bootstrap/cache \
         /var/vault
 
+    if [ "${APP_ENV:-}" = "production" ] && [ ! -f /var/www/html/bootstrap/cache/packages.php ]; then
+        gosu www-data php artisan package:discover --ansi --no-interaction
+    fi
+
     # php-fpm must master as root (pool drops to www-data). Default when no CMD.
     if [ "$#" -eq 0 ] || [ "$1" = "php-fpm" ]; then
         if [ "$#" -eq 0 ]; then

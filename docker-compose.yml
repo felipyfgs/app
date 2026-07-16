@@ -1,11 +1,40 @@
+x-php: &php
+  image: ${COMPOSE_PROJECT_NAME:-app}-php:dev
+  build: ./docker/php
+  env_file:
+    - path: ./backend/.env
+      required: false
+  environment:
+    APP_ENV: ${APP_ENV:-local}
+    DB_CONNECTION: pgsql
+    DB_HOST: postgres
+    DB_PORT: 5432
+    DB_DATABASE: ${DB_DATABASE:-nfse}
+    DB_USERNAME: ${DB_USERNAME:-nfse}
+    DB_PASSWORD: ${DB_PASSWORD:-nfse}
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    QUEUE_CONNECTION: redis
+    CACHE_STORE: redis
+    SESSION_DRIVER: redis
+    VAULT_DISK_ROOT: /var/vault
+  volumes:
+    - ./backend:/var/www/html
+    - vault_data:/var/vault
+    - private_storage:/var/www/html/storage/app/private
+  restart: unless-stopped
+  networks:
+    - app
+
 services:
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: ./docker/nginx
+      target: dev
     ports:
       # 0.0.0.0: acesso remoto por IP:porta (dev). Postgres/Redis seguem em 127.0.0.1.
       - "${APP_PORT:-8080}:80"
     volumes:
-      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./backend:/var/www/html:ro
       - ./frontend/.output/public:/var/www/frontend:ro
     depends_on:
@@ -26,117 +55,39 @@ services:
       - app
 
   php:
-    build:
-      context: .
-      dockerfile: docker/php/Dockerfile
-    env_file:
-      - path: ./backend/.env
-        required: false
-    environment:
-      APP_ENV: ${APP_ENV:-local}
-      DB_CONNECTION: pgsql
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_DATABASE: ${DB_DATABASE:-nfse}
-      DB_USERNAME: ${DB_USERNAME:-nfse}
-      DB_PASSWORD: ${DB_PASSWORD:-nfse}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      QUEUE_CONNECTION: redis
-      CACHE_STORE: redis
-      SESSION_DRIVER: redis
-      VAULT_DISK_ROOT: /var/vault
-    volumes:
-      - ./backend:/var/www/html
-      - vault_data:/var/vault
-      - private_storage:/var/www/html/storage/app/private
+    <<: *php
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "php -r 'exit(0);'"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
-    networks:
-      - app
 
   horizon:
-    build:
-      context: .
-      dockerfile: docker/php/Dockerfile
-    command: php artisan horizon
-    env_file:
-      - path: ./backend/.env
-        required: false
-    environment:
-      APP_ENV: ${APP_ENV:-local}
-      DB_CONNECTION: pgsql
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_DATABASE: ${DB_DATABASE:-nfse}
-      DB_USERNAME: ${DB_USERNAME:-nfse}
-      DB_PASSWORD: ${DB_PASSWORD:-nfse}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      QUEUE_CONNECTION: redis
-      CACHE_STORE: redis
-      SESSION_DRIVER: redis
-      VAULT_DISK_ROOT: /var/vault
-    volumes:
-      - ./backend:/var/www/html
-      - vault_data:/var/vault
-      - private_storage:/var/www/html/storage/app/private
+    <<: *php
+    command: ["php", "artisan", "horizon"]
     depends_on:
       php:
         condition: service_started
       redis:
         condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - app
 
   scheduler:
-    build:
-      context: .
-      dockerfile: docker/php/Dockerfile
-    command: php artisan schedule:work
-    env_file:
-      - path: ./backend/.env
-        required: false
-    environment:
-      APP_ENV: ${APP_ENV:-local}
-      DB_CONNECTION: pgsql
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_DATABASE: ${DB_DATABASE:-nfse}
-      DB_USERNAME: ${DB_USERNAME:-nfse}
-      DB_PASSWORD: ${DB_PASSWORD:-nfse}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      QUEUE_CONNECTION: redis
-      CACHE_STORE: redis
-      SESSION_DRIVER: redis
-      VAULT_DISK_ROOT: /var/vault
-    volumes:
-      - ./backend:/var/www/html
-      - vault_data:/var/vault
-      - private_storage:/var/www/html/storage/app/private
+    <<: *php
+    command: ["php", "artisan", "schedule:work"]
     depends_on:
       php:
         condition: service_started
       redis:
         condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - app
 
   frontend-dev:
-    image: node:24-bookworm
+    build: ./docker/frontend
     working_dir: /app
     volumes:
       - ./frontend:/app
@@ -145,6 +96,8 @@ services:
       # 0.0.0.0: Nuxt dev acessível remotamente por IP:porta
       - "${FRONTEND_DEV_PORT:-3000}:3000"
     environment:
+      LOCAL_UID: ${LOCAL_UID:-1000}
+      LOCAL_GID: ${LOCAL_GID:-1000}
       NUXT_SANCTUM_PROXY: "true"
       NUXT_SANCTUM_PROXY_BASE: http://nginx
       CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
@@ -153,7 +106,7 @@ services:
       # IP/host visto pelo browser remoto (HMR WebSocket). Ex.: PUBLIC_HOST=74.x.x.x
       NUXT_DEV_HMR_HOST: ${PUBLIC_HOST:-}
       PUBLIC_HOST: ${PUBLIC_HOST:-}
-    command: bash -lc "corepack enable && pnpm install --frozen-lockfile && pnpm run dev --host 0.0.0.0 --port 3000"
+    init: true
     profiles: ["dev"]
     depends_on:
       nginx:
