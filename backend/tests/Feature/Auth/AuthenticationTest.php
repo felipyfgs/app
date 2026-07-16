@@ -38,6 +38,30 @@ class AuthenticationTest extends TestCase
             ->assertJsonPath('data.role', 'OPERATOR');
     }
 
+    public function test_login_sucesso_sempre_json_mesmo_sem_accept_json(): void
+    {
+        $office = Office::factory()->create();
+        User::factory()->forOffice($office, OfficeRole::Operator)->create([
+            'email' => 'spa@example.com',
+            'password' => 'password',
+        ]);
+
+        // Proxy Nuxt pode reenviar Accept: */* do browser; SPA não pode receber 302 → /.
+        $response = $this->withHeader('Accept', '*/*')
+            ->withHeader('Origin', 'http://localhost:3000')
+            ->post('/login', [
+                'email' => 'spa@example.com',
+                'password' => 'password',
+            ], [
+                'Accept' => '*/*',
+            ]);
+
+        $response->assertOk()
+            ->assertJson(['two_factor' => false])
+            ->assertHeader('content-type', 'application/json');
+        $this->assertAuthenticated();
+    }
+
     public function test_login_admin_ignora_desafio_quando_2fa_esta_desativado(): void
     {
         config()->set('fortify.two_factor_required', false);
