@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\FiscalSourceProvenance;
+use App\Enums\FiscalVerificationState;
 use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -39,8 +41,8 @@ class FiscalEvidenceArtifact extends Model
     {
         return [
             'byte_size' => 'integer',
-            'source_provenance' => \App\Enums\FiscalSourceProvenance::class,
-            'verification_state' => \App\Enums\FiscalVerificationState::class,
+            'source_provenance' => FiscalSourceProvenance::class,
+            'verification_state' => FiscalVerificationState::class,
             'observed_at' => 'immutable_datetime',
             'retention_until' => 'immutable_datetime',
             'is_immutable' => 'boolean',
@@ -92,6 +94,9 @@ class FiscalEvidenceArtifact extends Model
             'byte_size' => $this->byte_size,
             'source' => $this->source,
             'source_version' => $this->source_version,
+            'operation_key' => $this->operation_key,
+            'source_provenance' => $this->source_provenance?->value,
+            'verification_state' => $this->verification_state?->value,
             'observed_at' => $this->observed_at?->toIso8601String(),
             'retention_until' => $this->retention_until?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),

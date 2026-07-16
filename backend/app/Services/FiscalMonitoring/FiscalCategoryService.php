@@ -179,7 +179,9 @@ final class FiscalCategoryService
         $system = (string) ($category->system_code ?? 'UNKNOWN');
         $service = (string) ($category->service_code ?? 'UNKNOWN');
         $operation = 'MONITOR';
-        $interval = (int) config('fiscal_monitoring.scheduler.default_interval_minutes', 60);
+        $interval = strtoupper($service) === 'SITFIS'
+            ? (int) config('fiscal_monitoring.sitfis.interval_minutes', 1440)
+            : (int) config('fiscal_monitoring.scheduler.default_interval_minutes', 60);
         $preferred = $this->scheduler->preferredMinute($office->id, $client->id, $system, $service);
 
         $schedule = FiscalMonitoringSchedule::query()
@@ -197,6 +199,7 @@ final class FiscalCategoryService
                 'category_link_id' => $link->id,
                 'is_enabled' => true,
                 'preferred_minute' => $preferred,
+                'interval_minutes' => $interval,
             ])->save();
 
             return $schedule;

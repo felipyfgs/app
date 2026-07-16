@@ -6,6 +6,7 @@ use App\Enums\AuthorCertificateMode;
 use App\Enums\AuthorIdentityType;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproEnvironment;
+use App\Enums\TermoAuthorizationState;
 use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -33,8 +34,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'termo_destination_cnpj',
     'termo_signed_by',
     'termo_uploaded_at',
+    'termo_authorization_state',
     'procurador_token_vault_object_id',
     'procurador_token_expires_at',
+    'procurador_etag',
     'last_token_refresh_at',
     'last_validation_result',
     'last_validation_message',
@@ -65,6 +68,7 @@ class OfficeSerproAuthorization extends Model
             'termo_valid_from' => 'immutable_datetime',
             'termo_valid_to' => 'immutable_datetime',
             'termo_uploaded_at' => 'immutable_datetime',
+            'termo_authorization_state' => TermoAuthorizationState::class,
             'procurador_token_expires_at' => 'immutable_datetime',
             'last_token_refresh_at' => 'immutable_datetime',
             'last_validated_at' => 'immutable_datetime',
@@ -113,10 +117,12 @@ class OfficeSerproAuthorization extends Model
                 ? $this->maskIdentity($this->termo_signed_by)
                 : null,
             'termo_uploaded_at' => $this->termo_uploaded_at?->toIso8601String(),
+            'termo_authorization_state' => $this->termo_authorization_state?->value,
             'has_procurador_token' => $this->procurador_token_vault_object_id !== null
                 && $this->procurador_token_expires_at !== null
                 && $this->procurador_token_expires_at->isFuture(),
             'procurador_token_expires_at' => $this->procurador_token_expires_at?->toIso8601String(),
+            'has_procurador_etag' => $this->procurador_etag !== null && $this->procurador_etag !== '',
             'last_token_refresh_at' => $this->last_token_refresh_at?->toIso8601String(),
             'last_validation_result' => $this->last_validation_result,
             'last_validation_message' => $this->last_validation_message,

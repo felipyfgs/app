@@ -68,12 +68,14 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             return $this->fail($request, 503, 'CONTRACT_UNAVAILABLE', 'Contrato SERPRO indisponível.', $operationKey);
         }
 
-        if ($contract->contractor_cnpj !== strtoupper($request->contractorCnpj)) {
+        $isAutenticaProcurador = $operationKey === 'autentica_procurador.envio_xml_assinado';
+        if (! $isAutenticaProcurador
+            && $contract->contractor_cnpj !== strtoupper($request->contractorCnpj)) {
             return $this->fail($request, 422, 'CONTRACTOR_MISMATCH', 'Identidade contratante diverge do contrato ativo.', $operationKey);
         }
 
-        $procuradorToken = $this->loadProcuradorToken($request, $env);
-        if ($procuradorToken === null) {
+        $procuradorToken = $isAutenticaProcurador ? null : $this->loadProcuradorToken($request, $env);
+        if (! $isAutenticaProcurador && $procuradorToken === null) {
             return $this->fail($request, 422, 'PROCURADOR_TOKEN_MISSING', 'Token do procurador ausente ou expirado para o escritório.', $operationKey);
         }
 
@@ -119,11 +121,13 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         $headers = [
             'Authorization: '.$token->tokenType.' '.$token->accessToken,
             'jwt_token: '.$jwt,
-            'autenticar_procurador_token: '.$procuradorToken,
             'X-Request-Tag: '.$requestTag,
             'Content-Type: application/json',
             'Accept: application/json',
         ];
+        if ($procuradorToken !== null) {
+            $headers[] = 'autenticar_procurador_token: '.$procuradorToken;
+        }
         foreach ($request->headers as $name => $value) {
             $ln = strtolower((string) $name);
             if (in_array($ln, ['authorization', 'jwt_token', 'autenticar_procurador_token', 'x-request-tag'], true)) {

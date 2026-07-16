@@ -2,24 +2,30 @@
 
 namespace App\Services\Integra\Sitfis;
 
+use App\Enums\FiscalSourceProvenance;
+use App\Enums\FiscalVerificationState;
+use App\Enums\SerproCapabilityDriver;
 use App\Models\Client;
 use App\Models\FiscalMonitoringRun;
 use App\Models\FiscalSnapshot;
 use App\Models\Office;
 use App\Services\FiscalMonitoring\FiscalIdempotency;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
+use App\Services\Serpro\CapabilityDriverResolver;
 use App\Support\FeatureFlags;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * TTL/cache SITFIS: devolve snapshot existente com idade; só enfileira nova chamada se expirado/force.
+ * TTL/cache SITFIS: devolve snapshot existente com idade; só enfileira nova chamada se expirado.
  */
 final class SitfisSnapshotService
 {
     public function __construct(
         private readonly FiscalMonitoringRunService $runs,
+        private readonly CapabilityDriverResolver $drivers,
     ) {}
 
     /**
@@ -54,35 +60,19 @@ final class SitfisSnapshotService
             ->where('is_current', true)
             ->whereNotNull('evidence_artifact_id');
 
-        if (\Illuminate\Support\Facades\Schema::hasColumn('fiscal_snapshots', 'source_provenance')) {
-            $snapshotQuery->where(function ($q): void {
-                $q->whereIn('source_provenance', ['SERPRO_REAL', 'SIMULATED'])
-                    ->orWhereNull('source_provenance'); // pré-migration
-            })->where(function ($q): void {
-                $q->where('source_provenance', '!=', 'UNVERIFIED')
-                    ->orWhereNull('source_provenance');
-            });
+        if (Schema::hasColumn('fiscal_snapshots', 'source_provenance')) {
+            $snapshotQuery->where('verification_state', FiscalVerificationState::Verified->value);
+            if (app()->environment('production')) {
+                $snapshotQuery->where('source_provenance', FiscalSourceProvenance::SerproReal->value);
+            } else {
+                $snapshotQuery->whereIn('source_provenance', [
+                    FiscalSourceProvenance::SerproReal->value,
+                    FiscalSourceProvenance::Simulated->value,
+                ]);
+            }
         }
 
         $snapshot = $snapshotQuery->orderByDesc('id')->first();
-
-        // Preferir SERPRO_REAL/SIMULATED explícitos sobre legado nulo se ambos existirem
-        if ($snapshot !== null
-            && \Illuminate\Support\Facades\Schema::hasColumn('fiscal_snapshots', 'source_provenance')
-            && $snapshot->source_provenance === null) {
-            $verified = FiscalSnapshot::query()
-                ->withoutGlobalScopes()
-                ->where('office_id', $office->id)
-                ->where('client_id', $client->id)
-                ->where('system_code', $system)
-                ->where('service_code', $service)
-                ->whereIn('source_provenance', ['SERPRO_REAL', 'SIMULATED'])
-                ->orderByDesc('id')
-                ->first();
-            if ($verified !== null) {
-                $snapshot = $verified;
-            }
-        }
 
         $now = CarbonImmutable::now();
         $age = null;
@@ -138,8 +128,8 @@ final class SitfisSnapshotService
     }
 
     /**
-     * Enfileira monitoramento se snapshot expirado, ausente ou force=true.
-     * Abertura de tela (force=false + dentro do TTL) NÃO cria chamada.
+     * Enfileira monitoramento se snapshot expirado ou ausente.
+     * Abertura de tela dentro do TTL NÃO cria chamada.
      *
      * @return array{run: ?FiscalMonitoringRun, reused_snapshot: bool, enqueued: bool, reason: string, view: array<string, mixed>}
      */
@@ -151,6 +141,11 @@ final class SitfisSnapshotService
         bool $dispatch = true,
     ): array {
         $this->assertTenant($office, $client);
+
+        $driver = $this->drivers->forCapability('sitfis');
+        if ($driver === SerproCapabilityDriver::Disabled) {
+            throw new RuntimeException('Capacidade SITFIS desabilitada.');
+        }
 
         if (! FeatureFlags::isModuleEnabled('sitfis', $office->id)
             && ! (bool) config('fiscal_monitoring.enabled', false)
@@ -196,6 +191,14 @@ final class SitfisSnapshotService
             correlationId: $correlation,
             dispatch: $dispatch,
         );
+        $run->forceFill([
+            'operation_key' => 'sitfis.emitir_relatorio',
+            'source_provenance' => $driver === SerproCapabilityDriver::Simulated
+                ? FiscalSourceProvenance::Simulated
+                : FiscalSourceProvenance::SerproReal,
+            // Ainda sem parse/evidência — não rotular VERIFIED no enqueue.
+            'verification_state' => FiscalVerificationState::Unverified,
+        ])->save();
 
         $view = $this->current($office, $client);
 
@@ -203,7 +206,7 @@ final class SitfisSnapshotService
             'run' => $run,
             'reused_snapshot' => false,
             'enqueued' => true,
-            'reason' => $force ? 'FORCE' : 'TTL_EXPIRED_OR_MISSING',
+            'reason' => 'TTL_EXPIRED_OR_MISSING',
             'view' => $this->publicView($view),
         ];
     }

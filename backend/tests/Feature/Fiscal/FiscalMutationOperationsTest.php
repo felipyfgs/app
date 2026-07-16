@@ -405,26 +405,24 @@ class FiscalMutationOperationsTest extends TestCase
             $this->admin->id,
         );
 
-        $xml = <<<'XML'
-<?xml version="1.0"?>
-<TermoAutorizacao>
-  <assinadoPor>12345678901</assinadoPor>
-  <autorPedido>12345678901</autorPedido>
-  <destinatario>11222333000181</destinatario>
-  <dataInicioVigencia>2026-01-01</dataInicioVigencia>
-  <dataFimVigencia>2027-12-31</dataFimVigencia>
-  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
-    <SignedInfo><CanonicalizationMethod/><SignatureMethod/><Reference><DigestMethod/><DigestValue>x</DigestValue></Reference></SignedInfo>
-    <SignatureValue>ZmFrZQ==</SignatureValue>
-  </Signature>
-</TermoAutorizacao>
-XML;
-        $svc->uploadTermo($this->office, SerproEnvironment::Trial, $xml, $this->admin->id);
-        $svc->refreshProcuradorToken($this->office, SerproEnvironment::Trial, $this->admin->id);
-
         $auth = OfficeSerproAuthorization::query()
             ->where('office_id', $this->office->id)
-            ->first();
+            ->firstOrFail();
+        $auth->forceFill([
+            'status' => SerproAuthorizationStatus::TokenActive,
+            'termo_vault_object_id' => (string) Str::ulid(),
+            'termo_sha256' => hash('sha256', 'termo-fixture-mutacoes'),
+            'termo_valid_from' => now()->subDay(),
+            'termo_valid_to' => now()->addYear(),
+            'termo_destination_cnpj' => '11222333000181',
+            'termo_signed_by' => '12345678901',
+            'termo_uploaded_at' => now(),
+            'termo_authorization_state' => 'SIMULATED',
+            'procurador_token_vault_object_id' => (string) Str::ulid(),
+            'procurador_token_expires_at' => now()->addHours(6),
+            'last_token_refresh_at' => now(),
+        ])->save();
+
         $this->assertNotNull($auth);
         $this->assertSame(SerproAuthorizationStatus::TokenActive, $auth->status);
     }

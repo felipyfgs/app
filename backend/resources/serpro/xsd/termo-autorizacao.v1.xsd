@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="qualified">
+  <!-- LAX DOCUMENTAL: não é o schema XSD oficial SERPRO.
+       Aceita qualquer conteúdo sob TermoAutorizacao (xs:any processContents=lax).
+       Garantias reais: TermoXmlValidator (identidade, destinatário, vigência, XMLDSig).
+       Endurecer elementos críticos quando houver XSD oficial publicado. -->
+  <xs:element name="TermoAutorizacao">
+    <xs:complexType mixed="true">
+      <xs:sequence>
+        <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+      </xs:sequence>
+      <xs:anyAttribute processContents="lax"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

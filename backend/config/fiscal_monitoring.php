@@ -98,6 +98,8 @@ return [
         'max_polls' => (int) env('SITFIS_MAX_POLLS', 20),
         /** TTL do snapshot (s) — 24h; refresh manual reutiliza dentro do TTL. */
         'snapshot_ttl_seconds' => (int) env('SITFIS_SNAPSHOT_TTL_SECONDS', 86400),
+        /** Intervalo do schedule diário SITFIS (minutos). */
+        'interval_minutes' => (int) env('SITFIS_INTERVAL_MINUTES', 1440),
         'parser_version' => '2.0',
     ],
 

@@ -12,6 +12,7 @@ use App\Enums\AuthorIdentityType;
 use App\Enums\SecureObjectPurpose;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproEnvironment;
+use App\Enums\TermoAuthorizationState;
 use App\Enums\TermRePresentationStrategy;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
@@ -125,6 +126,16 @@ final class OfficeSerproAuthorizationService
         );
 
         if (! $validation->valid) {
+            $auth->termo_authorization_state = TermoAuthorizationState::Rejected;
+            $auth->last_validation_result = $validation->errorCode ?? 'TERM_REJECTED';
+            $auth->last_validation_message = mb_substr(
+                $validation->errorMessage ?? 'Termo inválido.',
+                0,
+                500,
+            );
+            $auth->last_validated_at = now();
+            $auth->save();
+
             $this->audit->record('serpro.authorization.termo_upload', 'FAILED', $auth, [
                 'error_code' => $validation->errorCode,
                 'message' => $validation->errorMessage,
@@ -151,6 +162,8 @@ final class OfficeSerproAuthorizationService
         $auth->termo_destination_cnpj = $validation->destinationCnpj;
         $auth->termo_signed_by = $validation->signedBy;
         $auth->termo_uploaded_at = now();
+        $auth->termo_authorization_state = $validation->authorizationState
+            ?? TermoAuthorizationState::LocalValidated->value;
         $auth->last_validation_result = 'TERM_VALID';
         $auth->last_validation_message = 'Termo validado (estrutura crítica).';
         $auth->last_validated_at = now();
@@ -360,6 +373,16 @@ final class OfficeSerproAuthorizationService
         }
 
         if (! $result->success || $result->token === null || $result->expiresAt === null) {
+            $auth->termo_authorization_state = TermoAuthorizationState::Rejected;
+            $auth->last_validation_result = $result->errorCode ?? 'SERPRO_REJECTED';
+            $auth->last_validation_message = mb_substr(
+                $result->errorMessage ?? 'Falha ao autenticar procurador.',
+                0,
+                500,
+            );
+            $auth->last_validated_at = now();
+            $auth->save();
+
             throw new RuntimeException($result->errorMessage ?? 'Falha ao autenticar procurador.');
         }
 
@@ -380,6 +403,11 @@ final class OfficeSerproAuthorizationService
         $from = $auth->status;
         $auth->procurador_token_vault_object_id = $objectId;
         $auth->procurador_token_expires_at = $result->expiresAt;
+        $auth->procurador_etag = $result->etag;
+        $auth->termo_authorization_state = $result->authorizationState
+            ?? ($result->simulated
+                ? TermoAuthorizationState::Simulated->value
+                : TermoAuthorizationState::SerproAccepted->value);
         $auth->last_token_refresh_at = now();
         $auth->status = SerproAuthorizationStatus::TokenActive;
         $auth->action_required_reason = null;

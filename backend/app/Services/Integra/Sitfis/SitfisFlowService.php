@@ -11,10 +11,14 @@ use App\Enums\FiscalCoverage;
 use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalSituation;
+use App\Enums\FiscalSourceProvenance;
+use App\Enums\FiscalVerificationState;
+use App\Enums\SerproCapabilityDriver;
 use App\Enums\SerproEnvironment;
 use App\Enums\SerproUsageResult;
 use App\Models\SerproContract;
 use App\Services\Integra\IntegraEligibilityService;
+use App\Services\Serpro\CapabilityDriverResolver;
 use App\Services\Serpro\Usage\UsageLedgerService;
 use App\Services\Serpro\Usage\UsageReserveRequest;
 use Carbon\CarbonImmutable;
@@ -35,10 +39,23 @@ final class SitfisFlowService
         private readonly SitfisReportParser $parser,
         private readonly IntegraEligibilityService $eligibility,
         private readonly UsageLedgerService $ledger,
+        private readonly CapabilityDriverResolver $drivers,
     ) {}
 
     public function execute(FiscalAdapterRequest $request): FiscalAdapterResult
     {
+        $driver = $this->drivers->forCapability('sitfis');
+        $request->run->forceFill([
+            'operation_key' => $request->progress === []
+                ? 'sitfis.solicitar_protocolo'
+                : 'sitfis.emitir_relatorio',
+            'source_provenance' => $driver === SerproCapabilityDriver::Simulated
+                ? FiscalSourceProvenance::Simulated
+                : FiscalSourceProvenance::SerproReal,
+            // Conteúdo ainda não verificado — promove a VERIFIED só no persist pós-parse.
+            'verification_state' => FiscalVerificationState::Unverified,
+        ])->save();
+
         $cfg = $this->config();
         $state = SitfisProtocolState::fromProgress($request->progress);
         $now = CarbonImmutable::now();
@@ -116,7 +133,7 @@ final class SitfisFlowService
             );
         }
 
-        $minWait = max(1, (int) $cfg['min_wait_seconds']);
+        $minWait = max(1, $response->waitSeconds() ?? (int) $cfg['min_wait_seconds']);
         $notBefore = $now->addSeconds($minWait);
         $state = new SitfisProtocolState(
             phase: SitfisProtocolState::PHASE_WAITING_MIN_PERIOD,
@@ -186,6 +203,7 @@ final class SitfisFlowService
         );
 
         $pollCount = $state->pollCount + 1;
+        $pollInterval = max($pollInterval, $response->waitSeconds() ?? 0);
         $stateAfterPoll = $state->with(
             phase: SitfisProtocolState::PHASE_POLLING_EMIT,
             pollCount: $pollCount,
@@ -337,33 +355,6 @@ final class SitfisFlowService
         $this->eligibility->touchRateLimit((int) $request->office->id);
 
         $idempotencyKey = $request->run->idempotency_key.':'.$operationKey.':'.($request->progressCursor ?? '0');
-        $reserve = $this->ledger->reserve(new UsageReserveRequest(
-            officeId: (int) $request->office->id,
-            idempotencyKey: $idempotencyKey,
-            systemCode: $domainSystem,
-            serviceCode: $service,
-            operationCode: $catalogOperation,
-            quantity: 1,
-            clientId: (int) $request->client->id,
-            contributorRef: substr(hash('sha256', $ids['contributor_cnpj']), 0, 16),
-            correlationId: $correlation,
-            operationKey: $operationKey,
-            isSimulated: false,
-            functionalRoute: str_contains($operationKey, 'solicitar') ? 'Apoiar' : 'Emitir',
-        ));
-
-        if (! $reserve->allowed) {
-            return new IntegraResponse(
-                success: false,
-                httpStatus: 422,
-                body: [],
-                errorCode: 'BUDGET_EXCEEDED',
-                errorMessage: 'Orçamento SERPRO bloqueou a operação.',
-                correlationId: $correlation,
-                operationKey: $operationKey,
-            );
-        }
-
         $payload = $dadosMode === 'EMPTY'
             ? ['dados' => '']
             : ['dados' => json_encode($businessData, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)];
@@ -384,6 +375,51 @@ final class SitfisFlowService
             idempotencyKey: $idempotencyKey,
             correlationId: $correlation,
         );
+
+        $driver = $this->drivers->forOperationKey($operationKey);
+        if ($driver === SerproCapabilityDriver::Disabled) {
+            return new IntegraResponse(
+                success: false,
+                httpStatus: 503,
+                body: [],
+                errorCode: 'CAPABILITY_DISABLED',
+                errorMessage: 'Capacidade SITFIS desabilitada.',
+                correlationId: $correlation,
+                operationKey: $operationKey,
+            );
+        }
+        // Simulação não cria reserva, franquia ou custo no ledger.
+        if ($driver === SerproCapabilityDriver::Simulated) {
+            return $this->integra->execute($integraRequest);
+        }
+
+        $reserve = $this->ledger->reserve(new UsageReserveRequest(
+            officeId: (int) $request->office->id,
+            idempotencyKey: $idempotencyKey,
+            systemCode: $domainSystem,
+            serviceCode: $service,
+            operationCode: $catalogOperation,
+            quantity: 1,
+            clientId: (int) $request->client->id,
+            contributorRef: substr(hash('sha256', $ids['contributor_cnpj']), 0, 16),
+            correlationId: $correlation,
+            operationKey: $operationKey,
+            isSimulated: false,
+            functionalRoute: str_contains($operationKey, 'solicitar') ? 'Apoiar' : 'Emitir',
+            requestTag: $integraRequest->resolvedRequestTag(),
+        ));
+
+        if (! $reserve->allowed) {
+            return new IntegraResponse(
+                success: false,
+                httpStatus: 422,
+                body: [],
+                errorCode: 'BUDGET_EXCEEDED',
+                errorMessage: 'Orçamento SERPRO bloqueou a operação.',
+                correlationId: $correlation,
+                operationKey: $operationKey,
+            );
+        }
 
         try {
             $response = $this->integra->execute($integraRequest);
@@ -427,6 +463,7 @@ final class SitfisFlowService
         return in_array($code, [
             'BUDGET_EXCEEDED',
             'FEATURE_DISABLED',
+            'CAPABILITY_DISABLED',
             'KILL_SWITCH',
             'CIRCUIT_OPEN',
             'SUBSCRIPTION_BLOCKED',

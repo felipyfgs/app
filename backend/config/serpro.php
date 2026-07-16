@@ -108,6 +108,10 @@ return [
     | Deve coincidir com o CNPJ do contrato ativo no ambiente.
     */
     'termo_destination_cnpj' => env('SERPRO_TERMO_DESTINATION_CNPJ', ''),
+    'termo_xsd_path' => env(
+        'SERPRO_TERMO_XSD_PATH',
+        resource_path('serpro/xsd/termo-autorizacao.v1.xsd'),
+    ),
 
     /*
     |--------------------------------------------------------------------------

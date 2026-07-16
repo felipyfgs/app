@@ -15,6 +15,8 @@ use App\Models\User;
 use App\Services\Integra\OfficeSerproAuthorizationService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use RobRichards\XMLSecLibs\XMLSecurityDSig;
+use RobRichards\XMLSecLibs\XMLSecurityKey;
 use Tests\TestCase;
 
 class OfficeSerproAuthorizationTest extends TestCase
@@ -228,19 +230,49 @@ class OfficeSerproAuthorizationTest extends TestCase
 
     private function validTermoXml(string $signedBy, string $destination): string
     {
-        return <<<XML
+        $xml = <<<XML
 <?xml version="1.0"?>
-<TermoAutorizacao>
+<TermoAutorizacao Id="termo-1">
   <assinadoPor>{$signedBy}</assinadoPor>
   <autorPedido>{$signedBy}</autorPedido>
   <destinatario>{$destination}</destinatario>
   <dataInicioVigencia>2026-01-01</dataInicioVigencia>
   <dataFimVigencia>2027-12-31</dataFimVigencia>
-  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
-    <SignedInfo><CanonicalizationMethod/><SignatureMethod/><Reference><DigestMethod/><DigestValue>x</DigestValue></Reference></SignedInfo>
-    <SignatureValue>ZmFrZQ==</SignatureValue>
-  </Signature>
 </TermoAutorizacao>
 XML;
+
+        $privateKey = openssl_pkey_new([
+            'private_key_bits' => 2048,
+            'private_key_type' => OPENSSL_KEYTYPE_RSA,
+            'digest_alg' => 'sha256',
+        ]);
+        $csr = openssl_csr_new([
+            'commonName' => 'Autor Teste:'.$signedBy,
+            'serialNumber' => $signedBy,
+        ], $privateKey, ['digest_alg' => 'sha256']);
+        $certificate = openssl_csr_sign($csr, null, $privateKey, 365, ['digest_alg' => 'sha256']);
+        openssl_pkey_export($privateKey, $privatePem);
+        openssl_x509_export($certificate, $certificatePem);
+
+        $dom = new \DOMDocument;
+        $dom->loadXML($xml, LIBXML_NONET);
+        $signature = new XMLSecurityDSig;
+        $signature->setCanonicalMethod(XMLSecurityDSig::C14N);
+        $signature->addReference(
+            $dom->documentElement,
+            XMLSecurityDSig::SHA256,
+            ['http://www.w3.org/2000/09/xmldsig#enveloped-signature'],
+            ['id_name' => 'Id', 'overwrite' => false],
+        );
+        $key = new XMLSecurityKey(
+            XMLSecurityKey::RSA_SHA256,
+            ['type' => 'private'],
+        );
+        $key->loadKey($privatePem, false);
+        $signature->sign($key);
+        $signature->add509Cert($certificatePem, true, false);
+        $signature->appendSignature($dom->documentElement);
+
+        return $dom->saveXML() ?: $xml;
     }
 }

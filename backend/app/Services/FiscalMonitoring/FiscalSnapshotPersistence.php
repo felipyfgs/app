@@ -9,6 +9,7 @@ use App\Enums\FiscalPendingStatus;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
+use App\Enums\FiscalVerificationState;
 use App\Models\FiscalFinding;
 use App\Models\FiscalMonitoringRun;
 use App\Models\FiscalPendingItem;
@@ -56,6 +57,22 @@ final class FiscalSnapshotPersistence
                 ->whereKey($run->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            $hasParseAlert = collect($payload->findings)->contains(
+                fn (array $finding): bool => ($finding['code'] ?? null) === 'SITFIS_LAYOUT_UNKNOWN'
+            );
+            if ($hasParseAlert) {
+                $locked->verification_state = FiscalVerificationState::ParseAlert;
+                $locked->save();
+            } elseif (
+                $hasEvidence
+                && in_array($payload->result, [FiscalRunResult::Success, FiscalRunResult::Partial], true)
+                && ! $payload->shouldRequeue
+            ) {
+                // VERIFIED só após parse bem-sucedido com evidência (não no enqueue).
+                $locked->verification_state = FiscalVerificationState::Verified;
+                $locked->save();
+            }
 
             $evidence = null;
             if ($hasEvidence) {
@@ -156,19 +173,25 @@ final class FiscalSnapshotPersistence
         array $guarded,
         ?int $evidenceId,
     ): FiscalSnapshot {
-        // Desliga is_current anteriores do mesmo eixo lógico
-        FiscalSnapshot::query()
-            ->where('office_id', $run->office_id)
-            ->where('client_id', $run->client_id)
-            ->where('system_code', $run->system_code)
-            ->where('service_code', $run->service_code)
-            ->when(
-                $run->competence_id !== null,
-                fn ($q) => $q->where('competence_id', $run->competence_id),
-                fn ($q) => $q->whereNull('competence_id'),
-            )
-            ->where('is_current', true)
-            ->update(['is_current' => false]);
+        $isCurrentEligible = $run->source_provenance?->value !== 'UNVERIFIED'
+            && $run->verification_state?->value !== 'PARSE_ALERT';
+
+        // Só demove o corrente se o novo for elegível — PARSE_ALERT/UNVERIFIED
+        // não podem deixar o cliente sem snapshot is_current válido.
+        if ($isCurrentEligible) {
+            FiscalSnapshot::query()
+                ->where('office_id', $run->office_id)
+                ->where('client_id', $run->client_id)
+                ->where('system_code', $run->system_code)
+                ->where('service_code', $run->service_code)
+                ->when(
+                    $run->competence_id !== null,
+                    fn ($q) => $q->where('competence_id', $run->competence_id),
+                    fn ($q) => $q->whereNull('competence_id'),
+                )
+                ->where('is_current', true)
+                ->update(['is_current' => false]);
+        }
 
         $version = (int) FiscalSnapshot::query()
             ->where('office_id', $run->office_id)
@@ -191,10 +214,13 @@ final class FiscalSnapshotPersistence
             'system_code' => $run->system_code,
             'service_code' => $run->service_code,
             'operation_code' => $run->operation_code,
+            'operation_key' => $run->operation_key,
+            'source_provenance' => $run->source_provenance,
+            'verification_state' => $run->verification_state,
             'situation' => $guarded['situation'],
             'coverage' => $guarded['coverage'],
             'version' => $version + 1,
-            'is_current' => true,
+            'is_current' => $isCurrentEligible,
             'normalized' => $guarded['normalized'],
             'observed_at' => CarbonImmutable::now(),
             'created_at' => CarbonImmutable::now(),

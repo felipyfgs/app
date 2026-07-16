@@ -62,7 +62,7 @@ final class PriceCalculator
         if ($version === null) {
             return [
                 'price_version_id' => null,
-                'estimated_cost_micros' => $class === SerproConsumptionClass::NaoFaturavel ? 0 : null,
+                'estimated_cost_micros' => null,
                 'unit_cost_micros' => null,
                 'currency' => null,
             ];

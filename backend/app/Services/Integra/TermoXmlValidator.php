@@ -19,7 +19,6 @@ use RobRichards\XMLSecLibs\XMLSecurityKey;
 final class TermoXmlValidator
 {
     /**
-     * @param  string  $xml
      * @param  string  $expectedAuthorIdentity  CPF/CNPJ do Autor
      * @param  string  $expectedDestinationCnpj  CNPJ da software house contratante
      */
@@ -232,30 +231,42 @@ final class TermoXmlValidator
             }
         }
 
-        $xsdPath = storage_path('schemas/serpro/termo-autorizacao.xsd');
-        if (is_readable($xsdPath)) {
-            $limits['xsd_full'] = true;
-            $previous = libxml_use_internal_errors(true);
-            $ok = $dom->schemaValidate($xsdPath);
-            libxml_clear_errors();
-            libxml_use_internal_errors($previous);
-            if (! $ok) {
-                return new TermoValidationResult(
-                    valid: false,
-                    errorCode: 'XSD_FAILED',
-                    errorMessage: 'Termo não conforme ao XSD oficial.',
-                    signedBy: $signedByNorm,
-                    destinationCnpj: $destinationNorm,
-                    authorIdentity: $authorNorm,
-                    validFrom: $validFrom,
-                    validTo: $validTo,
-                    sha256: $sha256,
-                    signatureChecked: true,
-                    signatureValid: true,
-                    limits: $limits,
-                    authorizationState: TermoAuthorizationState::Rejected->value,
-                );
-            }
+        $defaultXsdPath = dirname(__DIR__, 3).'/resources/serpro/xsd/termo-autorizacao.v1.xsd';
+        $xsdPath = app()->bound('config')
+            ? (string) config('serpro.termo_xsd_path', $defaultXsdPath)
+            : $defaultXsdPath;
+        if ($xsdPath === '' || ! is_readable($xsdPath)) {
+            return $this->reject(
+                'XSD_UNAVAILABLE',
+                'XSD versionado do Termo não está disponível.',
+                $limits,
+                $sha256,
+                $signedByNorm,
+                $authorNorm,
+            );
+        }
+
+        $previous = libxml_use_internal_errors(true);
+        $ok = $dom->schemaValidate($xsdPath);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        $limits['xsd_full'] = $ok;
+        if (! $ok) {
+            return new TermoValidationResult(
+                valid: false,
+                errorCode: 'XSD_FAILED',
+                errorMessage: 'Termo não conforme ao XSD versionado.',
+                signedBy: $signedByNorm,
+                destinationCnpj: $destinationNorm,
+                authorIdentity: $authorNorm,
+                validFrom: $validFrom,
+                validTo: $validTo,
+                sha256: $sha256,
+                signatureChecked: true,
+                signatureValid: true,
+                limits: $limits,
+                authorizationState: TermoAuthorizationState::Rejected->value,
+            );
         }
 
         return new TermoValidationResult(
@@ -332,11 +343,9 @@ final class TermoXmlValidator
                 ];
             }
 
-            // Carrega X509 embutido (KeyInfo)
-            $xpath = new DOMXPath($dom);
-            $xpath->registerNamespace('ds', 'http://www.w3.org/2000/09/xmldsig#');
-            $x509 = $xpath->query('//ds:X509Certificate|//*[local-name()="X509Certificate"]');
-            if ($x509 === false || $x509->length === 0) {
+            // Carrega X509 embutido (KeyInfo) diretamente da Signature localizada.
+            $x509 = $signature->getElementsByTagNameNS('*', 'X509Certificate');
+            if ($x509->length === 0) {
                 return [
                     'ok' => false,
                     'cert_ok' => false,
@@ -360,10 +369,7 @@ final class TermoXmlValidator
 
             $certIdentity = null;
             $certOk = false;
-            $xpath = new DOMXPath($dom);
-            $xpath->registerNamespace('ds', 'http://www.w3.org/2000/09/xmldsig#');
-            $x509 = $xpath->query('//ds:X509Certificate|//*[local-name()="X509Certificate"]');
-            if ($x509 !== false && $x509->length > 0) {
+            if ($x509->length > 0) {
                 $pem = $this->certPemFromBase64(trim((string) $x509->item(0)?->textContent));
                 $parsed = openssl_x509_parse($pem);
                 if (is_array($parsed)) {

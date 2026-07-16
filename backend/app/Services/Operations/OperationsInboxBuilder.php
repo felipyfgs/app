@@ -121,6 +121,8 @@ final class OperationsInboxBuilder
         'usage_franchise_exceeded',
         'mutation_unknown_result',
         'parsing_alert',
+        'sitfis_run_completed',
+        'sitfis_run_failed',
     ];
 
     public const SEVERITIES = [
@@ -189,6 +191,8 @@ final class OperationsInboxBuilder
         'usage_franchise_exceeded' => 'high',
         'mutation_unknown_result' => 'critical',
         'parsing_alert' => 'medium',
+        'sitfis_run_completed' => 'low',
+        'sitfis_run_failed' => 'high',
     ];
 
     private const SEVERITY_RANK = [
@@ -308,8 +312,78 @@ final class OperationsInboxBuilder
         $items = $items->merge($this->usageItems($officeId));
         $items = $items->merge($this->uncertainMutationItems($officeId));
         $items = $items->merge($this->parsingAlertItems($officeId));
+        $items = $items->merge($this->sitfisRunItems($officeId));
 
         return $items->values();
+    }
+
+    /** @return Collection<int, array<string, mixed>> */
+    private function sitfisRunItems(int $officeId): Collection
+    {
+        // Só falhas e conclusões com alerta de parse — COMPLETED limpos não poluem a inbox.
+        return FiscalMonitoringRun::query()
+            ->where('office_id', $officeId)
+            ->where('service_code', 'SITFIS')
+            ->where(function ($q): void {
+                $q->where('status', 'FAILED')
+                    ->orWhere(function ($q2): void {
+                        $q2->where('status', 'COMPLETED')
+                            ->where('verification_state', 'PARSE_ALERT');
+                    })
+                    ->orWhere('status', 'BLOCKED');
+            })
+            ->where('created_at', '>=', now()->subDays(3))
+            ->with('client')
+            ->orderByDesc('id')
+            ->limit(20)
+            ->get()
+            ->map(function (FiscalMonitoringRun $run): array {
+                $status = $run->status?->value ?? '';
+                $failed = $status === 'FAILED';
+                $blocked = $status === 'BLOCKED';
+                $parseAlert = $run->verification_state?->value === 'PARSE_ALERT';
+                $type = match (true) {
+                    $failed => 'sitfis_run_failed',
+                    $blocked => 'sitfis_run_failed',
+                    $parseAlert => 'sitfis_run_completed',
+                    default => 'sitfis_run_failed',
+                };
+                $title = match (true) {
+                    $failed => 'Atualização SITFIS requer atenção',
+                    $blocked => 'Atualização SITFIS bloqueada',
+                    $parseAlert => 'SITFIS concluída com alerta de layout',
+                    default => 'Atualização SITFIS requer atenção',
+                };
+                $body = match (true) {
+                    $failed => 'A consulta terminou com erro operacional. Abra o detalhe para revisar a próxima ação.',
+                    $blocked => 'A consulta foi bloqueada por gate operacional (autorização, capacidade ou orçamento).',
+                    $parseAlert => 'Relatório capturado, mas o layout não foi reconhecido. Revise o artefato e o parser.',
+                    default => 'A atualização SITFIS requer atenção.',
+                };
+                $item = $this->item(
+                    type: $type,
+                    title: $title,
+                    body: $body,
+                    reasons: array_values(array_filter([
+                        $failed ? 'failed' : ($blocked ? 'blocked' : ($parseAlert ? 'parse_alert' : 'attention')),
+                        $run->error_code,
+                        'source:'.($run->source_provenance?->value ?? 'UNVERIFIED'),
+                    ])),
+                    clientId: $run->client_id,
+                    establishmentId: null,
+                    occurredAt: $run->finished_at?->toIso8601String()
+                        ?? $run->updated_at?->toIso8601String()
+                        ?? now()->toIso8601String(),
+                    role: null,
+                    establishment: null,
+                    cursor: null,
+                );
+                $item['id'] = substr(hash('sha256', 'sitfis-run:'.$run->id), 0, 32);
+                $item['links'] = ['run' => '/fiscal/runs/'.$run->id];
+
+                return $item;
+            })
+            ->values();
     }
 
     /**

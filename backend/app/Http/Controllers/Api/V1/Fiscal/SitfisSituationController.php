@@ -46,7 +46,7 @@ class SitfisSituationController extends Controller
     }
 
     /**
-     * POST — solicita nova emissão só se TTL expirado, ausente ou force=true.
+     * POST — solicita nova emissão só se TTL expirado ou ausente.
      */
     public function refresh(Request $request): JsonResponse
     {
@@ -55,7 +55,6 @@ class SitfisSituationController extends Controller
 
         $data = $request->validate([
             'client_id' => ['required', 'integer'],
-            'force' => ['sometimes', 'boolean'],
         ]);
 
         $client = $this->findClient($office->id, (int) $data['client_id']);
@@ -67,7 +66,7 @@ class SitfisSituationController extends Controller
             $result = $this->sitfis->refresh(
                 office: $office,
                 client: $client,
-                force: (bool) ($data['force'] ?? false),
+                force: false,
                 actorId: $request->user()?->id,
                 dispatch: true,
             );

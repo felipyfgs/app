@@ -3,11 +3,15 @@
 namespace App\Services\FiscalMonitoring;
 
 use App\Enums\FiscalRunStatus;
+use App\Enums\FiscalSourceProvenance;
 use App\Enums\FiscalTrigger;
+use App\Enums\FiscalVerificationState;
+use App\Enums\SerproCapabilityDriver;
 use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
 use App\Models\FiscalMonitoringRun;
 use App\Models\FiscalMonitoringSchedule;
 use App\Models\OfficeSubscription;
+use App\Services\Serpro\CapabilityDriverResolver;
 use App\Support\FeatureFlags;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -198,6 +202,13 @@ final class FiscalMonitoringScheduler
             if ($locked === null || ! $locked->is_enabled) {
                 return 'skipped';
             }
+            $sitfisDriver = null;
+            if (strtoupper((string) $locked->service_code) === 'SITFIS') {
+                $sitfisDriver = app(CapabilityDriverResolver::class)->forCapability('sitfis');
+                if ($sitfisDriver === SerproCapabilityDriver::Disabled) {
+                    return 'blocked';
+                }
+            }
             if ($locked->next_run_at !== null && $locked->next_run_at->greaterThan($now)) {
                 return 'skipped';
             }
@@ -237,6 +248,15 @@ final class FiscalMonitoringScheduler
                 'system_code' => $locked->system_code,
                 'service_code' => $locked->service_code,
                 'operation_code' => $locked->operation_code,
+                'operation_key' => $sitfisDriver !== null ? 'sitfis.emitir_relatorio' : null,
+                'source_provenance' => match ($sitfisDriver) {
+                    SerproCapabilityDriver::Simulated => FiscalSourceProvenance::Simulated,
+                    SerproCapabilityDriver::Real => FiscalSourceProvenance::SerproReal,
+                    default => null,
+                },
+                'verification_state' => $sitfisDriver !== null
+                    ? FiscalVerificationState::Unverified
+                    : null,
                 'trigger' => FiscalTrigger::Scheduled,
                 'idempotency_key' => $key,
                 'status' => FiscalRunStatus::Queued,

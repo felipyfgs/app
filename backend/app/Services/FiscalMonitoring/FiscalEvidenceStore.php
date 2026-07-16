@@ -79,12 +79,16 @@ final class FiscalEvidenceStore
             'byte_size' => $size,
             'source' => $source,
             'source_version' => $sourceVersion,
+            'operation_key' => $run->operation_key,
+            'source_provenance' => $run->source_provenance,
+            'verification_state' => $run->verification_state,
             'observed_at' => $observed,
             'retention_until' => $observed->addDays($retentionDays),
             'is_immutable' => true,
             'metadata' => [
                 'system_code' => $run->system_code,
                 'service_code' => $run->service_code,
+                'operation_key' => $run->operation_key,
             ],
             'created_at' => CarbonImmutable::now(),
         ]);

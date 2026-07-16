@@ -166,9 +166,9 @@ class SitfisFlowTest extends TestCase
         $this->assertSame('WAITING_MIN_PERIOD', $done->progress['phase'] ?? null);
         $this->assertSame(['SOLICITARPROTOCOLO91'], $this->integra->operations());
 
-        // Ledger: solicitação registrou reserva (eligibility + usage gate)
-        $this->assertGreaterThanOrEqual(
-            1,
+        // Simulação não cria reserva, franquia ou custo no ledger.
+        $this->assertSame(
+            0,
             SerproApiUsageReservation::query()
                 ->withoutGlobalScopes()
                 ->where('office_id', $this->office->id)
@@ -265,6 +265,47 @@ class SitfisFlowTest extends TestCase
     {
         Queue::fake();
 
+        // Predecessor VERIFIED corrente — layout desconhecido não deve demovê-lo.
+        $seedRun = FiscalMonitoringRun::query()->create([
+            'office_id' => $this->office->id,
+            'client_id' => $this->client->id,
+            'system_code' => 'INTEGRA_SITFIS',
+            'service_code' => 'SITFIS',
+            'operation_code' => 'MONITOR',
+            'trigger' => 'MANUAL',
+            'idempotency_key' => 'seed-sitfis-layout-predecessor',
+            'status' => FiscalRunStatus::Completed,
+            'result' => 'SUCCESS',
+            'situation' => FiscalSituation::Unknown,
+            'coverage' => 'FULL',
+            'mutability' => 'READ_ONLY',
+            'correlation_id' => 'seed-layout-pred',
+            'source_provenance' => 'SERPRO_REAL',
+            'verification_state' => 'VERIFIED',
+            'finished_at' => now()->subHour(),
+        ]);
+        $predecessor = FiscalSnapshot::query()->create([
+            'office_id' => $this->office->id,
+            'run_id' => $seedRun->id,
+            'client_id' => $this->client->id,
+            'system_code' => 'INTEGRA_SITFIS',
+            'service_code' => 'SITFIS',
+            'operation_code' => 'MONITOR',
+            'source_provenance' => 'SERPRO_REAL',
+            'verification_state' => 'VERIFIED',
+            'situation' => FiscalSituation::Unknown,
+            'coverage' => 'FULL',
+            'version' => 1,
+            'is_current' => true,
+            'normalized' => [
+                'is_negative_certificate' => false,
+                'disclaimer' => 'Não é certidão negativa.',
+                'protocol' => 'PROT-PRED',
+            ],
+            'observed_at' => now()->subHour(),
+            'created_at' => now()->subHour(),
+        ]);
+
         $this->integra
             ->queueSolicit('PROT-LAYOUT-1')
             ->queueReport([
@@ -290,6 +331,11 @@ class SitfisFlowTest extends TestCase
             ->where('parent_run_id', $afterSolicit->id)
             ->firstOrFail();
         $this->assertSame(FiscalRunStatus::Queued, $child->status);
+        $this->assertSame(
+            'UNVERIFIED',
+            $child->fresh()->verification_state?->value ?? $child->fresh()->verification_state,
+            'Enqueue/execute não deve rotular VERIFIED antes do parse'
+        );
 
         $progress = $child->progress ?? [];
         $progress['not_before'] = CarbonImmutable::now()->subMinute()->toIso8601String();
@@ -299,6 +345,10 @@ class SitfisFlowTest extends TestCase
 
         $this->assertSame(FiscalRunStatus::Completed, $done->status);
         $this->assertSame(FiscalSituation::Attention, $done->situation);
+        $this->assertSame(
+            'PARSE_ALERT',
+            $done->verification_state?->value ?? $done->verification_state
+        );
 
         $evidence = FiscalEvidenceArtifact::query()->withoutGlobalScopes()
             ->where('run_id', $done->id)->first();
@@ -308,6 +358,14 @@ class SitfisFlowTest extends TestCase
             ->where('run_id', $done->id)->firstOrFail();
         $this->assertTrue($snapshot->normalized['contract_changed'] ?? false);
         $this->assertFalse($snapshot->normalized['is_negative_certificate'] ?? true);
+        $this->assertFalse(
+            (bool) $snapshot->is_current,
+            'Snapshot com PARSE_ALERT não vira corrente'
+        );
+        $this->assertTrue(
+            (bool) $predecessor->fresh()->is_current,
+            'Predecessor VERIFIED deve permanecer is_current após PARSE_ALERT'
+        );
 
         $this->assertNotNull(
             FiscalFinding::query()->withoutGlobalScopes()
@@ -388,10 +446,9 @@ class SitfisFlowTest extends TestCase
         $this->assertNotNull($response->json('data.expires_at'));
         $this->assertSame(0, $this->integra->callCount());
 
-        // Refresh sem force reutiliza snapshot
+        // Refresh reutiliza snapshot dentro do TTL
         $refresh = $this->postJson('/api/v1/fiscal/sitfis/refresh', [
             'client_id' => $this->client->id,
-            'force' => false,
         ])->assertOk();
 
         $this->assertFalse($refresh->json('data.enqueued'));

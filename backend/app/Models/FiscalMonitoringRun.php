@@ -7,7 +7,9 @@ use App\Enums\FiscalMutability;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
+use App\Enums\FiscalSourceProvenance;
 use App\Enums\FiscalTrigger;
+use App\Enums\FiscalVerificationState;
 use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -65,8 +67,8 @@ class FiscalMonitoringRun extends Model
             'situation' => FiscalSituation::class,
             'coverage' => FiscalCoverage::class,
             'mutability' => FiscalMutability::class,
-            'source_provenance' => \App\Enums\FiscalSourceProvenance::class,
-            'verification_state' => \App\Enums\FiscalVerificationState::class,
+            'source_provenance' => FiscalSourceProvenance::class,
+            'verification_state' => FiscalVerificationState::class,
             'attempt' => 'integer',
             'progress' => 'array',
             'items_processed' => 'integer',

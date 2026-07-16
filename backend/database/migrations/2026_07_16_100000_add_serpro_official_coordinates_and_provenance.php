@@ -36,23 +36,47 @@ return new class extends Migration
             });
         }
 
-        if (Schema::hasTable('serpro_api_usage_entries')
-            && ! Schema::hasColumn('serpro_api_usage_entries', 'operation_key')) {
+        if (Schema::hasTable('serpro_api_usage_entries')) {
             Schema::table('serpro_api_usage_entries', function (Blueprint $table): void {
-                $table->string('operation_key', 120)->nullable()->after('operation_code');
-                $table->string('request_tag', 32)->nullable()->after('correlation_id');
-                $table->string('functional_route', 20)->nullable()->after('request_tag');
-                $table->boolean('is_simulated')->default(false)->after('functional_route');
-                $table->index('operation_key', 'serpro_usage_operation_key_idx');
-                $table->index('request_tag', 'serpro_usage_request_tag_idx');
+                if (! Schema::hasColumn('serpro_api_usage_entries', 'operation_key')) {
+                    $table->string('operation_key', 120)->nullable()->after('operation_code');
+                    $table->index('operation_key', 'serpro_usage_operation_key_idx');
+                }
+                if (! Schema::hasColumn('serpro_api_usage_entries', 'request_tag')) {
+                    $table->string('request_tag', 32)->nullable()->after('correlation_id');
+                    $table->index('request_tag', 'serpro_usage_request_tag_idx');
+                }
+                if (! Schema::hasColumn('serpro_api_usage_entries', 'functional_route')) {
+                    $table->string('functional_route', 20)->nullable()->after('request_tag');
+                }
+                if (! Schema::hasColumn('serpro_api_usage_entries', 'is_simulated')) {
+                    $table->boolean('is_simulated')->default(false)->after('functional_route');
+                }
             });
         }
 
-        if (Schema::hasTable('serpro_api_usage_reservations')
-            && ! Schema::hasColumn('serpro_api_usage_reservations', 'operation_key')) {
+        if (Schema::hasTable('serpro_api_usage_reservations')) {
             Schema::table('serpro_api_usage_reservations', function (Blueprint $table): void {
-                $table->string('operation_key', 120)->nullable()->after('operation_code');
-                $table->boolean('is_simulated')->default(false)->after('shadow_mode');
+                if (! Schema::hasColumn('serpro_api_usage_reservations', 'operation_key')) {
+                    $table->string('operation_key', 120)->nullable()->after('operation_code');
+                }
+                if (! Schema::hasColumn('serpro_api_usage_reservations', 'is_simulated')) {
+                    $table->boolean('is_simulated')->default(false)->after('shadow_mode');
+                }
+                if (! Schema::hasColumn('serpro_api_usage_reservations', 'request_tag')) {
+                    $table->string('request_tag', 32)->nullable()->after('correlation_id');
+                }
+                if (! Schema::hasColumn('serpro_api_usage_reservations', 'functional_route')) {
+                    $table->string('functional_route', 20)->nullable()->after('request_tag');
+                }
+            });
+        }
+
+        if (Schema::hasTable('office_serpro_authorizations')
+            && ! Schema::hasColumn('office_serpro_authorizations', 'termo_authorization_state')) {
+            Schema::table('office_serpro_authorizations', function (Blueprint $table): void {
+                $table->string('termo_authorization_state', 30)->nullable()->after('termo_uploaded_at');
+                $table->string('procurador_etag', 255)->nullable()->after('procurador_token_expires_at');
             });
         }
 
@@ -142,7 +166,10 @@ return new class extends Migration
             'operation_key', 'request_tag', 'functional_route', 'is_simulated',
         ]);
         $this->dropIfExistsColumns('serpro_api_usage_reservations', [
-            'operation_key', 'is_simulated',
+            'operation_key', 'is_simulated', 'request_tag', 'functional_route',
+        ]);
+        $this->dropIfExistsColumns('office_serpro_authorizations', [
+            'termo_authorization_state', 'procurador_etag',
         ]);
         foreach (['fiscal_monitoring_runs', 'fiscal_evidence_artifacts', 'fiscal_snapshots'] as $table) {
             $this->dropIfExistsColumns($table, [

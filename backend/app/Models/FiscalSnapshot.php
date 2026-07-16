@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalSituation;
+use App\Enums\FiscalSourceProvenance;
+use App\Enums\FiscalVerificationState;
 use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -45,8 +47,8 @@ class FiscalSnapshot extends Model
         return [
             'situation' => FiscalSituation::class,
             'coverage' => FiscalCoverage::class,
-            'source_provenance' => \App\Enums\FiscalSourceProvenance::class,
-            'verification_state' => \App\Enums\FiscalVerificationState::class,
+            'source_provenance' => FiscalSourceProvenance::class,
+            'verification_state' => FiscalVerificationState::class,
             'version' => 'integer',
             'is_current' => 'boolean',
             'normalized' => 'array',
@@ -64,7 +66,7 @@ class FiscalSnapshot extends Model
         if ($provenance === null) {
             return false;
         }
-        if ($provenance instanceof \App\Enums\FiscalSourceProvenance) {
+        if ($provenance instanceof FiscalSourceProvenance) {
             return $provenance->isOfficialFiscalState() && (bool) $this->is_current;
         }
 

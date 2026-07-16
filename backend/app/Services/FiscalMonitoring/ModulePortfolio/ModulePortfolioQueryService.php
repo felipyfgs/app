@@ -583,7 +583,7 @@ final class ModulePortfolioQueryService
     FROM fiscal_snapshots fs
     WHERE fs.office_id = {$office->id}
       AND fs.client_id = clients.id
-      AND fs.is_current = 1
+      AND fs.is_current = true
       AND fs.system_code IN ({$sysList})
 SQL;
         if ($serviceCodes !== []) {
@@ -717,7 +717,7 @@ SQL;
         return "(
             SELECT top.situation FROM tax_obligation_projections top
             WHERE top.office_id = {$office->id} AND top.client_id = clients.id
-              AND top.is_open = 1
+              AND top.is_open = true
             ORDER BY
                 CASE top.situation
                     WHEN 'ERROR' THEN 1 WHEN 'BLOCKED' THEN 2 WHEN 'ATTENTION' THEN 3
@@ -784,7 +784,7 @@ SQL;
     SELECT fs.observed_at FROM fiscal_snapshots fs
     WHERE fs.office_id = {$office->id}
       AND fs.client_id = clients.id
-      AND fs.is_current = 1
+      AND fs.is_current = true
       AND fs.system_code IN ({$sysList})
     ORDER BY fs.observed_at DESC, fs.id DESC LIMIT 1
 )

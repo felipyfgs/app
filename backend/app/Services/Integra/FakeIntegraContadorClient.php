@@ -5,6 +5,7 @@ namespace App\Services\Integra;
 use App\Contracts\IntegraContadorClient;
 use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
+use App\Enums\FiscalSourceProvenance;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
 
 /**
@@ -76,7 +77,7 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
             headers: $response->headers,
             errorCode: $response->errorCode,
             errorMessage: $response->errorMessage,
-            simulated: $response->simulated || true,
+            simulated: $response->simulated,
             retryAfterSeconds: $response->retryAfterSeconds,
             correlationId: $response->correlationId ?? $request->correlationId,
             latencyMs: $response->latencyMs,
@@ -88,9 +89,10 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
             operationKey: $response->operationKey ?? $request->operationKey,
             requestTag: $response->requestTag ?? $request->resolvedRequestTag(),
             functionalRoute: $response->functionalRoute,
-            sourceProvenance: $response->simulated || true
-                ? \App\Enums\FiscalSourceProvenance::Simulated->value
-                : \App\Enums\FiscalSourceProvenance::SerproReal->value,
+            sourceProvenance: $response->sourceProvenance
+                ?? ($response->simulated
+                    ? FiscalSourceProvenance::Simulated->value
+                    : FiscalSourceProvenance::SerproReal->value),
         );
     }
 
@@ -446,6 +448,7 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
             simulated: false,
             correlationId: null,
             latencyMs: 5,
+            sourceProvenance: FiscalSourceProvenance::SerproReal->value,
         );
     }
 
@@ -463,6 +466,7 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
             ],
             simulated: false,
             latencyMs: 5,
+            sourceProvenance: FiscalSourceProvenance::SerproReal->value,
         );
     }
 
@@ -476,6 +480,7 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
             errorMessage: 'Timeout após envio — resultado incerto.',
             simulated: false,
             latencyMs: 30000,
+            sourceProvenance: FiscalSourceProvenance::SerproReal->value,
         );
     }
 }

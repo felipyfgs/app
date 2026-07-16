@@ -3,6 +3,7 @@
 namespace App\Services\Serpro\Usage;
 
 use App\DTO\Serpro\IntegraResponse;
+use App\Enums\SerproConsumptionClass;
 use App\Enums\SerproUsageReservationStatus;
 use App\Enums\SerproUsageResult;
 use App\Models\Office;
@@ -10,6 +11,7 @@ use App\Models\SerproApiUsageEntry;
 use App\Models\SerproApiUsageReservation;
 use App\Services\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use LogicException;
 
@@ -123,7 +125,7 @@ final class UsageLedgerService
 
             // Rotas oficiais não faturáveis
             if (in_array($request->functionalRoute, ['Apoiar', 'Monitorar'], true)) {
-                $class = \App\Enums\SerproConsumptionClass::NaoFaturavel;
+                $class = SerproConsumptionClass::NaoFaturavel;
             }
 
             $create = [
@@ -148,9 +150,11 @@ final class UsageLedgerService
                 'reserved_at' => now(),
                 'finalized_at' => $allowed ? null : now(),
             ];
-            if (\Illuminate\Support\Facades\Schema::hasColumn('serpro_api_usage_reservations', 'operation_key')) {
+            if (Schema::hasColumn('serpro_api_usage_reservations', 'operation_key')) {
                 $create['operation_key'] = $request->operationKey;
                 $create['is_simulated'] = $request->isSimulated;
+                $create['request_tag'] = $request->requestTag;
+                $create['functional_route'] = $request->functionalRoute;
             }
 
             $reservation = SerproApiUsageReservation::query()->create($create);
@@ -279,7 +283,7 @@ final class UsageLedgerService
             }
 
             // Custo histórico: preserva estimativa da reserva (não recalcula se preço mudou).
-            $entry = SerproApiUsageEntry::query()->create([
+            $entryData = [
                 'office_id' => $locked->office_id,
                 'reservation_id' => $locked->id,
                 'idempotency_key' => $locked->idempotency_key,
@@ -300,7 +304,14 @@ final class UsageLedgerService
                 'shadow_mode' => $locked->shadow_mode,
                 'occurred_at' => now(),
                 'created_at' => now(),
-            ]);
+            ];
+            if (Schema::hasColumn('serpro_api_usage_entries', 'operation_key')) {
+                $entryData['operation_key'] = $locked->operation_key;
+                $entryData['is_simulated'] = (bool) $locked->is_simulated;
+                $entryData['request_tag'] = $locked->request_tag;
+                $entryData['functional_route'] = $locked->functional_route;
+            }
+            $entry = SerproApiUsageEntry::query()->create($entryData);
 
             $locked->status = SerproUsageReservationStatus::Finalized;
             $locked->result = $result;
