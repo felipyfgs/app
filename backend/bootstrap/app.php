@@ -2,7 +2,6 @@
 
 use App\Http\Middleware\EnsureAdminTwoFactor;
 use App\Http\Middleware\EnsureOfficeContext;
-use App\Http\Middleware\EnsureOfficeRole;
 use App\Http\Middleware\EnsureOfficeSubscriptionWritable;
 use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\EnsurePlatformAdminTwoFactor;
@@ -26,7 +25,6 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'office' => EnsureOfficeContext::class,
-            'office.role' => EnsureOfficeRole::class,
             'office.writable' => EnsureOfficeSubscriptionWritable::class,
             'admin.2fa' => EnsureAdminTwoFactor::class,
             'platform.admin' => EnsurePlatformAdmin::class,

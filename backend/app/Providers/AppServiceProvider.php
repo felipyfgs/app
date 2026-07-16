@@ -65,7 +65,6 @@ use App\Services\Integra\DisabledAutenticarProcuradorClient;
 use App\Services\Integra\FakeAutenticarProcuradorClient;
 use App\Services\Integra\FakeIntegraContadorClient;
 use App\Services\Integra\FakeIntegraProcuracoesClient;
-use App\Services\Integra\HttpIntegraContadorClient;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\SimulatedIntegraContadorClient;
 use App\Services\Integra\Mailbox\CaixaPostalDetailAdapter;

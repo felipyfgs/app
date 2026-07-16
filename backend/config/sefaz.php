@@ -96,25 +96,8 @@ return [
         'layout_version' => env('SEFAZ_CTE_LAYOUT_VERSION', '1.00'),
     ],
 
-    'mdfe' => [
-        'production' => env(
-            'SEFAZ_MDFE_DISTDFE_URL',
-            'https://mdfe.svrs.rs.gov.br/ws/MDFeDistribuicaoDFe/MDFeDistribuicaoDFe.asmx'
-        ),
-        'homologation' => env(
-            'SEFAZ_MDFE_DISTDFE_URL_HOM',
-            'https://mdfe-homologacao.svrs.rs.gov.br/ws/MDFeDistribuicaoDFe/MDFeDistribuicaoDFe.asmx'
-        ),
-        'soap_action' => env(
-            'SEFAZ_MDFE_SOAP_ACTION',
-            'http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeDistribuicaoDFe/mdfeDistDFeInteresse'
-        ),
-        'namespace' => env(
-            'SEFAZ_MDFE_NAMESPACE',
-            'http://www.portalfiscal.inf.br/mdfe/wsdl/MDFeDistribuicaoDFe'
-        ),
-        'layout_version' => env('SEFAZ_MDFE_LAYOUT_VERSION', '1.00'),
-    ],
+    // Bloco de endpoints MDF-e removido: capability fora do catálogo escritural
+    // (mdfe_enabled=false; enums/cursors legados permanecem para leitura).
 
     'manifest' => [
         'production' => env(
