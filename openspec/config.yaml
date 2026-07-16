@@ -38,7 +38,7 @@ context: |
   Verificação:
   - Backend: vendor/bin/pint --test; php artisan test (--filter=…)
   - Frontend CI: pnpm lint → typecheck → generate (pnpm@11.9.0)
-  - Hub: bash ./docker/ops/fiscal-hub-verify-backend.sh
+  - Hub: ./docker/ops/verify.sh
 
 rules:
   proposal:

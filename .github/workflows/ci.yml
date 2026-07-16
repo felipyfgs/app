@@ -58,7 +58,23 @@ jobs:
       - name: Validar tipos
         run: pnpm run typecheck
       - name: Gerar SPA
+        # O preview/E2E consome o artefato estático; generate deve vir antes.
         run: pnpm run generate
+      - name: Executar testes unitários
+        run: pnpm run test
+      - name: Validar fidelidade ao arquétipo do change ativo
+        run: pnpm run test:fidelity
+      # Política: E2E funcional é gate obrigatório no CI (desktop + móvel, fixtures
+      # sanitizadas). Specs *visual* e baselines PNG em __screenshots__/ são só
+      # locais (gitignored) — rodar com `pnpm run test:e2e:visual` quando precisar.
+      # O scanner de artefatos roda mesmo se o Playwright falhar.
+      - name: Instalar Chromium do Playwright
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Executar testes E2E
+        run: pnpm run test:e2e
+      - name: Varrer artefatos sensíveis
+        if: always()
+        run: pnpm run test:artifacts
 
   infrastructure:
     name: Compose e OpenSpec
@@ -69,14 +85,37 @@ jobs:
         with:
           node-version: '24'
       - name: Validar scripts operacionais
-        run: sh -n docker/ops/backup.sh docker/ops/restore.sh
-      - name: Validar Docker Compose
-        run: docker compose config --quiet
-      - name: Construir PHP e conferir extensões críticas
         run: |
-          docker compose build php
+          for script in \
+            docker/php/entrypoint.sh docker/traefik/init.sh \
+            docker/ops/backup.sh docker/ops/restore.sh docker/ops/deploy.sh \
+            docker/ops/restore-smoke.sh; do
+            sh -n "$script"
+          done
+          for script in docker/frontend/entrypoint.sh docker/ops/verify.sh; do
+            bash -n "$script"
+          done
+      - name: Validar Docker Compose de desenvolvimento e produção
+        run: |
+          docker compose config --quiet
+          PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
+            -f compose.prod.yml -p fiscal-hub config --quiet
+      - name: Construir imagens de desenvolvimento e conferir extensões críticas
+        run: |
+          docker compose --profile dev build nginx php frontend-dev
           docker compose run --rm --no-deps --entrypoint php php -r \
             'exit(extension_loaded("curl") && extension_loaded("sodium") ? 0 : 1);'
+      - name: Construir imagens imutáveis de produção
+        run: |
+          PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
+            -f compose.prod.yml -p fiscal-hub \
+            build acme-init traefik web php
+          PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
+            -f compose.prod.yml -p fiscal-hub pull socket-proxy
+      - name: Validar runtimes e restauração isolada
+        run: |
+          docker run --rm --add-host php:127.0.0.1 fiscal-hub-web:prod nginx -t
+          docker run --rm --entrypoint php-fpm fiscal-hub-php:prod -t
+          ./docker/ops/restore-smoke.sh
       - name: Validar mudança OpenSpec
-        run: npx --yes @fission-ai/openspec@1.5.0 validate build-nfse-adn-capture-system --json
-
+        run: npx --yes @fission-ai/openspec@1.5.0 validate integrar-serpro-monitoramento-completo --json
