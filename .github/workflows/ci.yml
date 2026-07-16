@@ -92,7 +92,9 @@ jobs:
             docker/ops/restore-smoke.sh; do
             sh -n "$script"
           done
-          for script in docker/frontend/entrypoint.sh docker/ops/verify.sh; do
+          for script in \
+            docker/frontend/entrypoint.sh docker/ops/verify.sh \
+            docker/ops/secret-scan.sh; do
             bash -n "$script"
           done
       - name: Validar Docker Compose de desenvolvimento e produção
