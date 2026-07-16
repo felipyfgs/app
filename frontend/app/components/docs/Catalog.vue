@@ -350,7 +350,6 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
 
   return cols
 })
-
 </script>
 
 <template>
