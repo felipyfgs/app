@@ -35,20 +35,21 @@ describe('permissions', () => {
     expect(unwrapMeUser(null)).toBeNull()
   })
 
-  it('ADMIN sem 2FA confirmado não acessa administração nem mutações sensíveis', () => {
+  it('ADMIN tem acesso administrativo sem gate de 2FA (TOTP descontinuado)', () => {
     const adminPending = user({
       role: 'ADMIN',
       two_factor_confirmed: false,
       two_factor_required: true
     })
-    expect(hasConfirmedAdminAccess(adminPending)).toBe(false)
-    expect(canManageCredentials(adminPending)).toBe(false)
-    expect(canManageClients(adminPending)).toBe(false)
-    expect(canTriggerSync(adminPending)).toBe(false)
-    expect(canCreateExport(adminPending)).toBe(false)
+    // TOTP não é mais gate de UI; senha recente é server-side.
+    expect(hasConfirmedAdminAccess(adminPending)).toBe(true)
+    expect(canManageCredentials(adminPending)).toBe(true)
+    expect(canManageClients(adminPending)).toBe(true)
+    expect(canTriggerSync(adminPending)).toBe(true)
+    expect(canCreateExport(adminPending)).toBe(true)
   })
 
-  it('ADMIN com 2FA confirmado tem acesso total', () => {
+  it('ADMIN tem acesso total de escritório', () => {
     const admin = user({ role: 'ADMIN' })
     expect(hasConfirmedAdminAccess(admin)).toBe(true)
     expect(canManageCredentials(admin)).toBe(true)

@@ -1,11 +1,9 @@
 <script setup lang="ts">
 /**
- * Configuração unificada do escritório (OpenSpec 6.1).
+ * Configuração do escritório.
  * Seções: perfil · consentimento · A1 canônico · agendas.
- * Sem campos técnicos SERPRO (autor, Termo XML, token, OAuth, ambiente).
- *
- * Arquétipo: settings/index do template (UPageCard naked + subtle forms).
- * API ainda ausente → empty/loading/error graceful.
+ * Sem campos técnicos SERPRO (autor, Termo, tokens ou ambiente).
+ * UAlert apenas para erro real; estados normais usam badge/empty state.
  */
 import type {
   OfficeCanonicalCredential,
@@ -178,7 +176,7 @@ async function saveProfile(payload: {
         institutional_phone: payload.institutional_phone
       }
     }
-    toast.add({ title: 'Perfil institucional salvo', color: 'success' })
+    toast.add({ title: 'Perfil salvo', color: 'success' })
     await load()
   } catch (caught) {
     toast.add({
@@ -318,7 +316,6 @@ onMounted(load)
   <div data-testid="settings-office-unified">
     <UPageCard
       title="Escritório"
-      description="Perfil institucional, consentimento, certificado A1 e agendas dos monitores. Sem configuração técnica SERPRO."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
@@ -334,20 +331,9 @@ onMounted(load)
         data-testid="settings-load-error"
       />
 
-      <UAlert
-        v-if="apiUnavailable && !loadError"
-        color="info"
-        icon="i-lucide-info"
-        title="Configuração unificada em implantação"
-        description="Parte das APIs ainda não está publicada. Use o perfil e o certificado com o que estiver disponível; estados vazios são esperados."
-        data-testid="settings-api-pending"
-      />
-
       <UPageCard
-        v-if="onboarding"
+        v-if="onboarding && (onboarding.status !== 'authorized' || onboarding.actions?.length)"
         variant="subtle"
-        title="Situação"
-        description="Somente pendências que o escritório pode resolver."
         data-testid="settings-onboarding-status"
       >
         <div class="flex flex-wrap items-center gap-2">
@@ -364,25 +350,20 @@ onMounted(load)
             ref {{ onboarding.correlation_id }}
           </span>
         </div>
-        <p
-          v-if="onboarding.message"
-          class="mt-2 text-sm text-muted"
-        >
-          {{ onboarding.message }}
-        </p>
         <ul
           v-if="onboarding.actions?.length"
-          class="mt-3 list-disc space-y-1 ps-5 text-sm"
+          class="mt-3 space-y-1 text-sm text-muted"
         >
           <li
             v-for="action in onboarding.actions"
             :key="action.code"
+            class="flex items-center gap-2"
           >
-            <span class="font-medium">{{ action.label }}</span>
-            <span
-              v-if="action.description"
-              class="text-muted"
-            > — {{ action.description }}</span>
+            <UIcon
+              name="i-lucide-circle"
+              class="size-1.5 shrink-0"
+            />
+            <span>{{ action.label }}</span>
           </li>
         </ul>
       </UPageCard>

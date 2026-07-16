@@ -1,6 +1,7 @@
 /**
  * Seletor global de escritórios para PLATFORM_ADMIN.
- * Sessão privilegiada separada — não cria membership nem altera selected_office_id.
+ * Consome envelope canônico { offices, selected_office_id, default_office_id }.
+ * Sem fallback para /platform/tenants.
  */
 import type { PlatformOfficeSummary } from '~/types/api'
 import { isPlatformAdmin } from '~/utils/permissions'
@@ -12,18 +13,27 @@ export function usePlatformOfficeSelect() {
   const { me, bumpSessionEpoch, sessionEpoch } = useDashboard()
 
   const offices = ref<PlatformOfficeSummary[]>([])
+  const selectedOfficeId = ref<number | null>(null)
+  const defaultOfficeId = ref<number | null>(null)
   const loading = ref(false)
   const switching = ref(false)
   const loadError = ref<string | null>(null)
   const q = ref('')
 
   const enabled = computed(() => isPlatformAdmin(me.value))
-  const currentOfficeId = computed(() => me.value?.office?.id ?? null)
+  const currentOfficeId = computed(() => me.value?.current_office?.id ?? me.value?.office?.id ?? null)
   const privileged = computed(() => me.value?.access_mode === 'platform_privileged')
+
+  /** Offices selecionáveis no seletor (selectable=true ou is_active). */
+  const selectableOffices = computed(() =>
+    offices.value.filter(o => o.selectable !== false && o.is_active !== false)
+  )
 
   async function loadOffices(params?: { q?: string }) {
     if (!enabled.value) {
       offices.value = []
+      selectedOfficeId.value = null
+      defaultOfficeId.value = null
       return
     }
     loading.value = true
@@ -33,25 +43,14 @@ export function usePlatformOfficeSelect() {
         per_page: 100,
         q: params?.q ?? (q.value || undefined)
       })
-      offices.value = res.data || []
+      const envelope = res.data
+      // Contrato canônico: data.offices — nunca tratar data como array.
+      offices.value = Array.isArray(envelope?.offices) ? envelope.offices : []
+      selectedOfficeId.value = envelope?.selected_office_id ?? null
+      defaultOfficeId.value = envelope?.default_office_id ?? null
     } catch (caught) {
-      // Fallback: lista de tenants legada se /platform/offices ainda não existir.
-      try {
-        const legacy = await api.platform.tenants.list({ per_page: 100 })
-        offices.value = (legacy.data || []).map((row) => {
-          const r = row as Record<string, unknown>
-          return {
-            id: Number(r.id ?? r.office_id ?? 0),
-            name: String(r.name ?? r.office_name ?? `Escritório #${r.id ?? '?'}`),
-            slug: String(r.slug ?? r.office_slug ?? ''),
-            is_active: r.is_active !== false,
-            plan: r.plan != null ? String(r.plan) : null
-          } satisfies PlatformOfficeSummary
-        }).filter(o => o.id > 0)
-      } catch {
-        offices.value = []
-        loadError.value = apiErrorMessage(caught, 'Não foi possível listar escritórios da plataforma.')
-      }
+      offices.value = []
+      loadError.value = apiErrorMessage(caught, 'Não foi possível listar escritórios da plataforma.')
     } finally {
       loading.value = false
     }
@@ -68,9 +67,9 @@ export function usePlatformOfficeSelect() {
       bumpSessionEpoch()
       const label = offices.value.find(o => o.id === officeId)?.name
       toast.add({
-        title: 'Contexto privilegiado',
+        title: 'Escritório selecionado',
         description: label || `Escritório #${officeId}`,
-        color: 'warning'
+        color: 'success'
       })
       if (import.meta.client) {
         const path = useRoute().fullPath
@@ -79,7 +78,7 @@ export function usePlatformOfficeSelect() {
       return true
     } catch (caught) {
       toast.add({
-        title: apiErrorMessage(caught, 'Falha ao selecionar escritório (contexto privilegiado).'),
+        title: apiErrorMessage(caught, 'Falha ao selecionar escritório.'),
         color: 'error'
       })
       return false
@@ -96,7 +95,7 @@ export function usePlatformOfficeSelect() {
       await refreshIdentity()
       bumpSessionEpoch()
       toast.add({
-        title: 'Contexto privilegiado encerrado',
+        title: 'Seleção de sessão encerrada',
         color: 'neutral'
       })
       if (import.meta.client) {
@@ -105,7 +104,7 @@ export function usePlatformOfficeSelect() {
       return true
     } catch (caught) {
       toast.add({
-        title: apiErrorMessage(caught, 'Falha ao limpar seleção privilegiada.'),
+        title: apiErrorMessage(caught, 'Falha ao limpar seleção.'),
         color: 'error'
       })
       return false
@@ -116,6 +115,9 @@ export function usePlatformOfficeSelect() {
 
   return {
     offices,
+    selectableOffices,
+    selectedOfficeId,
+    defaultOfficeId,
     loading,
     switching,
     loadError,

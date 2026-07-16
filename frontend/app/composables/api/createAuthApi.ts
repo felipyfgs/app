@@ -19,9 +19,13 @@ export function createAuthApi(client: ApiClient) {
           body: { office_id: officeId }
         })
     },
+    /** Reconfirmação de senha (janela server-side 15 min) — substitui TOTP. */
+    confirmPassword: (password: string) =>
+      client('/api/v1/auth/confirm-password', { method: 'POST', body: { password } }),
+    /** @deprecated TOTP descontinuado — mantido só para compat de imports legados. */
     twoFactor: {
       confirmPassword: (password: string) =>
-        client('/user/confirm-password', { method: 'POST', body: { password } }),
+        client('/api/v1/auth/confirm-password', { method: 'POST', body: { password } }),
       enable: () => client('/user/two-factor-authentication', { method: 'POST' }),
       qrCode: () => client<TwoFactorQrCode>('/user/two-factor-qr-code'),
       confirm: (code: string) =>

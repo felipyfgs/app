@@ -52,13 +52,13 @@ describe('permissões do módulo Work', () => {
     expect(isWorkOperator(op)).toBe(true)
   })
 
-  it('ADMIN sem 2FA não administra catálogo (alinhado a hasConfirmedAdminAccess)', () => {
+  it('ADMIN administra catálogo Work sem gate de 2FA (TOTP descontinuado)', () => {
     const adminNo2fa = user('ADMIN', {
       two_factor_confirmed: false,
       requires_two_factor_setup: true
     })
-    expect(canManageWorkCatalog(adminNo2fa)).toBe(false)
-    expect(canAdministerWork(adminNo2fa)).toBe(false)
+    expect(canManageWorkCatalog(adminNo2fa)).toBe(true)
+    expect(canAdministerWork(adminNo2fa)).toBe(true)
   })
 
   it('navegação inclui Trabalho e quick action da fila', () => {

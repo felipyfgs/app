@@ -35,8 +35,9 @@ export default defineNuxtConfig({
   ],
   ssr: false,
 
+  // DevTools + seletor de componentes (Shift+Alt+D). Opt-out: NUXT_DEVTOOLS=false
   devtools: {
-    enabled: process.env.NUXT_DEVTOOLS === 'true'
+    enabled: process.env.NUXT_DEVTOOLS !== 'false'
   },
 
   css: ['~/assets/css/main.css'],
@@ -64,7 +65,13 @@ export default defineNuxtConfig({
 
   vite: {
     optimizeDeps: {
-      include: ['@unovis/vue', '@unovis/ts', 'date-fns', 'date-fns/locale']
+      include: [
+        '@unovis/ts',
+        '@unovis/vue',
+        'date-fns',
+        'date-fns/locale',
+        'zod'
+      ]
     },
     server: {
       // Vite 6+: evita "Blocked request. This host is not allowed" ao abrir por IP

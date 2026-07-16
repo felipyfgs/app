@@ -99,8 +99,7 @@ function confirmCnpjChange() {
       @submit="onSubmit"
     >
       <UPageCard
-        title="Perfil institucional"
-        description="CNPJ, razão social, e-mail e telefone do escritório. Escopo sempre do escritório da sessão."
+        title="Perfil"
         variant="naked"
         orientation="horizontal"
         class="mb-4"
@@ -109,7 +108,7 @@ function confirmCnpjChange() {
           v-if="!readonly"
           form="office-profile-form"
           type="submit"
-          label="Salvar perfil"
+          label="Salvar"
           color="neutral"
           icon="i-lucide-save"
           class="w-fit lg:ms-auto"
@@ -134,7 +133,6 @@ function confirmCnpjChange() {
           <UFormField
             name="cnpj"
             label="CNPJ"
-            description="Titular do e-CNPJ A1. Troca exige confirmação e invalida certificado incompatível."
             required
             class="flex max-sm:flex-col justify-between items-start gap-4"
           >
@@ -200,17 +198,9 @@ function confirmCnpjChange() {
 
     <UModal
       v-model:open="confirmCnpjOpen"
-      title="Confirmar troca de CNPJ"
-      description="A troca invalida o certificado A1 incompatível, Termo e autorizações derivadas. O onboarding ficará bloqueado até um A1 compatível."
+      title="Trocar CNPJ?"
+      description="O certificado A1 atual será invalidado se for de outro CNPJ."
     >
-      <template #body>
-        <UAlert
-          color="warning"
-          icon="i-lucide-triangle-alert"
-          title="Impacto irreversível nesta sessão"
-          description="Integrações SERPRO e autXML serão reprocessadas após novo A1 com titularidade exata."
-        />
-      </template>
       <template #footer>
         <div class="flex w-full justify-end gap-2">
           <UButton
@@ -221,7 +211,7 @@ function confirmCnpjChange() {
           />
           <UButton
             color="warning"
-            label="Confirmar troca de CNPJ"
+            label="Confirmar troca"
             data-testid="settings-confirm-cnpj-change"
             @click="confirmCnpjChange"
           />

@@ -1,10 +1,17 @@
 import type {
+  ActivationMethod,
+  CreateOfficeMemberBody,
+  CreateOfficeMemberResult,
+  CredentialDeliveryPayload,
   OfficeAutXmlEnrollment,
   OfficeAutXmlOverview,
   OfficeCanonicalCredential,
   OfficeInstitutionalProfile,
+  OfficeMember,
+  OfficeMembersMeta,
   OfficeMonitorSchedulePolicy,
   OfficeOnboardingActionable,
+  OfficeRole,
   OfficeSerproAuthorization,
   OfficeSubscription,
   OfficeTechnicalConsent,
@@ -21,6 +28,46 @@ export function createOfficeApi(client: ApiClient) {
     office: {
       subscription: () =>
         client<{ data: OfficeSubscription }>('/api/v1/office/subscription'),
+      /**
+       * Equipe do escritório corrente (membership ADMIN real).
+       * Nunca envia office_id — escopo só via CurrentOffice.
+       */
+      members: {
+        list: () =>
+          client<{ data: OfficeMember[], meta: OfficeMembersMeta }>('/api/v1/office/members'),
+        create: (body: CreateOfficeMemberBody) =>
+          client<{ data: CreateOfficeMemberResult }>('/api/v1/office/members', {
+            method: 'POST',
+            body
+          }),
+        updateRole: (membershipId: number, body: { role: OfficeRole }) =>
+          client<{ data: OfficeMember }>(`/api/v1/office/members/${membershipId}`, {
+            method: 'PATCH',
+            body
+          }),
+        updateRecipient: (
+          membershipId: number,
+          body: { name: string, email: string, method: ActivationMethod }
+        ) =>
+          client<{ data: CredentialDeliveryPayload }>(
+            `/api/v1/office/members/${membershipId}/recipient`,
+            { method: 'PATCH', body }
+          ),
+        deactivate: (membershipId: number) =>
+          client<{ data: OfficeMember }>(`/api/v1/office/members/${membershipId}/deactivate`, {
+            method: 'POST'
+          }),
+        reactivate: (membershipId: number, body?: { method?: ActivationMethod }) =>
+          client<{ data: CredentialDeliveryPayload }>(
+            `/api/v1/office/members/${membershipId}/reactivate`,
+            { method: 'POST', body: body || {} }
+          ),
+        regenerateActivation: (membershipId: number, body: { method: ActivationMethod }) =>
+          client<{ data: CredentialDeliveryPayload }>(
+            `/api/v1/office/members/${membershipId}/activation/regenerate`,
+            { method: 'POST', body }
+          )
+      },
       /**
        * Perfil institucional unificado (OpenSpec configuracao-escritorio-unificada).
        * Paths canônicos; se a API ainda não existir, a UI trata 404 com empty state.

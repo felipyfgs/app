@@ -1,6 +1,7 @@
 import type { ApiClient, ApiUrl } from './api/types'
 
 import { createAuthApi } from './api/createAuthApi'
+import { createActivationApi } from './api/createActivationApi'
 import { createOfficeApi } from './api/createOfficeApi'
 import { createFiscalApi } from './api/createFiscalApi'
 import { createClientsApi } from './api/createClientsApi'
@@ -22,6 +23,7 @@ export function useApi() {
   const apiUrl: ApiUrl = (path: string) => `${apiBase}${path}`
 
   const auth = createAuthApi(client)
+  const activationApi = createActivationApi(client)
   const officeApi = createOfficeApi(client)
   const fiscalApi = createFiscalApi(client, apiUrl)
   const clientsApi = createClientsApi(client)
@@ -35,6 +37,8 @@ export function useApi() {
   return {
     me: auth.me,
     tenants: auth.tenants,
+    confirmPassword: auth.confirmPassword,
+    activations: activationApi.activations,
     office: officeApi.office,
     fiscal: fiscalApi.fiscal,
     clients: clientsApi.clients,

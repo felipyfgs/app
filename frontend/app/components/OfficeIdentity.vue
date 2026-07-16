@@ -27,20 +27,27 @@ const {
   loadError: platformLoadError,
   loadOffices,
   selectOffice,
-  clearSelection,
   enabled: platformEnabled,
   privileged
 } = usePlatformOfficeSelect()
 
-const officeLabel = computed(() => me.value?.office?.name || (platformEnabled.value ? 'Selecione um escritório' : 'Escritório'))
-const officeSlug = computed(() => me.value?.office?.slug || '')
-const officeId = computed(() => me.value?.office?.id ?? null)
+const officeLabel = computed(() => me.value?.current_office?.name || me.value?.office?.name || (platformEnabled.value ? 'Selecione um escritório' : 'Escritório'))
+const officeSlug = computed(() => me.value?.current_office?.slug || me.value?.office?.slug || '')
+const officeId = computed(() => me.value?.current_office?.id ?? me.value?.office?.id ?? null)
 const isPlatform = computed(() => isPlatformAdmin(me.value))
 
+/** Selo compacto: "Plataforma · <Office>" quando privilegiado; só o nome no modo membership. */
+const displayLabel = computed(() => {
+  if (privileged.value && officeLabel.value) {
+    return `Plataforma · ${officeLabel.value}`
+  }
+  return officeLabel.value
+})
+
 const selectedOffice = computed(() => ({
-  label: officeLabel.value,
+  label: displayLabel.value,
   avatar: {
-    alt: officeLabel.value,
+    alt: displayLabel.value,
     icon: (privileged.value ? 'i-lucide-shield' : 'i-lucide-building-2') as 'i-lucide-shield' | 'i-lucide-building-2'
   }
 }))
@@ -50,12 +57,13 @@ const switching = computed(() => membershipSwitching.value || platformSwitching.
 const loading = computed(() => membershipsLoading.value || platformLoading.value)
 
 const items = computed<DropdownMenuItem[][]>(() => {
-  // PLATFORM_ADMIN: seletor global (qualquer office ativo).
+  // PLATFORM_ADMIN: seletor global (somente selectable=true).
   if (isPlatform.value) {
-    const officeRows: DropdownMenuItem[] = platformOffices.value.length
-      ? platformOffices.value.map(o => ({
+    const selectable = platformOffices.value.filter(o => o.selectable !== false && o.is_active !== false)
+    const officeRows: DropdownMenuItem[] = selectable.length
+      ? selectable.map(o => ({
           label: o.name || `Escritório #${o.id}`,
-          description: [o.slug, o.plan].filter(Boolean).join(' · ') || 'Seletor global',
+          description: [o.slug, o.status].filter(Boolean).join(' · ') || 'Seletor global',
           avatar: {
             alt: o.name || 'Escritório',
             icon: 'i-lucide-building-2' as const
@@ -70,31 +78,19 @@ const items = computed<DropdownMenuItem[][]>(() => {
           }
         }))
       : [{
-          label: platformLoadError.value || 'Nenhum escritório listado',
+          label: platformLoadError.value || 'Nenhum escritório selecionável',
           icon: 'i-lucide-building-2',
           disabled: true
         }]
 
     const footer: DropdownMenuItem[] = [{
-      label: privileged.value ? 'Contexto privilegiado ativo' : 'Seletor global PLATFORM_ADMIN',
+      label: privileged.value ? `Plataforma · ${officeLabel.value}` : 'Selecione um escritório',
       icon: 'i-lucide-shield',
       disabled: true,
       description: privileged.value
         ? (officeSlug.value ? `Ativo: ${officeSlug.value}` : 'Office resolvido no servidor')
-        : 'Sem membership fictícia · auditoria interna'
+        : 'Contexto global da plataforma'
     }]
-
-    if (privileged.value) {
-      footer.unshift({
-        label: 'Encerrar contexto privilegiado',
-        icon: 'i-lucide-log-out',
-        disabled: switching.value,
-        onSelect(e: Event) {
-          e.preventDefault()
-          void clearSelection()
-        }
-      })
-    }
 
     if (loading.value) {
       footer.unshift({
@@ -209,13 +205,14 @@ watch(isPlatform, (v) => {
         trailingIcon: 'text-dimmed'
       }"
       :aria-label="isPlatform
-        ? `Seletor global de escritórios. Ativo: ${officeLabel}${privileged ? ' (contexto privilegiado)' : ''}`
+        ? (privileged ? `Plataforma · ${officeLabel}` : `Seletor global de escritórios. ${officeLabel}`)
         : `Escritório ativo: ${officeLabel}${multiMembership ? '. Abrir seletor entre memberships autorizadas' : '. Única membership da sessão'}`"
       :aria-haspopup="(isPlatform || multiMembership) ? 'listbox' : 'menu'"
-      :title="collapsed ? officeLabel : undefined"
+      :title="collapsed ? displayLabel : undefined"
       data-testid="office-identity"
       :data-office-id="isPlatform ? 'platform-global' : 'session'"
       :data-privileged="privileged ? 'true' : 'false'"
+      :data-platform-seal="privileged ? 'true' : 'false'"
     />
   </UDropdownMenu>
 </template>

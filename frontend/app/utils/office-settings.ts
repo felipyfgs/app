@@ -91,21 +91,9 @@ export function emptyOnboarding(): OfficeOnboardingActionable {
   return {
     status: 'incomplete',
     actions: [
-      {
-        code: 'COMPLETE_PROFILE',
-        label: 'Completar perfil institucional',
-        description: 'Informe CNPJ, razão social, e-mail e telefone.'
-      },
-      {
-        code: 'ACCEPT_CONSENT',
-        label: 'Aceitar consentimento técnico',
-        description: 'Autorize o uso do certificado A1 nas finalidades do painel.'
-      },
-      {
-        code: 'UPLOAD_A1',
-        label: 'Enviar certificado A1',
-        description: 'PFX/P12 do e-CNPJ do escritório (sem download posterior).'
-      }
+      { code: 'COMPLETE_PROFILE', label: 'Completar perfil' },
+      { code: 'ACCEPT_CONSENT', label: 'Aceitar consentimento' },
+      { code: 'UPLOAD_A1', label: 'Enviar certificado A1' }
     ]
   }
 }

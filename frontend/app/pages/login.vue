@@ -51,7 +51,12 @@ function safeRedirectTarget(): string | null {
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) {
     return null
   }
-  if (value.startsWith('/login') || value.startsWith('/two-factor')) {
+  if (
+    value.startsWith('/login')
+    || value.startsWith('/two-factor')
+    || value.startsWith('/activate')
+    || value.startsWith('/first-access')
+  ) {
     return null
   }
   return value
@@ -66,22 +71,14 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   error.value = ''
   loading.value = true
   try {
-    const response = await login({
+    await login({
       email: event.data.email,
       password: event.data.password
     }, false) as LoginResponse
 
-    if (response?.two_factor) {
-      await navigateTo('/two-factor-challenge')
-      return
-    }
-
+    // TOTP/2FA descontinuado: login e-mail+senha entra direto no painel.
     await refreshIdentity()
     const identity = unwrapMeUser(user.value as MeIdentity)
-    if (identity?.requires_two_factor_setup) {
-      await navigateTo('/two-factor/setup')
-      return
-    }
     const redirect = safeRedirectTarget()
     await navigateTo(redirect || homeForRole(identity?.role))
   } catch (caught) {

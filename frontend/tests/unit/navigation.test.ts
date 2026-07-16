@@ -40,7 +40,7 @@ describe('navigation', () => {
     expect(actions).toContain('work-queue')
   })
 
-  it('ADMIN com 2FA vê Configurações do escritório (não hub plataforma)', () => {
+  it('ADMIN vê Configurações do escritório (não hub plataforma; sem gate 2FA)', () => {
     const ids = flattenDestinations(mainDestinations(user('ADMIN', true))).map(d => d.id)
     expect(ids).toContain('settings-office')
     expect(ids).toContain('settings-usage')
@@ -49,14 +49,13 @@ describe('navigation', () => {
     expect(quickActions(user('ADMIN', true)).length).toBeGreaterThan(0)
   })
 
-  it('ADMIN sem 2FA não vê Configurações nem ações de mutação', () => {
+  it('ADMIN sem 2FA ainda vê Configurações e mutações de UI (TOTP descontinuado)', () => {
     const ids = flattenDestinations(mainDestinations(user('ADMIN', false))).map(d => d.id)
     expect(ids).not.toContain('admin')
-    expect(ids).not.toContain('settings-office')
+    expect(ids).toContain('settings-office')
     const actions = quickActions(user('ADMIN', false)).map(a => a.id)
-    expect(actions).not.toContain('new-client')
-    expect(actions).not.toContain('new-export')
-    // Minha fila permanece acessível (consulta).
+    expect(actions).toContain('new-client')
+    expect(actions).toContain('new-export')
     expect(actions).toContain('work-queue')
   })
 

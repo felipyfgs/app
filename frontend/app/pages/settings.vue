@@ -6,25 +6,50 @@
  *
  * OpenSpec 6.1: superfície tenant = perfil, consentimento, A1, agendas.
  * Sem campos técnicos SERPRO (autor/Termo/token/OAuth).
+ * Departamentos: catálogo Work (ADMIN membership) — aba condicional.
  */
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { canManageOfficeTeam, canManageWorkCatalog } from '~/utils/permissions'
 
-const { canAccessAdministration } = useDashboard()
+const { canAccessAdministration, me } = useDashboard()
 
-const links = [[{
-  label: 'Escritório',
-  icon: 'i-lucide-building-2',
-  to: '/settings',
-  exact: true
-}, {
-  label: 'Consumo',
-  icon: 'i-lucide-chart-pie',
-  to: '/settings/usage'
-}, {
-  label: 'Assinatura',
-  icon: 'i-lucide-badge-check',
-  to: '/settings/subscription'
-}]] satisfies NavigationMenuItem[][]
+const canManageDepartments = computed(() => canManageWorkCatalog(me.value))
+const canManageTeam = computed(() => canManageOfficeTeam(me.value))
+
+const links = computed(() => {
+  const primary: NavigationMenuItem[] = [{
+    label: 'Escritório',
+    icon: 'i-lucide-building-2',
+    to: '/settings',
+    exact: true
+  }, {
+    label: 'Consumo',
+    icon: 'i-lucide-chart-pie',
+    to: '/settings/usage'
+  }, {
+    label: 'Assinatura',
+    icon: 'i-lucide-badge-check',
+    to: '/settings/subscription'
+  }]
+
+  if (canManageTeam.value) {
+    primary.push({
+      label: 'Equipe',
+      icon: 'i-lucide-users-round',
+      to: '/settings/team'
+    })
+  }
+
+  if (canManageDepartments.value) {
+    primary.push({
+      label: 'Departamentos',
+      icon: 'i-lucide-building',
+      to: '/settings/departments'
+    })
+  }
+
+  return [primary]
+})
 </script>
 
 <template>

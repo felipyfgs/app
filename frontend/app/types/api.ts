@@ -37,8 +37,16 @@ export interface MeUser {
    * `platform_privileged` = PLATFORM_ADMIN com seletor global (sem membership fictícia).
    */
   access_mode?: OfficeAccessMode | null
+  /** Papel real da OfficeMembership (null se admin global puro). */
+  real_office_role?: OfficeRole | null
+  has_real_membership?: boolean
+  /** ok | office_context_required */
+  context_status?: string | null
+  /** Alias de current_office (legado). */
   office: Office | null
+  current_office?: Office | null
   role: OfficeRole | null
+  default_office_id?: number | null
 }
 
 export interface MeResponse {
@@ -1164,13 +1172,25 @@ export interface PlatformOfficeSummary {
   name: string
   slug: string
   is_active?: boolean
+  status?: string
+  selectable?: boolean
   plan?: string | null
+}
+
+/** Envelope canônico de GET /api/v1/platform/offices */
+export interface PlatformOfficesEnvelope {
+  offices: PlatformOfficeSummary[]
+  selected_office_id: number | null
+  default_office_id: number | null
 }
 
 export interface PlatformOfficeSelectResult {
   office: Office
   access_mode: OfficeAccessMode
   role?: OfficeRole | string | null
+  real_office_role?: OfficeRole | string | null
+  has_real_membership?: boolean
+  default_office_id?: number | null
 }
 
 // ─── Assinatura / Integra Contador (tenant) ──────────────────────────────────
@@ -1675,4 +1695,171 @@ export interface FiscalMutationOperation {
   simulated?: boolean
   created_at?: string | null
   [key: string]: unknown
+}
+
+// ─── Ativação / cadastro de Offices e equipe ─────────────────────────────────
+
+export type ActivationMethod = 'MANUAL_LINK' | 'TEMPORARY_PASSWORD'
+export type ActivationPurpose = 'OFFICE_FIRST_ADMIN' | 'OFFICE_MEMBER' | 'PLATFORM_ADMIN'
+export type ActivationPublicStatus = 'pending' | 'consumed' | 'expired' | 'revoked' | string
+export type CredentialDelivery = 'delivered' | 'regeneration_required' | 'not_required' | string
+export type OfficeLifecycleStatus = 'PENDING_ACTIVATION' | 'ACTIVE' | string
+export type SubscriptionPlanCode = 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE'
+export type OfficeMemberStatus = 'active' | 'pending' | 'expired' | 'deactivated' | string
+
+/** Ativação sanitizada (sem hash/segredo). */
+export interface ActivationSanitized {
+  id: number
+  purpose: ActivationPurpose | string
+  method: ActivationMethod | string
+  status: ActivationPublicStatus
+  expires_at?: string | null
+  consumed_at?: string | null
+  revoked_at?: string | null
+  generation?: number
+  email_masked?: string | null
+}
+
+export interface ActivationInspectResult {
+  valid: boolean
+  email_masked?: string
+  invite_name?: string
+  purpose?: ActivationPurpose | string
+  method?: ActivationMethod | string
+  expires_at?: string
+}
+
+export interface ActivationCompleteResult {
+  authenticated: boolean
+  user_id: number
+  purpose: ActivationPurpose | string
+}
+
+/** Item da lista admin de offices (inclui pendentes). */
+export interface PlatformOfficeAdminSummary {
+  id: number
+  name: string
+  slug: string
+  is_active: boolean
+  lifecycle_status: OfficeLifecycleStatus
+  subscription?: OfficeSubscription | null
+  activation?: ActivationSanitized | null
+  created_at?: string | null
+}
+
+export interface PlatformOfficeFirstAdmin {
+  membership_id: number
+  user_id: number
+  name?: string | null
+  email?: string | null
+  is_active: boolean
+}
+
+export interface PlatformOfficeInstitutionalProfile {
+  id?: number
+  cnpj: string
+  legal_name: string
+  institutional_email: string
+  institutional_phone: string
+  is_complete?: boolean
+  updated_at?: string | null
+}
+
+/** Detalhe sanitizado de office (GET show / create payload.office). */
+export interface PlatformOfficeAdminDetail {
+  id: number
+  name: string
+  slug: string
+  is_active: boolean
+  lifecycle_status: OfficeLifecycleStatus
+  created_at?: string | null
+  profile?: PlatformOfficeInstitutionalProfile | null
+  subscription?: OfficeSubscription | null
+  first_admin?: PlatformOfficeFirstAdmin | null
+  activation?: ActivationSanitized | null
+}
+
+export interface CreatePlatformOfficeBody {
+  name: string
+  profile: {
+    cnpj: string
+    legal_name: string
+    institutional_email: string
+    institutional_phone: string
+  }
+  plan: SubscriptionPlanCode | string
+  admin_name: string
+  admin_email: string
+  method: ActivationMethod
+  idempotency_key: string
+}
+
+/** Resposta de criação/regeneração com possível segredo único. */
+export interface CredentialDeliveryPayload {
+  credential_delivery: CredentialDelivery
+  method?: ActivationMethod | string | null
+  expires_at?: string | null
+  activation_url?: string
+  temporary_password?: string
+  activation?: ActivationSanitized
+}
+
+export interface CreatePlatformOfficeResult extends CredentialDeliveryPayload {
+  office: PlatformOfficeAdminDetail
+}
+
+export interface PlatformAdminUser {
+  user_id: number
+  name?: string | null
+  email?: string | null
+  is_active: boolean
+  membership_active?: boolean
+  password_change_required?: boolean
+  default_office_id?: number | null
+  default_office?: {
+    id: number
+    name: string
+    slug: string
+  } | null
+  activation?: ActivationSanitized | null
+  created_at?: string | null
+}
+
+export interface CreatePlatformAdminBody {
+  name: string
+  email: string
+  method: ActivationMethod
+  default_office_id?: number | null
+}
+
+export interface CreatePlatformAdminResult extends CredentialDeliveryPayload {
+  admin: PlatformAdminUser
+}
+
+export interface OfficeMember {
+  id: number
+  user_id: number
+  name?: string | null
+  email?: string | null
+  role: OfficeRole
+  is_active: boolean
+  status: OfficeMemberStatus
+  activation?: ActivationSanitized | null
+}
+
+export interface OfficeMembersMeta {
+  occupied_seats: number
+  max_users?: number | null
+}
+
+export interface CreateOfficeMemberBody {
+  name: string
+  email: string
+  role: OfficeRole
+  method: ActivationMethod
+}
+
+export interface CreateOfficeMemberResult extends CredentialDeliveryPayload {
+  membership?: OfficeMember
+  member?: OfficeMember
 }

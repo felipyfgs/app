@@ -12,7 +12,10 @@
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:gate": "pnpm run lint && pnpm run typecheck && pnpm run test",
     "test:e2e": "playwright test",
+    "test:e2e:fast": "playwright test --project=desktop-1440",
+    "test:e2e:smoke": "playwright test smoke.spec.ts --project=desktop-1440",
     "test:e2e:visual": "PLAYWRIGHT_INCLUDE_VISUAL=1 playwright test visual.spec.ts monitoring-visual.spec.ts work-visual.spec.ts",
     "test:artifacts": "node tests/security/scan-artifacts.mjs",
     "test:fidelity": "node scripts/template-fidelity-gate.mjs"

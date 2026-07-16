@@ -64,8 +64,8 @@ function save(key: string) {
 <template>
   <div data-testid="settings-schedules-section">
     <UPageCard
-      title="Agenda dos monitores"
-      description="Um dia (1–28) por monitor para toda a carteira. Sem escolha de horário — a plataforma distribui a carga."
+      title="Agendas"
+      description="Dia do mês (1–28) por monitor."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
@@ -84,37 +84,28 @@ function save(key: string) {
       <UEmpty
         v-else-if="!rows.length"
         icon="i-lucide-calendar"
-        title="Nenhum monitor configurável"
-        description="Quando a API de agendas estiver disponível, os monitores SERPRO aparecerão aqui."
+        title="Nenhum monitor"
       />
       <ul
         v-else
         class="divide-y divide-default"
-        aria-label="Políticas de agenda por monitor"
+        aria-label="Agendas por monitor"
       >
         <li
           v-for="row in rows"
           :key="row.monitor_key"
-          class="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+          class="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
           :data-testid="`settings-schedule-${row.monitor_key}`"
         >
           <div class="min-w-0">
             <p class="text-sm font-medium text-highlighted">
               {{ row.monitor_label }}
             </p>
-            <p class="text-xs text-muted">
-              <template v-if="row.is_default && row.day_of_month">
-                Padrão estável · dia {{ row.day_of_month }}
-              </template>
-              <template v-else-if="row.day_of_month">
-                Personalizado · dia {{ row.day_of_month }}
-              </template>
-              <template v-else>
-                Dia padrão será atribuído na ativação
-              </template>
-              <span v-if="row.next_run_at">
-                · próxima {{ formatDateTime(row.next_run_at) }}
-              </span>
+            <p
+              v-if="row.next_run_at"
+              class="text-xs text-muted"
+            >
+              Próxima {{ formatDateTime(row.next_run_at) }}
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
@@ -125,7 +116,7 @@ function save(key: string) {
               placeholder="Dia"
               class="w-28"
               :disabled="readonly"
-              :aria-label="`Dia de execução de ${row.monitor_label}`"
+              :aria-label="`Dia de ${row.monitor_label}`"
             />
             <UButton
               v-if="!readonly"

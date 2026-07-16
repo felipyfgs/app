@@ -37,9 +37,6 @@ const roleLabel = computed(() => {
   return null
 })
 
-const needsTwoFactorSetup = computed(() => Boolean(me.value?.requires_two_factor_setup))
-const twoFactorConfirmed = computed(() => Boolean(me.value?.two_factor_confirmed))
-
 const items = computed<DropdownMenuItem[][]>(() => {
   const account: DropdownMenuItem[] = [{
     type: 'label',
@@ -58,22 +55,6 @@ const items = computed<DropdownMenuItem[][]>(() => {
       ? { description: `Papel: ${roleLabel.value}` }
       : {})
   }]
-
-  if (needsTwoFactorSetup.value) {
-    profile.push({
-      label: 'Configurar 2FA',
-      icon: 'i-lucide-shield-alert',
-      to: '/two-factor/setup',
-      description: 'Obrigatório para administração'
-    })
-  } else if (me.value?.role === 'ADMIN') {
-    profile.push({
-      label: twoFactorConfirmed.value ? '2FA ativo' : 'Segundo fator',
-      icon: twoFactorConfirmed.value ? 'i-lucide-shield-check' : 'i-lucide-shield',
-      to: '/two-factor/setup',
-      disabled: twoFactorConfirmed.value
-    })
-  }
 
   if (canAccessAdministration.value) {
     profile.push({

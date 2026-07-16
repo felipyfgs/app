@@ -56,18 +56,20 @@ describe('navigation monitoramento (15.4)', () => {
     }
   })
 
-  it('ADMIN com 2FA vê Configurações unificadas (escritório + consumo), sem hub /admin', () => {
+  it('ADMIN vê Configurações (escritório + consumo + equipe + departamentos), sem hub /admin', () => {
     const tree = mainDestinations(user('ADMIN', true))
     const settings = tree.find(d => d.id === 'settings')
     expect(settings?.children?.map(c => c.id)).toEqual([
       'settings-office',
       'settings-usage',
       'settings-subscription',
-      'admin-departments'
+      'settings-team',
+      'settings-departments'
     ])
     expect(settings?.children?.map(c => c.id)).not.toContain('settings-cte')
-    expect(settings?.children?.map(c => c.id)).not.toContain('admin')
+    expect(settings?.children?.map(c => c.id)).not.toContain('admin-departments')
     expect(settings?.children?.map(c => c.to)).not.toContain('/settings/cte')
+    expect(settings?.children?.map(c => c.to)).toContain('/settings/departments')
     // Hub plataforma fica fora da árvore do office ADMIN
     const flat = flattenDestinations(tree).map(d => d.id)
     expect(flat).not.toContain('platform-serpro-console')

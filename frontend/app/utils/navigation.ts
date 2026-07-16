@@ -5,9 +5,9 @@ import {
   canAccessPlatformAdmin,
   canCreateExport,
   canManageClients,
+  canManageOfficeTeam,
   canManageWorkCatalog,
-  canViewWork,
-  hasConfirmedAdminAccess
+  canViewWork
 } from '~/utils/permissions'
 
 export interface NavDestination {
@@ -308,33 +308,53 @@ export function mainDestinations(
           icon: 'i-lucide-badge-check',
           to: '/settings/subscription'
         },
-        ...(hasConfirmedAdminAccess(user) || canAccessPlatformAdmin(user)
+        ...(canManageWorkCatalog(user) || (user?.access_mode === 'membership' && user?.role === 'ADMIN')
           ? [{
-            id: 'admin-departments',
+            id: 'settings-departments',
             label: 'Departamentos',
             icon: 'i-lucide-building',
-            to: '/admin/departments'
+            to: '/settings/departments'
+          } satisfies NavDestination]
+          : []),
+        ...(canManageOfficeTeam(user)
+          ? [{
+            id: 'settings-team',
+            label: 'Equipe',
+            icon: 'i-lucide-users-round',
+            to: '/settings/team'
           } satisfies NavDestination]
           : [])
       ]
     })
   }
 
-  // `/admin/*` reservado à plataforma (sem TOTP global na navegação).
+  // `/admin/*` reservado à plataforma — grupo Admin só para PLATFORM_ADMIN.
   if (canAccessPlatformAdmin(user)) {
     items.push({
       id: 'platform-admin',
-      label: 'Plataforma',
+      label: 'Admin',
       icon: 'i-lucide-shield',
       type: 'trigger',
       defaultOpen: path === '/admin' || path.startsWith('/admin/'),
       children: [
         {
           id: 'admin',
-          label: 'Hub plataforma',
+          label: 'Hub',
           icon: 'i-lucide-layout-dashboard',
           to: '/admin',
           exact: true
+        },
+        {
+          id: 'platform-offices',
+          label: 'Escritórios',
+          icon: 'i-lucide-building-2',
+          to: '/admin/offices'
+        },
+        {
+          id: 'platform-admins',
+          label: 'Administradores',
+          icon: 'i-lucide-shield-user',
+          to: '/admin/admins'
         },
         {
           id: 'platform-serpro-console',

@@ -138,20 +138,19 @@ describe('plataforma /admin e seletor global (6.2)', () => {
     expect(calls[2]?.method).toBe('DELETE')
   })
 
-  it('admin hub e banner privilegiado existem e são a11y-aware', () => {
+  it('admin hub e selo compacto Plataforma · Office (sem banner privilegiado)', () => {
     const admin = readFileSync(resolve(APP, 'pages/admin/index.vue'), 'utf8')
     expect(admin).toContain('admin-platform-panel')
     expect(admin).toContain('admin-global-office-selector')
     expect(admin).toMatch(/aria-label|role="listbox"/)
 
-    const banner = readFileSync(resolve(APP, 'components/shell/PrivilegedContextBanner.vue'), 'utf8')
-    expect(banner).toContain('privileged-context-banner')
-    expect(banner).toContain('role="status"')
-    expect(banner).toContain('aria-live')
-
     const identity = readFileSync(resolve(APP, 'components/OfficeIdentity.vue'), 'utf8')
     expect(identity).toContain('platform-global')
     expect(identity).toContain('usePlatformOfficeSelect')
+    expect(identity).toContain('Plataforma ·')
+    expect(identity).toContain('data-platform-seal')
+    // Banner privilegiado removido — identidade compacta no seletor.
+    expect(identity).not.toContain('privileged-context-banner')
   })
 
   it('middleware reserva /admin à plataforma', () => {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Consentimento técnico versionado — checkbox + finalidades.
+ * Consentimento técnico versionado — compacto quando aceito.
  */
 import type { OfficeTechnicalConsent } from '~/types/api'
 
@@ -39,8 +39,7 @@ const needsAction = computed(() =>
 <template>
   <div data-testid="settings-consent-section">
     <UPageCard
-      title="Consentimento técnico"
-      description="Autorização explícita para uso do A1 nas finalidades do painel. Versão registrada com ator e instante."
+      title="Consentimento"
       variant="naked"
       orientation="horizontal"
       class="mb-4"
@@ -60,54 +59,44 @@ const needsAction = computed(() =>
         v-else
         class="space-y-4"
       >
-        <UAlert
-          v-if="needsAction"
-          color="warning"
-          icon="i-lucide-file-check"
-          title="Concordância necessária"
-          description="Uma nova finalidade ou versão exige nova aceitação antes do uso do certificado."
-        />
-        <UAlert
-          v-else-if="consent?.accepted"
-          color="success"
-          icon="i-lucide-check"
-          :title="`Consentimento aceito (versão ${consent.version})`"
-          :description="consent.accepted_at
-            ? `Em ${formatDateTime(consent.accepted_at)}${consent.accepted_by_name ? ` · ${consent.accepted_by_name}` : ''}`
-            : undefined"
-        />
+        <!-- Aceito: badge compacto (sem UAlert de sucesso) -->
+        <div
+          v-if="!needsAction && consent?.accepted"
+          class="flex flex-wrap items-center gap-2"
+          data-testid="settings-consent-accepted"
+        >
+          <UBadge
+            color="success"
+            variant="subtle"
+          >
+            Aceito · v{{ consent.version }}
+          </UBadge>
+          <span
+            v-if="consent.accepted_at"
+            class="text-xs text-muted"
+          >
+            {{ formatDateTime(consent.accepted_at) }}
+            <template v-if="consent.accepted_by_name"> · {{ consent.accepted_by_name }}</template>
+          </span>
+        </div>
 
-        <div>
-          <p class="mb-2 text-sm font-medium text-highlighted">
-            Finalidades apresentadas
-          </p>
-          <ul class="list-disc space-y-1 ps-5 text-sm text-muted">
+        <template v-if="needsAction">
+          <ul class="space-y-1 text-sm text-muted">
             <li
               v-for="p in purposes"
               :key="p.code"
             >
-              <span class="text-highlighted">{{ p.label }}</span>
-              <span
-                v-if="p.description"
-                class="block text-xs"
-              >{{ p.description }}</span>
+              {{ p.label }}
             </li>
           </ul>
-        </div>
 
-        <p
-          v-if="consent?.text_summary"
-          class="text-sm text-muted"
-        >
-          {{ consent.text_summary }}
-        </p>
-
-        <UCheckbox
-          v-if="!readonly && needsAction"
-          v-model="accepted"
-          label="Li e autorizo o uso cifrado do certificado A1 do escritório nas finalidades listadas."
-          data-testid="settings-consent-checkbox"
-        />
+          <UCheckbox
+            v-if="!readonly"
+            v-model="accepted"
+            label="Autorizo o uso do certificado A1 nestas finalidades."
+            data-testid="settings-consent-checkbox"
+          />
+        </template>
 
         <div
           v-if="!readonly"
@@ -117,7 +106,7 @@ const needsAction = computed(() =>
             v-if="consent?.accepted && !consent.requires_reacceptance"
             color="neutral"
             variant="ghost"
-            label="Revogar consentimento"
+            label="Revogar"
             icon="i-lucide-ban"
             :loading="saving"
             data-testid="settings-consent-revoke"
@@ -126,7 +115,7 @@ const needsAction = computed(() =>
           <UButton
             v-if="needsAction"
             color="primary"
-            label="Aceitar consentimento"
+            label="Aceitar"
             icon="i-lucide-check"
             :loading="saving"
             :disabled="!accepted"

@@ -1,6 +1,15 @@
 import type {
+  ActivationMethod,
+  CreatePlatformAdminBody,
+  CreatePlatformAdminResult,
+  CreatePlatformOfficeBody,
+  CreatePlatformOfficeResult,
+  CredentialDeliveryPayload,
+  PlatformAdminUser,
+  PlatformOfficeAdminDetail,
+  PlatformOfficeAdminSummary,
   PlatformOfficeSelectResult,
-  PlatformOfficeSummary,
+  PlatformOfficesEnvelope,
   SerproCatalogEntry,
   SerproContractSanitized,
   SerproGlobalHealth,
@@ -31,10 +40,11 @@ export function createPlatformApi(client: ApiClient) {
       /**
        * Seletor global de escritórios (PLATFORM_ADMIN).
        * Seleção privilegiada — não cria membership nem altera selected_office_id.
+       * Administração (criação/pendentes): adminList / create / show / regenerate / updateFirstAdmin.
        */
       offices: {
         list: (params?: { page?: number, per_page?: number, q?: string }) =>
-          client<{ data: PlatformOfficeSummary[] }>('/api/v1/platform/offices', {
+          client<{ data: PlatformOfficesEnvelope }>('/api/v1/platform/offices', {
             query: params
           }),
         select: (officeId: number) =>
@@ -45,7 +55,62 @@ export function createPlatformApi(client: ApiClient) {
         clear: () =>
           client<{ data: { access_mode: string | null } }>('/api/v1/platform/offices/select', {
             method: 'DELETE'
-          })
+          }),
+        /** Lista admin (inclui PENDING_ACTIVATION). */
+        adminList: (params?: { lifecycle_status?: string }) =>
+          client<{ data: PlatformOfficeAdminSummary[] }>('/api/v1/platform/offices/admin', {
+            query: params
+          }),
+        create: (body: CreatePlatformOfficeBody) =>
+          client<{ data: CreatePlatformOfficeResult }>('/api/v1/platform/offices', {
+            method: 'POST',
+            body
+          }),
+        show: (officeId: number) =>
+          client<{ data: PlatformOfficeAdminDetail }>(`/api/v1/platform/offices/${officeId}`),
+        regenerateActivation: (officeId: number, body: { method: ActivationMethod }) =>
+          client<{ data: CredentialDeliveryPayload }>(
+            `/api/v1/platform/offices/${officeId}/activation/regenerate`,
+            { method: 'POST', body }
+          ),
+        updateFirstAdmin: (
+          officeId: number,
+          body: { name: string, email: string, method: ActivationMethod }
+        ) =>
+          client<{ data: CredentialDeliveryPayload }>(
+            `/api/v1/platform/offices/${officeId}/first-admin`,
+            { method: 'PATCH', body }
+          )
+      },
+      /** Administradores globais PLATFORM_ADMIN. */
+      admins: {
+        list: () =>
+          client<{ data: PlatformAdminUser[] }>('/api/v1/platform/admins'),
+        show: (userId: number) =>
+          client<{ data: PlatformAdminUser }>(`/api/v1/platform/admins/${userId}`),
+        create: (body: CreatePlatformAdminBody) =>
+          client<{ data: CreatePlatformAdminResult }>('/api/v1/platform/admins', {
+            method: 'POST',
+            body
+          }),
+        update: (
+          userId: number,
+          body: {
+            name: string
+            email: string
+            method: ActivationMethod
+            default_office_id?: number | null
+          }
+        ) =>
+          client<{ data: CredentialDeliveryPayload }>(`/api/v1/platform/admins/${userId}`, {
+            method: 'PATCH',
+            body
+          }),
+        regenerateActivation: (userId: number, body: { method: ActivationMethod }) =>
+          client<{ data: CredentialDeliveryPayload }>(
+            `/api/v1/platform/admins/${userId}/activation/regenerate`,
+            { method: 'POST', body }
+          )
       },
       serpro: {
         contracts: {

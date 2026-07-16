@@ -5,10 +5,13 @@ import {
   unwrapMeUser
 } from '~/utils/permissions'
 import type { MeIdentity } from '~/utils/permissions'
+import { isAuthPublicPath } from '~/utils/auth-public'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   const { isAuthenticated, refreshIdentity, user } = useSanctumAuth()
-  const guestOnly = to.path === '/login' || to.path === '/two-factor-challenge'
+  // Rotas públicas de auth/ativação; 2FA legado redireciona para home/login.
+  const guestOnly = isAuthPublicPath(to.path)
+  const legacyTwoFactor = to.path === '/two-factor/setup' || to.path.startsWith('/two-factor/')
 
   if (!guestOnly || isAuthenticated.value) {
     try {
@@ -21,7 +24,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   if (!isAuthenticated.value) {
     if (guestOnly) return undefined
-    // Deep-link seguro: login.vue aplica safeRedirectTarget na query redirect.
     return navigateTo({
       path: '/login',
       query: { redirect: to.fullPath }
@@ -29,17 +31,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   const identity = unwrapMeUser(user.value as MeIdentity)
-  const requiresSetup = identity?.requires_two_factor_setup === true
 
-  if (guestOnly) {
-    return navigateTo(requiresSetup ? '/two-factor/setup' : '/')
-  }
-
-  if (requiresSetup && to.path !== '/two-factor/setup') {
-    return navigateTo('/two-factor/setup')
-  }
-
-  if (!requiresSetup && to.path === '/two-factor/setup') {
+  // Já autenticado: login/challenge vão para home; activate/first-access
+  // também (sessão já existe). Setup 2FA legado → home.
+  if (guestOnly || legacyTwoFactor) {
     return navigateTo('/')
   }
 
@@ -77,29 +72,25 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo('/settings', { replace: true })
   }
 
+  // Departamentos: /admin/departments → /settings/departments
+  if (to.path === '/admin/departments' || to.path.startsWith('/admin/departments/')) {
+    return navigateTo('/settings/departments', { replace: true })
+  }
+
   // `/admin/*` reservado à plataforma (PLATFORM_ADMIN).
-  // Exceção: departamentos do módulo Trabalho permanecem para ADMIN de office.
   const isAdminPath = to.path === '/admin' || to.path.startsWith('/admin/')
-  const isDepartmentsPath = to.path === '/admin/departments' || to.path.startsWith('/admin/departments/')
   if (isAdminPath) {
-    if (isDepartmentsPath) {
-      if (hasConfirmedAdminAccess(identity) || canAccessPlatformAdmin(identity)) {
-        return undefined
-      }
-      return navigateTo('/')
-    }
-    // Console e hub de plataforma: sem TOTP global.
     if (canAccessPlatformAdmin(identity)) {
       return undefined
     }
-    // Office ADMIN que ainda aponte para /admin → settings unificado.
+    // Office ADMIN que ainda aponte para /admin → settings.
     if (hasConfirmedAdminAccess(identity)) {
       return navigateTo('/settings', { replace: true })
     }
     return navigateTo('/')
   }
 
-  // Configuração do escritório: ADMIN office (2FA) ou PLATFORM_ADMIN privilegiado.
+  // Configuração do escritório: ADMIN office ou PLATFORM_ADMIN privilegiado.
   if (to.path.startsWith('/settings') && !canAccessOfficeSettings(identity)) {
     return navigateTo('/')
   }

@@ -1,19 +1,19 @@
 <script setup lang="ts">
 /**
- * Credencial canônica e-CNPJ A1 — padrão visual de ClientCredentialPanel.
- * Sem download, sem recuperação de PFX/senha.
+ * Credencial canônica e-CNPJ A1.
+ * Sem download; mensagem de segurança uma única vez no upload.
  */
 import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { OfficeCanonicalCredential } from '~/types/api'
-import { credentialAlerts, credentialStatusLabel } from '~/utils/office-settings'
+import { credentialAlerts } from '~/utils/office-settings'
 
 const props = defineProps<{
   credential: OfficeCanonicalCredential | null
   loading?: boolean
   saving?: boolean
   readonly?: boolean
-  /** PLATFORM_ADMIN privilegiado: reconfirmação de senha. */
+  /** Reconfirmação de senha (todos os perfis em ações sensíveis). */
   requirePasswordReconfirm?: boolean
 }>()
 
@@ -93,12 +93,11 @@ watch(removeOpen, (v) => {
       variant="naked"
       orientation="horizontal"
       class="mb-4"
-      title="Certificado e-CNPJ A1"
-      description="Uma credencial canônica por escritório. PFX e senha nunca são recuperáveis nem baixados."
+      title="Certificado A1"
     >
       <UButton
         v-if="!readonly"
-        :label="credential ? 'Substituir' : 'Enviar A1'"
+        :label="credential ? 'Substituir' : 'Enviar'"
         color="neutral"
         class="w-fit lg:ms-auto"
         icon="i-lucide-upload"
@@ -121,56 +120,8 @@ watch(removeOpen, (v) => {
         v-else-if="credential"
         class="space-y-3 text-sm"
       >
-        <ShellStatusBadge :status="credential.status" />
-        <p class="text-xs text-muted">
-          {{ credentialStatusLabel(credential.status) }}
-        </p>
-        <dl class="space-y-2">
-          <div v-if="credential.subject_name">
-            <dt class="text-muted">
-              Titular
-            </dt>
-            <dd class="break-words text-highlighted">
-              {{ credential.subject_name }}
-            </dd>
-          </div>
-          <div v-if="credential.holder_cnpj">
-            <dt class="text-muted">
-              CNPJ titular
-            </dt>
-            <dd class="font-mono text-highlighted">
-              {{ credential.holder_cnpj }}
-            </dd>
-          </div>
-          <div v-if="credential.valid_to">
-            <dt class="text-muted">
-              Validade
-            </dt>
-            <dd class="text-highlighted">
-              {{ formatDateTime(credential.valid_to) }}
-            </dd>
-          </div>
-          <div v-if="credential.fingerprint_sha256">
-            <dt class="text-muted">
-              Fingerprint SHA-256
-            </dt>
-            <dd class="break-all font-mono text-xs text-highlighted">
-              {{ credential.fingerprint_sha256 }}
-            </dd>
-          </div>
-          <div v-if="credential.purposes?.length">
-            <dt class="text-muted">
-              Finalidades vinculadas
-            </dt>
-            <dd class="text-highlighted">
-              {{ credential.purposes.join(', ') }}
-            </dd>
-          </div>
-        </dl>
-        <div
-          v-if="alerts.length"
-          class="flex flex-wrap gap-2"
-        >
+        <div class="flex flex-wrap items-center gap-2">
+          <ShellStatusBadge :status="credential.status" />
           <UBadge
             v-for="a in alerts"
             :key="a"
@@ -180,13 +131,32 @@ watch(removeOpen, (v) => {
             {{ a }}
           </UBadge>
         </div>
-        <UAlert
-          v-if="credential.expires_alert_30 || credential.expires_alert_7 || credential.expires_alert_1"
-          color="warning"
-          icon="i-lucide-badge-alert"
-          title="Certificado próximo do vencimento"
-          description="Alertas apenas no painel — sem e-mail ou WhatsApp."
-        />
+        <dl class="grid gap-2 sm:grid-cols-2">
+          <div v-if="credential.subject_name">
+            <dt class="text-xs text-muted">
+              Titular
+            </dt>
+            <dd class="break-words text-highlighted">
+              {{ credential.subject_name }}
+            </dd>
+          </div>
+          <div v-if="credential.holder_cnpj">
+            <dt class="text-xs text-muted">
+              CNPJ
+            </dt>
+            <dd class="font-mono text-highlighted">
+              {{ credential.holder_cnpj }}
+            </dd>
+          </div>
+          <div v-if="credential.valid_to">
+            <dt class="text-xs text-muted">
+              Validade
+            </dt>
+            <dd class="text-highlighted">
+              {{ formatDateTime(credential.valid_to) }}
+            </dd>
+          </div>
+        </dl>
         <div
           v-if="!readonly"
           class="flex justify-end border-t border-default pt-3"
@@ -195,7 +165,7 @@ watch(removeOpen, (v) => {
             color="error"
             variant="ghost"
             icon="i-lucide-trash-2"
-            label="Remover certificado"
+            label="Remover"
             data-testid="settings-credential-remove"
             @click="() => { removeOpen = true }"
           />
@@ -204,13 +174,13 @@ watch(removeOpen, (v) => {
       <UEmpty
         v-else
         icon="i-lucide-badge-alert"
-        title="A1 não configurado"
-        description="Envie um PFX/P12 A1 válido, com senha e CNPJ titular idêntico ao perfil."
+        title="Nenhum certificado"
         data-testid="settings-credential-empty"
       >
         <UButton
           v-if="!readonly"
-          label="Enviar e validar A1"
+          label="Enviar certificado"
+          data-testid="settings-credential-empty-action"
           @click="() => { open = true }"
         />
       </UEmpty>
@@ -219,8 +189,8 @@ watch(removeOpen, (v) => {
     <UModal
       v-if="!readonly"
       v-model:open="open"
-      :title="credential ? 'Substituir certificado A1' : 'Enviar certificado A1'"
-      description="O PFX e a senha são usados só para validação e ficam no cofre. Nunca poderão ser baixados."
+      :title="credential ? 'Substituir A1' : 'Enviar A1'"
+      description="O arquivo não poderá ser baixado depois."
     >
       <template #body>
         <UForm
@@ -257,8 +227,7 @@ watch(removeOpen, (v) => {
           </UFormField>
           <UFormField
             v-if="requirePasswordReconfirm"
-            label="Sua senha de acesso (reconfirmação)"
-            description="Exigida em contexto privilegiado da plataforma."
+            label="Sua senha de acesso"
             required
           >
             <UInput
@@ -269,12 +238,6 @@ watch(removeOpen, (v) => {
               data-testid="settings-credential-reconfirm"
             />
           </UFormField>
-          <UAlert
-            color="info"
-            icon="i-lucide-lock-keyhole"
-            title="Sem download"
-            description="Após o envio, somente status, titular, CNPJ, validade e fingerprint ficam disponíveis."
-          />
           <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
@@ -298,29 +261,22 @@ watch(removeOpen, (v) => {
     <UModal
       v-if="!readonly"
       v-model:open="removeOpen"
-      title="Remover certificado A1"
-      description="Bloqueia imediatamente todas as finalidades. Não há recuperação do PFX."
+      title="Remover A1?"
+      description="As finalidades que dependem do certificado ficam bloqueadas."
     >
       <template #body>
-        <div class="space-y-4">
-          <UAlert
-            color="error"
-            icon="i-lucide-triangle-alert"
-            title="Remoção irreversível do material no cofre"
+        <UFormField
+          v-if="requirePasswordReconfirm"
+          label="Sua senha de acesso"
+          required
+        >
+          <UInput
+            v-model="reconfirmPassword"
+            type="password"
+            autocomplete="current-password"
+            class="w-full"
           />
-          <UFormField
-            v-if="requirePasswordReconfirm"
-            label="Sua senha de acesso (reconfirmação)"
-            required
-          >
-            <UInput
-              v-model="reconfirmPassword"
-              type="password"
-              autocomplete="current-password"
-              class="w-full"
-            />
-          </UFormField>
-        </div>
+        </UFormField>
       </template>
       <template #footer>
         <div class="flex w-full justify-end gap-2">
@@ -332,7 +288,7 @@ watch(removeOpen, (v) => {
           />
           <UButton
             color="error"
-            label="Confirmar remoção"
+            label="Remover"
             :loading="saving"
             data-testid="settings-credential-confirm-remove"
             @click="confirmRemove"
