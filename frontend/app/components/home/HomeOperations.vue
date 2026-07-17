@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { InboxItem, OperationsSummary } from '~/types/api'
 import { resolveInboxItemLink } from '~/utils/inbox-links'
+import { inboxSeverityColor } from '~/utils/inbox-severity'
 
 const props = defineProps<{
   summary: OperationsSummary | null
