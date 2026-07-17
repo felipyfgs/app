@@ -45,6 +45,36 @@ export function isValidDateRangeValue(value: unknown): boolean {
   return range.from <= range.to
 }
 
+/**
+ * Serializa múltiplas opções de filtro (estável: unique + sort).
+ * Usa vírgula — alinhado a query HTTP `situation=A,B`.
+ */
+export function encodeOptionValues(values: readonly string[]): string {
+  const unique = new Set<string>()
+  for (const raw of values) {
+    const text = String(raw ?? '').trim()
+    if (text) unique.add(text)
+  }
+  return [...unique].sort((a, b) => a.localeCompare(b)).join(',')
+}
+
+/** Parse de valor option (único ou multi "a,b"). Aceita array. */
+export function decodeOptionValues(value: unknown): string[] {
+  if (value == null) return []
+  const parts = Array.isArray(value)
+    ? value.map(item => String(item ?? '').trim()).filter(Boolean)
+    : String(value).split(',').map(item => item.trim()).filter(Boolean)
+  if (parts.length === 0) return []
+  const encoded = encodeOptionValues(parts)
+  return encoded ? encoded.split(',') : []
+}
+
+export function isMultipleOption(
+  definition: DataTableFilterDefinition
+): definition is Extract<DataTableFilterDefinition, { kind: 'option' }> & { multiple: true } {
+  return definition.kind === 'option' && definition.multiple === true
+}
+
 export function definitionEmptyValue(definition: DataTableFilterDefinition): string | number | boolean | null {
   if (definition.kind === 'client' || definition.kind === 'boolean') {
     return definition.emptyValue === undefined ? null : definition.emptyValue
@@ -70,6 +100,11 @@ export function isEmptyFilterValue(
       return false
     }
     return true
+  }
+  if (definition.kind === 'option' && definition.multiple) {
+    const empty = String(definitionEmptyValue(definition))
+    const values = decodeOptionValues(value).filter(item => item !== empty)
+    return values.length === 0
   }
   const text = String(value).trim()
   if (text === '') return true
@@ -103,6 +138,11 @@ export function resolveModelLabel(
 ): string | undefined {
   if (explicitLabel && explicitLabel.trim()) return explicitLabel.trim()
   if (definition.kind === 'option') {
+    if (definition.multiple) {
+      const values = decodeOptionValues(value)
+      if (values.length === 0) return undefined
+      return values.map(item => optionLabel(definition.items, item)).join(', ')
+    }
     return optionLabel(definition.items, String(value))
   }
   if (definition.kind === 'month' || definition.kind === 'date' || definition.kind === 'text') {
@@ -123,6 +163,7 @@ function operatorForDefinition(
   definition: DataTableFilterDefinition
 ): DataTableFilterOperator {
   if (definition.kind === 'date_range') return 'between'
+  if (definition.kind === 'option' && definition.multiple) return 'in'
   if (definition.kind === 'text') return definition.operator === 'contains' ? 'contains' : 'eq'
   return 'eq'
 }
@@ -169,6 +210,21 @@ export function createFilterModel(
     return {
       key: definition.key,
       operator: 'between',
+      value: encoded,
+      label: resolveModelLabel(definition, encoded, label)
+    }
+  }
+
+  if (definition.kind === 'option' && definition.multiple) {
+    const empty = String(definitionEmptyValue(definition))
+    const allowed = new Set(definition.items.map(item => item.value))
+    const values = decodeOptionValues(value)
+      .filter(item => item !== empty && allowed.has(item))
+    if (values.length === 0) return null
+    const encoded = encodeOptionValues(values)
+    return {
+      key: definition.key,
+      operator: 'in',
       value: encoded,
       label: resolveModelLabel(definition, encoded, label)
     }
@@ -256,6 +312,11 @@ export function canConfirmDraftValue(
       || value === '1'
       || value === '0'
   }
+  if (definition.kind === 'option' && definition.multiple) {
+    const empty = String(definitionEmptyValue(definition))
+    const allowed = new Set(definition.items.map(item => item.value))
+    return decodeOptionValues(value).some(item => item !== empty && allowed.has(item))
+  }
   if (definition.kind === 'text') {
     return String(value).trim().length > 0
   }
@@ -266,22 +327,42 @@ export function formatChipDisplay(
   definition: DataTableFilterDefinition,
   model: DataTableFilterModel
 ): { fieldLabel: string, operatorLabel: string, valueLabel: string } {
-  const valueLabel = model.label
-    || (definition.kind === 'option'
-      ? optionLabel(definition.items, String(model.value))
-      : definition.kind === 'boolean'
-        ? booleanLabel(definition, Boolean(model.value))
-        : definition.kind === 'date_range'
-          ? (decodeDateRange(model.value)
-              ? `${decodeDateRange(model.value)!.from} – ${decodeDateRange(model.value)!.to}`
-              : String(model.value))
-          : String(model.value))
+  let valueLabel = model.label
+  if (!valueLabel) {
+    if (definition.kind === 'option') {
+      // Multi/CSV sem label pré-resolvido: mapear tokens → rótulos (não o CSV cru).
+      if (
+        definition.multiple
+        || model.operator === 'in'
+        || decodeOptionValues(model.value).length > 1
+      ) {
+        const tokens = decodeOptionValues(model.value)
+        valueLabel = tokens.length > 0
+          ? tokens.map(token => optionLabel(definition.items, token)).join(', ')
+          : String(model.value)
+      } else {
+        valueLabel = optionLabel(definition.items, String(model.value))
+      }
+    } else if (definition.kind === 'boolean') {
+      valueLabel = booleanLabel(definition, Boolean(model.value))
+    } else if (definition.kind === 'date_range') {
+      const range = decodeDateRange(model.value)
+      valueLabel = range ? `${range.from} – ${range.to}` : String(model.value)
+    } else {
+      valueLabel = String(model.value)
+    }
+  }
 
   let operatorLabel = 'é'
   if (model.operator === 'contains' || (definition.kind === 'text' && definition.operator === 'contains')) {
     operatorLabel = 'contém'
   } else if (model.operator === 'between' || definition.kind === 'date_range') {
     operatorLabel = 'entre'
+  } else if (
+    model.operator === 'in'
+    || (definition.kind === 'option' && definition.multiple && decodeOptionValues(model.value).length > 1)
+  ) {
+    operatorLabel = decodeOptionValues(model.value).length > 1 ? 'é um de' : 'é'
   }
 
   return {
@@ -319,5 +400,6 @@ export function draftEmptyValue(
   if (definition.kind === 'month' || definition.kind === 'date' || definition.kind === 'date_range' || definition.kind === 'text') {
     return ''
   }
+  if (definition.kind === 'option' && definition.multiple) return ''
   return definition.emptyValue ?? 'all'
 }

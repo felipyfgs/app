@@ -4,16 +4,26 @@
  * Contêiner (popover/drawer) fica no Root; handlers e markup são compartilhados.
  */
 import type { DataTableFilterDefinition } from '~/types/data-table-filter'
-import { isValidDateValue, isValidMonthValue } from '~/utils/data-table-filters'
+import {
+  decodeOptionValues,
+  encodeOptionValues,
+  isValidDateValue,
+  isValidMonthValue,
+  optionLabel
+} from '~/utils/data-table-filters'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   definition: DataTableFilterDefinition
   modelValue: string | number | boolean | null
   /** Fim do intervalo (date_range). */
   valueTo?: string | null
   label?: string
   canConfirm: boolean
-}>()
+  /** Exibe "Voltar" para a lista de campos (modo add). */
+  showBack?: boolean
+}>(), {
+  showBack: false
+})
 
 const emit = defineEmits<{
   'update:modelValue': [value: string | number | boolean | null]
@@ -21,12 +31,33 @@ const emit = defineEmits<{
   'update:label': [label: string | undefined]
   'confirm': []
   'cancel': []
+  'back': []
 }>()
+
+const isOptionMultiple = computed(
+  () => props.definition.kind === 'option' && props.definition.multiple === true
+)
 
 const optionItems = computed(() => {
   if (props.definition.kind !== 'option') return []
   const empty = props.definition.emptyValue ?? 'all'
   return props.definition.items.filter(item => item.value !== empty)
+})
+
+const multiOptionModel = computed({
+  get: () => decodeOptionValues(props.modelValue),
+  set: (values: string[]) => {
+    const encoded = encodeOptionValues(values)
+    emit('update:modelValue', encoded || null)
+    if (!encoded) {
+      emit('update:label', undefined)
+      return
+    }
+    if (props.definition.kind !== 'option') return
+    const labels = decodeOptionValues(encoded)
+      .map(value => optionLabel(props.definition.kind === 'option' ? props.definition.items : [], value))
+    emit('update:label', labels.join(', '))
+  }
 })
 
 const booleanItems = computed(() => {
@@ -73,6 +104,9 @@ const operatorHint = computed(() => {
   if (props.definition.kind === 'date_range') {
     return 'Operador: entre'
   }
+  if (isOptionMultiple.value) {
+    return 'Operador: é um de (múltipla escolha)'
+  }
   return 'Operador: é (igualdade)'
 })
 
@@ -93,6 +127,15 @@ function onOption(value: string) {
   emit('update:modelValue', value)
   const item = optionItems.value.find(entry => entry.value === value)
   emit('update:label', item?.label)
+}
+
+function onMultiOption(value: unknown) {
+  const list = Array.isArray(value)
+    ? value.map(item => String(item ?? '')).filter(Boolean)
+    : value == null || value === ''
+      ? []
+      : [String(value)]
+  multiOptionModel.value = list
 }
 
 function onMonth(value: string | number) {
@@ -160,7 +203,26 @@ function onClientSelect(client: {
     </div>
 
     <UFormField
-      v-if="definition.kind === 'option'"
+      v-if="definition.kind === 'option' && isOptionMultiple"
+      :label="definition.label"
+      class="min-w-0"
+      hint="Selecione uma ou mais opções"
+    >
+      <USelect
+        :model-value="multiOptionModel"
+        :items="optionItems"
+        value-key="value"
+        multiple
+        class="w-full min-w-0"
+        :aria-label="definition.label"
+        data-testid="data-table-filter-option-multi"
+        :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
+        @update:model-value="onMultiOption"
+      />
+    </UFormField>
+
+    <UFormField
+      v-else-if="definition.kind === 'option'"
       :label="definition.label"
       class="min-w-0"
     >
@@ -300,23 +362,37 @@ function onClientSelect(client: {
       </UFormField>
     </div>
 
-    <div class="flex flex-wrap items-center justify-end gap-2 border-t border-default pt-3">
+    <div class="flex flex-wrap items-center justify-between gap-2 border-t border-default pt-3">
       <UButton
+        v-if="showBack"
         type="button"
         color="neutral"
         variant="ghost"
-        label="Cancelar"
-        data-testid="data-table-filter-cancel"
-        @click="emit('cancel')"
+        icon="i-lucide-arrow-left"
+        label="Campos"
+        data-testid="data-table-filter-back"
+        @click="emit('back')"
       />
-      <UButton
-        type="button"
-        color="primary"
-        label="Confirmar"
-        :disabled="!canConfirm || Boolean(fieldError)"
-        data-testid="data-table-filter-confirm"
-        @click="emit('confirm')"
-      />
+      <div
+        class="ms-auto flex flex-wrap items-center justify-end gap-2"
+      >
+        <UButton
+          type="button"
+          color="neutral"
+          variant="ghost"
+          label="Cancelar"
+          data-testid="data-table-filter-cancel"
+          @click="emit('cancel')"
+        />
+        <UButton
+          type="button"
+          color="primary"
+          label="Confirmar"
+          :disabled="!canConfirm || Boolean(fieldError)"
+          data-testid="data-table-filter-confirm"
+          @click="emit('confirm')"
+        />
+      </div>
     </div>
   </div>
 </template>

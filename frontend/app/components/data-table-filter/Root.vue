@@ -52,6 +52,7 @@ const {
   remove,
   clear,
   openSelector,
+  backToSelector,
   closeEditor,
   discardDraft
 } = useDataTableFilters({
@@ -64,6 +65,8 @@ const {
 
 const hasApplied = computed(() => applied.value.length > 0)
 const canAdd = computed(() => inactive.value.length > 0)
+/** Voltar à lista de campos ao adicionar (não no edit de chip). */
+const showEditorBack = computed(() => draft.value?.mode === 'add')
 
 /** Overlay unificado: seletor ou editor (mesmo contêiner desktop/mobile). */
 const overlayOpen = computed({
@@ -161,11 +164,13 @@ function onDraftLabel(label: string | undefined) {
             :value-to="draft?.valueTo ?? null"
             :label="draft?.label"
             :can-confirm="canConfirm"
+            :show-back="showEditorBack"
             @update:model-value="onDraftValue"
             @update:value-to="onDraftValueTo"
             @update:label="onDraftLabel"
             @confirm="confirmDraft"
             @cancel="closeEditor"
+            @back="backToSelector"
           >
             <template
               v-if="$slots.client"
@@ -214,11 +219,13 @@ function onDraftLabel(label: string | undefined) {
               :value-to="draft?.valueTo ?? null"
               :label="draft?.label"
               :can-confirm="canConfirm"
+              :show-back="showEditorBack"
               @update:model-value="onDraftValue"
               @update:value-to="onDraftValueTo"
               @update:label="onDraftLabel"
               @confirm="confirmDraft"
               @cancel="closeEditor"
+              @back="backToSelector"
             >
               <template
                 v-if="$slots.client"

@@ -3,7 +3,10 @@ import type { DataTableFilterDefinition, DataTableFilterModel } from '../../app/
 import {
   canConfirmDraftValue,
   createFilterModel,
+  decodeOptionValues,
   encodeDateRange,
+  encodeOptionValues,
+  formatChipDisplay,
   inactiveDefinitions,
   isValidDateRangeValue,
   isValidDateValue,
@@ -20,9 +23,11 @@ const definitions: DataTableFilterDefinition[] = [
     label: 'Situação',
     items: [
       { label: 'Pendente', value: 'PENDING' },
-      { label: 'Em dia', value: 'UP_TO_DATE' }
+      { label: 'Em dia', value: 'UP_TO_DATE' },
+      { label: 'Atenção', value: 'ATTENTION' }
     ],
-    emptyValue: 'all'
+    emptyValue: 'all',
+    multiple: true
   },
   { key: 'competence', kind: 'month', label: 'Competência', emptyValue: '' },
   { key: 'clientId', kind: 'client', label: 'Cliente', emptyValue: null },
@@ -71,10 +76,29 @@ describe('data-table-filters', () => {
       { key: 'competence', operator: 'eq', value: '2026-01' }
     ]
     expect(normalizeFilterModels(models, definitions)).toEqual([
-      { key: 'situation', operator: 'eq', value: 'PENDING', label: 'Pendente' },
+      { key: 'situation', operator: 'in', value: 'PENDING', label: 'Pendente' },
       { key: 'competence', operator: 'eq', value: '2026-01', label: '2026-01' },
       { key: 'clientId', operator: 'eq', value: 3, label: 'A' }
     ])
+  })
+
+  it('option multiple serializa IN com rótulos e chip "é um de"', () => {
+    expect(encodeOptionValues(['UP_TO_DATE', 'PENDING', 'PENDING'])).toBe('PENDING,UP_TO_DATE')
+    expect(decodeOptionValues('ATTENTION,PENDING')).toEqual(['ATTENTION', 'PENDING'])
+
+    const model = createFilterModel(definitions[0]!, 'UP_TO_DATE,PENDING,UNKNOWN')
+    expect(model).toEqual({
+      key: 'situation',
+      operator: 'in',
+      value: 'PENDING,UP_TO_DATE',
+      label: 'Pendente, Em dia'
+    })
+    expect(canConfirmDraftValue(definitions[0], 'PENDING,ATTENTION')).toBe(true)
+    expect(canConfirmDraftValue(definitions[0], '')).toBe(false)
+
+    const display = formatChipDisplay(definitions[0]!, model!)
+    expect(display.operatorLabel).toBe('é um de')
+    expect(display.valueLabel).toContain('Pendente')
   })
 
   it('rejeita competência inválida ao criar modelo', () => {
@@ -127,7 +151,7 @@ describe('data-table-filters', () => {
 
   it('não lista campos já ativos para adição', () => {
     const applied = normalizeFilterModels([
-      { key: 'situation', operator: 'eq', value: 'PENDING' }
+      { key: 'situation', operator: 'in', value: 'PENDING' }
     ], definitions)
     const inactive = inactiveDefinitions(applied, definitions)
     expect(inactive.map(item => item.key)).toEqual([
@@ -153,5 +177,18 @@ describe('data-table-filters', () => {
     expect(next).toHaveLength(1)
     expect(next[0]?.value).toBe('UP_TO_DATE')
     expect(removeFilterModel(next, definitions, 'situation')).toEqual([])
+  })
+
+  it('formatChipDisplay multi sem label resolve rótulos por token (não CSV cru)', () => {
+    const model: DataTableFilterModel = {
+      key: 'situation',
+      operator: 'in',
+      value: 'ATTENTION,PENDING'
+      // sem label — fallback do chip
+    }
+    const display = formatChipDisplay(definitions[0]!, model)
+    expect(display.valueLabel).toBe('Atenção, Pendente')
+    expect(display.operatorLabel).toBe('é um de')
+    expect(display.fieldLabel).toBe('Situação')
   })
 })

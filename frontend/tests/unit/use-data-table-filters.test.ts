@@ -114,4 +114,41 @@ describe('useDataTableFilters', () => {
     api.clear()
     expect(onClear).toHaveBeenCalledTimes(1)
   })
+
+  it('backToSelector em modo add descarta draft e reabre seletor', () => {
+    const modelValue = ref<DataTableFilterModel[]>([])
+    const onUpdate = vi.fn()
+    const api = useDataTableFilters({ definitions, modelValue, onUpdate })
+
+    api.startAdd('status')
+    api.setDraftValue('ACTIVE', 'Ativo')
+    expect(api.draft.value?.mode).toBe('add')
+    expect(api.editorOpen.value).toBe(true)
+
+    api.backToSelector()
+    expect(onUpdate).not.toHaveBeenCalled()
+    expect(api.draft.value).toBeNull()
+    expect(api.editorOpen.value).toBe(false)
+    expect(api.selectorOpen.value).toBe(true)
+  })
+
+  it('backToSelector em modo edit equivale a closeEditor (sem reabrir seletor)', () => {
+    const modelValue = ref<DataTableFilterModel[]>([
+      { key: 'status', operator: 'eq', value: 'ACTIVE', label: 'Ativo' }
+    ])
+    const onUpdate = vi.fn()
+    const api = useDataTableFilters({ definitions, modelValue, onUpdate })
+
+    api.startEdit('status')
+    expect(api.draft.value?.mode).toBe('edit')
+    api.setDraftValue('INACTIVE', 'Inativo')
+    api.backToSelector()
+    expect(onUpdate).not.toHaveBeenCalled()
+    expect(api.draft.value).toBeNull()
+    expect(api.editorOpen.value).toBe(false)
+    expect(api.selectorOpen.value).toBe(false)
+    expect(modelValue.value).toEqual([
+      { key: 'status', operator: 'eq', value: 'ACTIVE', label: 'Ativo' }
+    ])
+  })
 })

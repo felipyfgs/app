@@ -95,6 +95,49 @@ describe('monitoring filters', () => {
       .not.toBe(monitoringFilterSignature(reset))
   })
 
+  it('multi só em eixos portfolio com IN; status/coverage single; override field.multiple', () => {
+    const defs = monitoringFieldsToDefinitions(resolveMonitoringFilterFields(config))
+    expect(defs.find(d => d.key === 'situation')).toMatchObject({ kind: 'option', multiple: true })
+    // status/paymentStatus: API de listagem ainda é equality — single até whereIn.
+    expect(defs.find(d => d.key === 'status')).toMatchObject({ kind: 'option', multiple: false })
+    expect(defs.find(d => d.key === 'modality')).toMatchObject({ kind: 'option', multiple: true })
+    expect(defs.find(d => d.key === 'coverage')).toMatchObject({ kind: 'option', multiple: false })
+
+    const withOverride = monitoringFieldsToDefinitions([
+      {
+        key: 'modality',
+        kind: 'option',
+        label: 'Modalidade',
+        items: [{ label: 'Todas', value: 'all' }, { label: 'PARCSN', value: 'PARCSN' }],
+        multiple: false
+      },
+      {
+        key: 'status',
+        kind: 'option',
+        label: 'Status',
+        items: [{ label: 'Todos', value: 'all' }, { label: 'Ativo', value: 'ACTIVE' }],
+        multiple: true
+      }
+    ])
+    expect(withOverride.find(d => d.key === 'modality')?.multiple).toBe(false)
+    expect(withOverride.find(d => d.key === 'status')?.multiple).toBe(true)
+  })
+
+  it('round-trip multi situação no adapter monitoring', () => {
+    const filters = normalizeMonitoringFilters({
+      situation: 'ATTENTION,PENDING',
+      q: 'x'
+    })
+    const models = monitoringFiltersToModels(filters, config)
+    expect(models.find(m => m.key === 'situation')).toMatchObject({
+      operator: 'in',
+      value: 'ATTENTION,PENDING'
+    })
+    const back = modelsToMonitoringFilters(models, config, { q: 'x' })
+    expect(back.situation).toBe('ATTENTION,PENDING')
+    expect(back.q).toBe('x')
+  })
+
   it('converte chips ↔ MonitoringFilterValue omitindo defaults', () => {
     const filters = normalizeMonitoringFilters({
       q: 'busca',

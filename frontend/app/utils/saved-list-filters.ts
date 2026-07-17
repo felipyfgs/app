@@ -30,7 +30,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function sanitizeFilterModel(raw: unknown): DataTableFilterModel | null {
   if (!isRecord(raw) || typeof raw.key !== 'string' || !raw.key.trim()) return null
-  const operator = raw.operator === 'contains' || raw.operator === 'between'
+  const operator = raw.operator === 'contains'
+    || raw.operator === 'between'
+    || raw.operator === 'in'
     ? raw.operator
     : 'eq'
   const value = raw.value

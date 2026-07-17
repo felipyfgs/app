@@ -177,6 +177,21 @@ export function useDataTableFilters(options: UseDataTableFiltersOptions) {
     selectorOpen.value = true
   }
 
+  /**
+   * Volta do editor para a lista de campos (só faz sentido em modo add).
+   * Descarta o rascunho do campo atual sem aplicar.
+   */
+  function backToSelector() {
+    if (draft.value?.mode !== 'add') {
+      closeEditor()
+      return
+    }
+    draft.value = null
+    editorOpen.value = false
+    // Sempre reabre o seletor; se não houver campos, fica vazio e o host fecha.
+    selectorOpen.value = true
+  }
+
   function closeSelector() {
     selectorOpen.value = false
   }
@@ -215,6 +230,7 @@ export function useDataTableFilters(options: UseDataTableFiltersOptions) {
     clear,
     discardDraft,
     openSelector,
+    backToSelector,
     closeSelector,
     closeEditor,
     rememberClientLabel,

@@ -114,12 +114,17 @@ export function resolveMonitoringFilterFields(
   return fields
 }
 
-/** Eixos option que aceitam multi-seleção na UI e `IN` na API. */
+/**
+ * Eixos option com multi-seleção por default — só onde o backend portfolio
+ * aceita lista/CSV (`ModulePortfolioFilters` + whereIn).
+ *
+ * Fora da allowlist: single (equality). Surfaces legadas (status, paymentStatus
+ * em guias/processos/mailbox/cadastros) não entram até a API aceitar `IN`.
+ * Override por campo: `field.multiple` em MonitoringStructuredFilterField.
+ */
 const MULTIPLE_OPTION_KEYS = new Set([
   'situation',
   'deliveryStatus',
-  'paymentStatus',
-  'status',
   'modality'
 ])
 
@@ -136,14 +141,17 @@ export function monitoringFieldsToDefinitions(
     const items = field.key === 'situation'
       ? (field.items && field.items.length > 0 ? field.items : fiscalSituationFilterItems(false))
       : field.items
+    const multiple = field.kind === 'option'
+      ? (field.multiple ?? MULTIPLE_OPTION_KEYS.has(field.key))
+      : false
     return {
       key: field.key,
       kind: 'option',
       label: field.label,
       items,
       emptyValue: 'all',
-      // coverage permanece single (mutuamente exclusivo); demais options multi.
-      multiple: MULTIPLE_OPTION_KEYS.has(field.key)
+      // coverage default single; situation/deliveryStatus/modality multi se API ok.
+      multiple
     }
   })
 }

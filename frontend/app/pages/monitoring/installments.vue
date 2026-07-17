@@ -83,7 +83,9 @@ const filterConfig = computed<MonitoringFilterConfig>(() => ({
       key: 'modality',
       kind: 'option',
       label: 'Modalidade',
-      items: modalityFilterItems.value
+      items: modalityFilterItems.value,
+      // Single: UTabs de modalidade são exclusivos (1:1 com o chip).
+      multiple: false
     }
   ]
 }))

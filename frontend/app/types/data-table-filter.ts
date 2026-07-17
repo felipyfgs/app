@@ -3,7 +3,7 @@
  * Independente do contrato backend-facing do Monitoramento.
  */
 
-export type DataTableFilterOperator = 'eq' | 'contains' | 'between'
+export type DataTableFilterOperator = 'eq' | 'contains' | 'between' | 'in'
 
 export type DataTableFilterOptionItem = {
   label: string
@@ -18,6 +18,11 @@ export type DataTableFilterDefinition
     items: DataTableFilterOptionItem[]
     /** Valor vazio/default que não forma chip (default: 'all'). */
     emptyValue?: string
+    /**
+     * Permite selecionar várias opções (valor serializado "a,b,c", operator `in`).
+     * Default false (select único / `eq`).
+     */
+    multiple?: boolean
   }
   | {
     key: string
@@ -64,6 +69,7 @@ export type DataTableFilterDefinition
 /**
  * Modelo aplicado (chip).
  * - option/month/text/date: string
+ * - option multiple: "valor1,valor2" (operator `in`)
  * - client: number (id)
  * - boolean: boolean
  * - date_range: "YYYY-MM-DD..YYYY-MM-DD"
