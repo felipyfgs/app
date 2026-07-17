@@ -14,6 +14,7 @@ use App\Models\Office;
 use App\Models\PgdasdArtifact;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Fiscal\Dctfweb\DctfwebPeriod;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
@@ -37,11 +38,17 @@ final class PgdasdCommunicationService
         private readonly AuditLogger $audit,
         private readonly string $submoduleKey = self::SUBMODULE,
         private readonly string $auditPrefix = 'pgdasd.communication',
+        private readonly string $moduleKey = self::MODULE,
     ) {}
 
     public function submoduleKey(): string
     {
         return $this->submoduleKey;
+    }
+
+    public function moduleKey(): string
+    {
+        return $this->moduleKey;
     }
 
     /**
@@ -55,12 +62,12 @@ final class PgdasdCommunicationService
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
-            ->where('module_key', self::MODULE)
+            ->where('module_key', $this->moduleKey)
             ->where('submodule_key', $this->submoduleKey)
             ->first() ?? new ClientCommunicationPreference([
                 'office_id' => $office->id,
                 'client_id' => $client->id,
-                'module_key' => self::MODULE,
+                'module_key' => $this->moduleKey,
                 'submodule_key' => $this->submoduleKey,
                 'automatic_requested' => false,
                 'email_enabled' => false,
@@ -99,7 +106,7 @@ final class PgdasdCommunicationService
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
-            ->where('module_key', self::MODULE)
+            ->where('module_key', $this->moduleKey)
             ->where('submodule_key', $this->submoduleKey)
             ->get()
             ->keyBy('client_id');
@@ -108,7 +115,7 @@ final class PgdasdCommunicationService
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
-            ->where('module_key', self::MODULE)
+            ->where('module_key', $this->moduleKey)
             ->where('submodule_key', $this->submoduleKey)
             ->get(['id', 'client_id', 'status'])
             ->groupBy('client_id');
@@ -120,7 +127,7 @@ final class PgdasdCommunicationService
             $preference = $persisted ?? new ClientCommunicationPreference([
                 'office_id' => $office->id,
                 'client_id' => $clientId,
-                'module_key' => self::MODULE,
+                'module_key' => $this->moduleKey,
                 'submodule_key' => $this->submoduleKey,
                 'automatic_requested' => false,
                 'email_enabled' => false,
@@ -174,7 +181,7 @@ final class PgdasdCommunicationService
                     ->withoutGlobalScopes()
                     ->where('office_id', $office->id)
                     ->where('client_id', $client->id)
-                    ->where('module_key', self::MODULE)
+                    ->where('module_key', $this->moduleKey)
                     ->where('submodule_key', $this->submoduleKey)
                     ->lockForUpdate()
                     ->first();
@@ -187,7 +194,7 @@ final class PgdasdCommunicationService
                     return ClientCommunicationPreference::query()->create([
                         'office_id' => $office->id,
                         'client_id' => $client->id,
-                        'module_key' => self::MODULE,
+                        'module_key' => $this->moduleKey,
                         'submodule_key' => $this->submoduleKey,
                         'automatic_requested' => $automatic,
                         'email_enabled' => $email,
@@ -293,7 +300,7 @@ final class PgdasdCommunicationService
                 ->withoutGlobalScopes()
                 ->where('office_id', $office->id)
                 ->whereIn('client_id', $clientIds)
-                ->where('module_key', self::MODULE)
+                ->where('module_key', $this->moduleKey)
                 ->where('submodule_key', $this->submoduleKey)
                 ->lockForUpdate()
                 ->get()
@@ -326,7 +333,7 @@ final class PgdasdCommunicationService
                     $preference = ClientCommunicationPreference::query()->create([
                         'office_id' => $office->id,
                         'client_id' => $clientId,
-                        'module_key' => self::MODULE,
+                        'module_key' => $this->moduleKey,
                         'submodule_key' => $this->submoduleKey,
                         'automatic_requested' => false,
                         'email_enabled' => false,
@@ -379,12 +386,16 @@ final class PgdasdCommunicationService
         $timezone = is_string($office->timezone) && $office->timezone !== ''
             ? $office->timezone
             : 'America/Sao_Paulo';
-        $periodKey = $this->submoduleKey === 'pgmei'
-            ? (string) CarbonImmutable::now($timezone)->year
-            : PgdasdPeriod::toPeriodKey(PgdasdPeriod::expectedPa(null, $timezone));
+        $periodKey = match ($this->submoduleKey) {
+            'pgmei' => (string) CarbonImmutable::now($timezone)->year,
+            'dctfweb' => DctfwebPeriod::toPeriodKey(
+                DctfwebPeriod::expectedPa(null, $timezone)
+            ),
+            default => PgdasdPeriod::toPeriodKey(PgdasdPeriod::expectedPa(null, $timezone)),
+        };
 
         $documents = [];
-        if ($this->submoduleKey === self::SUBMODULE) {
+        if ($this->submoduleKey === self::SUBMODULE && $this->moduleKey === self::MODULE) {
             $documents = PgdasdArtifact::query()
                 ->withoutGlobalScopes()
                 ->where('office_id', $office->id)
@@ -452,7 +463,7 @@ final class PgdasdCommunicationService
             ->with('events')
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
-            ->where('module_key', self::MODULE)
+            ->where('module_key', $this->moduleKey)
             ->where('submodule_key', $this->submoduleKey)
             ->orderByDesc('id')
             ->get();
@@ -648,7 +659,7 @@ final class PgdasdCommunicationService
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
-            ->where('module_key', self::MODULE)
+            ->where('module_key', $this->moduleKey)
             ->where('submodule_key', $this->submoduleKey)
             ->get(['id', 'status']);
 

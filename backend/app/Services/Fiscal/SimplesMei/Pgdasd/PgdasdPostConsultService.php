@@ -15,6 +15,7 @@ use App\Models\FiscalSnapshot;
 use App\Models\PgdasdArtifact;
 use App\Models\PgdasdOperation;
 use App\Models\PgdasdRbt12Projection;
+use App\Models\TaxObligationDefinition;
 use App\Models\TaxObligationProjection;
 use App\Services\FiscalMonitoring\FiscalEvidenceStore;
 use Carbon\CarbonImmutable;
@@ -40,6 +41,11 @@ final class PgdasdPostConsultService
         FiscalAdapterResult $result,
         string $operationKey,
     ): array {
+        if ($operationKey === 'pgdasd.consdeclaracao'
+            && (! $response->success || $result->result !== FiscalRunResult::Success)
+        ) {
+            return $this->unverified13($request, $result, 'QUERY_FAILED');
+        }
         if (! $response->success || $result->result !== FiscalRunResult::Success) {
             return ['result' => $result, 'sanitized_dados' => null];
         }
@@ -84,12 +90,12 @@ final class PgdasdPostConsultService
         FiscalAdapterResult $result,
     ): array {
         if (! $this->isRealProductive($response)) {
-            return $this->unverified13($result, 'SOURCE_NOT_SERPRO_REAL');
+            return $this->unverified13($request, $result, 'SOURCE_NOT_SERPRO_REAL');
         }
 
         $expectedPa = $this->resolveExpectedPa($request);
         if ($expectedPa === null) {
-            return $this->unverified13($result, 'EXPECTED_PERIOD_UNAVAILABLE');
+            return $this->unverified13($request, $result, 'EXPECTED_PERIOD_UNAVAILABLE');
         }
 
         try {
@@ -100,11 +106,11 @@ final class PgdasdPostConsultService
                 'reason_code' => 'DECODE_FAILED',
             ]);
 
-            return $this->unverified13($result, 'DECODE_FAILED');
+            return $this->unverified13($request, $result, 'DECODE_FAILED');
         }
 
         if (($decoded['incomplete'] ?? true) === true || ! $this->codec13->coversPeriodo($decoded, $expectedPa)) {
-            return $this->unverified13($result, 'INCOMPLETE_OR_PERIOD_NOT_COVERED');
+            return $this->unverified13($request, $result, 'INCOMPLETE_OR_PERIOD_NOT_COVERED');
         }
 
         try {
@@ -130,7 +136,7 @@ final class PgdasdPostConsultService
                 'reason_code' => 'PROJECTION_FAILED',
             ]);
 
-            return $this->unverified13($result, 'PROJECTION_FAILED');
+            return $this->unverified13($request, $result, 'PROJECTION_FAILED');
         }
 
         $periodProjections = collect($projected['projections'])
@@ -156,11 +162,14 @@ final class PgdasdPostConsultService
             lastProductiveConsultedAt: $observedAt,
             projection: $expectedProjection->refresh(),
         );
+        $expectedMetadata = is_array($expectedProjection->metadata) ? $expectedProjection->metadata : [];
+        $expectedMetadata['pgdasd_declaration_state_reason'] = $statePack['reason'];
         $expectedProjection->forceFill([
             'pgdasd_declaration_state' => $statePack['state'],
             'pgdasd_last_declaration_operation_id' => $declaration?->id,
             'pgdasd_calendar_version_code' => $statePack['calendar_version_code'],
             'pgdasd_calendar_verified' => $statePack['calendar_verified'],
+            'metadata' => $expectedMetadata,
         ])->save();
 
         $reservedRbt12 = $this->rbt12->reserveFromOperations(
@@ -292,7 +301,6 @@ final class PgdasdPostConsultService
             || ! is_string($sourceReferenceKey)
             || $sourceReferenceKey === ''
             || $numeroDas === null
-            || $artifacts === []
         ) {
             return;
         }
@@ -308,6 +316,12 @@ final class PgdasdPostConsultService
             ->where('status', PgdasdRbt12Status::Pending->value)
             ->first();
         if ($reservation === null) {
+            return;
+        }
+
+        if ($artifacts === []) {
+            $this->rbt12->markFailed($reservation, 'EXTRATO_ARTIFACT_MISSING', (int) $request->run->id);
+
             return;
         }
 
@@ -344,8 +358,13 @@ final class PgdasdPostConsultService
     }
 
     /** @return array{result:FiscalAdapterResult,sanitized_dados:null} */
-    private function unverified13(FiscalAdapterResult $result, string $reason): array
+    private function unverified13(
+        FiscalAdapterRequest $request,
+        FiscalAdapterResult $result,
+        string $reason,
+    ): array
     {
+        $this->markExistingExpectedProjectionUnverified($request, $reason);
         $normalized = is_array($result->normalized) ? $result->normalized : [];
         $normalized['pgdasd'] = [
             'declaration_state' => PgdasdDeclarationState::Unverified->value,
@@ -363,6 +382,38 @@ final class PgdasdPostConsultService
             ),
             'sanitized_dados' => null,
         ];
+    }
+
+    private function markExistingExpectedProjectionUnverified(
+        FiscalAdapterRequest $request,
+        string $reason,
+    ): void {
+        $expectedPa = $this->resolveExpectedPa($request);
+        if ($expectedPa === null) {
+            return;
+        }
+        $definitionId = TaxObligationDefinition::query()->where('code', 'PGDAS_D')->value('id');
+        if ($definitionId === null) {
+            return;
+        }
+        $projection = TaxObligationProjection::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $request->office->id)
+            ->where('client_id', $request->client->id)
+            ->where('obligation_definition_id', $definitionId)
+            ->where('period_key', PgdasdPeriod::periodKeyFromPeriodoApuracao($expectedPa))
+            ->first();
+        if ($projection === null) {
+            return;
+        }
+
+        $metadata = is_array($projection->metadata) ? $projection->metadata : [];
+        $metadata['pgdasd_declaration_state_reason'] = $reason;
+        $projection->forceFill([
+            'pgdasd_declaration_state' => PgdasdDeclarationState::Unverified,
+            'pgdasd_calendar_verified' => false,
+            'metadata' => $metadata,
+        ])->save();
     }
 
     /** @param list<PgdasdArtifact> $artifacts @param list<array<string,mixed>> $failures */

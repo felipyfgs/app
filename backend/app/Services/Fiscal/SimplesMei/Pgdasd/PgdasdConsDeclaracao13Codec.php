@@ -107,7 +107,7 @@ final class PgdasdConsDeclaracao13Codec
     }
 
     /**
-     * @param list<mixed> $rows
+     * @param  list<mixed>  $rows
      * @return array{query_year:string,query_period:null,periods:list<array<string,mixed>>,incomplete:bool}
      */
     private function decodePeriodList(array $rows, string $year, ?string $queryPeriod): array
@@ -117,6 +117,7 @@ final class PgdasdConsDeclaracao13Codec
         foreach ($rows as $row) {
             if (! is_array($row)) {
                 $incomplete = true;
+
                 continue;
             }
             $parsed = $this->parsePeriodRow($row);
@@ -136,7 +137,7 @@ final class PgdasdConsDeclaracao13Codec
     }
 
     /**
-     * @param array<string,mixed> $row
+     * @param  array<string,mixed>  $row
      * @return array{periodo_apuracao:string,period:array{periodo_apuracao:string,period_key:string,operations:list<array<string,mixed>>},incomplete:bool}
      */
     private function parsePeriodRow(array $row): array
@@ -155,11 +156,13 @@ final class PgdasdConsDeclaracao13Codec
         foreach ($row['operacoes'] as $operation) {
             if (! is_array($operation)) {
                 $incomplete = true;
+
                 continue;
             }
             $mapped = $this->mapOperation($operation, $pa);
             if ($mapped === null) {
                 $incomplete = true;
+
                 continue;
             }
             $operations[] = $mapped;

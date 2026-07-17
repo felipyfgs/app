@@ -2,6 +2,7 @@
 
 namespace App\Services\FiscalMonitoring;
 
+use App\Enums\DctfwebCategory;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\FiscalTrigger;
@@ -18,6 +19,7 @@ use App\Models\MonitorCommercialLedgerEntry;
 use App\Models\Office;
 use App\Models\OfficeMonitorSchedulePolicy;
 use App\Models\OfficeSubscription;
+use App\Services\Fiscal\Dctfweb\DctfwebPeriod;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPeriod;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiYear;
 use App\Services\Serpro\CapabilityDriverResolver;
@@ -587,14 +589,24 @@ final class FiscalMonitoringScheduler
             if ($locked->next_run_at !== null && $locked->next_run_at->greaterThan($now)) {
                 return 'skipped';
             }
+            $idempotencyCodes = $this->isPgmeiCodes(
+                (string) $locked->system_code,
+                (string) $locked->service_code,
+            )
+                ? ['INTEGRA_MEI', 'PGMEI', 'MONITOR']
+                : [
+                    (string) $locked->system_code,
+                    (string) $locked->service_code,
+                    (string) $locked->operation_code,
+                ];
 
             $slot = $this->scheduledSlot($locked, $now);
             $key = FiscalIdempotency::runKey(
                 (int) $locked->office_id,
                 (int) $locked->client_id,
-                $locked->system_code,
-                $locked->service_code,
-                $locked->operation_code,
+                $idempotencyCodes[0],
+                $idempotencyCodes[1],
+                $idempotencyCodes[2],
                 null,
                 FiscalTrigger::Scheduled,
                 $slot,
@@ -690,6 +702,27 @@ final class FiscalMonitoringScheduler
             ];
         }
 
+        $isDctfweb = $svc === 'DCTFWEB'
+            || $sys === 'DCTFWEB'
+            || $sys === 'INTEGRA_DCTFWEB'
+            || str_contains(strtolower($serviceCode), 'dctfweb');
+
+        if ($isDctfweb) {
+            $pa = DctfwebPeriod::expectedPa($now, $tz);
+
+            return [
+                'expected_period_key' => DctfwebPeriod::toPeriodKey($pa),
+                'expected_periodo_apuracao' => DctfwebPeriod::toPeriodoApuracao($pa),
+                'period_key' => DctfwebPeriod::toPeriodKey($pa),
+                'anoPA' => DctfwebPeriod::toAnoPa($pa),
+                'mesPA' => DctfwebPeriod::toMesPa($pa),
+                'categoria' => DctfwebCategory::default()->officialCode(),
+                'category' => DctfwebCategory::default()->value,
+                'operation_key' => 'dctfweb.consrecibo',
+                'dctfweb_pa_frozen_at' => $now->toIso8601String(),
+            ];
+        }
+
         $isPgdasd = $svc === 'PGDASD'
             || ($sys === 'INTEGRA_SN' && $svc === 'PGDASD')
             || $sys === 'PGDASD';
@@ -744,7 +777,8 @@ final class FiscalMonitoringScheduler
             ];
         }
 
-        return $this->pgdasdProgressForCodes($systemCode, $serviceCode, $officeId, $now);
+        // DCTFWeb e PGDAS-D: progressForCodes já congela PA sem sobrescrita comercial.
+        return $this->progressForCodes($systemCode, $serviceCode, $officeId, $now);
     }
 
     /**

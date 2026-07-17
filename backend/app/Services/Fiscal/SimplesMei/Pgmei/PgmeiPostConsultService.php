@@ -5,6 +5,7 @@ namespace App\Services\Fiscal\SimplesMei\Pgmei;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
 use App\DTO\Serpro\IntegraResponse;
+use App\Enums\FiscalSourceProvenance;
 use App\Enums\PgmeiDebtState;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -48,7 +49,8 @@ final class PgmeiPostConsultService
             return ['result' => $this->withNormalized($result, $normalized)];
         }
 
-        $productive = $response->isProductiveEvidence();
+        $productive = $response->isProductiveEvidence()
+            && $response->sourceProvenance === FiscalSourceProvenance::SerproReal->value;
         if (! $productive || $response->simulated) {
             $normalized['pgmei'] = $base + ['reason' => 'SIMULATED_OR_NOT_PRODUCTIVE'];
 

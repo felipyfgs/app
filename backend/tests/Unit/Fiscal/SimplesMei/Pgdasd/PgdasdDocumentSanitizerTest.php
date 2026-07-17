@@ -39,4 +39,16 @@ class PgdasdDocumentSanitizerTest extends TestCase
         $this->sanitizer->assertPdf($pdf);
         $this->assertSame($pdf, $this->sanitizer->decodeStrictBase64(base64_encode($pdf)));
     }
+
+    #[Test]
+    public function accepts_exactly_ten_mib_and_rejects_one_byte_over_limit(): void
+    {
+        $exact = '%PDF-'.str_repeat('0', PgdasdDocumentSanitizer::MAX_PDF_BYTES - 5);
+        $this->assertSame(PgdasdDocumentSanitizer::MAX_PDF_BYTES, strlen(
+            $this->sanitizer->decodeStrictBase64(base64_encode($exact)),
+        ));
+
+        $this->expectException(RuntimeException::class);
+        $this->sanitizer->decodeStrictBase64(base64_encode($exact.'0'));
+    }
 }

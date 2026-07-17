@@ -28,6 +28,10 @@ class PgmeiMonitoringController extends Controller
     public function history(Request $request, int $client): JsonResponse
     {
         $this->assertCanRead();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
+
         $office = $this->currentOffice->office();
         $model = $this->findClient($office->id, $client);
         if ($model === null) {
@@ -37,8 +41,10 @@ class PgmeiMonitoringController extends Controller
             ], 404);
         }
 
-        $year = $request->query('year');
-        $yearInt = is_numeric($year) ? (int) $year : null;
+        $data = $request->validate([
+            'year' => ['sometimes', 'integer', 'min:2000', 'max:2100'],
+        ]);
+        $yearInt = isset($data['year']) ? (int) $data['year'] : null;
 
         try {
             $data = $this->queries->history($office, $model, $yearInt);
@@ -191,9 +197,13 @@ class PgmeiMonitoringController extends Controller
         ]);
     }
 
-    public function preview(int $client): JsonResponse
+    public function preview(Request $request, int $client): JsonResponse
     {
         $this->assertCanRead();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
+
         $office = $this->currentOffice->office();
         $model = $this->findClient($office->id, $client);
         if ($model === null) {
@@ -205,9 +215,13 @@ class PgmeiMonitoringController extends Controller
         ]);
     }
 
-    public function tracking(int $client): JsonResponse
+    public function tracking(Request $request, int $client): JsonResponse
     {
         $this->assertCanRead();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
+
         $office = $this->currentOffice->office();
         $model = $this->findClient($office->id, $client);
         if ($model === null) {
@@ -230,7 +244,15 @@ class PgmeiMonitoringController extends Controller
 
     private function rejectClientOfficeId(Request $request): ?JsonResponse
     {
-        if ($request->attributes->get(EnsureOfficeContext::CLIENT_OFFICE_ID_SUPPLIED) !== true) {
+        $suppliedAtTopLevel = $request->attributes->get(
+            EnsureOfficeContext::CLIENT_OFFICE_ID_SUPPLIED,
+        ) === true;
+        $suppliedNested = $this->containsOfficeIdKey($request->query->all())
+            || $this->containsOfficeIdKey($request->request->all())
+            || ($request->isJson() && $request->json() !== null
+                && $this->containsOfficeIdKey($request->json()->all()));
+
+        if (! $suppliedAtTopLevel && ! $suppliedNested) {
             return null;
         }
 
@@ -238,6 +260,21 @@ class PgmeiMonitoringController extends Controller
             'message' => 'office_id não é aceito; o escritório é obtido do contexto autenticado.',
             'code' => 'CLIENT_OFFICE_ID_REJECTED',
         ], 422);
+    }
+
+    /** @param array<array-key, mixed> $values */
+    private function containsOfficeIdKey(array $values): bool
+    {
+        foreach ($values as $key => $value) {
+            if (is_string($key) && strtolower($key) === 'office_id') {
+                return true;
+            }
+            if (is_array($value) && $this->containsOfficeIdKey($value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function assertCanRead(): void

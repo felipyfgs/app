@@ -134,7 +134,14 @@ final class PgdasdDocumentSanitizer
     public function decodeStrictBase64(string $base64): string
     {
         $clean = preg_replace('/\s+/', '', $base64) ?? '';
-        if ($clean === '' || preg_match('/^(?:[A-Za-z0-9+\/] {4})*(?:[A-Za-z0-9+\/]{4}|[A-Za-z0-9+\/]{3}=|[A-Za-z0-9+\/]{2}==)$/x', $clean) !== 1) {
+        $length = strlen($clean);
+        $padding = str_ends_with($clean, '==') ? 2 : (str_ends_with($clean, '=') ? 1 : 0);
+        $body = $padding > 0 ? substr($clean, 0, -$padding) : $clean;
+        if ($clean === ''
+            || $length % 4 !== 0
+            || str_contains($body, '=')
+            || strspn($body, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/') !== strlen($body)
+        ) {
             throw new RuntimeException('Base64 inválido.');
         }
         $decoded = base64_decode($clean, true);

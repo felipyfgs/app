@@ -2,9 +2,8 @@
 
 namespace App\Services\Fiscal\SimplesMei\Pgdasd;
 
-use RuntimeException;
 use Illuminate\Support\Facades\Log;
-use Symfony\Component\Process\Process as SymfonyProcess;
+use RuntimeException;
 use Symfony\Component\Process\Process;
 
 /**
@@ -68,7 +67,7 @@ final class PdfTextExtractor
 
         try {
             $process->run(function (string $type, string $buffer) use (&$text, &$stderr, $process): void {
-                if ($type === SymfonyProcess::OUT) {
+                if ($type === Process::OUT) {
                     $text .= $buffer;
                     if (strlen($text) > self::MAX_OUTPUT_BYTES) {
                         $process->stop(0);

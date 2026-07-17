@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Fiscal;
 use App\DTO\Fiscal\Module\ModulePortfolioFilters;
 use App\Enums\FiscalModuleKey;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureOfficeContext;
 use App\Http\Resources\Fiscal\FiscalModuleClientRowResource;
 use App\Http\Resources\Fiscal\FiscalModuleOverviewResource;
 use App\Services\FiscalMonitoring\ModulePortfolio\ModulePortfolioQueryService;
@@ -32,6 +33,10 @@ class FiscalModulePortfolioController extends Controller
         $office = $this->currentOffice->office();
         $this->assertModuleEnabled($moduleKey, (int) $office->id);
 
+        if ($rejection = $this->rejectSimplesMeiClientOfficeId($request, $moduleKey)) {
+            return $rejection;
+        }
+
         // Nunca confiar em office_id do client (já stripado; reafirma).
         $request->query->remove('office_id');
         $request->request->remove('office_id');
@@ -49,6 +54,10 @@ class FiscalModulePortfolioController extends Controller
         $moduleKey = $this->resolveModule($module);
         $office = $this->currentOffice->office();
         $this->assertModuleEnabled($moduleKey, (int) $office->id);
+
+        if ($rejection = $this->rejectSimplesMeiClientOfficeId($request, $moduleKey)) {
+            return $rejection;
+        }
 
         $request->query->remove('office_id');
         $request->request->remove('office_id');
@@ -83,6 +92,52 @@ class FiscalModulePortfolioController extends Controller
         if ($this->currentOffice->role() === null) {
             abort(403, 'Perfil não resolvido.');
         }
+    }
+
+    /**
+     * As carteiras PGDAS-D e PGMEI rejeitam qualquer tentativa de fornecer escopo
+     * de escritório, inclusive em filtros aninhados. O valor nunca é lido nem
+     * usado para resolver o tenant.
+     */
+    private function rejectSimplesMeiClientOfficeId(
+        Request $request,
+        FiscalModuleKey $module,
+    ): ?JsonResponse {
+        if ($module !== FiscalModuleKey::SimplesMei) {
+            return null;
+        }
+
+        $suppliedAtTopLevel = $request->attributes->get(
+            EnsureOfficeContext::CLIENT_OFFICE_ID_SUPPLIED,
+        ) === true;
+        $suppliedNested = $this->containsOfficeIdKey($request->query->all())
+            || $this->containsOfficeIdKey($request->request->all())
+            || ($request->isJson() && $request->json() !== null
+                && $this->containsOfficeIdKey($request->json()->all()));
+
+        if (! $suppliedAtTopLevel && ! $suppliedNested) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => 'O escritório é definido pela sessão e não pode ser informado pelo cliente.',
+            'code' => 'CLIENT_OFFICE_ID_REJECTED',
+        ], 422);
+    }
+
+    /** @param array<array-key, mixed> $values */
+    private function containsOfficeIdKey(array $values): bool
+    {
+        foreach ($values as $key => $value) {
+            if (is_string($key) && strtolower($key) === 'office_id') {
+                return true;
+            }
+            if (is_array($value) && $this->containsOfficeIdKey($value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -152,8 +152,8 @@ class PgdasdMonitoringController extends Controller
                 $pgArtifact->evidenceArtifact,
                 $officeId,
             );
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 404);
+        } catch (\Throwable) {
+            return response()->json(['message' => 'Artefato não encontrado.'], 404);
         }
 
         $filename = $this->sanitizeDownloadFilename(
@@ -166,6 +166,8 @@ class PgdasdMonitoringController extends Controller
             'Content-Type' => $pgArtifact->content_type ?: 'application/pdf',
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
             'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'Pragma' => 'no-cache',
         ]);
     }
 
@@ -348,7 +350,15 @@ class PgdasdMonitoringController extends Controller
 
     private function rejectClientOfficeId(Request $request): ?JsonResponse
     {
-        if ($request->attributes->get(EnsureOfficeContext::CLIENT_OFFICE_ID_SUPPLIED) !== true) {
+        $suppliedAtTopLevel = $request->attributes->get(
+            EnsureOfficeContext::CLIENT_OFFICE_ID_SUPPLIED,
+        ) === true;
+        $suppliedNested = $this->containsOfficeIdKey($request->query->all())
+            || $this->containsOfficeIdKey($request->request->all())
+            || ($request->isJson() && $request->json() !== null
+                && $this->containsOfficeIdKey($request->json()->all()));
+
+        if (! $suppliedAtTopLevel && ! $suppliedNested) {
             return null;
         }
 
@@ -356,6 +366,21 @@ class PgdasdMonitoringController extends Controller
             'message' => 'office_id não é aceito; o escritório é obtido do contexto autenticado.',
             'code' => 'CLIENT_OFFICE_ID_REJECTED',
         ], 422);
+    }
+
+    /** @param array<array-key, mixed> $values */
+    private function containsOfficeIdKey(array $values): bool
+    {
+        foreach ($values as $key => $value) {
+            if (is_string($key) && strtolower($key) === 'office_id') {
+                return true;
+            }
+            if (is_array($value) && $this->containsOfficeIdKey($value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function assertCanRead(): void

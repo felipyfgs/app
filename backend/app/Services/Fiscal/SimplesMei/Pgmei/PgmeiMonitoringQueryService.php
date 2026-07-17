@@ -5,7 +5,6 @@ namespace App\Services\Fiscal\SimplesMei\Pgmei;
 use App\Enums\PgmeiDebtState;
 use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
 use App\Models\Client;
-use App\Models\ClientCommunicationPreference;
 use App\Models\Office;
 use App\Models\PgmeiDebtItem;
 use App\Models\PgmeiDebtObservation;
@@ -55,26 +54,18 @@ final class PgmeiMonitoringQueryService
             ->get()
             ->keyBy('client_id');
 
-        $prefs = ClientCommunicationPreference::query()
-            ->withoutGlobalScopes()
-            ->where('office_id', $office->id)
-            ->whereIn('client_id', $clientIds)
-            ->where('module_key', PgmeiCommunicationService::MODULE)
-            ->where('submodule_key', PgmeiCommunicationService::SUBMODULE)
-            ->get()
-            ->keyBy('client_id');
+        $communications = $this->communication->summariesForClients($office, $clientIds);
 
         $map = [];
         foreach ($clientIds as $cid) {
             $proj = $projections->get($cid);
-            $pref = $prefs->get($cid);
-            $comm = $pref?->toPublicArray() ?? [
+            $comm = $communications[$cid] ?? [
                 'automatic_requested' => false,
                 'automatic_effective' => false,
                 'execution_mode' => 'TEMPLATE_ONLY',
                 'email_enabled' => false,
                 'whatsapp_enabled' => false,
-                'lock_version' => 1,
+                'lock_version' => 0,
             ];
 
             if ($proj === null) {

@@ -11,6 +11,7 @@ use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutability;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\SerproEnvironment;
+use App\Models\PgdasdOperation;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdConsDeclaracao13Codec;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdDocumentCodecs;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPeriod;
@@ -351,9 +352,7 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
                     ?? $progress['periodo_apuracao']
                     ?? ($periodKey !== '' ? PgdasdPeriod::periodoApuracaoFromPeriodKey($periodKey) : ''))
             ),
-            'pgdasd.consdecrec' => $this->pgdasdDocumentCodecs->buildPayload15(
-                (string) ($ctx['numeroDeclaracao'] ?? $progress['numero_declaracao'] ?? '')
-            ),
+            'pgdasd.consdecrec' => $this->buildConsDecRec15Payload($request, $periodKey),
             'pgdasd.consextrato' => $this->pgdasdDocumentCodecs->buildPayload16(
                 (string) ($ctx['numeroDas'] ?? $progress['numero_das'] ?? '')
             ),
@@ -405,6 +404,55 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
             ($ano !== null && $ano !== '') ? $ano : null,
             ($pa !== null && $pa !== '') ? $pa : null,
         );
+    }
+
+    /**
+     * O serviço 15 somente pode consultar uma declaração previamente observada
+     * pelo serviço 13 no mesmo tenant/cliente. O PA informado precisa coincidir.
+     *
+     * @return array{numeroDeclaracao: string}
+     */
+    private function buildConsDecRec15Payload(FiscalAdapterRequest $request, string $periodKey): array
+    {
+        $ctx = $request->context;
+        $progress = $request->progress;
+        $declarationNumber = trim((string) (
+            $ctx['numeroDeclaracao']
+            ?? $progress['numero_declaracao']
+            ?? ''
+        ));
+
+        if ($declarationNumber === '') {
+            throw new InvalidArgumentException('Número da declaração é obrigatório para o serviço 15.');
+        }
+
+        $observed = PgdasdOperation::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $request->office->id)
+            ->where('client_id', $request->client->id)
+            ->where('kind', 'DECLARATION')
+            ->where('declaration_number', $declarationNumber)
+            ->orderByDesc('transmitted_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($observed === null) {
+            throw new InvalidArgumentException(
+                'Declaração não observada em consulta válida do serviço 13 para este cliente.'
+            );
+        }
+
+        $providedPeriod = trim((string) (
+            $request->competence?->period_key
+            ?? $ctx['period_key']
+            ?? $progress['period_key']
+            ?? ($periodKey !== '' ? $periodKey : '')
+        ));
+        if ($providedPeriod !== '' && $providedPeriod !== (string) $observed->period_key) {
+            throw new InvalidArgumentException('O PA informado não corresponde à declaração observada.');
+        }
+
+        return $this->pgdasdDocumentCodecs->buildPayload15($declarationNumber);
     }
 
     /**

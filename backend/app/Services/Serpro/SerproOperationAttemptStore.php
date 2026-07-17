@@ -182,23 +182,28 @@ final class SerproOperationAttemptStore
         }
 
         $now = now();
+        $documental = $this->isPgdasdDocumentalKey($attempt->operation_key);
         $attempt->forceFill([
             'attempt_state' => $state,
             'success' => $response->success,
             'http_status' => $response->httpStatus > 0 ? $response->httpStatus : null,
             'error_code' => $response->errorCode,
             'error_message' => $response->errorMessage !== null
-                ? mb_substr($response->errorMessage, 0, 500)
+                ? $this->sanitizeErrorMessage($response->errorMessage, $documental)
                 : null,
             'simulated' => $response->simulated,
             'latency_ms' => $response->latencyMs,
             'source_provenance' => $response->sourceProvenance,
             'business_status' => $response->businessStatus,
             'functional_route' => $response->functionalRoute,
-            'mensagens' => $response->mensagens,
+            'mensagens' => $documental
+                ? $this->sanitizeDocumentalArray($response->mensagens)
+                : $response->mensagens,
             'dados' => $this->sanitizeAttemptDados($attempt->operation_key, $response->dados),
             'body' => $this->sanitizeAttemptBody($attempt->operation_key, $response->body),
-            'headers' => $response->headers,
+            'headers' => $documental
+                ? $this->sanitizeDocumentalArray($response->headers)
+                : $response->headers,
             'request_tag' => $response->requestTag ?? $attempt->request_tag,
             'correlation_id' => $response->correlationId ?? $attempt->correlation_id,
             'acknowledged_at' => in_array($state, [
@@ -298,6 +303,11 @@ final class SerproOperationAttemptStore
                 $decoded = json_decode($body['dados'], true);
                 if (is_array($decoded)) {
                     $body['dados'] = $this->stripPdfBase64Fields($decoded);
+                } else {
+                    $body['dados'] = [
+                        'sanitized' => true,
+                        'invalid_document_payload' => true,
+                    ];
                 }
             }
         }
@@ -323,10 +333,13 @@ final class SerproOperationAttemptStore
         $binaryFields = ['pdf', 'pdfNotificacao', 'pdfDarf'];
         foreach ($node as $field => &$value) {
             if (in_array((string) $field, $binaryFields, true) && is_string($value)) {
-                $value = [
-                    'sanitized' => true,
-                    'omitted_from_attempt_store' => true,
-                ];
+                $value = $this->omittedDescriptor();
+
+                continue;
+            }
+            if (is_string($value)) {
+                $value = $this->sanitizeScalar($value, true, 2000);
+
                 continue;
             }
             if (is_array($value)) {
@@ -336,5 +349,72 @@ final class SerproOperationAttemptStore
         unset($value);
 
         return $node;
+    }
+
+    /**
+     * Sanitiza metadados laterais de respostas documentais (mensagens/headers),
+     * inclusive blobs fora dos campos oficiais.
+     *
+     * @param  array<string|int, mixed>  $node
+     * @return array<string|int, mixed>
+     */
+    private function sanitizeDocumentalArray(array $node): array
+    {
+        foreach ($node as &$value) {
+            if (is_array($value)) {
+                $value = $this->sanitizeDocumentalArray($value);
+            } elseif (is_string($value)) {
+                $value = $this->sanitizeScalar($value, true, 2000);
+            }
+        }
+        unset($value);
+
+        return $node;
+    }
+
+    private function sanitizeScalar(string $value, bool $documental, int $maxLength): mixed
+    {
+        if ($documental && $this->looksLikeEncodedBlob($value)) {
+            return $this->omittedDescriptor();
+        }
+
+        return mb_substr($value, 0, $maxLength);
+    }
+
+    private function sanitizeErrorMessage(string $value, bool $documental): string
+    {
+        if ($documental && $this->looksLikeEncodedBlob($value)) {
+            return '[conteúdo documental omitido]';
+        }
+
+        return mb_substr($value, 0, 500);
+    }
+
+    private function looksLikeEncodedBlob(string $value): bool
+    {
+        $candidate = preg_replace('/\s+/', '', $value) ?? '';
+        $length = strlen($candidate);
+        if ($length < 8 || $length % 4 !== 0) {
+            return false;
+        }
+        if (strspn($candidate, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=') !== $length) {
+            return false;
+        }
+
+        $decoded = base64_decode($candidate, true);
+        if (! is_string($decoded)) {
+            return false;
+        }
+
+        return str_starts_with($decoded, '%PDF') || $length >= 128;
+    }
+
+    /** @return array{sanitized: true, omitted_from_attempt_store: true} */
+    private function omittedDescriptor(): array
+    {
+        return [
+            'sanitized' => true,
+            'omitted_from_attempt_store' => true,
+        ];
     }
 }

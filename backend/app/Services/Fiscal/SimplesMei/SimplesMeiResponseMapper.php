@@ -303,7 +303,7 @@ final class SimplesMeiResponseMapper
                 return $decoded;
             }
         }
-        if (is_array($dados) && $dados !== []) {
+        if (is_array($dados)) {
             return $dados;
         }
         if (isset($response->body['dados'])) {
@@ -343,9 +343,27 @@ final class SimplesMeiResponseMapper
             return ['dados' => $payload, 'status' => $body['status'] ?? null];
         }
 
-        $strip = static function (array $node) use (&$strip): array {
+        $isEncodedBlob = static function (string $value): bool {
+            $candidate = preg_replace('/\s+/', '', $value) ?? '';
+            $length = strlen($candidate);
+            if ($length < 8 || $length % 4 !== 0
+                || strspn($candidate, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=') !== $length
+            ) {
+                return false;
+            }
+            $decoded = base64_decode($candidate, true);
+
+            return is_string($decoded)
+                && (str_starts_with($decoded, '%PDF') || $length >= 128);
+        };
+        $strip = static function (array $node) use (&$strip, $isEncodedBlob): array {
             foreach ($node as $field => &$value) {
                 if (in_array((string) $field, ['pdf', 'pdfNotificacao', 'pdfDarf'], true) && is_string($value)) {
+                    $value = ['sanitized' => true, 'omitted' => true];
+
+                    continue;
+                }
+                if (is_string($value) && $isEncodedBlob($value)) {
                     $value = ['sanitized' => true, 'omitted' => true];
 
                     continue;

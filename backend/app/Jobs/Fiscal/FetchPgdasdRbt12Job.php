@@ -24,13 +24,16 @@ final class FetchPgdasdRbt12Job implements ShouldQueue
             ->withoutGlobalScopes()
             ->with(['projection', 'client'])
             ->find($this->rbt12ProjectionId);
-        if ($projection === null || ! $rbt12->markAttempted($projection)) {
+        if ($projection === null || $projection->status?->value !== 'PENDING') {
             return;
         }
 
         try {
             $queries->enqueueAutomaticRbt12Extract($projection->refresh());
-        } catch (\Throwable) {
+            // attempted_at é telemetria, não trava de reentrega. A run 16 já
+            // foi persistida com correlação determinística antes desta marca.
+            $rbt12->markAttempted($projection->refresh());
+        } catch (Throwable) {
             $rbt12->markFailed($projection->refresh(), 'EXTRACT_QUERY_ENQUEUE_FAILED');
         }
     }

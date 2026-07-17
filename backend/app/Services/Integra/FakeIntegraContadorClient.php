@@ -517,24 +517,40 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
         };
     }
 
-    /** Helper de teste: recibo transmitido produtivo. */
+    /** Helper de teste: recibo transmitido produtivo (CONSRECIBO32 → PDFByteArrayBase64). */
     public static function productiveRecibo(
         string $periodKey = '2026-01',
         string $receipt = 'REC-001',
         bool $retificadora = false,
         ?string $xmlHint = null,
     ): IntegraResponse {
+        $tipo = $retificadora ? 'RETIFICADORA' : 'ORIGINAL';
+        // PDF mínimo com literais legíveis pelo parser de dicas (recibo / tipo).
+        $pdf = "%PDF-1.4\n"
+            ."(RECIBO: {$receipt}) Tj\n"
+            ."({$tipo}) Tj\n"
+            .'%%EOF';
+        $b64 = base64_encode($pdf);
+        $dados = [
+            'PDFByteArrayBase64' => $b64,
+        ];
         $body = [
             'competencia' => $periodKey,
             'status' => 'TRANSMITIDA',
             'transmitida' => true,
             'recibo' => $receipt,
-            'tipo' => $retificadora ? 'RETIFICADORA' : 'ORIGINAL',
+            'tipo' => $tipo,
             'dataHoraTransmissao' => '2026-02-10T15:30:00-03:00',
             'versao' => $retificadora ? '2' : '1',
+            'dados' => $dados,
         ];
         if ($xmlHint !== null) {
             $body['xml'] = $xmlHint;
+            // Varia o PDF quando há hint de XML para forçar nova versão/sha.
+            $pdf .= "\n%xml:".$xmlHint;
+            $b64 = base64_encode($pdf);
+            $dados['PDFByteArrayBase64'] = $b64;
+            $body['dados'] = $dados;
         }
 
         return new IntegraResponse(
@@ -544,6 +560,7 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
             simulated: false,
             correlationId: null,
             latencyMs: 5,
+            dados: $dados,
             sourceProvenance: FiscalSourceProvenance::SerproReal->value,
         );
     }

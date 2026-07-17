@@ -112,6 +112,7 @@ final class PgdasdDocumentCodecs
                         'available' => false,
                         'reason' => 'DOCUMENT_NOT_STORED',
                     ];
+
                     continue;
                 }
                 if (is_array($value)) {

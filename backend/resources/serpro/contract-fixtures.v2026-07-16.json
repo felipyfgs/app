@@ -1,6 +1,6 @@
 {
     "fixture_version": "2026.07.16.1",
-    "manifest_sha256": "87d95ca0c53b06bdc99962c32481fd65c6d99522434fd1433df24b847033864d",
+    "manifest_sha256": "0d742ddc7574d3b19c969fdf60362f2423bfc6e1a8f98c0da81c0c7040a13c8b",
     "synthetic": true,
     "notes": "Fixtures sintéticas derivadas dos schemas oficiais; não constituem evidência de resposta produtiva.",
     "fixtures": [
@@ -139,30 +139,23 @@
             "operation_key": "pgdasd.consdeclaracao",
             "route": "Consultar",
             "synthetic": true,
-            "schema_sha256": "705f29af051f60b4f7aec4e8414166d3a4a2c0493ac912ec9d7e9bb06793bbcc",
+            "schema_sha256": "4548e86b96851b47811227b78fcb191f72e8c9c5e67096f915d3503316700866",
             "request": {
                 "business_data": {
-                    "anoCalendario": "EXEMPLO_SINTETICO",
-                    "periodoApuracao": "EXEMPLO_SINTETICO"
+                    "anoCalendario": "2026"
                 }
             },
             "response": {
                 "status": 200,
                 "mensagens": [],
                 "dados": {
-                    "anoCalendario": 1,
-                    "periodos": [],
-                    "periodo": "EXEMPLO_SINTETICO",
-                    "periodoApuracao": 1,
-                    "operacoes": [],
-                    "tipoOperacao": "EXEMPLO_SINTETICO",
-                    "indiceDeclaracao": "EXEMPLO_SINTETICO",
-                    "numeroDeclaracao": "EXEMPLO_SINTETICO",
-                    "dataHoraTransmissao": 1,
-                    "malha": "EXEMPLO_SINTETICO",
-                    "numeroDas": "EXEMPLO_SINTETICO",
-                    "dataHoraEmissaoDas": 1,
-                    "dasPago": false
+                    "anoCalendario": 2026,
+                    "periodos": [
+                        {
+                            "periodoApuracao": 202606,
+                            "operacoes": []
+                        }
+                    ]
                 }
             },
             "sources": [
@@ -190,25 +183,28 @@
             "schema_sha256": "e5d12ea21361ea8f7d016f86fbef9e8896f9117ea82d921ec1f7546b4d558de5",
             "request": {
                 "business_data": {
-                    "periodoApuracao": "EXEMPLO_SINTETICO"
+                    "periodoApuracao": "202606"
                 }
             },
             "response": {
                 "status": 200,
                 "mensagens": [],
                 "dados": {
-                    "ano": 1,
-                    "idDefis": 1,
-                    "recibo": "EXEMPLO_SINTETICO",
-                    "declaracao": "EXEMPLO_SINTETICO",
-                    "numeroDeclaracao": "EXEMPLO_SINTETICO",
-                    "maed": "EXEMPLO_SINTETICO",
-                    "nomeArquivo": "EXEMPLO_SINTETICO",
-                    "pdf": "EXEMPLO_SINTETICO",
-                    "nomeArquivoNotificacao": "EXEMPLO_SINTETICO",
-                    "pdfNotificacao": "EXEMPLO_SINTETICO",
-                    "nomeArquivoDarf": "EXEMPLO_SINTETICO",
-                    "pdfDarf": "EXEMPLO_SINTETICO"
+                    "numeroDeclaracao": "20260600000000001",
+                    "recibo": {
+                        "nomeArquivo": "recibo.pdf",
+                        "pdf": "JVBERi0xLjQKJSVFT0Y="
+                    },
+                    "declaracao": {
+                        "nomeArquivo": "declaracao.pdf",
+                        "pdf": "JVBERi0xLjQKJSVFT0Y="
+                    },
+                    "maed": {
+                        "nomeArquivoNotificacao": "notificacao-maed.pdf",
+                        "pdfNotificacao": "JVBERi0xLjQKJSVFT0Y=",
+                        "nomeArquivoDarf": "darf-maed.pdf",
+                        "pdfDarf": "JVBERi0xLjQKJSVFT0Y="
+                    }
                 }
             },
             "sources": [
@@ -241,23 +237,28 @@
             "schema_sha256": "27ed0c142ba6b41fcf2071b0de4eb4bef8d681a0958e02e19f196023f08fa015",
             "request": {
                 "business_data": {
-                    "numeroDeclaracao": "EXEMPLO_SINTETICO"
+                    "numeroDeclaracao": "20260600000000001"
                 }
             },
             "response": {
                 "status": 200,
                 "mensagens": [],
                 "dados": {
-                    "numeroDeclaracao": "EXEMPLO_SINTETICO",
-                    "recibo": "EXEMPLO_SINTETICO",
-                    "declaracao": "EXEMPLO_SINTETICO",
-                    "maed": "EXEMPLO_SINTETICO",
-                    "nomeArquivo": "EXEMPLO_SINTETICO",
-                    "pdf": "EXEMPLO_SINTETICO",
-                    "nomeArquivoNotificacao": "EXEMPLO_SINTETICO",
-                    "pdfNotificacao": "EXEMPLO_SINTETICO",
-                    "nomeArquivoDarf": "EXEMPLO_SINTETICO",
-                    "pdfDarf": "EXEMPLO_SINTETICO"
+                    "numeroDeclaracao": "20260600000000001",
+                    "recibo": {
+                        "nomeArquivo": "recibo.pdf",
+                        "pdf": "JVBERi0xLjQKJSVFT0Y="
+                    },
+                    "declaracao": {
+                        "nomeArquivo": "declaracao.pdf",
+                        "pdf": "JVBERi0xLjQKJSVFT0Y="
+                    },
+                    "maed": {
+                        "nomeArquivoNotificacao": "notificacao-maed.pdf",
+                        "pdfNotificacao": "JVBERi0xLjQKJSVFT0Y=",
+                        "nomeArquivoDarf": "darf-maed.pdf",
+                        "pdfDarf": "JVBERi0xLjQKJSVFT0Y="
+                    }
                 }
             },
             "sources": [
@@ -285,17 +286,18 @@
             "schema_sha256": "a240749cb7e4076880883222c7527f0473fd43a890bfe614f066d12d6be0b1d0",
             "request": {
                 "business_data": {
-                    "numeroDas": "EXEMPLO_SINTETICO"
+                    "numeroDas": "20260600000000002"
                 }
             },
             "response": {
                 "status": 200,
                 "mensagens": [],
                 "dados": {
-                    "numeroDas": "EXEMPLO_SINTETICO",
-                    "extrato": "EXEMPLO_SINTETICO",
-                    "nomeArquivo": "EXEMPLO_SINTETICO",
-                    "pdf": "EXEMPLO_SINTETICO"
+                    "numeroDas": "20260600000000002",
+                    "extrato": {
+                        "nomeArquivo": "extrato-das.pdf",
+                        "pdf": "JVBERi0xLjQKJSVFT0Y="
+                    }
                 }
             },
             "sources": [

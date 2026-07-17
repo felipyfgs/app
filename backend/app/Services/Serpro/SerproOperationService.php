@@ -15,6 +15,7 @@ use App\Enums\SerproUsageResult;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPreAckDocumentStore;
 use App\Services\Integra\ClientProcuracaoSyncService;
 use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Integra\IntegraEligibilityService;
@@ -58,6 +59,7 @@ final class SerproOperationService implements SerproOperationExecutor
         private readonly OperationCoverageMatrix $coverage,
         private readonly SerproTechnicalParameterGuard $technicalParams,
         private readonly ClientProcuracaoSyncService $procuracaoGate,
+        private readonly PgdasdPreAckDocumentStore $pgdasdPreAckDocuments,
     ) {}
 
     /**
@@ -511,6 +513,45 @@ final class SerproOperationService implements SerproOperationExecutor
                     ?? ($route instanceof SerproFunctionalRoute ? $route->value : (string) $route),
                 sourceProvenance: $response->sourceProvenance,
             );
+        }
+
+        // Respostas documentais produtivas precisam chegar ao cofre antes do
+        // ACK terminal. Assim um crash/replay nunca depende do Base64, que não
+        // é persistido no attempt store.
+        if ($client !== null
+            && $driver->value === 'real'
+            && $response->success
+            && ! $response->simulated
+            && $response->sourceProvenance === FiscalSourceProvenance::SerproReal->value
+            && in_array($operationKey, [
+                'pgdasd.consultimadecrec',
+                'pgdasd.consdecrec',
+                'pgdasd.consextrato',
+            ], true)
+        ) {
+            try {
+                $response = $this->pgdasdPreAckDocuments->capture(
+                    operationKey: $operationKey,
+                    entityKey: $entityKey,
+                    response: $response,
+                    officeId: (int) $office->id,
+                    clientId: (int) $client->id,
+                );
+            } catch (Throwable) {
+                $captureFailure = $this->blocked(
+                    $operationKey,
+                    'DOCUMENT_SECURE_CAPTURE_FAILED',
+                    'Documento recebido, mas a captura segura pré-ACK falhou.',
+                    $correlationId,
+                    503,
+                    $requestTag,
+                );
+                if ($attempt !== null) {
+                    $this->attempts->markUncertain($attempt, $captureFailure);
+                }
+
+                return $captureFailure;
+            }
         }
 
         $uncertainHttp = $response->httpStatus === 0

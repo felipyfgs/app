@@ -30,8 +30,7 @@ final class PgdasdRbt12Service
         FiscalMonitoringRun $run,
         array $operations,
         array $periodProjections = [],
-    ): array
-    {
+    ): array {
         $byProjection = collect($operations)->groupBy('projection_id');
         $projectionIds = collect($periodProjections)
             ->map(static fn (TaxObligationProjection $projection): int => (int) $projection->id)
@@ -67,6 +66,7 @@ final class PgdasdRbt12Service
                     $created[] = $reserved;
                     $this->pointProjectionAtLatestRbt12($projection, $reserved);
                 }
+
                 continue;
             }
 
@@ -158,12 +158,24 @@ final class PgdasdRbt12Service
 
     public function markAttempted(PgdasdRbt12Projection $projection): bool
     {
-        return PgdasdRbt12Projection::query()
+        $updated = PgdasdRbt12Projection::query()
             ->withoutGlobalScopes()
             ->whereKey($projection->id)
             ->whereNull('attempted_at')
             ->where('status', PgdasdRbt12Status::Pending->value)
-            ->update(['attempted_at' => CarbonImmutable::now(), 'updated_at' => CarbonImmutable::now()]) === 1;
+            ->update(['attempted_at' => CarbonImmutable::now(), 'updated_at' => CarbonImmutable::now()]);
+
+        if ($updated === 1) {
+            return true;
+        }
+
+        // Reentregas de uma reserva ainda PENDING devem poder despachar a mesma
+        // run idempotente; attempted_at não representa conclusão nem ACK remoto.
+        return PgdasdRbt12Projection::query()
+            ->withoutGlobalScopes()
+            ->whereKey($projection->id)
+            ->where('status', PgdasdRbt12Status::Pending->value)
+            ->exists();
     }
 
     public function markFailed(
@@ -216,6 +228,7 @@ final class PgdasdRbt12Service
             $latestDeclaration?->declaration_number,
             $latestDeclaration?->transmitted_at?->toIso8601String(),
         );
+
         return $this->reserve(
             run: $run,
             projection: $projection,

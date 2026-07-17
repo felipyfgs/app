@@ -322,11 +322,41 @@ class PgdasdCommunicationTemplateTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonPath('code', 'CLIENT_OFFICE_ID_REJECTED');
 
+        $this->getJson(
+            self::BASE."/clients/{$this->client->id}/history?scope%5Boffice_id%5D={$otherOffice->id}",
+        )
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'CLIENT_OFFICE_ID_REJECTED');
+
+        $this->patchJson(self::BASE."/clients/{$this->client->id}/communication-preference", [
+            'scope' => ['office_id' => $otherOffice->id],
+            'automatic_requested' => false,
+            'email_enabled' => false,
+            'whatsapp_enabled' => false,
+            'lock_version' => 0,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'CLIENT_OFFICE_ID_REJECTED');
+
         $this->assertDatabaseCount('client_communication_preferences', 0);
         $this->assertDatabaseMissing('client_communication_preferences', [
             'office_id' => $otherOffice->id,
             'client_id' => $this->client->id,
         ]);
+    }
+
+    #[Test]
+    public function carteira_pgdasd_rejeita_office_id_de_topo_ou_aninhado(): void
+    {
+        $base = '/api/v1/fiscal/modules/simples_mei/clients?submodule=PGDASD';
+
+        $this->getJson($base.'&office_id=999999')
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'CLIENT_OFFICE_ID_REJECTED');
+
+        $this->getJson($base.'&filters%5Boffice_id%5D=999999')
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'CLIENT_OFFICE_ID_REJECTED');
     }
 
     #[Test]

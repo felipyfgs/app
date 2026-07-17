@@ -62,6 +62,59 @@ $buildFields = static function (array $schema) use ($valueFor): array {
     return $payload;
 };
 
+$pgdasdOfficialShape = static function (string $operationKey): ?array {
+    $pdf = base64_encode("%PDF-1.4\n%%EOF");
+
+    return match ($operationKey) {
+        'pgdasd.consdeclaracao' => [
+            'request' => ['anoCalendario' => '2026'],
+            'response' => [
+                'anoCalendario' => 2026,
+                'periodos' => [[
+                    'periodoApuracao' => 202606,
+                    'operacoes' => [],
+                ]],
+            ],
+        ],
+        'pgdasd.consultimadecrec' => [
+            'request' => ['periodoApuracao' => '202606'],
+            'response' => [
+                'numeroDeclaracao' => '20260600000000001',
+                'recibo' => ['nomeArquivo' => 'recibo.pdf', 'pdf' => $pdf],
+                'declaracao' => ['nomeArquivo' => 'declaracao.pdf', 'pdf' => $pdf],
+                'maed' => [
+                    'nomeArquivoNotificacao' => 'notificacao-maed.pdf',
+                    'pdfNotificacao' => $pdf,
+                    'nomeArquivoDarf' => 'darf-maed.pdf',
+                    'pdfDarf' => $pdf,
+                ],
+            ],
+        ],
+        'pgdasd.consdecrec' => [
+            'request' => ['numeroDeclaracao' => '20260600000000001'],
+            'response' => [
+                'numeroDeclaracao' => '20260600000000001',
+                'recibo' => ['nomeArquivo' => 'recibo.pdf', 'pdf' => $pdf],
+                'declaracao' => ['nomeArquivo' => 'declaracao.pdf', 'pdf' => $pdf],
+                'maed' => [
+                    'nomeArquivoNotificacao' => 'notificacao-maed.pdf',
+                    'pdfNotificacao' => $pdf,
+                    'nomeArquivoDarf' => 'darf-maed.pdf',
+                    'pdfDarf' => $pdf,
+                ],
+            ],
+        ],
+        'pgdasd.consextrato' => [
+            'request' => ['numeroDas' => '20260600000000002'],
+            'response' => [
+                'numeroDas' => '20260600000000002',
+                'extrato' => ['nomeArquivo' => 'extrato-das.pdf', 'pdf' => $pdf],
+            ],
+        ],
+        default => null,
+    };
+};
+
 $fixtures = [];
 foreach ($manifest['entries'] as $entry) {
     if (! is_array($entry) || ($entry['official_state'] ?? null) !== 'PRODUCTION') {
@@ -74,18 +127,19 @@ foreach ($manifest['entries'] as $entry) {
         'response' => $responseSchema,
     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
+    $pgdasdShape = $pgdasdOfficialShape((string) $entry['operation_key']);
     $fixtures[] = [
         'operation_key' => (string) $entry['operation_key'],
         'route' => (string) $entry['route'],
         'synthetic' => true,
         'schema_sha256' => $schemaDigest,
         'request' => [
-            'business_data' => $buildFields($requestSchema),
+            'business_data' => $pgdasdShape['request'] ?? $buildFields($requestSchema),
         ],
         'response' => [
             'status' => 200,
             'mensagens' => [],
-            'dados' => $buildFields($responseSchema),
+            'dados' => $pgdasdShape['response'] ?? $buildFields($responseSchema),
         ],
         'sources' => $entry['sources'],
     ];

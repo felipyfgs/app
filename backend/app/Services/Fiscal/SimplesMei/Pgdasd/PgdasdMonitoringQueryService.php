@@ -2,9 +2,12 @@
 
 namespace App\Services\Fiscal\SimplesMei\Pgdasd;
 
+use App\Enums\FiscalRunStatus;
 use App\Enums\PgdasdDeclarationState;
 use App\Enums\PgdasdOperationKind;
+use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
 use App\Models\Client;
+use App\Models\FiscalMonitoringRun;
 use App\Models\Office;
 use App\Models\PgdasdArtifact;
 use App\Models\PgdasdOperation;
@@ -12,8 +15,6 @@ use App\Models\PgdasdRbt12Projection;
 use App\Models\TaxObligationDefinition;
 use App\Models\TaxObligationProjection;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
-use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -336,7 +337,7 @@ final class PgdasdMonitoringQueryService
         string $operation,
         array $params,
         ?int $actorId,
-    ): \App\Models\FiscalMonitoringRun {
+    ): FiscalMonitoringRun {
         $this->assertClient($office, $client);
 
         $op = strtoupper($operation);
@@ -352,10 +353,29 @@ final class PgdasdMonitoringQueryService
         } catch (\Throwable) {
             throw new RuntimeException('PA inválido para coleta documental.');
         }
-        if ($operationCode === 'CONSULTAR_RECIBO'
-            && trim((string) ($params['numeroDeclaracao'] ?? '')) === ''
-        ) {
-            throw new RuntimeException('Número da declaração é obrigatório para o serviço 15.');
+        if ($operationCode === 'CONSULTAR_RECIBO') {
+            $declarationNumber = trim((string) ($params['numeroDeclaracao'] ?? ''));
+            if ($declarationNumber === '') {
+                throw new RuntimeException('Número da declaração é obrigatório para o serviço 15.');
+            }
+
+            $observed = PgdasdOperation::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $office->id)
+                ->where('client_id', $client->id)
+                ->where('kind', PgdasdOperationKind::Declaration->value)
+                ->where('declaration_number', $declarationNumber)
+                ->orderByDesc('transmitted_at')
+                ->orderByDesc('id')
+                ->first();
+            if ($observed === null) {
+                throw new RuntimeException(
+                    'Declaração não observada em consulta válida do serviço 13 para este cliente.'
+                );
+            }
+            if ((string) $observed->period_key !== $periodKey) {
+                throw new RuntimeException('O PA informado não corresponde à declaração observada.');
+            }
         }
 
         $run = $this->runs->enqueueManual(
@@ -395,7 +415,7 @@ final class PgdasdMonitoringQueryService
 
     public function enqueueAutomaticRbt12Extract(
         PgdasdRbt12Projection $rbt12,
-    ): \App\Models\FiscalMonitoringRun {
+    ): FiscalMonitoringRun {
         $rbt12->loadMissing(['projection', 'client']);
         $projection = $rbt12->projection;
         $client = $rbt12->client;
@@ -411,12 +431,19 @@ final class PgdasdMonitoringQueryService
         }
 
         $originRunId = $rbt12->source_run_id;
+        $priorMetadata = is_array($rbt12->metadata) ? $rbt12->metadata : [];
+        $priorExtractRunId = isset($priorMetadata['extract_run_id'])
+            ? (int) $priorMetadata['extract_run_id']
+            : null;
+
+        $correlationId = 'pgdasd-rbt12-'.substr((string) $rbt12->source_reference_key, 0, 50);
         $run = $this->runs->enqueueManual(
             office: $office,
             client: $client,
             systemCode: 'INTEGRA_SN',
             serviceCode: 'PGDASD',
             operationCode: 'CONSULTAR_EXTRATO',
+            correlationId: $correlationId,
             dispatch: false,
         );
         $progress = [
@@ -431,13 +458,28 @@ final class PgdasdMonitoringQueryService
             'progress' => $progress,
         ])->save();
 
-        $metadata = is_array($rbt12->metadata) ? $rbt12->metadata : [];
-        $metadata['reservation_run_id'] = $originRunId;
+        $metadata = $priorMetadata;
+        $metadata['reservation_run_id'] ??= $originRunId;
         $metadata['extract_run_id'] = $run->id;
         $rbt12->forceFill([
             'source_run_id' => $run->id,
             'metadata' => $metadata,
         ])->save();
+
+        // Correlação determinística reutiliza a mesma run: não re-despachar se
+        // já estava vinculada e não está FAILED (em voo ou terminal de sucesso).
+        $status = $run->status instanceof FiscalRunStatus
+            ? $run->status
+            : FiscalRunStatus::tryFrom((string) ($run->status ?? ''));
+        $alreadyLinked = $priorExtractRunId !== null && $priorExtractRunId === (int) $run->id;
+
+        if ($alreadyLinked && $status !== null && $status !== FiscalRunStatus::Failed) {
+            return $run->fresh() ?? $run;
+        }
+
+        if ($status !== null && $status !== FiscalRunStatus::Queued) {
+            return $run->fresh() ?? $run;
+        }
 
         ExecuteFiscalMonitoringRunJob::dispatch((int) $run->id)
             ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
@@ -478,6 +520,10 @@ final class PgdasdMonitoringQueryService
     {
         if ($projection === null || $projection->last_valid_query_at === null) {
             return 'NO_VALID_QUERY';
+        }
+        $metadata = is_array($projection->metadata) ? $projection->metadata : [];
+        if (is_string($metadata['pgdasd_declaration_state_reason'] ?? null)) {
+            return $metadata['pgdasd_declaration_state_reason'];
         }
 
         return match ($projection->pgdasd_declaration_state?->value) {

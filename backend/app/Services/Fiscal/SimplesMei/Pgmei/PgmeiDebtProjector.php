@@ -4,12 +4,14 @@ namespace App\Services\Fiscal\SimplesMei\Pgmei;
 
 use App\Enums\PgmeiDebtState;
 use App\Models\Client;
+use App\Models\FiscalMonitoringRun;
 use App\Models\Office;
 use App\Models\PgmeiDebtItem;
 use App\Models\PgmeiDebtObservation;
 use App\Models\PgmeiDebtProjection;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * Projeta resposta produtiva válida de DIVIDAATIVA24 de forma atômica e idempotente.
@@ -41,6 +43,10 @@ final class PgmeiDebtProjector
         ?CarbonImmutable $observedAt = null,
         ?int $sourceSnapshotId = null,
     ): array {
+        if ((int) $client->office_id !== (int) $office->id) {
+            throw new RuntimeException('Cliente não pertence ao escritório da projeção PGMEI.');
+        }
+
         $year = PgmeiYear::assertValid($decoded['calendar_year']);
         $observedAt ??= CarbonImmutable::now();
         $digest = (string) $decoded['digest'];
@@ -62,6 +68,18 @@ final class PgmeiDebtProjector
             $sourceSnapshotId,
             $observedAt,
         ): array {
+            if (
+                $sourceRunId !== null
+                && ! FiscalMonitoringRun::query()
+                    ->withoutGlobalScopes()
+                    ->whereKey($sourceRunId)
+                    ->where('office_id', $office->id)
+                    ->where('client_id', $client->id)
+                    ->exists()
+            ) {
+                throw new RuntimeException('Execução de origem inválida para a projeção PGMEI.');
+            }
+
             $existingQuery = PgmeiDebtObservation::query()
                 ->withoutGlobalScopes()
                 ->where('office_id', $office->id)
@@ -74,13 +92,18 @@ final class PgmeiDebtProjector
                 $byRun = PgmeiDebtObservation::query()
                     ->withoutGlobalScopes()
                     ->where('office_id', $office->id)
+                    ->where('client_id', $client->id)
+                    ->where('calendar_year', $year)
                     ->where('source_run_id', $sourceRunId)
                     ->lockForUpdate()
                     ->first();
                 if ($byRun !== null) {
                     $existing = $byRun;
+                    if (! hash_equals((string) $byRun->digest, $digest)) {
+                        throw new RuntimeException('Replay PGMEI divergente para a mesma execução.');
+                    }
                 } else {
-                    $existing = $existingQuery->first();
+                    $existing = null;
                 }
             } else {
                 $existing = $existingQuery->first();

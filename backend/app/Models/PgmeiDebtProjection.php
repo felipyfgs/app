@@ -65,7 +65,7 @@ class PgmeiDebtProjection extends Model
     {
         $at = $this->last_valid_query_at;
         if ($at === null) {
-            return PgmeiFreshnessState::Unknown;
+            return PgmeiFreshnessState::Outdated;
         }
 
         $now ??= CarbonImmutable::now();

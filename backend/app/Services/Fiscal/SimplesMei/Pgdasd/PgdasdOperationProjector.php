@@ -24,7 +24,7 @@ final class PgdasdOperationProjector
     ) {}
 
     /**
-     * @param array{periods:list<array<string,mixed>>,incomplete:bool} $decoded
+     * @param  array{periods:list<array<string,mixed>>,incomplete:bool}  $decoded
      * @return array{upserted:list<PgdasdOperation>,projections:array<string,TaxObligationProjection>,last_declaration:?PgdasdOperation}
      */
     public function projectFromDecoded(

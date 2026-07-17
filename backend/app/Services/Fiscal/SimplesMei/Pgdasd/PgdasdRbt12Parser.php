@@ -45,6 +45,7 @@ final class PgdasdRbt12Parser
             }
             if ($total !== null) {
                 $totalCandidates[] = $total;
+
                 continue;
             }
 
