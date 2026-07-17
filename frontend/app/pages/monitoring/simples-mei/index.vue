@@ -247,6 +247,10 @@ const columns = computed(() => isPgdasd.value ? pgdasdColumns.value : genericCol
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
     :submodule="submodule"
+    :selection-enabled="isPgdasd ? canManageClients : undefined"
+    :custom-bulk-actions="isPgdasd"
+    :horizontal-scroll="isPgdasd"
+    :table-class="isPgdasd ? 'min-w-[1120px]' : undefined"
     empty-title="Nenhum cliente"
     :column-labels="isPgdasd
       ? {
@@ -283,6 +287,19 @@ const columns = computed(() => isPgdasd.value ? pgdasdColumns.value : genericCol
     </template>
 
     <template
+      v-if="isPgdasd"
+      #bulk-actions="{ selectedClientIds, selectedCount, clearSelection }"
+    >
+      <MonitoringPgdasdBulkAutomaticActions
+        v-if="canManageClients"
+        :selected-client-ids="selectedClientIds"
+        :selected-count="selectedCount"
+        @clear="clearSelection"
+        @refresh="refresh"
+      />
+    </template>
+
+    <template
       v-if="overviewError"
       #utilities
     >
@@ -310,6 +327,8 @@ const columns = computed(() => isPgdasd.value ? pgdasdColumns.value : genericCol
     v-model:open="historyOpen"
     :client-id="modalClientId"
     :client-name="modalClientName"
+    :cnpj-masked="modalCnpjMasked"
+    :can-collect-documents="canTriggerSync"
   />
   <MonitoringPgdasdCommunicationModals
     v-if="isPgdasd"
@@ -318,6 +337,11 @@ const columns = computed(() => isPgdasd.value ? pgdasdColumns.value : genericCol
     v-model:prefs-open="prefsOpen"
     :client-id="modalClientId"
     :client-name="modalClientName"
-    @saved="refresh"
+    :preference="modalPreference"
+    :can-manage="canManageClients"
+    @saved="(preference) => {
+      const row = rows.find(item => item.client_id === modalClientId)
+      if (row) onPreferenceSaved(row, preference)
+    }"
   />
 </template>
