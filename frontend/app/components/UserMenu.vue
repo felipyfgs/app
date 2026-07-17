@@ -12,7 +12,7 @@ defineProps<{
 
 const colorMode = useColorMode()
 const { logout } = useSanctumAuth()
-const { me, canAccessAdministration, canAccessPlatformAdmin } = useDashboard()
+const { me, canAccessPlatformAdmin } = useDashboard()
 
 const displayUser = computed(() => ({
   name: me.value?.name || 'Usuário',
@@ -30,6 +30,7 @@ async function onLogout() {
 const { $pwa } = useNuxtApp()
 
 const roleLabel = computed(() => {
+  if (me.value?.is_platform_admin) return 'Proprietário da plataforma'
   const role = me.value?.role
   if (role === 'ADMIN') return 'Administrador'
   if (role === 'OPERATOR') return 'Operador'
@@ -47,31 +48,20 @@ const items = computed<DropdownMenuItem[][]>(() => {
       : {})
   }]
 
-  const profile: DropdownMenuItem[] = [{
-    label: me.value?.email || 'Conta',
-    icon: 'i-lucide-user',
-    disabled: true,
-    ...(roleLabel.value
-      ? { description: `Papel: ${roleLabel.value}` }
-      : {})
-  }]
-
-  if (canAccessAdministration.value) {
-    profile.push({
-      label: 'Configurações',
-      icon: 'i-lucide-sliders-horizontal',
-      to: '/settings'
-    })
-  }
-
-  // /admin/* é exclusivo PLATFORM_ADMIN (OpenSpec 6.2).
-  if (canAccessPlatformAdmin.value) {
-    profile.push({
-      label: 'Plataforma',
-      icon: 'i-lucide-shield',
-      to: '/admin'
-    })
-  }
+  const profile: DropdownMenuItem[] = canAccessPlatformAdmin.value
+    ? [{
+        label: me.value?.email || 'Administração da plataforma',
+        icon: 'i-lucide-shield',
+        disabled: true
+      }]
+    : [{
+        label: 'Conta',
+        icon: 'i-lucide-user',
+        to: '/conta',
+        ...(roleLabel.value
+          ? { description: `Papel: ${roleLabel.value}` }
+          : {})
+      }]
 
   const groups: DropdownMenuItem[][] = [account, profile]
 

@@ -35,24 +35,23 @@ const year = new Date().getFullYear()
 
       <div class="relative z-10 max-w-md space-y-6">
         <h2 class="text-3xl xl:text-4xl font-semibold text-highlighted text-pretty tracking-tight">
-          Painel operacional para o escritório contábil
+          Painel do escritório
         </h2>
         <p class="text-base text-muted text-pretty leading-relaxed">
-          Monitoramento fiscal, captura via ADN/SEFAZ, catálogo de documentos, trabalho
-          operacional e exportações — com isolamento por escritório e trilha de auditoria.
+          Fiscal, documentos, trabalho e exportações — por escritório.
         </p>
         <ul class="space-y-3 text-sm text-muted">
           <li class="flex items-start gap-2.5">
             <UIcon name="i-lucide-shield-check" class="size-4 mt-0.5 text-primary shrink-0" />
-            <span>Acesso exclusivo a funcionários do escritório contábil</span>
+            <span>Só equipe do escritório</span>
           </li>
           <li class="flex items-start gap-2.5">
             <UIcon name="i-lucide-lock-keyhole" class="size-4 mt-0.5 text-primary shrink-0" />
-            <span>Sessão protegida com CSRF e segundo fator para administradores</span>
+            <span>Sessão com CSRF e 2FA para admins</span>
           </li>
           <li class="flex items-start gap-2.5">
             <UIcon name="i-lucide-building-2" class="size-4 mt-0.5 text-primary shrink-0" />
-            <span>Dados isolados por escritório — produto para o escritório, não portal do contribuinte</span>
+            <span>Dados isolados por escritório</span>
           </li>
         </ul>
       </div>

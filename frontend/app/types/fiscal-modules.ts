@@ -62,8 +62,8 @@ export const FISCAL_MODULE_LABELS: Record<FiscalModuleKey, string> = {
 
 export const FISCAL_MODULE_PATHS: Record<FiscalModuleKey, string> = {
   dashboard: '/monitoring',
-  simples_mei: '/monitoring/simples-mei',
-  dctfweb: '/monitoring/dctfweb',
+  simples_mei: '/monitoring/simples-mei/pgdasd',
+  dctfweb: '/monitoring/dctfweb/dctfweb',
   installments: '/monitoring/installments',
   sitfis: '/monitoring/sitfis',
   mailbox: '/monitoring/mailbox',
@@ -430,6 +430,16 @@ export interface FiscalModulePortfolioFilters {
   client_id?: number
   sort?: 'legal_name' | 'display_name' | 'situation' | 'last_consulted_at' | 'competence' | 'id' | string
   sort_direction?: 'asc' | 'desc'
+}
+
+/** Estado completo do formulário de filtros da carteira (valores já normalizados pela UI). */
+export interface FiscalModuleFilterFormValue {
+  q: string
+  situation: string
+  competence: string
+  submodule: string
+  deliveryStatus: string
+  clientId: number | null
 }
 
 /** Alias usado por useApi / páginas. */

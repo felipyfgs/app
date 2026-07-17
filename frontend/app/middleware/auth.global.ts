@@ -73,12 +73,25 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   // Procurações manuais removidas do tenant — redireciona para settings unificado.
   if (to.path.replace(/\/+$/, '') === '/settings/proxies') {
-    return navigateTo('/settings', { replace: true })
+    return navigateTo('/conta/escritorio', { replace: true })
+  }
+
+  const legacyAccountRoutes: Record<string, string> = {
+    '/settings': '/conta/escritorio',
+    '/settings/usage': '/conta/consumo',
+    '/settings/subscription': '/conta/assinatura',
+    '/settings/team': '/conta/equipe',
+    '/settings/departments': '/conta/departamentos',
+    '/admin/owner': '/admin/offices'
+  }
+  const normalizedPath = to.path.replace(/\/+$/, '') || '/'
+  if (legacyAccountRoutes[normalizedPath]) {
+    return navigateTo(legacyAccountRoutes[normalizedPath], { replace: true })
   }
 
   // Departamentos: /admin/departments → /settings/departments
   if (to.path === '/admin/departments' || to.path.startsWith('/admin/departments/')) {
-    return navigateTo('/settings/departments', { replace: true })
+    return navigateTo('/conta/departamentos', { replace: true })
   }
 
   // `/admin/*` reservado à plataforma (PLATFORM_ADMIN).
@@ -89,7 +102,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
     // Office ADMIN que ainda aponte para /admin → settings.
     if (hasConfirmedAdminAccess(identity)) {
-      return navigateTo('/settings', { replace: true })
+      return navigateTo('/conta/escritorio', { replace: true })
     }
     return navigateTo('/')
   }
@@ -100,7 +113,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   // Configuração do escritório: ADMIN office ou PLATFORM_ADMIN privilegiado.
-  if (to.path.startsWith('/settings') && !canAccessOfficeSettings(identity)) {
-    return navigateTo('/')
+  if (to.path.startsWith('/conta/') && !canAccessOfficeSettings(identity)) {
+    return navigateTo('/conta')
   }
 })

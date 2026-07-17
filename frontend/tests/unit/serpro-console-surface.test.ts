@@ -64,6 +64,7 @@ describe('console global SERPRO (superfície)', () => {
       'pages/admin/serpro/catalog.vue',
       'pages/admin/serpro/usage.vue',
       'pages/admin/serpro/rollout.vue',
+      'pages/admin/serpro/dte-canary.vue',
       'components/serpro/SerproOwnerConfirmModal.vue',
       'utils/serpro-owner-confirmation.ts'
     ]
@@ -92,6 +93,106 @@ describe('console global SERPRO (superfície)', () => {
     const rollout = readFileSync(resolve(APP, 'pages/admin/serpro/rollout.vue'), 'utf8')
     expect(rollout).toMatch(/DUAL|Office ADMIN|canário/i)
     expect(rollout).toContain('approval_policy')
+  })
+
+  it('reduz o console a três áreas e monta somente a subvisão selecionada', () => {
+    const shell = readFileSync(resolve(APP, 'pages/admin/serpro.vue'), 'utf8')
+    const primaryLinks = shell.match(/const links = (\[\[[\s\S]*?\]\]) satisfies NavigationMenuItem/)?.[1] || ''
+
+    expect(primaryLinks.match(/label:/g)).toHaveLength(3)
+    expect(primaryLinks).toContain('label: \'Operação\'')
+    expect(primaryLinks).toContain('label: \'Integração\'')
+    expect(primaryLinks).toContain('label: \'Canário DTE\'')
+    expect(primaryLinks).not.toMatch(/label: '(?:Cobertura|Consumo|Liberação|Contratos)'/)
+
+    const operation = readFileSync(resolve(APP, 'pages/admin/serpro/index.vue'), 'utf8')
+    expect(operation).toContain('admin-serpro-operation-sections')
+    expect(operation).toContain('if (activeSection.value !== \'status\') return')
+    expect(operation).toContain('<UsageView v-else-if=')
+    expect(operation).toContain('<RolloutView v-else')
+
+    const integration = readFileSync(resolve(APP, 'pages/admin/serpro/configuration.vue'), 'utf8')
+    expect(integration).toContain('admin-serpro-integration-sections')
+    expect(integration).toContain('if (activeSection.value !== \'access\') return')
+    expect(integration).toContain('<ContractsView v-else-if=')
+    expect(integration).toContain('<CatalogView v-else')
+    expect(integration).not.toContain('definePageMeta({')
+  })
+
+  it('mantém descrições estáticas apenas para consequências críticas', () => {
+    const files = [
+      'pages/admin/serpro.vue',
+      'pages/admin/serpro/index.vue',
+      'pages/admin/serpro/configuration.vue',
+      'pages/admin/serpro/contracts.vue',
+      'pages/admin/serpro/catalog.vue',
+      'pages/admin/serpro/usage.vue',
+      'pages/admin/serpro/rollout.vue',
+      'pages/admin/serpro/dte-canary.vue',
+      'components/serpro/SerproOwnerConfirmModal.vue'
+    ]
+    const descriptions = files.flatMap((file) => {
+      const source = readFileSync(resolve(APP, file), 'utf8')
+      return source.match(/\sdescription="[^"]+"/g) || []
+    })
+
+    expect(descriptions).toHaveLength(2)
+    expect(descriptions.join('\n')).toMatch(/credencial.*exposta/i)
+    expect(descriptions.join('\n')).toMatch(/bloqueia novas consultas/i)
+  })
+
+  it('mantém URLs antigas como redirects para as seções canônicas', () => {
+    const redirects = [
+      ['pages/admin/serpro/contracts.vue', '/admin/serpro/configuration', 'contracts'],
+      ['pages/admin/serpro/catalog.vue', '/admin/serpro/configuration', 'coverage'],
+      ['pages/admin/serpro/usage.vue', '/admin/serpro', 'usage'],
+      ['pages/admin/serpro/rollout.vue', '/admin/serpro', 'rollout']
+    ] as const
+
+    for (const [path, destination, section] of redirects) {
+      const page = readFileSync(resolve(APP, path), 'utf8')
+      expect(page).toContain('definePageMeta({')
+      expect(page).toContain(`path: '${destination}'`)
+      expect(page).toContain(`query: { section: '${section}' }`)
+    }
+  })
+
+  it('mantém catálogo, consumo e rollout fail-closed quando a leitura falha', () => {
+    const catalog = readFileSync(resolve(APP, 'pages/admin/serpro/catalog.vue'), 'utf8')
+    expect(catalog).toContain('v-if="!loading && !loadError && !filtered.length"')
+    expect(catalog).toMatch(/watch\(environment,[\s\S]*?rows\.value = \[\][\s\S]*?void load\(\)/)
+
+    const usage = readFileSync(resolve(APP, 'pages/admin/serpro/usage.vue'), 'utf8')
+    const periodWatcher = usage.match(/watch\(\[year, month\], \(\) => \{([\s\S]*?)\n\}\)/)?.[1] || ''
+    expect(periodWatcher).toContain('clearPeriodSnapshot()')
+    expect(periodWatcher).toContain('loadSeq++')
+    expect(periodWatcher).not.toContain('load()')
+    expect(usage).toContain('const periodLoaded = ref(false)')
+    expect(usage).toMatch(/function clearPeriodSnapshot\(\) \{\s+loading\.value = false/)
+    expect(usage).toContain(':disabled="!periodLoaded || loading"')
+    expect(usage).toContain('v-else-if="periodLoaded"')
+
+    const rollout = readFileSync(resolve(APP, 'pages/admin/serpro/rollout.vue'), 'utf8')
+    expect(rollout).toContain('const approvalsError = ref<string | null>(null)')
+    expect(rollout).toContain('rollout.value = null')
+    expect(rollout).not.toContain('rollout.value = deriveFromHealth(null)')
+    expect(rollout).toContain('v-else-if="approvalsError"')
+    expect(rollout).not.toContain('aria-labelledby=')
+  })
+
+  it('isola configuração por ambiente e não oferece kill switch com estado desconhecido', () => {
+    const configuration = readFileSync(resolve(APP, 'pages/admin/serpro/configuration.vue'), 'utf8')
+    expect(configuration).toContain('function resetEnvironmentState()')
+    expect(configuration).toContain('clearUpload()')
+    expect(configuration).toContain('requestedEnvironment !== environment.value')
+    expect(configuration).toContain(':to="`/admin/offices/${o.office_id}`"')
+    expect(configuration).not.toContain('to="/settings"')
+
+    const overview = readFileSync(resolve(APP, 'pages/admin/serpro/index.vue'), 'utf8')
+    expect(overview).toContain('const killStateKnown = computed')
+    expect(overview).toContain('v-if="killStateKnown"')
+    expect(overview).toContain('kill.value = null')
+    expect(overview).toContain('\'Indisponível\'')
   })
 
   it('settings unificado e health usam superfícies tenant-safe', () => {

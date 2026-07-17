@@ -29,36 +29,59 @@ const findingsPreview = ref<FiscalFinding[]>([])
 const recentRuns = ref<FiscalMonitoringRun[]>([])
 const moduleOverviews = ref<Array<{ key: FiscalPortfolioModuleKey, overview: FiscalModuleOverview | null, error?: string }>>([])
 
-const kpis = computed(() => [
-  {
-    title: 'Pendências abertas',
-    icon: 'i-lucide-circle-dashed',
-    value: pendingCount.value,
-    to: '/monitoring/declarations?situation=PENDING',
-    critical: (pendingCount.value ?? 0) > 0
-  },
-  {
-    title: 'Findings ativos',
-    icon: 'i-lucide-triangle-alert',
-    value: findingsCount.value,
-    to: '/monitoring/sitfis?situation=ATTENTION',
-    critical: (findingsCount.value ?? 0) > 0
-  },
-  {
-    title: 'Execuções recentes',
-    icon: 'i-lucide-activity',
-    value: runsCount.value,
-    to: '/monitoring',
-    critical: false
-  },
-  {
-    title: 'Módulos com erro',
-    icon: 'i-lucide-circle-x',
-    value: moduleOverviews.value.filter(m => (m.overview?.counters?.error ?? 0) > 0).length || null,
-    to: '/monitoring/sitfis?situation=ERROR',
-    critical: true
+const kpis = computed(() => {
+  const loadingPlaceholder = loading.value
+  const display = (v: number | null) => {
+    if (loadingPlaceholder && v === null) return '…'
+    return v ?? '—'
   }
-])
+  const modulesWithError = moduleOverviews.value.filter(
+    m => (m.overview?.counters?.error ?? 0) > 0
+  ).length
+  return [
+    {
+      key: 'pending',
+      title: 'Pendências',
+      icon: 'i-lucide-circle-dashed',
+      value: display(pendingCount.value),
+      to: '/monitoring/declarations',
+      critical: (pendingCount.value ?? 0) > 0,
+      tone: 'warning' as const
+    },
+    {
+      key: 'findings',
+      title: 'Findings',
+      icon: 'i-lucide-triangle-alert',
+      value: display(findingsCount.value),
+      to: '/monitoring/sitfis',
+      critical: (findingsCount.value ?? 0) > 0,
+      tone: 'warning' as const
+    },
+    {
+      key: 'runs',
+      title: 'Execuções',
+      icon: 'i-lucide-activity',
+      value: display(runsCount.value),
+      to: '/monitoring'
+    },
+    {
+      key: 'module_errors',
+      title: 'Com erro',
+      icon: 'i-lucide-circle-x',
+      value: display(loadingPlaceholder && !moduleOverviews.value.length ? null : modulesWithError),
+      to: '/monitoring/sitfis',
+      critical: modulesWithError > 0,
+      tone: 'error' as const
+    }
+  ]
+})
+
+/** Painéis secundários em acordeão (não competem com KPIs). */
+const panelItems = [
+  { label: 'Cobertura', icon: 'i-lucide-layers', value: 'coverage', slot: 'coverage' as const },
+  { label: 'Atenção', icon: 'i-lucide-bell', value: 'attention', slot: 'attention' as const },
+  { label: 'Execuções', icon: 'i-lucide-play', value: 'runs', slot: 'runs' as const }
+]
 
 const coverageRows = computed(() =>
   moduleOverviews.value.map((m) => {
@@ -85,7 +108,7 @@ const attentionItems = computed(() => {
     detail: f.detail || '—',
     clientId: f.client_id,
     situation: f.situation || f.severity,
-    to: f.client_id ? `/monitoring/clients/${f.client_id}?tab=findings` : '/monitoring/sitfis'
+    to: f.client_id ? `/monitoring/clients/${f.client_id}/findings` : '/monitoring/sitfis'
   }))
   const fromPending = pendingPreview.value.map(p => ({
     id: `p-${p.id}`,
@@ -93,7 +116,7 @@ const attentionItems = computed(() => {
     detail: p.detail || '—',
     clientId: p.client_id,
     situation: p.situation || p.status,
-    to: p.client_id ? `/monitoring/clients/${p.client_id}?tab=pending` : '/monitoring/declarations'
+    to: p.client_id ? `/monitoring/clients/${p.client_id}/pending` : '/monitoring/declarations'
   }))
   return [...fromFindings, ...fromPending].slice(0, 10)
 })
@@ -270,122 +293,99 @@ onMounted(load)
         </template>
       </UAlert>
 
-      <UPageGrid
-        data-testid="fiscal-kpis"
-        class="mb-6 gap-4 sm:gap-6 lg:grid-cols-4 lg:gap-px"
-      >
-        <UPageCard
-          v-for="(stat, index) in kpis"
-          :key="index"
-          :icon="stat.icon"
-          :title="stat.title"
-          :to="stat.to"
-          variant="subtle"
-          :ui="{
-            container: 'gap-y-1.5',
-            wrapper: 'items-start',
-            leading: 'p-2.5 rounded-full bg-primary/10 ring ring-inset ring-primary/25 flex-col',
-            title: 'font-normal text-muted text-xs uppercase'
-          }"
-          class="lg:rounded-none first:rounded-l-lg last:rounded-r-lg hover:z-1"
-        >
-          <div class="flex items-center gap-2">
-            <span class="text-2xl font-semibold text-highlighted">
-              {{ loading && stat.value === null ? '…' : (stat.value ?? '—') }}
-            </span>
-            <UIcon
-              v-if="stat.critical && stat.value !== null && stat.value !== 0"
-              name="i-lucide-triangle-alert"
-              class="size-4 shrink-0 text-error"
-              aria-label="Requer atenção"
-            />
-          </div>
-        </UPageCard>
-      </UPageGrid>
+      <ShellKpiStrip
+        class="mb-6"
+        test-id="fiscal-kpis"
+        :items="kpis"
+        :loading="loading"
+        :columns="4"
+      />
 
-      <UPageCard
-        title="Cobertura por módulo"
-        variant="subtle"
+      <ShellPanelAccordion
         class="mb-4 lg:mb-6"
+        :items="panelItems"
+        type="multiple"
+        :default-value="['coverage']"
+        test-id="monitoring-panels"
       >
-        <div
-          v-if="loading && !coverageRows.length"
-          class="py-6 text-sm text-muted"
-        >
-          Carregando…
-        </div>
-        <ul
-          v-else
-          class="divide-y divide-default"
-        >
-          <li
-            v-for="row in coverageRows"
-            :key="row.key"
-            class="flex flex-wrap items-center justify-between gap-3 py-3"
-          >
-            <div class="min-w-0">
-              <NuxtLink
-                :to="row.to"
-                class="font-medium text-highlighted hover:text-primary"
-              >
-                {{ row.label }}
-              </NuxtLink>
-              <p
-                v-if="row.loadError"
-                class="text-xs text-error"
-              >
-                {{ row.loadError }}
-              </p>
-              <p
-                v-else
-                class="text-xs text-muted"
-              >
-                {{ row.total ?? '—' }} cliente(s)
-                · pend. {{ row.pending ?? '—' }}
-                · aten. {{ row.attention ?? '—' }}
-                · erro {{ row.error ?? '—' }}
-              </p>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <FiscalCoverageBadge
-                v-if="row.coverage"
-                :coverage="row.coverage"
-              />
-              <FiscalDataOriginBadge
-                v-if="row.origin"
-                :origin="row.origin"
-              />
-              <UButton
-                size="xs"
-                color="neutral"
-                variant="ghost"
-                label="Abrir"
-                :to="row.to"
-              />
-            </div>
-          </li>
-        </ul>
-      </UPageCard>
-
-      <div class="grid gap-4 lg:grid-cols-2 lg:gap-6">
-        <UPageCard
-          title="Carteira em atenção"
-          variant="subtle"
-        >
+        <template #coverage>
           <div
-            v-if="loading && !attentionItems.length"
-            class="py-6 text-sm text-muted"
+            v-if="loading && !coverageRows.length"
+            class="py-4 text-center text-sm text-muted"
+            data-testid="hub-coverage-loading"
           >
             Carregando…
           </div>
-          <div
-            v-else-if="!attentionItems.length"
-            class="py-6 text-sm text-muted"
-          >
-            <UEmpty icon="i-lucide-bell-off" title="Nenhum item de atenção" size="sm" />
-          </div>
+          <MonitoringTableEmptyState
+            v-else-if="!coverageRows.length"
+            kind="empty"
+            title="Sem cobertura"
+            description="Nenhum módulo com overview disponível."
+          />
           <ul
-            v-else
+            v-if="coverageRows.length"
+            class="divide-y divide-default"
+          >
+            <li
+              v-for="row in coverageRows"
+              :key="row.key"
+              class="flex flex-wrap items-center justify-between gap-3 py-3"
+            >
+              <div class="min-w-0">
+                <NuxtLink
+                  :to="row.to"
+                  class="font-medium text-highlighted hover:text-primary"
+                >
+                  {{ row.label }}
+                </NuxtLink>
+                <p
+                  v-if="row.loadError"
+                  class="truncate text-xs text-error"
+                >
+                  {{ row.loadError }}
+                </p>
+                <p
+                  v-else
+                  class="truncate text-xs text-muted"
+                >
+                  {{ row.total ?? '—' }} · p.{{ row.pending ?? '—' }}
+                  · a.{{ row.attention ?? '—' }} · e.{{ row.error ?? '—' }}
+                </p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <FiscalCoverageBadge
+                  v-if="row.coverage"
+                  :coverage="row.coverage"
+                />
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  label="Abrir"
+                  :to="row.to"
+                />
+              </div>
+            </li>
+          </ul>
+        </template>
+
+        <template #attention>
+          <!-- Casca de lista sempre presente (padrão ModuleTable empty interno) -->
+          <div
+            v-if="loading && !attentionItems.length"
+            class="py-4 text-center text-sm text-muted"
+            data-testid="hub-attention-loading"
+          >
+            Carregando…
+          </div>
+          <MonitoringTableEmptyState
+            v-else-if="!attentionItems.length"
+            kind="empty"
+            title="Nada em atenção"
+            description="Sem itens de atenção no momento."
+          />
+          <ul
+            v-if="attentionItems.length"
             class="divide-y divide-default"
           >
             <li
@@ -401,32 +401,30 @@ onMounted(load)
                   {{ item.title }}
                 </NuxtLink>
                 <p class="truncate text-xs text-muted">
-                  Cliente #{{ item.clientId ?? '—' }} · {{ item.detail }}
+                  #{{ item.clientId ?? '—' }} · {{ item.detail }}
                 </p>
               </div>
               <FiscalStatusBadge :status="item.situation" />
             </li>
           </ul>
-        </UPageCard>
+        </template>
 
-        <UPageCard
-          title="Últimas execuções"
-          variant="subtle"
-        >
+        <template #runs>
           <div
             v-if="loading && !recentRuns.length"
-            class="py-6 text-sm text-muted"
+            class="py-4 text-center text-sm text-muted"
+            data-testid="hub-runs-loading"
           >
             Carregando…
           </div>
-          <div
+          <MonitoringTableEmptyState
             v-else-if="!recentRuns.length"
-            class="py-6 text-sm text-muted"
-          >
-            <UEmpty icon="i-lucide-play" title="Nenhuma execução retornada" size="sm" />
-          </div>
+            kind="empty"
+            title="Nenhuma execução"
+            description="Sem execuções recentes."
+          />
           <ul
-            v-else
+            v-if="recentRuns.length"
             class="divide-y divide-default"
           >
             <li
@@ -439,7 +437,7 @@ onMounted(load)
                   #{{ run.id }} · {{ run.system_code }}/{{ run.service_code }}
                 </p>
                 <p class="truncate text-xs text-muted">
-                  Cliente #{{ run.client_id ?? '—' }}
+                  #{{ run.client_id ?? '—' }}
                   · {{ formatDateTime(run.started_at || run.created_at) }}
                 </p>
               </div>
@@ -451,13 +449,13 @@ onMounted(load)
                   color="neutral"
                   variant="ghost"
                   label="Cliente"
-                  :to="`/monitoring/clients/${run.client_id}?tab=runs`"
+                  :to="`/monitoring/clients/${run.client_id}/runs`"
                 />
               </div>
             </li>
           </ul>
-        </UPageCard>
-      </div>
+        </template>
+      </ShellPanelAccordion>
 
       <div class="mt-4 flex flex-wrap gap-2 lg:mt-6">
         <UButton

@@ -190,6 +190,7 @@ onBeforeUnmount(clearSecret)
           />
 
           <UPageCard
+            title="Dados do escritório"
             variant="subtle"
             data-testid="admin-office-summary"
           >
@@ -258,46 +259,41 @@ onBeforeUnmount(clearSecret)
                   {{ office.profile.legal_name }}
                 </dd>
               </div>
-              <div v-if="office.first_admin">
-                <dt class="text-muted">
-                  1º administrador
-                </dt>
-                <dd class="text-highlighted">
-                  {{ office.first_admin.name }} · {{ office.first_admin.email }}
-                </dd>
-              </div>
             </dl>
           </UPageCard>
 
-          <UPageCard
+          <div
             v-if="isPending"
-            title="Ações de ativação"
-            variant="subtle"
+            class="grid gap-4 lg:grid-cols-2"
             data-testid="admin-office-pending-actions"
           >
-            <div class="space-y-4">
-              <UFormField label="Método de entrega">
-                <USelect
-                  v-model="method"
-                  :items="methodItems"
-                  value-key="value"
-                  label-key="label"
-                  class="w-full sm:max-w-xs"
-                />
-              </UFormField>
-              <UFormField
-                label="Sua senha"
-                required
-              >
-                <UInput
-                  v-model="reconfirmPassword"
-                  type="password"
-                  autocomplete="current-password"
-                  class="w-full sm:max-w-xs"
-                  data-testid="admin-office-reconfirm"
-                />
-              </UFormField>
-              <div class="flex flex-wrap gap-2">
+            <UPageCard
+              title="Acesso inicial"
+              variant="subtle"
+              data-testid="admin-office-regenerate-card"
+            >
+              <div class="space-y-4">
+                <UFormField label="Método de entrega">
+                  <USelect
+                    v-model="method"
+                    :items="methodItems"
+                    value-key="value"
+                    label-key="label"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField
+                  label="Senha atual"
+                  required
+                >
+                  <UInput
+                    v-model="reconfirmPassword"
+                    type="password"
+                    autocomplete="current-password"
+                    class="w-full"
+                    data-testid="admin-office-reconfirm"
+                  />
+                </UFormField>
                 <UButton
                   label="Regenerar acesso"
                   icon="i-lucide-refresh-cw"
@@ -305,8 +301,45 @@ onBeforeUnmount(clearSecret)
                   data-testid="admin-office-regenerate"
                   @click="() => { void regenerate() }"
                 />
+              </div>
+            </UPageCard>
+
+            <UPageCard
+              title="Primeiro administrador"
+              variant="subtle"
+              data-testid="admin-office-first-admin-card"
+            >
+              <div class="flex h-full flex-col items-start gap-4">
+                <dl
+                  v-if="office.first_admin"
+                  class="grid gap-3 text-sm"
+                >
+                  <div>
+                    <dt class="text-muted">
+                      Nome
+                    </dt>
+                    <dd class="text-highlighted">
+                      {{ office.first_admin.name || '—' }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt class="text-muted">
+                      E-mail
+                    </dt>
+                    <dd class="break-all text-highlighted">
+                      {{ office.first_admin.email || '—' }}
+                    </dd>
+                  </div>
+                </dl>
+                <p
+                  v-else
+                  class="text-sm text-muted"
+                >
+                  Nenhum administrador inicial registrado.
+                </p>
                 <UButton
-                  label="Corrigir 1º administrador"
+                  class="mt-auto"
+                  label="Corrigir dados"
                   color="neutral"
                   variant="outline"
                   icon="i-lucide-user-pen"
@@ -314,17 +347,14 @@ onBeforeUnmount(clearSecret)
                   @click="() => { correctOpen = true }"
                 />
               </div>
-              <p class="text-xs text-muted">
-                Segredos já exibidos não são recuperáveis.
-              </p>
-            </div>
-          </UPageCard>
+            </UPageCard>
+          </div>
         </template>
 
         <UModal
           v-model:open="correctOpen"
           title="Corrigir primeiro administrador"
-          description="Revoga acessos anteriores e cria nova credencial."
+          description="Revoga o acesso anterior."
         >
           <template #body>
             <div class="space-y-4">
@@ -347,6 +377,27 @@ onBeforeUnmount(clearSecret)
                   type="email"
                   class="w-full"
                   data-testid="admin-office-correct-email"
+                />
+              </UFormField>
+              <UFormField label="Método de entrega">
+                <USelect
+                  v-model="method"
+                  :items="methodItems"
+                  value-key="value"
+                  label-key="label"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                label="Senha atual"
+                required
+              >
+                <UInput
+                  v-model="reconfirmPassword"
+                  type="password"
+                  autocomplete="current-password"
+                  class="w-full"
+                  data-testid="admin-office-correct-reconfirm"
                 />
               </UFormField>
               <div class="flex justify-end gap-2">

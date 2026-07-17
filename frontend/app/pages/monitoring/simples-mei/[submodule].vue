@@ -1,11 +1,12 @@
 <script setup lang="ts">
 /**
  * Simples Nacional / MEI — carteira via MonitoringModuleTable + tabs PGDAS-D/PGMEI/DASN/Regime.
- * Task 7.2 · deep-links para /monitoring/clients/{id}?tab=overview
+ * Task 7.2 · deep-links para /monitoring/clients/{id}
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { SimplesMeiClientRow } from '~/types/fiscal-modules'
 import { SIMPLES_MEI_TABS } from '~/types/fiscal-modules'
+import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
@@ -14,13 +15,7 @@ const UButton = resolveComponent('UButton')
 
 const route = useRoute()
 
-function normalizeSubmodule(raw: unknown): string {
-  const v = String(raw || 'PGDASD').toUpperCase()
-  const allowed = new Set(SIMPLES_MEI_TABS.map(t => t.value))
-  return allowed.has(v as typeof SIMPLES_MEI_TABS[number]['value']) ? v : 'PGDASD'
-}
-
-const submodule = ref(normalizeSubmodule(route.query.submodule || route.query.tab))
+const submodule = ref(normalizeMonitoringSubmodule('simples_mei', route.params.submodule))
 
 const {
   page,
@@ -39,14 +34,28 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  sorting,
+  setPage,
   refresh,
-  selectKpi
-} = useFiscalModulePortfolio('simples_mei', { submodule })
+  selectKpi,
+  applyFilters
+} = useFiscalModulePortfolio('simples_mei', {
+  submodule,
+  submodulePath: value => monitoringSubmodulePath('simples_mei', value)
+})
 
 const tabItems = SIMPLES_MEI_TABS.map(t => ({ label: t.label, value: t.value }))
 
+watch(
+  () => route.params.submodule,
+  (raw) => {
+    const next = normalizeMonitoringSubmodule('simples_mei', raw)
+    if (next !== submodule.value) submodule.value = next
+  }
+)
+
 function clientHref(clientId: number) {
-  return `/monitoring/clients/${clientId}?tab=overview`
+  return `/monitoring/clients/${clientId}`
 }
 
 function onClientId(id: number | null) {
@@ -56,7 +65,8 @@ function onClientId(id: number | null) {
 const columns: TableColumn<SimplesMeiClientRow>[] = [
   {
     id: 'client',
-    header: 'Cliente',
+    header: ({ column }) => sortHeader('Cliente', column),
+    enableHiding: false,
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
@@ -67,7 +77,7 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
   },
   {
     id: 'competence',
-    header: 'Competência',
+    header: ({ column }) => sortHeader('Competência', column),
     cell: ({ row }) => {
       const d = row.original.detail
       return String(row.original.competence || d?.period_key || '—')
@@ -76,6 +86,7 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
   {
     id: 'obligation',
     header: 'Obrigação / submódulo',
+    enableSorting: false,
     cell: ({ row }) => {
       const d = row.original.detail
       const sub = d?.submodule || submodule.value || '—'
@@ -85,17 +96,19 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
   },
   {
     id: 'situation',
-    header: 'Situação',
+    header: ({ column }) => sortHeader('Situação', column),
     cell: ({ row }) => h(FiscalStatusBadge, { status: row.original.situation })
   },
   {
     id: 'coverage',
     header: 'Cobertura',
+    enableSorting: false,
     cell: ({ row }) => h(FiscalCoverageBadge, { coverage: row.original.coverage })
   },
   {
     id: 'guide',
     header: 'Guia',
+    enableSorting: false,
     cell: ({ row }) => {
       // Portfolio detail não expõe guia individual — deep-link para guias do cliente quando houver ação/prazo.
       const hasGuideHint = Boolean(row.original.next_action || row.original.next_deadline_at)
@@ -105,7 +118,7 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
             color: 'neutral',
             variant: 'ghost',
             label: 'Ver guias',
-            to: `/monitoring/clients/${row.original.client_id}?tab=guides`
+            to: `/monitoring/clients/${row.original.client_id}/guides`
           })
         : '—'
     }
@@ -113,16 +126,19 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
   {
     id: 'next',
     header: 'Próximo prazo',
+    enableSorting: false,
     cell: ({ row }) => formatDateTime(row.original.next_deadline_at)
   },
   {
     id: 'consulted',
-    header: 'Última consulta',
+    header: ({ column }) => sortHeader('Última consulta', column),
     cell: ({ row }) => formatDateTime(row.original.last_consulted_at)
   },
   {
     id: 'actions',
-    header: '',
+    header: 'Ações',
+    enableHiding: false,
+    enableSorting: false,
     meta: { class: { th: 'w-28', td: 'w-28' } },
     cell: ({ row }) => h(UButton, {
       size: 'xs',
@@ -139,6 +155,7 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
   <MonitoringModuleTable
     title="Simples Nacional / MEI"
     panel-id="monitoring-simples-mei"
+    module-key="simples_mei"
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -152,33 +169,32 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
     :situation="situation"
     :competence="competence"
     :submodule="submodule"
+    :client-id="clientId"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
+    :sorting="sorting"
     show-competence-filter
     show-client-picker
-    empty-title="Nenhum cliente Simples/MEI"
-    @update:page="page = $event"
+    empty-title="Nenhum cliente"
+    :column-labels="{
+      obligation: 'Obrigação / submódulo',
+      guide: 'Guia',
+      next: 'Próximo prazo',
+      consulted: 'Última consulta'
+    }"
+    @update:page="setPage"
     @update:q="q = $event"
     @update:situation="situation = $event"
     @update:competence="competence = $event"
     @update:submodule="submodule = $event"
     @update:client-id="onClientId"
+    @update:sorting="sorting = $event"
+    @apply-filters="applyFilters"
+    @reset-filters="applyFilters"
     @refresh="refresh"
     @kpi-select="selectKpi"
   >
-    <template #navbar-actions>
-      <MonitoringPortfolioActions
-        module-key="simples_mei"
-        :client-id="clientId"
-        :competence="competence"
-        :situation="situation"
-        :q="q"
-        :submodule="submodule"
-        @refreshed="refresh"
-      />
-    </template>
-
     <template #submodules>
       <UTabs
         v-model="submodule"

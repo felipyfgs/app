@@ -84,14 +84,14 @@ onMounted(() => {
 
     <div v-else-if="!cursor" class="space-y-3 text-sm text-muted">
       <p>
-        Nenhum cursor central ainda. Cadastre o perfil institucional e o A1 do escritório em Configurações.
+        Nenhum cursor central ainda. Cadastre o perfil institucional e o A1 na área do escritório.
       </p>
       <UButton
-        to="/settings"
+        to="/conta/escritorio"
         color="neutral"
         variant="subtle"
         icon="i-lucide-sliders-horizontal"
-        label="Abrir Configurações"
+        label="Abrir Escritório"
         size="sm"
       />
     </div>

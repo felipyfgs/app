@@ -2,26 +2,26 @@
 /**
  * Faixa de KPIs canônica do painel (arquétipo HomeStats do template).
  *
- * - UPageGrid colado + UPageCard subtle + leading circular + título uppercase
- * - Opcional: legenda, loading, highlight, clique, link
+ * - UPageGrid colado + UPageCard subtle (sem carrossel)
+ * - Painéis secundários empilhados: ShellPanelAccordion (não esta faixa)
  *
  * Fonte: `.reference/nuxt-dashboard-template/app/components/home/HomeStats.vue`
  */
 import type { DashboardKpiItem, KpiTone } from '~/utils/kpi-ui'
-import { kpiPageCardUi } from '~/utils/kpi-ui'
+import {
+  kpiDisplayTitle,
+  kpiDisplayValue,
+  kpiPageCardUi,
+  kpiValueClass
+} from '~/utils/kpi-ui'
 
 const props = withDefaults(defineProps<{
   items: DashboardKpiItem[]
   loading?: boolean
-  /** Legenda acima da faixa (ex.: "Situação da carteira"). */
   legend?: string | null
-  /** data-testid do root. */
   testId?: string
-  /** Colunas no lg (2–6). Default = items.length (máx 6). */
   columns?: number | null
-  /** Chave do item ativo (highlight). */
   activeKey?: string | null
-  /** Cards clicáveis (emite select). */
   interactive?: boolean
 }>(), {
   loading: false,
@@ -42,7 +42,6 @@ const cols = computed(() => {
 })
 
 const gridClass = computed(() => {
-  // Tailwind precisa classes completas (não interpolar dinamicamente).
   switch (cols.value) {
     case 2: return 'grid-cols-2 lg:grid-cols-2 gap-2 sm:gap-4 lg:gap-px'
     case 3: return 'grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4 lg:gap-px'
@@ -61,22 +60,29 @@ function onActivate(item: DashboardKpiItem) {
   emit('select', item.key)
 }
 
+function toneOf(item: DashboardKpiItem): KpiTone {
+  return (item.tone || 'default') as KpiTone
+}
+
 function cardUi(item: DashboardKpiItem) {
-  return kpiPageCardUi((item.tone || 'default') as KpiTone, isActive(item.key))
+  return kpiPageCardUi(toneOf(item), isActive(item.key))
 }
 
 function valueClass(item: DashboardKpiItem) {
-  const base = 'text-lg font-semibold tabular-nums sm:text-2xl'
-  if (item.tone === 'error' && Number(item.value) > 0) return `${base} text-error`
-  if (item.tone === 'warning' && Number(item.value) > 0) return `${base} text-warning`
-  return `${base} text-highlighted`
+  const tone = toneOf(item)
+  const alert = Boolean(item.critical && Number(item.value) > 0)
+  return kpiValueClass(tone, alert)
+}
+
+function isClickable(item: DashboardKpiItem) {
+  return Boolean(props.interactive || item.to)
 }
 </script>
 
 <template>
   <div
     :data-testid="testId"
-    class="w-full"
+    class="w-full min-w-0"
   >
     <div
       v-if="legend || loading"
@@ -84,13 +90,13 @@ function valueClass(item: DashboardKpiItem) {
     >
       <p
         v-if="legend"
-        class="text-xs font-medium uppercase tracking-wide text-muted"
+        class="min-w-0 truncate text-xs font-medium uppercase tracking-wide text-muted"
       >
         {{ legend }}
       </p>
       <p
         v-if="loading"
-        class="text-xs text-dimmed"
+        class="shrink-0 text-xs text-dimmed"
       >
         Atualizando…
       </p>
@@ -101,14 +107,14 @@ function valueClass(item: DashboardKpiItem) {
         v-for="item in items"
         :key="item.key"
         :icon="item.icon"
-        :title="item.title"
+        :title="kpiDisplayTitle(item.title)"
         :to="item.to"
         variant="subtle"
         :highlight="isActive(item.key)"
         highlight-color="primary"
         :ui="cardUi(item)"
         class="min-w-0 overflow-hidden lg:rounded-none first:rounded-l-lg last:rounded-r-lg hover:z-1"
-        :class="(interactive || item.to) ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary' : ''"
+        :class="isClickable(item) ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary' : ''"
         :role="interactive ? 'button' : undefined"
         :tabindex="interactive ? 0 : undefined"
         :aria-pressed="interactive ? isActive(item.key) : undefined"
@@ -118,12 +124,9 @@ function valueClass(item: DashboardKpiItem) {
         @keydown.enter.prevent="onActivate(item)"
         @keydown.space.prevent="onActivate(item)"
       >
-        <div class="flex min-w-0 items-center gap-1.5">
-          <span
-            :class="valueClass(item)"
-            class="min-w-0 truncate"
-          >
-            {{ item.value }}
+        <div class="flex min-w-0 max-w-full items-center gap-1.5">
+          <span :class="valueClass(item)">
+            {{ kpiDisplayValue(item.value) }}
           </span>
           <UIcon
             v-if="item.critical && Number(item.value) > 0"

@@ -138,11 +138,35 @@ describe('plataforma /admin e seletor global (6.2)', () => {
     expect(calls[2]?.method).toBe('DELETE')
   })
 
-  it('admin hub usa gatilho TeamsMenu de uma linha com seletor amplo e pesquisável', () => {
+  it('admin entra por Escritórios e as superfícies internas seguem Lista/Settings', () => {
     const admin = readFileSync(resolve(APP, 'pages/admin/index.vue'), 'utf8')
-    expect(admin).toContain('admin-platform-panel')
-    expect(admin).toContain('admin-global-office-selector')
-    expect(admin).toMatch(/aria-label|role="listbox"/)
+    expect(admin).toContain('redirect: \'/admin/offices\'')
+    expect(admin).not.toContain('UDashboardPanel')
+    expect(admin).not.toContain('UPageCard')
+
+    const list = readFileSync(resolve(APP, 'pages/admin/offices/index.vue'), 'utf8')
+    expect(list).toContain('admin-offices-panel')
+    expect(list).toContain('admin-offices-toolbar')
+    expect(list).toContain('admin-offices-table')
+    expect(list).not.toContain('DashboardContent')
+
+    const create = readFileSync(resolve(APP, 'pages/admin/offices/new.vue'), 'utf8')
+    expect(create).toContain('DashboardContent width="comfortable"')
+    expect(create).toContain('admin-office-mobile-progress')
+    expect(create).toContain('admin-office-stepper')
+    expect(create).not.toContain('stepDescriptions')
+
+    const detail = readFileSync(resolve(APP, 'pages/admin/offices/[id].vue'), 'utf8')
+    expect(detail).toContain('admin-office-regenerate-card')
+    expect(detail).toContain('admin-office-first-admin-card')
+    expect(detail).toContain('admin-office-correct-reconfirm')
+
+    const staticDescriptions = [list, create, detail]
+      .flatMap(source => source.match(/\sdescription="[^"]+"/g) || [])
+    expect(staticDescriptions).toHaveLength(1)
+    expect(staticDescriptions[0]).toContain('Revoga o acesso anterior.')
+    expect(admin).not.toContain('admin-global-office-selector')
+    expect(admin).not.toContain('admin-actor-card')
 
     const identity = readFileSync(resolve(APP, 'components/OfficeIdentity.vue'), 'utf8')
     expect(identity).toContain('platform-global')
@@ -156,6 +180,10 @@ describe('plataforma /admin e seletor global (6.2)', () => {
     expect(identity).not.toContain('Atuando em:')
     expect(identity).not.toContain('ring-warning')
     expect(identity).toContain('data-platform-seal')
+    expect(identity).toContain(':aria-busy="loading || switching"')
+    expect(identity).not.toContain(':loading="loading || switching"')
+    expect(identity).toContain(':class="collapsed && \'hidden\'"')
+    expect(identity).not.toContain('v-if="!collapsed"')
     // Banner privilegiado removido — identidade compacta no seletor.
     expect(identity).not.toContain('privileged-context-banner')
   })

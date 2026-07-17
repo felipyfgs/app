@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
- * Cadastro e vínculos (PNR Contador) — lista tenant-scoped.
- * Arquétipo de lista do painel; sem office_id no request; sem segredos.
+ * Cadastro e vínculos (PNR Contador) — lista tenant-scoped via MonitoringModuleTable.
+ * Arquétipo customers.vue; sem office_id no request; sem segredos.
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { FiscalRegistrationLink } from '~/types/fiscal-modules'
+import { sortHeader } from '~/utils/table-sort'
 
 const UButton = resolveComponent('UButton')
 const UBadge = resolveComponent('UBadge')
@@ -18,38 +19,49 @@ const refreshingClientId = ref<number | null>(null)
 const loadError = ref<string | null>(null)
 const rows = ref<FiscalRegistrationLink[]>([])
 const page = ref(1)
+const perPage = ref(25)
 const lastPage = ref(1)
+const total = ref(0)
 const status = ref('all')
+const sorting = ref<{ id: string, desc: boolean }[]>([{ id: 'client', desc: false }])
 let loadSeq = 0
 
-async function load(reset = false) {
+const statusItems = [
+  { label: 'Todos', value: 'all' },
+  { label: 'Ativo', value: 'ACTIVE' },
+  { label: 'Desconhecido', value: 'UNKNOWN' }
+]
+
+async function load() {
   const seq = ++loadSeq
   const epoch = sessionEpoch.value
-  if (reset) {
-    page.value = 1
-    rows.value = []
-    lastPage.value = 1
-  }
   loading.value = true
   loadError.value = null
   try {
     const res = await api.fiscal.registrations.list({
       page: page.value,
-      per_page: 25,
+      per_page: perPage.value,
       status: status.value === 'all' ? undefined : status.value
     })
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
-    const next = res.data || []
-    rows.value = reset
-      ? next
-      : [...new Map([...rows.value, ...next].map(row => [row.id, row])).values()]
-    lastPage.value = res.meta?.last_page ?? 1
+    rows.value = res.data || []
+    const meta = res.meta
+    total.value = meta?.total ?? rows.value.length
+    lastPage.value = meta?.last_page ?? 1
+    if (typeof meta?.per_page === 'number') perPage.value = meta.per_page
   } catch (caught) {
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
+    rows.value = []
+    total.value = 0
     loadError.value = apiErrorMessage(caught, 'Falha ao carregar vínculos.')
   } finally {
     if (seq === loadSeq && epoch === sessionEpoch.value) loading.value = false
   }
+}
+
+async function setPage(next: number) {
+  page.value = Math.max(1, Math.floor(Number(next) || 1))
+  await load()
 }
 
 async function refreshClient(clientId: number) {
@@ -70,13 +82,15 @@ async function refreshClient(clientId: number) {
 }
 
 function clientHref(id: number) {
-  return `/monitoring/clients/${id}?tab=registrations`
+  return `/monitoring/clients/${id}/registrations`
 }
 
 const columns: TableColumn<FiscalRegistrationLink>[] = [
   {
+    id: 'client',
     accessorKey: 'client_id',
-    header: 'Cliente',
+    header: ({ column }) => sortHeader('Cliente', column),
+    enableHiding: false,
     cell: ({ row }) => h(UButton, {
       variant: 'link',
       color: 'primary',
@@ -84,10 +98,15 @@ const columns: TableColumn<FiscalRegistrationLink>[] = [
       label: String(row.original.client_id)
     })
   },
-  { accessorKey: 'link_key', header: 'Vínculo' },
+  {
+    accessorKey: 'link_key',
+    header: 'Vínculo',
+    enableSorting: false
+  },
   {
     accessorKey: 'status',
     header: 'Status',
+    enableSorting: false,
     cell: ({ row }) => h(UBadge, {
       color: row.original.status === 'ACTIVE' ? 'success' : 'neutral',
       variant: 'subtle',
@@ -97,16 +116,20 @@ const columns: TableColumn<FiscalRegistrationLink>[] = [
   {
     id: 'source',
     header: 'Fonte',
+    enableSorting: false,
     cell: ({ row }) => row.original.is_simulated ? 'Simulado' : 'SERPRO'
   },
   {
-    accessorKey: 'refreshed_at',
+    id: 'refreshed',
     header: 'Atualizado',
+    enableSorting: false,
     cell: ({ row }) => row.original.refreshed_at || row.original.observed_at || '—'
   },
   {
     id: 'actions',
-    header: '',
+    header: 'Ações',
+    enableHiding: false,
+    enableSorting: false,
     cell: ({ row }) => canTriggerSync.value
       ? h(UButton, {
           'size': 'xs',
@@ -120,90 +143,60 @@ const columns: TableColumn<FiscalRegistrationLink>[] = [
   }
 ]
 
-async function loadNext() {
-  if (page.value >= lastPage.value || loading.value) return
-  page.value++
-  await load()
-}
-
-watch(status, () => void load(true), { immediate: true })
-watch(sessionEpoch, () => void load(true))
+watch(status, () => {
+  page.value = 1
+  void load()
+}, { immediate: true })
+watch(sessionEpoch, () => {
+  page.value = 1
+  void load()
+})
 </script>
 
 <template>
-  <UDashboardPanel id="monitoring-registrations">
-    <template #header>
-      <UDashboardNavbar title="Cadastro e vínculos">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-      </UDashboardNavbar>
-      <UDashboardToolbar>
-        <MonitoringModuleNav active="registrations" />
-      </UDashboardToolbar>
+  <MonitoringModuleTable
+    title="Cadastro e vínculos"
+    panel-id="monitoring-registrations"
+    module-key="registrations"
+    :columns="columns"
+    :rows="rows"
+    :loading="loading"
+    :error="loadError"
+    :page="page"
+    :last-page="lastPage"
+    :total="total"
+    :per-page="perPage"
+    :situation="status"
+    :sorting="sorting"
+    :show-kpis="false"
+    :show-situation-filter="false"
+    :show-search="false"
+    empty-title="Nenhum vínculo"
+    empty-description="Atualize por cliente."
+    :column-labels="{
+      link_key: 'Vínculo',
+      status: 'Status',
+      source: 'Fonte',
+      refreshed: 'Atualizado'
+    }"
+    @update:page="setPage"
+    @update:sorting="sorting = $event"
+    @reset-filters="status = 'all'"
+    @refresh="load"
+  >
+    <template #nav>
+      <MonitoringModuleNav active="registrations" />
     </template>
 
-    <template #body>
-      <div class="flex flex-col gap-4 p-4 sm:p-6">
-        <div class="flex flex-wrap items-center gap-3">
-          <USelect
-            v-model="status"
-            :items="[
-              { label: 'Todos', value: 'all' },
-              { label: 'Ativo', value: 'ACTIVE' },
-              { label: 'Desconhecido', value: 'UNKNOWN' }
-            ]"
-            class="w-40"
-            aria-label="Filtrar vínculos por status"
-            data-testid="registrations-status-filter"
-          />
-          <UButton
-            icon="i-lucide-refresh-cw"
-            variant="soft"
-            :loading="loading"
-            label="Recarregar"
-            @click="load(true)"
-          />
-        </div>
-
-        <UAlert
-          v-if="loadError"
-          color="error"
-          variant="subtle"
-          :title="loadError"
-          data-testid="registrations-error"
-        />
-
-        <div class="overflow-x-auto">
-          <UTable
-            :data="rows"
-            :columns="columns"
-            :loading="loading"
-            :ui="{
-              base: 'table-fixed border-separate border-spacing-0',
-              thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-              tbody: '[&>tr]:last:[&>td]:border-b-0',
-              th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-              td: 'border-b border-default',
-              separator: 'h-0'
-            }"
-            data-testid="registrations-table"
-          >
-            <template #empty>
-              <MonitoringTableEmptyState
-                title="Nenhum vínculo projetado"
-                description="Execute um refresh explícito por cliente para popular a carteira."
-              />
-            </template>
-          </UTable>
-        </div>
-
-        <DashboardInfiniteTableLoader
-          :loading="loading && rows.length > 0"
-          :has-more="page < lastPage"
-          @load="loadNext"
-        />
-      </div>
+    <template #toolbar-filters>
+      <USelect
+        v-model="status"
+        :items="statusItems"
+        value-key="value"
+        class="w-full sm:min-w-40 sm:w-auto"
+        aria-label="Filtrar vínculos por status"
+        data-testid="registrations-status-filter"
+      />
     </template>
-  </UDashboardPanel>
+  </MonitoringModuleTable>
 </template>

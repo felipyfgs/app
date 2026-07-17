@@ -5,6 +5,7 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { InstallmentsClientDetail, InstallmentsClientRow } from '~/types/fiscal-modules'
+import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
@@ -26,13 +27,30 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  sorting,
+  setPage,
   refresh,
-  selectKpi
+  selectKpi,
+  applyFilters
 } = useFiscalModulePortfolio('installments')
 
 const api = useApi()
 const modalities = ref<Array<Record<string, unknown>>>([])
 const modalitiesError = ref<string | null>(null)
+/** Cápsula de modalidade: `all` ou código oficial (PARCSN, PARCMEI, …). */
+const selectedModality = ref('all')
+
+/** Catálogo oficial Integra-Parcelamento (fallback se a API falhar). */
+const CATALOG_MODALITIES = [
+  { code: 'PARCSN', label: 'PARCSN' },
+  { code: 'PARCSN-ESP', label: 'PARCSN-ESP' },
+  { code: 'PERTSN', label: 'PERTSN' },
+  { code: 'RELPSN', label: 'RELPSN' },
+  { code: 'PARCMEI', label: 'PARCMEI' },
+  { code: 'PARCMEI-ESP', label: 'PARCMEI-ESP' },
+  { code: 'PERTMEI', label: 'PERTMEI' },
+  { code: 'RELPMEI', label: 'RELPMEI' }
+] as const
 
 const detailOpen = ref(false)
 const detailLoading = ref(false)
@@ -41,7 +59,7 @@ const detailOrder = ref<Record<string, unknown> | null>(null)
 const detailParcels = ref<Array<Record<string, unknown>>>([])
 
 function clientHref(id: number) {
-  return `/monitoring/clients/${id}?tab=overview`
+  return `/monitoring/clients/${id}`
 }
 
 function onClientId(id: number | null) {
@@ -52,13 +70,49 @@ function detailOf(row: InstallmentsClientRow): InstallmentsClientDetail {
   return row.detail || {}
 }
 
+function modalityCodeOf(row: InstallmentsClientRow): string {
+  return String(detailOf(row).modality || '').trim().toUpperCase()
+}
+
+const modalityTabItems = computed(() => {
+  const fromApi = modalities.value
+    .map((m) => {
+      const code = String(m.code || m.name || m.label || m.id || '').trim().toUpperCase()
+      if (!code) return null
+      return { label: code, value: code }
+    })
+    .filter((x): x is { label: string, value: string } => Boolean(x))
+
+  const catalog = fromApi.length
+    ? fromApi
+    : CATALOG_MODALITIES.map(m => ({ label: m.label, value: m.code }))
+
+  return [
+    { label: 'Todas', value: 'all' },
+    ...catalog
+  ]
+})
+
+const displayRows = computed(() => {
+  const mod = selectedModality.value
+  if (!mod || mod === 'all') return rows.value
+  return rows.value.filter(row => modalityCodeOf(row) === mod)
+})
+
+const displayTotal = computed(() => {
+  if (!selectedModality.value || selectedModality.value === 'all') {
+    return total.value
+  }
+  return displayRows.value.length
+})
+
 async function loadModalities() {
   try {
     modalities.value = (await api.fiscal.installments.modalities()).data || []
     modalitiesError.value = null
   } catch (caught) {
     modalities.value = []
-    modalitiesError.value = apiErrorMessage(caught, 'Falha ao carregar modalidades.')
+    modalitiesError.value = apiErrorMessage(caught, 'Falha ao carregar modalidades do catálogo.')
   }
 }
 
@@ -89,7 +143,8 @@ async function openOrder(orderId: number) {
 const columns: TableColumn<InstallmentsClientRow>[] = [
   {
     id: 'client',
-    header: 'Cliente',
+    header: ({ column }) => sortHeader('Cliente', column),
+    enableHiding: false,
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
@@ -101,11 +156,13 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
   {
     id: 'modality',
     header: 'Modalidade',
+    enableSorting: false,
     cell: ({ row }) => String(detailOf(row.original).modality || '—')
   },
   {
     id: 'order',
     header: 'Pedido',
+    enableSorting: false,
     cell: ({ row }) => {
       const d = detailOf(row.original)
       return String(d.external_order_id || d.order_id || '—')
@@ -114,11 +171,13 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
   {
     id: 'total',
     header: 'Saldo / total',
+    enableSorting: false,
     cell: ({ row }) => formatAmountCents(detailOf(row.original).total_amount_cents)
   },
   {
     id: 'parcels',
     header: 'Parcelas',
+    enableSorting: false,
     cell: ({ row }) => {
       const d = detailOf(row.original)
       const count = d.parcel_count ?? '—'
@@ -129,6 +188,7 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
   {
     id: 'next',
     header: 'Próxima parcela',
+    enableSorting: false,
     cell: ({ row }) => {
       const d = detailOf(row.original)
       const due = formatDateTime(d.next_parcel_due_at)
@@ -139,6 +199,7 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
   {
     id: 'overdue',
     header: 'Atraso',
+    enableSorting: false,
     cell: ({ row }) => {
       const n = detailOf(row.original).overdue_parcels ?? 0
       if (!n) return '—'
@@ -148,24 +209,27 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
   {
     id: 'guide',
     header: 'Guia',
+    enableSorting: false,
     cell: ({ row }) => h(UButton, {
       size: 'xs',
       color: 'neutral',
       variant: 'ghost',
       label: 'Guias',
-      to: `/monitoring/clients/${row.original.client_id}?tab=guides`
+      to: `/monitoring/clients/${row.original.client_id}/guides`
     })
   },
   {
     id: 'situation',
-    header: 'Situação',
+    header: ({ column }) => sortHeader('Situação', column),
     cell: ({ row }) => h(FiscalStatusBadge, {
       status: String(detailOf(row.original).order_situation || row.original.situation)
     })
   },
   {
     id: 'actions',
-    header: '',
+    header: 'Ações',
+    enableHiding: false,
+    enableSorting: false,
     cell: ({ row }) => {
       const orderId = detailOf(row.original).order_id
       const children = [
@@ -200,37 +264,67 @@ onMounted(() => {
   <MonitoringModuleTable
     title="Parcelamentos"
     panel-id="monitoring-installments"
+    module-key="installments"
     :columns="columns"
-    :rows="rows"
+    :rows="displayRows"
     :loading="loading"
     :refreshing="refreshing"
     :error="loadError"
     :page="page"
     :last-page="lastPage"
-    :total="total"
+    :total="displayTotal"
     :per-page="perPage"
     :q="q"
     :situation="situation"
+    :client-id="clientId"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
+    :sorting="sorting"
     show-client-picker
-    empty-title="Nenhum parcelamento na carteira"
-    @update:page="page = $event"
+    empty-title="Nenhum parcelamento"
+    :column-labels="{
+      modality: 'Modalidade',
+      order: 'Pedido',
+      total: 'Saldo / total',
+      parcels: 'Parcelas',
+      next: 'Próxima parcela',
+      overdue: 'Atraso',
+      guide: 'Guia'
+    }"
+    @update:page="setPage"
     @update:q="q = $event"
     @update:situation="situation = $event"
     @update:client-id="onClientId"
+    @update:sorting="sorting = $event"
+    @apply-filters="applyFilters"
+    @reset-filters="applyFilters"
     @refresh="refresh"
     @kpi-select="selectKpi"
   >
-    <template #navbar-actions>
-      <MonitoringPortfolioActions
-        module-key="installments"
-        :client-id="clientId"
-        :situation="situation"
-        :q="q"
-        @refreshed="refresh"
-      />
+    <!-- Modalidades oficiais como cápsulas em largura total (padrão KPI/submódulos) -->
+    <template #submodules>
+      <div
+        class="w-full min-w-0"
+        data-testid="installments-modality-tabs"
+      >
+        <UTabs
+          v-model="selectedModality"
+          :items="modalityTabItems"
+          :content="false"
+          size="sm"
+          color="primary"
+          variant="pill"
+          class="w-full"
+          :ui="{
+            root: 'w-full min-w-0',
+            list: 'flex w-full min-w-0 flex-wrap justify-stretch gap-1 border border-default bg-elevated/60 p-1 shadow-xs',
+            trigger: 'min-w-0 flex-1 basis-[calc(12.5%-0.25rem)] justify-center px-2 data-[state=active]:text-highlighted sm:basis-0',
+            indicator: 'bg-default ring-1 ring-default'
+          }"
+          aria-label="Filtrar por modalidade do catálogo"
+        />
+      </div>
     </template>
 
     <template #utilities>
@@ -239,25 +333,9 @@ onMounted(() => {
         color="warning"
         icon="i-lucide-triangle-alert"
         :title="modalitiesError"
+        description="Exibindo catálogo oficial local (PARCSN…RELPMEI)."
         class="w-full"
       />
-      <UPageCard
-        v-else-if="modalities.length"
-        variant="subtle"
-        title="Modalidades do catálogo"
-        class="w-full"
-      >
-        <div class="flex flex-wrap gap-2">
-          <UBadge
-            v-for="(m, i) in modalities"
-            :key="i"
-            color="neutral"
-            variant="subtle"
-          >
-            {{ m.code || m.name || m.label || m.id || `Modalidade ${i + 1}` }}
-          </UBadge>
-        </div>
-      </UPageCard>
       <UAlert
         v-if="overviewError"
         color="warning"

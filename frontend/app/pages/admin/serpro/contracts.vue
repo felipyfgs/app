@@ -7,6 +7,13 @@ import type { TableColumn } from '@nuxt/ui'
 import type { SerproContractSanitized } from '~/types/api'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
+definePageMeta({
+  redirect: {
+    path: '/admin/serpro/configuration',
+    query: { section: 'contracts' }
+  }
+})
+
 const api = useApi()
 const { sessionEpoch } = useDashboard()
 
@@ -86,39 +93,31 @@ onMounted(load)
 
 <template>
   <div data-testid="admin-serpro-contracts">
-    <UAlert
-      color="info"
-      icon="i-lucide-info"
-      title="Cadastro e ativação diretos foram removidos"
-      description="Use Configuração SERPRO para upload versionado, teste OAuth e cutover."
-      class="mb-4"
-      data-testid="admin-serpro-contracts-redirect-hint"
-    >
-      <template #actions>
-        <UButton
-          size="sm"
-          label="Ir para Configuração"
-          to="/admin/serpro/configuration"
-          icon="i-lucide-settings-2"
-          data-testid="admin-serpro-contracts-go-config"
-        />
-      </template>
-    </UAlert>
-
     <UPageCard
-      title="Contratos (histórico)"
-      description="Somente metadados sanitizados. Sem download de PFX, Consumer Secret ou token."
+      title="Histórico de contratos"
       variant="naked"
       orientation="horizontal"
-      class="mb-4"
+      class="mb-6"
+      data-testid="admin-serpro-contracts-redirect-hint"
     >
-      <div class="flex w-fit flex-wrap items-end gap-2 lg:ms-auto">
+      <UButton
+        class="w-fit lg:ms-auto"
+        label="Configurar credenciais"
+        to="/admin/serpro/configuration"
+        icon="i-lucide-settings-2"
+        data-testid="admin-serpro-contracts-go-config"
+      />
+    </UPageCard>
+
+    <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div class="flex flex-wrap items-end gap-2">
         <UFormField label="Ambiente">
           <USelect
             v-model="environment"
             :items="envItems"
             value-key="value"
             class="w-40"
+            aria-label="Filtrar contratos por ambiente"
           />
         </UFormField>
         <UButton
@@ -130,15 +129,30 @@ onMounted(load)
           @click="load"
         />
       </div>
-    </UPageCard>
+      <p class="text-sm text-muted">
+        {{ rows.length }} {{ rows.length === 1 ? 'contrato' : 'contratos' }}
+      </p>
+    </div>
 
     <UAlert
       v-if="loadError"
       color="error"
       icon="i-lucide-circle-x"
-      :title="loadError"
+      title="Não foi possível carregar os contratos"
+      :description="loadError"
       class="mb-4"
-    />
+    >
+      <template #actions>
+        <UButton
+          label="Tentar novamente"
+          color="error"
+          variant="soft"
+          size="sm"
+          :loading="loading"
+          @click="load"
+        />
+      </template>
+    </UAlert>
 
     <UPageCard
       variant="subtle"
@@ -151,6 +165,12 @@ onMounted(load)
         :ui="DASHBOARD_TABLE_UI"
         data-testid="admin-serpro-contracts-table"
       >
+        <template #environment-cell="{ row }">
+          <UBadge color="neutral" variant="subtle">
+            {{ row.original.environment === 'PRODUCTION' ? 'Produção' : 'Trial' }}
+          </UBadge>
+        </template>
+
         <template #status-cell="{ row }">
           <div class="flex flex-wrap items-center gap-1">
             <UBadge
@@ -167,12 +187,14 @@ onMounted(load)
         </template>
       </UTable>
 
-      <p
+      <div
         v-if="!loading && !rows.length"
-        class="p-4 text-sm text-muted"
+        class="flex min-h-40 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted"
+        role="status"
       >
+        <UIcon name="i-lucide-file-search" class="size-7" aria-hidden="true" />
         Nenhum contrato neste filtro.
-      </p>
+      </div>
     </UPageCard>
   </div>
 </template>

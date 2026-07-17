@@ -38,6 +38,7 @@ export function useApi() {
   // Ordem de chaves idêntica à fachada monólito (acesso por nome; ordem estável).
   return {
     me: auth.me,
+    account: auth.account,
     tenants: auth.tenants,
     confirmPassword: auth.confirmPassword,
     activations: activationApi.activations,

@@ -267,7 +267,7 @@ watch(sessionEpoch, () => {
                   <NuxtLink
                     v-if="message.client_id"
                     class="text-primary"
-                    :to="`/monitoring/clients/${message.client_id}?tab=overview`"
+                    :to="`/monitoring/clients/${message.client_id}`"
                   >
                     #{{ message.client_id }}
                   </NuxtLink>

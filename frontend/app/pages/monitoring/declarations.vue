@@ -5,6 +5,7 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { DeclarationsClientDetail, DeclarationsClientRow } from '~/types/fiscal-modules'
+import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
@@ -31,8 +32,11 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  sorting,
+  setPage,
   refresh,
-  selectKpi
+  selectKpi,
+  applyFilters
 } = useFiscalModulePortfolio('declarations')
 
 /** Resumo real da API (por obrigação × aplicabilidade × entrega). */
@@ -73,7 +77,7 @@ const deliveryStatusItems = [
 ]
 
 function clientHref(id: number) {
-  return `/monitoring/clients/${id}?tab=declarations`
+  return `/monitoring/clients/${id}/declarations`
 }
 
 function onClientId(id: number | null) {
@@ -187,7 +191,8 @@ async function openProjection(row: DeclarationsClientRow) {
 const columns: TableColumn<DeclarationsClientRow>[] = [
   {
     id: 'client',
-    header: 'Cliente',
+    header: ({ column }) => sortHeader('Cliente', column),
+    enableHiding: false,
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
@@ -199,6 +204,7 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
   {
     id: 'obligation',
     header: 'Obrigação',
+    enableSorting: false,
     cell: ({ row }) => {
       const d = detailOf(row.original)
       const proj = projectionOf(row.original)
@@ -213,6 +219,7 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
   {
     id: 'applicability',
     header: 'Aplicabilidade',
+    enableSorting: false,
     cell: ({ row }) => {
       const proj = projectionOf(row.original)
       const code = proj?.applicability != null ? String(proj.applicability) : null
@@ -222,7 +229,7 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
   },
   {
     id: 'competence',
-    header: 'Competência',
+    header: ({ column }) => sortHeader('Competência', column),
     cell: ({ row }) => String(
       row.original.competence
       || detailOf(row.original).next_period_key
@@ -233,6 +240,7 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
   {
     id: 'due',
     header: 'Vencimento',
+    enableSorting: false,
     cell: ({ row }) => formatDateTime(
       String(
         detailOf(row.original).next_due_at
@@ -245,6 +253,7 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
   {
     id: 'delivery',
     header: 'Entrega',
+    enableSorting: false,
     cell: ({ row }) => {
       const status = String(
         detailOf(row.original).next_delivery_status
@@ -257,6 +266,7 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
   {
     id: 'evidence',
     header: 'Evidência',
+    enableSorting: false,
     cell: ({ row }) => {
       const proj = projectionOf(row.original)
       if (!proj) {
@@ -272,11 +282,12 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
   {
     id: 'open',
     header: 'Abertas',
+    enableSorting: false,
     cell: ({ row }) => String(detailOf(row.original).open_count ?? '—')
   },
   {
     id: 'situation',
-    header: 'Situação',
+    header: ({ column }) => sortHeader('Situação', column),
     cell: ({ row }) => h(FiscalStatusBadge, {
       status: String(
         detailOf(row.original).next_situation
@@ -286,7 +297,9 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
   },
   {
     id: 'actions',
-    header: '',
+    header: 'Ações',
+    enableHiding: false,
+    enableSorting: false,
     meta: { class: { th: 'w-40', td: 'w-40' } },
     cell: ({ row }) => {
       const children = [
@@ -329,6 +342,7 @@ onMounted(() => {
   <MonitoringModuleTable
     title="Declarações"
     panel-id="monitoring-declarations"
+    module-key="declarations"
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -342,34 +356,36 @@ onMounted(() => {
     :situation="situation"
     :competence="competence"
     :delivery-status="deliveryStatus"
+    :client-id="clientId"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
     show-competence-filter
     show-delivery-status-filter
     show-client-picker
+    :sorting="sorting"
     :delivery-status-items="deliveryStatusItems"
-    empty-title="Nenhuma declaração na carteira"
-    @update:page="page = $event"
+    empty-title="Nenhuma declaração"
+    :column-labels="{
+      obligation: 'Obrigação',
+      applicability: 'Aplicabilidade',
+      due: 'Vencimento',
+      delivery: 'Entrega',
+      evidence: 'Evidência',
+      open: 'Abertas'
+    }"
+    @update:page="setPage"
     @update:q="q = $event"
     @update:situation="situation = $event"
     @update:competence="competence = $event"
     @update:delivery-status="deliveryStatus = $event"
     @update:client-id="onClientId"
+    @update:sorting="sorting = $event"
+    @apply-filters="applyFilters"
+    @reset-filters="applyFilters"
     @refresh="() => { refresh(); loadSummary() }"
     @kpi-select="selectKpi"
   >
-    <template #navbar-actions>
-      <MonitoringPortfolioActions
-        module-key="declarations"
-        :client-id="clientId"
-        :competence="competence"
-        :situation="situation"
-        :q="q"
-        @refreshed="() => { refresh(); loadSummary() }"
-      />
-    </template>
-
     <template #utilities>
       <UAlert
         v-if="summaryError"

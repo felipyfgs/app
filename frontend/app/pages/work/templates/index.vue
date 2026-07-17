@@ -253,7 +253,7 @@ onMounted(load)
         v-else-if="!items.length"
         icon="i-lucide-layout-template"
         title="Nenhum modelo"
-        description="Crie o primeiro para gerar processos em lote."
+        description="Crie um modelo para gerar processos."
       />
       <template v-else>
         <UTable :data="items" :columns="columns" :ui="DASHBOARD_TABLE_UI">

@@ -18,12 +18,7 @@ const {
 } = useServerPage()
 
 type MailboxTriageFilter = (typeof MAILBOX_TRIAGE_FILTER_ITEMS)[number]['value']
-const routeTriage = String(route.query.triage_status || 'all')
-const triage = ref<MailboxTriageFilter>(
-  MAILBOX_TRIAGE_FILTER_ITEMS.some(item => item.value === routeTriage)
-    ? routeTriage as MailboxTriageFilter
-    : 'all'
-)
+const triage = ref<MailboxTriageFilter>('all')
 const rows = ref<MailboxListItem[]>([])
 const listRef = ref<{ focusMessage: (id: number | null | undefined) => void } | null>(null)
 /** ID a restaurar foco ao fechar detalhe (desktop/mobile). */
@@ -64,9 +59,7 @@ async function load() {
   loading.value = true
   loadError.value = null
   try {
-    await syncUrl({
-      triage_status: triage.value !== 'all' ? triage.value : undefined
-    })
+    await syncUrl()
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
     const res = await api.fiscal.mailbox.list({
       page: page.value,
@@ -95,15 +88,12 @@ async function load() {
 
 function selectMessage(id: number) {
   lastFocusedId.value = id
-  void router.push({
-    path: `/monitoring/mailbox/${id}`,
-    query: { ...route.query }
-  })
+  void router.push(`/monitoring/mailbox/${id}`)
 }
 
 function closeDetail() {
   const restoreId = selectedId.value || lastFocusedId.value
-  void router.push({ path: '/monitoring/mailbox', query: { ...route.query } }).then(() => {
+  void router.push('/monitoring/mailbox').then(() => {
     nextTick(() => {
       listRef.value?.focusMessage(restoreId)
     })
@@ -147,16 +137,6 @@ onMounted(load)
             <UBadge
               :label="String(total)"
               variant="subtle"
-            />
-          </template>
-          <template #right>
-            <MonitoringPortfolioActions
-              module-key="mailbox"
-              :client-id="clientIdModel"
-              compact
-              show-enqueue
-              :show-export="true"
-              @refreshed="load"
             />
           </template>
         </UDashboardNavbar>
@@ -211,9 +191,8 @@ onMounted(load)
           </template>
         </UAlert>
 
-        <!-- Erro de lista não vira empty silencioso: alerta acima + lista só se houver dados ou sucesso -->
+        <!-- Lista sempre montada (casca + empty interno); erro em alerta acima -->
         <MonitoringMailboxList
-          v-if="!loadError || rows.length"
           ref="listRef"
           :messages="rows"
           :selected-id="selectedId"
@@ -222,11 +201,17 @@ onMounted(load)
         />
 
         <div
-          v-if="lastPage > 1"
           class="mt-3 flex items-center justify-between border-t border-default pt-3"
+          data-testid="mailbox-pagination"
         >
-          <span class="text-xs text-muted">Pág. {{ page }}/{{ lastPage }}</span>
+          <span class="text-xs text-muted">
+            {{ total }} mensagem(ns)
+            <template v-if="lastPage > 1">
+              · pág. {{ page }}/{{ lastPage }}
+            </template>
+          </span>
           <UPagination
+            v-if="lastPage > 1"
             v-model="page"
             :total="total"
             :items-per-page="perPage"

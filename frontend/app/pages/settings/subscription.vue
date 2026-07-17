@@ -45,13 +45,13 @@ onMounted(load)
   <div>
     <UPageCard
       title="Assinatura"
-      description="Plano e limites do escritório ativo na sessão."
+      description="Plano e limites do escritório."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
     >
       <UButton
-        to="/settings/usage"
+        to="/conta/consumo"
         color="neutral"
         label="Ver consumo"
         class="w-fit lg:ms-auto"

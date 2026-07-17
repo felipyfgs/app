@@ -328,7 +328,7 @@ onMounted(refreshAll)
 
         <UPageCard
           title="CT-e autXML do escritório"
-          description="Fluxo separado para CT-e que mencionam o CNPJ do escritório em autXML."
+          description="CT-e com CNPJ do escritório em autXML."
           variant="subtle"
           icon="i-lucide-truck"
         >
@@ -381,7 +381,7 @@ onMounted(refreshAll)
               v-else-if="!cteError"
               class="mt-2 text-sm text-muted"
             >
-              Stream central ainda não inicializado — configure o autXML no catálogo de documentos CT-e.
+              Stream central não inicializado. Configure autXML no catálogo CT-e.
             </p>
             <div class="mt-3">
               <UButton

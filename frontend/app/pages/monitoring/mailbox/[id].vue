@@ -15,7 +15,7 @@ const messageId = computed(() => Number(route.params.id))
 
 function close() {
   emit('close')
-  void router.push({ path: '/monitoring/mailbox', query: { ...route.query } })
+  void router.push('/monitoring/mailbox')
 }
 
 function onTriaged() {

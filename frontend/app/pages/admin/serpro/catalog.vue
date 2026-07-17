@@ -6,6 +6,13 @@ import type { TableColumn } from '@nuxt/ui'
 import type { SerproCatalogEntry } from '~/types/api'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
+definePageMeta({
+  redirect: {
+    path: '/admin/serpro/configuration',
+    query: { section: 'coverage' }
+  }
+})
+
 const api = useApi()
 const { sessionEpoch } = useDashboard()
 
@@ -22,10 +29,10 @@ const envItems = [
 
 const supportItems = [
   { label: 'Todos', value: 'all' },
-  { label: 'IMPLEMENTED', value: 'IMPLEMENTED' },
-  { label: 'PRODUCTION_VALIDATED', value: 'PRODUCTION_VALIDATED' },
-  { label: 'INVENTORIED', value: 'INVENTORIED' },
-  { label: 'SIMULATED', value: 'SIMULATED' }
+  { label: 'Implementado', value: 'IMPLEMENTED' },
+  { label: 'Validado em produção', value: 'PRODUCTION_VALIDATED' },
+  { label: 'Inventariado', value: 'INVENTORIED' },
+  { label: 'Simulado', value: 'SIMULATED' }
 ]
 
 const filtered = computed(() => {
@@ -37,8 +44,13 @@ const filtered = computed(() => {
 
 const columns: TableColumn<SerproCatalogEntry>[] = [
   {
+    id: 'operation',
+    header: 'Operação',
+    cell: ({ row }) => row.original.label || row.original.operation_key || '—'
+  },
+  {
     id: 'coords',
-    header: 'Coordenadas',
+    header: 'Coordenadas técnicas',
     cell: ({ row }) =>
       [row.original.system_code, row.original.service_code, row.original.operation_code]
         .filter(Boolean)
@@ -93,7 +105,21 @@ function supportBadge(code?: string | null) {
   return 'neutral' as const
 }
 
+function supportLabel(code?: string | null) {
+  const labels: Record<string, string> = {
+    IMPLEMENTED: 'Implementado',
+    PRODUCTION_VALIDATED: 'Validado em produção',
+    INVENTORIED: 'Inventariado',
+    SIMULATED: 'Simulado',
+    UNKNOWN: 'Não classificado'
+  }
+
+  return labels[String(code || 'UNKNOWN').toUpperCase()] || String(code || 'Não classificado')
+}
+
 watch(environment, () => {
+  rows.value = []
+  loadError.value = null
   void load()
 })
 watch(sessionEpoch, () => {
@@ -104,15 +130,28 @@ onMounted(load)
 </script>
 
 <template>
-  <div data-testid="admin-serpro-catalog">
+  <div
+    class="flex flex-col gap-4 sm:gap-6"
+    data-testid="admin-serpro-catalog"
+  >
     <UPageCard
       title="Cobertura de operações"
-      description="Matriz idSistema/idServico → platform_support. Mutações permanecem bloqueadas nesta change."
       variant="naked"
       orientation="horizontal"
-      class="mb-4"
     >
-      <div class="flex w-fit flex-wrap items-end gap-2 lg:ms-auto">
+      <UButton
+        class="w-fit lg:ms-auto"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-refresh-cw"
+        label="Atualizar catálogo"
+        :loading="loading"
+        @click="load"
+      />
+    </UPageCard>
+
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div class="flex w-full flex-wrap items-end gap-2 sm:w-auto">
         <UFormField label="Ambiente">
           <USelect
             v-model="environment"
@@ -126,48 +165,45 @@ onMounted(load)
             v-model="supportFilter"
             :items="supportItems"
             value-key="value"
-            class="w-48"
+            class="w-full sm:w-52"
           />
         </UFormField>
-        <UButton
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-refresh-cw"
-          label="Atualizar"
-          :loading="loading"
-          @click="load"
-        />
       </div>
-    </UPageCard>
+
+      <div
+        v-if="rows.length"
+        class="flex flex-wrap gap-1.5"
+        aria-label="Resumo da cobertura no ambiente selecionado"
+      >
+        <UBadge
+          v-for="(count, code) in coverageCounts"
+          :key="code"
+          :color="supportBadge(String(code))"
+          variant="subtle"
+        >
+          {{ supportLabel(String(code)) }} · {{ count }}
+        </UBadge>
+      </div>
+    </div>
 
     <UAlert
       v-if="loadError"
       color="error"
       icon="i-lucide-circle-x"
       :title="loadError"
-      class="mb-4"
+      :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
     />
 
-    <div class="mb-4 flex flex-wrap gap-2">
-      <UBadge
-        v-for="(count, code) in coverageCounts"
-        :key="code"
-        :color="supportBadge(String(code))"
-        variant="subtle"
-      >
-        {{ code }}: {{ count }}
-      </UBadge>
-    </div>
-
-    <UPageCard
-      variant="subtle"
-      :ui="{ container: 'p-0 sm:p-0 gap-y-0' }"
+    <div
+      v-if="loading || filtered.length"
+      class="overflow-x-auto"
     >
       <UTable
         :data="filtered"
         :loading="loading"
         :columns="columns"
         :ui="DASHBOARD_TABLE_UI"
+        class="min-w-4xl shrink-0"
         data-testid="admin-serpro-catalog-table"
       >
         <template #platform_support-cell="{ row }">
@@ -176,7 +212,7 @@ onMounted(load)
               :color="supportBadge(row.original.platform_support)"
               variant="subtle"
             >
-              {{ row.original.platform_support || '—' }}
+              {{ supportLabel(row.original.platform_support) }}
             </UBadge>
             <SerproProvenanceBadge
               v-if="String(row.original.platform_support).toUpperCase() === 'SIMULATED'"
@@ -189,12 +225,12 @@ onMounted(load)
           </div>
         </template>
       </UTable>
-      <p
-        v-if="!loading && !filtered.length"
-        class="p-4 text-sm text-muted"
-      >
-        Nenhuma operação no filtro.
-      </p>
-    </UPageCard>
+    </div>
+
+    <UEmpty
+      v-if="!loading && !loadError && !filtered.length"
+      icon="i-lucide-search-x"
+      title="Nenhuma operação encontrada"
+    />
   </div>
 </template>

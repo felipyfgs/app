@@ -25,8 +25,8 @@ describe('superfície CT-e no catálogo', () => {
     expect(middleware).toMatch(/settings\/cte/)
     expect(middleware).toContain('path: \'/docs/catalog\'')
     expect(middleware).toContain('kind: \'CTE\'')
-    // Gate normal de /settings sem liberar CT-e como página Settings.
-    expect(middleware).toMatch(/to\.path\.startsWith\('\/settings'\)/)
+    // Gate normal de /conta/* sem liberar CT-e como página de conta.
+    expect(middleware).toMatch(/to\.path\.startsWith\('\/conta\/'\)/)
     expect(middleware).not.toMatch(/to\.path !== '\/settings\/cte'/)
   })
 

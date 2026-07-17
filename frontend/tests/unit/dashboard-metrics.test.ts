@@ -29,10 +29,10 @@ describe('dashboard operacional', () => {
     expect(clients).toBeGreaterThan(blocked)
   })
 
-  it('preserva resumo anterior em falha e expõe última atualização válida', () => {
+  it('preserva resumo anterior em falha e expõe timestamp de atualização', () => {
     expect(source).toContain('lastValidAt')
     expect(source).toContain('refreshError')
-    expect(source).toContain('Última atualização válida')
+    expect(source).toContain('Atualizado')
   })
 
   it('expõe alerta de backup e atalho da inbox no home', () => {

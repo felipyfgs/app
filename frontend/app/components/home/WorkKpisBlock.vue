@@ -113,6 +113,17 @@ const departmentRows = computed(() => {
     .sort((a, b) => b.open - a.open)
 })
 
+const workPanelItems = computed(() => {
+  const items: Array<{ label: string, icon: string, value: string, slot: string }> = []
+  if (departmentRows.value.length) {
+    items.push({ label: 'Departamentos', icon: 'i-lucide-building-2', value: 'departments', slot: 'departments' })
+  }
+  if (data.value?.top_risks?.length) {
+    items.push({ label: 'Riscos', icon: 'i-lucide-triangle-alert', value: 'risks', slot: 'risks' })
+  }
+  return items
+})
+
 const lastUpdated = computed(() => {
   const raw = data.value?.generated_at
   if (!raw) return null
@@ -136,12 +147,12 @@ const lastUpdated = computed(() => {
           id="home-work-heading"
           class="text-base font-semibold text-highlighted"
         >
-          Trabalho operacional
+          Trabalho
         </h2>
-        <p class="text-xs text-muted">
-          Fila, prazos e carga — separado de sinais fiscais e de infraestrutura
-          <span v-if="lastUpdated"> · atualizado {{ lastUpdated }}</span>
-          <span v-if="data?.today"> · hoje {{ formatDueDate(data.today) }}</span>
+        <p class="min-w-0 truncate text-xs text-muted">
+          Fila e prazos
+          <span v-if="lastUpdated"> · {{ lastUpdated }}</span>
+          <span v-if="data?.today"> · {{ formatDueDate(data.today) }}</span>
         </p>
       </div>
       <UButton
@@ -197,73 +208,81 @@ const lastUpdated = computed(() => {
       :columns="6"
     />
 
-    <div
-      v-if="departmentRows.length"
-      class="space-y-2"
+    <ShellPanelAccordion
+      v-if="departmentRows.length || data?.top_risks?.length"
+      :items="workPanelItems"
+      type="multiple"
+      :default-value="departmentRows.length ? ['departments'] : ['risks']"
+      test-id="home-work-panels"
     >
-      <p class="text-sm font-medium text-highlighted">
-        Carga e progresso por departamento
-      </p>
-      <ul class="grid gap-2 sm:grid-cols-2">
-        <li
-          v-for="row in departmentRows"
-          :key="String(row.id)"
-          class="rounded-lg border border-default px-3 py-2"
-        >
-          <div class="mb-1 flex items-center justify-between gap-2 text-sm">
-            <NuxtLink
-              :to="row.to"
-              class="truncate font-medium text-highlighted hover:underline"
-            >
-              {{ row.name }}
-            </NuxtLink>
-            <span class="shrink-0 text-xs text-muted">
-              {{ row.completedPercent }}% concl.
-            </span>
-          </div>
-          <UProgress
-            :model-value="row.completedPercent"
-            color="primary"
-            size="sm"
-            :aria-label="`${row.name}: ${row.completedPercent}% concluídas`"
-          />
-          <div class="mt-2 flex flex-wrap gap-2 text-xs text-muted">
-            <NuxtLink :to="row.to" class="hover:underline">
-              {{ row.open }} abertas
-            </NuxtLink>
-            <NuxtLink :to="row.overdueTo" class="hover:underline text-warning">
-              {{ row.overdue }} atrasadas
-            </NuxtLink>
-            <span class="text-error">{{ row.fine }} multa</span>
-            <span>{{ row.unassigned }} s/ resp.</span>
-          </div>
-        </li>
-      </ul>
-    </div>
-
-    <div
-      v-if="data?.top_risks?.length"
-      class="space-y-2"
-    >
-      <p class="text-sm font-medium text-highlighted">
-        Maiores riscos
-      </p>
-      <ul class="space-y-1 text-sm">
-        <li
-          v-for="r in data.top_risks.slice(0, 5)"
-          :key="r.task_id"
-        >
-          <NuxtLink
-            :to="`/work/tasks/${r.task_id}`"
-            class="flex justify-between gap-2 rounded-md border border-default px-3 py-2 hover:bg-elevated/40"
+      <template
+        v-if="departmentRows.length"
+        #departments
+      >
+        <ul class="grid gap-2 sm:grid-cols-2">
+          <li
+            v-for="row in departmentRows"
+            :key="String(row.id)"
+            class="rounded-lg border border-default px-3 py-2"
           >
-            <span class="truncate">{{ r.title }}</span>
-            <span class="shrink-0 text-xs text-muted">
-              {{ (r.risks || []).map(workRiskLabel).join(' · ') }}
-            </span>
-          </NuxtLink>
-        </li>
-      </ul>
-    </div>
+            <div class="mb-1 flex items-center justify-between gap-2 text-sm">
+              <NuxtLink
+                :to="row.to"
+                class="truncate font-medium text-highlighted hover:underline"
+              >
+                {{ row.name }}
+              </NuxtLink>
+              <span class="shrink-0 text-xs text-muted">
+                {{ row.completedPercent }}%
+              </span>
+            </div>
+            <UProgress
+              :model-value="row.completedPercent"
+              color="primary"
+              size="sm"
+              :aria-label="`${row.name}: ${row.completedPercent}%`"
+            />
+            <div class="mt-2 flex flex-wrap gap-2 text-xs text-muted">
+              <NuxtLink
+                :to="row.to"
+                class="hover:underline"
+              >
+                {{ row.open }} abertas
+              </NuxtLink>
+              <NuxtLink
+                :to="row.overdueTo"
+                class="text-warning hover:underline"
+              >
+                {{ row.overdue }} atrasadas
+              </NuxtLink>
+              <span class="text-error">{{ row.fine }} multa</span>
+              <span>{{ row.unassigned }} s/ resp.</span>
+            </div>
+          </li>
+        </ul>
+      </template>
+
+      <template
+        v-if="data?.top_risks?.length"
+        #risks
+      >
+        <ul class="space-y-1 text-sm">
+          <li
+            v-for="r in data.top_risks.slice(0, 5)"
+            :key="r.task_id"
+          >
+            <NuxtLink
+              :to="`/work/tasks/${r.task_id}`"
+              class="flex justify-between gap-2 rounded-md border border-default px-3 py-2 hover:bg-elevated/40"
+            >
+              <span class="truncate">{{ r.title }}</span>
+              <span class="shrink-0 text-xs text-muted">
+                {{ (r.risks || []).map(workRiskLabel).join(' · ') }}
+              </span>
+            </NuxtLink>
+          </li>
+        </ul>
+      </template>
+    </ShellPanelAccordion>
   </section>
 </template>

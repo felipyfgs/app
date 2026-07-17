@@ -156,7 +156,7 @@ onMounted(load)
         v-else-if="!items.length"
         icon="i-lucide-folder-open"
         title="Nenhum processo encontrado"
-        description="Ajuste filtros ou crie processos a partir de um modelo."
+        description="Ajuste filtros ou crie um processo."
       />
       <template v-else>
         <UTable

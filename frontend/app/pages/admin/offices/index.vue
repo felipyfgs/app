@@ -34,6 +34,8 @@ const filtered = computed(() => {
   )
 })
 
+const hasFilters = computed(() => Boolean(q.value.trim()) || lifecycleFilter.value !== 'all')
+
 const columns: TableColumn<PlatformOfficeAdminSummary>[] = [
   { accessorKey: 'id', header: 'ID', meta: { class: { th: 'w-16', td: 'w-16' } } },
   { accessorKey: 'name', header: 'Nome' },
@@ -71,6 +73,11 @@ function lifecycleColor(status: string): 'warning' | 'success' | 'neutral' {
   if (status === 'PENDING_ACTIVATION') return 'warning'
   if (status === 'ACTIVE') return 'success'
   return 'neutral'
+}
+
+function clearFilters() {
+  q.value = ''
+  lifecycleFilter.value = 'all'
 }
 
 let loadSeq = 0
@@ -112,7 +119,6 @@ onMounted(load)
   <UDashboardPanel
     id="admin-offices"
     data-testid="admin-offices-panel"
-    :ui="{ body: 'lg:py-12' }"
   >
     <template #header>
       <UDashboardNavbar
@@ -134,88 +140,102 @@ onMounted(load)
     </template>
 
     <template #body>
-      <DashboardContent width="wide" class="gap-4">
-        <div class="flex flex-wrap items-center gap-2">
-          <UInput
-            v-model="q"
-            icon="i-lucide-search"
-            placeholder="Buscar por nome, slug ou id…"
-            class="w-full sm:max-w-sm"
-            data-testid="admin-offices-search"
-          />
+      <div
+        class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+        data-testid="admin-offices-toolbar"
+      >
+        <UInput
+          v-model="q"
+          icon="i-lucide-search"
+          placeholder="Buscar escritórios…"
+          class="w-full sm:max-w-sm"
+          aria-label="Buscar escritórios"
+          data-testid="admin-offices-search"
+        />
+
+        <div class="flex items-center gap-2">
           <USelect
             v-model="lifecycleFilter"
             :items="filterItems"
             value-key="value"
             label-key="label"
-            class="w-40"
+            class="min-w-0 flex-1 sm:w-40 sm:flex-none"
+            aria-label="Filtrar por estado"
             data-testid="admin-offices-filter"
           />
           <UButton
             color="neutral"
-            variant="soft"
+            variant="outline"
             icon="i-lucide-refresh-cw"
             label="Atualizar"
             :loading="loading"
             @click="() => { void load() }"
           />
         </div>
+      </div>
 
-        <UAlert
-          v-if="loadError"
-          color="error"
-          icon="i-lucide-circle-x"
-          :title="loadError"
-          :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
-        />
+      <UAlert
+        v-if="loadError"
+        color="error"
+        icon="i-lucide-circle-x"
+        :title="loadError"
+        :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
+      />
 
-        <div
-          v-else-if="loading && !rows.length"
-          class="space-y-2"
+      <UEmpty
+        v-else-if="!loading && !filtered.length"
+        icon="i-lucide-building-2"
+        :title="hasFilters ? 'Nenhum resultado' : 'Nenhum escritório'"
+        data-testid="admin-offices-empty"
+      >
+        <template #actions>
+          <UButton
+            v-if="hasFilters"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-rotate-ccw"
+            label="Limpar filtros"
+            @click="clearFilters"
+          />
+          <UButton
+            v-else
+            to="/admin/offices/new"
+            icon="i-lucide-plus"
+            label="Novo escritório"
+          />
+        </template>
+      </UEmpty>
+
+      <div
+        v-else
+        class="overflow-x-auto"
+      >
+        <UTable
+          :data="filtered"
+          :columns="columns"
+          :loading="loading"
+          :ui="DASHBOARD_TABLE_UI"
+          class="min-w-full"
+          data-testid="admin-offices-table"
         >
-          <USkeleton class="h-10 w-full" />
-          <USkeleton class="h-10 w-full" />
-          <USkeleton class="h-10 w-2/3" />
-        </div>
-
-        <UEmpty
-          v-else-if="!filtered.length"
-          icon="i-lucide-building-2"
-          title="Nenhum escritório"
-          description="Crie o primeiro escritório pendente de ativação."
-          data-testid="admin-offices-empty"
-        />
-
-        <div
-          v-else
-          class="overflow-x-auto"
-        >
-          <UTable
-            :data="filtered"
-            :columns="columns"
-            :ui="DASHBOARD_TABLE_UI"
-            class="min-w-full"
-            data-testid="admin-offices-table"
-          >
-            <template #name-cell="{ row }">
-              <NuxtLink
-                :to="`/admin/offices/${row.original.id}`"
-                class="font-medium text-primary hover:underline"
-              >
-                {{ row.original.name }}
-              </NuxtLink>
-            </template>
-            <template #lifecycle-cell="{ row }">
-              <UBadge
-                size="sm"
-                variant="subtle"
-                :color="lifecycleColor(row.original.lifecycle_status)"
-                :label="lifecycleLabel(row.original.lifecycle_status)"
-              />
-            </template>
-          </UTable>
-        </div>
-      </DashboardContent>
+          <template #name-cell="{ row }">
+            <NuxtLink
+              :to="`/admin/offices/${row.original.id}`"
+              class="font-medium text-primary hover:underline"
+            >
+              {{ row.original.name }}
+            </NuxtLink>
+          </template>
+          <template #lifecycle-cell="{ row }">
+            <UBadge
+              size="sm"
+              variant="subtle"
+              :color="lifecycleColor(row.original.lifecycle_status)"
+              :label="lifecycleLabel(row.original.lifecycle_status)"
+            />
+          </template>
+        </UTable>
+      </div>
     </template>
   </UDashboardPanel>
 </template>

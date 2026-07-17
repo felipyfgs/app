@@ -1,15 +1,40 @@
-<script setup lang="ts" generic="T extends FiscalModuleClientRow = FiscalModuleClientRow">
+<script setup lang="ts" generic="T = FiscalModuleClientRow">
 /**
- * Casca de tabela server-side para módulos fiscais.
- * Arquétipo customers.vue — Panel → Navbar → Toolbar → utilitários → Table → empty/error → paginação.
- * Slots: nav, actions, kpis, submodules, banner, toolbar-filters, utilities, empty, detail, row.
+ * Casca de tabela server-side para módulos fiscais — arquétipo customers.vue.
+ *
+ * Panel → Navbar → ModuleNav → Toolbar (busca/filtros/Exibir + bulk) → KPIs →
+ * Table (checkbox select + sort + column visibility) → footer selected + UPagination.
+ *
+ * Seleção de linhas só com ações em massa reais (associar / consultar / exportar).
  */
-import type { TableColumn } from '@nuxt/ui'
-import type { FiscalKpiKey, FiscalModuleClientRow, FiscalModuleCounters, FiscalTableEmptyKind } from '~/types/fiscal-modules'
-import { fiscalKpiSituationFilter, fiscalSituationToKpiKey, isSyntheticFiscalOrigin } from '~/types/fiscal-modules'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+import { upperFirst } from 'scule'
+import type {
+  FiscalKpiKey,
+  FiscalModuleFilterFormValue,
+  FiscalModuleClientRow,
+  FiscalModuleCounters,
+  FiscalTableEmptyKind
+} from '~/types/fiscal-modules'
+import {
+  FISCAL_MODULE_TABLE_CONTEXT,
+  type FiscalModuleSortingState
+} from '~/composables/useFiscalModulePortfolio'
+import { fiscalKpiSituationFilter, fiscalSituationToKpiKey } from '~/types/fiscal-modules'
 import { formatDateTime } from '~/utils/format'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
-import { dataOriginMeta, resolveFiscalEmptyKind } from '~/utils/fiscal-status'
+import { resolveFiscalEmptyKind } from '~/utils/fiscal-status'
+
+/** :ui literal de customers.vue @ 0f30c09 */
+const TABLE_UI = {
+  base: 'table-fixed border-separate border-spacing-0',
+  thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
+  tbody: '[&>tr]:last:[&>td]:border-b-0',
+  th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
+  td: 'border-b border-default',
+  separator: 'h-0'
+} as const
+
+const UCheckbox = resolveComponent('UCheckbox')
 
 const props = withDefaults(defineProps<{
   title: string
@@ -24,17 +49,21 @@ const props = withDefaults(defineProps<{
   lastPage: number
   total: number
   perPage?: number
-  /** Filtros (URL-backed via pai) */
+  /** Módulo da carteira — habilita bulk actions reais. */
+  moduleKey?: string | null
   q?: string
   situation?: string
   competence?: string
   submodule?: string
   deliveryStatus?: string
-  /** Overview KPIs */
+  clientId?: number | string | null
+  sorting?: FiscalModuleSortingState
+  columnLabels?: Record<string, string>
+  /** Colunas secundárias disponíveis em Exibir, mas recolhidas na primeira carga. */
+  initialHiddenColumns?: string[]
   totalClients?: number
   counters?: FiscalModuleCounters | null
   lastGoodAt?: string | null
-  /** Toolbar flags */
   showModuleNav?: boolean
   showKpis?: boolean
   showSearch?: boolean
@@ -43,6 +72,12 @@ const props = withDefaults(defineProps<{
   showSubmoduleFilter?: boolean
   showDeliveryStatusFilter?: boolean
   showClientPicker?: boolean
+  showColumnVisibility?: boolean
+  /** Checkbox + bulk (default true). Só desenha se houver ação real disponível. */
+  showRowSelection?: boolean
+  showBulkAssociate?: boolean
+  showBulkEnqueue?: boolean
+  showBulkExport?: boolean
   showExport?: boolean
   canExport?: boolean
   submoduleItems?: Array<{ label: string, value: string }>
@@ -59,11 +94,17 @@ const props = withDefaults(defineProps<{
   showSubmoduleFilter: false,
   showDeliveryStatusFilter: false,
   showClientPicker: false,
+  showColumnVisibility: true,
+  showRowSelection: true,
+  showBulkAssociate: true,
+  showBulkEnqueue: true,
+  showBulkExport: true,
   showExport: false,
   canExport: false,
   emptyTitle: undefined,
   emptyDescription: undefined,
-  perPage: 15
+  perPage: 15,
+  moduleKey: null
 })
 
 const emit = defineEmits<{
@@ -74,28 +115,82 @@ const emit = defineEmits<{
   'update:deliveryStatus': [value: string]
   'update:q': [value: string]
   'update:clientId': [value: number | null]
+  'update:sorting': [value: FiscalModuleSortingState]
+  'apply-filters': [filters: FiscalModuleFilterFormValue]
+  'reset-filters': [filters: FiscalModuleFilterFormValue]
   'refresh': []
   'export': []
   'kpi-select': [key: FiscalKpiKey]
   'row-select': [row: T]
+  'selection-change': [rows: T[]]
+  'bulk-associate': [clientIds: number[]]
+  'bulk-enqueue': [clientIds: number[]]
+  'bulk-export': [clientIds: number[]]
 }>()
+
+const table = useTemplateRef<{ tableApi?: {
+  getAllColumns: () => Array<{
+    id: string
+    getCanHide: () => boolean
+    getIsVisible: () => boolean
+    toggleVisibility: (value: boolean) => void
+  }>
+  getFilteredSelectedRowModel: () => { rows: Array<{ original: T, id: string }> }
+  getFilteredRowModel: () => { rows: Array<{ original: T }> }
+  resetRowSelection: () => void
+} } | null>('table')
+
+const columnVisibility = ref<Record<string, boolean>>(
+  Object.fromEntries((props.initialHiddenColumns || []).map(id => [id, false]))
+)
+const rowSelection = ref<Record<string, boolean>>({})
+const tableContext = inject(FISCAL_MODULE_TABLE_CONTEXT, null)
+
+const {
+  canAssociateCategories,
+  canTriggerSync,
+  canCreateExport,
+  enqueueing,
+  exporting,
+  enqueueReadUpdate,
+  exportPortfolio,
+  moduleSupportsEnqueueRead,
+  moduleSupportsPortfolioExport
+} = useMonitoringActions(computed(() => props.moduleKey || 'dashboard'))
+
+const associateOpen = ref(false)
+const bulkBusy = ref(false)
 
 const pageModel = computed({
   get: () => props.page,
   set: (v: number) => emit('update:page', v)
 })
 
+const sortingModel = computed({
+  get: (): FiscalModuleSortingState => {
+    if (props.sorting) return props.sorting
+    return tableContext?.sorting.value ?? []
+  },
+  set: (value: FiscalModuleSortingState) => {
+    emit('update:sorting', value)
+    if (tableContext && !props.sorting) {
+      tableContext.sorting.value = value
+    }
+  }
+})
+
 const activeKpi = computed<FiscalKpiKey>(() => fiscalSituationToKpiKey(props.situation))
 
 const hasRows = computed(() => props.rows.length > 0)
-const hasPrevious = computed(() => hasRows.value || props.counters != null)
 
+/**
+ * Empty kind para o slot #empty da UTable (customers.vue: tabela nunca some).
+ * Loading com data vazia fica no estado nativo de loading da UTable.
+ */
 const resolvedEmptyKind = computed<FiscalTableEmptyKind>(() => {
   if (props.emptyKind) return props.emptyKind
-  // hasPrevious no empty-kind só conta linhas (não counters): assim, loading inicial
-  // com overview já carregado ainda mostra "Carregando…" e não "Nenhum registro".
   return resolveFiscalEmptyKind({
-    loading: props.loading,
+    loading: false,
     error: props.error,
     hasRows: hasRows.value,
     hasPrevious: hasRows.value,
@@ -106,26 +201,10 @@ const resolvedEmptyKind = computed<FiscalTableEmptyKind>(() => {
       || (props.competence && props.competence.trim())
       || (props.submodule && props.submodule !== 'all' && props.submodule.trim())
       || (props.deliveryStatus && props.deliveryStatus !== 'all')
+      || (props.clientId != null && String(props.clientId).trim())
     )
   })
 })
-
-const showTableSkeleton = computed(() =>
-  Boolean(props.loading && !hasRows.value && !hasPrevious.value)
-)
-
-const showEmpty = computed(() =>
-  !showTableSkeleton.value && !hasRows.value
-)
-
-const showTable = computed(() => hasRows.value)
-
-const syntheticDataOrigin = computed(() =>
-  props.rows.find(row => isSyntheticFiscalOrigin(row.data_origin))?.data_origin ?? null
-)
-const syntheticDataOriginMeta = computed(() =>
-  syntheticDataOrigin.value ? dataOriginMeta(syntheticDataOrigin.value) : null
-)
 
 function onKpiSelect(key: FiscalKpiKey, situation: string | null = fiscalKpiSituationFilter(key)) {
   emit('kpi-select', key)
@@ -139,26 +218,298 @@ const itemsPerPage = computed(() => {
   }
   return 15
 })
+
+function rowKeyOf(row: T, index = 0): string {
+  const r = row as { client_id?: unknown, id?: unknown }
+  if (r.client_id != null && r.client_id !== '') return `c:${r.client_id}`
+  if (r.id != null && r.id !== '') return `i:${r.id}`
+  return `idx:${index}`
+}
+
+function clientIdOf(row: T): number | null {
+  const n = Number((row as { client_id?: unknown }).client_id)
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null
+}
+
+const canBulkAssociate = computed(() =>
+  props.showBulkAssociate
+  && canAssociateCategories.value
+  && Boolean(props.moduleKey)
+)
+
+const canBulkEnqueue = computed(() =>
+  props.showBulkEnqueue
+  && canTriggerSync.value
+  && Boolean(props.moduleKey)
+  && moduleSupportsEnqueueRead.value
+)
+
+const canBulkExport = computed(() =>
+  props.showBulkExport
+  && canCreateExport.value
+  && Boolean(props.moduleKey)
+  && moduleSupportsPortfolioExport.value
+)
+
+/** Checkbox só existe com pelo menos uma ação em massa real (checklist UI). */
+const selectionEnabled = computed(() =>
+  props.showRowSelection
+  && (canBulkAssociate.value || canBulkEnqueue.value || canBulkExport.value)
+)
+
+const selectColumn = computed<TableColumn<T>>(() => ({
+  id: 'select',
+  enableHiding: false,
+  enableSorting: false,
+  meta: {
+    class: {
+      th: 'w-10 min-w-10',
+      td: 'w-10 min-w-10'
+    }
+  },
+  header: ({ table: t }) =>
+    h(UCheckbox, {
+      'modelValue': t.getIsSomePageRowsSelected()
+        ? 'indeterminate'
+        : t.getIsAllPageRowsSelected(),
+      'onUpdate:modelValue': (value: boolean | 'indeterminate') =>
+        t.toggleAllPageRowsSelected(!!value),
+      'ariaLabel': 'Selecionar todas as linhas da página'
+    }),
+  cell: ({ row }) =>
+    h(UCheckbox, {
+      'modelValue': row.getIsSelected(),
+      'onUpdate:modelValue': (value: boolean | 'indeterminate') => row.toggleSelected(!!value),
+      'ariaLabel': 'Selecionar linha'
+    })
+}))
+
+const tableColumns = computed<TableColumn<T>[]>(() => {
+  if (!selectionEnabled.value) return props.columns
+  // Evita duplicar se a página já trouxe coluna select
+  if (props.columns.some(c => c.id === 'select')) return props.columns
+  return [selectColumn.value, ...props.columns]
+})
+
+const selectedCount = computed(() =>
+  Object.values(rowSelection.value).filter(Boolean).length
+)
+
+const selectedRows = computed((): T[] => {
+  const keys = new Set(
+    Object.entries(rowSelection.value)
+      .filter(([, on]) => on)
+      .map(([k]) => k)
+  )
+  if (!keys.size) return []
+  return props.rows.filter((row, index) => keys.has(rowKeyOf(row, index)))
+})
+
+const selectedClientIds = computed((): number[] => {
+  const ids = selectedRows.value
+    .map(clientIdOf)
+    .filter((id): id is number => id != null)
+  return [...new Set(ids)]
+})
+
+const columnLabelMap = computed<Record<string, string>>(() => ({
+  select: 'Seleção',
+  client: 'Cliente',
+  competence: 'Competência',
+  situation: 'Situação',
+  coverage: 'Cobertura',
+  consulted: 'Última consulta',
+  observed: 'Observado',
+  synced: 'Sincronizado',
+  actions: 'Ações',
+  ...(props.columnLabels || {})
+}))
+
+type DisplayColumnItem = {
+  label: string
+  type: 'checkbox'
+  checked: boolean
+  onUpdateChecked: (checked: boolean) => void
+  onSelect: (e?: Event) => void
+}
+
+const displayColumnItems = computed((): DisplayColumnItem[] => {
+  const api = table.value?.tableApi
+  if (!api) return []
+  return api
+    .getAllColumns()
+    .filter(column => column.getCanHide())
+    .map(column => ({
+      label: columnLabelMap.value[column.id] || upperFirst(column.id),
+      type: 'checkbox' as const,
+      checked: column.getIsVisible(),
+      onUpdateChecked(checked: boolean) {
+        column.toggleVisibility(!!checked)
+      },
+      onSelect(e?: Event) {
+        e?.preventDefault()
+      }
+    }))
+})
+
+function clearSelection() {
+  rowSelection.value = {}
+  table.value?.tableApi?.resetRowSelection?.()
+}
+
+watch(
+  () => [
+    props.page,
+    props.q,
+    props.situation,
+    props.competence,
+    props.submodule,
+    props.deliveryStatus,
+    props.clientId
+  ],
+  () => clearSelection()
+)
+
+watch(selectedRows, (rows) => {
+  emit('selection-change', rows)
+}, { deep: true })
+
+async function onBulkAssociate() {
+  if (!selectedClientIds.value.length) return
+  emit('bulk-associate', selectedClientIds.value)
+  associateOpen.value = true
+}
+
+async function onBulkEnqueue() {
+  const ids = selectedClientIds.value
+  if (!ids.length) return
+  emit('bulk-enqueue', ids)
+
+  if (props.moduleKey === 'fgts' && !String(props.competence || '').trim()) {
+    useToast().add({
+      title: 'Informe a competência (AAAA-MM) para consultar os selecionados.',
+      color: 'warning'
+    })
+    return
+  }
+
+  bulkBusy.value = true
+  let ok = 0
+  let fail = 0
+  try {
+    for (const clientId of ids) {
+      const result = await enqueueReadUpdate({
+        client_id: clientId,
+        competence: props.competence || undefined
+      })
+      if (result) ok++
+      else fail++
+    }
+    useToast().add({
+      title: 'Consultas enfileiradas',
+      description: `${ok} ok${fail ? ` · ${fail} falha(s)` : ''} de ${ids.length} cliente(s)`,
+      color: fail && !ok ? 'error' : fail ? 'warning' : 'success'
+    })
+    if (ok) {
+      clearSelection()
+      emit('refresh')
+    }
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+async function onBulkExport() {
+  const ids = selectedClientIds.value
+  if (!ids.length) return
+  emit('bulk-export', ids)
+
+  // API de export da carteira aceita um client_id por job — gera um job por cliente (teto 10).
+  const batch = ids.slice(0, 10)
+  bulkBusy.value = true
+  let ok = 0
+  try {
+    for (const clientId of batch) {
+      const done = await exportPortfolio(
+        {
+          situation: props.situation || undefined,
+          competence: props.competence || undefined,
+          q: props.q || undefined,
+          submodule: props.submodule || undefined,
+          client_id: clientId
+        },
+        { navigate: false, silent: true }
+      )
+      if (done) ok++
+    }
+    useToast().add({
+      title: ok ? 'Exportações enfileiradas' : 'Nenhuma exportação criada',
+      description: ids.length > 10
+        ? `${ok} job(s) de até 10 (de ${ids.length} selecionados). Veja em Exportações.`
+        : `${ok} job(s) · veja em Exportações quando READY.`,
+      color: ok ? 'success' : 'warning'
+    })
+    if (ok) clearSelection()
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+const bulkActionItems = computed<DropdownMenuItem[][]>(() => {
+  const actions: DropdownMenuItem[] = []
+  const busy = bulkBusy.value || enqueueing.value || exporting.value
+
+  if (canBulkAssociate.value) {
+    actions.push({
+      label: 'Associar categorias',
+      icon: 'i-lucide-tags',
+      disabled: busy,
+      onSelect: () => { void onBulkAssociate() }
+    })
+  }
+
+  if (canBulkEnqueue.value) {
+    actions.push({
+      label: 'Solicitar consulta',
+      icon: 'i-lucide-cloud-download',
+      disabled: busy,
+      onSelect: () => { void onBulkEnqueue() }
+    })
+  }
+
+  if (canBulkExport.value) {
+    actions.push({
+      label: 'Exportar selecionados',
+      icon: 'i-lucide-download',
+      disabled: busy,
+      onSelect: () => { void onBulkExport() }
+    })
+  }
+
+  return [
+    actions,
+    [{
+      label: 'Limpar seleção',
+      icon: 'i-lucide-x',
+      disabled: busy,
+      onSelect: clearSelection
+    }]
+  ].filter(group => group.length > 0)
+})
 </script>
 
 <template>
   <UDashboardPanel :id="panelId || 'fiscal-module'">
     <template #header>
-      <UDashboardNavbar :title="title" data-testid="page-navbar">
+      <UDashboardNavbar
+        :title="title"
+        data-testid="page-navbar"
+      >
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
-        <template #right>
-          <!-- Named slot de ações da carteira. Nome `navbar-actions` evita colisão
-           com slots internos `#actions` de UAlert/UButton no mesmo SFC. -->
-          <div class="flex min-w-0 flex-wrap items-center justify-end gap-2" data-testid="fiscal-module-navbar-actions">
-            <slot name="navbar-actions" />
-            <slot name="actions" />
-          </div>
-        </template>
       </UDashboardNavbar>
 
-      <!-- Nav do módulo (Settings-like) -->
       <UDashboardToolbar
         v-if="showModuleNav || $slots.nav"
         :ui="{ left: 'min-w-0 flex-1' }"
@@ -173,78 +524,27 @@ const itemsPerPage = computed(() => {
     </template>
 
     <template #body>
-      <!-- Utilitários da lista no body, na posição canônica de customers.vue. -->
-      <slot name="toolbar">
-        <MonitoringModuleToolbar
-          :q="q"
-          :situation="situation"
-          :competence="competence"
-          :submodule="submodule"
-          :delivery-status="deliveryStatus"
-          :total="total"
-          :loading="loading || refreshing"
-          :show-search="showSearch"
-          :show-situation="showSituationFilter"
-          :show-competence="showCompetenceFilter"
-          :show-submodule="showSubmoduleFilter"
-          :show-delivery-status="showDeliveryStatusFilter"
-          :show-client-picker="showClientPicker"
-          :show-export="showExport"
-          :can-export="canExport"
-          :submodule-items="submoduleItems"
-          :delivery-status-items="deliveryStatusItems"
-          @update:q="emit('update:q', $event)"
-          @update:situation="emit('update:situation', $event)"
-          @update:competence="emit('update:competence', $event)"
-          @update:submodule="emit('update:submodule', $event)"
-          @update:delivery-status="emit('update:deliveryStatus', $event)"
-          @update:client-id="emit('update:clientId', $event)"
-          @refresh="emit('refresh')"
-          @export="emit('export')"
-        >
-          <template
-            v-if="$slots['toolbar-filters']"
-            #filters
-          >
-            <slot name="toolbar-filters" />
-          </template>
-        </MonitoringModuleToolbar>
-      </slot>
-
-      <p
-        v-if="description"
-        class="text-sm text-muted"
-      >
-        {{ description }}
-      </p>
-
-      <UAlert
-        v-if="syntheticDataOriginMeta"
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-flask-conical"
-        :title="syntheticDataOriginMeta.label"
-        :description="syntheticDataOriginMeta.description"
-        class="mb-4"
-        data-testid="fiscal-demo-banner"
-      />
-
-      <!-- Submódulos (UTabs etc.) -->
+      <!--
+        Ordem customers.vue adaptada ao monitoramento:
+        1) cápsulas (submódulos / modalidade)
+        2) KPIs de situação
+        3) alertas/utilitários
+        4) toolbar (busca + filtros + ações) colada à tabela
+        5) UTable + footer
+      -->
       <div
         v-if="$slots.submodules"
-        class="mb-4"
+        class="w-full min-w-0"
         data-testid="fiscal-submodules"
       >
         <slot name="submodules" />
       </div>
 
-      <!-- KPIs acionáveis -->
       <div
         v-if="showKpis || $slots.kpis"
-        class="mb-4"
+        data-testid="fiscal-kpi-block"
       >
         <slot name="kpis">
-          <!-- API unificada: total|totalClients + activeKey|activeSituation -->
           <MonitoringKpiStrip
             :total="totalClients ?? total"
             :total-clients="totalClients ?? total"
@@ -257,10 +557,16 @@ const itemsPerPage = computed(() => {
         </slot>
       </div>
 
-      <!-- Utilidades acima da tabela -->
+      <p
+        v-if="description"
+        class="text-sm text-muted"
+      >
+        {{ description }}
+      </p>
+
       <div
         v-if="$slots.utilities"
-        class="mb-3 flex flex-wrap items-center gap-2"
+        class="flex flex-wrap items-center gap-2"
         data-testid="fiscal-utilities"
       >
         <slot name="utilities" />
@@ -272,13 +578,11 @@ const itemsPerPage = computed(() => {
         </span>
       </div>
 
-      <!-- Erro com dados anteriores ainda visíveis -->
       <UAlert
         v-if="error"
         color="error"
         icon="i-lucide-circle-x"
         :title="error"
-        class="mb-4"
         data-testid="fiscal-error-alert"
       >
         <template #actions>
@@ -292,58 +596,160 @@ const itemsPerPage = computed(() => {
         </template>
       </UAlert>
 
-      <!-- Skeleton de carregamento inicial -->
+      <!-- customers.vue: busca/filtros imediatamente acima da tabela (sem bloco no meio). -->
       <div
-        v-if="showTableSkeleton"
-        class="space-y-3 py-4"
-        data-testid="fiscal-table-skeleton"
-        aria-busy="true"
-        aria-label="Carregando carteira"
+        class="flex flex-col gap-1.5"
+        data-testid="fiscal-table-stack"
       >
-        <USkeleton class="h-10 w-full" />
-        <USkeleton class="h-10 w-full" />
-        <USkeleton class="h-10 w-full" />
-        <USkeleton class="h-10 w-2/3" />
-      </div>
+        <slot name="toolbar">
+          <MonitoringModuleToolbar
+            :q="q"
+            :situation="situation"
+            :competence="competence"
+            :submodule="submodule"
+            :delivery-status="deliveryStatus"
+            :client-id="clientId"
+            :total="total"
+            :loading="loading || refreshing"
+            :show-search="showSearch"
+            :show-situation="showSituationFilter"
+            :show-competence="showCompetenceFilter"
+            :show-submodule="showSubmoduleFilter"
+            :show-delivery-status="showDeliveryStatusFilter"
+            :show-client-picker="showClientPicker"
+            :show-export="showExport"
+            :can-export="canExport"
+            :show-total="false"
+            :submodule-items="submoduleItems"
+            :delivery-status-items="deliveryStatusItems"
+            @update:q="emit('update:q', $event)"
+            @update:situation="emit('update:situation', $event)"
+            @update:competence="emit('update:competence', $event)"
+            @update:submodule="emit('update:submodule', $event)"
+            @update:delivery-status="emit('update:deliveryStatus', $event)"
+            @update:client-id="emit('update:clientId', $event)"
+            @apply="emit('apply-filters', $event)"
+            @reset="emit('reset-filters', $event)"
+            @refresh="emit('refresh')"
+            @export="emit('export')"
+          >
+            <template #actions>
+              <div
+                v-if="selectionEnabled && selectedCount > 0"
+                data-testid="fiscal-bulk-actions"
+              >
+                <slot
+                  name="bulk-actions"
+                  :selected-rows="selectedRows"
+                  :selected-client-ids="selectedClientIds"
+                  :selected-count="selectedCount"
+                  :clear="clearSelection"
+                >
+                  <UDropdownMenu
+                    :items="bulkActionItems"
+                    :content="{ align: 'start' }"
+                  >
+                    <UButton
+                      color="neutral"
+                      variant="subtle"
+                      icon="i-lucide-list-checks"
+                      label="Ações"
+                      :loading="bulkBusy || enqueueing || exporting"
+                      data-testid="bulk-actions-menu"
+                    >
+                      <template #trailing>
+                        <UKbd>{{ selectedCount }}</UKbd>
+                      </template>
+                    </UButton>
+                  </UDropdownMenu>
+                </slot>
+              </div>
+            </template>
+            <template
+              v-if="$slots['toolbar-filters']"
+              #filters
+            >
+              <slot name="toolbar-filters" />
+            </template>
+            <template
+              v-if="showColumnVisibility"
+              #trailing
+            >
+              <UDropdownMenu
+                :items="displayColumnItems"
+                :content="{ align: 'end' }"
+              >
+                <UButton
+                  label="Exibir"
+                  color="neutral"
+                  variant="outline"
+                  trailing-icon="i-lucide-settings-2"
+                  data-testid="fiscal-column-visibility"
+                />
+              </UDropdownMenu>
+            </template>
+          </MonitoringModuleToolbar>
+        </slot>
 
-      <!-- Empty states distintos -->
-      <MonitoringTableEmptyState
-        v-else-if="showEmpty"
-        :kind="resolvedEmptyKind"
-        :title="emptyTitle"
-        :description="emptyDescription"
-        :error="error"
-        @retry="emit('refresh')"
-      />
-
-      <!-- Tabela + paginação server-side -->
-      <template v-else-if="showTable">
         <UTable
+          ref="table"
+          v-model:column-visibility="columnVisibility"
+          v-model:row-selection="rowSelection"
+          v-model:sorting="sortingModel"
           :data="rows"
-          :columns="columns"
+          :columns="tableColumns"
           :loading="loading || refreshing"
-          :ui="DASHBOARD_TABLE_UI"
+          :sorting-options="{ manualSorting: true, enableMultiSort: false }"
+          :get-row-id="(row: T, index: number) => rowKeyOf(row, index)"
+          :ui="TABLE_UI"
           class="shrink-0"
           data-testid="fiscal-table"
-        />
+        >
+          <template #empty>
+            <MonitoringTableEmptyState
+              :kind="resolvedEmptyKind"
+              :title="emptyTitle"
+              :description="emptyDescription"
+              :error="error"
+              class="py-10"
+              @retry="emit('refresh')"
+            />
+          </template>
+        </UTable>
 
         <div
-          v-if="lastPage > 1 || total > itemsPerPage"
           class="mt-auto flex items-center justify-between gap-3 border-t border-default pt-4"
           data-testid="fiscal-pagination"
         >
-          <span class="text-sm text-muted">
-            Página {{ page }} de {{ Math.max(lastPage, 1) }}
-          </span>
-          <UPagination
-            v-model="pageModel"
-            :total="total"
-            :items-per-page="itemsPerPage"
-            :sibling-count="1"
-            show-edges
-          />
+          <div class="text-sm text-muted">
+            <template v-if="selectionEnabled">
+              {{ selectedCount }} de {{ rows.length }} selecionado(s)
+              <span class="text-dimmed"> · </span>
+            </template>
+            {{ total }} registro(s)
+            <template v-if="lastPage > 1">
+              · página {{ page }} de {{ Math.max(lastPage, 1) }}
+            </template>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <UPagination
+              v-model="pageModel"
+              :total="total"
+              :items-per-page="itemsPerPage"
+              :sibling-count="1"
+              show-edges
+            />
+          </div>
         </div>
-      </template>
+      </div>
+
+      <FiscalAssociateCategoriesModal
+        v-if="canBulkAssociate"
+        v-model:open="associateOpen"
+        :module-key="moduleKey || undefined"
+        :default-client-ids="selectedClientIds"
+        @success="() => { clearSelection(); emit('refresh') }"
+      />
 
       <slot name="detail" />
     </template>

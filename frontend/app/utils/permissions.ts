@@ -74,11 +74,26 @@ export function realOfficeRole(user?: MeUser | null): OfficeRole | null {
   return user?.role ?? null
 }
 
+/**
+ * Mutação Work no office corrente.
+ * PLATFORM_ADMIN em contexto privilegiado atua com o papel efetivo (ADMIN).
+ * Membership real: papel real da OfficeMembership.
+ */
 function hasRealWorkMutationAccess(user?: MeUser | null): boolean {
-  if (user?.access_mode === 'platform_privileged' && !user.has_real_membership && !user.real_office_role) {
-    return false
+  if (isPlatformPrivilegedContext(user)) {
+    return roleCanMutate(user?.role ?? 'ADMIN')
   }
   return roleCanMutate(realOfficeRole(user))
+}
+
+/**
+ * Superfície de ADMIN do escritório (nav + ações).
+ * Office ADMIN (efetivo/real) ou PLATFORM_ADMIN com office selecionado.
+ */
+export function hasOfficeAdminSurface(user?: MeUser | null): boolean {
+  if (hasConfirmedAdminAccess(user)) return true
+  if (realOfficeRole(user) === 'ADMIN') return true
+  return isPlatformPrivilegedContext(user)
 }
 
 export function canManageClients(user?: MeUser | null): boolean {
@@ -129,15 +144,15 @@ export function canViewWork(user?: MeUser | null): boolean {
 }
 
 export function canManageWorkCatalog(user?: MeUser | null): boolean {
-  return realOfficeRole(user) === 'ADMIN'
+  return hasOfficeAdminSurface(user)
 }
 
 /**
- * Gestão de equipe do escritório (`/settings/team`).
- * Exige OfficeMembership ADMIN real — PLATFORM_ADMIN sem membership → 403 no backend.
+ * Gestão de equipe do escritório (`/conta/equipe`).
+ * Office ADMIN ou PLATFORM_ADMIN com office selecionado (paridade de superfície).
  */
 export function canManageOfficeTeam(user?: MeUser | null): boolean {
-  return realOfficeRole(user) === 'ADMIN'
+  return hasOfficeAdminSurface(user)
 }
 
 export function canCreateWorkProcesses(user?: MeUser | null): boolean {
@@ -149,7 +164,7 @@ export function canExecuteWorkTasks(user?: MeUser | null): boolean {
 }
 
 export function canAdministerWork(user?: MeUser | null): boolean {
-  return realOfficeRole(user) === 'ADMIN'
+  return hasOfficeAdminSurface(user)
 }
 
 export function canExportWork(user?: MeUser | null): boolean {

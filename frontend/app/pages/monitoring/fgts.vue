@@ -7,6 +7,7 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { FgtsCoverageManifest } from '~/types/api'
 import type { FgtsClientDetail, FgtsClientRow } from '~/types/fiscal-modules'
+import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
@@ -31,8 +32,11 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  sorting,
+  setPage,
   refresh,
-  selectKpi
+  selectKpi,
+  applyFilters
 } = useFiscalModulePortfolio('fgts')
 
 const coverage = ref<FgtsCoverageManifest | null>(null)
@@ -47,7 +51,7 @@ const detailDivergences = ref<Array<{ code?: string, title?: string, detail?: st
 const detailClient = ref<FgtsClientRow | null>(null)
 
 function clientHref(id: number) {
-  return `/monitoring/clients/${id}?tab=fgts`
+  return `/monitoring/clients/${id}/fgts`
 }
 
 function onClientId(id: number | null) {
@@ -159,7 +163,8 @@ async function openDetail(row: FgtsClientRow) {
 const columns: TableColumn<FgtsClientRow>[] = [
   {
     id: 'client',
-    header: 'Cliente',
+    header: ({ column }) => sortHeader('Cliente', column),
+    enableHiding: false,
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
@@ -170,7 +175,7 @@ const columns: TableColumn<FgtsClientRow>[] = [
   },
   {
     id: 'competence',
-    header: 'Competência',
+    header: ({ column }) => sortHeader('Competência', column),
     cell: ({ row }) => String(
       row.original.competence
       || detailOf(row.original).competence_period_key
@@ -180,6 +185,7 @@ const columns: TableColumn<FgtsClientRow>[] = [
   {
     id: 'closure',
     header: 'Fechamento',
+    enableSorting: false,
     cell: ({ row }) => h(FiscalStatusBadge, {
       status: String(detailOf(row.original).closure_status || row.original.situation || 'UNKNOWN'),
       showHint: true
@@ -188,6 +194,7 @@ const columns: TableColumn<FgtsClientRow>[] = [
   {
     id: 'totalization',
     header: 'Totalização',
+    enableSorting: false,
     cell: ({ row }) => h(FiscalStatusBadge, {
       status: String(detailOf(row.original).totalization_status || 'UNKNOWN'),
       showHint: true
@@ -196,6 +203,7 @@ const columns: TableColumn<FgtsClientRow>[] = [
   {
     id: 'guide',
     header: 'Guia FGTS Digital',
+    enableSorting: false,
     cell: ({ row }) => h(FiscalStatusBadge, {
       status: String(detailOf(row.original).guide_status || 'UNSUPPORTED'),
       showHint: true
@@ -204,6 +212,7 @@ const columns: TableColumn<FgtsClientRow>[] = [
   {
     id: 'payment',
     header: 'Pagamento',
+    enableSorting: false,
     cell: ({ row }) => h(FiscalStatusBadge, {
       status: String(detailOf(row.original).payment_status || 'UNSUPPORTED'),
       showHint: true
@@ -211,14 +220,16 @@ const columns: TableColumn<FgtsClientRow>[] = [
   },
   {
     id: 'synced',
-    header: 'Último sync',
+    header: ({ column }) => sortHeader('Último sync', column),
     cell: ({ row }) => formatDateTime(
       String(detailOf(row.original).last_synced_at || row.original.last_consulted_at || '') || null
     )
   },
   {
     id: 'actions',
-    header: '',
+    header: 'Ações',
+    enableHiding: false,
+    enableSorting: false,
     meta: { class: { th: 'w-40', td: 'w-40' } },
     cell: ({ row }) => h('div', { class: 'flex justify-end gap-1' }, [
       h(UButton, {
@@ -248,6 +259,7 @@ onMounted(() => {
   <MonitoringModuleTable
     title="FGTS (parcial eSocial)"
     panel-id="monitoring-fgts"
+    module-key="fgts"
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -260,31 +272,32 @@ onMounted(() => {
     :q="q"
     :situation="situation"
     :competence="competence"
+    :client-id="clientId"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
+    :sorting="sorting"
     show-competence-filter
     show-client-picker
-    empty-title="Nenhum cliente FGTS/eSocial na carteira"
-    @update:page="page = $event"
+    empty-title="Nenhum cliente FGTS"
+    :column-labels="{
+      closure: 'Fechamento',
+      totalization: 'Totalização',
+      guide: 'Guia FGTS Digital',
+      payment: 'Pagamento',
+      synced: 'Último sync'
+    }"
+    @update:page="setPage"
     @update:q="q = $event"
     @update:situation="situation = $event"
     @update:competence="competence = $event"
     @update:client-id="onClientId"
+    @update:sorting="sorting = $event"
+    @apply-filters="applyFilters"
+    @reset-filters="applyFilters"
     @refresh="refresh"
     @kpi-select="selectKpi"
   >
-    <template #navbar-actions>
-      <MonitoringPortfolioActions
-        module-key="fgts"
-        :client-id="clientId"
-        :competence="competence"
-        :situation="situation"
-        :q="q"
-        @refreshed="refresh"
-      />
-    </template>
-
     <template #utilities>
       <UAlert
         v-if="coverageError"

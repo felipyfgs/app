@@ -295,7 +295,7 @@ defineExpose({ reload: load, clearState })
               </div>
               <UButton
                 v-if="canAccessAdministration"
-                to="/settings"
+                to="/conta/escritorio"
                 color="neutral"
                 variant="link"
                 size="xs"
@@ -312,7 +312,7 @@ defineExpose({ reload: load, clearState })
             >
               <UButton
                 v-if="canAccessAdministration"
-                to="/settings"
+                to="/conta/escritorio"
                 color="neutral"
                 variant="subtle"
                 size="sm"

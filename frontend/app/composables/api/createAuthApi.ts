@@ -1,15 +1,24 @@
 import type {
+  AccountProfile,
   LoginResponse,
   MeResponse,
   TenantMembershipsPayload,
   TenantSwitchResult,
-  TwoFactorQrCode
+  TwoFactorQrCode,
+  UpdateAccountProfileBody
 } from '~/types/api'
 import type { ApiClient } from './types'
 
 export function createAuthApi(client: ApiClient) {
   return {
     me: () => client<MeResponse>('/api/v1/me'),
+    account: {
+      update: (body: UpdateAccountProfileBody) =>
+        client<{ data: AccountProfile }>('/api/v1/account', {
+          method: 'PATCH',
+          body
+        })
+    },
     tenants: {
       memberships: () =>
         client<{ data: TenantMembershipsPayload }>('/api/v1/tenants/memberships'),

@@ -98,12 +98,7 @@ function confirmCnpjChange() {
       :state="state"
       @submit="onSubmit"
     >
-      <UPageCard
-        title="Perfil"
-        variant="naked"
-        orientation="horizontal"
-        class="mb-4"
-      >
+      <ShellSectionHeader title="Perfil do escritório">
         <UButton
           v-if="!readonly"
           form="office-profile-form"
@@ -111,14 +106,13 @@ function confirmCnpjChange() {
           label="Salvar"
           color="neutral"
           icon="i-lucide-save"
-          class="w-fit lg:ms-auto"
           :loading="saving"
           :disabled="loading"
           data-testid="settings-profile-save"
         />
-      </UPageCard>
+      </ShellSectionHeader>
 
-      <UPageCard variant="subtle">
+      <ShellSectionCard>
         <div
           v-if="loading && !profile"
           class="space-y-3"
@@ -193,7 +187,7 @@ function confirmCnpjChange() {
             />
           </UFormField>
         </template>
-      </UPageCard>
+      </ShellSectionCard>
     </UForm>
 
     <UModal

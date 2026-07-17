@@ -28,8 +28,8 @@ const resolved = computed(() => {
     case 'loading':
       return {
         icon: 'i-lucide-loader-circle',
-        title: customTitle || 'Carregando carteira…',
-        description: props.description || 'Aguardando resposta da API do módulo.',
+        title: customTitle || 'Carregando…',
+        description: props.description || 'Aguarde.',
         spin: true,
         retry: false
       }
@@ -37,7 +37,7 @@ const resolved = computed(() => {
       return {
         icon: 'i-lucide-circle-x',
         title: customTitle || 'Falha ao carregar',
-        description: props.error || props.description || 'Não foi possível obter os dados.',
+        description: props.error || props.description || 'Tente de novo.',
         spin: false,
         retry: true
       }
@@ -45,26 +45,23 @@ const resolved = computed(() => {
       return {
         icon: 'i-lucide-ban',
         title: customTitle || 'Não suportado',
-        description: props.description
-          || 'Sem integração M2M oficial para esta informação. O produto não usa scraping nem portais.',
+        description: props.description || 'Sem integração oficial.',
         spin: false,
         retry: false
       }
     case 'blocked':
       return {
         icon: 'i-lucide-shield-off',
-        title: customTitle || 'Consulta bloqueada',
-        description: props.description
-          || 'Consulta bloqueada por autorização, franquia, feature flag ou kill-switch.',
+        title: customTitle || 'Bloqueado',
+        description: props.description || 'Consulta bloqueada.',
         spin: false,
         retry: true
       }
     case 'filtered':
       return {
         icon: 'i-lucide-filter-x',
-        title: customTitle || 'Nenhum resultado para os filtros',
-        description: props.description
-          || 'A API não retornou clientes com os filtros atuais. Ajuste a busca ou a situação.',
+        title: customTitle || 'Sem resultados',
+        description: props.description || 'Ajuste os filtros.',
         spin: false,
         retry: false
       }
@@ -72,8 +69,7 @@ const resolved = computed(() => {
       return {
         icon: 'i-lucide-inbox',
         title: customTitle || 'Nenhum registro',
-        description: props.description
-          || 'Nenhum registro para este módulo.',
+        description: props.description || 'Sem dados neste módulo.',
         spin: false,
         retry: false
       }
@@ -83,7 +79,7 @@ const resolved = computed(() => {
 
 <template>
   <div
-    class="flex flex-col items-center justify-center gap-3 py-16 text-center"
+    class="flex flex-col items-center justify-center gap-3 py-10 text-center"
     :data-testid="`fiscal-empty-${kind}`"
     role="status"
   >

@@ -650,7 +650,7 @@ onBeforeUnmount(pause)
         v-if="canCreateExport"
         v-model:open="createOpen"
         title="Pedir pacote ZIP"
-        description="Recorte dos documentos. “Tudo” = catálogo do escritório."
+        description="Recorte dos documentos."
         :ui="{ content: 'sm:max-w-lg' }"
       >
         <template #body>

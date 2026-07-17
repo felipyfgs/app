@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   MONITORING_NAV_ITEMS,
@@ -7,6 +9,16 @@ import {
 } from '../../app/utils/monitoring-nav'
 
 describe('MonitoringModuleNav items (6.3)', () => {
+  it('preserva a tipografia padrão do NavigationMenu', () => {
+    const component = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/MonitoringModuleNav.vue'),
+      'utf8'
+    )
+
+    expect(component).toContain('link: \'gap-0 px-1.5\'')
+    expect(component).not.toContain('text-xs')
+  })
+
   it('lista todos os destinos do hub fiscal', () => {
     const ids = MONITORING_NAV_ITEMS.map(i => i.id)
     expect(ids).toEqual([
@@ -27,6 +39,7 @@ describe('MonitoringModuleNav items (6.3)', () => {
   it('resolve módulo ativo por path (incluindo detalhe aninhado)', () => {
     expect(monitoringNavActiveModule('/monitoring')).toBe('dashboard')
     expect(monitoringNavActiveModule('/monitoring/simples-mei')).toBe('simples_mei')
+    expect(monitoringNavActiveModule('/monitoring/simples-mei/pgmei')).toBe('simples_mei')
     expect(monitoringNavActiveModule('/monitoring/mailbox/42')).toBe('mailbox')
     expect(monitoringNavActiveModule('/monitoring/clients/9')).toBe('dashboard')
   })
@@ -39,7 +52,8 @@ describe('MonitoringModuleNav items (6.3)', () => {
   })
 
   it('paths batem com o catálogo de módulos', () => {
-    expect(monitoringPathForModule('dctfweb')).toBe('/monitoring/dctfweb')
+    expect(monitoringPathForModule('dctfweb')).toBe('/monitoring/dctfweb/dctfweb')
+    expect(monitoringPathForModule('simples_mei')).toBe('/monitoring/simples-mei/pgdasd')
     expect(monitoringPathForModule('dashboard')).toBe('/monitoring')
   })
 
@@ -47,6 +61,27 @@ describe('MonitoringModuleNav items (6.3)', () => {
     const items = monitoringNavMenuItems('/monitoring', 'mailbox')
     expect(items.find(i => i.active)?.to).toBe('/monitoring/mailbox')
     expect(items.filter(i => i.active)).toHaveLength(1)
+  })
+
+  it('mantém todos os destinos visíveis na barra rolável', () => {
+    const items = monitoringNavMenuItems('/monitoring')
+    expect(items).toHaveLength(MONITORING_NAV_ITEMS.length)
+    expect(items.every(item => item.to)).toBe(true)
+    expect(items.some(item => item.label === 'Mais')).toBe(false)
+    expect(items.every(item => item.icon == null)).toBe(true)
+    expect(items.map(item => item.label)).toEqual([
+      'Dashboard',
+      'Simples / MEI',
+      'DCTFWeb / MIT',
+      'FGTS',
+      'Parcelamentos',
+      'SITFIS',
+      'Caixas Postais',
+      'Declarações',
+      'Guias',
+      'Cadastro / Vínculos',
+      'Processos fiscais'
+    ])
   })
 
   it('cada item tem label e destino /monitoring', () => {

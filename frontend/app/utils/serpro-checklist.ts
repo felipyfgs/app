@@ -126,27 +126,27 @@ const STEP_META: Record<SerproChecklistStepId, { label: string, description: str
   environment: {
     label: 'Ambiente',
     description: 'Confirme o ambiente (TRIAL/PRODUCTION) da autorização do escritório.',
-    href: '/settings'
+    href: '/conta/escritorio'
   },
   author: {
     label: 'Autor do Pedido',
     description: 'Identidade do autor (CPF/CNPJ, inclusive alfanumérico) e modo de certificado.',
-    href: '/settings'
+    href: '/conta/escritorio'
   },
   certificate_termo: {
     label: 'Certificado / Termo',
     description: 'A1 gerenciado (se aplicável) e Termo de Autorização assinado no cofre.',
-    href: '/settings'
+    href: '/conta/escritorio'
   },
   token: {
     label: 'Token do procurador',
     description: 'Renove o token via /Apoiar — o valor nunca é exibido na UI.',
-    href: '/settings'
+    href: '/conta/escritorio'
   },
   proxy_power: {
     label: 'Procuração / poder',
     description: 'Poderes ACTIVE por contribuinte alinhados ao catálogo de serviços.',
-    href: '/settings/proxies'
+    href: '/conta/escritorio'
   },
   client_operation: {
     label: 'Cliente / operação',
@@ -197,7 +197,7 @@ function nextActionsForStep(id: SerproChecklistStepId, auth: OfficeSerproAuthori
       return [{
         code: 'CONFIRM_ENVIRONMENT',
         label: 'Revisar ambiente da autorização',
-        href: '/settings',
+        href: '/conta/escritorio',
         roles: ['ADMIN'],
         requires_2fa: true
       }]
@@ -205,7 +205,7 @@ function nextActionsForStep(id: SerproChecklistStepId, auth: OfficeSerproAuthori
       return [{
         code: 'CONFIGURE_AUTHOR',
         label: 'Configurar Autor do Pedido',
-        href: '/settings',
+        href: '/conta/escritorio',
         roles: ['ADMIN'],
         requires_2fa: true,
         severity: 'warning'
@@ -216,7 +216,7 @@ function nextActionsForStep(id: SerproChecklistStepId, auth: OfficeSerproAuthori
         actions.push({
           code: 'UPLOAD_AUTHOR_A1',
           label: 'Armazenar A1 do Autor',
-          href: '/settings',
+          href: '/conta/escritorio',
           roles: ['ADMIN'],
           requires_2fa: true,
           severity: 'warning'
@@ -225,7 +225,7 @@ function nextActionsForStep(id: SerproChecklistStepId, auth: OfficeSerproAuthori
       actions.push({
         code: 'UPLOAD_TERMO',
         label: auth?.has_termo ? 'Reenviar Termo assinado' : 'Enviar Termo assinado',
-        href: '/settings',
+        href: '/conta/escritorio',
         roles: ['ADMIN'],
         requires_2fa: true,
         severity: 'warning'
@@ -236,7 +236,7 @@ function nextActionsForStep(id: SerproChecklistStepId, auth: OfficeSerproAuthori
       return [{
         code: 'REFRESH_PROCURADOR_TOKEN',
         label: 'Renovar token do procurador',
-        href: '/settings',
+        href: '/conta/escritorio',
         roles: ['ADMIN'],
         requires_2fa: true
       }]
@@ -245,13 +245,13 @@ function nextActionsForStep(id: SerproChecklistStepId, auth: OfficeSerproAuthori
         {
           code: 'IMPORT_PROXY',
           label: 'Importar procuração',
-          href: '/settings/proxies',
+          href: '/conta/escritorio',
           roles: ['ADMIN', 'OPERATOR']
         },
         {
           code: 'SYNC_PROXY',
           label: 'Sincronizar poderes',
-          href: '/settings/proxies',
+          href: '/conta/escritorio',
           roles: ['ADMIN', 'OPERATOR']
         }
       ]

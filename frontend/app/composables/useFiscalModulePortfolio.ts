@@ -1,14 +1,14 @@
 /**
  * Carteira fiscal tenant-aware: overview + lista incremental do read model.
- * - Filtros e ordenação na URL; paginação numérica fica encapsulada na API
+ * - Filtros, ordenação e paginação são estado local; a URL identifica apenas a rota
  * - Sem fallback sintético em erro/vazio
  * - Aborta/descarta requests quando o office ou módulo muda
  * - Ordenação é sempre server-side para não reordenar apenas o lote carregado
  */
 import type { InjectionKey, Ref } from 'vue'
-import type { LocationQueryRaw } from 'vue-router'
 import type {
   FiscalKpiKey,
+  FiscalModuleFilterFormValue,
   FiscalModuleClientRowFor,
   FiscalModuleOverview,
   FiscalModulePortfolioFilters,
@@ -20,6 +20,8 @@ import { laravelPageBatch, usePagedTable } from '~/composables/usePagedTable'
 export interface UseFiscalModulePortfolioOptions {
   /** Submódulo controlado pela página (tabs). */
   submodule?: Ref<string>
+  /** Rota canônica quando o submódulo faz parte do path, não da query. */
+  submodulePath?: (value: string) => string
   /** delivery_status (declarações). */
   deliveryStatus?: Ref<string>
   perPage?: number
@@ -60,36 +62,8 @@ const SORT_COLUMN_TO_API = Object.freeze<Record<string, NonNullable<FiscalModule
   id: 'id'
 })
 
-const SORT_API_TO_COLUMN = Object.freeze<Record<string, string>>({
-  legal_name: 'client',
-  display_name: 'client',
-  competence: 'competence',
-  situation: 'situation',
-  last_consulted_at: 'consulted',
-  id: 'id'
-})
-
 export function fiscalModuleSortKey(columnId: string | null | undefined) {
   return columnId ? SORT_COLUMN_TO_API[columnId] : undefined
-}
-
-function readQueryString(value: unknown): string {
-  if (Array.isArray(value)) return String(value[0] ?? '')
-  return value == null ? '' : String(value)
-}
-
-function sortingFromQuery(sort: unknown, direction: unknown): FiscalModuleSortingState {
-  const querySort = readQueryString(sort)
-  // A URL preserva o id visual (ex.: `observed`); o request o traduz depois.
-  // Também aceitamos chaves antigas da API para links já compartilhados.
-  const id = fiscalModuleSortKey(querySort)
-    ? querySort
-    : SORT_API_TO_COLUMN[querySort] ?? 'client'
-  return [{ id, desc: readQueryString(direction).toLowerCase() === 'desc' }]
-}
-
-function sameSorting(a: FiscalModuleSortingState, b: FiscalModuleSortingState): boolean {
-  return a[0]?.id === b[0]?.id && Boolean(a[0]?.desc) === Boolean(b[0]?.desc)
 }
 
 export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
@@ -107,16 +81,14 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   /** pageSize alinhado ao template customers (10). */
   const perPage = ref(options.perPage ?? 10)
   const lastPage = ref(1)
-  const q = ref(readQueryString(route.query.q))
-  const situation = ref(readQueryString(route.query.situation) || 'all')
-  const competence = ref(readQueryString(route.query.competence))
-  const submodule = options.submodule ?? ref(readQueryString(route.query.submodule))
+  const q = ref('')
+  const situation = ref('all')
+  const competence = ref('')
+  const submodule = options.submodule ?? ref('')
   const deliveryStatus = options.deliveryStatus
-    ?? ref(readQueryString(route.query.delivery_status) || 'all')
-  const clientId = ref(readQueryString(route.query.client_id))
-  const sorting = ref<FiscalModuleSortingState>(
-    sortingFromQuery(route.query.sort, route.query.sort_direction)
-  )
+    ?? ref('all')
+  const clientId = ref('')
+  const sorting = ref<FiscalModuleSortingState>([{ id: 'client', desc: false }])
 
   const overviewLoading = ref(false)
   const overviewError = ref<string | null>(null)
@@ -127,6 +99,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
 
   let overviewSeq = 0
   let clientsLoadSeq = 0
+  let filterTransactionDepth = 0
 
   function currentSort() {
     const selected = sorting.value[0]
@@ -157,6 +130,25 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
           ? Math.floor(clientIdNum)
           : undefined,
       ...currentSort()
+    }
+  }
+
+  /**
+   * Filtros do overview/contadores: independentes da cápsula (situation/KPI).
+   * Só filtros avançados (busca, competência, submódulo, delivery, cliente)
+   * redimensionam Total / Em dia / Pendências / etc.
+   */
+  function buildOverviewFilters(): Pick<
+    FiscalModulePortfolioFilters,
+    'q' | 'competence' | 'submodule' | 'delivery_status' | 'client_id'
+  > {
+    const filters = buildFilters(1)
+    return {
+      q: filters.q,
+      competence: filters.competence,
+      submodule: filters.submodule,
+      delivery_status: filters.delivery_status,
+      client_id: filters.client_id
     }
   }
 
@@ -230,51 +222,11 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     || clientId.value
   ))
 
-  async function syncUrl(extra: LocationQueryRaw = {}) {
-    const query: LocationQueryRaw = { ...route.query, ...extra }
-
-    // Scroll incremental: página é detalhe interno da API, não navegação pública.
-    delete query.page
-
-    if (q.value.trim()) query.q = q.value.trim()
-    else delete query.q
-
-    if (situation.value && situation.value !== 'all') query.situation = situation.value
-    else delete query.situation
-
-    if (competence.value.trim()) query.competence = competence.value.trim()
-    else delete query.competence
-
-    if (submodule.value && submodule.value !== 'all' && submodule.value.trim()) {
-      query.submodule = submodule.value
-    } else {
-      delete query.submodule
+  async function syncUrl() {
+    const path = options.submodulePath?.(submodule.value)
+    if (path !== route.path || Object.keys(route.query).length > 0) {
+      await router.replace({ path: path || route.path })
     }
-
-    if (deliveryStatus.value && deliveryStatus.value !== 'all') {
-      query.delivery_status = deliveryStatus.value
-    } else {
-      delete query.delivery_status
-    }
-
-    if (clientId.value) query.client_id = clientId.value
-    else delete query.client_id
-
-    const selected = sorting.value[0]
-    const sort = fiscalModuleSortKey(selected?.id) ?? 'legal_name'
-    const direction = selected?.desc ? 'desc' : 'asc'
-    if (sort === 'legal_name' && direction === 'asc') {
-      delete query.sort
-      delete query.sort_direction
-    } else {
-      query.sort = selected?.id ?? 'client'
-      query.sort_direction = direction
-    }
-
-    // Nunca confiar em office_id na URL da carteira.
-    delete query.office_id
-
-    await router.replace({ query })
   }
 
   function overviewStillCurrent(seq: number, epoch: number) {
@@ -289,14 +241,8 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     overviewError.value = null
     try {
       const mod = toValue(moduleKey)
-      const filters = buildFilters(1)
-      const response = await api.fiscal.modules.overview(mod, {
-        q: filters.q,
-        situation: filters.situation,
-        competence: filters.competence,
-        submodule: filters.submodule,
-        delivery_status: filters.delivery_status
-      })
+      // Sem situation: badges das cápsulas não mudam ao clicar em Total/Em dia/…
+      const response = await api.fiscal.modules.overview(mod, buildOverviewFilters())
       if (!overviewStillCurrent(seq, epoch)) return
 
       const data = response.data
@@ -390,28 +336,65 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     setSituationFromKpi(fiscalKpiSituationFilter(key))
   }
 
-  function hydrateFromRoute() {
-    q.value = readQueryString(route.query.q)
-    situation.value = readQueryString(route.query.situation) || 'all'
-    competence.value = readQueryString(route.query.competence)
-    if (!options.submodule) submodule.value = readQueryString(route.query.submodule)
-    if (!options.deliveryStatus) {
-      deliveryStatus.value = readQueryString(route.query.delivery_status) || 'all'
+  /**
+   * Aplica o formulário inteiro como uma transação reativa. Os watchers ignoram o
+   * lote intermediário e a carteira faz uma única carga com o estado final.
+   */
+  async function applyFilters(next: FiscalModuleFilterFormValue) {
+    const nextClientId = next.clientId && next.clientId > 0 ? String(next.clientId) : ''
+    const nextSituation = next.situation || 'all'
+    const nextDeliveryStatus = next.deliveryStatus || 'all'
+
+    const advancedChanged = q.value !== next.q
+      || competence.value !== next.competence
+      || submodule.value !== next.submodule
+      || deliveryStatus.value !== nextDeliveryStatus
+      || clientId.value !== nextClientId
+    const situationChanged = situation.value !== nextSituation
+
+    if (!advancedChanged && !situationChanged) return
+
+    filterTransactionDepth += 1
+    try {
+      q.value = next.q
+      situation.value = nextSituation
+      competence.value = next.competence
+      submodule.value = next.submodule
+      deliveryStatus.value = nextDeliveryStatus
+      clientId.value = nextClientId
+      resetPage()
+      await nextTick()
+    } finally {
+      filterTransactionDepth -= 1
     }
-    clientId.value = readQueryString(route.query.client_id)
-    sorting.value = sortingFromQuery(route.query.sort, route.query.sort_direction)
-    resetPage()
+
+    if (!ready) return
+    if (advancedChanged) {
+      await load()
+      return
+    }
+    if (situationChanged) await loadClients()
   }
 
   let ready = false
-  let syncingFromRoute = false
 
+  // Filtros avançados: recarregam contadores (overview) + lista.
   watch(
-    [q, situation, competence, submodule, deliveryStatus, clientId, sorting],
+    [q, competence, submodule, deliveryStatus, clientId],
     () => {
-      if (!ready || syncingFromRoute) return
+      if (!ready || filterTransactionDepth > 0) return
       resetPage()
       void load()
+    }
+  )
+
+  // Cápsula de situação + ordenação: só a lista — badges das cápsulas ficam estáveis.
+  watch(
+    [situation, sorting],
+    () => {
+      if (!ready || filterTransactionDepth > 0) return
+      resetPage()
+      void loadClients()
     },
     { deep: true }
   )
@@ -444,41 +427,8 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     }
   )
 
-  // Browser back/forward: reidrata quando a query diverge do estado local.
-  watch(
-    () => route.query,
-    () => {
-      if (!ready) return
-      const nextSorting = sortingFromQuery(route.query.sort, route.query.sort_direction)
-      const nextQ = readQueryString(route.query.q)
-      const nextSituation = readQueryString(route.query.situation) || 'all'
-      const nextCompetence = readQueryString(route.query.competence)
-      const nextSubmodule = readQueryString(route.query.submodule)
-      const nextDelivery = readQueryString(route.query.delivery_status) || 'all'
-      const nextClient = readQueryString(route.query.client_id)
-
-      const diverged = nextQ !== q.value
-        || nextSituation !== situation.value
-        || nextCompetence !== competence.value
-        || (!options.submodule && nextSubmodule !== submodule.value)
-        || (!options.deliveryStatus && nextDelivery !== deliveryStatus.value)
-        || nextClient !== clientId.value
-        || !sameSorting(nextSorting, sorting.value)
-
-      if (!diverged) return
-      syncingFromRoute = true
-      hydrateFromRoute()
-      syncingFromRoute = false
-      void load({ silent: true })
-    },
-    { deep: true }
-  )
-
   if (options.immediate !== false) {
     onMounted(async () => {
-      syncingFromRoute = true
-      hydrateFromRoute()
-      syncingFromRoute = false
       // Ativa os watchers antes do request para uma troca de office durante
       // o carregamento inicial abortar e já iniciar a carteira do novo tenant.
       ready = true
@@ -528,8 +478,9 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     resetPage,
     setSituationFromKpi,
     selectKpi,
+    applyFilters,
     syncUrl,
     buildFilters,
-    hydrateFromRoute
+    buildOverviewFilters
   }
 }

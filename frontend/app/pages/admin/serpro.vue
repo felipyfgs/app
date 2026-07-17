@@ -7,40 +7,37 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 const { canAccessPlatformSerpro } = useDashboard()
+const route = useRoute()
+
+const contentWidth = computed<'comfortable' | 'wide' | 'full'>(() => {
+  const section = Array.isArray(route.query.section)
+    ? route.query.section[0]
+    : route.query.section
+
+  if (
+    route.path === '/admin/serpro/catalog'
+    || (route.path === '/admin/serpro/configuration' && section === 'coverage')
+  ) return 'full'
+  if (
+    route.path === '/admin/serpro/usage'
+    || (route.path === '/admin/serpro' && section === 'usage')
+  ) return 'wide'
+  return 'comfortable'
+})
 
 const links = [[{
-  label: 'Configuração',
-  icon: 'i-lucide-settings-2',
-  to: '/admin/serpro/configuration'
-}, {
-  label: 'Readiness',
-  icon: 'i-lucide-heart-pulse',
+  label: 'Operação',
+  icon: 'i-lucide-gauge',
   to: '/admin/serpro',
   exact: true
 }, {
-  label: 'Contratos',
-  icon: 'i-lucide-file-badge',
-  to: '/admin/serpro/contracts'
-}, {
-  label: 'Cobertura',
-  icon: 'i-lucide-layout-grid',
-  to: '/admin/serpro/catalog'
-}, {
-  label: 'Orçamento',
-  icon: 'i-lucide-wallet',
-  to: '/admin/serpro/usage'
-}, {
-  label: 'Rollout',
-  icon: 'i-lucide-rocket',
-  to: '/admin/serpro/rollout'
+  label: 'Integração',
+  icon: 'i-lucide-settings-2',
+  to: '/admin/serpro/configuration'
 }, {
   label: 'Canário DTE',
   icon: 'i-lucide-flask-conical',
   to: '/admin/serpro/dte-canary'
-}], [{
-  label: 'Hub plataforma',
-  icon: 'i-lucide-layout-dashboard',
-  to: '/admin'
 }]] satisfies NavigationMenuItem[][]
 </script>
 
@@ -52,7 +49,7 @@ const links = [[{
   >
     <template #header>
       <UDashboardNavbar
-        title="Console SERPRO"
+        title="Integração SERPRO"
         data-testid="page-navbar"
       >
         <template #leading>
@@ -70,13 +67,12 @@ const links = [[{
     </template>
 
     <template #body>
-      <DashboardContent width="comfortable" class="gap-4 sm:gap-6 lg:gap-12">
+      <DashboardContent :width="contentWidth" class="gap-4 sm:gap-6 lg:gap-12">
         <UAlert
           v-if="!canAccessPlatformSerpro"
           color="warning"
           icon="i-lucide-shield-off"
           title="Acesso restrito à plataforma"
-          description="Requer PLATFORM_ADMIN. Navegação sem TOTP global; mutações sensíveis pedem reconfirmação de senha."
           data-testid="admin-serpro-denied"
         />
         <NuxtPage v-else />

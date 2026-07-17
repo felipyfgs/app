@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   coverageMeta,
@@ -102,6 +104,30 @@ describe('MonitoringKpiStrip mapping (6.4 / 6.11)', () => {
     expect(onKpiSelect('pending')).toEqual({ key: 'pending', situation: 'PENDING' })
   })
 
+  it('badges das cápsulas ficam estáveis ao filtrar por situation (só a lista muda)', () => {
+    // Overview sem situation → counters de carteira completa
+    const overviewCounters: FiscalModuleCounters = {
+      up_to_date: 10,
+      processing: 2,
+      pending: 4,
+      attention: 1,
+      error: 0
+    }
+    const totalClients = 17 // soma da carteira (sem cápsula)
+    // ModuleTable passa totalClients ?? total para o strip — lista filtrada não sobrescreve
+    const pageTotalFiltered = 4
+    const stripProps = {
+      total: totalClients ?? pageTotalFiltered,
+      totalClients: totalClients ?? pageTotalFiltered
+    }
+    expect(resolveKpiTotal(stripProps)).toBe(17)
+    expect(overviewCounters.pending).toBe(4)
+    expect(overviewCounters.up_to_date).toBe(10)
+    // Clique em Pendências só filtra lista; badges do overview permanecem
+    expect(onKpiSelect('pending').situation).toBe('PENDING')
+    expect(resolveKpiTotal(stripProps)).toBe(17)
+  })
+
   it('chips esperados: Total + contadores (+ Erro)', () => {
     const keys: FiscalKpiKey[] = [
       'total', 'up_to_date', 'processing', 'pending', 'attention', 'error'
@@ -192,18 +218,18 @@ describe('empty states distintos (6.9 / 6.11)', () => {
     expect(resolveTitle({}, 'unsupported')).toBe('Não suportado')
   })
 
-  it('skeleton só no carregamento inicial (sem rows e sem previous)', () => {
-    function showTableSkeleton(input: {
-      loading: boolean
-      hasRows: boolean
-      hasPrevious: boolean
-    }) {
-      return Boolean(input.loading && !input.hasRows && !input.hasPrevious)
-    }
-    expect(showTableSkeleton({ loading: true, hasRows: false, hasPrevious: false })).toBe(true)
-    expect(showTableSkeleton({ loading: true, hasRows: true, hasPrevious: true })).toBe(false)
-    expect(showTableSkeleton({ loading: true, hasRows: false, hasPrevious: true })).toBe(false)
-    expect(showTableSkeleton({ loading: false, hasRows: false, hasPrevious: false })).toBe(false)
+  it('tabela permanece montada no vazio (customers.vue: UTable + #empty)', () => {
+    const moduleTable = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleTable.vue'),
+      'utf8'
+    )
+    expect(moduleTable).toContain('data-testid="fiscal-table"')
+    expect(moduleTable).toContain('#empty')
+    expect(moduleTable).toContain('MonitoringTableEmptyState')
+    // Não troca a tabela inteira por empty/skeleton
+    expect(moduleTable).not.toContain('showTableSkeleton')
+    expect(moduleTable).not.toContain('v-else-if="showEmpty"')
+    expect(moduleTable).not.toContain('fiscal-table-skeleton')
   })
 })
 
@@ -212,7 +238,7 @@ describe('MonitoringModuleNav (6.3 / 6.11)', () => {
     const items = monitoringNavMenuItems('/monitoring/guides', 'simples_mei')
     const active = items.filter(i => i.active)
     expect(active).toHaveLength(1)
-    expect(active[0]?.to).toBe('/monitoring/simples-mei')
+    expect(active[0]?.to).toBe('/monitoring/simples-mei/pgdasd')
   })
 
   it('lista canônica cobre todos os destinos do hub', () => {
@@ -236,6 +262,142 @@ describe('MonitoringModuleNav (6.3 / 6.11)', () => {
       const menu = monitoringNavMenuItems(item.to)
       expect(menu.filter(i => i.active)).toHaveLength(1)
       expect(menu.find(i => i.active)?.to).toBe(item.to)
+    }
+  })
+})
+
+describe('ações de carteira no contexto da seleção', () => {
+  it('não renderiza ações globais no navbar e preserva bulk condicionado à seleção', () => {
+    const moduleTable = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleTable.vue'),
+      'utf8'
+    )
+
+    expect(moduleTable).not.toContain('fiscal-module-navbar-actions')
+    expect(moduleTable).not.toContain('name="navbar-actions"')
+    expect(moduleTable).toContain('v-if="selectionEnabled && selectedCount > 0"')
+    expect(moduleTable).not.toContain('|| Boolean(props.moduleKey)')
+    expect(moduleTable).toContain('data-testid="fiscal-bulk-actions"')
+    expect(moduleTable).toContain(':items="bulkActionItems"')
+    expect(moduleTable).toContain('label="Ações"')
+    expect(moduleTable.match(/<UKbd>/g)).toHaveLength(1)
+    // customers.vue: cápsulas → toolbar colada à tabela
+    expect(moduleTable.indexOf('data-testid="fiscal-submodules"'))
+      .toBeLessThan(moduleTable.indexOf('data-testid="fiscal-kpi-block"'))
+    expect(moduleTable.indexOf('data-testid="fiscal-kpi-block"'))
+      .toBeLessThan(moduleTable.indexOf('data-testid="fiscal-table-stack"'))
+    expect(moduleTable.indexOf('<slot name="toolbar">'))
+      .toBeLessThan(moduleTable.indexOf('data-testid="fiscal-table"'))
+    expect(moduleTable.indexOf('data-testid="fiscal-table-stack"'))
+      .toBeLessThan(moduleTable.indexOf('data-testid="fiscal-table"'))
+  })
+
+  it('segue customers.vue: ações em massa precedem filtros e Exibir', () => {
+    const toolbar = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleToolbar.vue'),
+      'utf8'
+    )
+
+    expect(toolbar.indexOf('<slot name="actions"'))
+      .toBeLessThan(toolbar.indexOf('data-testid="fiscal-filter-situation"'))
+    expect(toolbar.indexOf('data-testid="fiscal-filter-situation"'))
+      .toBeLessThan(toolbar.indexOf('<slot name="trailing"'))
+    expect(toolbar).toContain('class="flex flex-wrap items-center justify-between gap-1.5"')
+    expect(toolbar).toContain('class="w-full sm:w-auto sm:max-w-sm"')
+    expect(toolbar).toContain('data-testid="advanced-filters-toggle"')
+    expect(toolbar).toContain('data-testid="fiscal-advanced-filters"')
+    expect(toolbar).toContain('@submit.prevent="applyAdvancedFilters"')
+    expect(toolbar).toContain('label="Aplicar filtros"')
+    expect(toolbar).toContain('data-testid="fiscal-filters-reset"')
+    expect(toolbar).toContain(':label="advancedFiltersLabel"')
+    expect(toolbar).not.toContain('label="Atualizar"')
+    expect(toolbar).toMatch(/const qDraft = ref\(props\.q \|\| ''\)/)
+    expect(toolbar).toContain('@keyup.enter="submitQ"')
+  })
+
+  it('filtros avançados usam rascunho validado e cliente controlado', () => {
+    const toolbar = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleToolbar.vue'),
+      'utf8'
+    )
+    const moduleTable = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleTable.vue'),
+      'utf8'
+    )
+    const dctfweb = readFileSync(
+      resolve(__dirname, '../../app/pages/monitoring/dctfweb/[submodule].vue'),
+      'utf8'
+    )
+
+    expect(toolbar).toContain('const competenceDraft = ref')
+    expect(toolbar).toContain('const clientIdDraft = ref<number | null>')
+    expect(toolbar).toContain('v-model="clientIdDraft"')
+    expect(toolbar).toContain('v-model="competenceDraft"')
+    expect(toolbar).toContain('v-model="advancedQDraft"')
+    expect(toolbar).toContain('v-model="advancedSituationDraft"')
+    expect(toolbar).toContain('label="Busca geral"')
+    expect(toolbar).toContain('label="Situação"')
+    expect(toolbar).toContain('type="month"')
+    expect(toolbar).toContain('Use uma competência válida no formato AAAA-MM.')
+    expect(toolbar).toContain(':disabled="Boolean(competenceError)"')
+    expect(toolbar).not.toContain('@update:model-value="onClientId"')
+    expect(moduleTable).toContain(':client-id="clientId"')
+    expect(moduleTable).toContain('emit(\'apply-filters\', $event)')
+    expect(dctfweb).toContain(':client-id="clientId"')
+    expect(dctfweb).toContain('@apply-filters="applyFilters"')
+  })
+
+  it('aplica o formulário completo em uma única transação da carteira', () => {
+    const portfolio = readFileSync(
+      resolve(__dirname, '../../app/composables/useFiscalModulePortfolio.ts'),
+      'utf8'
+    )
+
+    expect(portfolio).toContain('async function applyFilters(next: FiscalModuleFilterFormValue)')
+    expect(portfolio).toContain('filterTransactionDepth += 1')
+    expect(portfolio).toContain('await nextTick()')
+    expect(portfolio).toContain('if (!ready || filterTransactionDepth > 0) return')
+    expect(portfolio).toContain('if (advancedChanged)')
+    expect(portfolio).toContain('await load()')
+  })
+
+  it('usa uma única fonte de espaçamento e restaura o footer do arquétipo', () => {
+    const moduleTable = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleTable.vue'),
+      'utf8'
+    )
+
+    expect(moduleTable).not.toContain('class="mb-4"')
+    expect(moduleTable).toContain('<div class="text-sm text-muted">')
+    expect(moduleTable).toContain('<div class="flex items-center gap-1.5">')
+  })
+
+  it('reduz a densidade inicial da DCTFWeb sem remover colunas do menu Exibir', () => {
+    const dctfweb = readFileSync(
+      resolve(__dirname, '../../app/pages/monitoring/dctfweb/[submodule].vue'),
+      'utf8'
+    )
+
+    expect(dctfweb).toContain(`:initial-hidden-columns="['evidence', 'darf']"`)
+    expect(dctfweb).toMatch(/'icon': 'i-lucide-ellipsis-vertical'/)
+    expect(dctfweb).toMatch(/meta: \{ class: \{ th: 'w-12', td: 'w-12' \} \}/)
+  })
+
+  it('módulos fiscais não injetam mais PortfolioActions no cabeçalho', () => {
+    const pages = [
+      'pages/monitoring/installments.vue',
+      'pages/monitoring/declarations.vue',
+      'pages/monitoring/fgts.vue',
+      'pages/monitoring/sitfis.vue',
+      'pages/monitoring/simples-mei/[submodule].vue',
+      'pages/monitoring/dctfweb/[submodule].vue',
+      'pages/monitoring/guides.vue',
+      'pages/monitoring/mailbox.vue'
+    ]
+
+    for (const page of pages) {
+      const source = readFileSync(resolve(__dirname, '../../app', page), 'utf8')
+      expect(source).not.toContain('<MonitoringPortfolioActions')
     }
   })
 })

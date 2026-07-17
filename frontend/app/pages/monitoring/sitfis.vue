@@ -2,12 +2,13 @@
 /**
  * Situação Fiscal (SITFIS) — carteira + idade/TTL + contagem de achados.
  * USlideover com findings/pendências normalizadas (sem JSON bruto).
- * Task 7.5 · deep-links /monitoring/clients/{id}?tab=sitfis
+ * Task 7.5 · deep-links /monitoring/clients/{id}/sitfis
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { FiscalFinding, FiscalPendingItem } from '~/types/api'
 import type { SitfisClientDetail, SitfisClientRow } from '~/types/fiscal-modules'
 import { commercialBlockLabel } from '~/utils/monitor-commercial'
+import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
@@ -35,8 +36,11 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  sorting,
+  setPage,
   refresh,
-  selectKpi
+  selectKpi,
+  applyFilters
 } = useFiscalModulePortfolio('sitfis')
 
 const slideOpen = ref(false)
@@ -69,7 +73,7 @@ const detailError = ref<string | null>(null)
 const detailRefreshing = ref(false)
 
 function clientHref(id: number) {
-  return `/monitoring/clients/${id}?tab=sitfis`
+  return `/monitoring/clients/${id}/sitfis`
 }
 
 function onClientId(id: number | null) {
@@ -191,7 +195,8 @@ const CommercialMetaCell = resolveComponent('MonitoringCommercialMetaCell')
 const columns: TableColumn<SitfisClientRow>[] = [
   {
     id: 'client',
-    header: 'Cliente',
+    header: ({ column }) => sortHeader('Cliente', column),
+    enableHiding: false,
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
@@ -202,12 +207,13 @@ const columns: TableColumn<SitfisClientRow>[] = [
   },
   {
     id: 'situation',
-    header: 'Situação',
+    header: ({ column }) => sortHeader('Situação', column),
     cell: ({ row }) => h(FiscalStatusBadge, { status: row.original.situation, showHint: true })
   },
   {
     id: 'procuracao',
     header: 'Procuração',
+    enableSorting: false,
     cell: ({ row }) => h(ClientProcuracaoBadge, {
       status: row.original.procuracao_status,
       showHint: false
@@ -216,6 +222,7 @@ const columns: TableColumn<SitfisClientRow>[] = [
   {
     id: 'franchise',
     header: 'Franquia / agenda',
+    enableSorting: false,
     cell: ({ row }) => h(CommercialMetaCell, {
       remaining: row.original.commercial_quota?.remaining,
       limit: row.original.commercial_quota?.limit,
@@ -230,6 +237,7 @@ const columns: TableColumn<SitfisClientRow>[] = [
   {
     id: 'age',
     header: 'Idade / TTL',
+    enableSorting: false,
     cell: ({ row }) => {
       const d = detailOf(row.original)
       const age = ageLabel(d.age_seconds)
@@ -246,6 +254,7 @@ const columns: TableColumn<SitfisClientRow>[] = [
   {
     id: 'findings',
     header: 'Achados',
+    enableSorting: false,
     cell: ({ row }) => {
       const d = detailOf(row.original)
       return `${d.findings_count ?? 0} finding(s) · ${d.pending_count ?? 0} pend.`
@@ -254,18 +263,21 @@ const columns: TableColumn<SitfisClientRow>[] = [
   {
     id: 'coverage',
     header: 'Cobertura',
+    enableSorting: false,
     cell: ({ row }) => h(FiscalCoverageBadge, { coverage: row.original.coverage })
   },
   {
     id: 'observed',
-    header: 'Observado',
+    header: ({ column }) => sortHeader('Observado', column),
     cell: ({ row }) => formatDateTime(
       String(detailOf(row.original).observed_at || row.original.last_snapshot_at || row.original.last_consulted_at || '') || null
     )
   },
   {
     id: 'actions',
-    header: '',
+    header: 'Ações',
+    enableHiding: false,
+    enableSorting: false,
     meta: { class: { th: 'w-40', td: 'w-40' } },
     cell: ({ row }) => h('div', { class: 'flex justify-end gap-1' }, [
       h(UButton, {
@@ -291,6 +303,7 @@ const columns: TableColumn<SitfisClientRow>[] = [
   <MonitoringModuleTable
     title="Situação Fiscal"
     panel-id="monitoring-sitfis"
+    module-key="sitfis"
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -302,28 +315,31 @@ const columns: TableColumn<SitfisClientRow>[] = [
     :per-page="perPage"
     :q="q"
     :situation="situation"
+    :client-id="clientId"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
+    :sorting="sorting"
     show-client-picker
-    empty-title="Nenhum cliente com SITFIS na carteira"
-    @update:page="page = $event"
+    empty-title="Nenhum cliente"
+    :column-labels="{
+      procuracao: 'Procuração',
+      franchise: 'Franquia / agenda',
+      age: 'Idade / TTL',
+      findings: 'Achados',
+      coverage: 'Cobertura',
+      observed: 'Observado'
+    }"
+    @update:page="setPage"
     @update:q="q = $event"
     @update:situation="situation = $event"
     @update:client-id="onClientId"
+    @update:sorting="sorting = $event"
+    @apply-filters="applyFilters"
+    @reset-filters="applyFilters"
     @refresh="refresh"
     @kpi-select="selectKpi"
   >
-    <template #navbar-actions>
-      <MonitoringPortfolioActions
-        module-key="sitfis"
-        :client-id="clientId"
-        :situation="situation"
-        :q="q"
-        @refreshed="refresh"
-      />
-    </template>
-
     <template
       v-if="overviewError"
       #utilities

@@ -74,7 +74,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         Entrar no painel
       </h1>
       <p class="text-sm text-muted">
-        Uso exclusivo de funcionários do escritório
+        Só equipe do escritório
       </p>
     </div>
 
@@ -90,7 +90,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         :fields="fields"
         :loading="loading"
         title="Bem-vindo de volta"
-        description="Entre com o e-mail corporativo do escritório."
+        description="E-mail do escritório."
         icon="i-lucide-lock-keyhole"
         :submit="{
           label: 'Entrar',

@@ -75,6 +75,23 @@ describe('permissões do módulo Work', () => {
 
     expect(quickActions(op).some(a => a.id === 'work-queue')).toBe(true)
   })
+
+  it('PLATFORM_ADMIN privilegiado tem paridade de catálogo Work com Office ADMIN', () => {
+    const plat = user(null, {
+      is_platform_admin: true,
+      access_mode: 'platform_privileged',
+      has_real_membership: false,
+      real_office_role: null,
+      role: 'ADMIN'
+    })
+    expect(canViewWork(plat)).toBe(true)
+    expect(canManageWorkCatalog(plat)).toBe(true)
+    expect(canAdministerWork(plat)).toBe(true)
+    expect(canCreateWorkProcesses(plat)).toBe(true)
+
+    const work = mainDestinations(plat, { path: '/work' }).find(i => i.id === 'work')
+    expect(work?.children?.some(c => c.to === '/work/templates')).toBe(true)
+  })
 })
 
 describe('helpers de prioridade apresentada', () => {

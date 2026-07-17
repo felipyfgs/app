@@ -1,13 +1,24 @@
 /**
- * Tokens canônicos do painel — alinhados ao template
- * `.reference/nuxt-dashboard-template/app/app.config.ts` (primary green / neutral zinc).
- * Não introduzir paleta paralela nem cores raw nas páginas.
+ * Tokens canônicos do painel — Inter × Nuxt UI.
+ *
+ * primary  → orange (#FF7A00 main; 400/600/700 brand Inter)
+ * neutral  → zinc (dark ≈ #0D0D0D)
+ * success  → green (#00A868)
+ * warning  → amber (#FFB800)
+ * error    → red (#E5222D)
+ * info     → blue (#1E7FE6)
+ *
+ * Escalas em `assets/css/main.css`. Não reintroduzir primary green do template.
  */
 export default defineAppConfig({
   ui: {
     colors: {
-      primary: 'green',
-      neutral: 'zinc'
+      primary: 'orange',
+      neutral: 'zinc',
+      success: 'green',
+      warning: 'amber',
+      error: 'red',
+      info: 'blue'
     },
     // Superfícies de alerta alinhadas ao tema: subtle evita blocos solid
     // que quebram contraste no dark mode.
@@ -17,7 +28,6 @@ export default defineAppConfig({
         variant: 'subtle'
       }
     },
-    // Densidade padrão de formulários Settings / Auth (Nuxt UI).
     formField: {
       defaultVariants: {
         size: 'md'

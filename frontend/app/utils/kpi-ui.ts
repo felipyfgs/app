@@ -46,15 +46,52 @@ export function kpiLeadingClass(tone: KpiTone = 'default', active = false): stri
   }
 }
 
-/** `:ui` do UPageCard no padrão HomeStats do template. */
+/**
+ * `:ui` do UPageCard no padrão HomeStats.
+ * Textos sempre truncados — título/valor longos não esticam o card.
+ */
 export function kpiPageCardUi(tone: KpiTone = 'default', active = false) {
   return {
-    // p denso no mobile evita título/valor vazando do card
-    container: 'min-w-0 gap-y-1 overflow-hidden p-2.5 sm:gap-y-1.5 sm:p-4 lg:p-6',
+    root: 'min-w-0 max-w-full overflow-hidden h-full',
+    container: 'min-w-0 max-w-full gap-y-1 overflow-hidden p-2.5 sm:gap-y-1.5 sm:p-4 lg:p-6',
     wrapper: 'min-w-0 max-w-full items-start overflow-hidden',
+    header: 'min-w-0 max-w-full overflow-hidden',
+    body: 'min-w-0 max-w-full overflow-hidden',
     leading: kpiLeadingClass(tone, active),
-    title: 'w-full max-w-full truncate font-normal text-muted text-[10px] leading-tight uppercase sm:text-xs'
+    // line-clamp-1 + block: uppercase long titles (ex.: "Módulos com erro") não quebram layout
+    title: 'block w-full min-w-0 max-w-full truncate font-normal text-muted text-[10px] leading-tight uppercase sm:text-xs'
   } as const
+}
+
+/** Valor numérico do KPI — sempre 1 linha, não empurra o card. */
+export function kpiValueClass(tone: KpiTone = 'default', hasAlert = false): string {
+  const base = 'block min-w-0 max-w-full truncate text-lg font-semibold tabular-nums leading-tight sm:text-2xl'
+  if (hasAlert && tone === 'error') return `${base} text-error`
+  if (hasAlert && tone === 'warning') return `${base} text-warning`
+  return `${base} text-highlighted`
+}
+
+/** Título exibido no card: normaliza espaços e evita strings vazias. */
+export function kpiDisplayTitle(title?: string | null, maxLen = 28): string {
+  const t = String(title || '').replace(/\s+/g, ' ').trim()
+  if (!t) return '—'
+  if (t.length <= maxLen) return t
+  return `${t.slice(0, Math.max(1, maxLen - 1))}…`
+}
+
+/** Valor exibido: números como string estável; strings longas truncadas no display. */
+export function kpiDisplayValue(value: string | number | null | undefined, maxLen = 12): string {
+  if (value == null) return '—'
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return '—'
+    return String(value)
+  }
+  const s = String(value).replace(/\s+/g, ' ').trim()
+  if (!s) return '—'
+  if (s.length <= maxLen) return s
+  // Placeholder de loading
+  if (s === '…' || s === '...') return s
+  return `${s.slice(0, Math.max(1, maxLen - 1))}…`
 }
 
 /** Classes do grid colado (N colunas no lg). */

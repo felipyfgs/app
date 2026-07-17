@@ -165,7 +165,7 @@ watch(sessionEpoch, () => {
             v-if="lastValidAt"
             class="hidden text-xs text-muted sm:inline"
           >
-            Última atualização válida: {{ formatDateTime(lastValidAt) }}
+            Atualizado {{ formatDateTime(lastValidAt) }}
           </span>
         </template>
       </UDashboardToolbar>
@@ -191,14 +191,14 @@ watch(sessionEpoch, () => {
             label="Fiscal"
           />
           <UButton
-            to="/monitoring/simples-mei"
+            to="/monitoring/simples-mei/pgdasd"
             size="xs"
             color="neutral"
             variant="ghost"
             label="Simples"
           />
           <UButton
-            to="/monitoring/dctfweb"
+            to="/monitoring/dctfweb/dctfweb"
             size="xs"
             color="neutral"
             variant="ghost"

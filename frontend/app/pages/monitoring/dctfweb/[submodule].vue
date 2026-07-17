@@ -4,26 +4,21 @@
  * Mutação de alto risco só via FiscalMutationConfirmModal (catálogo de códigos).
  * Task 7.3
  */
-import type { TableColumn } from '@nuxt/ui'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { DctfwebClientDetail, DctfwebClientRow } from '~/types/fiscal-modules'
 import { DCTFWEB_TABS } from '~/types/fiscal-modules'
 import { resolveHighRiskCodesFromRow } from '~/utils/fiscal-high-risk'
+import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
 const UButton = resolveComponent('UButton')
+const UDropdownMenu = resolveComponent('UDropdownMenu')
 
 const route = useRoute()
 const { canAccessAdministration } = useDashboard()
 
-function normalizeSubmodule(raw: unknown): string {
-  const v = String(raw || 'DCTFWEB').toUpperCase()
-  if (v === 'MIT') return 'MIT'
-  if (v === 'DCTF' || v === 'DCTFWEB') return 'DCTFWEB'
-  return 'DCTFWEB'
-}
-
-const submodule = ref(normalizeSubmodule(route.query.submodule || route.query.tab))
+const submodule = ref(normalizeMonitoringSubmodule('dctfweb', route.params.submodule))
 
 const {
   page,
@@ -42,9 +37,15 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  sorting,
+  setPage,
   refresh,
-  selectKpi
-} = useFiscalModulePortfolio('dctfweb', { submodule })
+  selectKpi,
+  applyFilters
+} = useFiscalModulePortfolio('dctfweb', {
+  submodule,
+  submodulePath: value => monitoringSubmodulePath('dctfweb', value)
+})
 
 const mutationOpen = ref(false)
 const mutationRequest = ref<{
@@ -58,8 +59,16 @@ const mutationRequest = ref<{
 
 const tabItems = DCTFWEB_TABS.map(t => ({ label: t.label, value: t.value }))
 
+watch(
+  () => route.params.submodule,
+  (raw) => {
+    const next = normalizeMonitoringSubmodule('dctfweb', raw)
+    if (next !== submodule.value) submodule.value = next
+  }
+)
+
 function clientHref(id: number) {
-  return `/monitoring/clients/${id}?tab=overview`
+  return `/monitoring/clients/${id}`
 }
 
 function onClientId(id: number | null) {
@@ -112,10 +121,30 @@ function openTransmit(row: DctfwebClientRow) {
   mutationOpen.value = true
 }
 
+function rowActionItems(row: DctfwebClientRow): DropdownMenuItem[][] {
+  const groups: DropdownMenuItem[][] = [[{
+    label: 'Abrir cliente',
+    icon: 'i-lucide-building-2',
+    to: clientHref(row.client_id)
+  }]]
+
+  if (canOpenTransmit(row)) {
+    groups.push([{
+      label: submodule.value === 'MIT' ? 'Encerrar apuração' : 'Transmitir declaração',
+      icon: submodule.value === 'MIT' ? 'i-lucide-circle-check-big' : 'i-lucide-send',
+      color: 'warning',
+      onSelect: () => openTransmit(row)
+    }])
+  }
+
+  return groups
+}
+
 const columns: TableColumn<DctfwebClientRow>[] = [
   {
     id: 'client',
-    header: 'Cliente',
+    header: ({ column }) => sortHeader('Cliente', column),
+    enableHiding: false,
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
@@ -126,7 +155,7 @@ const columns: TableColumn<DctfwebClientRow>[] = [
   },
   {
     id: 'competence',
-    header: 'Competência',
+    header: ({ column }) => sortHeader('Competência', column),
     cell: ({ row }) => {
       const d = detailOf(row.original)
       return String(
@@ -139,12 +168,13 @@ const columns: TableColumn<DctfwebClientRow>[] = [
   },
   {
     id: 'situation',
-    header: 'Situação',
+    header: ({ column }) => sortHeader('Situação', column),
     cell: ({ row }) => h(FiscalStatusBadge, { status: row.original.situation })
   },
   {
     id: 'closure',
     header: 'Encerramento',
+    enableSorting: false,
     cell: ({ row }) => {
       // Eixo MIT — independente da transmissão DCTFWeb
       const mit = detailOf(row.original).mit
@@ -154,6 +184,7 @@ const columns: TableColumn<DctfwebClientRow>[] = [
   {
     id: 'transmission',
     header: 'Transmissão',
+    enableSorting: false,
     cell: ({ row }) => {
       const d = detailOf(row.original)
       const status = d.dctfweb?.transmission_status
@@ -165,11 +196,13 @@ const columns: TableColumn<DctfwebClientRow>[] = [
   {
     id: 'receipt',
     header: 'Recibo',
+    enableSorting: false,
     cell: ({ row }) => String(detailOf(row.original).dctfweb?.receipt_number || '—')
   },
   {
     id: 'evidence',
     header: 'Evidência',
+    enableSorting: false,
     cell: ({ row }) => {
       // Portfolio não expõe evidence_version; recibo indica presença de evidência de transmissão.
       const receipt = detailOf(row.original).dctfweb?.receipt_number
@@ -182,6 +215,7 @@ const columns: TableColumn<DctfwebClientRow>[] = [
   {
     id: 'darf',
     header: 'DARF',
+    enableSorting: false,
     cell: () => {
       // Contrato da carteira ainda não devolve status de DARF por linha.
       return '—'
@@ -190,32 +224,30 @@ const columns: TableColumn<DctfwebClientRow>[] = [
   {
     id: 'payment',
     header: 'Pagamento',
+    enableSorting: false,
     cell: ({ row }) => statusOrDash(detailOf(row.original).dctfweb?.payment_status)
   },
   {
     id: 'actions',
-    header: '',
-    meta: { class: { th: 'w-40', td: 'w-40' } },
+    enableHiding: false,
+    enableSorting: false,
+    meta: { class: { th: 'w-12', td: 'w-12' } },
     cell: ({ row }) => {
-      const children = [
-        h(UButton, {
-          size: 'xs',
-          color: 'neutral',
-          variant: 'ghost',
-          label: 'Cliente',
-          to: clientHref(row.original.client_id)
+      const name = row.original.name || row.original.display_name || `cliente ${row.original.client_id}`
+      return h('div', { class: 'text-right' }, h(
+        UDropdownMenu,
+        {
+          items: rowActionItems(row.original),
+          content: { align: 'end' }
+        },
+        () => h(UButton, {
+          'icon': 'i-lucide-ellipsis-vertical',
+          'color': 'neutral',
+          'variant': 'ghost',
+          'class': 'ml-auto',
+          'aria-label': `Ações de ${name}`
         })
-      ]
-      if (canOpenTransmit(row.original)) {
-        children.push(h(UButton, {
-          size: 'xs',
-          color: 'warning',
-          variant: 'ghost',
-          label: submodule.value === 'MIT' ? 'Encerrar' : 'Transmitir',
-          onClick: () => openTransmit(row.original)
-        }))
-      }
-      return h('div', { class: 'flex justify-end gap-1' }, children)
+      ))
     }
   }
 ]
@@ -225,6 +257,7 @@ const columns: TableColumn<DctfwebClientRow>[] = [
   <MonitoringModuleTable
     title="DCTFWeb / MIT"
     panel-id="monitoring-dctfweb"
+    module-key="dctfweb"
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -238,33 +271,35 @@ const columns: TableColumn<DctfwebClientRow>[] = [
     :situation="situation"
     :competence="competence"
     :submodule="submodule"
+    :client-id="clientId"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
+    :sorting="sorting"
     show-competence-filter
     show-client-picker
-    empty-title="Nenhum cliente DCTFWeb/MIT"
-    @update:page="page = $event"
+    empty-title="Nenhum cliente"
+    :column-labels="{
+      closure: 'Encerramento',
+      transmission: 'Transmissão',
+      receipt: 'Recibo',
+      evidence: 'Evidência',
+      darf: 'DARF',
+      payment: 'Pagamento'
+    }"
+    :initial-hidden-columns="['evidence', 'darf']"
+    @update:page="setPage"
     @update:q="q = $event"
     @update:situation="situation = $event"
     @update:competence="competence = $event"
     @update:submodule="submodule = $event"
     @update:client-id="onClientId"
+    @update:sorting="sorting = $event"
+    @apply-filters="applyFilters"
+    @reset-filters="applyFilters"
     @refresh="refresh"
     @kpi-select="selectKpi"
   >
-    <template #navbar-actions>
-      <MonitoringPortfolioActions
-        module-key="dctfweb"
-        :client-id="clientId"
-        :competence="competence"
-        :situation="situation"
-        :q="q"
-        :submodule="submodule"
-        @refreshed="refresh"
-      />
-    </template>
-
     <template #submodules>
       <UTabs
         v-model="submodule"

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   flattenDestinations,
   mainDestinations,
-  monitoringDestinations
+  monitoringDestinations,
+  toNavigationItems
 } from '../../app/utils/navigation'
+import { MONITORING_NAV_ITEMS } from '../../app/utils/monitoring-nav'
 import type { MeUser } from '../../app/types/api'
 
 function user(role: MeUser['role'], confirmed = true): MeUser {
@@ -20,7 +22,7 @@ function user(role: MeUser['role'], confirmed = true): MeUser {
 }
 
 describe('navigation monitoramento (15.4)', () => {
-  it('expõe todos os módulos fiscais do catálogo', () => {
+  it('mantém todos os módulos diretamente acessíveis na sidebar', () => {
     const ids = monitoringDestinations('/monitoring').flatMap((g) => {
       if (g.children) return g.children.map(c => c.id)
       return [g.id]
@@ -29,21 +31,52 @@ describe('navigation monitoramento (15.4)', () => {
       'monitoring-dashboard',
       'monitoring-simples-mei',
       'monitoring-dctfweb',
+      'monitoring-fgts',
       'monitoring-installments',
       'monitoring-sitfis',
       'monitoring-mailbox',
       'monitoring-declarations',
       'monitoring-guides',
-      'monitoring-fgts',
       'monitoring-registrations',
       'monitoring-tax-processes'
     ])
   })
 
-  it('FGTS é rotulado como parcial na navegação', () => {
-    const fgts = monitoringDestinations()[0]?.children?.find(c => c.id === 'monitoring-fgts')
-    expect(fgts?.label).toMatch(/parcial/i)
-    expect(fgts?.to).toBe('/monitoring/fgts')
+  it('usa os paths canônicos dos módulos com submódulos', () => {
+    const children = monitoringDestinations()[0]?.children || []
+    expect(children.find(c => c.id === 'monitoring-simples-mei')?.to)
+      .toBe('/monitoring/simples-mei/pgdasd')
+    expect(children.find(c => c.id === 'monitoring-dctfweb')?.to)
+      .toBe('/monitoring/dctfweb/dctfweb')
+  })
+
+  it('mantém ícone no grupo e omite ícones dos módulos no submenu da sidebar', () => {
+    const [monitoring] = toNavigationItems(monitoringDestinations('/monitoring'))
+    expect(monitoring?.icon).toBe('i-lucide-radar')
+    expect(monitoring?.children?.every(item => item.icon == null)).toBe(true)
+  })
+
+  it('resume somente os nomes do submenu da sidebar', () => {
+    const children = monitoringDestinations('/monitoring')[0]?.children || []
+    expect(children.map(item => item.label)).toEqual([
+      'Resumo',
+      'Simples/MEI',
+      'DCTFWeb/MIT',
+      'FGTS',
+      'Parcelamentos',
+      'SITFIS',
+      'Caixas',
+      'Declarações',
+      'Guias',
+      'Vínculos',
+      'Processos'
+    ])
+    expect(children.map(item => item.label)).toEqual(
+      MONITORING_NAV_ITEMS.map(item => item.sidebarLabel)
+    )
+    expect(children.map(item => item.label)).not.toEqual(
+      MONITORING_NAV_ITEMS.map(item => item.label)
+    )
   })
 
   it('mainDestinations inclui Monitoramento para qualquer papel autenticado', () => {
@@ -56,30 +89,35 @@ describe('navigation monitoramento (15.4)', () => {
     }
   })
 
-  it('ADMIN vê Configurações (escritório + consumo + equipe + departamentos), sem hub /admin', () => {
+  it('ADMIN vê Conta (perfil + escritório + consumo + equipe + departamentos), sem hub /admin', () => {
     const tree = mainDestinations(user('ADMIN', true))
-    const settings = tree.find(d => d.id === 'settings')
-    expect(settings?.children?.map(c => c.id)).toEqual([
-      'settings-office',
-      'settings-usage',
-      'settings-subscription',
-      'settings-departments',
-      'settings-team'
+    const account = tree.find(d => d.id === 'settings')
+    expect(account?.children?.map(c => c.id)).toEqual([
+      'account-profile',
+      'account-office',
+      'account-usage',
+      'account-subscription',
+      'account-team',
+      'account-departments'
     ])
-    expect(settings?.children?.map(c => c.id)).not.toContain('settings-cte')
-    expect(settings?.children?.map(c => c.id)).not.toContain('admin-departments')
-    expect(settings?.children?.map(c => c.to)).not.toContain('/settings/cte')
-    expect(settings?.children?.map(c => c.to)).toContain('/settings/departments')
+    expect(account?.children?.map(c => c.id)).not.toContain('settings-cte')
+    expect(account?.children?.map(c => c.id)).not.toContain('admin-departments')
+    expect(account?.children?.map(c => c.to)).not.toContain('/settings/cte')
+    expect(account?.children?.map(c => c.to)).toContain('/conta/departamentos')
     // Hub plataforma fica fora da árvore do office ADMIN
     const flat = flattenDestinations(tree).map(d => d.id)
     expect(flat).not.toContain('platform-serpro-console')
   })
 
-  it('VIEWER não vê Configurações/Admin', () => {
-    const ids = flattenDestinations(mainDestinations(user('VIEWER'))).map(d => d.id)
+  it('VIEWER não vê configurações administrativas na sidebar', () => {
+    const tree = mainDestinations(user('VIEWER'))
+    const ids = flattenDestinations(tree).map(d => d.id)
     expect(ids).not.toContain('admin')
-    expect(ids).not.toContain('settings-office')
-    expect(ids).not.toContain('settings-usage')
+    expect(ids).toContain('account-profile')
+    expect(ids).not.toContain('account-office')
+    expect(ids).not.toContain('account-usage')
     expect(ids).not.toContain('settings-cte')
+    expect(tree.find(d => d.id === 'settings')?.children?.map(d => d.id))
+      .toEqual(['account-profile'])
   })
 })

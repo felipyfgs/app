@@ -13,7 +13,7 @@ const toast = useToast()
 const { me, sessionEpoch } = useDashboard()
 
 if (!canManageWorkCatalog(me.value)) {
-  await navigateTo('/settings')
+  await navigateTo('/conta/escritorio')
 }
 
 const items = ref<WorkDepartment[]>([])

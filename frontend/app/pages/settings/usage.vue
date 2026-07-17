@@ -123,7 +123,7 @@ onMounted(load)
   <div>
     <UPageCard
       title="Consumo do plano"
-      description="Uso atribuído a este escritório — sem fatura consolidada da plataforma."
+      description="Uso deste escritório."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
@@ -243,13 +243,13 @@ onMounted(load)
       <UPageCard
         variant="subtle"
         title="Lançamentos do período"
-        description="Somente operações atribuídas a este escritório."
+        description="Operações deste escritório."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <SerproProvenanceBadge code="estimado" />
           <SerproProvenanceBadge code="real" />
           <SerproProvenanceBadge code="simulado" />
-          <span class="text-xs text-muted">Badges de origem — sem fatura global.</span>
+          <span class="text-xs text-muted">Origem dos dados.</span>
         </div>
         <UEmpty
           v-if="!entries.length"

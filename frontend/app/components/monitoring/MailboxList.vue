@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
  * Lista de mensagens da Caixa Postal (arquétipo InboxList).
+ * Casca sempre montada: empty/loading dentro do painel (não some a lista).
  */
 import { mailboxTriageLabel } from '~/utils/mailbox-triage'
 
@@ -18,7 +19,7 @@ export interface MailboxListItem {
   attachment_count?: number
 }
 
-defineProps<{
+const props = defineProps<{
   messages: MailboxListItem[]
   selectedId?: number | null
   loading?: boolean
@@ -54,34 +55,36 @@ defineExpose({ focusMessage })
     aria-label="Mensagens da Caixa Postal"
     :aria-busy="loading || undefined"
   >
+    <!-- Casca sempre presente: empty/loading no corpo, não substitui o painel -->
     <div
-      v-if="loading && !messages.length"
-      class="p-6 text-sm text-muted"
-    >
-      Carregando mensagens…
-    </div>
-    <div
-      v-else-if="!messages.length"
+      v-if="loading && !props.messages.length"
       class="flex flex-col items-center justify-center gap-2 p-12 text-center"
-      data-testid="fiscal-empty"
+      data-testid="fiscal-empty-loading"
     >
       <UIcon
-        name="i-lucide-inbox"
-        class="size-8 text-dimmed"
+        name="i-lucide-loader-circle"
+        class="size-8 animate-spin text-dimmed"
       />
       <p class="text-sm text-muted">
-        Nenhuma mensagem retornada pela API.
+        Carregando mensagens…
       </p>
     </div>
+    <MonitoringTableEmptyState
+      v-else-if="!props.messages.length"
+      kind="empty"
+      title="Nenhuma mensagem"
+      description="Nenhuma mensagem retornada pela API."
+      data-testid="fiscal-empty"
+    />
     <button
-      v-for="mail in messages"
+      v-for="mail in props.messages"
       :id="`mailbox-item-${mail.id}`"
       :key="mail.id"
       type="button"
       :data-mailbox-id="mail.id"
-      class="w-full p-4 sm:px-6 text-sm text-start cursor-pointer border-l-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      class="w-full cursor-pointer border-l-2 p-4 text-start text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:px-6"
       :class="[
-        isUnread(mail) ? 'text-highlighted font-medium' : 'text-toned',
+        isUnread(mail) ? 'font-medium text-highlighted' : 'text-toned',
         selectedId === mail.id
           ? 'border-primary bg-primary/10'
           : 'border-transparent hover:border-primary hover:bg-primary/5'

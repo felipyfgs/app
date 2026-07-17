@@ -160,7 +160,7 @@ describe('superfície de equipe — estados', () => {
 })
 
 describe('superfície de equipe — autorização', () => {
-  it('somente ADMIN real do office gerencia equipe; PLATFORM_ADMIN puro não', () => {
+  it('Office ADMIN e PLATFORM_ADMIN privilegiado gerenciam equipe; plataforma global não', () => {
     expect(canManageOfficeTeam(user({ role: 'ADMIN' }))).toBe(true)
     expect(canManageOfficeTeam(user({ role: 'OPERATOR' }))).toBe(false)
     expect(canManageOfficeTeam(user({ role: 'VIEWER' }))).toBe(false)
@@ -169,6 +169,14 @@ describe('superfície de equipe — autorização', () => {
       office: null,
       is_platform_admin: true
     }))).toBe(false)
+    expect(canManageOfficeTeam(user({
+      role: null,
+      office: { id: 9, name: 'X', slug: 'x' },
+      is_platform_admin: true,
+      access_mode: 'platform_privileged',
+      has_real_membership: false,
+      real_office_role: null
+    }))).toBe(true)
     expect(page).toContain('canManageOfficeTeam')
     expect(page).toContain(':can-mutate="canMutate"')
     expect(page).toContain('v-if="canMutate && !forbidden"')

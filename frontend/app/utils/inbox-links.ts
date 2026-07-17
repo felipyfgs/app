@@ -5,11 +5,11 @@ import type { InboxItem, InboxItemLinks } from '~/types/api'
  * Links legados da API (ex.: /settings/integracao-serpro) são normalizados aqui.
  */
 export const SERPRO_INBOX_ROUTES = {
-  authorization: '/settings',
+  authorization: '/conta/escritorio',
   /** Importação manual de procurações removida — redireciona ao settings unificado. */
-  proxies: '/settings',
-  usage: '/settings/usage',
-  subscription: '/settings/subscription',
+  proxies: '/conta/escritorio',
+  usage: '/conta/consumo',
+  subscription: '/conta/assinatura',
   monitoring: '/monitoring',
   health: '/health',
   clients: '/clients',
@@ -42,7 +42,7 @@ export function normalizeTenantPath(path?: string | null): string | null {
   // Paths absolutos já canônicos
   if (
     trimmed === SERPRO_INBOX_ROUTES.authorization
-    || trimmed.startsWith('/settings/')
+    || trimmed.startsWith('/conta/')
     || trimmed.startsWith('/clients/')
     || trimmed.startsWith('/monitoring')
     || trimmed.startsWith('/health')

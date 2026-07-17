@@ -75,6 +75,17 @@ export interface MeResponse {
   data: MeUser
 }
 
+export interface AccountProfile {
+  id: number
+  name: string
+  email: string
+}
+
+export interface UpdateAccountProfileBody {
+  name: string
+  email: string
+}
+
 export interface AddressPayload {
   postal_code?: string | null
   street_type?: string | null

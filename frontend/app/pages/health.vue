@@ -246,13 +246,13 @@ onMounted(() => {
 
     <template #body>
       <p class="mb-4 text-sm text-muted">
-        Não há restore pelo painel; recuperação de backup permanece uma operação controlada.
+        Restore de backup fora do painel.
       </p>
 
       <div data-testid="ma-kill-switch-card" class="mb-4">
         <UPageCard
-          title="Kill switch — saídas MA"
-          description="Bloqueia novos jobs de consulta/sonda. Não apaga XML, cursores nNF nem auditoria."
+          title="Kill switch MA"
+          description="Bloqueia novas consultas. Não apaga dados."
           variant="subtle"
         >
           <div class="flex flex-wrap items-center gap-3 text-sm">

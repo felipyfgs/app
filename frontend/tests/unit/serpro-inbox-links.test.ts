@@ -7,10 +7,10 @@ import {
 
 describe('inbox deep-links SERPRO', () => {
   it('normaliza paths legados para rotas existentes', () => {
-    expect(normalizeTenantPath('/settings/integracao-serpro')).toBe('/settings')
-    expect(normalizeTenantPath('/settings/consumo')).toBe('/settings/usage')
+    expect(normalizeTenantPath('/settings/integracao-serpro')).toBe('/conta/escritorio')
+    expect(normalizeTenantPath('/settings/consumo')).toBe('/conta/consumo')
     expect(normalizeTenantPath('/clients/42/procuracoes')).toBe('/clients/42')
-    expect(normalizeTenantPath('/settings/proxies')).toBe('/settings')
+    expect(normalizeTenantPath('/settings/proxies')).toBe('/conta/escritorio')
     expect(normalizeTenantPath('/fiscal/runs/99')).toBe('/monitoring')
   })
 
@@ -27,7 +27,7 @@ describe('inbox deep-links SERPRO', () => {
       links: {},
       client_id: null,
       reasons: ['REFRESH_PROCURADOR_TOKEN']
-    })).toBe('/settings')
+    })).toBe('/conta/escritorio')
   })
 
   it('resolve procurações para detalhe do cliente (sem importação manual)', () => {
@@ -52,7 +52,7 @@ describe('inbox deep-links SERPRO', () => {
       links: { usage: '/settings/consumo' },
       client_id: null,
       reasons: []
-    })).toBe('/settings/usage')
+    })).toBe('/conta/consumo')
 
     expect(resolveInboxItemLink({
       type: 'query_blocked',

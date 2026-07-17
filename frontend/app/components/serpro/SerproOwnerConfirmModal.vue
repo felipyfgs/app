@@ -14,7 +14,6 @@ const open = defineModel<boolean>('open', { default: false })
 const props = defineProps<{
   action: string
   title?: string
-  description?: string
   /** Frase esperada vinda do servidor; se ausente, deriva da action. */
   expectedPhrase?: string | null
 }>()
@@ -93,13 +92,6 @@ async function submit() {
   >
     <template #body>
       <div class="flex flex-col gap-4 text-sm">
-        <UAlert
-          color="warning"
-          icon="i-lucide-shield-alert"
-          :title="description || 'Operação sensível da instalação'"
-          description="Exige reconfirmação de senha (15 min), frase exata, motivo e janela de mudança. Não reexibe PFX, OAuth secret, token ou vault."
-        />
-
         <UFormField
           label="Frase de confirmação"
           :hint="`Digite exatamente: ${phrase}`"

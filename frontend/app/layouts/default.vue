@@ -5,6 +5,7 @@ import {
   mainDestinations,
   quickActions,
   secondaryDestinations,
+  sidebarDestinationGroups,
   toNavigationItems
 } from '~/utils/navigation'
 
@@ -35,14 +36,13 @@ const closeSidebar = () => {
  * Items estáveis: só reconstroem quando path ou papéis mudam.
  * Recriar o array a cada tick de `me` faz o Accordion “piscar”.
  */
-const primaryItems = shallowRef<NavigationMenuItem[]>([])
+const primaryItems = shallowRef<NavigationMenuItem[][]>([])
 const secondaryItems = shallowRef<NavigationMenuItem[]>([])
 
 function rebuildNav() {
-  primaryItems.value = toNavigationItems(
-    mainDestinations(me.value, { path: route.path }),
-    closeSidebar
-  )
+  primaryItems.value = sidebarDestinationGroups(
+    mainDestinations(me.value, { path: route.path })
+  ).map(group => toNavigationItems(group, closeSidebar))
   secondaryItems.value = toNavigationItems(
     secondaryDestinations(),
     closeSidebar

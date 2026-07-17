@@ -11,6 +11,10 @@ import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 
+definePageMeta({
+  alias: ['/monitoring/clients/:clientId/:section']
+})
+
 type SectionKey
   = | 'overview'
     | 'runs'
@@ -50,16 +54,12 @@ const { sessionEpoch } = useDashboard()
 const clientId = computed(() => Number(route.params.clientId))
 const tab = computed({
   get: (): SectionKey => {
-    const raw = String(route.query.tab || 'overview')
+    const raw = String(route.params.section || 'overview')
     return isSectionKey(raw) ? raw : 'overview'
   },
   set: (value: SectionKey) => {
-    void router.replace({
-      query: {
-        ...route.query,
-        tab: value === 'overview' ? undefined : value
-      }
-    })
+    const base = `/monitoring/clients/${clientId.value}`
+    void router.replace(value === 'overview' ? base : `${base}/${value}`)
   }
 })
 
@@ -215,6 +215,244 @@ const snapshotColumns = [
             rel: 'noopener'
           }, 'Download')
         : '—'
+  }
+]
+
+/** Colunas das seções-lista: UTable sempre montada (#empty), padrão ModuleTable/customers. */
+const runColumns = [
+  {
+    id: 'run',
+    header: 'Execução',
+    cell: ({ row }: { row: { original: FiscalMonitoringRun } }) =>
+      `#${row.original.id} · ${row.original.system_code}/${row.original.service_code}`
+  },
+  {
+    id: 'when',
+    header: 'Quando',
+    cell: ({ row }: { row: { original: FiscalMonitoringRun } }) =>
+      formatDateTime(row.original.started_at || row.original.created_at)
+  },
+  {
+    id: 'detail',
+    header: 'Detalhe',
+    cell: ({ row }: { row: { original: FiscalMonitoringRun } }) =>
+      row.original.error_message || row.original.skip_reason || row.original.result || '—'
+  },
+  {
+    id: 'status',
+    header: 'Situação',
+    cell: ({ row }: { row: { original: FiscalMonitoringRun } }) =>
+      h(FiscalStatusBadge, { status: row.original.situation || row.original.status })
+  }
+]
+
+const findingColumns = [
+  {
+    id: 'title',
+    header: 'Finding',
+    cell: ({ row }: { row: { original: FiscalFinding } }) => row.original.title || row.original.code
+  },
+  {
+    id: 'detail',
+    header: 'Detalhe',
+    cell: ({ row }: { row: { original: FiscalFinding } }) => row.original.detail || '—'
+  },
+  {
+    id: 'status',
+    header: 'Situação',
+    cell: ({ row }: { row: { original: FiscalFinding } }) =>
+      h(FiscalStatusBadge, { status: row.original.situation || row.original.severity })
+  }
+]
+
+const pendingColumns = [
+  {
+    id: 'title',
+    header: 'Pendência',
+    cell: ({ row }: { row: { original: FiscalPendingItem } }) => row.original.title || row.original.code
+  },
+  {
+    id: 'due',
+    header: 'Vencimento',
+    cell: ({ row }: { row: { original: FiscalPendingItem } }) => formatDateTime(row.original.due_at)
+  },
+  {
+    id: 'detail',
+    header: 'Detalhe',
+    cell: ({ row }: { row: { original: FiscalPendingItem } }) => row.original.detail || '—'
+  },
+  {
+    id: 'status',
+    header: 'Situação',
+    cell: ({ row }: { row: { original: FiscalPendingItem } }) =>
+      h(FiscalStatusBadge, { status: row.original.situation || row.original.status })
+  }
+]
+
+const installmentColumns = [
+  {
+    id: 'order',
+    header: 'Pedido',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) => {
+      const id = row.original.id
+      const ext = row.original.external_order_id
+      return ext ? `Pedido #${id} · ${ext}` : `Pedido #${id}`
+    }
+  },
+  {
+    id: 'modality',
+    header: 'Modalidade',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      String(row.original.modality || row.original.modality_code || '—')
+  },
+  {
+    id: 'amount',
+    header: 'Valor',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      formatAmountCents(row.original.total_amount_cents as number | null)
+  },
+  {
+    id: 'status',
+    header: 'Situação',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      h(FiscalStatusBadge, { status: String(row.original.situation || row.original.status || '') })
+  }
+]
+
+const declarationColumns = [
+  {
+    id: 'name',
+    header: 'Obrigação',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      String(row.original.obligation_name || row.original.obligation_code || `Decl. #${row.original.id}`)
+  },
+  {
+    id: 'period',
+    header: 'Período',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      String(row.original.period_key || row.original.competence_period_key || '—')
+  },
+  {
+    id: 'due',
+    header: 'Vencimento',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      formatDateTime(String(row.original.due_at || '') || null)
+  },
+  {
+    id: 'status',
+    header: 'Situação',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      h(FiscalStatusBadge, {
+        status: String(row.original.delivery_status || row.original.situation || row.original.status || '')
+      })
+  }
+]
+
+const guideColumns = [
+  {
+    id: 'guide',
+    header: 'Guia',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      `Guia #${row.original.id} · ${row.original.competence_period_key || row.original.period_key || '—'}`
+  },
+  {
+    id: 'amount',
+    header: 'Valor',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      formatAmountCents(row.original.amount_cents as number | null)
+  },
+  {
+    id: 'emission',
+    header: 'Emissão',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) => {
+      const ver = row.original.current_version as Record<string, unknown> | undefined
+      return String(ver?.emission_status || row.original.emission_status || '—')
+    }
+  },
+  {
+    id: 'status',
+    header: 'Pagamento',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      h(FiscalStatusBadge, { status: String(row.original.payment_status || 'UNKNOWN') })
+  }
+]
+
+const fgtsColumns = [
+  {
+    id: 'competence',
+    header: 'Competência',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      String(row.original.competence_period_key || `Competência #${row.original.id}`)
+  },
+  {
+    id: 'closure',
+    header: 'Fechamento',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      String(row.original.closure_status || '—')
+  },
+  {
+    id: 'totalization',
+    header: 'Totalização',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      String(row.original.totalization_status || '—')
+  },
+  {
+    id: 'status',
+    header: 'Situação',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      h(FiscalStatusBadge, { status: String(row.original.situation || row.original.closure_status || '') })
+  }
+]
+
+const registrationColumns = [
+  {
+    id: 'key',
+    header: 'Vínculo',
+    cell: ({ row }: { row: { original: FiscalRegistrationLink } }) => row.original.link_key
+  },
+  {
+    id: 'updated',
+    header: 'Atualizado',
+    cell: ({ row }: { row: { original: FiscalRegistrationLink } }) =>
+      row.original.refreshed_at || row.original.observed_at || '—'
+  },
+  {
+    id: 'origin',
+    header: 'Origem',
+    cell: ({ row }: { row: { original: FiscalRegistrationLink } }) =>
+      row.original.is_simulated ? 'Simulado' : 'SERPRO'
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: ({ row }: { row: { original: FiscalRegistrationLink } }) =>
+      h(resolveComponent('UBadge'), { variant: 'subtle', label: String(row.original.status || '—') })
+  }
+]
+
+const taxProcessColumns = [
+  {
+    id: 'number',
+    header: 'Processo',
+    cell: ({ row }: { row: { original: FiscalTaxProcess } }) => row.original.process_number
+  },
+  {
+    id: 'updated',
+    header: 'Atualizado',
+    cell: ({ row }: { row: { original: FiscalTaxProcess } }) =>
+      row.original.refreshed_at || row.original.observed_at || '—'
+  },
+  {
+    id: 'origin',
+    header: 'Origem',
+    cell: ({ row }: { row: { original: FiscalTaxProcess } }) =>
+      row.original.is_simulated ? 'Simulado' : 'SERPRO'
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: ({ row }: { row: { original: FiscalTaxProcess } }) =>
+      h(resolveComponent('UBadge'), { variant: 'subtle', label: String(row.original.status || '—') })
   }
 ]
 
@@ -443,8 +681,15 @@ watch(tab, (next) => {
   void loadSection(next)
 })
 
-onMounted(() => {
-  void bootstrap()
+onMounted(async () => {
+  const legacyTab = String(route.query.tab || '')
+  if (Object.keys(route.query).length > 0) {
+    const base = `/monitoring/clients/${clientId.value}`
+    await router.replace(isSectionKey(legacyTab) && legacyTab !== 'overview'
+      ? `${base}/${legacyTab}`
+      : base)
+  }
+  await bootstrap()
 })
 </script>
 
@@ -551,329 +796,214 @@ onMounted(() => {
           </UAlert>
 
           <template v-else>
-            <!-- overview -->
+            <!-- overview: UTable sempre montada (customers.vue / ModuleTable) -->
             <UPageCard
               v-if="tab === 'overview'"
               title="Snapshots atuais"
               variant="subtle"
             >
-              <div
-                v-if="!snapshots.length"
-                class="text-sm text-muted"
-              >
-                PLACEHOLDER_Nenhum snapshot atual
-              </div>
               <UTable
-                v-else
                 :data="snapshots"
                 :columns="snapshotColumns"
                 :ui="DASHBOARD_TABLE_UI"
-              />
+                data-testid="client-section-table-overview"
+              >
+                <template #empty>
+                  <MonitoringTableEmptyState
+                    kind="empty"
+                    title="Nenhum snapshot atual"
+                  />
+                </template>
+              </UTable>
             </UPageCard>
 
-            <!-- runs -->
             <UPageCard
               v-else-if="tab === 'runs'"
               title="Execuções"
               variant="subtle"
             >
-              <div
-                v-if="!runs.length"
-                class="text-sm text-muted"
+              <UTable
+                :data="runs"
+                :columns="runColumns"
+                :ui="DASHBOARD_TABLE_UI"
+                data-testid="client-section-table-runs"
               >
-                PLACEHOLDER_Nenhuma execução
-              </div>
-              <ul
-                v-else
-                class="divide-y divide-default"
-              >
-                <li
-                  v-for="run in runs"
-                  :key="run.id"
-                  class="flex items-start justify-between gap-3 py-3 text-sm"
-                >
-                  <div>
-                    <p class="font-medium">
-                      #{{ run.id }} · {{ run.system_code }}/{{ run.service_code }}
-                    </p>
-                    <p class="text-xs text-muted">
-                      {{ formatDateTime(run.started_at || run.created_at) }}
-                      · {{ run.error_message || run.skip_reason || run.result || '—' }}
-                    </p>
-                  </div>
-                  <FiscalStatusBadge :status="run.situation || run.status" />
-                </li>
-              </ul>
+                <template #empty>
+                  <MonitoringTableEmptyState
+                    kind="empty"
+                    title="Nenhuma execução"
+                  />
+                </template>
+              </UTable>
             </UPageCard>
 
-            <!-- findings -->
             <UPageCard
               v-else-if="tab === 'findings'"
               title="Findings"
               variant="subtle"
             >
-              <div
-                v-if="!findings.length"
-                class="text-sm text-muted"
+              <UTable
+                :data="findings"
+                :columns="findingColumns"
+                :ui="DASHBOARD_TABLE_UI"
+                data-testid="client-section-table-findings"
               >
-                PLACEHOLDER_Nenhum finding ativo
-              </div>
-              <ul
-                v-else
-                class="divide-y divide-default"
-              >
-                <li
-                  v-for="f in findings"
-                  :key="f.id"
-                  class="flex items-start justify-between gap-3 py-3 text-sm"
-                >
-                  <div>
-                    <p class="font-medium">
-                      {{ f.title || f.code }}
-                    </p>
-                    <p class="text-xs text-muted">
-                      {{ f.detail || '—' }}
-                    </p>
-                  </div>
-                  <FiscalStatusBadge :status="f.situation || f.severity" />
-                </li>
-              </ul>
+                <template #empty>
+                  <MonitoringTableEmptyState
+                    kind="empty"
+                    title="Nenhum finding ativo"
+                  />
+                </template>
+              </UTable>
             </UPageCard>
 
-            <!-- pending -->
             <UPageCard
               v-else-if="tab === 'pending'"
               title="Pendências"
               variant="subtle"
             >
-              <div
-                v-if="!pending.length"
-                class="text-sm text-muted"
+              <UTable
+                :data="pending"
+                :columns="pendingColumns"
+                :ui="DASHBOARD_TABLE_UI"
+                data-testid="client-section-table-pending"
               >
-                PLACEHOLDER_Nenhuma pendência aberta
-              </div>
-              <ul
-                v-else
-                class="divide-y divide-default"
-              >
-                <li
-                  v-for="p in pending"
-                  :key="p.id"
-                  class="flex items-start justify-between gap-3 py-3 text-sm"
-                >
-                  <div>
-                    <p class="font-medium">
-                      {{ p.title || p.code }}
-                    </p>
-                    <p class="text-xs text-muted">
-                      Venc.: {{ formatDateTime(p.due_at) }} · {{ p.detail || '—' }}
-                    </p>
-                  </div>
-                  <FiscalStatusBadge :status="p.situation || p.status" />
-                </li>
-              </ul>
+                <template #empty>
+                  <MonitoringTableEmptyState
+                    kind="empty"
+                    title="Nenhuma pendência aberta"
+                  />
+                </template>
+              </UTable>
             </UPageCard>
 
-            <!-- installments -->
             <UPageCard
               v-else-if="tab === 'installments'"
               title="Parcelamentos"
               variant="subtle"
             >
-              <div
-                v-if="!installments.length"
-                class="text-sm text-muted"
+              <UTable
+                :data="installments"
+                :columns="installmentColumns"
+                :ui="DASHBOARD_TABLE_UI"
+                data-testid="client-section-table-installments"
               >
-                PLACEHOLDER_Nenhum parcelamento
-              </div>
-              <ul
-                v-else
-                class="divide-y divide-default"
-              >
-                <li
-                  v-for="order in installments"
-                  :key="String(order.id)"
-                  class="flex items-start justify-between gap-3 py-3 text-sm"
-                >
-                  <div>
-                    <p class="font-medium">
-                      Pedido #{{ order.id }}
-                      <span v-if="order.external_order_id">
-                        · {{ order.external_order_id }}
-                      </span>
-                    </p>
-                    <p class="text-xs text-muted">
-                      {{ order.modality || order.modality_code || '—' }}
-                      · {{ formatAmountCents(order.total_amount_cents as number | null) }}
-                    </p>
-                  </div>
-                  <FiscalStatusBadge :status="String(order.situation || order.status || '')" />
-                </li>
-              </ul>
+                <template #empty>
+                  <MonitoringTableEmptyState
+                    kind="empty"
+                    title="Nenhum parcelamento"
+                  />
+                </template>
+              </UTable>
               <div class="mt-3">
                 <UButton
                   size="sm"
                   color="neutral"
                   variant="soft"
-                  :to="`/monitoring/installments?client_id=${clientId}`"
+                  to="/monitoring/installments"
                   label="Abrir carteira de parcelamentos"
                 />
               </div>
             </UPageCard>
 
-            <!-- declarations -->
             <UPageCard
               v-else-if="tab === 'declarations'"
               title="Declarações"
               variant="subtle"
             >
-              <div
-                v-if="!declarations.length"
-                class="text-sm text-muted"
+              <UTable
+                :data="declarations"
+                :columns="declarationColumns"
+                :ui="DASHBOARD_TABLE_UI"
+                data-testid="client-section-table-declarations"
               >
-                PLACEHOLDER_Nenhuma declaração
-              </div>
-              <ul
-                v-else
-                class="divide-y divide-default"
-              >
-                <li
-                  v-for="d in declarations"
-                  :key="String(d.id)"
-                  class="flex items-start justify-between gap-3 py-3 text-sm"
-                >
-                  <div>
-                    <p class="font-medium">
-                      {{ d.obligation_name || d.obligation_code || `Decl. #${d.id}` }}
-                    </p>
-                    <p class="text-xs text-muted">
-                      {{ d.period_key || d.competence_period_key || '—' }}
-                      · venc. {{ formatDateTime(String(d.due_at || '') || null) }}
-                    </p>
-                  </div>
-                  <FiscalStatusBadge
-                    :status="String(d.delivery_status || d.situation || d.status || '')"
+                <template #empty>
+                  <MonitoringTableEmptyState
+                    kind="empty"
+                    title="Nenhuma declaração"
                   />
-                </li>
-              </ul>
+                </template>
+              </UTable>
               <div class="mt-3">
                 <UButton
                   size="sm"
                   color="neutral"
                   variant="soft"
-                  :to="`/monitoring/declarations?client_id=${clientId}`"
+                  to="/monitoring/declarations"
                   label="Abrir central de declarações"
                 />
               </div>
             </UPageCard>
 
-            <!-- guides -->
             <UPageCard
               v-else-if="tab === 'guides'"
               title="Guias"
               variant="subtle"
             >
-              <div
-                v-if="!guides.length"
-                class="text-sm text-muted"
+              <UTable
+                :data="guides"
+                :columns="guideColumns"
+                :ui="DASHBOARD_TABLE_UI"
+                data-testid="client-section-table-guides"
               >
-                PLACEHOLDER_Nenhuma guia
-              </div>
-              <ul
-                v-else
-                class="divide-y divide-default"
-              >
-                <li
-                  v-for="g in guides"
-                  :key="String(g.id)"
-                  class="flex items-start justify-between gap-3 py-3 text-sm"
-                >
-                  <div>
-                    <p class="font-medium">
-                      Guia #{{ g.id }} · {{ g.competence_period_key || g.period_key || '—' }}
-                    </p>
-                    <p class="text-xs text-muted">
-                      {{ formatAmountCents(g.amount_cents as number | null) }}
-                      · emissão
-                      {{
-                        (g.current_version as Record<string, unknown> | undefined)?.emission_status
-                          || g.emission_status
-                          || '—'
-                      }}
-                    </p>
-                  </div>
-                  <div class="flex flex-col items-end gap-1">
-                    <FiscalStatusBadge :status="String(g.payment_status || 'UNKNOWN')" />
-                  </div>
-                </li>
-              </ul>
+                <template #empty>
+                  <MonitoringTableEmptyState
+                    kind="empty"
+                    title="Nenhuma guia"
+                  />
+                </template>
+              </UTable>
               <div class="mt-3">
                 <UButton
                   size="sm"
                   color="neutral"
                   variant="soft"
-                  :to="`/monitoring/guides?client_id=${clientId}`"
+                  to="/monitoring/guides"
                   label="Abrir central de guias"
                 />
               </div>
             </UPageCard>
 
-            <!-- fgts (lazy + link para carteira) -->
             <UPageCard
               v-else-if="tab === 'fgts'"
               title="FGTS / eSocial"
               variant="subtle"
             >
-              <div
-                v-if="!fgtsCompetences.length"
-                class="text-sm text-muted"
+              <UTable
+                :data="fgtsCompetences"
+                :columns="fgtsColumns"
+                :ui="DASHBOARD_TABLE_UI"
+                data-testid="client-section-table-fgts"
               >
-                PLACEHOLDER_Nenhuma competência FGTS
-              </div>
-              <ul
-                v-else
-                class="divide-y divide-default"
-              >
-                <li
-                  v-for="c in fgtsCompetences"
-                  :key="String(c.id)"
-                  class="flex items-start justify-between gap-3 py-3 text-sm"
-                >
-                  <div>
-                    <p class="font-medium">
-                      {{ c.competence_period_key || `Competência #${c.id}` }}
-                    </p>
-                    <p class="text-xs text-muted">
-                      Fechamento: {{ c.closure_status || '—' }}
-                      · Totalização: {{ c.totalization_status || '—' }}
-                    </p>
-                  </div>
-                  <FiscalStatusBadge :status="String(c.situation || c.closure_status || '')" />
-                </li>
-              </ul>
+                <template #empty>
+                  <MonitoringTableEmptyState
+                    kind="empty"
+                    title="Nenhuma competência FGTS"
+                  />
+                </template>
+              </UTable>
               <div class="mt-3">
                 <UButton
                   size="sm"
                   color="neutral"
                   variant="soft"
-                  :to="`/monitoring/fgts?client_id=${clientId}`"
+                  to="/monitoring/fgts"
                   label="Abrir carteira FGTS"
                 />
               </div>
             </UPageCard>
 
-            <!-- sitfis (lazy + link) -->
+            <!-- sitfis: painel detalhe (não lista) — casca sempre visível -->
             <UPageCard
               v-else-if="tab === 'sitfis'"
               title="Situação fiscal (SITFIS)"
               variant="subtle"
             >
-              <div
+              <MonitoringTableEmptyState
                 v-if="!sitfis"
-                class="text-sm text-muted"
-              >
-                PLACEHOLDER_Nenhum snapshot SITFIS
-              </div>
+                kind="empty"
+                title="Nenhum snapshot SITFIS"
+              />
               <dl
                 v-else
                 class="grid gap-2 text-sm sm:grid-cols-2"
@@ -910,103 +1040,69 @@ onMounted(() => {
                   size="sm"
                   color="neutral"
                   variant="soft"
-                  :to="`/monitoring/sitfis?client_id=${clientId}`"
+                  to="/monitoring/sitfis"
                   label="Abrir carteira SITFIS"
                 />
               </div>
             </UPageCard>
 
-            <!-- registrations -->
             <UPageCard
               v-else-if="tab === 'registrations'"
               title="Cadastro e vínculos"
               variant="subtle"
               data-testid="client-registrations-section"
             >
-              <div
-                v-if="!registrationLinks.length"
-                class="text-sm text-muted"
+              <UTable
+                :data="registrationLinks"
+                :columns="registrationColumns"
+                :ui="DASHBOARD_TABLE_UI"
+                data-testid="client-section-table-registrations"
               >
-                Nenhum vínculo projetado para este cliente.
-              </div>
-              <ul
-                v-else
-                class="divide-y divide-default"
-              >
-                <li
-                  v-for="link in registrationLinks"
-                  :key="String(link.id)"
-                  class="flex items-start justify-between gap-3 py-3 text-sm"
-                >
-                  <div>
-                    <p class="font-medium">
-                      {{ link.link_key }}
-                    </p>
-                    <p class="text-xs text-muted">
-                      Atualizado: {{ link.refreshed_at || link.observed_at || '—' }}
-                      · {{ link.is_simulated ? 'Simulado' : 'SERPRO' }}
-                    </p>
-                  </div>
-                  <UBadge
-                    variant="subtle"
-                    :label="String(link.status || '—')"
+                <template #empty>
+                  <MonitoringTableEmptyState
+                    kind="empty"
+                    title="Nenhum vínculo projetado"
+                    description="Nenhum vínculo projetado para este cliente."
                   />
-                </li>
-              </ul>
+                </template>
+              </UTable>
               <div class="mt-3">
                 <UButton
                   size="sm"
                   color="neutral"
                   variant="soft"
-                  :to="`/monitoring/registrations`"
+                  to="/monitoring/registrations"
                   label="Abrir carteira de vínculos"
                 />
               </div>
             </UPageCard>
 
-            <!-- tax processes -->
             <UPageCard
               v-else-if="tab === 'tax_processes'"
               title="Processos fiscais"
               variant="subtle"
               data-testid="client-tax-processes-section"
             >
-              <div
-                v-if="!taxProcesses.length"
-                class="text-sm text-muted"
+              <UTable
+                :data="taxProcesses"
+                :columns="taxProcessColumns"
+                :ui="DASHBOARD_TABLE_UI"
+                data-testid="client-section-table-tax-processes"
               >
-                Nenhum processo projetado para este cliente.
-              </div>
-              <ul
-                v-else
-                class="divide-y divide-default"
-              >
-                <li
-                  v-for="proc in taxProcesses"
-                  :key="String(proc.id)"
-                  class="flex items-start justify-between gap-3 py-3 text-sm"
-                >
-                  <div>
-                    <p class="font-medium">
-                      {{ proc.process_number }}
-                    </p>
-                    <p class="text-xs text-muted">
-                      Atualizado: {{ proc.refreshed_at || proc.observed_at || '—' }}
-                      · {{ proc.is_simulated ? 'Simulado' : 'SERPRO' }}
-                    </p>
-                  </div>
-                  <UBadge
-                    variant="subtle"
-                    :label="String(proc.status || '—')"
+                <template #empty>
+                  <MonitoringTableEmptyState
+                    kind="empty"
+                    title="Nenhum processo projetado"
+                    description="Nenhum processo projetado para este cliente."
                   />
-                </li>
-              </ul>
+                </template>
+              </UTable>
               <div class="mt-3">
                 <UButton
                   size="sm"
                   color="neutral"
                   variant="soft"
-                  :to="`/monitoring/tax-processes`"
+                  to="/monitoring/tax-processes"
                   label="Abrir carteira de processos"
                 />
               </div>
@@ -1018,21 +1114,21 @@ onMounted(() => {
               size="sm"
               color="neutral"
               variant="soft"
-              :to="`/monitoring/mailbox?client_id=${clientId}`"
+              to="/monitoring/mailbox"
               label="Caixa postal"
             />
             <UButton
               size="sm"
               color="neutral"
               variant="soft"
-              :to="`/monitoring/dctfweb?client_id=${clientId}`"
+              to="/monitoring/dctfweb/dctfweb"
               label="DCTFWeb"
             />
             <UButton
               size="sm"
               color="neutral"
               variant="soft"
-              :to="`/monitoring/simples-mei?client_id=${clientId}`"
+              to="/monitoring/simples-mei/pgdasd"
               label="Simples/MEI"
             />
             <UButton

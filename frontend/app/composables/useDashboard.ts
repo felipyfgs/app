@@ -81,12 +81,12 @@ const _useDashboard = () => {
     'g-m': () => router.push('/monitoring'),
     'g-w': () => router.push('/work'),
     'g-k': () => router.push('/work/calendar'),
-    'g-u': () => router.push('/settings/usage'),
+    'g-u': () => router.push('/conta/consumo'),
     'g-a': () => {
       if (canAccessPlatformAdmin.value) {
         void router.push('/admin')
       } else if (canAccessAdministration.value) {
-        void router.push('/settings')
+        void router.push('/conta/escritorio')
       }
     },
     'n': () => {

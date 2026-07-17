@@ -35,8 +35,9 @@ const officeLabel = computed(() => me.value?.current_office?.name || me.value?.o
 const officeSlug = computed(() => me.value?.current_office?.slug || me.value?.office?.slug || '')
 const officeId = computed(() => me.value?.current_office?.id ?? me.value?.office?.id ?? null)
 const isPlatform = computed(() => isPlatformAdmin(me.value))
+const identityIcon = computed(() => privileged.value ? 'i-lucide-shield' : 'i-lucide-building-2')
 
-/** Texto completo para tooltip/alt quando a sidebar está recolhida. */
+/** Texto completo para tooltip quando a sidebar está recolhida. */
 const displayLabel = computed(() => {
   if (privileged.value && officeLabel.value) {
     return `PLATFORM_ADMIN · ${officeLabel.value}`
@@ -47,14 +48,6 @@ const displayLabel = computed(() => {
 const accessibleLabel = computed(() => privileged.value
   ? `Perfil PLATFORM_ADMIN. Escritório ativo: ${officeLabel.value}. Abrir seletor global de escritórios`
   : `Escritório ativo: ${officeLabel.value}${multiMembership.value ? '. Abrir seletor entre memberships autorizadas' : '. Única membership da sessão'}`)
-
-const selectedOffice = computed(() => ({
-  label: officeLabel.value,
-  avatar: {
-    alt: displayLabel.value,
-    icon: (privileged.value ? 'i-lucide-shield' : 'i-lucide-building-2') as 'i-lucide-shield' | 'i-lucide-building-2'
-  }
-}))
 
 const multiMembership = computed(() => memberships.value.length > 1)
 const switching = computed(() => membershipSwitching.value || platformSwitching.value)
@@ -79,7 +72,7 @@ const selectorOptions = computed<OfficeSelectorOption[]>(() => {
       .map(o => ({
         id: o.id,
         label: o.name || `Escritório #${o.id}`,
-        description: ['Escritório', o.slug, o.status].filter(Boolean).join(' · '),
+        description: [o.slug, `#${o.id}`].filter(Boolean).join(' · '),
         avatar: {
           alt: o.name || 'Escritório',
           icon: 'i-lucide-building-2' as const
@@ -175,13 +168,13 @@ watch(isPlatform, (v) => {
       id: officeSearchId
     }"
     :content="{ align: 'start', side: 'bottom', sideOffset: 6, collisionPadding: 12 }"
-    :avatar="selectedOffice.avatar"
-    :placeholder="officeLabel"
-    trailing-icon="i-lucide-chevrons-up-down"
+    :icon="identityIcon"
+    :placeholder="collapsed ? undefined : officeLabel"
+    :trailing-icon="collapsed ? undefined : 'i-lucide-chevrons-up-down'"
     color="neutral"
     variant="ghost"
-    :loading="loading || switching"
     :disabled="switching"
+    :aria-busy="loading || switching"
     :class="collapsed ? 'size-8 justify-center p-0' : 'w-full py-2'"
     :ui="{
       base: 'data-[state=open]:bg-elevated',
@@ -206,9 +199,10 @@ watch(isPlatform, (v) => {
   >
     <template #default>
       <span
-        v-if="!collapsed"
         data-slot="value"
         class="pointer-events-none truncate text-left"
+        :class="collapsed && 'hidden'"
+        :aria-hidden="collapsed || undefined"
       >
         {{ officeLabel }}
       </span>

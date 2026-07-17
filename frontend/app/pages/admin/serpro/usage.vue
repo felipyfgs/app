@@ -7,6 +7,13 @@ import type { TableColumn } from '@nuxt/ui'
 import type { SerproUsageConsolidation, SerproUsageReconciliation } from '~/types/api'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
+definePageMeta({
+  redirect: {
+    path: '/admin/serpro',
+    query: { section: 'usage' }
+  }
+})
+
 const api = useApi()
 const toast = useToast()
 const { sessionEpoch } = useDashboard()
@@ -17,8 +24,25 @@ const month = ref(now.getMonth() + 1)
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const consolidation = ref<SerproUsageConsolidation | null>(null)
-const budget = ref<Record<string, unknown> | null>(null)
+const budgetRows = ref<SerproBudgetRow[]>([])
+const budgetLoaded = ref(false)
 const budgetMissing = ref(false)
+const periodLoaded = ref(false)
+const reconOpen = ref(false)
+
+interface SerproBudgetRow {
+  id?: number
+  scope?: string
+  office_id?: number | null
+  environment?: string
+  limit_micros?: number
+  reserved_micros?: number
+  consumed_micros?: number
+  remaining_micros?: number
+  cycle_code?: string
+  operation_key?: string | null
+  is_canary?: boolean
+}
 
 const reconForm = reactive({
   official_total_cost_micros: 0,
@@ -27,6 +51,48 @@ const reconForm = reactive({
 })
 const saving = ref(false)
 
+function formatMicros(value?: number | null) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—'
+  return new Intl.NumberFormat('pt-BR').format(Number(value))
+}
+
+function reconciliationColor(status?: string | null) {
+  const normalized = String(status || '').toUpperCase()
+  if (['MATCHED', 'RECONCILED', 'OK'].includes(normalized)) return 'success' as const
+  if (['DIVERGENT', 'MISMATCH', 'FAILED'].includes(normalized)) return 'error' as const
+  if (normalized) return 'warning' as const
+  return 'neutral' as const
+}
+
+const budgetColumns: TableColumn<SerproBudgetRow>[] = [
+  {
+    id: 'scope',
+    header: 'Escopo',
+    cell: ({ row }) => [
+      row.original.scope,
+      row.original.office_id ? `Office #${row.original.office_id}` : null,
+      row.original.is_canary ? 'Canário' : null
+    ].filter(Boolean).join(' · ') || '—'
+  },
+  { accessorKey: 'environment', header: 'Ambiente' },
+  { accessorKey: 'cycle_code', header: 'Ciclo' },
+  {
+    id: 'limit',
+    header: 'Limite (µBRL)',
+    cell: ({ row }) => formatMicros(row.original.limit_micros)
+  },
+  {
+    id: 'consumed',
+    header: 'Consumido (µBRL)',
+    cell: ({ row }) => formatMicros(row.original.consumed_micros)
+  },
+  {
+    id: 'remaining',
+    header: 'Disponível (µBRL)',
+    cell: ({ row }) => formatMicros(row.original.remaining_micros)
+  }
+]
+
 const tenantColumns: TableColumn<{ office_id: number, entry_count?: number, total_quantity?: number, total_estimated_cost_micros?: number }>[] = [
   { accessorKey: 'office_id', header: 'Office ID' },
   { accessorKey: 'entry_count', header: 'Lançamentos' },
@@ -34,29 +100,65 @@ const tenantColumns: TableColumn<{ office_id: number, entry_count?: number, tota
   {
     id: 'cost',
     header: 'Custo est. (µBRL)',
-    cell: ({ row }) => row.original.total_estimated_cost_micros ?? '—'
+    cell: ({ row }) => formatMicros(row.original.total_estimated_cost_micros)
   }
 ]
 
 const reconColumns: TableColumn<SerproUsageReconciliation>[] = [
   { accessorKey: 'id', header: 'ID' },
   { accessorKey: 'status', header: 'Status' },
-  { accessorKey: 'official_total_cost_micros', header: 'Oficial (µ)' },
-  { accessorKey: 'estimated_total_cost_micros', header: 'Estimado (µ)' },
-  { accessorKey: 'difference_micros', header: 'Diferença' },
+  {
+    id: 'official',
+    header: 'Oficial (µBRL)',
+    cell: ({ row }) => formatMicros(row.original.official_total_cost_micros)
+  },
+  {
+    id: 'estimated',
+    header: 'Estimado (µBRL)',
+    cell: ({ row }) => formatMicros(row.original.estimated_total_cost_micros)
+  },
+  {
+    id: 'difference',
+    header: 'Diferença (µBRL)',
+    cell: ({ row }) => formatMicros(row.original.difference_micros)
+  },
   { accessorKey: 'official_reference', header: 'Referência' }
 ]
 
 const tenants = computed(() => consolidation.value?.by_tenant || [])
 const reconciliations = computed(() => consolidation.value?.reconciliations || [])
+const periodValid = computed(() => (
+  Number.isInteger(Number(year.value))
+  && Number(year.value) >= 2020
+  && Number(year.value) <= 2100
+  && Number.isInteger(Number(month.value))
+  && Number(month.value) >= 1
+  && Number(month.value) <= 12
+))
 
 let loadSeq = 0
 
+function clearPeriodSnapshot() {
+  loading.value = false
+  consolidation.value = null
+  budgetRows.value = []
+  budgetLoaded.value = false
+  budgetMissing.value = false
+  periodLoaded.value = false
+  loadError.value = null
+  reconOpen.value = false
+}
+
 async function load() {
+  if (!periodValid.value) {
+    toast.add({ title: 'Informe um ano entre 2020 e 2100 e um mês entre 1 e 12.', color: 'warning' })
+    return
+  }
+
   const seq = ++loadSeq
   const epoch = sessionEpoch.value
+  clearPeriodSnapshot()
   loading.value = true
-  loadError.value = null
   try {
     const [consRes, budgetRes] = await Promise.allSettled([
       api.platform.serpro.usage.consolidation({ year: year.value, month: month.value }),
@@ -66,16 +168,22 @@ async function load() {
 
     if (consRes.status === 'fulfilled') {
       consolidation.value = consRes.value.data
+      periodLoaded.value = true
     } else {
       consolidation.value = null
+      periodLoaded.value = false
       loadError.value = apiErrorMessage(consRes.reason, 'Falha ao carregar consolidação.')
     }
 
     if (budgetRes.status === 'fulfilled') {
-      budget.value = budgetRes.value.data
+      budgetRows.value = Array.isArray(budgetRes.value.data)
+        ? budgetRes.value.data as SerproBudgetRow[]
+        : []
+      budgetLoaded.value = true
       budgetMissing.value = false
     } else {
-      budget.value = null
+      budgetRows.value = []
+      budgetLoaded.value = false
       budgetMissing.value = true
     }
   } finally {
@@ -86,6 +194,7 @@ async function load() {
 }
 
 async function recompute() {
+  if (!periodLoaded.value) return
   saving.value = true
   try {
     await api.platform.serpro.usage.recompute({ year: year.value, month: month.value })
@@ -99,6 +208,7 @@ async function recompute() {
 }
 
 async function registerRecon() {
+  if (!periodLoaded.value) return
   if (reconForm.official_total_cost_micros < 0) {
     toast.add({ title: 'Informe o total oficial em micros de BRL.', color: 'warning' })
     return
@@ -115,6 +225,7 @@ async function registerRecon() {
     toast.add({ title: 'Conciliação registrada', color: 'success' })
     reconForm.official_reference = ''
     reconForm.notes = ''
+    reconOpen.value = false
     await load()
   } catch (caught) {
     toast.add({ title: apiErrorMessage(caught, 'Falha ao registrar conciliação.'), color: 'error' })
@@ -124,32 +235,52 @@ async function registerRecon() {
 }
 
 watch([year, month], () => {
-  void load()
+  loadSeq++
+  clearPeriodSnapshot()
 })
 watch(sessionEpoch, () => {
-  consolidation.value = null
+  clearPeriodSnapshot()
   void load()
 })
 onMounted(load)
 </script>
 
 <template>
-  <div data-testid="admin-serpro-usage">
+  <div
+    class="flex flex-col gap-4 sm:gap-6"
+    data-testid="admin-serpro-usage"
+  >
     <UPageCard
-      title="Orçamento, preços e conciliação"
-      description="Consolidação global e fatura oficial. Sem PII fiscal de tenants — apenas office_id e agregados."
+      title="Consumo e conciliação"
       variant="naked"
       orientation="horizontal"
-      class="mb-4"
     >
-      <div class="flex w-full flex-wrap items-end gap-2 lg:ms-auto lg:w-fit">
+      <UButton
+        class="w-fit lg:ms-auto"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-refresh-cw"
+        label="Aplicar período"
+        :disabled="!periodValid"
+        :loading="loading"
+        @click="load"
+      />
+    </UPageCard>
+
+    <UPageCard
+      variant="subtle"
+      title="Período de análise"
+    >
+      <div class="grid gap-3 sm:grid-cols-2">
         <UFormField label="Ano">
           <UInput
             v-model.number="year"
             type="number"
             min="2020"
             max="2100"
-            class="w-28"
+            :disabled="loading || saving"
+            class="w-full"
+            aria-label="Ano da consolidação"
           />
         </UFormField>
         <UFormField label="Mês">
@@ -158,25 +289,11 @@ onMounted(load)
             type="number"
             min="1"
             max="12"
-            class="w-24"
+            :disabled="loading || saving"
+            class="w-full"
+            aria-label="Mês da consolidação"
           />
         </UFormField>
-        <UButton
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-refresh-cw"
-          label="Atualizar"
-          :loading="loading"
-          @click="load"
-        />
-        <UButton
-          color="neutral"
-          variant="soft"
-          icon="i-lucide-calculator"
-          label="Recomputar"
-          :loading="saving"
-          @click="recompute"
-        />
       </div>
     </UPageCard>
 
@@ -185,117 +302,193 @@ onMounted(load)
       color="error"
       icon="i-lucide-circle-x"
       :title="loadError"
-      class="mb-4"
+      :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
     />
 
-    <div class="flex flex-col gap-4 sm:gap-6">
+    <section>
       <UPageCard
-        variant="subtle"
-        title="Orçamento global"
-      >
-        <div
-          v-if="budget"
-          class="text-sm"
-        >
-          <pre class="overflow-x-auto rounded bg-elevated p-3 text-xs text-muted">{{ JSON.stringify(budget, null, 2) }}</pre>
-        </div>
-        <p
-          v-else-if="budgetMissing"
-          class="text-sm text-muted"
-        >
-          Endpoint de budgets ainda não disponível — exibindo apenas consolidação de uso.
-        </p>
-        <p
-          v-else
-          class="text-sm text-muted"
-        >
-          Sem dados de orçamento.
-        </p>
-      </UPageCard>
+        title="Orçamentos ativos"
+        variant="naked"
+        class="mb-4"
+      />
 
       <UPageCard
+        v-if="budgetRows.length"
         variant="subtle"
-        title="Por tenant (agregado)"
+        :ui="{ container: 'p-0 sm:p-0 gap-y-0' }"
       >
-        <div class="mb-2 flex flex-wrap gap-2">
-          <SerproProvenanceBadge code="estimado" />
-          <span class="text-xs text-muted">Custos são estimados até conciliação oficial.</span>
-        </div>
-        <UTable
-          :data="tenants"
-          :loading="loading"
-          :columns="tenantColumns"
-          :ui="DASHBOARD_TABLE_UI"
-        />
-        <p
-          v-if="!loading && !tenants.length"
-          class="mt-2 text-sm text-muted"
-        >
-          Sem consumo no período.
-        </p>
-      </UPageCard>
-
-      <UPageCard
-        variant="subtle"
-        title="Conciliações"
-      >
-        <div class="mb-3 flex flex-wrap gap-2">
-          <SerproProvenanceBadge code="conciliado" />
-        </div>
-        <UTable
-          :data="reconciliations"
-          :loading="loading"
-          :columns="reconColumns"
-          :ui="DASHBOARD_TABLE_UI"
-        />
-      </UPageCard>
-
-      <UPageCard
-        variant="subtle"
-        title="Registrar fatura oficial"
-        description="Importa total oficial em micros de BRL para o ciclo."
-      >
-        <div class="grid gap-3 sm:grid-cols-2">
-          <UFormField
-            label="Total oficial (micros BRL)"
-            required
-          >
-            <UInput
-              v-model.number="reconForm.official_total_cost_micros"
-              type="number"
-              min="0"
-              class="w-full"
-            />
-          </UFormField>
-          <UFormField label="Referência oficial">
-            <UInput
-              v-model="reconForm.official_reference"
-              class="w-full"
-              placeholder="Nº fatura / ciclo"
-              autocomplete="off"
-            />
-          </UFormField>
-          <UFormField
-            label="Notas"
-            class="sm:col-span-2"
-          >
-            <UTextarea
-              v-model="reconForm.notes"
-              class="w-full"
-              :rows="2"
-            />
-          </UFormField>
-        </div>
-        <div class="mt-4 flex justify-end">
-          <UButton
-            color="primary"
-            label="Registrar conciliação"
-            icon="i-lucide-scale"
-            :loading="saving"
-            @click="registerRecon"
+        <div class="overflow-x-auto">
+          <UTable
+            :data="budgetRows"
+            :loading="loading"
+            :columns="budgetColumns"
+            :ui="DASHBOARD_TABLE_UI"
+            class="min-w-3xl"
           />
         </div>
       </UPageCard>
-    </div>
+
+      <UEmpty
+        v-else-if="budgetMissing"
+        icon="i-lucide-server-off"
+        title="Orçamentos indisponíveis"
+      />
+
+      <UEmpty
+        v-else-if="budgetLoaded"
+        icon="i-lucide-wallet-cards"
+        title="Nenhum orçamento ativo"
+      />
+    </section>
+
+    <section>
+      <UPageCard
+        title="Consumo por Office"
+        variant="naked"
+        orientation="horizontal"
+        class="mb-4"
+      >
+        <UButton
+          class="w-fit lg:ms-auto"
+          color="neutral"
+          variant="soft"
+          icon="i-lucide-calculator"
+          label="Recomputar consolidação"
+          :disabled="!periodLoaded || loading"
+          :loading="saving"
+          @click="recompute"
+        />
+      </UPageCard>
+
+      <UPageCard
+        v-if="loading || tenants.length"
+        variant="subtle"
+        :ui="{ container: 'p-0 sm:p-0 gap-y-0' }"
+      >
+        <template #header>
+          <div class="flex items-center gap-2 px-4 py-3">
+            <SerproProvenanceBadge code="estimado" />
+            <span class="text-xs text-muted">Valores em micros de BRL.</span>
+          </div>
+        </template>
+        <div class="overflow-x-auto">
+          <UTable
+            :data="tenants"
+            :loading="loading"
+            :columns="tenantColumns"
+            :ui="DASHBOARD_TABLE_UI"
+            class="min-w-2xl"
+          />
+        </div>
+      </UPageCard>
+
+      <UEmpty
+        v-else-if="periodLoaded"
+        icon="i-lucide-chart-no-axes-column"
+        title="Sem consumo no período"
+      />
+    </section>
+
+    <section>
+      <UPageCard
+        title="Conciliação oficial"
+        variant="naked"
+        orientation="horizontal"
+        class="mb-4"
+      >
+        <UModal
+          v-model:open="reconOpen"
+          title="Registrar fatura oficial"
+        >
+          <UButton
+            class="w-fit lg:ms-auto"
+            icon="i-lucide-scale"
+            label="Registrar fatura"
+            :disabled="!periodLoaded || loading"
+          />
+
+          <template #body>
+            <div class="space-y-4">
+              <UFormField
+                label="Total oficial (micros BRL)"
+                required
+              >
+                <UInput
+                  v-model.number="reconForm.official_total_cost_micros"
+                  type="number"
+                  min="0"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Referência oficial">
+                <UInput
+                  v-model="reconForm.official_reference"
+                  class="w-full"
+                  placeholder="Nº fatura / ciclo"
+                  autocomplete="off"
+                />
+              </UFormField>
+              <UFormField label="Notas">
+                <UTextarea
+                  v-model="reconForm.notes"
+                  class="w-full"
+                  :rows="3"
+                />
+              </UFormField>
+              <div class="flex justify-end gap-2">
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  label="Cancelar"
+                  @click="() => { reconOpen = false }"
+                />
+                <UButton
+                  label="Registrar conciliação"
+                  icon="i-lucide-scale"
+                  :loading="saving"
+                  @click="registerRecon"
+                />
+              </div>
+            </div>
+          </template>
+        </UModal>
+      </UPageCard>
+
+      <UPageCard
+        v-if="loading || reconciliations.length"
+        variant="subtle"
+        :ui="{ container: 'p-0 sm:p-0 gap-y-0' }"
+      >
+        <template #header>
+          <div class="flex items-center gap-2 px-4 py-3">
+            <SerproProvenanceBadge code="conciliado" />
+          </div>
+        </template>
+        <div class="overflow-x-auto">
+          <UTable
+            :data="reconciliations"
+            :loading="loading"
+            :columns="reconColumns"
+            :ui="DASHBOARD_TABLE_UI"
+            class="min-w-4xl"
+          >
+            <template #status-cell="{ row }">
+              <UBadge
+                :color="reconciliationColor(row.original.status)"
+                variant="subtle"
+              >
+                {{ row.original.status || '—' }}
+              </UBadge>
+            </template>
+          </UTable>
+        </div>
+      </UPageCard>
+
+      <UEmpty
+        v-else-if="periodLoaded"
+        icon="i-lucide-scale"
+        title="Nenhuma conciliação registrada"
+      />
+    </section>
   </div>
 </template>

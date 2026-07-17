@@ -3,11 +3,11 @@
  * Departamentos movidos para /settings/departments.
  * Redirect permanente para preservar bookmarks.
  */
-await navigateTo('/settings/departments', { redirectCode: 301, replace: true })
+await navigateTo('/conta/departamentos', { redirectCode: 301, replace: true })
 </script>
 
 <template>
-  <div class="p-6 text-sm text-muted">
+  <div class="sr-only" role="status">
     Redirecionando para Configurações → Departamentos…
   </div>
 </template>

@@ -101,6 +101,8 @@ describe('navegação sem office', () => {
     expect(isPlatformAdminPath('/admin/offices/new')).toBe(true)
     expect(requiresPlatformAdminHome(user, '/clients')).toBe(true)
     expect(requiresPlatformAdminHome(user, '/settings')).toBe(true)
+    expect(requiresPlatformAdminHome(user, '/conta')).toBe(true)
+    expect(requiresPlatformAdminHome(user, '/conta/escritorio')).toBe(true)
     expect(requiresPlatformAdminHome(user, '/admin/offices/new')).toBe(false)
   })
 })

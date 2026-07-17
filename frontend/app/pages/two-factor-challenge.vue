@@ -87,7 +87,7 @@ function toggleMode() {
         :fields="otpFields"
         :loading="loading"
         title="Verificação em duas etapas"
-        description="Abra o aplicativo autenticador e informe o código de 6 dígitos."
+        description="Código de 6 dígitos do autenticador."
         icon="i-lucide-shield-check"
         :submit="{
           label: 'Confirmar',
@@ -126,7 +126,7 @@ function toggleMode() {
         :fields="recoveryFields"
         :loading="loading"
         title="Código de recuperação"
-        description="Use um dos códigos salvos quando configurou o segundo fator."
+        description="Código de recuperação."
         icon="i-lucide-key-round"
         :submit="{
           label: 'Confirmar',

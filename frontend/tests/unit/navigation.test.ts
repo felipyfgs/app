@@ -3,8 +3,10 @@ import {
   flattenDestinations,
   mainDestinations,
   quickActions,
+  sidebarDestinationGroups,
   toNavigationItems
 } from '../../app/utils/navigation'
+import { accountNavigationItems } from '../../app/utils/account-navigation'
 import type { MeUser } from '../../app/types/api'
 
 function user(role: MeUser['role'], confirmed = true): MeUser {
@@ -24,6 +26,8 @@ describe('navigation', () => {
   it('VIEWER não vê Administração nem ações rápidas de criação', () => {
     const ids = flattenDestinations(mainDestinations(user('VIEWER'))).map(d => d.id)
     expect(ids).not.toContain('admin')
+    expect(ids).toContain('account-profile')
+    expect(ids).not.toContain('account-office')
     const actions = quickActions(user('VIEWER')).map(a => a.id)
     // Fila é navegação permitida; criação de cliente/export continua bloqueada.
     expect(actions).not.toContain('new-client')
@@ -34,32 +38,53 @@ describe('navigation', () => {
   it('OPERATOR tem ações de cliente e exportação, sem admin', () => {
     const ids = flattenDestinations(mainDestinations(user('OPERATOR'))).map(d => d.id)
     expect(ids).not.toContain('admin')
+    expect(ids).toContain('account-profile')
+    expect(ids).not.toContain('account-office')
     const actions = quickActions(user('OPERATOR')).map(a => a.id)
     expect(actions).toContain('new-client')
     expect(actions).toContain('new-export')
     expect(actions).toContain('work-queue')
   })
 
-  it('ADMIN vê Configurações do escritório (não hub plataforma; sem gate 2FA)', () => {
-    const ids = flattenDestinations(mainDestinations(user('ADMIN', true))).map(d => d.id)
-    expect(ids).toContain('settings-office')
-    expect(ids).toContain('settings-usage')
+  it('ADMIN vê Conta e configurações do escritório (não hub plataforma; sem gate 2FA)', () => {
+    const destinations = flattenDestinations(mainDestinations(user('ADMIN', true)))
+    const ids = destinations.map(d => d.id)
+    expect(ids).toContain('account-profile')
+    expect(ids).toContain('account-office')
+    expect(ids).toContain('account-usage')
+    expect(destinations.find(d => d.id === 'account-office')?.label).toBe('Escritório')
     expect(ids).not.toContain('admin')
     expect(ids).not.toContain('platform-serpro-console')
     expect(quickActions(user('ADMIN', true)).length).toBeGreaterThan(0)
   })
 
-  it('ADMIN sem 2FA ainda vê Configurações e mutações de UI (TOTP descontinuado)', () => {
+  it('ADMIN sem 2FA ainda vê Conta e mutações de UI (TOTP descontinuado)', () => {
     const ids = flattenDestinations(mainDestinations(user('ADMIN', false))).map(d => d.id)
     expect(ids).not.toContain('admin')
-    expect(ids).toContain('settings-office')
+    expect(ids).toContain('account-office')
     const actions = quickActions(user('ADMIN', false)).map(a => a.id)
     expect(actions).toContain('new-client')
     expect(actions).toContain('new-export')
     expect(actions).toContain('work-queue')
   })
 
-  it('PLATFORM_ADMIN vê hub Plataforma, Proprietário singular e console SERPRO', () => {
+  it('sidebar usa os mesmos itens canônicos das tabs de Conta', () => {
+    const admin = user('ADMIN')
+    const canonical = accountNavigationItems(admin)
+    const sidebar = mainDestinations(admin).find(d => d.id === 'settings')?.children
+
+    expect(sidebar).toEqual(canonical)
+    expect(canonical.map(item => item.label)).toEqual([
+      'Perfil',
+      'Escritório',
+      'Consumo',
+      'Assinatura',
+      'Equipe',
+      'Departamentos'
+    ])
+  })
+
+  it('PLATFORM_ADMIN vê somente as áreas internas de administração', () => {
     const plat: MeUser = {
       id: 9,
       name: 'Plat',
@@ -73,19 +98,77 @@ describe('navigation', () => {
     }
     const tree = mainDestinations(plat)
     const ids = flattenDestinations(tree).map(d => d.id)
-    expect(ids).toContain('admin')
-    expect(ids).toContain('platform-owner')
+    expect(ids).not.toContain('admin')
+    expect(ids).not.toContain('account-profile')
     expect(ids).not.toContain('platform-admins')
     expect(ids).toContain('platform-serpro-console')
 
-    const owner = flattenDestinations(tree).find(d => d.id === 'platform-owner')
-    expect(owner?.label).toBe('Proprietário')
-    expect(owner?.to).toBe('/admin/owner')
+    const adminGroup = tree.find(d => d.id === 'platform-admin')
+    expect(adminGroup?.children?.map(d => d.id)).toEqual([
+      'platform-offices',
+      'platform-serpro-console'
+    ])
+    expect(adminGroup?.children?.[0]?.label).toBe('Escritórios')
+
+    expect(flattenDestinations(tree).map(d => d.to)).not.toContain('/conta')
+  })
+
+  it('PLATFORM_ADMIN com contexto separa perfil pessoal do escritório e inclui Equipe', () => {
+    const plat: MeUser = {
+      ...user('ADMIN'),
+      id: 10,
+      is_platform_admin: true,
+      access_mode: 'platform_privileged',
+      has_real_membership: false,
+      real_office_role: null
+    }
+    const tree = mainDestinations(plat)
+    const destinations = flattenDestinations(tree)
+
+    expect(destinations.map(d => d.id)).toContain('account-profile')
+    expect(destinations.map(d => d.to)).toContain('/conta')
+    expect(destinations.map(d => d.to)).toContain('/conta/escritorio')
+    expect(destinations.map(d => d.id)).toContain('account-team')
+    expect(destinations.map(d => d.to)).toContain('/conta/equipe')
+    expect(destinations.map(d => d.id)).toContain('platform-offices')
+    expect(destinations.find(d => d.id === 'account-profile')).toMatchObject({
+      label: 'Perfil',
+      to: '/conta'
+    })
+    expect(destinations.find(d => d.id === 'account-office')).toMatchObject({
+      label: 'Escritório',
+      to: '/conta/escritorio'
+    })
+    expect(destinations.find(d => d.id === 'account-team')).toMatchObject({
+      label: 'Equipe',
+      to: '/conta/equipe'
+    })
+    expect(destinations.find(d => d.id === 'account-departments')).toMatchObject({
+      label: 'Departamentos',
+      to: '/conta/departamentos'
+    })
+    // Paridade Conta com Office ADMIN (perfil + office settings + equipe + departamentos)
+    expect(accountNavigationItems(plat).map(i => i.id)).toEqual([
+      'account-profile',
+      'account-office',
+      'account-usage',
+      'account-subscription',
+      'account-team',
+      'account-departments'
+    ])
   })
 
   it('destinos folha do operador batem com o produto (Trabalho, Clientes, Monitoramento, Documentos e Operações)', () => {
     const tree = mainDestinations(user('OPERATOR'))
-    expect(tree.map(d => d.id)).toEqual(['home', 'work', 'clients', 'monitoring', 'docs', 'operations'])
+    expect(tree.map(d => d.id)).toEqual([
+      'home',
+      'work',
+      'clients',
+      'monitoring',
+      'docs',
+      'operations',
+      'settings'
+    ])
     expect(tree.find(d => d.id === 'work')?.children?.map(c => c.id)).toEqual([
       'work-queue',
       'work-processes',
@@ -159,6 +242,50 @@ describe('navigation', () => {
     expect(ops?.children?.length).toBe(5)
     expect(ops?.to).toBeUndefined()
     expect(ops?.value).toBe('operations')
+
+    const groups = items.filter(item => item.children?.length)
+    expect(groups.every(item => item.icon)).toBe(true)
+    expect(groups.flatMap(item => item.children || []).every(item => item.icon == null)).toBe(true)
+  })
+
+  it('mantém ícones no catálogo bruto para busca, mesmo omitindo-os nos submenus da sidebar', () => {
+    const destinations = flattenDestinations(mainDestinations(user('OPERATOR')))
+    expect(destinations.every(item => item.icon.startsWith('i-lucide-'))).toBe(true)
+  })
+
+  it('separa operação e gestão na sidebar sem criar grupo vazio', () => {
+    const operatorGroups = sidebarDestinationGroups(mainDestinations(user('OPERATOR')))
+    expect(operatorGroups.map(group => group.map(item => item.id))).toEqual([
+      ['home', 'work', 'monitoring', 'docs', 'operations'],
+      ['clients', 'settings']
+    ])
+
+    const adminGroups = sidebarDestinationGroups(mainDestinations(user('ADMIN')))
+    expect(adminGroups[1]?.map(item => item.id)).toEqual(['clients', 'settings'])
+
+    const platformOnly: MeUser = {
+      id: 9,
+      name: 'Plat',
+      email: 'p@example.com',
+      two_factor_confirmed: false,
+      two_factor_required: true,
+      requires_two_factor_setup: false,
+      is_platform_admin: true,
+      office: null,
+      role: null
+    }
+    expect(sidebarDestinationGroups(mainDestinations(platformOnly)).map(group =>
+      group.map(item => item.id)
+    )).toEqual([
+      ['home', 'monitoring', 'docs', 'operations'],
+      ['clients', 'platform-admin']
+    ])
+
+    expect(sidebarDestinationGroups([{
+      id: 'platform-admin',
+      label: 'Admin',
+      icon: 'i-lucide-shield'
+    }]).map(group => group.map(item => item.id))).toEqual([['platform-admin']])
   })
 
   it('em uma rota, no máximo um grupo trigger fica defaultOpen (acordeão single)', () => {

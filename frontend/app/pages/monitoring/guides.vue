@@ -4,9 +4,9 @@
  * detalhe + download com token efêmero; FiscalClientPicker; demo quando origem DEMO.
  */
 import type { TableColumn } from '@nuxt/ui'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
-import type { FiscalModuleOverview } from '~/types/fiscal-modules'
+import type { FiscalModuleFilterFormValue, FiscalModuleOverview } from '~/types/fiscal-modules'
 import { resolveGuideEmissionCodes } from '~/utils/fiscal-high-risk'
+import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const UButton = resolveComponent('UButton')
@@ -21,26 +21,18 @@ const PAYMENT_STATUS_ITEMS: Array<{ label: string, value: string }> = [
 ]
 
 const api = useApi()
-const route = useRoute()
-const router = useRouter()
 const { sessionEpoch, canAccessAdministration } = useDashboard()
 const toast = useToast()
 const {
   page, perPage, total, lastPage, clientId, competence, q,
-  loading, loadError, applyPaginator, resetPage
+  loading, loadError, applyPaginator, syncUrl, resetPage
 } = useServerPage()
 
-/** payment_status na URL (não situation genérica de carteira). */
-const paymentStatus = ref(String(route.query.payment_status || 'all'))
+const paymentStatus = ref('all')
 
 const rows = ref<Record<string, unknown>[]>([])
 const overview = ref<FiscalModuleOverview | null>(null)
 const overviewError = ref<string | null>(null)
-const syntheticDataOriginMeta = computed(() => {
-  const rowOrigin = rows.value.find(row => row.data_origin)?.data_origin
-  const meta = dataOriginMeta(overview.value?.data_origin ?? String(rowOrigin || ''))
-  return meta.synthetic ? meta : null
-})
 
 const detailOpen = ref(false)
 const detail = ref<Record<string, unknown> | null>(null)
@@ -79,35 +71,6 @@ function emissionOf(row: Record<string, unknown>): string {
   return String(v?.emission_status || row.emission_status || '')
 }
 
-async function syncGuidesUrl() {
-  const query: Record<string, string | undefined> = { ...route.query as Record<string, string> }
-
-  if (page.value > 1) query.page = String(page.value)
-  else delete query.page
-
-  if (clientId.value) query.client_id = clientId.value
-  else delete query.client_id
-
-  if (competence.value.trim()) query.competence = competence.value.trim()
-  else delete query.competence
-
-  if (q.value.trim()) query.q = q.value.trim()
-  else delete query.q
-
-  if (paymentStatus.value && paymentStatus.value !== 'all') {
-    query.payment_status = paymentStatus.value
-  } else {
-    delete query.payment_status
-  }
-
-  // situation genérica não se aplica a guias
-  delete query.situation
-  // Nunca confiar em office_id na URL
-  delete query.office_id
-
-  await router.replace({ query })
-}
-
 let overviewSeq = 0
 let listSeq = 0
 
@@ -141,7 +104,7 @@ async function load() {
   loading.value = true
   loadError.value = null
   try {
-    await syncGuidesUrl()
+    await syncUrl()
     if (!stillCurrent(seq, 'list', epoch)) return
     const res = await api.fiscal.guides.list({
       page: page.value,
@@ -198,15 +161,18 @@ async function downloadGuide(id: number) {
   }
 }
 
+const sorting = ref<{ id: string, desc: boolean }[]>([{ id: 'id', desc: true }])
+
 const columns: TableColumn<Record<string, unknown>>[] = [
   {
+    id: 'id',
     accessorKey: 'id',
-    header: 'ID',
+    header: ({ column }) => sortHeader('ID', column),
     meta: { class: { th: 'w-16', td: 'w-16' } }
   },
   {
     id: 'client',
-    header: 'Cliente',
+    header: ({ column }) => sortHeader('Cliente', column),
     cell: ({ row }) => {
       const cid = row.original.client_id as number | undefined
       if (!cid) return '—'
@@ -215,34 +181,38 @@ const columns: TableColumn<Record<string, unknown>>[] = [
         color: 'neutral',
         variant: 'link',
         label: `#${cid}`,
-        to: `/monitoring/clients/${cid}?tab=guides`
+        to: `/monitoring/clients/${cid}/guides`
       })
     }
   },
   {
     id: 'system',
     header: 'Sistema / tipo',
+    enableSorting: false,
     cell: ({ row }) =>
       [row.original.system_code, row.original.service_code].filter(Boolean).join(' / ') || '—'
   },
   {
     id: 'competence',
-    header: 'Competência',
+    header: ({ column }) => sortHeader('Competência', column),
     cell: ({ row }) => String(row.original.competence_period_key || row.original.period_key || '—')
   },
   {
     id: 'amount',
     header: 'Valor',
+    enableSorting: false,
     cell: ({ row }) => formatAmountCents(row.original.amount_cents as number | null)
   },
   {
     id: 'due',
     header: 'Vencimento',
+    enableSorting: false,
     cell: ({ row }) => formatDateTime(String(row.original.due_at || '') || null)
   },
   {
     id: 'emission',
     header: 'Emissão',
+    enableSorting: false,
     cell: ({ row }) => {
       const status = emissionOf(row.original)
       return status
@@ -253,6 +223,7 @@ const columns: TableColumn<Record<string, unknown>>[] = [
   {
     id: 'payment',
     header: 'Pagamento',
+    enableSorting: false,
     cell: ({ row }) => h(FiscalStatusBadge, {
       status: String(row.original.payment_status || 'UNKNOWN')
     })
@@ -260,6 +231,7 @@ const columns: TableColumn<Record<string, unknown>>[] = [
   {
     id: 'validity',
     header: 'Validade',
+    enableSorting: false,
     cell: ({ row }) => {
       const v = versionOf(row.original)
       return formatDateTime(String(v?.valid_until || '') || null)
@@ -268,6 +240,7 @@ const columns: TableColumn<Record<string, unknown>>[] = [
   {
     id: 'version',
     header: 'Versão',
+    enableSorting: false,
     cell: ({ row }) => {
       const v = versionOf(row.original)
       return String(
@@ -280,7 +253,9 @@ const columns: TableColumn<Record<string, unknown>>[] = [
   },
   {
     id: 'actions',
-    header: '',
+    header: 'Ações',
+    enableHiding: false,
+    enableSorting: false,
     cell: ({ row }) => {
       const id = Number(row.original.id)
       const children = [
@@ -326,6 +301,25 @@ const columns: TableColumn<Record<string, unknown>>[] = [
   }
 ]
 
+function setPage(next: number) {
+  page.value = Math.max(1, Math.floor(Number(next) || 1))
+}
+
+function onClientId(id: number | null) {
+  clientIdModel.value = id
+}
+
+function applyModuleFilters(filters: FiscalModuleFilterFormValue) {
+  q.value = filters.q
+  competence.value = filters.competence
+  clientIdModel.value = filters.clientId
+}
+
+function resetModuleFilters(filters: FiscalModuleFilterFormValue) {
+  paymentStatus.value = 'all'
+  applyModuleFilters(filters)
+}
+
 /** Métricas opcionais do overview (campo extra pode existir no payload). */
 const unpaidAmountCents = computed(() => {
   const metrics = overview.value?.metrics as Record<string, unknown> | undefined
@@ -363,84 +357,68 @@ onMounted(() => {
 </script>
 
 <template>
-  <UDashboardPanel id="monitoring-guides">
-    <template #header>
-      <UDashboardNavbar title="Guias" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <MonitoringPortfolioActions
-            module-key="guides"
-            :client-id="clientIdModel"
-            :situation="paymentStatus !== 'all' ? paymentStatus : undefined"
-            :competence="competence || undefined"
-            :q="q || undefined"
-            show-enqueue
-            :show-export="true"
-            @refreshed="refreshAll"
-          />
-        </template>
-      </UDashboardNavbar>
-
-      <UDashboardToolbar data-testid="page-toolbar">
-        <template #left>
-          <div class="flex min-w-0 flex-1 flex-col gap-2">
-            <MonitoringModuleNav active="guides" />
-            <div class="flex flex-wrap items-center gap-2 -ms-1">
-              <USelect
-                v-model="paymentStatus"
-                :items="PAYMENT_STATUS_ITEMS"
-                value-key="value"
-                class="w-48"
-                aria-label="Filtrar por payment_status"
-                data-testid="guides-payment-status-filter"
-              />
-              <FiscalClientPicker
-                v-model="clientIdModel"
-                class="w-52 sm:w-64"
-              />
-              <UInput
-                v-model="competence"
-                placeholder="AAAA-MM"
-                class="w-28"
-                aria-label="Competência"
-              />
-              <UButton
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-refresh-cw"
-                label="Atualizar"
-                :loading="loading"
-                @click="refreshAll"
-              />
-            </div>
-          </div>
-        </template>
-        <template #right>
-          <span class="text-xs text-muted">{{ total }} guia(s)</span>
-        </template>
-      </UDashboardToolbar>
+  <MonitoringModuleTable
+    title="Guias"
+    panel-id="monitoring-guides"
+    module-key="guides"
+    :columns="columns"
+    :rows="rows"
+    :loading="loading"
+    :error="loadError"
+    :page="page"
+    :last-page="lastPage"
+    :total="total"
+    :per-page="perPage"
+    :q="q"
+    :competence="competence"
+    :client-id="clientId"
+    :sorting="sorting"
+    :total-clients="overview?.total_clients"
+    :counters="overview?.counters"
+    show-competence-filter
+    show-client-picker
+    :show-situation-filter="false"
+    empty-title="Nenhuma guia"
+    :column-labels="{
+      system: 'Sistema / tipo',
+      amount: 'Valor',
+      due: 'Vencimento',
+      emission: 'Emissão',
+      payment: 'Pagamento',
+      validity: 'Validade',
+      version: 'Versão'
+    }"
+    @update:page="setPage"
+    @update:q="q = $event"
+    @update:competence="competence = $event"
+    @update:client-id="onClientId"
+    @update:sorting="sorting = $event"
+    @apply-filters="applyModuleFilters"
+    @reset-filters="resetModuleFilters"
+    @refresh="refreshAll"
+  >
+    <template #nav>
+      <MonitoringModuleNav active="guides" />
     </template>
 
-    <template #body>
-      <UAlert
-        v-if="syntheticDataOriginMeta"
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-flask-conical"
-        :title="syntheticDataOriginMeta.label"
-        :description="syntheticDataOriginMeta.description"
-        class="mb-4"
-        data-testid="fiscal-demo-banner"
+    <template #toolbar-filters>
+      <USelect
+        v-model="paymentStatus"
+        :items="PAYMENT_STATUS_ITEMS"
+        value-key="value"
+        class="w-full sm:min-w-48 sm:w-auto"
+        aria-label="Filtrar por payment_status"
+        data-testid="guides-payment-status-filter"
       />
+    </template>
 
+    <template #utilities>
       <UAlert
         v-if="overviewError"
         color="warning"
         icon="i-lucide-triangle-alert"
         :title="overviewError"
-        class="mb-4"
+        class="w-full"
       >
         <template #actions>
           <UButton
@@ -452,76 +430,18 @@ onMounted(() => {
           />
         </template>
       </UAlert>
-
-      <MonitoringKpiStrip
-        v-if="overview"
-        :total-clients="overview.total_clients"
-        :counters="overview.counters"
-        active-situation="all"
-        @select="() => {}"
-      />
-
       <p
         v-if="unpaidAmountCents != null"
-        class="mb-4 text-sm text-muted"
+        class="text-sm text-muted"
       >
         Em aberto (métrica do overview):
         <span class="font-medium text-highlighted">
           {{ formatAmountCents(unpaidAmountCents) }}
         </span>
       </p>
+    </template>
 
-      <UAlert
-        v-if="loadError"
-        color="error"
-        icon="i-lucide-circle-x"
-        :title="loadError"
-        class="mb-4"
-      >
-        <template #actions>
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="outline"
-            label="Tentar de novo"
-            @click="load"
-          />
-        </template>
-      </UAlert>
-
-      <div
-        v-if="loading && !rows.length"
-        class="py-12 text-center text-sm text-muted"
-      >
-        Carregando…
-      </div>
-      <MonitoringTableEmptyState
-        v-else-if="!rows.length && !loadError"
-        :kind="paymentStatus !== 'all' || clientId ? 'filtered' : 'empty'"
-        title="Nenhuma guia retornada pela API"
-        @retry="load"
-      />
-      <template v-else-if="rows.length">
-        <UTable
-          :data="rows"
-          :columns="columns"
-          :loading="loading"
-          :ui="DASHBOARD_TABLE_UI"
-          data-testid="fiscal-table"
-        />
-        <div
-          v-if="lastPage > 1"
-          class="mt-4 flex items-center justify-between border-t border-default pt-4"
-        >
-          <span class="text-sm text-muted">Página {{ page }} / {{ lastPage }}</span>
-          <UPagination
-            v-model="page"
-            :total="total"
-            :items-per-page="perPage"
-          />
-        </div>
-      </template>
-
+    <template #detail>
       <USlideover
         v-model:open="detailOpen"
         title="Detalhe da guia"
@@ -652,5 +572,5 @@ onMounted(() => {
         @success="refreshAll"
       />
     </template>
-  </UDashboardPanel>
+  </MonitoringModuleTable>
 </template>

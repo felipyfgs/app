@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createAuthApi } from '../../app/composables/api/createAuthApi'
 import { createDocumentsApi } from '../../app/composables/api/createDocumentsApi'
 import { createOfficeApi } from '../../app/composables/api/createOfficeApi'
 import { createOperationsApi } from '../../app/composables/api/createOperationsApi'
@@ -19,6 +20,20 @@ function mockClient(payload: Record<string, unknown> = { data: [], meta: {} }) {
 const apiUrl = (path: string) => `https://api.test${path}`
 
 describe('composables/api factories (runtime)', () => {
+  it('account.update usa o perfil global autenticado', async () => {
+    const { client, calls } = mockClient()
+    const api = createAuthApi(client as never)
+
+    await api.account.update({ name: 'Viewer', email: 'viewer@example.com' })
+
+    expect(calls[0]?.path).toBe('/api/v1/account')
+    expect(calls[0]?.opts?.method).toBe('PATCH')
+    expect(calls[0]?.opts?.body).toEqual({
+      name: 'Viewer',
+      email: 'viewer@example.com'
+    })
+  })
+
   it('operations.inbox e summary batem nos paths canônicos', async () => {
     const { client, calls } = mockClient()
     const api = createOperationsApi(client as never, apiUrl)

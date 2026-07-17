@@ -42,51 +42,6 @@ function buildFilters(state: {
   }
 }
 
-/** Espelha syncUrl do composable (pure). */
-function syncUrlQuery(state: {
-  page: number
-  q: string
-  situation: string
-  competence: string
-  submodule: string
-  deliveryStatus: string
-  clientId: string
-}, existing: Record<string, string | undefined> = {}): Record<string, string | undefined> {
-  const query: Record<string, string | undefined> = { ...existing }
-
-  if (state.page > 1) query.page = String(state.page)
-  else delete query.page
-
-  if (state.q.trim()) query.q = state.q.trim()
-  else delete query.q
-
-  if (state.situation && state.situation !== 'all') query.situation = state.situation
-  else delete query.situation
-
-  if (state.competence.trim()) query.competence = state.competence.trim()
-  else delete query.competence
-
-  if (state.submodule && state.submodule !== 'all' && state.submodule.trim()) {
-    query.submodule = state.submodule
-  } else {
-    delete query.submodule
-  }
-
-  if (state.deliveryStatus && state.deliveryStatus !== 'all') {
-    query.delivery_status = state.deliveryStatus
-  } else {
-    delete query.delivery_status
-  }
-
-  if (state.clientId) query.client_id = state.clientId
-  else delete query.client_id
-
-  // Nunca confiar em office_id na URL da carteira.
-  delete query.office_id
-
-  return query
-}
-
 function stillCurrent(
   seq: number,
   kind: 'overview' | 'clients',
@@ -173,6 +128,75 @@ describe('useFiscalModulePortfolio behaviours (6.2 / 6.11)', () => {
     expect(situation).toBe('all')
   })
 
+  it('overview omite situation: contadores independentes da cápsula ativa', () => {
+    function buildOverviewFilters(state: {
+      q: string
+      situation: string
+      competence: string
+      submodule: string
+      deliveryStatus: string
+      clientId: string
+    }) {
+      const full = buildFilters({ page: 1, perPage: 10, ...state })
+      // Espelha buildOverviewFilters do composable
+      return {
+        q: full.q,
+        competence: full.competence,
+        submodule: full.submodule,
+        delivery_status: full.delivery_status,
+        client_id: full.client_id
+      }
+    }
+
+    const withKpi = buildOverviewFilters({
+      q: '',
+      situation: 'PENDING',
+      competence: '',
+      submodule: 'pgdasd',
+      deliveryStatus: 'all',
+      clientId: ''
+    })
+    expect(withKpi).not.toHaveProperty('situation')
+    expect(withKpi.submodule).toBe('pgdasd')
+
+    const withAdvanced = buildOverviewFilters({
+      q: 'acme',
+      situation: 'UP_TO_DATE',
+      competence: '2026-03',
+      submodule: 'pgdasd',
+      deliveryStatus: 'all',
+      clientId: '9'
+    })
+    expect(withAdvanced).toEqual({
+      q: 'acme',
+      competence: '2026-03',
+      submodule: 'pgdasd',
+      delivery_status: undefined,
+      client_id: 9
+    })
+
+    // Cápsula muda a lista; overview/contadores usam o mesmo shape sem situation
+    const listFilters = buildFilters({
+      page: 1,
+      perPage: 10,
+      q: '',
+      situation: 'PENDING',
+      competence: '',
+      submodule: 'pgdasd',
+      deliveryStatus: 'all',
+      clientId: ''
+    })
+    expect(listFilters.situation).toBe('PENDING')
+    expect(buildOverviewFilters({
+      q: '',
+      situation: 'PENDING',
+      competence: '',
+      submodule: 'pgdasd',
+      deliveryStatus: 'all',
+      clientId: ''
+    })).not.toHaveProperty('situation')
+  })
+
   it('descarte de resposta quando sessionEpoch muda', () => {
     let sessionEpoch = 1
     let overviewSeq = 0
@@ -207,48 +231,6 @@ describe('useFiscalModulePortfolio behaviours (6.2 / 6.11)', () => {
   it('isSynthetic a partir de overview DEMO', () => {
     const overview = { data_origin: 'DEMO' as const }
     expect(isSyntheticFiscalOrigin(overview.data_origin)).toBe(true)
-  })
-
-  it('syncUrl omite defaults e office_id', () => {
-    const query = syncUrlQuery(
-      {
-        page: 1,
-        q: '',
-        situation: 'all',
-        competence: '',
-        submodule: '',
-        deliveryStatus: 'all',
-        clientId: ''
-      },
-      { page: '1', situation: 'all', q: '', office_id: '99' }
-    )
-    expect(query).toEqual({})
-  })
-
-  it('syncUrl preserva filtros não-default e remove office_id', () => {
-    const query = syncUrlQuery(
-      {
-        page: 3,
-        q: 'acme',
-        situation: 'ERROR',
-        competence: '2026-02',
-        submodule: 'MIT',
-        deliveryStatus: 'DELIVERED',
-        clientId: '7'
-      },
-      { office_id: '1', tab: 'keep-me' }
-    )
-    expect(query).toEqual({
-      tab: 'keep-me',
-      page: '3',
-      q: 'acme',
-      situation: 'ERROR',
-      competence: '2026-02',
-      submodule: 'MIT',
-      delivery_status: 'DELIVERED',
-      client_id: '7'
-    })
-    expect(query).not.toHaveProperty('office_id')
   })
 
   it('valida module_key da linha contra o módulo pedido', () => {
@@ -354,7 +336,7 @@ describe('client picker query (6.5)', () => {
   })
 })
 
-describe('URL sync e troca de office (6.2 / 6.11)', () => {
+describe('estado local e troca de office (6.2 / 6.11)', () => {
   it('sessionEpoch incr. descarta overview e clients em voo', () => {
     let sessionEpoch = 1
     let overviewSeq = 0
@@ -417,9 +399,10 @@ describe('URL sync e troca de office (6.2 / 6.11)', () => {
     expect(rows).toEqual([{ id: 2 }])
   })
 
-  it('filtros URL-reproduzíveis: só valores não-default', () => {
-    const query = syncUrlQuery({
+  it('filtros continuam compondo a query HTTP da API', () => {
+    const filters = buildFilters({
       page: 2,
+      perPage: 10,
       q: 'acme',
       situation: 'ATTENTION',
       competence: '2026-01',
@@ -427,53 +410,13 @@ describe('URL sync e troca de office (6.2 / 6.11)', () => {
       deliveryStatus: 'all',
       clientId: '12'
     })
-    expect(query).toEqual({
-      page: '2',
+    expect(filters).toMatchObject({
+      page: 2,
       q: 'acme',
       situation: 'ATTENTION',
       competence: '2026-01',
       submodule: 'PGDASD',
-      client_id: '12'
-    })
-    expect(query).not.toHaveProperty('office_id')
-  })
-
-  it('hydrateFromRoute lê query divergente (back/forward)', () => {
-    const routeQuery = {
-      page: '4',
-      q: 'beta',
-      situation: 'PROCESSING',
-      competence: '2025-12',
-      submodule: 'DCTFWEB',
-      delivery_status: 'PENDING',
-      client_id: '9'
-    }
-    function asPositiveInt(value: unknown, fallback: number): number {
-      const n = Number(value)
-      return Number.isFinite(n) && n >= 1 ? Math.floor(n) : fallback
-    }
-    function readQueryString(value: unknown): string {
-      if (Array.isArray(value)) return String(value[0] ?? '')
-      return value == null ? '' : String(value)
-    }
-
-    const local = {
-      page: asPositiveInt(routeQuery.page, 1),
-      q: readQueryString(routeQuery.q),
-      situation: readQueryString(routeQuery.situation) || 'all',
-      competence: readQueryString(routeQuery.competence),
-      submodule: readQueryString(routeQuery.submodule),
-      deliveryStatus: readQueryString(routeQuery.delivery_status) || 'all',
-      clientId: readQueryString(routeQuery.client_id)
-    }
-    expect(local).toEqual({
-      page: 4,
-      q: 'beta',
-      situation: 'PROCESSING',
-      competence: '2025-12',
-      submodule: 'DCTFWEB',
-      deliveryStatus: 'PENDING',
-      clientId: '9'
+      client_id: 12
     })
   })
 })

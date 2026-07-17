@@ -1,12 +1,12 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { MeUser } from '~/types/api'
+import { accountNavigationItems } from '~/utils/account-navigation'
 import { lacksOfficeContext } from '~/utils/auth-redirect'
+import { MONITORING_NAV_ITEMS } from '~/utils/monitoring-nav'
 import {
-  canAccessOfficeSettings,
   canAccessPlatformAdmin,
   canCreateExport,
   canManageClients,
-  canManageOfficeTeam,
   canManageWorkCatalog,
   canViewWork
 } from '~/utils/permissions'
@@ -47,75 +47,13 @@ export function monitoringDestinations(path = ''): NavDestination[] {
     icon: 'i-lucide-radar',
     type: 'trigger',
     defaultOpen: monitoringOpen,
-    children: [
-      {
-        id: 'monitoring-dashboard',
-        label: 'Dashboard Fiscal',
-        icon: 'i-lucide-gauge',
-        to: '/monitoring',
-        exact: true
-      },
-      {
-        id: 'monitoring-simples-mei',
-        label: 'Simples / MEI',
-        icon: 'i-lucide-badge-percent',
-        to: '/monitoring/simples-mei'
-      },
-      {
-        id: 'monitoring-dctfweb',
-        label: 'DCTFWeb / MIT',
-        icon: 'i-lucide-file-input',
-        to: '/monitoring/dctfweb'
-      },
-      {
-        id: 'monitoring-installments',
-        label: 'Parcelamentos',
-        icon: 'i-lucide-calendar-range',
-        to: '/monitoring/installments'
-      },
-      {
-        id: 'monitoring-sitfis',
-        label: 'Situação Fiscal',
-        icon: 'i-lucide-clipboard-check',
-        to: '/monitoring/sitfis'
-      },
-      {
-        id: 'monitoring-mailbox',
-        label: 'Caixas Postais',
-        icon: 'i-lucide-mail',
-        to: '/monitoring/mailbox'
-      },
-      {
-        id: 'monitoring-declarations',
-        label: 'Declarações',
-        icon: 'i-lucide-file-check-2',
-        to: '/monitoring/declarations'
-      },
-      {
-        id: 'monitoring-guides',
-        label: 'Guias',
-        icon: 'i-lucide-receipt',
-        to: '/monitoring/guides'
-      },
-      {
-        id: 'monitoring-fgts',
-        label: 'FGTS (parcial)',
-        icon: 'i-lucide-landmark',
-        to: '/monitoring/fgts'
-      },
-      {
-        id: 'monitoring-registrations',
-        label: 'Cadastro / Vínculos',
-        icon: 'i-lucide-link-2',
-        to: '/monitoring/registrations'
-      },
-      {
-        id: 'monitoring-tax-processes',
-        label: 'Processos fiscais',
-        icon: 'i-lucide-scale',
-        to: '/monitoring/tax-processes'
-      }
-    ]
+    children: MONITORING_NAV_ITEMS.map(item => ({
+      id: item.id,
+      label: item.sidebarLabel,
+      icon: item.icon,
+      to: item.to,
+      exact: item.exact
+    }))
   }]
 }
 
@@ -128,53 +66,16 @@ function platformAdminDestinations(path = ''): NavDestination[] {
     defaultOpen: path === '/admin' || path.startsWith('/admin/'),
     children: [
       {
-        id: 'admin',
-        label: 'Hub',
-        icon: 'i-lucide-layout-dashboard',
-        to: '/admin',
-        exact: true
-      },
-      {
         id: 'platform-offices',
         label: 'Escritórios',
         icon: 'i-lucide-building-2',
         to: '/admin/offices'
       },
       {
-        id: 'platform-owner',
-        label: 'Proprietário',
-        icon: 'i-lucide-shield-user',
-        to: '/admin/owner'
-      },
-      {
         id: 'platform-serpro-console',
-        label: 'Console SERPRO',
+        label: 'SERPRO',
         icon: 'i-lucide-gauge',
         to: '/admin/serpro'
-      },
-      {
-        id: 'platform-serpro-contracts',
-        label: 'Contratos',
-        icon: 'i-lucide-file-badge',
-        to: '/admin/serpro/contracts'
-      },
-      {
-        id: 'platform-serpro-catalog',
-        label: 'Cobertura',
-        icon: 'i-lucide-layout-grid',
-        to: '/admin/serpro/catalog'
-      },
-      {
-        id: 'platform-serpro-usage',
-        label: 'Orçamento / conciliação',
-        icon: 'i-lucide-wallet',
-        to: '/admin/serpro/usage'
-      },
-      {
-        id: 'platform-serpro-rollout',
-        label: 'Rollout',
-        icon: 'i-lucide-rocket',
-        to: '/admin/serpro/rollout'
       }
     ]
   }]
@@ -348,51 +249,16 @@ export function mainDestinations(
     }
   )
 
-  // Configuração do escritório (perfil, A1, consentimento, agendas) — tenant ou privilegiado.
-  if (canAccessOfficeSettings(user)) {
+  // Conta pessoal + configuração compartilhada do escritório.
+  const accountItems = accountNavigationItems(user)
+  if (accountItems.length) {
     items.push({
       id: 'settings',
       label: 'Configurações',
       icon: 'i-lucide-sliders-horizontal',
       type: 'trigger',
-      defaultOpen: path.startsWith('/settings'),
-      children: [
-        {
-          id: 'settings-office',
-          label: 'Escritório',
-          icon: 'i-lucide-building-2',
-          to: '/settings',
-          exact: true
-        },
-        {
-          id: 'settings-usage',
-          label: 'Consumo',
-          icon: 'i-lucide-chart-pie',
-          to: '/settings/usage'
-        },
-        {
-          id: 'settings-subscription',
-          label: 'Assinatura',
-          icon: 'i-lucide-badge-check',
-          to: '/settings/subscription'
-        },
-        ...(canManageWorkCatalog(user) || (user?.access_mode === 'membership' && user?.role === 'ADMIN')
-          ? [{
-            id: 'settings-departments',
-            label: 'Departamentos',
-            icon: 'i-lucide-building',
-            to: '/settings/departments'
-          } satisfies NavDestination]
-          : []),
-        ...(canManageOfficeTeam(user)
-          ? [{
-            id: 'settings-team',
-            label: 'Equipe',
-            icon: 'i-lucide-users-round',
-            to: '/settings/team'
-          } satisfies NavDestination]
-          : [])
-      ]
+      defaultOpen: path === '/conta' || path.startsWith('/conta/'),
+      children: accountItems
     })
   }
 
@@ -472,14 +338,31 @@ export function flattenDestinations(destinations: NavDestination[]): NavDestinat
   return out
 }
 
+const SIDEBAR_MANAGEMENT_IDS = new Set(['clients', 'settings', 'platform-admin'])
+
+/**
+ * Separa navegação operacional e gestão usando os grupos nativos do
+ * UNavigationMenu. Grupos vazios são removidos para não gerar divisores órfãos.
+ */
+export function sidebarDestinationGroups(
+  destinations: NavDestination[]
+): NavDestination[][] {
+  const operational = destinations.filter(item => !SIDEBAR_MANAGEMENT_IDS.has(item.id))
+  const management = destinations.filter(item => SIDEBAR_MANAGEMENT_IDS.has(item.id))
+  return [operational, management].filter(group => group.length > 0)
+}
+
 export function toNavigationItems(
   destinations: NavDestination[],
-  onSelect?: () => void
+  onSelect?: () => void,
+  nested = false
 ): NavigationMenuItem[] {
   return destinations.map((item) => {
     const base: NavigationMenuItem = {
       label: item.label,
-      icon: item.icon,
+      // Como no shell oficial: ícones identificam destinos/grupos principais;
+      // submenus usam somente o rótulo para manter a hierarquia limpa.
+      ...(nested ? {} : { icon: item.icon }),
       to: item.to,
       target: item.target,
       exact: item.exact,
@@ -500,7 +383,7 @@ export function toNavigationItems(
         defaultOpen: item.defaultOpen,
         // grupo pai não navega
         to: undefined,
-        children: toNavigationItems(item.children, onSelect)
+        children: toNavigationItems(item.children, onSelect, true)
       }
     }
 

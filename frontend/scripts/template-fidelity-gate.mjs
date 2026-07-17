@@ -183,29 +183,46 @@ function findListContractIssues(file, text) {
 function findCurrentChangeListIssues(file, text) {
   const rel = relApp(file)
   const violations = []
-  const requiredTokens = [
-    '<UDashboardPanel',
-    '<template #header>',
-    '<UDashboardNavbar',
-    '<UDashboardSidebarCollapse',
-    '<template #body>',
-    '<UTable',
-    `base: 'table-fixed border-separate border-spacing-0'`,
-    `thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none'`,
-    `tbody: '[&>tr]:last:[&>td]:border-b-0'`,
-    `th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r'`,
-    `td: 'border-b border-default'`,
-    `separator: 'h-0'`,
-    '<template #empty>',
-    ':loading="loading"',
-    '<DashboardInfiniteTableLoader'
-  ]
-
-  for (const token of requiredTokens) {
-    if (!text.includes(token)) violations.push(`${rel}: lista do change sem contrato canônico (${token})`)
+  // Listas de monitoring usam a casca MonitoringModuleTable (customers.vue + paginação server-side).
+  const usesModuleTable = text.includes('<MonitoringModuleTable')
+  if (usesModuleTable) {
+    const requiredShell = [
+      'panel-id=',
+      ':columns=',
+      ':rows=',
+      ':loading=',
+      '@update:page=',
+      '@refresh='
+    ]
+    for (const token of requiredShell) {
+      if (!text.includes(token)) {
+        violations.push(`${rel}: MonitoringModuleTable sem contrato (${token})`)
+      }
+    }
+  } else {
+    const requiredTokens = [
+      '<UDashboardPanel',
+      '<template #header>',
+      '<UDashboardNavbar',
+      '<UDashboardSidebarCollapse',
+      '<template #body>',
+      '<UTable',
+      `base: 'table-fixed border-separate border-spacing-0'`,
+      `thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none'`,
+      `tbody: '[&>tr]:last:[&>td]:border-b-0'`,
+      `th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r'`,
+      `td: 'border-b border-default'`,
+      `separator: 'h-0'`,
+      'border-t border-default pt-4',
+      '<UPagination',
+      ':loading="loading"'
+    ]
+    for (const token of requiredTokens) {
+      if (!text.includes(token)) violations.push(`${rel}: lista do change sem contrato canônico (${token})`)
+    }
+    violations.push(...findLooseTableUi(file, text))
   }
   if (/\boffice_id\s*:/.test(text)) violations.push(`${rel}: request controla office_id`)
-  violations.push(...findLooseTableUi(file, text))
   violations.push(...findNonCanonicalAlerts(file, text))
   return violations
 }

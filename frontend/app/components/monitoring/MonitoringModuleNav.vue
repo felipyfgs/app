@@ -22,10 +22,17 @@ const items = computed(() => [
 </script>
 
 <template>
-  <UNavigationMenu
-    :items="items"
-    highlight
-    class="-mx-1 flex-1"
-    data-testid="monitoring-module-nav"
-  />
+  <div class="-mx-1 min-w-0 flex-1 overflow-x-auto">
+    <UNavigationMenu
+      :items="items"
+      :ui="{
+        root: 'gap-0.5',
+        link: 'gap-0 px-1.5',
+        linkLabel: 'whitespace-nowrap'
+      }"
+      highlight
+      class="w-max min-w-full"
+      data-testid="monitoring-module-nav"
+    />
+  </div>
 </template>

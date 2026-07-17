@@ -19,9 +19,7 @@ describe('largura responsiva do conteúdo autenticado', () => {
   })
 
   it.each([
-    ['pages/settings.vue', 'comfortable'],
-    ['pages/admin/index.vue', 'comfortable'],
-    ['pages/admin/serpro.vue', 'comfortable'],
+    ['pages/conta.vue', 'comfortable'],
     ['pages/work/processes/[id].vue', 'comfortable'],
     ['pages/clients/[id].vue', 'wide'],
     ['pages/monitoring/clients/[clientId].vue', 'wide']
@@ -39,5 +37,23 @@ describe('largura responsiva do conteúdo autenticado', () => {
     'pages/monitoring/mailbox.vue'
   ])('%s permanece fluida conforme seu arquétipo', (path) => {
     expect(source(path)).not.toContain('<DashboardContent')
+  })
+
+  it('mantém /admin apenas como entrada para as páginas internas', () => {
+    const page = source('pages/admin/index.vue')
+
+    expect(page).toContain('redirect: \'/admin/offices\'')
+    expect(page).not.toContain('<DashboardContent')
+  })
+
+  it('adapta a largura do console SERPRO ao arquétipo da página interna', () => {
+    const page = source('pages/admin/serpro.vue')
+
+    expect(page).toContain('route.query.section')
+    expect(page).toContain('section === \'coverage\'')
+    expect(page).toContain('section === \'usage\'')
+    expect(page).toContain('route.path === \'/admin/serpro/catalog\'')
+    expect(page).toContain('route.path === \'/admin/serpro/usage\'')
+    expect(page).toContain('<DashboardContent :width="contentWidth"')
   })
 })

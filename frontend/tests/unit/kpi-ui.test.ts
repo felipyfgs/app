@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { humanizeStatusCode, kpiLeadingClass, kpiPageCardUi } from '../../app/utils/kpi-ui'
+import {
+  humanizeStatusCode,
+  kpiDisplayTitle,
+  kpiDisplayValue,
+  kpiLeadingClass,
+  kpiPageCardUi,
+  kpiValueClass
+} from '../../app/utils/kpi-ui'
 import { mailboxTriageLabel } from '../../app/utils/mailbox-triage'
 import { workRiskLabel } from '../../app/utils/work-labels'
 
@@ -20,6 +27,16 @@ describe('kpi-ui (padrão HomeStats / template)', () => {
   it('humanizeStatusCode não deixa código cru', () => {
     expect(humanizeStatusCode('NOT_CONFIRMED')).toBe('Not Confirmed')
     expect(humanizeStatusCode('')).toBe('—')
+  })
+
+  it('título e valor truncam para não esticar o card', () => {
+    expect(kpiDisplayTitle('Módulos com erro de sincronização', 22)).toMatch(/…$/)
+    expect(kpiDisplayTitle('Total', 22)).toBe('Total')
+    expect(kpiDisplayValue(12345)).toBe('12345')
+    expect(kpiDisplayValue('texto muito longo demais', 12)).toMatch(/…$/)
+    expect(kpiValueClass('default')).toMatch(/truncate/)
+    expect(kpiPageCardUi().title).toMatch(/truncate/)
+    expect(kpiPageCardUi().root).toMatch(/overflow-hidden/)
   })
 })
 

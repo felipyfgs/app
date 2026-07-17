@@ -68,4 +68,34 @@ describe('DTE canary API client', () => {
     expect(page).not.toMatch(/fiscal_result/)
     expect(page).not.toMatch(/\bdados\b.*fiscal/)
   })
+
+  it('global UI fica fail-closed e reconfirma senha antes das mutações', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const page = readFileSync(
+      resolve(__dirname, '../../app/pages/admin/serpro/dte-canary.vue'),
+      'utf8'
+    )
+
+    expect(page).toContain('<template v-if="summary">')
+    expect(page).toContain('requestRecentPassword')
+    expect(page).toContain('await api.confirmPassword')
+    expect(page).toContain(':disabled="!canExecute"')
+    expect(page).toContain('v-if="targetSelected && !attemptFinished"')
+    expect(page.match(/@click="requestRecentPassword/g)).toHaveLength(7)
+    expect(page).not.toContain('to="/settings"')
+    expect(page).not.toContain('aria-labelledby=')
+
+    for (const testId of [
+      'dte-canary-create',
+      'dte-canary-select-target',
+      'dte-canary-approve-owner',
+      'dte-canary-execute',
+      'dte-canary-reconcile',
+      'dte-canary-promote',
+      'dte-canary-disable'
+    ]) {
+      expect(page).toContain(`data-testid="${testId}"`)
+    }
+  })
 })

@@ -210,7 +210,10 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
    * Export assíncrono da carteira via POST /exports (export_scope=fiscal_portfolio).
    * Campos sanitizados + proveniência + marcação demo no job.
    */
-  async function exportPortfolio(filters: PortfolioExportFilters = {}): Promise<boolean> {
+  async function exportPortfolio(
+    filters: PortfolioExportFilters = {},
+    options: { navigate?: boolean, silent?: boolean } = {}
+  ): Promise<boolean> {
     if (!canCreateExport.value) {
       toast.add({ title: 'Sem permissão para exportar.', color: 'warning' })
       return false
@@ -219,6 +222,9 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
       toast.add({ title: 'Exportação de carteira não se aplica a este módulo.', color: 'neutral' })
       return false
     }
+
+    const navigate = options.navigate !== false
+    const silent = options.silent === true
 
     exporting.value = true
     try {
@@ -236,12 +242,14 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
         }
       }
       const res = await api.exports.create(body)
-      toast.add({
-        title: 'Exportação da carteira pedida',
-        description: `Job #${res.data.id} · veja em Exportações quando READY. Dados demo são marcados.`,
-        color: 'success'
-      })
-      await router.push('/exports')
+      if (!silent) {
+        toast.add({
+          title: 'Exportação da carteira pedida',
+          description: `Job #${res.data.id} · veja em Exportações quando READY. Dados demo são marcados.`,
+          color: 'success'
+        })
+      }
+      if (navigate) await router.push('/exports')
       return true
     } catch (caught) {
       toast.add({

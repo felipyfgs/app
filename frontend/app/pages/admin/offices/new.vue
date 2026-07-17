@@ -42,32 +42,27 @@ const form = reactive({
 
 const steps = computed<StepperItem[]>(() => [
   {
-    title: 'Escritório',
-    description: 'Identidade',
+    title: 'Dados',
     icon: 'i-lucide-building-2',
     value: 0
   },
   {
     title: 'Plano',
-    description: 'Assinatura',
     icon: 'i-lucide-badge-check',
     value: 1
   },
   {
-    title: 'Primeiro administrador',
-    description: 'Conta inicial',
+    title: 'Administrador',
     icon: 'i-lucide-user-cog',
     value: 2
   },
   {
     title: 'Entrega',
-    description: 'Método',
     icon: 'i-lucide-key-round',
     value: 3
   },
   {
     title: 'Revisão',
-    description: 'Confirmar',
     icon: 'i-lucide-check-check',
     value: 4
   }
@@ -214,7 +209,7 @@ onBeforeUnmount(() => {
             color="neutral"
             variant="ghost"
             icon="i-lucide-arrow-left"
-            label="Cancelar"
+            label="Escritórios"
           />
         </template>
       </UDashboardNavbar>
@@ -254,14 +249,31 @@ onBeforeUnmount(() => {
         </template>
 
         <template v-else>
-          <UStepper
-            v-model="step"
-            :items="steps"
-            class="w-full"
-            color="primary"
-            size="sm"
-            data-testid="admin-office-stepper"
-          />
+          <div
+            class="sm:hidden"
+            data-testid="admin-office-mobile-progress"
+          >
+            <div class="mb-2 text-right text-sm text-muted">
+              Etapa {{ step + 1 }} de {{ steps.length }}
+            </div>
+            <UProgress
+              :model-value="((step + 1) / steps.length) * 100"
+              :max="100"
+              size="sm"
+              :aria-label="`Etapa ${step + 1} de ${steps.length}`"
+            />
+          </div>
+
+          <div class="hidden sm:block">
+            <UStepper
+              v-model="step"
+              :items="steps"
+              class="w-full"
+              color="primary"
+              size="sm"
+              data-testid="admin-office-stepper"
+            />
+          </div>
 
           <UAlert
             v-if="formError"
@@ -274,8 +286,9 @@ onBeforeUnmount(() => {
           />
 
           <UPageCard
+            :title="steps[step]?.title"
             variant="subtle"
-            :ui="{ container: 'sm:p-6 space-y-4' }"
+            :ui="{ container: 'sm:p-6 gap-y-5' }"
           >
             <!-- 0 Escritório -->
             <div
@@ -290,6 +303,7 @@ onBeforeUnmount(() => {
                 <UInput
                   v-model="form.name"
                   class="w-full"
+                  autocomplete="organization"
                   data-testid="wizard-office-name"
                 />
               </UFormField>
@@ -300,6 +314,7 @@ onBeforeUnmount(() => {
                 <UInput
                   v-model="form.cnpj"
                   class="w-full"
+                  inputmode="numeric"
                   data-testid="wizard-office-cnpj"
                 />
               </UFormField>
@@ -310,6 +325,7 @@ onBeforeUnmount(() => {
                 <UInput
                   v-model="form.legal_name"
                   class="w-full"
+                  autocomplete="organization"
                   data-testid="wizard-office-legal-name"
                 />
               </UFormField>
@@ -321,6 +337,7 @@ onBeforeUnmount(() => {
                   v-model="form.institutional_email"
                   type="email"
                   class="w-full"
+                  autocomplete="email"
                   data-testid="wizard-office-email"
                 />
               </UFormField>
@@ -331,6 +348,7 @@ onBeforeUnmount(() => {
                 <UInput
                   v-model="form.institutional_phone"
                   class="w-full"
+                  autocomplete="tel"
                   data-testid="wizard-office-phone"
                 />
               </UFormField>
@@ -370,6 +388,7 @@ onBeforeUnmount(() => {
                 <UInput
                   v-model="form.admin_name"
                   class="w-full"
+                  autocomplete="name"
                   data-testid="wizard-admin-name"
                 />
               </UFormField>
@@ -381,6 +400,7 @@ onBeforeUnmount(() => {
                   v-model="form.admin_email"
                   type="email"
                   class="w-full"
+                  autocomplete="email"
                   data-testid="wizard-admin-email"
                 />
               </UFormField>
@@ -394,6 +414,7 @@ onBeforeUnmount(() => {
             >
               <UFormField
                 label="Método de entrega"
+                hint="Segredo exibido uma vez"
                 required
               >
                 <USelect
@@ -405,9 +426,6 @@ onBeforeUnmount(() => {
                   data-testid="wizard-delivery-method"
                 />
               </UFormField>
-              <p class="text-xs text-muted">
-                O segredo será exibido uma vez para cópia manual. Não há envio por e-mail.
-              </p>
             </div>
 
             <!-- 4 Revisão -->
@@ -467,9 +485,8 @@ onBeforeUnmount(() => {
                 </div>
               </dl>
               <UFormField
-                label="Sua senha"
+                label="Senha atual"
                 required
-                description="Confirmação para criar o escritório."
               >
                 <UInput
                   v-model="reconfirmPassword"
@@ -481,7 +498,7 @@ onBeforeUnmount(() => {
               </UFormField>
             </div>
 
-            <div class="flex flex-wrap justify-between gap-2 pt-2">
+            <div class="flex flex-wrap justify-between gap-2 border-t border-default pt-4">
               <UButton
                 v-if="step > 0"
                 label="Voltar"
