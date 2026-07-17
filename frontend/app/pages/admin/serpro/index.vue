@@ -385,13 +385,17 @@ onMounted(() => {
 
       <div
         v-if="loading && !health"
-        class="grid gap-4 lg:grid-cols-2"
+        class="flex flex-col gap-6"
         role="status"
         aria-live="polite"
       >
         <span class="sr-only">Carregando visão geral SERPRO.</span>
         <USkeleton class="h-36 w-full rounded-lg" />
-        <USkeleton class="h-36 w-full rounded-lg" />
+        <div class="grid gap-6 sm:grid-cols-2">
+          <USkeleton class="h-48 w-full rounded-lg" />
+          <USkeleton class="h-48 w-full rounded-lg" />
+        </div>
+        <USkeleton class="h-24 w-full rounded-lg" />
       </div>
 
       <div
@@ -457,202 +461,203 @@ onMounted(() => {
           </dl>
         </UPageCard>
 
-        <div class="grid items-start gap-6 lg:grid-cols-5">
+        <!--
+          Distribuição settings/dashboard: overview full → 2 cards equilibrados → lista full.
+          Evita grid 3+2 assimétrico (card curto + coluna alta = vazio em L).
+        -->
+        <div class="grid gap-6 sm:grid-cols-2">
           <UPageCard
             variant="subtle"
-            title="Verificações"
-            class="lg:col-span-3"
+            data-testid="admin-serpro-kill-switch"
           >
-            <ul
-              v-if="readiness?.gates?.length"
-              class="divide-y divide-default"
-            >
-              <li
-                v-for="gate in readiness.gates"
-                :key="gate.code"
-                class="flex items-start justify-between gap-4 py-3 text-sm first:pt-0 last:pb-0"
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 class="font-semibold text-highlighted">
+                  Controle de emergência
+                </h2>
+                <p class="mt-1 text-sm text-muted">
+                  Interrompe o tráfego SERPRO.
+                </p>
+              </div>
+              <UBadge
+                :color="killStateKnown ? (kill?.global?.active ? 'error' : 'success') : 'neutral'"
+                variant="subtle"
               >
-                <div class="min-w-0">
-                  <p class="font-medium text-highlighted">
-                    {{ gateLabel(gate.code) }}
-                  </p>
-                  <p class="mt-0.5 text-muted">
-                    {{ gate.message || 'Sem detalhes adicionais.' }}
-                  </p>
-                </div>
-                <UBadge
-                  :color="gateColor(gate.status)"
-                  variant="subtle"
-                  class="shrink-0"
-                >
-                  {{ gate.status }}
-                </UBadge>
-              </li>
-            </ul>
+                {{ killStateKnown ? (kill?.global?.active ? 'Ativo' : 'Desligado') : 'Indisponível' }}
+              </UBadge>
+            </div>
+
+            <p
+              v-if="kill?.global?.source"
+              class="mt-3 text-xs text-muted"
+            >
+              Origem do estado: {{ kill.global.source }}
+            </p>
+
             <div
+              v-if="killStateKnown"
+              class="mt-4"
+            >
+              <UFormField
+                label="Motivo para auditoria"
+              >
+                <UInput
+                  v-model="killReason"
+                  class="w-full"
+                  placeholder="Descreva o motivo"
+                  autocomplete="off"
+                  data-testid="serpro-kill-reason"
+                />
+              </UFormField>
+              <UButton
+                v-if="!kill?.global?.active"
+                class="mt-4 w-full justify-center"
+                color="error"
+                variant="soft"
+                label="Ativar kill switch"
+                icon="i-lucide-octagon-x"
+                :loading="killLoading"
+                data-testid="serpro-kill-on"
+                @click="toggleKill(true)"
+              />
+              <UButton
+                v-else
+                class="mt-4 w-full justify-center"
+                color="neutral"
+                variant="outline"
+                label="Solicitar desligamento"
+                icon="i-lucide-shield-check"
+                :loading="killLoading"
+                data-testid="serpro-kill-off"
+                @click="toggleKill(false)"
+              />
+            </div>
+            <p
               v-else
-              class="flex items-center gap-3 py-4 text-sm text-muted"
+              class="mt-4 text-sm text-muted"
               role="status"
             >
-              <UIcon name="i-lucide-list-checks" class="size-5" aria-hidden="true" />
-              Nenhuma verificação disponível para este ambiente.
-            </div>
+              {{ killError || 'Atualize a página para consultar o estado deste controle.' }}
+            </p>
+            <SerproOwnerConfirmModal
+              v-model:open="ownerConfirmOpen"
+              action="KILL_SWITCH_OFF"
+              :expected-phrase="expectedOwnerConfirmationPhrase('KILL_SWITCH_OFF')"
+              title="Desligar kill switch global"
+              @confirm="confirmKillOff"
+            />
           </UPageCard>
 
-          <div class="space-y-6 lg:col-span-2">
-            <UPageCard
-              variant="subtle"
-              data-testid="admin-serpro-kill-switch"
-            >
-              <div class="flex flex-wrap items-start justify-between gap-3">
+          <UPageCard variant="subtle">
+            <div class="flex items-center justify-between gap-3">
+              <h2 class="font-semibold text-highlighted">
+                Contrato ativo
+              </h2>
+              <UBadge
+                v-if="health?.active_contract"
+                :color="health.active_contract.credentials_exposed ? 'error' : 'success'"
+                variant="subtle"
+              >
+                {{ health.active_contract.status }}
+              </UBadge>
+            </div>
+
+            <template v-if="health?.active_contract">
+              <dl class="mt-4 space-y-3 text-sm">
                 <div>
-                  <h2 class="font-semibold text-highlighted">
-                    Controle de emergência
-                  </h2>
-                  <p class="mt-1 text-sm text-muted">
-                    Interrompe o tráfego SERPRO.
-                  </p>
+                  <dt class="text-muted">
+                    Contratante
+                  </dt>
+                  <dd class="mt-1 font-medium text-highlighted">
+                    {{ health.active_contract.contractor_name || health.active_contract.contractor_cnpj_masked || 'Não informado' }}
+                  </dd>
                 </div>
-                <UBadge
-                  :color="killStateKnown ? (kill?.global?.active ? 'error' : 'success') : 'neutral'"
-                  variant="subtle"
-                >
-                  {{ killStateKnown ? (kill?.global?.active ? 'Ativo' : 'Desligado') : 'Indisponível' }}
-                </UBadge>
-              </div>
+                <div>
+                  <dt class="text-muted">
+                    Certificado válido até
+                  </dt>
+                  <dd class="mt-1 font-medium text-highlighted">
+                    {{ formatDateTime(health.active_contract.cert_valid_to) }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Consumer Key
+                  </dt>
+                  <dd class="mt-1 font-mono text-xs text-highlighted">
+                    {{ health.active_contract.consumer_key_hint || 'Não informado' }}
+                  </dd>
+                </div>
+              </dl>
 
-              <p
-                v-if="kill?.global?.source"
-                class="mt-3 text-xs text-muted"
-              >
-                Origem do estado: {{ kill.global.source }}
-              </p>
-
-              <div
-                v-if="killStateKnown"
+              <UAlert
+                v-if="health.active_contract.credentials_exposed"
                 class="mt-4"
-              >
-                <UFormField
-                  label="Motivo para auditoria"
-                >
-                  <UInput
-                    v-model="killReason"
-                    class="w-full"
-                    placeholder="Descreva o motivo"
-                    autocomplete="off"
-                    data-testid="serpro-kill-reason"
-                  />
-                </UFormField>
-                <UButton
-                  v-if="!kill?.global?.active"
-                  class="mt-4 w-full justify-center"
-                  color="error"
-                  variant="soft"
-                  label="Ativar kill switch"
-                  icon="i-lucide-octagon-x"
-                  :loading="killLoading"
-                  data-testid="serpro-kill-on"
-                  @click="toggleKill(true)"
-                />
-                <UButton
-                  v-else
-                  class="mt-4 w-full justify-center"
-                  color="neutral"
-                  variant="outline"
-                  label="Solicitar desligamento"
-                  icon="i-lucide-shield-check"
-                  :loading="killLoading"
-                  data-testid="serpro-kill-off"
-                  @click="toggleKill(false)"
-                />
-              </div>
-              <p
-                v-else
-                class="mt-4 text-sm text-muted"
-                role="status"
-              >
-                {{ killError || 'Atualize a página para consultar o estado deste controle.' }}
-              </p>
-              <SerproOwnerConfirmModal
-                v-model:open="ownerConfirmOpen"
-                action="KILL_SWITCH_OFF"
-                :expected-phrase="expectedOwnerConfirmationPhrase('KILL_SWITCH_OFF')"
-                title="Desligar kill switch global"
-                @confirm="confirmKillOff"
+                color="error"
+                variant="subtle"
+                icon="i-lucide-shield-alert"
+                title="Credencial exposta — rotação obrigatória"
               />
-            </UPageCard>
+            </template>
 
-            <UPageCard variant="subtle">
-              <div class="flex items-center justify-between gap-3">
-                <h2 class="font-semibold text-highlighted">
-                  Contrato ativo
-                </h2>
-                <UBadge
-                  v-if="health?.active_contract"
-                  :color="health.active_contract.credentials_exposed ? 'error' : 'success'"
-                  variant="subtle"
-                >
-                  {{ health.active_contract.status }}
-                </UBadge>
-              </div>
-
-              <template v-if="health?.active_contract">
-                <dl class="mt-4 space-y-3 text-sm">
-                  <div>
-                    <dt class="text-muted">
-                      Contratante
-                    </dt>
-                    <dd class="mt-1 font-medium text-highlighted">
-                      {{ health.active_contract.contractor_name || health.active_contract.contractor_cnpj_masked || 'Não informado' }}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt class="text-muted">
-                      Certificado válido até
-                    </dt>
-                    <dd class="mt-1 font-medium text-highlighted">
-                      {{ formatDateTime(health.active_contract.cert_valid_to) }}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt class="text-muted">
-                      Consumer Key
-                    </dt>
-                    <dd class="mt-1 font-mono text-xs text-highlighted">
-                      {{ health.active_contract.consumer_key_hint || 'Não informado' }}
-                    </dd>
-                  </div>
-                </dl>
-
-                <UAlert
-                  v-if="health.active_contract.credentials_exposed"
-                  class="mt-4"
-                  color="error"
-                  variant="subtle"
-                  icon="i-lucide-shield-alert"
-                  title="Credencial exposta — rotação obrigatória"
-                />
-              </template>
-
-              <div
-                v-else-if="health"
-                class="mt-4 flex items-center gap-3 text-sm text-muted"
-                role="status"
-              >
-                <UIcon name="i-lucide-file-x-2" class="size-5" aria-hidden="true" />
-                Nenhum contrato ativo neste ambiente.
-              </div>
-              <div
-                v-else
-                class="mt-4 flex items-center gap-3 text-sm text-muted"
-                role="status"
-              >
-                <UIcon name="i-lucide-circle-help" class="size-5" aria-hidden="true" />
-                Estado do contrato indisponível.
-              </div>
-            </UPageCard>
-          </div>
+            <div
+              v-else-if="health"
+              class="mt-4 flex items-center gap-3 text-sm text-muted"
+              role="status"
+            >
+              <UIcon name="i-lucide-file-x-2" class="size-5" aria-hidden="true" />
+              Nenhum contrato ativo neste ambiente.
+            </div>
+            <div
+              v-else
+              class="mt-4 flex items-center gap-3 text-sm text-muted"
+              role="status"
+            >
+              <UIcon name="i-lucide-circle-help" class="size-5" aria-hidden="true" />
+              Estado do contrato indisponível.
+            </div>
+          </UPageCard>
         </div>
+
+        <UPageCard
+          variant="subtle"
+          title="Verificações"
+        >
+          <ul
+            v-if="readiness?.gates?.length"
+            class="divide-y divide-default"
+          >
+            <li
+              v-for="gate in readiness.gates"
+              :key="gate.code"
+              class="flex items-start justify-between gap-4 py-3 text-sm first:pt-0 last:pb-0"
+            >
+              <div class="min-w-0">
+                <p class="font-medium text-highlighted">
+                  {{ gateLabel(gate.code) }}
+                </p>
+                <p class="mt-0.5 text-muted">
+                  {{ gate.message || 'Sem detalhes adicionais.' }}
+                </p>
+              </div>
+              <UBadge
+                :color="gateColor(gate.status)"
+                variant="subtle"
+                class="shrink-0"
+              >
+                {{ gate.status }}
+              </UBadge>
+            </li>
+          </ul>
+          <div
+            v-else
+            class="flex items-center gap-3 py-2 text-sm text-muted"
+            role="status"
+          >
+            <UIcon name="i-lucide-list-checks" class="size-5" aria-hidden="true" />
+            Nenhuma verificação disponível para este ambiente.
+          </div>
+        </UPageCard>
       </div>
     </div>
 

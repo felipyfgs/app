@@ -3,27 +3,11 @@
  * Shell do console global SERPRO (PLATFORM_ADMIN).
  * Arquétipo: settings.vue do template (navbar + toolbar NavigationMenu + NuxtPage).
  * Fonte: .reference/nuxt-dashboard-template/app/pages/settings.vue
+ * Largura: comfortable (max-w-5xl, centralizado) — mesma linha de /conta e do shell settings oficial.
  */
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 const { canAccessPlatformSerpro } = useDashboard()
-const route = useRoute()
-
-const contentWidth = computed<'comfortable' | 'wide' | 'full'>(() => {
-  const section = Array.isArray(route.query.section)
-    ? route.query.section[0]
-    : route.query.section
-
-  if (
-    route.path === '/admin/serpro/catalog'
-    || (route.path === '/admin/serpro/configuration' && section === 'coverage')
-  ) return 'full'
-  if (
-    route.path === '/admin/serpro/usage'
-    || (route.path === '/admin/serpro' && section === 'usage')
-  ) return 'wide'
-  return 'comfortable'
-})
 
 const links = [[{
   label: 'Operação',
@@ -67,7 +51,7 @@ const links = [[{
     </template>
 
     <template #body>
-      <DashboardContent :width="contentWidth" class="gap-4 sm:gap-6 lg:gap-12">
+      <DashboardContent width="comfortable" class="gap-4 sm:gap-6 lg:gap-12">
         <UAlert
           v-if="!canAccessPlatformSerpro"
           color="warning"
