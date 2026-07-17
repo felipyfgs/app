@@ -332,8 +332,7 @@ onMounted(() => {
         v-if="modalitiesError"
         color="warning"
         icon="i-lucide-triangle-alert"
-        :title="modalitiesError"
-        description="Exibindo catálogo oficial local (PARCSN…RELPMEI)."
+        :title="modalitiesError || 'Catálogo local (PARCSN…RELPMEI)'"
         class="w-full"
       />
       <UAlert

@@ -119,7 +119,7 @@ describe('console global SERPRO (superfície)', () => {
     expect(integration).not.toContain('definePageMeta({')
   })
 
-  it('mantém descrições estáticas apenas para consequências críticas', () => {
+  it('UAlert sem description; consequências críticas no título curto', () => {
     const files = [
       'pages/admin/serpro.vue',
       'pages/admin/serpro/index.vue',
@@ -131,14 +131,20 @@ describe('console global SERPRO (superfície)', () => {
       'pages/admin/serpro/dte-canary.vue',
       'components/serpro/SerproOwnerConfirmModal.vue'
     ]
-    const descriptions = files.flatMap((file) => {
-      const source = readFileSync(resolve(APP, file), 'utf8')
-      return source.match(/\sdescription="[^"]+"/g) || []
-    })
+    const sources = files.map(file => readFileSync(resolve(APP, file), 'utf8'))
+    const joined = sources.join('\n')
 
-    expect(descriptions).toHaveLength(2)
-    expect(descriptions.join('\n')).toMatch(/credencial.*exposta/i)
-    expect(descriptions.join('\n')).toMatch(/bloqueia novas consultas/i)
+    // Contrato do template: UAlert só com title acionável (gate de fidelidade).
+    for (const source of sources) {
+      const alertBlocks = source.match(/<UAlert\b[\s\S]*?(?:\/>|<\/UAlert>)/g) || []
+      for (const block of alertBlocks) {
+        expect(block).not.toMatch(/(?:^|\s):?description=/)
+      }
+    }
+
+    expect(joined).toMatch(/credencial.*exposta|exposta.*rota/i)
+    // Consequência crítica de kill DTE permanece legível no card de emergência.
+    expect(joined).toMatch(/bloqueia novas consultas/i)
   })
 
   it('mantém URLs antigas como redirects para as seções canônicas', () => {

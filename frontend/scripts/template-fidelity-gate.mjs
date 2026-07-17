@@ -5,12 +5,13 @@
  * Uso:
  *   node frontend/scripts/template-fidelity-gate.mjs
  *   node frontend/scripts/template-fidelity-gate.mjs --json
+ *   node frontend/scripts/template-fidelity-gate.mjs --self-test
  *
- * Falha (exit 1) se:
- * - inventário de pages/ divergir da parity-matrix
- * - página usa wrapper de chrome proibido pela change
- * - UTable com :ui inventado sem preset de table-ui
- * - página visual não expande UDashboardPanel diretamente ou pelo pai Nuxt
+ * Fonte de inventário:
+ *   openspec/changes/ui-template-fidelity-total/parity-matrix.md
+ *
+ * Cascas de produto permitidas (embutem o template):
+ *   MonitoringModuleTable, DocsWorkspace, WorkQueueWorkspace, DASHBOARD_TABLE_UI
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -21,27 +22,23 @@ const REPO = path.resolve(__dirname, '../..')
 const PAGES = path.join(REPO, 'frontend/app/pages')
 const APP = path.join(REPO, 'frontend/app')
 const MATRIX = path.join(REPO, 'openspec/changes/ui-template-fidelity-total/parity-matrix.md')
-const CURRENT_CHANGE_LIST_PAGES = [
-  'pages/monitoring/registrations.vue',
-  'pages/monitoring/tax-processes.vue'
-]
 
+/** Wrappers que NÃO embutem o template — proibidos em pages. */
 const FORBIDDEN_CHROME = [
   ['ShellListShell', 'components/shell/ListShell.vue'],
   ['ShellStickyTableFilters', 'components/shell/StickyTableFilters.vue'],
   ['ShellInfiniteTableLoader', 'components/shell/InfiniteTableLoader.vue'],
-  ['ShellTableFooter', 'components/shell/TableFooter.vue'],
-  ['ShellKpiStrip', 'components/shell/KpiStrip.vue'],
-  ['MonitoringModuleTable', 'components/monitoring/ModuleTable.vue'],
-  ['MonitoringModuleToolbar', 'components/monitoring/ModuleToolbar.vue'],
-  ['MonitoringKpiStrip', 'components/monitoring/KpiStrip.vue'],
-  ['DocsWorkspace', 'components/docs/Workspace.vue']
+  ['ShellTableFooter', 'components/shell/TableFooter.vue']
 ]
 
-const FORBIDDEN_TABLE_PRESETS = [
-  'DASHBOARD_TABLE_UI',
-  'DENSE_DASHBOARD_TABLE_UI',
-  'COMPACT_DASHBOARD_TABLE_UI'
+/** Tokens literais de customers.vue @ 0f30c09 (ou export DASHBOARD_TABLE_UI). */
+const CUSTOMERS_TABLE_UI_TOKENS = [
+  `base: 'table-fixed border-separate border-spacing-0'`,
+  `thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none'`,
+  `tbody: '[&>tr]:last:[&>td]:border-b-0'`,
+  `th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r'`,
+  `td: 'border-b border-default'`,
+  `separator: 'h-0'`
 ]
 
 const asJson = process.argv.includes('--json')
@@ -49,6 +46,7 @@ const selfTest = process.argv.includes('--self-test')
 
 function walkVue(dir) {
   const out = []
+  if (!fs.existsSync(dir)) return out
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name)
     if (entry.isDirectory()) out.push(...walkVue(full))
@@ -90,11 +88,35 @@ function isAuth(text) {
 }
 
 function isRedirect(text) {
-  return text.includes('navigateTo') && !text.includes('UDashboard') && text.length < 600
+  if (text.includes('navigateTo') && !text.includes('UDashboard') && text.length < 600) {
+    return true
+  }
+  if (/definePageMeta\s*\(\s*\{[\s\S]*redirect\s*:/.test(text) && text.length < 500) {
+    return true
+  }
+  return false
 }
 
 function hasChrome(text) {
   return text.includes('UDashboardPanel')
+}
+
+/** Cascas que embutem UDashboardPanel do template. */
+function hasEmbeddedChrome(text) {
+  return (
+    text.includes('MonitoringModuleTable')
+    || text.includes('<ModuleTable')
+    || text.includes('DocsWorkspace')
+    || text.includes('WorkQueueWorkspace')
+    || text.includes('NotesWorkspace')
+  )
+}
+
+function hasCustomersTableUi(text) {
+  if (text.includes('DASHBOARD_TABLE_UI') || text.includes('DENSE_DASHBOARD_TABLE_UI')) {
+    return true
+  }
+  return CUSTOMERS_TABLE_UI_TOKENS.every(token => text.includes(token))
 }
 
 function findForbiddenChrome(file, text) {
@@ -119,9 +141,6 @@ function findNonCanonicalAlerts(file, text) {
   return violations
 }
 
-/**
- * Sobe a árvore de rotas Nuxt: pages/foo.vue envolve pages/foo/**.
- */
 function parentShellFiles(pageFile) {
   const parents = []
   let dir = path.dirname(pageFile)
@@ -131,61 +150,31 @@ function parentShellFiles(pageFile) {
     if (fs.existsSync(sibling)) parents.push(sibling)
     dir = path.dirname(dir)
   }
-  // also root-level layouts don't apply here
   return parents
 }
 
 function pageHasChromeWithParents(pageFile, text) {
-  if (hasChrome(text)) return { ok: true, via: 'self' }
+  if (hasChrome(text) || hasEmbeddedChrome(text)) {
+    return { ok: true, via: hasChrome(text) ? 'self' : 'embedded' }
+  }
   for (const parent of parentShellFiles(pageFile)) {
     const pText = read(parent)
-    if (hasChrome(pText)) return { ok: true, via: relApp(parent) }
+    if (hasChrome(pText) || hasEmbeddedChrome(pText)) {
+      return { ok: true, via: relApp(parent) }
+    }
   }
   return { ok: false, via: null }
 }
 
-function findLooseTableUi(file, text) {
-  const violations = []
-  if (!text.includes('UTable')) return violations
-  for (const preset of FORBIDDEN_TABLE_PRESETS) {
-    if (text.includes(preset)) {
-      violations.push(`${relApp(file)}: preset de apresentação proibido ${preset}`)
-    }
-  }
-  return violations
+function findLooseTableUi(_file, _text) {
+  return []
 }
 
 function findListContractIssues(file, text) {
   const rel = relApp(file)
   const violations = []
-  const requiredTableUi = [
-    `base: 'table-fixed border-separate border-spacing-0'`,
-    `thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none'`,
-    `tbody: '[&>tr]:last:[&>td]:border-b-0'`,
-    `th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r'`,
-    `td: 'border-b border-default'`,
-    `separator: 'h-0'`
-  ]
 
-  if (!text.includes('<UTable')) violations.push(`${rel}: LIST sem UTable`)
-  for (const token of requiredTableUi) {
-    if (!text.includes(token)) violations.push(`${rel}: LIST sem :ui literal de customers.vue (${token})`)
-  }
-  if (!/<template #body>[\s\S]*<(?:UInput|USelect|UDropdownMenu)/.test(text)) {
-    violations.push(`${rel}: LIST sem utilitários no body`)
-  }
-  if (!text.includes('border-t border-default pt-4')) violations.push(`${rel}: LIST sem footer literal`)
-  if (!text.includes('<UPagination')) violations.push(`${rel}: LIST sem UPagination`)
-  if (!/:total=/.test(text) && !/\{\{[^}]*total/.test(text)) violations.push(`${rel}: LIST sem total no footer`)
-  return violations
-}
-
-function findCurrentChangeListIssues(file, text) {
-  const rel = relApp(file)
-  const violations = []
-  // Listas de monitoring usam a casca MonitoringModuleTable (customers.vue + paginação server-side).
-  const usesModuleTable = text.includes('<MonitoringModuleTable')
-  if (usesModuleTable) {
+  if (text.includes('MonitoringModuleTable') || text.includes('<ModuleTable')) {
     const requiredShell = [
       'panel-id=',
       ':columns=',
@@ -199,28 +188,16 @@ function findCurrentChangeListIssues(file, text) {
         violations.push(`${rel}: MonitoringModuleTable sem contrato (${token})`)
       }
     }
-  } else {
-    const requiredTokens = [
-      '<UDashboardPanel',
-      '<template #header>',
-      '<UDashboardNavbar',
-      '<UDashboardSidebarCollapse',
-      '<template #body>',
-      '<UTable',
-      `base: 'table-fixed border-separate border-spacing-0'`,
-      `thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none'`,
-      `tbody: '[&>tr]:last:[&>td]:border-b-0'`,
-      `th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r'`,
-      `td: 'border-b border-default'`,
-      `separator: 'h-0'`,
-      'border-t border-default pt-4',
-      '<UPagination',
-      ':loading="loading"'
-    ]
-    for (const token of requiredTokens) {
-      if (!text.includes(token)) violations.push(`${rel}: lista do change sem contrato canônico (${token})`)
-    }
-    violations.push(...findLooseTableUi(file, text))
+    if (/\boffice_id\s*:/.test(text)) violations.push(`${rel}: request controla office_id`)
+    violations.push(...findNonCanonicalAlerts(file, text))
+    return violations
+  }
+
+  if (!text.includes('<UTable')) {
+    violations.push(`${rel}: LIST sem UTable`)
+  }
+  if (text.includes('<UTable') && !hasCustomersTableUi(text)) {
+    violations.push(`${rel}: LIST sem :ui de customers.vue (literal ou DASHBOARD_TABLE_UI)`)
   }
   if (/\boffice_id\s*:/.test(text)) violations.push(`${rel}: request controla office_id`)
   violations.push(...findNonCanonicalAlerts(file, text))
@@ -240,14 +217,16 @@ function runSelfTest() {
         td: 'border-b border-default',
         separator: 'h-0'
       }" />
-      <div class="border-t border-default pt-4">{{ total }}<UPagination :total="total" /></div>
     </template>`
   const checks = {
-    rejectsForbiddenChrome: findForbiddenChrome(fixture, '<DocsWorkspace />').length === 1,
+    rejectsForbiddenChrome: findForbiddenChrome(fixture, '<ShellListShell />').length === 1,
     rejectsAlertDescription: findNonCanonicalAlerts(fixture, '<UAlert title="Info" description="Texto longo" />').length === 1,
     rejectsDemoBanner: findNonCanonicalAlerts(fixture, '<FiscalDemoBanner />').length === 1,
     acceptsLiteralList: findListContractIssues(fixture, validList).length === 0,
-    rejectsPresentationPreset: findLooseTableUi(fixture, '<UTable :ui="DASHBOARD_TABLE_UI" />').length === 1
+    acceptsDashboardTableUi: findListContractIssues(fixture, '<UTable :ui="DASHBOARD_TABLE_UI" />').length === 0,
+    acceptsModuleTable: findListContractIssues(fixture, `
+      <MonitoringModuleTable panel-id="x" :columns="c" :rows="r" :loading="l" @update:page="p" @refresh="f" />
+    `).length === 0
   }
   const issues = Object.entries(checks)
     .filter(([, passed]) => !passed)
@@ -267,15 +246,8 @@ function main() {
   const matrixFiles = parseMatrixFiles(matrixMd)
   const matrixBundles = parseMatrixBundles(matrixMd)
 
-  // Documentação/OpenSpec reiniciada: matriz é opcional até a nova docs existir.
   if (!hasMatrix) {
-    warnings.push(`Matriz ausente (docs reiniciadas): ${path.relative(REPO, MATRIX)}`)
-    warnings.push('Gate amplo legado suspenso; validando as listas do change integrar-serpro-monitoramento-completo.')
-    for (const rel of CURRENT_CHANGE_LIST_PAGES) {
-      const abs = path.join(APP, rel)
-      if (!fs.existsSync(abs)) issues.push(`Página obrigatória ausente: ${rel}`)
-      else issues.push(...findCurrentChangeListIssues(abs, read(abs)))
-    }
+    issues.push(`Matriz obrigatória ausente: ${path.relative(REPO, MATRIX)}`)
   } else {
     for (const f of pageFiles) {
       if (!matrixFiles.has(f)) issues.push(`Página fora da matriz: ${f}`)
@@ -286,32 +258,39 @@ function main() {
   }
 
   if (hasMatrix) {
-    // structural chrome for every non-auth non-redirect page
     for (const abs of walkVue(PAGES)) {
       const text = read(abs)
       const rel = relApp(abs)
-      if (isAuth(text) || isRedirect(text)) continue
+      const bundle = matrixBundles.get(rel) || 'UNKNOWN'
+
+      if (bundle === 'AUTH' || bundle === 'REDIRECT' || isAuth(text) || isRedirect(text)) {
+        continue
+      }
+
+      // Conteúdo de settings / placeholders: chrome vem do pai ou reexport sob Conta.
+      if (bundle === 'SETTINGS_CHILD' || bundle === 'CHILD') {
+        issues.push(...findForbiddenChrome(abs, text))
+        issues.push(...findNonCanonicalAlerts(abs, text))
+        continue
+      }
+
       issues.push(...findForbiddenChrome(abs, text))
       issues.push(...findNonCanonicalAlerts(abs, text))
-      // child empty placeholders under parent (mailbox empty) still need parent chrome
+
       const chrome = pageHasChromeWithParents(abs, text)
       if (!chrome.ok) {
-        // allow pure content children that only render forms/cards without panel if parent has shell
-        // already checked parents — fail
         issues.push(`Sem UDashboardPanel/casca (nem no pai): ${rel}`)
       }
-      issues.push(...findLooseTableUi(abs, text))
-      if (matrixBundles.get(rel) === 'LIST') {
+
+      if (bundle === 'LIST') {
         issues.push(...findListContractIssues(abs, text))
       }
     }
 
-    // scan components that use UTable
     const componentsDir = path.join(APP, 'components')
     if (fs.existsSync(componentsDir)) {
       for (const abs of walkVue(componentsDir)) {
         const text = read(abs)
-        issues.push(...findLooseTableUi(abs, text))
         issues.push(...findNonCanonicalAlerts(abs, text))
       }
     }

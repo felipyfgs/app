@@ -33,8 +33,7 @@ const description = computed(() => recentRefreshConfirmDescription({
       <UAlert
         color="warning"
         icon="i-lucide-coins"
-        title="Consome 1 unidade da franquia"
-        description="O servidor ainda pode bloquear se o intervalo mínimo oficial não tiver passado."
+        title="Consome 1 franquia — servidor pode bloquear se o intervalo mínimo não passou"
       />
     </template>
     <template #footer>

@@ -423,8 +423,7 @@ const columns: TableColumn<SitfisClientRow>[] = [
                 color="warning"
                 icon="i-lucide-triangle-alert"
                 class="w-full"
-                :title="selected.block_message || commercialBlockLabel(selected.block_reason) || 'Bloqueio operacional'"
-                description="Corrija procuração no e-CAC, aguarde o período da franquia ou contate o suporte da plataforma."
+                :title="selected.block_message || commercialBlockLabel(selected.block_reason) || 'Bloqueio operacional — revise e-CAC ou franquia'"
               />
               <UButton
                 v-if="selected"

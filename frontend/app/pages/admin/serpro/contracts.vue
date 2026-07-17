@@ -138,8 +138,7 @@ onMounted(load)
       v-if="loadError"
       color="error"
       icon="i-lucide-circle-x"
-      title="Não foi possível carregar os contratos"
-      :description="loadError"
+      :title="loadError || 'Não foi possível carregar os contratos'"
       class="mb-4"
     >
       <template #actions>

@@ -407,8 +407,7 @@ onMounted(() => {
         v-if="loadError"
         color="error"
         icon="i-lucide-circle-x"
-        title="Não foi possível carregar a configuração"
-        :description="loadError"
+        :title="loadError || 'Não foi possível carregar a configuração'"
         data-testid="serpro-config-error"
       >
         <template #actions>

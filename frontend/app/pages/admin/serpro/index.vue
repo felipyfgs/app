@@ -369,8 +369,7 @@ onMounted(() => {
         v-if="loadError"
         color="error"
         icon="i-lucide-circle-x"
-        title="Não foi possível atualizar a visão geral"
-        :description="loadError"
+        :title="loadError || 'Não foi possível atualizar a visão geral'"
       >
         <template #actions>
           <UButton
@@ -631,8 +630,7 @@ onMounted(() => {
                   color="error"
                   variant="subtle"
                   icon="i-lucide-shield-alert"
-                  title="Rotação obrigatória"
-                  description="A credencial foi marcada como exposta."
+                  title="Credencial exposta — rotação obrigatória"
                 />
               </template>
 
