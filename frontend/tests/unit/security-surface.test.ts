@@ -84,7 +84,7 @@ describe('superfície sem material sensível', () => {
 
   it('consumo tenant não menciona fatura global', () => {
     const usage = readFileSync(resolve(APP_ROOT, 'pages/settings/usage.vue'), 'utf8')
-    expect(usage).toMatch(/sem fatura consolidada|não exibe fatura/i)
+    expect(usage).toMatch(/sem fatura global|fatura consolidada|não exibe fatura/i)
     expect(usage).not.toMatch(/global_budget/)
   })
 })

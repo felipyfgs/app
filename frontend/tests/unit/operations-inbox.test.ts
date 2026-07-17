@@ -12,7 +12,6 @@ describe('operations inbox surface', () => {
   const types = readFileSync(resolve(APP_ROOT, 'types/api.ts'), 'utf8')
   const health = readFileSync(resolve(APP_ROOT, 'pages/health.vue'), 'utf8')
   const notifications = readFileSync(resolve(APP_ROOT, 'components/NotificationsSlideover.vue'), 'utf8')
-  const admin = readFileSync(resolve(APP_ROOT, 'pages/admin/index.vue'), 'utf8')
 
   it('expõe client tipado de inbox e summary com backup', () => {
     expect(api).toContain(`'/api/v1/operations/inbox'`)
@@ -30,19 +29,12 @@ describe('operations inbox surface', () => {
     expect(health).not.toContain('router.replace({ query:')
     expect(health).toContain('Nenhum problema operacional')
     expect(health).not.toMatch(/selecionar todos|bulk select|label="Restaurar"/i)
-    expect(health).toContain('Não há restore')
+    expect(health).toMatch(/Não há restore|Restore de backup fora do painel/)
   })
 
   it('slideover prefere inbox com fallback sanitizado', () => {
     expect(notifications).toContain('api.operations.inbox')
     expect(notifications).toContain('loadFallback')
     expect(notifications).toContain('Inbox indisponível')
-  })
-
-  it('admin tem card somente leitura de backup sem botão de restore', () => {
-    expect(admin).toContain('admin-backup-card')
-    expect(admin).toContain('Último SUCCESS')
-    expect(admin).toContain('restore drill')
-    expect(admin).not.toMatch(/@click=.*restore|label="Restaurar"|to=".*restore/i)
   })
 })

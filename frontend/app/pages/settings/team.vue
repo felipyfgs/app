@@ -6,6 +6,7 @@
 import type { ActivationMethod, CredentialDeliveryPayload, OfficeMember, OfficeRole } from '~/types/api'
 import { canManageOfficeTeam } from '~/utils/permissions'
 import { apiErrorMessage } from '~/utils/api-error'
+import { filterTeamMembers, type TeamRoleFilter } from '~/utils/team-filter'
 
 const api = useApi()
 const toast = useToast()
@@ -20,23 +21,36 @@ const loading = ref(false)
 const loadError = ref<string | null>(null)
 const forbidden = ref(false)
 const q = ref('')
+const roleFilter = ref<TeamRoleFilter>('ALL')
 const actingId = ref<number | null>(null)
 
 const secret = ref<CredentialDeliveryPayload | null>(null)
 
-const filtered = computed(() => {
-  const term = q.value.trim()
-  if (!term) return items.value
-  const re = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
-  return items.value.filter(m =>
-    re.test(m.name || '') || re.test(m.email || '') || re.test(m.role)
-  )
-})
+const roleFilterItems: Array<{ label: string, value: TeamRoleFilter }> = [
+  { label: 'Todos', value: 'ALL' },
+  { label: 'Admin', value: 'ADMIN' },
+  { label: 'Operador', value: 'OPERATOR' },
+  { label: 'Visualizador', value: 'VIEWER' }
+]
+
+const filtered = computed(() =>
+  filterTeamMembers(items.value, q.value, roleFilter.value)
+)
 
 const seatsLabel = computed(() => {
   const max = maxUsers.value
   if (max == null) return `${occupied.value} em uso`
   return `${occupied.value} / ${max} vagas`
+})
+
+const emptyFilterDescription = computed(() => {
+  const term = q.value.trim()
+  const roleLabel = roleFilterItems.find(r => r.value === roleFilter.value)?.label
+  const parts: string[] = []
+  if (term) parts.push(`“${term}”`)
+  if (roleFilter.value !== 'ALL' && roleLabel) parts.push(`papel ${roleLabel}`)
+  if (!parts.length) return 'Nenhum membro corresponde aos filtros.'
+  return `Nada encontrado para ${parts.join(' e ')}.`
 })
 
 let loadSeq = 0
@@ -199,7 +213,10 @@ onBeforeUnmount(clearSecret)
 </script>
 
 <template>
-  <div data-testid="settings-team">
+  <div
+    class="min-w-0 overflow-x-hidden"
+    data-testid="settings-team"
+  >
     <UPageCard
       title="Equipe"
       :description="canMutate ? `Membros do escritório · ${seatsLabel}` : 'Gestão de equipe'"
@@ -226,7 +243,7 @@ onBeforeUnmount(clearSecret)
       v-if="forbidden"
       icon="i-lucide-shield-off"
       title="Sem membership neste escritório"
-      description="Somente ADMIN com vínculo real gerencia a equipe."
+      description="Somente ADMIN do escritório."
       class="py-10"
       data-testid="team-forbidden"
     />
@@ -251,14 +268,25 @@ onBeforeUnmount(clearSecret)
         }"
       >
         <template #header>
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <UInput
               v-model="q"
               icon="i-lucide-search"
               placeholder="Buscar por nome ou e-mail"
               autofocus
-              class="w-full sm:flex-1"
+              class="w-full min-w-0 sm:flex-1"
+              aria-label="Buscar por nome ou e-mail"
               data-testid="team-search"
+            />
+            <USelect
+              v-model="roleFilter"
+              :items="roleFilterItems"
+              value-key="value"
+              label-key="label"
+              color="neutral"
+              class="w-full min-w-0 sm:w-40"
+              aria-label="Filtrar por papel"
+              data-testid="team-role-filter"
             />
             <UBadge
               v-if="maxUsers != null"
@@ -272,20 +300,25 @@ onBeforeUnmount(clearSecret)
 
         <div
           v-if="loading && !items.length"
-          class="space-y-0 divide-y divide-default"
+          class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:gap-4 sm:p-6 xl:grid-cols-3"
           data-testid="team-loading"
         >
           <div
             v-for="i in 4"
             :key="i"
-            class="flex items-center gap-3 px-4 py-3 sm:px-6"
+            class="flex flex-col gap-3 rounded-lg border border-default p-4"
           >
-            <USkeleton class="size-10 shrink-0 rounded-full" />
-            <div class="min-w-0 flex-1 space-y-2">
-              <USkeleton class="h-4 w-40" />
-              <USkeleton class="h-3 w-48" />
+            <div class="flex items-center gap-3">
+              <USkeleton class="size-10 shrink-0 rounded-full" />
+              <div class="min-w-0 flex-1 space-y-2">
+                <USkeleton class="h-4 w-32" />
+                <USkeleton class="h-3 w-40" />
+              </div>
             </div>
-            <USkeleton class="h-6 w-16 rounded-full" />
+            <div class="flex gap-2">
+              <USkeleton class="h-6 w-16 rounded-full" />
+              <USkeleton class="h-6 w-24 rounded-full" />
+            </div>
           </div>
         </div>
 
@@ -302,7 +335,7 @@ onBeforeUnmount(clearSecret)
           v-else-if="!filtered.length"
           icon="i-lucide-search-x"
           title="Nenhum resultado"
-          :description="`Nada encontrado para “${q.trim()}”.`"
+          :description="emptyFilterDescription"
           class="py-10"
           data-testid="team-search-empty"
         />
