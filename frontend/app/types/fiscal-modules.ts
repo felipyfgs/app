@@ -443,6 +443,35 @@ export interface MonitoringFilterValue {
   status: string
 }
 
+/** Campos estruturados (chips) — busca `q` permanece dedicada na toolbar. */
+export type MonitoringStructuredFilterField
+  = | {
+    key: 'situation'
+    kind: 'option'
+    label: string
+    items?: Array<{ label: string, value: string }>
+  }
+  | {
+    key: 'competence'
+    kind: 'month'
+    label: string
+  }
+  | {
+    key: 'clientId'
+    kind: 'client'
+    label: string
+  }
+  | {
+    key: 'deliveryStatus' | 'paymentStatus' | 'status'
+    kind: 'option'
+    label: string
+    items: Array<{ label: string, value: string }>
+  }
+
+/**
+ * @deprecated Preferir `MonitoringStructuredFilterField` / `fields`.
+ * Mantido para compatibilidade de imports legados em testes.
+ */
 export type MonitoringAdvancedFilterField
   = | {
     key: 'competence'
@@ -458,7 +487,7 @@ export type MonitoringAdvancedFilterField
   }
   | {
     key: 'deliveryStatus' | 'paymentStatus' | 'status'
-    kind: 'select'
+    kind: 'select' | 'option'
     label: string
     hint?: string
     items: Array<{ label: string, value: string }>
@@ -470,7 +499,18 @@ export interface MonitoringFilterConfig {
     placeholder?: string
     ariaLabel?: string
   }
+  /**
+   * Campos estruturados ordenados (chips). Situação, cliente, competência etc.
+   * entram aqui — não há mais painel avançado separado.
+   */
+  fields?: MonitoringStructuredFilterField[]
+  /**
+   * @deprecated Use `fields`. Ainda aceito em migração; normalizado para fields.
+   */
   situation?: boolean
+  /**
+   * @deprecated Use `fields`.
+   */
   advanced?: MonitoringAdvancedFilterField[]
 }
 

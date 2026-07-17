@@ -57,20 +57,20 @@ const mutationRequest = ref<{
 
 const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({
   q: q.value,
-  competence: competence.value,
+  // Competência não é filtro da UI de Guias (endpoint não aplica).
+  competence: '',
   clientId: Number(clientId.value) || null,
   paymentStatus: paymentStatus.value
 }))
 const filterConfig: MonitoringFilterConfig = {
   // List API de guias não aceita `q` — busca rápida ficaria decorativa.
   search: false,
-  situation: false,
-  advanced: [
-    { key: 'clientId', kind: 'client', label: 'Cliente específico' },
-    { key: 'competence', kind: 'month', label: 'Competência' },
+  // Endpoint atual não aplica competência — não expor na UI.
+  fields: [
+    { key: 'clientId', kind: 'client', label: 'Cliente' },
     {
       key: 'paymentStatus',
-      kind: 'select',
+      kind: 'option',
       label: 'Status de pagamento',
       items: PAYMENT_STATUS_ITEMS
     }
@@ -110,9 +110,9 @@ async function loadOverview() {
   try {
     const data = (await api.fiscal.modules.overview('guides', {
       q: q.value.trim() || undefined,
-      competence: competence.value || undefined,
       // overview usa situation de carteira; payment_status vai só na lista de guias
-      situation: undefined
+      situation: undefined,
+      client_id: clientId.value ? Number(clientId.value) : undefined
     })).data
     if (!stillCurrent(seq, 'overview', epoch)) return
     overview.value = data
@@ -135,7 +135,6 @@ async function load() {
       page: page.value,
       per_page: perPage.value,
       client_id: clientId.value ? Number(clientId.value) : undefined,
-      competence: competence.value || undefined,
       payment_status: paymentStatus.value !== 'all' ? paymentStatus.value : undefined
     }) as Record<string, unknown>
     if (!stillCurrent(seq, 'list', epoch)) return
@@ -335,10 +334,11 @@ let filterTransactionDepth = 0
 
 async function applyModuleFilters(nextValue: MonitoringFilterValue) {
   const next = normalizeMonitoringFilters(nextValue)
+  // UI de Guias não expõe competência — sempre limpar residual.
+  next.competence = ''
   const nextClientId = next.clientId ? String(next.clientId) : ''
   if (
     q.value === next.q
-    && competence.value === next.competence
     && clientId.value === nextClientId
     && paymentStatus.value === next.paymentStatus
   ) return
@@ -346,7 +346,7 @@ async function applyModuleFilters(nextValue: MonitoringFilterValue) {
   filterTransactionDepth += 1
   try {
     q.value = next.q
-    competence.value = next.competence
+    competence.value = ''
     clientId.value = nextClientId
     paymentStatus.value = next.paymentStatus
     page.value = 1
@@ -379,15 +379,24 @@ watch(page, () => {
   void load()
 })
 watch(sessionEpoch, () => {
-  rows.value = []
-  total.value = 0
-  lastPage.value = 1
-  page.value = 1
-  overview.value = null
-  detail.value = null
-  detailOpen.value = false
-  mutationOpen.value = false
-  mutationRequest.value = null
+  filterTransactionDepth += 1
+  try {
+    q.value = ''
+    competence.value = ''
+    clientId.value = ''
+    paymentStatus.value = 'all'
+    rows.value = []
+    total.value = 0
+    lastPage.value = 1
+    page.value = 1
+    overview.value = null
+    detail.value = null
+    detailOpen.value = false
+    mutationOpen.value = false
+    mutationRequest.value = null
+  } finally {
+    filterTransactionDepth -= 1
+  }
   void load()
   void loadOverview()
 })

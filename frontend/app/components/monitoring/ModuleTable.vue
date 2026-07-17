@@ -239,6 +239,7 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
               :filter-config="filterConfig"
               :loading="loading || refreshing"
               :show-total="false"
+              :reset-key="sessionEpoch"
               @quick-filter-change="emit('quick-filter-change', $event)"
               @apply-filters="emit('apply-filters', $event)"
               @reset-filters="emit('reset-filters', $event)"

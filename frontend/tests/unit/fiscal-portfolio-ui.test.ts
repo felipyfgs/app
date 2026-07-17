@@ -298,30 +298,28 @@ describe('ações de carteira no contexto da seleção', () => {
       .toBeLessThan(dataTable.indexOf('data-testid="fiscal-table"'))
   })
 
-  it('segue customers.vue: ações em massa precedem filtros e Exibir', () => {
+  it('segue customers.vue: ações em massa precedem refresh e Exibir', () => {
     const toolbar = readFileSync(
       resolve(__dirname, '../../app/components/monitoring/ModuleToolbar.vue'),
       'utf8'
     )
 
     expect(toolbar.indexOf('<slot name="actions"'))
-      .toBeLessThan(toolbar.indexOf('data-testid="fiscal-filter-situation"'))
-    expect(toolbar.indexOf('data-testid="fiscal-filter-situation"'))
+      .toBeLessThan(toolbar.indexOf('data-testid="fiscal-filter-refresh"'))
+    expect(toolbar.indexOf('data-testid="fiscal-filter-refresh"'))
       .toBeLessThan(toolbar.indexOf('<slot name="trailing"'))
     expect(toolbar).toContain('class="flex flex-wrap items-center justify-between gap-1.5"')
     expect(toolbar).toContain('class="w-full sm:w-auto sm:max-w-sm"')
-    expect(toolbar).toContain('data-testid="advanced-filters-toggle"')
-    expect(toolbar).toContain('data-testid="fiscal-advanced-filters"')
-    expect(toolbar).toContain('@submit.prevent="applyAdvancedFilters"')
-    expect(toolbar).toContain('label="Aplicar filtros"')
-    expect(toolbar).toContain('data-testid="fiscal-filters-reset"')
-    expect(toolbar).toContain(':label="advancedFiltersLabel"')
+    expect(toolbar).toContain('data-testid="fiscal-structured-filters"')
+    expect(toolbar).toContain('DataTableFilterRoot')
+    expect(toolbar).toContain('onChipsClear')
+    expect(toolbar).toContain(':show-clear="hasActiveStructured"')
     expect(toolbar).not.toContain('label="Atualizar"')
     expect(toolbar).toContain('const qDraft = ref(appliedFilters.value.q)')
     expect(toolbar).toContain('@keyup.enter="submitQ"')
   })
 
-  it('filtros avançados usam rascunho controlado e contrato filters/filterConfig', () => {
+  it('filtros estruturados usam chips e contrato filters/filterConfig.fields', () => {
     const toolbar = readFileSync(
       resolve(__dirname, '../../app/components/monitoring/ModuleToolbar.vue'),
       'utf8'
@@ -334,12 +332,17 @@ describe('ações de carteira no contexto da seleção', () => {
       resolve(__dirname, '../../app/pages/monitoring/dctfweb/[submodule].vue'),
       'utf8'
     )
+    const editor = readFileSync(
+      resolve(__dirname, '../../app/components/data-table-filter/Editor.vue'),
+      'utf8'
+    )
 
-    expect(toolbar).toContain('const advancedDraft = ref')
-    expect(toolbar).toContain('advancedDraft.clientId')
-    expect(toolbar).toContain('type="month"')
-    expect(toolbar).toContain('Use uma competência válida no formato AAAA-MM.')
-    expect(toolbar).toContain(':disabled="Boolean(competenceError)"')
+    expect(toolbar).toContain('monitoringFiltersToModels')
+    expect(toolbar).toContain('modelsToMonitoringFilters')
+    expect(toolbar).toContain('DataTableFilterRoot')
+    expect(editor).toContain('type="month"')
+    expect(editor).toContain('Use uma competência válida no formato AAAA-MM.')
+    expect(editor).toContain('data-testid="data-table-filter-confirm"')
     expect(toolbar).not.toContain('advancedQDraft')
     expect(toolbar).not.toContain('advancedSituationDraft')
     expect(moduleTable).toContain(':filters="filters"')
@@ -348,6 +351,7 @@ describe('ações de carteira no contexto da seleção', () => {
     expect(moduleTable).toContain('emit(\'quick-filter-change\', $event)')
     expect(dctfweb).toContain(':filters="filters"')
     expect(dctfweb).toContain(':filter-config="filterConfig"')
+    expect(dctfweb).toContain('fields:')
     expect(dctfweb).toContain('@apply-filters="applyFilters"')
     expect(dctfweb).toContain('@quick-filter-change="applyQuickFilters"')
   })
@@ -365,6 +369,7 @@ describe('ações de carteira no contexto da seleção', () => {
     expect(portfolio).toContain('if (!ready || filterTransactionDepth > 0) return')
     expect(portfolio).toContain('if (advancedChanged)')
     expect(portfolio).toContain('await load()')
+    expect(portfolio).toContain('clearFiltersForTenantSwitch')
   })
 
   it('usa uma única fonte de espaçamento e restaura o footer do arquétipo', () => {

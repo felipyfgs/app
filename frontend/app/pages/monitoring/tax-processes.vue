@@ -38,8 +38,9 @@ const statusItems = [
 const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({ status: status.value }))
 const filterConfig: MonitoringFilterConfig = {
   search: false,
-  situation: false,
-  advanced: [{ key: 'status', kind: 'select', label: 'Status', items: statusItems }]
+  fields: [
+    { key: 'status', kind: 'option', label: 'Status', items: statusItems }
+  ]
 }
 
 function applyFilters(nextValue: MonitoringFilterValue) {
@@ -169,6 +170,7 @@ watch(status, () => {
 }, { immediate: true })
 watch(sessionEpoch, () => {
   loadSeq += 1
+  status.value = 'all'
   rows.value = []
   total.value = 0
   lastPage.value = 1

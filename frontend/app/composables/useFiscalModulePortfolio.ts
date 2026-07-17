@@ -413,8 +413,25 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     overviewError.value = null
   }
 
+  /** Limpa filtros aplicados (incl. cliente) antes da carga do novo Office. */
+  function clearFiltersForTenantSwitch() {
+    filterTransactionDepth += 1
+    try {
+      q.value = ''
+      situation.value = 'all'
+      competence.value = ''
+      clientId.value = null
+      deliveryStatus.value = 'all'
+      page.value = 1
+      lastPage.value = 1
+    } finally {
+      filterTransactionDepth -= 1
+    }
+  }
+
   watch(sessionEpoch, () => {
     // Troca de office aborta o request e limpa antes de recarregar: tenants não se misturam.
+    clearFiltersForTenantSwitch()
     clearForContextChange()
     if (ready) void load()
   })

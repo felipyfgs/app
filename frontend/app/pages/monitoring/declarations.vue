@@ -74,10 +74,11 @@ const deliveryStatusItems = [
 ]
 
 const filterConfig: MonitoringFilterConfig = {
-  advanced: [
-    { key: 'clientId', kind: 'client', label: 'Cliente específico' },
+  fields: [
+    { key: 'situation', kind: 'option', label: 'Situação' },
+    { key: 'clientId', kind: 'client', label: 'Cliente' },
     { key: 'competence', kind: 'month', label: 'Competência' },
-    { key: 'deliveryStatus', kind: 'select', label: 'Status de entrega', items: deliveryStatusItems }
+    { key: 'deliveryStatus', kind: 'option', label: 'Status de entrega', items: deliveryStatusItems }
   ]
 }
 

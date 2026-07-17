@@ -43,7 +43,10 @@ const {
 } = useFiscalModulePortfolio('sitfis')
 
 const filterConfig: MonitoringFilterConfig = {
-  advanced: [{ key: 'clientId', kind: 'client', label: 'Cliente específico' }]
+  fields: [
+    { key: 'situation', kind: 'option', label: 'Situação' },
+    { key: 'clientId', kind: 'client', label: 'Cliente' }
+  ]
 }
 
 function getRowId(row: SitfisClientRow) {

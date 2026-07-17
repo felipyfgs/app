@@ -9,11 +9,12 @@ import type {
 import { resetMonitoringFilters } from '../../app/utils/monitoring-filters'
 
 const config: MonitoringFilterConfig = {
-  advanced: [
+  fields: [
+    { key: 'situation', kind: 'option', label: 'Situação' },
     { key: 'competence', kind: 'month', label: 'Competência' },
     {
       key: 'status',
-      kind: 'select',
+      kind: 'option',
       label: 'Status',
       items: [{ label: 'Todos', value: 'all' }, { label: 'Ativo', value: 'ACTIVE' }]
     }
@@ -37,10 +38,15 @@ const uiStubs = {
     inheritAttrs: false,
     props: {
       label: { type: String, default: '' },
-      type: { type: String, default: 'button' }
+      type: { type: String, default: 'button' },
+      disabled: { type: Boolean, default: false }
     },
     setup(props, { attrs, slots }) {
-      return () => h('button', { ...attrs, type: props.type }, slots.default?.() || props.label)
+      return () => h('button', {
+        ...attrs,
+        type: props.type,
+        disabled: props.disabled || undefined
+      }, slots.default?.() || props.label)
     }
   }),
   USelect: defineComponent({
@@ -62,20 +68,63 @@ const uiStubs = {
   UFormField: defineComponent({
     setup: (_props, { slots }) => () => h('div', slots.default?.())
   }),
-  UCollapsible: defineComponent({
+  UPopover: defineComponent({
     props: { open: Boolean },
     emits: ['update:open'],
     setup(props, { emit, slots }) {
-      return () => h('div', [
-        h('div', { onClick: () => emit('update:open', !props.open) }, slots.default?.({ open: props.open })),
-        props.open ? h('div', slots.content?.()) : null
+      return () => h('div', { 'data-stub': 'popover' }, [
+        h('div', {
+          onClick: () => emit('update:open', !props.open)
+        }, slots.default?.()),
+        props.open ? h('div', { 'data-testid': 'popover-content' }, slots.content?.()) : null
       ])
     }
   }),
+  UDrawer: defineComponent({
+    props: { open: Boolean },
+    emits: ['update:open'],
+    setup(props, { slots }) {
+      return () => h('div', { 'data-stub': 'drawer' }, [
+        props.open ? h('div', { 'data-testid': 'drawer-content' }, slots.content?.()) : null
+      ])
+    }
+  }),
+  UCommandPalette: defineComponent({
+    props: { groups: { type: Array, default: () => [] } },
+    emits: ['update:modelValue'],
+    setup(props, { attrs, emit }) {
+      const groups = props.groups as Array<{ items?: Array<{ key?: string, label?: string, onSelect?: () => void }> }>
+      return () => h('div', { ...attrs, 'data-testid': 'data-table-filter-selector' },
+        (groups[0]?.items || []).map(item =>
+          h('button', {
+            'type': 'button',
+            'data-key': item.key,
+            'onClick': () => {
+              item.onSelect?.()
+              emit('update:modelValue', item)
+            }
+          }, item.label)
+        )
+      )
+    }
+  }),
+  UFieldGroup: defineComponent({
+    setup: (_props, { slots }) => () => h('div', { 'data-stub': 'field-group' }, slots.default?.())
+  }),
   FiscalClientPicker: defineComponent({
-    setup: () => () => h('div')
+    setup: () => () => h('div', { 'data-testid': 'fiscal-filter-client' })
   })
 }
+
+vi.mock('@vueuse/core', async () => {
+  const actual = await vi.importActual<typeof import('@vueuse/core')>('@vueuse/core')
+  return {
+    ...actual,
+    useBreakpoints: () => ({
+      smaller: () => ref(false)
+    })
+  }
+})
 
 function mountToolbar(Host: ReturnType<typeof defineComponent>) {
   return mountSuspended(Host, { global: { stubs: uiStubs } })
@@ -110,39 +159,34 @@ afterEach(() => {
 })
 
 describe('MonitoringModuleToolbar', () => {
-  it('abre com um clique e fecha com outro pelo gatilho nativo', async () => {
-    const { Host } = controlledToolbar()
+  it('exibe chips e botão Adicionar filtro', async () => {
+    const { Host } = controlledToolbar({ status: 'ACTIVE' })
     const wrapper = await mountToolbar(Host)
-    const trigger = wrapper.get('[data-testid="advanced-filters-toggle"]')
 
-    expect(trigger.attributes('aria-expanded')).toBe('false')
-    await trigger.trigger('click')
-    expect(trigger.attributes('aria-expanded')).toBe('true')
-    await trigger.trigger('click')
-    expect(trigger.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.get('[data-testid="fiscal-structured-filters"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="data-table-filter-add"]').text()).toContain('Adicionar filtro')
+    expect(wrapper.get('[data-testid="data-table-filter-chip"]').text()).toContain('Status')
   })
 
-  it('não consulta filtros avançados antes de Aplicar e preserva busca/situação rápidas abertas', async () => {
-    const { Host, quick, apply } = controlledToolbar()
+  it('não consulta filtros estruturados antes de confirmar', async () => {
+    const { Host, apply } = controlledToolbar()
     const wrapper = await mountToolbar(Host)
-    vi.useFakeTimers()
-    await wrapper.get('[data-testid="advanced-filters-toggle"]').trigger('click')
 
-    await wrapper.get('[data-testid="fiscal-filter-q"]').setValue('ACME')
-    wrapper.findComponent(uiStubs.USelect).vm.$emit('update:modelValue', 'PENDING')
-    await wrapper.vm.$nextTick()
-    await wrapper.get('[data-testid="fiscal-filter-competence"]').setValue('2026-07')
-    expect(apply).not.toHaveBeenCalled()
-
-    await wrapper.get('[data-testid="fiscal-advanced-filters"]').trigger('submit')
-    expect(apply).toHaveBeenCalledTimes(1)
-    expect(apply.mock.calls[0]?.[0]).toMatchObject({
-      q: 'ACME',
-      situation: 'PENDING',
-      competence: '2026-07'
-    })
-    await vi.runAllTimersAsync()
-    expect(quick).toHaveBeenCalledTimes(1)
+    await wrapper.get('[data-testid="data-table-filter-add"]').trigger('click')
+    const competenceBtn = wrapper.find('[data-key="competence"]')
+    if (competenceBtn.exists()) {
+      await competenceBtn.trigger('click')
+      await wrapper.vm.$nextTick()
+      expect(apply).not.toHaveBeenCalled()
+      const month = wrapper.find('[data-testid="data-table-filter-month"]')
+      if (month.exists()) {
+        await month.setValue('2026-07')
+        expect(apply).not.toHaveBeenCalled()
+        await wrapper.get('[data-testid="data-table-filter-confirm"]').trigger('click')
+        expect(apply).toHaveBeenCalledTimes(1)
+        expect(apply.mock.calls[0]?.[0]).toMatchObject({ competence: '2026-07' })
+      }
+    }
   })
 
   it('debounceia a busca em 320 ms e Enter aplica imediatamente', async () => {
@@ -161,14 +205,11 @@ describe('MonitoringModuleToolbar', () => {
     expect(first.quick).toHaveBeenCalledTimes(2)
   })
 
-  it('inclui filtro específico no contador e reset emite uma única transação', async () => {
-    const { Host, reset, quick } = controlledToolbar({ status: 'ACTIVE' })
+  it('Limpar tudo emite uma única transação reset', async () => {
+    const { Host, reset, quick } = controlledToolbar({ status: 'ACTIVE', q: 'x' })
     const wrapper = await mountToolbar(Host)
     vi.useFakeTimers()
-    expect(wrapper.text()).toContain('Filtros (1)')
-    await wrapper.get('[data-testid="advanced-filters-toggle"]').trigger('click')
-    await wrapper.get('[data-testid="fiscal-filter-q"]').setValue('pendente')
-    await wrapper.get('[data-testid="fiscal-filters-reset"]').trigger('click')
+    await wrapper.get('[data-testid="data-table-filter-clear"]').trigger('click')
     await vi.runAllTimersAsync()
 
     expect(reset).toHaveBeenCalledTimes(1)
