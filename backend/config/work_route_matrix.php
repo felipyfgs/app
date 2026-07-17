@@ -3,9 +3,9 @@
 /**
  * Matriz versionada das rotas Work: leitura vs mutação/exportação.
  *
- * Mutações e exportações exigem OfficeMembership real no Office corrente
- * (EnsureWorkRealMembership + policies com realOfficeRole).
- * Leitura pode usar contexto privilegiado PLATFORM_ADMIN.
+ * Mutações e exportações: OfficeMembership real no Office corrente, ou
+ * PLATFORM_ADMIN em contexto privilegiado (EnsureWorkRealMembership + policies).
+ * Leitura também usa contexto privilegiado PLATFORM_ADMIN.
  *
  * Versão: 1 — individualizar-perfis-plataforma-escritorio
  */

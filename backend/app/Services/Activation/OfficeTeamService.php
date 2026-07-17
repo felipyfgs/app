@@ -16,7 +16,8 @@ use App\Support\CurrentOffice;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Gestão de equipe do Office — exige OfficeMembership ADMIN real no CurrentOffice.
+ * Gestão de equipe do Office — OfficeMembership ADMIN real no CurrentOffice,
+ * ou PLATFORM_ADMIN em contexto privilegiado com office resolvido.
  */
 final class OfficeTeamService
 {
@@ -477,6 +478,11 @@ final class OfficeTeamService
         $office = $this->currentOffice->resolve($actor);
         if ($office === null) {
             throw ActivationException::forbidden('Contexto de escritório obrigatório.');
+        }
+
+        // Proprietário da instalação atuando no office selecionado (seletor global).
+        if ($this->currentOffice->isPlatformPrivileged() && $actor->isPlatformAdmin()) {
+            return $office;
         }
 
         if (! $this->currentOffice->hasRealMembership()) {

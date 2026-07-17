@@ -11,8 +11,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Fronteira Work: PLATFORM_ADMIN sem membership = leitura ok, mutação 403.
- * Conta dual usa papel real da membership.
+ * Fronteira Work: PLATFORM_ADMIN privilegiado = paridade de superfície com Office ADMIN.
+ * Conta dual usa papel real da membership quando existe.
  */
 class PlatformWorkReadOnlyTest extends TestCase
 {
@@ -26,7 +26,7 @@ class PlatformWorkReadOnlyTest extends TestCase
         ]);
     }
 
-    public function test_platform_admin_sem_membership_le_work_e_nao_muta(): void
+    public function test_platform_admin_privilegiado_le_e_muta_work(): void
     {
         $this->enablePrivileged();
 
@@ -51,13 +51,15 @@ class PlatformWorkReadOnlyTest extends TestCase
                 'name' => 'Novo Dept',
                 'code' => 'novo',
             ])
-            ->assertForbidden()
-            ->assertJsonPath('code', 'work_real_membership_required');
+            ->assertSuccessful();
 
-        $this->assertDatabaseMissing('work_departments', ['name' => 'Novo Dept']);
+        $this->assertDatabaseHas('work_departments', [
+            'office_id' => $office->id,
+            'name' => 'Novo Dept',
+        ]);
     }
 
-    public function test_platform_admin_sem_membership_nao_exporta(): void
+    public function test_platform_admin_privilegiado_nao_bloqueia_por_middleware_membership(): void
     {
         $this->enablePrivileged();
 
@@ -70,11 +72,18 @@ class PlatformWorkReadOnlyTest extends TestCase
 
         app(CurrentOffice::class)->clear();
 
-        $this->actingAs($admin)
+        // Middleware deixa passar. Export ainda amarra requested_by_membership_id no modelo
+        // (auditoria de membership) — não reintroduz work_real_membership_required.
+        $response = $this->actingAs($admin)
             ->postJson('/api/v1/work/exports', [
                 'scope' => 'queue',
-            ])
-            ->assertForbidden();
+            ]);
+
+        $this->assertNotSame(
+            'work_real_membership_required',
+            $response->json('code'),
+            'PLATFORM_ADMIN privilegiado não deve ser barrado pelo middleware Work'
+        );
     }
 
     public function test_conta_dual_muta_com_papel_real_admin(): void
@@ -122,7 +131,7 @@ class PlatformWorkReadOnlyTest extends TestCase
 
         app(CurrentOffice::class)->clear();
 
-        // Middleware passa (tem membership real), policy nega por papel VIEWER
+        // Membership real VIEWER prevalece sobre papel efetivo privilegiado
         $response = $this->actingAs($dual)
             ->postJson('/api/v1/work/processes', [
                 'title' => 'Não deve criar',

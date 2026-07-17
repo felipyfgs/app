@@ -15,7 +15,8 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 /**
- * Gestão de equipe do escritório corrente (membership ADMIN real).
+ * Gestão de equipe do escritório corrente
+ * (membership ADMIN real ou PLATFORM_ADMIN em contexto privilegiado).
  */
 class OfficeMemberController extends Controller
 {

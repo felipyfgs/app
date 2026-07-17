@@ -6,7 +6,9 @@ use App\Enums\OfficeRole;
 use App\Support\CurrentOffice;
 
 /**
- * Policies Work: leitura usa papel efetivo; mutação/export usa papel real da membership.
+ * Policies Work: leitura usa papel efetivo.
+ * Mutação/export: membership real, ou PLATFORM_ADMIN em contexto privilegiado
+ * (papel efetivo ADMIN — paridade de superfície tenant).
  */
 trait UsesRealWorkRole
 {
@@ -22,12 +24,21 @@ trait UsesRealWorkRole
     }
 
     /**
-     * Papel real da membership no Office corrente.
-     * Null se admin global puro → mutações negadas.
+     * Papel autorizado a mutar Work no office corrente.
+     * Preferência: membership real; fallback: papel efetivo em platform_privileged.
      */
     protected function realRole(): ?OfficeRole
     {
-        return $this->currentOffice()->realOfficeRole();
+        $real = $this->currentOffice()->realOfficeRole();
+        if ($real !== null) {
+            return $real;
+        }
+
+        if ($this->currentOffice()->isPlatformPrivileged()) {
+            return $this->currentOffice()->role();
+        }
+
+        return null;
     }
 
     protected function sameOfficeId(int $modelOfficeId): bool

@@ -134,7 +134,7 @@ Enquanto o destinatário nunca tiver sido ativado, o ator autorizado e com senha
 - **THEN** a API MUST rejeitar a ação e orientar a manutenção ou recuperação do Proprietário existente
 
 ### Requirement: Office ADMIN gerencia equipe dentro do limite do plano
-Somente um ator com OfficeMembership ativa `OfficeRole::ADMIN` no `CurrentOffice` SHALL poder listar, criar, alterar papel entre `ADMIN`, `OPERATOR` e `VIEWER`, regenerar ativação, desativar e reativar memberships desse Office. O papel ADMIN efetivo de `PLATFORM_ADMIN` sem membership real MUST NOT autorizar gestão da equipe. Criação, alteração de ADMIN, desativação, reativação e regeneração MUST exigir senha recente. Memberships ativas e pendentes SHALL contar contra `max_users`; desativadas e administradores globais sem membership MUST NOT contar.
+Um ator com OfficeMembership ativa `OfficeRole::ADMIN` no `CurrentOffice`, ou um `PLATFORM_ADMIN` em contexto `platform_privileged` com office resolvido, SHALL poder listar, criar, alterar papel entre `ADMIN`, `OPERATOR` e `VIEWER`, regenerar ativação, desativar e reativar memberships desse Office. `PLATFORM_ADMIN` sem office selecionado (contexto global puro) MUST NOT autorizar gestão da equipe. Criação, alteração de ADMIN, desativação, reativação e regeneração MUST exigir senha recente. Memberships ativas e pendentes SHALL contar contra `max_users`; desativadas e administradores globais sem membership MUST NOT contar.
 
 #### Scenario: Vaga disponível
 - **WHEN** o ADMIN cria um membro e a soma de ativos e pendentes fica dentro de `max_users`
@@ -148,9 +148,13 @@ Somente um ator com OfficeMembership ativa `OfficeRole::ADMIN` no `CurrentOffice
 - **WHEN** OPERATOR ou VIEWER tenta criar, alterar, regenerar ou desativar membro
 - **THEN** a API SHALL responder `403` sem mutação
 
-#### Scenario: Plataforma sem membership abre equipe
-- **WHEN** um `PLATFORM_ADMIN` em contexto global, mas sem OfficeMembership no Office corrente, tenta listar ou alterar a equipe
-- **THEN** a API SHALL responder `403` e MUST NOT tratar o papel global como membership
+#### Scenario: Plataforma privilegiada gerencia equipe do office selecionado
+- **WHEN** um `PLATFORM_ADMIN` em contexto `platform_privileged` com office resolvido lista ou altera a equipe
+- **THEN** a API SHALL autorizar a operação no `CurrentOffice` sem exigir OfficeMembership real do ator
+
+#### Scenario: Plataforma sem office selecionado abre equipe
+- **WHEN** um `PLATFORM_ADMIN` em contexto global, sem office resolvido, tenta listar ou alterar a equipe
+- **THEN** a API SHALL responder `403` e MUST NOT tratar o papel global sozinho como escopo de Office
 
 #### Scenario: Último ADMIN
 - **WHEN** uma ação tenta rebaixar ou desativar o último ADMIN ativo do Office
@@ -240,8 +244,12 @@ A tela autenticada `/conta/equipe` SHALL apresentar as memberships retornadas pa
 - **THEN** a tela SHALL apresentar um estado específico e acionável para a condição, preservando o indicador de vagas quando disponível
 
 #### Scenario: Usuário sem ADMIN real não administra equipe
-- **WHEN** um `OPERATOR`, `VIEWER` ou `PLATFORM_ADMIN` sem OfficeMembership `ADMIN` real tenta acessar ou operar a equipe
+- **WHEN** um `OPERATOR`, `VIEWER` ou `PLATFORM_ADMIN` sem office selecionado tenta acessar ou operar a equipe
 - **THEN** o sistema MUST ocultar ações administrativas e a API MUST permanecer responsável por negar listagem ou mutação não autorizada com `403`
+
+#### Scenario: PLATFORM_ADMIN com office vê Equipe na Conta
+- **WHEN** um `PLATFORM_ADMIN` em contexto `platform_privileged` com office resolvido abre a navegação de Conta
+- **THEN** o sistema SHALL exibir o item Equipe (`/conta/equipe`) junto com as demais seções do escritório
 
 #### Scenario: Layout se adapta à largura disponível
 - **WHEN** a tela é exibida em viewport estreita ou larga

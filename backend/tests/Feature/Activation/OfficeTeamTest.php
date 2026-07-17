@@ -83,7 +83,7 @@ class OfficeTeamTest extends TestCase
             ->assertJsonPath('code', 'seat_limit_reached');
     }
 
-    public function test_platform_sem_membership_real_403(): void
+    public function test_platform_privilegiado_lista_equipe_do_office_selecionado(): void
     {
         config([
             'features.kill_switch' => false,
@@ -91,6 +91,7 @@ class OfficeTeamTest extends TestCase
         ]);
 
         $office = Office::factory()->create();
+        $this->officeAdmin($office);
         $platform = User::factory()->asPlatformAdmin($office->id)->create([
             'password' => bcrypt('admin-secret-12'),
         ]);
@@ -103,10 +104,32 @@ class OfficeTeamTest extends TestCase
             ->postJson('/api/v1/platform/offices/select', ['office_id' => $office->id])
             ->assertOk();
 
-        // Papel global efetivo ADMIN NÃO autoriza gestão de equipe
+        // PLATFORM_ADMIN com office selecionado gerencia a equipe do CurrentOffice
         $this->actingAs($platform)
             ->getJson('/api/v1/office/members')
-            ->assertStatus(403);
+            ->assertOk()
+            ->assertJsonStructure(['data', 'meta' => ['occupied_seats', 'max_users']]);
+    }
+
+    public function test_platform_sem_office_resolvido_nao_lista_equipe(): void
+    {
+        config([
+            'features.kill_switch' => false,
+            'features.platform_privileged_context.enabled' => true,
+        ]);
+
+        // Sem default_office_id e sem select → sem CurrentOffice
+        $platform = User::factory()->asPlatformAdmin(null)->create([
+            'password' => bcrypt('admin-secret-12'),
+        ]);
+
+        $this->actingAs($platform);
+        app(RecentPasswordConfirmationGate::class)->markConfirmed($platform);
+
+        // Fail-closed: 403 (autorização) ou 409 (sem CurrentOffice resolvido)
+        $this->actingAs($platform)
+            ->getJson('/api/v1/office/members')
+            ->assertStatus(409);
     }
 
     public function test_operator_nao_gerencia_equipe(): void

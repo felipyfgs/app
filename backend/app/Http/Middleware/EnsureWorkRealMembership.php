@@ -9,8 +9,9 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Gate Work: mutações e exportações exigem OfficeMembership real no Office corrente.
- * Leitura global privilegiada NÃO passa por este middleware.
+ * Gate Work: mutações e exportações exigem OfficeMembership real no Office corrente
+ * ou PLATFORM_ADMIN em contexto privilegiado (paridade de superfície tenant).
+ * Leitura privilegiada não passa por este middleware.
  *
  * @see config/work_route_matrix.php
  */
@@ -31,12 +32,9 @@ class EnsureWorkRealMembership
             return $next($request);
         }
 
-        // Admin global puro (sem membership real) — leitura ok, escrita/export negada.
-        if ($this->currentOffice->isPlatformPrivileged()) {
-            return response()->json([
-                'message' => 'Operações de escrita/exportação Work exigem membership ativa no escritório.',
-                'code' => 'work_real_membership_required',
-            ], 403);
+        // PLATFORM_ADMIN com office selecionado: mesma superfície mutante do Office ADMIN.
+        if ($this->currentOffice->isPlatformPrivileged() && $user->isPlatformAdmin()) {
+            return $next($request);
         }
 
         // Sem membership e sem contexto privilegiado: já deveria ter falhado em EnsureOfficeContext.
