@@ -57,11 +57,22 @@ Preferências são separadas por cliente/módulo/submódulo e usam optimistic lo
 
 Dispatches e eventos modelam o rastreio futuro, mas nenhuma leitura, prévia ou alteração de preferência os cria. Destinatários futuros são armazenados apenas mascarados e com hash.
 
-### Template operacional compartilhado entre as cápsulas
+### Template operacional das cápsulas (referência visual)
 
-A página mantém o arquétipo de lista de `.reference/nuxt-dashboard-template/app/pages/customers.vue`: toolbar, seleção real, `UTable`, estados e largura fluida. PGDAS-D e PGMEI usam a mesma ordem visual de sete colunas de negócio: Situação, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca. A seleção autorizada é acrescentada pelo shell antes de Situação e não conta como coluna de negócio.
+A página mantém o arquétipo de lista de `.reference/nuxt-dashboard-template/app/pages/customers.vue`: toolbar, seleção real, `UTable`, estados e largura fluida. As duas cápsulas compartilham o mesmo esqueleto operacional (Ações, Enviar, Cliente, Rastreio, Última Busca, Histórico), mas o PGDAS-D inclui duas colunas fiscais mensais a mais. A seleção autorizada é acrescentada pelo shell antes de Situação e não conta como coluna de negócio.
 
-No PGDAS-D, Situação concentra o estado semântico e um tooltip acessível com PA, última declaração, RBT12, motivo e última consulta válida. Ações reúne a prévia de envio e um menu contextual; Enviar contém `automatic_requested`, inclusive ação em massa limitada à seleção atual. Cliente mostra razão social e CNPJ. Rastreio reúne indicadores compactos e acesso ao modal. Última Busca exibe data compacta, mantendo data/hora completa no tooltip, e Histórico de Busca abre o modal fiscal local. Histórico, prévia e rastreio usam `UModal` responsivo com rolagem interna.
+**PGDAS-D — nove colunas de negócio, nesta ordem:**
+1. Situação — badge semântico (`Em dia` / `Pendências` / `Atrasado` / `Não verificado`)
+2. Últ. Declaração — PA MM/AAAA com cor/ícone do estado
+3. Sublimite (RBT12) — valor formatado ou indisponível; tooltip explica que é receita bruta acumulada em 12 meses (não confunde com sublimite legal)
+4. Ações — ícone de prévia + menu contextual
+5. Enviar — switch `automatic_requested`; cabeçalho com switch em massa da seleção
+6. Cliente — razão social + CNPJ
+7. Rastreio de envio — status + anexo local + abrir modal
+8. Última Busca — data compacta; data/hora no tooltip
+9. Histórico de Busca — botão lupa em largura da coluna → modal local
+
+Histórico, prévia e rastreio usam `UModal` responsivo com rolagem interna.
 
 ## Riscos / Trade-offs
 

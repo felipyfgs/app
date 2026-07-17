@@ -22,14 +22,14 @@
 ## 4. Interface PGDAS-D
 
 - [x] 4.1 Ampliar tipos/composables do frontend para os contratos PGDAS-D e comunicação.
-- [ ] 4.2 Reconciliar o renderer PGDAS-D com as sete colunas do template operacional, movendo última declaração e RBT12 para tooltip/histórico e mantendo seleção acessível.
-- [ ] 4.3 Reconciliar Ações, Enviar, Rastreio de envio, Última Busca e Histórico de Busca com os modais locais, sem consulta nem envio ao visualizar.
+- [x] 4.2 Reconciliar o renderer PGDAS-D com as nove colunas da referência visual: Situação, Últ. Declaração, Sublimite (RBT12), Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca.
+- [x] 4.3 Reconciliar Ações (prévia + menu), Enviar (switch linha + bulk no cabeçalho), Rastreio compacto, Última Busca e Histórico de Busca com os modais locais, sem consulta nem envio ao visualizar.
 
 ## 5. Verificação
 
 - [x] 5.1 Cobrir codecs, histórico, estado, documentos protegidos, RBT12 e idempotência com testes Laravel/fixtures.
 - [x] 5.2 Cobrir tenancy, papéis, lote atômico, concorrência, mascaramento e ausência de jobs/mails/eventos.
-- [ ] 5.3 Cobrir a ordem exata das sete colunas, ausência das colunas antigas, tooltips, menus, modais, seleção em massa e permissões com testes unitários Nuxt.
+- [x] 5.3 Cobrir a ordem exata das nove colunas, ausência das colunas antigas, tooltips, menus, modais, seleção em massa e permissões com testes unitários Nuxt.
 - [ ] 5.4 Executar Pint, testes Laravel focados, `pnpm run test:gate`, generate, fidelity e validação OpenSpec; registrar qualquer limitação ambiental.
 
 ## 6. Fechamento

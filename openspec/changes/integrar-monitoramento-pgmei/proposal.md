@@ -6,7 +6,7 @@ O monitoramento de Simples/MEI ainda expõe quatro superfícies genéricas e tra
 
 - **BREAKING**: limitar `/monitoring/simples-mei` às cápsulas locais `Simples Nacional` (`PGDAS-D`) e `MEI` (`PGMEI`), removendo `Regime` e `DASN-SIMEI` das superfícies públicas, do portfólio e dos monitores automáticos.
 - Rejeitar `REGIME` e `DASN_SIMEI` nas APIs de portfólio com `422` e redirecionar deep links legados apenas para a rota canônica, cuja cápsula padrão é `Simples Nacional`.
-- Aplicar às duas cápsulas o mesmo template operacional de sete colunas; no PGMEI, dívida ativa, total em centavos e frescor alimentam Situação, tooltip e histórico, sem colunas fiscais independentes.
+- Aplicar ao PGMEI o template operacional de sete colunas (Situação, Ações, Enviar, Cliente, Rastreio de envio, Última Busca, Histórico de Busca), sem as colunas mensais do PGDAS-D; dívida ativa, total em centavos e frescor alimentam Situação, tooltip e histórico.
 - Integrar exclusivamente `PGMEI/DIVIDAATIVA24/1.0` ao monitor automático e remover o mapeamento fictício `CONSULTAR_DAS`.
 - Persistir projeção atual, observações imutáveis e itens normalizados de dívida, com isolamento por escritório, cliente e ano.
 - Alternar os cinco anos mais recentes no ciclo diário e oferecer consulta manual, explícita e limitada a 100 clientes.
@@ -29,5 +29,5 @@ Nenhuma.
 
 - Backend Laravel: catálogo e codec SERPRO, scheduler fiscal, registro de superfícies, validação do portfólio, projeções de dívida, APIs tenant-scoped e reutilização da comunicação template.
 - Banco PostgreSQL/SQLite de testes: migrations aditivas para projeções, observações e itens de dívida ativa; nenhum dado histórico será removido.
-- Frontend Nuxt/Nuxt UI: duas cápsulas locais na rota canônica, tabela e modal PGMEI, filtro anual e remoção das superfícies Regime/DASN-SIMEI.
+- Frontend Nuxt/Nuxt UI: duas cápsulas locais na rota canônica, tabela e modal PGMEI (ano corrente fixo, sem seletor) e remoção das superfícies Regime/DASN-SIMEI.
 - Compatibilidade: deep links antigos redirecionam para a rota base; chamadas API aos submódulos removidos passam a falhar explicitamente com `422`.

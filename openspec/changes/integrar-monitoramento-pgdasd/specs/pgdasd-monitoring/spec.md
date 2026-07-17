@@ -76,19 +76,23 @@ O sistema SHALL extrair RBT12 do extrato 16 no máximo uma vez por referência f
 - **THEN** a projeção não contém valor e assume `NOT_FOUND`, `AMBIGUOUS` ou `FAILED`
 
 ### Requirement: Superfície PGDAS-D especializada
-O sistema SHALL mostrar, nesta ordem, Situação, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca. O shell SHALL acrescentar seleção antes de Situação somente para ADMIN e OPERATOR, sem contá-la como coluna de negócio. O sistema MUST NOT criar colunas independentes para Última declaração, RBT12, Automático ou Detalhes.
+O sistema SHALL mostrar, nesta ordem e com estes rótulos de cabeçalho, as colunas de negócio: Situação, Últ. Declaração, Sublimite (RBT12), Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca. O shell SHALL acrescentar seleção antes de Situação somente para ADMIN e OPERATOR, sem contá-la como coluna de negócio. O sistema MUST NOT criar coluna separada “Automático” nem “Detalhes”; o switch individual e em massa ficam em Enviar, e o histórico fica em Histórico de Busca.
 
 #### Cenário: Linha da tabela
 - **WHEN** a carteira PGDAS-D é carregada
-- **THEN** Cliente apresenta razão social e CNPJ, e Situação usa cor, ícone, texto acessível e tooltip com PA, última declaração, RBT12, motivo e última consulta válida
+- **THEN** Situação exibe o estado semântico, Últ. Declaração o PA (MM/AAAA), Sublimite (RBT12) o valor formatado ou indisponível, Cliente razão social e CNPJ, e as demais colunas seguem o template operacional
 
 #### Cenário: Estado visual
 - **WHEN** o estado é `CURRENT`, `DUE_WITHIN_DEADLINE`, `OVERDUE_NOT_FOUND` ou `UNVERIFIED`
-- **THEN** a interface mostra respectivamente Em dia, Pendente no prazo, Atrasado ou Não verificado sem depender somente da cor
+- **THEN** a interface mostra respectivamente Em dia, Pendências, Atrasado ou Não verificado sem depender somente da cor
 
 #### Cenário: Ações e envio automático
 - **WHEN** ADMIN ou OPERATOR interage com a linha
-- **THEN** Ações oferece prévia e menu contextual, Enviar controla `automatic_requested` e o switch em massa afeta somente os clientes selecionados
+- **THEN** Ações oferece ícone de prévia e menu contextual, Enviar controla `automatic_requested` por linha e o switch do cabeçalho de Enviar aplica a intenção em massa somente aos clientes selecionados
+
+#### Cenário: Rastreio compacto
+- **WHEN** a linha é renderizada
+- **THEN** Rastreio de envio reúne status, anexo local (quando houver) e acesso ao modal de rastreio
 
 #### Cenário: Última busca compacta
 - **WHEN** existe consulta real produtiva e corretamente interpretada do serviço 13

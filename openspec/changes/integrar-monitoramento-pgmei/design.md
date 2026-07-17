@@ -58,11 +58,21 @@ A listagem recebe `detail.pgmei`. O histórico e os itens são lidos por endpoin
 Preferências e eventos mantêm a chave de contexto `module/submodule`. PGDAS-D e PGMEI nunca compartilham switch, prévia ou rastreio. Para PGMEI, `execution_mode` permanece `TEMPLATE_ONLY`, `automatic_effective=false` e nenhuma ação gera dispatch/evento de entrega nesta change.
 
 
-### 8. Mesmo template operacional nas duas cápsulas
+### 8. Template operacional PGMEI (sem colunas mensais do PGDAS-D)
 
-PGDAS-D e PGMEI usam exatamente sete colunas de negócio, nesta ordem: Situação, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca. A seleção autorizada é inserida pelo shell antes de Situação e não integra a contagem de colunas.
+PGMEI **não** repete as colunas Últ. Declaração e Sublimite (RBT12) do PGDAS-D — a consulta é anual de dívida ativa. As sete colunas de negócio, nesta ordem:
 
-No PGMEI, Situação mostra o estado anual e concentra em tooltip acessível o ano, a quantidade, o total em centavos, o frescor e a última consulta. Ações reúne prévia e menu contextual; Enviar contém o switch individual e o controle em massa restrito aos clientes selecionados; Cliente mostra razão social e CNPJ; Rastreio agrupa indicadores compactos; Última Busca mostra data compacta com data/hora no tooltip; Histórico de Busca abre o modal local. Não existem colunas separadas para Dívida ativa, Total inscrito, Automático ou Detalhes.
+1. Situação — estado anual (dívida / sem dívida / não verificado); tooltip com ano, quantidade, total em centavos, frescor e última consulta
+2. Ações — ícone de prévia + menu contextual
+3. Enviar — switch `automatic_requested` (ou atalho de configuração quando canal/contato falta); cabeçalho com switch em massa da seleção
+4. Cliente — razão social + CNPJ
+5. Rastreio de envio — status + anexo local + abrir modal
+6. Última Busca — data compacta; data/hora no tooltip
+7. Histórico de Busca — botão lupa → modal local
+
+A seleção autorizada é inserida pelo shell antes de Situação e não integra a contagem. Não existem colunas separadas para Dívida ativa, Total inscrito, Automático ou Detalhes.
+
+**Ano-calendário:** a carteira PGMEI não expõe seletor de ano. A UI e a listagem usam o ano corrente; consultas manuais e histórico também operam nesse ano. Cobertura multi-ano permanece responsabilidade do scheduler/backend, não de um filtro de tela.
 ## Riscos / Trade-offs
 
 - **Dados antigos ainda referenciam superfícies removidas** → migrations são apenas aditivas; o registro público deixa de resolvê-las sem apagar histórico.

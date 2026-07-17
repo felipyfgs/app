@@ -27,11 +27,11 @@ O sistema SHALL remover `Regime` e `DASN-SIMEI` das cápsulas, do registro de su
 - **THEN** `RegimeApplicabilityService` continua impedindo a consulta incompatível
 
 ### Requirement: Tabela PGMEI é especializada em dívida ativa
-O sistema SHALL apresentar, nesta ordem, Situação, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca, com filtro anual padrão no ano corrente. O shell SHALL acrescentar seleção antes de Situação somente para ADMIN e OPERATOR, sem contá-la como coluna de negócio. O sistema MUST NOT criar colunas independentes para Dívida ativa, Total inscrito, Automático ou Detalhes.
+O sistema SHALL apresentar, nesta ordem e com estes rótulos, as colunas de negócio: Situação, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca. A projeção operacional da carteira PGMEI SHALL usar o ano-calendário corrente de forma fixa (sem seletor de ano na interface). O shell SHALL acrescentar seleção antes de Situação somente para ADMIN e OPERATOR, sem contá-la como coluna de negócio. O sistema MUST NOT criar colunas independentes para Dívida ativa, Total inscrito, Últ. Declaração, Sublimite (RBT12), Automático ou Detalhes — dívida, total e frescor alimentam Situação e o tooltip.
 
 #### Scenario: Dívida ativa encontrada
 - **WHEN** a última consulta válida do ano contém ao menos um item
-- **THEN** Situação mostra Dívida ativa em vermelho e seu tooltip informa ano, quantidade, soma exata em centavos, frescor e última consulta
+- **THEN** Situação mostra Dívida ativa (ou rótulo operacional equivalente) e seu tooltip informa ano, quantidade, soma exata em centavos, frescor e última consulta
 
 #### Scenario: Nenhuma dívida no ano
 - **WHEN** a última consulta válida não contém itens
@@ -41,14 +41,17 @@ O sistema SHALL apresentar, nesta ordem, Situação, Ações, Enviar, Cliente, R
 - **WHEN** inexiste consulta produtiva válida ou a resposta não pode ser interpretada
 - **THEN** a tabela mostra `UNVERIFIED` em cinza sem afirmar inexistência de dívida
 
-
 #### Scenario: Cliente identificado
 - **WHEN** uma linha PGMEI é renderizada
 - **THEN** Cliente mostra razão social em destaque e CNPJ abaixo
 
 #### Scenario: Ações e envio automático
 - **WHEN** ADMIN ou OPERATOR interage com a linha
-- **THEN** Ações oferece prévia e menu contextual, Enviar controla `automatic_requested` e o switch em massa afeta somente os clientes selecionados
+- **THEN** Ações oferece ícone de prévia e menu contextual, Enviar controla `automatic_requested` por linha (ou atalho de configuração quando canal/contato falta) e o switch do cabeçalho de Enviar aplica a intenção em massa somente aos clientes selecionados
+
+#### Scenario: Rastreio compacto
+- **WHEN** a linha é renderizada
+- **THEN** Rastreio de envio reúne status, anexo local (quando houver) e acesso ao modal de rastreio
 
 #### Scenario: Última busca e histórico
 - **WHEN** existe consulta válida do serviço 24 para o ano selecionado

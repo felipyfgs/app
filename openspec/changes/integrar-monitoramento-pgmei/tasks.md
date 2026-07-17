@@ -22,13 +22,13 @@
 ## 4. Interface
 
 - [x] 4.1 Renderizar somente as cápsulas locais `Simples Nacional · PGDAS-D` e `MEI · PGMEI`, mantendo a rota canônica e os redirects legados
-- [ ] 4.2 Reconciliar PGMEI com as sete colunas do template operacional, movendo dívida, total e frescor para Situação/tooltip e mantendo o filtro anual
-- [ ] 4.3 Reconciliar Ações, Enviar, Rastreio de envio, Última Busca e Histórico de Busca com menus e modais em modo template
+- [x] 4.2 Reconciliar PGMEI com as sete colunas da referência: Situação, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca (dívida/total/frescor só em Situação/tooltip); ano corrente fixo sem seletor na UI
+- [x] 4.3 Reconciliar Ações (prévia + menu), Enviar (switch linha + bulk no cabeçalho), Rastreio compacto, Última Busca e Histórico de Busca com menus e modais em modo template
 - [x] 4.4 Resetar paginação/filtros exclusivos e descartar respostas obsoletas ao alternar cápsulas
 
 ## 5. Verificação e fechamento
 
 - [x] 5.1 Cobrir contratos, projeções, isolamento, permissões, limites, zero mutações e preservação de aplicabilidade em testes Laravel
-- [ ] 5.2 Cobrir nas duas cápsulas a ordem exata das sete colunas, ausência das colunas antigas, cores/ícones, tooltips, menus, responsividade, modais e troca rápida em testes Nuxt
+- [x] 5.2 Cobrir nas duas cápsulas a ordem exata das colunas da referência, ausência das colunas antigas, cores/ícones, tooltips, menus, responsividade, modais e troca rápida em testes Nuxt
 - [x] 5.3 Executar Pint, testes Laravel, `pnpm run test:gate`, geração estática, fidelity e OpenSpec strict
 - [x] 5.4 Sincronizar/arquivar a change e criar commit quando todo o software estiver verificado
