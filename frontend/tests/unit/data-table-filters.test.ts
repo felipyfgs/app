@@ -7,12 +7,14 @@ import {
   encodeDateRange,
   encodeOptionValues,
   formatChipDisplay,
+  formatOptionChipValueLabel,
   inactiveDefinitions,
   isValidDateRangeValue,
   isValidDateValue,
   isValidMonthValue,
   normalizeFilterModels,
   removeFilterModel,
+  sanitizeMultipleOptionValues,
   upsertFilterModel
 } from '../../app/utils/data-table-filters'
 
@@ -24,7 +26,9 @@ const definitions: DataTableFilterDefinition[] = [
     items: [
       { label: 'Pendente', value: 'PENDING' },
       { label: 'Em dia', value: 'UP_TO_DATE' },
-      { label: 'Atenção', value: 'ATTENTION' }
+      { label: 'Atenção', value: 'ATTENTION' },
+      { label: 'Erro', value: 'ERROR' },
+      { label: 'Bloqueado', value: 'BLOCKED' }
     ],
     emptyValue: 'all',
     multiple: true
@@ -179,16 +183,27 @@ describe('data-table-filters', () => {
     expect(removeFilterModel(next, definitions, 'situation')).toEqual([])
   })
 
-  it('formatChipDisplay multi sem label resolve rótulos por token (não CSV cru)', () => {
-    const model: DataTableFilterModel = {
+  it('formatChipDisplay multi resolve tokens e trunca com +N', () => {
+    const two: DataTableFilterModel = {
       key: 'situation',
       operator: 'in',
       value: 'ATTENTION,PENDING'
-      // sem label — fallback do chip
     }
-    const display = formatChipDisplay(definitions[0]!, model)
-    expect(display.valueLabel).toBe('Atenção, Pendente')
-    expect(display.operatorLabel).toBe('é um de')
-    expect(display.fieldLabel).toBe('Situação')
+    const twoDisplay = formatChipDisplay(definitions[0]!, two)
+    expect(twoDisplay.valueLabel).toBe('Atenção, Pendente')
+    expect(twoDisplay.operatorLabel).toBe('é um de')
+    expect(twoDisplay.fieldLabel).toBe('Situação')
+
+    const many: DataTableFilterModel = {
+      key: 'situation',
+      operator: 'in',
+      value: 'ATTENTION,BLOCKED,ERROR,PENDING',
+      label: 'rótulo longo ignorado no chip multi'
+    }
+    const manyDisplay = formatChipDisplay(definitions[0]!, many)
+    expect(manyDisplay.valueLabel).toBe('Atenção, Bloqueado +2')
+    expect(manyDisplay.operatorLabel).toBe('é um de')
+    expect(formatOptionChipValueLabel(['A', 'B', 'C', 'D'], 2)).toBe('A, B +2')
+    expect(sanitizeMultipleOptionValues(definitions[0]!, 'PENDING,HACK,all')).toEqual(['PENDING'])
   })
 })

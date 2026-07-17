@@ -47,15 +47,16 @@ const optionItems = computed(() => {
 const multiOptionModel = computed({
   get: () => decodeOptionValues(props.modelValue),
   set: (values: string[]) => {
+    // Valor vazio estável: '' (não null) — USelect multiple e createFilterModel tratam igual.
     const encoded = encodeOptionValues(values)
-    emit('update:modelValue', encoded || null)
+    emit('update:modelValue', encoded || '')
     if (!encoded) {
       emit('update:label', undefined)
       return
     }
     if (props.definition.kind !== 'option') return
     const labels = decodeOptionValues(encoded)
-      .map(value => optionLabel(props.definition.kind === 'option' ? props.definition.items : [], value))
+      .map(value => optionLabel(props.definition.items, value))
     emit('update:label', labels.join(', '))
   }
 })

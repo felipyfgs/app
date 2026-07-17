@@ -46,8 +46,10 @@ export function isValidDateRangeValue(value: unknown): boolean {
 }
 
 /**
- * Serializa múltiplas opções de filtro (estável: unique + sort).
- * Usa vírgula — alinhado a query HTTP `situation=A,B`.
+ * Serializa múltiplas opções (estável: unique + sort).
+ * Separador: vírgula (query HTTP `situation=A,B`).
+ *
+ * **Contrato:** `item.value` NÃO pode conter `,` — tokens de enum (PENDING, PARCSN…) ok.
  */
 export function encodeOptionValues(values: readonly string[]): string {
   const unique = new Set<string>()
@@ -58,7 +60,7 @@ export function encodeOptionValues(values: readonly string[]): string {
   return [...unique].sort((a, b) => a.localeCompare(b)).join(',')
 }
 
-/** Parse de valor option (único ou multi "a,b"). Aceita array. */
+/** Parse de valor option (único, multi "a,b" ou array). */
 export function decodeOptionValues(value: unknown): string[] {
   if (value == null) return []
   const parts = Array.isArray(value)
@@ -73,6 +75,54 @@ export function isMultipleOption(
   definition: DataTableFilterDefinition
 ): definition is Extract<DataTableFilterDefinition, { kind: 'option' }> & { multiple: true } {
   return definition.kind === 'option' && definition.multiple === true
+}
+
+/** Rótulos visíveis no chip multi; o resto vira `+N`. */
+export const CHIP_OPTION_LABEL_MAX = 2
+
+/**
+ * Junta rótulos de option multi para o chip (toolbar).
+ * Ex.: 5 itens → "Pendente, Atenção +3"
+ */
+export function formatOptionChipValueLabel(
+  labels: readonly string[],
+  maxVisible: number = CHIP_OPTION_LABEL_MAX
+): string {
+  const clean = labels.map(label => String(label ?? '').trim()).filter(Boolean)
+  if (clean.length === 0) return ''
+  const limit = Math.max(1, maxVisible)
+  if (clean.length <= limit) return clean.join(', ')
+  return `${clean.slice(0, limit).join(', ')} +${clean.length - limit}`
+}
+
+type OptionDefinition = Extract<DataTableFilterDefinition, { kind: 'option' }>
+
+/** Tokens multi válidos: allowlist do field, sem emptyValue. */
+export function sanitizeMultipleOptionValues(
+  definition: OptionDefinition,
+  value: unknown
+): string[] {
+  const empty = String(definitionEmptyValue(definition))
+  const allowed = new Set(definition.items.map(item => item.value))
+  return decodeOptionValues(value).filter(item => item !== empty && allowed.has(item))
+}
+
+function optionTokensForDisplay(
+  definition: OptionDefinition,
+  model: DataTableFilterModel
+): string[] {
+  const tokens = decodeOptionValues(model.value)
+  if (tokens.length > 0) return tokens
+  if (model.value != null && String(model.value).trim() !== '') {
+    return [String(model.value).trim()]
+  }
+  return []
+}
+
+function isMultiOptionDisplay(definition: OptionDefinition, model: DataTableFilterModel): boolean {
+  if (definition.multiple) return true
+  if (model.operator === 'in') return true
+  return decodeOptionValues(model.value).length > 1
 }
 
 export function definitionEmptyValue(definition: DataTableFilterDefinition): string | number | boolean | null {
@@ -102,9 +152,7 @@ export function isEmptyFilterValue(
     return true
   }
   if (definition.kind === 'option' && definition.multiple) {
-    const empty = String(definitionEmptyValue(definition))
-    const values = decodeOptionValues(value).filter(item => item !== empty)
-    return values.length === 0
+    return sanitizeMultipleOptionValues(definition, value).length === 0
   }
   const text = String(value).trim()
   if (text === '') return true
@@ -139,8 +187,9 @@ export function resolveModelLabel(
   if (explicitLabel && explicitLabel.trim()) return explicitLabel.trim()
   if (definition.kind === 'option') {
     if (definition.multiple) {
-      const values = decodeOptionValues(value)
+      const values = sanitizeMultipleOptionValues(definition, value)
       if (values.length === 0) return undefined
+      // Label completo no modelo (acessível); truncamento só no chip (formatChipDisplay).
       return values.map(item => optionLabel(definition.items, item)).join(', ')
     }
     return optionLabel(definition.items, String(value))
@@ -216,10 +265,7 @@ export function createFilterModel(
   }
 
   if (definition.kind === 'option' && definition.multiple) {
-    const empty = String(definitionEmptyValue(definition))
-    const allowed = new Set(definition.items.map(item => item.value))
-    const values = decodeOptionValues(value)
-      .filter(item => item !== empty && allowed.has(item))
+    const values = sanitizeMultipleOptionValues(definition, value)
     if (values.length === 0) return null
     const encoded = encodeOptionValues(values)
     return {
@@ -313,9 +359,7 @@ export function canConfirmDraftValue(
       || value === '0'
   }
   if (definition.kind === 'option' && definition.multiple) {
-    const empty = String(definitionEmptyValue(definition))
-    const allowed = new Set(definition.items.map(item => item.value))
-    return decodeOptionValues(value).some(item => item !== empty && allowed.has(item))
+    return sanitizeMultipleOptionValues(definition, value).length > 0
   }
   if (definition.kind === 'text') {
     return String(value).trim().length > 0
@@ -327,30 +371,29 @@ export function formatChipDisplay(
   definition: DataTableFilterDefinition,
   model: DataTableFilterModel
 ): { fieldLabel: string, operatorLabel: string, valueLabel: string } {
-  let valueLabel = model.label
-  if (!valueLabel) {
-    if (definition.kind === 'option') {
-      // Multi/CSV sem label pré-resolvido: mapear tokens → rótulos (não o CSV cru).
-      if (
-        definition.multiple
-        || model.operator === 'in'
-        || decodeOptionValues(model.value).length > 1
-      ) {
-        const tokens = decodeOptionValues(model.value)
-        valueLabel = tokens.length > 0
-          ? tokens.map(token => optionLabel(definition.items, token)).join(', ')
-          : String(model.value)
-      } else {
-        valueLabel = optionLabel(definition.items, String(model.value))
-      }
-    } else if (definition.kind === 'boolean') {
-      valueLabel = booleanLabel(definition, Boolean(model.value))
-    } else if (definition.kind === 'date_range') {
-      const range = decodeDateRange(model.value)
-      valueLabel = range ? `${range.from} – ${range.to}` : String(model.value)
+  let valueLabel: string
+  let multiTokenCount = 0
+
+  if (definition.kind === 'option') {
+    const tokens = optionTokensForDisplay(definition, model)
+    multiTokenCount = tokens.length
+    if (isMultiOptionDisplay(definition, model) && tokens.length > 0) {
+      // Sempre re-deriva do valor (não confia em label longo/cru).
+      const labels = tokens.map(token => optionLabel(definition.items, token))
+      valueLabel = formatOptionChipValueLabel(labels)
     } else {
-      valueLabel = String(model.value)
+      valueLabel = model.label?.trim()
+        || optionLabel(definition.items, String(model.value))
     }
+  } else if (model.label?.trim()) {
+    valueLabel = model.label.trim()
+  } else if (definition.kind === 'boolean') {
+    valueLabel = booleanLabel(definition, Boolean(model.value))
+  } else if (definition.kind === 'date_range') {
+    const range = decodeDateRange(model.value)
+    valueLabel = range ? `${range.from} – ${range.to}` : String(model.value)
+  } else {
+    valueLabel = String(model.value)
   }
 
   let operatorLabel = 'é'
@@ -358,11 +401,10 @@ export function formatChipDisplay(
     operatorLabel = 'contém'
   } else if (model.operator === 'between' || definition.kind === 'date_range') {
     operatorLabel = 'entre'
-  } else if (
-    model.operator === 'in'
-    || (definition.kind === 'option' && definition.multiple && decodeOptionValues(model.value).length > 1)
-  ) {
-    operatorLabel = decodeOptionValues(model.value).length > 1 ? 'é um de' : 'é'
+  } else if (model.operator === 'in' || (definition.kind === 'option' && definition.multiple)) {
+    operatorLabel = multiTokenCount > 1 || decodeOptionValues(model.value).length > 1
+      ? 'é um de'
+      : 'é'
   }
 
   return {

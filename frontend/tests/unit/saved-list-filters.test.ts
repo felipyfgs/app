@@ -127,6 +127,22 @@ describe('saved-list-filters monitoring adapters', () => {
     })
   })
 
+  it('preset multi situação (CSV + operator in) round-trip estável', () => {
+    const original = normalizeMonitoringFilters({
+      situation: 'ATTENTION,PENDING',
+      q: 'multi'
+    })
+    const payload = monitoringFiltersToPayload(original, config)
+    const sit = payload.filters.find(f => f.key === 'situation')
+    expect(sit).toMatchObject({
+      operator: 'in',
+      value: 'ATTENTION,PENDING'
+    })
+    const back = monitoringPayloadToFilters(payload, config)
+    expect(back.situation).toBe('ATTENTION,PENDING')
+    expect(back.q).toBe('multi')
+  })
+
   it('payload inválido ou vazio devolve defaults', () => {
     expect(monitoringPayloadToFilters(null, config)).toEqual(resetMonitoringFilters())
     expect(monitoringPayloadToFilters({}, config)).toEqual(resetMonitoringFilters())
