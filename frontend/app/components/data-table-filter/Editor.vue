@@ -49,7 +49,7 @@ const optionItems = computed(() => {
 const multiOptionModel = computed({
   get: () => decodeOptionValues(props.modelValue),
   set: (values: string[]) => {
-    // Valor vazio estável: '' (não null) — USelect multiple e createFilterModel tratam igual.
+    // Valor vazio estável: '' (não null) — createFilterModel trata igual.
     const encoded = encodeOptionValues(values)
     emit('update:modelValue', encoded || '')
     if (!encoded) {
@@ -62,6 +62,53 @@ const multiOptionModel = computed({
     emit('update:label', labels.join(', '))
   }
 })
+
+/** Busca local do checklist multiOption (padrão bazza CommandInput). */
+const optionSearch = ref('')
+
+watch(
+  () => props.definition.key,
+  () => { optionSearch.value = '' }
+)
+
+const filteredOptionItems = computed(() => {
+  const q = optionSearch.value.trim().toLowerCase()
+  if (!q) return optionItems.value
+  return optionItems.value.filter(item =>
+    item.label.toLowerCase().includes(q)
+    || String(item.value).toLowerCase().includes(q)
+  )
+})
+
+const allFilteredOptionsSelected = computed(() => {
+  const list = filteredOptionItems.value
+  if (!list.length) return false
+  const set = new Set(multiOptionModel.value)
+  return list.every(item => set.has(item.value))
+})
+
+const someFilteredOptionsSelected = computed(() => {
+  const set = new Set(multiOptionModel.value)
+  return filteredOptionItems.value.some(item => set.has(item.value))
+})
+
+function toggleOptionItem(value: string) {
+  const set = new Set(multiOptionModel.value)
+  if (set.has(value)) set.delete(value)
+  else set.add(value)
+  multiOptionModel.value = [...set]
+}
+
+function toggleAllOptions() {
+  const filtered = filteredOptionItems.value.map(item => item.value)
+  if (!filtered.length) return
+  if (allFilteredOptionsSelected.value) {
+    const drop = new Set(filtered)
+    multiOptionModel.value = multiOptionModel.value.filter(v => !drop.has(v))
+    return
+  }
+  multiOptionModel.value = [...new Set([...multiOptionModel.value, ...filtered])]
+}
 
 const booleanItems = computed(() => {
   if (props.definition.kind !== 'boolean') return []
@@ -99,19 +146,6 @@ const dateRangeError = computed(() => {
 })
 
 const fieldError = computed(() => monthError.value || dateError.value || dateRangeError.value)
-
-const operatorHint = computed(() => {
-  if (props.definition.kind === 'text' && props.definition.operator === 'contains') {
-    return 'Operador: contém'
-  }
-  if (props.definition.kind === 'date_range') {
-    return 'Operador: entre'
-  }
-  if (isOptionMultiple.value) {
-    return 'Operador: é um de (múltipla escolha)'
-  }
-  return 'Operador: é (igualdade)'
-})
 
 const booleanModel = computed({
   get: () => {
@@ -220,37 +254,83 @@ function onClientSelectMany(clients: Array<{
     class="flex min-w-0 flex-col gap-3 p-3"
     data-testid="data-table-filter-editor"
   >
-    <div>
-      <p class="text-sm font-medium text-highlighted">
-        {{ definition.label }}
-      </p>
-      <p class="mt-0.5 text-xs text-muted">
-        {{ operatorHint }}
-      </p>
+    <p class="text-sm font-medium text-highlighted">
+      {{ definition.label }}
+    </p>
+
+    <!--
+      multiOption (bazza): checklist embutida — não USelect multiple.
+      Busca local via UInput + linhas com checkbox (Command-style).
+    -->
+    <div
+      v-if="definition.kind === 'option' && isOptionMultiple"
+      class="min-w-0 overflow-hidden rounded-md border border-default"
+      data-testid="data-table-filter-option-multi"
+    >
+      <UInput
+        v-model="optionSearch"
+        type="search"
+        icon="i-lucide-search"
+        placeholder="Buscar…"
+        variant="none"
+        autocomplete="off"
+        class="w-full min-w-0"
+        :aria-label="`Buscar ${definition.label}`"
+        :ui="{
+          base: 'rounded-none border-0 border-b border-default focus-visible:ring-0'
+        }"
+      />
+      <div class="max-h-60 overflow-y-auto">
+        <p
+          v-if="!filteredOptionItems.length"
+          class="px-3 py-6 text-center text-sm text-muted"
+        >
+          Nenhum resultado
+        </p>
+        <template v-else>
+          <button
+            type="button"
+            class="flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left text-sm text-muted hover:bg-elevated/80 focus-visible:bg-elevated focus-visible:outline-none"
+            data-testid="data-table-filter-option-select-all"
+            @click="toggleAllOptions"
+          >
+            <UCheckbox
+              :model-value="allFilteredOptionsSelected
+                ? true
+                : (someFilteredOptionsSelected ? 'indeterminate' : false)"
+              tabindex="-1"
+              class="pointer-events-none shrink-0"
+            />
+            <span class="min-w-0 flex-1 truncate">
+              {{ allFilteredOptionsSelected ? 'Limpar' : 'Selecionar todos' }}
+            </span>
+          </button>
+          <div
+            class="mx-2 border-t border-default"
+            role="separator"
+          />
+          <button
+            v-for="item in filteredOptionItems"
+            :key="item.value"
+            type="button"
+            class="group flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left text-sm hover:bg-elevated/80 focus-visible:bg-elevated focus-visible:outline-none"
+            data-testid="data-table-filter-option-item"
+            @click="toggleOptionItem(item.value)"
+          >
+            <UCheckbox
+              :model-value="multiOptionModel.includes(item.value)"
+              tabindex="-1"
+              class="pointer-events-none shrink-0"
+              :class="multiOptionModel.includes(item.value) ? '' : 'opacity-40 group-hover:opacity-100'"
+            />
+            <span class="min-w-0 flex-1 truncate">{{ item.label }}</span>
+          </button>
+        </template>
+      </div>
     </div>
 
-    <UFormField
-      v-if="definition.kind === 'option' && isOptionMultiple"
-      :label="definition.label"
-      class="min-w-0"
-      hint="Selecione uma ou mais opções"
-    >
-      <USelect
-        :model-value="multiOptionModel"
-        :items="optionItems"
-        value-key="value"
-        multiple
-        class="w-full min-w-0"
-        :aria-label="definition.label"
-        data-testid="data-table-filter-option-multi"
-        :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
-        @update:model-value="onMultiOption"
-      />
-    </UFormField>
-
-    <UFormField
+    <div
       v-else-if="definition.kind === 'option'"
-      :label="definition.label"
       class="min-w-0"
     >
       <USelect
@@ -263,11 +343,10 @@ function onClientSelectMany(clients: Array<{
         :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
         @update:model-value="onOption(String($event))"
       />
-    </UFormField>
+    </div>
 
     <UFormField
       v-else-if="definition.kind === 'month'"
-      :label="definition.label"
       :error="monthError"
       class="min-w-0"
     >
@@ -282,11 +361,9 @@ function onClientSelectMany(clients: Array<{
       />
     </UFormField>
 
-    <UFormField
+    <div
       v-else-if="definition.kind === 'client' && isClientMultiple"
-      :label="definition.label"
       class="min-w-0"
-      hint="Marque na lista — o painel só fecha em Confirmar"
     >
       <slot
         name="client"
@@ -302,7 +379,7 @@ function onClientSelectMany(clients: Array<{
           :model-value="multiClientModel"
           multiple
           search-mode="select"
-          placeholder="Filtrar por nome ou CNPJ"
+          placeholder="Buscar…"
           class="w-full min-w-0"
           data-testid="data-table-filter-client-multi"
           @update:model-value="(v) => {
@@ -312,11 +389,10 @@ function onClientSelectMany(clients: Array<{
           @select-many="onClientSelectMany"
         />
       </slot>
-    </UFormField>
+    </div>
 
-    <UFormField
+    <div
       v-else-if="definition.kind === 'client'"
-      :label="definition.label"
       class="min-w-0"
     >
       <slot
@@ -329,18 +405,17 @@ function onClientSelectMany(clients: Array<{
         <FiscalClientPicker
           :model-value="typeof modelValue === 'number' ? modelValue : null"
           search-mode="select"
-          placeholder="Selecione um cliente"
+          placeholder="Cliente"
           class="w-full min-w-0"
           data-testid="data-table-filter-client"
           @update:model-value="onClientId"
           @select="onClientSelect"
         />
       </slot>
-    </UFormField>
+    </div>
 
-    <UFormField
+    <div
       v-else-if="definition.kind === 'text'"
-      :label="definition.label"
       class="min-w-0"
     >
       <UInput
@@ -351,11 +426,10 @@ function onClientSelectMany(clients: Array<{
         data-testid="data-table-filter-text"
         @update:model-value="onText($event)"
       />
-    </UFormField>
+    </div>
 
-    <UFormField
+    <div
       v-else-if="definition.kind === 'boolean'"
-      :label="definition.label"
       class="min-w-0"
     >
       <USelect
@@ -368,11 +442,10 @@ function onClientSelectMany(clients: Array<{
         :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
         @update:model-value="onBoolean(String($event))"
       />
-    </UFormField>
+    </div>
 
     <UFormField
       v-else-if="definition.kind === 'date'"
-      :label="definition.label"
       :error="dateError"
       class="min-w-0"
     >
@@ -429,13 +502,12 @@ function onClientSelectMany(clients: Array<{
         color="neutral"
         variant="ghost"
         icon="i-lucide-arrow-left"
-        label="Campos"
+        square
+        aria-label="Voltar aos campos"
         data-testid="data-table-filter-back"
         @click="emit('back')"
       />
-      <div
-        class="ms-auto flex flex-wrap items-center justify-end gap-2"
-      >
+      <div class="ms-auto flex flex-wrap items-center justify-end gap-2">
         <UButton
           type="button"
           color="neutral"

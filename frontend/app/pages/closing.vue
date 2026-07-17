@@ -12,11 +12,14 @@ import type {
   OutboundDeadlinePendingItem,
   OutboundUrgencyBand
 } from '~/types/api'
+import type { DataTableFilterDefinition, DataTableFilterModel } from '~/types/data-table-filter'
+import { createFilterModel, findDefinition } from '~/utils/data-table-filters'
 import {
   closingFiltersToPayload,
   closingPayloadToFilters,
   hasActiveClosingFiltersForSave
 } from '~/utils/saved-list-filters'
+import DataTableFilterRoot from '~/components/data-table-filter/Root.vue'
 import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
 import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
 import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
@@ -102,6 +105,7 @@ const {
     sourceFilter.value = next.source
     clientFilter.value = next.client_id
     pendingPage.value = 1
+    syncClosingChips()
     // watch nos filtros dispara load
   }
 })
@@ -117,28 +121,116 @@ const partialNotes = ref('')
 const advanceTargetLocal = ref('')
 const advanceOpen = ref(false)
 
-const bandItems = [
-  { label: 'Todas as faixas', value: FILTER_ALL },
-  { label: 'Planejado', value: 'PLANNED' },
-  { label: 'Atenção', value: 'ATTENTION' },
-  { label: 'Contingência', value: 'CONTINGENCY' },
-  { label: 'Vencido', value: 'OVERDUE' }
+const closingFilterDefinitions: DataTableFilterDefinition[] = [
+  {
+    key: 'band',
+    kind: 'option',
+    label: 'Faixa',
+    emptyValue: FILTER_ALL,
+    items: [
+      { label: 'Planejado', value: 'PLANNED' },
+      { label: 'Atenção', value: 'ATTENTION' },
+      { label: 'Contingência', value: 'CONTINGENCY' },
+      { label: 'Vencido', value: 'OVERDUE' }
+    ]
+  },
+  {
+    key: 'model',
+    kind: 'option',
+    label: 'Modelo',
+    emptyValue: FILTER_ALL,
+    items: [
+      { label: 'NF-e (55)', value: '55' },
+      { label: 'NFC-e (65)', value: '65' }
+    ]
+  },
+  {
+    key: 'source',
+    kind: 'option',
+    label: 'Fonte',
+    emptyValue: FILTER_ALL,
+    items: [
+      { label: 'SVRS', value: 'SVRS' },
+      { label: 'autXML', value: 'AUTXML' },
+      { label: 'Upload / ZIP', value: 'MANUAL' },
+      { label: 'Pacote oficial', value: 'PACKAGE' },
+      { label: 'Vault', value: 'VAULT' }
+    ]
+  },
+  {
+    key: 'clientId',
+    kind: 'client',
+    label: 'Cliente',
+    multiple: false
+  },
+  {
+    key: 'root',
+    kind: 'text',
+    label: 'Raiz CNPJ',
+    emptyValue: '',
+    operator: 'eq'
+  }
 ]
 
-const modelItems = [
-  { label: 'Todos os modelos', value: FILTER_ALL },
-  { label: 'NF-e (55)', value: '55' },
-  { label: 'NFC-e (65)', value: '65' }
-]
+function modelsFromClosingState(): DataTableFilterModel[] {
+  const models: DataTableFilterModel[] = []
+  for (const key of ['band', 'model', 'source', 'root'] as const) {
+    const def = findDefinition(closingFilterDefinitions, key)
+    if (!def) continue
+    const raw = key === 'band'
+      ? bandFilter.value
+      : key === 'model'
+        ? modelFilter.value
+        : key === 'source'
+          ? sourceFilter.value
+          : rootFilter.value
+    const model = createFilterModel(def, raw)
+    if (model) models.push(model)
+  }
+  const clientDef = findDefinition(closingFilterDefinitions, 'clientId')
+  if (clientDef) {
+    const id = Number(clientFilter.value)
+    if (Number.isFinite(id) && id >= 1) {
+      const model = createFilterModel(clientDef, id)
+      if (model) models.push(model)
+    }
+  }
+  return models
+}
 
-const sourceItems = [
-  { label: 'Todas as fontes', value: FILTER_ALL },
-  { label: 'SVRS', value: 'SVRS' },
-  { label: 'autXML', value: 'AUTXML' },
-  { label: 'Upload / ZIP', value: 'MANUAL' },
-  { label: 'Pacote oficial', value: 'PACKAGE' },
-  { label: 'Vault', value: 'VAULT' }
-]
+const chipModels = ref<DataTableFilterModel[]>(modelsFromClosingState())
+
+function syncClosingChips() {
+  chipModels.value = modelsFromClosingState()
+}
+
+function onStructuredFilters(models: DataTableFilterModel[]) {
+  const band = models.find(m => m.key === 'band')
+  const model = models.find(m => m.key === 'model')
+  const source = models.find(m => m.key === 'source')
+  const root = models.find(m => m.key === 'root')
+  const client = models.find(m => m.key === 'clientId')
+  bandFilter.value = band ? String(band.value) : FILTER_ALL
+  modelFilter.value = model ? String(model.value) : FILTER_ALL
+  sourceFilter.value = source ? String(source.value) : FILTER_ALL
+  rootFilter.value = root ? String(root.value) : ''
+  clientFilter.value = client && typeof client.value === 'number'
+    ? String(client.value)
+    : client
+      ? String(client.value)
+      : ''
+  chipModels.value = models
+  // watch nos filtros dispara load
+}
+
+function onClearStructuredFilters() {
+  bandFilter.value = FILTER_ALL
+  modelFilter.value = FILTER_ALL
+  sourceFilter.value = FILTER_ALL
+  rootFilter.value = ''
+  clientFilter.value = ''
+  chipModels.value = []
+}
 
 const columns: TableColumn<OutboundDeadlinePendingItem>[] = [
   { accessorKey: 'urgency_band', header: 'Faixa' },
@@ -427,6 +519,12 @@ watch(sessionEpoch, () => {
   pendingPage.value = 1
   pendingTotal.value = 0
   loadError.value = null
+  bandFilter.value = FILTER_ALL
+  modelFilter.value = FILTER_ALL
+  sourceFilter.value = FILTER_ALL
+  rootFilter.value = ''
+  clientFilter.value = ''
+  chipModels.value = []
   clearPresetCache()
   void load()
 })
@@ -466,8 +564,15 @@ onMounted(() => {
     </template>
 
     <template #body>
-      <div class="flex flex-col gap-3 mb-4 lg:flex-row lg:items-end lg:flex-wrap">
-        <UFormField label="Competência" class="w-full sm:w-40">
+      <!--
+        Competência fica fixa (contexto da tela).
+        Demais campos: DataTableFilterRoot (mesmo núcleo do portfolio).
+      -->
+      <div class="mb-4 flex w-full min-w-0 flex-wrap items-center justify-between gap-1.5">
+        <UFormField
+          label="Competência"
+          class="w-full sm:w-40"
+        >
           <UInput
             v-model="competence"
             type="month"
@@ -475,50 +580,15 @@ onMounted(() => {
             aria-label="Competência (AAAA-MM)"
           />
         </UFormField>
-        <UFormField label="Faixa" class="w-full sm:w-48">
-          <USelect
-            v-model="bandFilter"
-            :items="bandItems"
-            data-testid="closing-band"
-            aria-label="Filtrar por faixa de urgência"
+        <div class="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+          <DataTableFilterRoot
+            :definitions="closingFilterDefinitions"
+            :model-value="chipModels"
+            :reset-key="sessionEpoch"
+            data-testid="closing-structured-filters"
+            @update:model-value="onStructuredFilters"
+            @clear="onClearStructuredFilters"
           />
-        </UFormField>
-        <UFormField label="Modelo" class="w-full sm:w-40">
-          <USelect
-            v-model="modelFilter"
-            :items="modelItems"
-            data-testid="closing-model"
-            aria-label="Filtrar por modelo fiscal"
-          />
-        </UFormField>
-        <UFormField label="Raiz (CNPJ)" class="w-full sm:w-40">
-          <UInput
-            v-model="rootFilter"
-            placeholder="8 dígitos"
-            data-testid="closing-root"
-            aria-label="Filtrar por raiz CNPJ"
-            maxlength="14"
-          />
-        </UFormField>
-        <UFormField label="Cliente (id)" class="w-full sm:w-32">
-          <UInput
-            v-model="clientFilter"
-            type="number"
-            min="1"
-            placeholder="ID"
-            data-testid="closing-client"
-            aria-label="Filtrar por cliente"
-          />
-        </UFormField>
-        <UFormField label="Fonte" class="w-full sm:w-44">
-          <USelect
-            v-model="sourceFilter"
-            :items="sourceItems"
-            data-testid="closing-source"
-            aria-label="Filtrar por fonte de captura"
-          />
-        </UFormField>
-        <div class="flex flex-wrap items-end gap-1.5 pb-0.5">
           <UButton
             v-if="canSavePreset"
             color="neutral"

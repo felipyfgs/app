@@ -45,6 +45,8 @@ const props = withDefaults(defineProps<{
   columnLabels?: Record<string, string>
   initialHiddenColumns?: string[]
   showColumnVisibility?: boolean
+  horizontalScroll?: boolean
+  tableClass?: string
   emptyTitle?: string
   emptyDescription?: string
   emptyKind?: FiscalTableEmptyKind | null
@@ -57,6 +59,8 @@ const props = withDefaults(defineProps<{
   columnLabels: () => ({}),
   initialHiddenColumns: () => [],
   showColumnVisibility: true,
+  horizontalScroll: false,
+  tableClass: undefined,
   emptyTitle: undefined,
   emptyDescription: undefined,
   emptyKind: null
@@ -195,6 +199,7 @@ defineExpose({ clearSelection })
 <template>
   <div
     class="flex flex-col gap-1.5"
+    :class="horizontalScroll ? 'overflow-x-auto' : undefined"
     data-testid="fiscal-data-table"
   >
     <slot
@@ -216,6 +221,7 @@ defineExpose({ clearSelection })
       :get-row-id="getRowId"
       :ui="TABLE_UI"
       class="shrink-0"
+      :class="tableClass"
       data-testid="fiscal-table"
     >
       <template #empty>

@@ -362,6 +362,20 @@ function onClientPicked(client: {
   clientLabelCache.value = client.display_name || client.legal_name || client.name || null
 }
 
+function onClientsPicked(clients: Array<{
+  display_name?: string | null
+  legal_name?: string | null
+  name?: string | null
+}>) {
+  if (!clients.length) {
+    clientLabelCache.value = null
+    return
+  }
+  clientLabelCache.value = clients
+    .map(c => c.display_name || c.legal_name || c.name || 'Cliente')
+    .join(', ')
+}
+
 function resetAllFilters() {
   const next = resetMonitoringFilters()
   if (qDebounce) {
@@ -443,15 +457,21 @@ const filterResetKey = computed(() => props.resetKey)
             @update:model-value="onChipsUpdate"
             @clear="onChipsClear"
           >
-            <template #client="{ modelValue, update, select }">
+            <!--
+              Editor repassa multiple + model (number | number[]).
+              Sem :multiple o picker cai no UInputMenu single e a busca multi some.
+            -->
+            <template #client="{ modelValue, update, select, selectMany, multiple }">
               <FiscalClientPicker
                 :model-value="modelValue"
+                :multiple="Boolean(multiple)"
                 search-mode="select"
-                placeholder="Selecione um cliente"
+                :placeholder="multiple ? 'Buscar…' : 'Cliente'"
                 class="w-full min-w-0"
                 data-testid="fiscal-filter-client"
                 @update:model-value="update"
-                @select="(client) => { select(client); onClientPicked(client) }"
+                @select="(client) => { select?.(client); if (!multiple) onClientPicked(client) }"
+                @select-many="(clients) => { selectMany?.(clients); onClientsPicked(clients) }"
               />
             </template>
           </DataTableFilterRoot>

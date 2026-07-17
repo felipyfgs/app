@@ -12,11 +12,14 @@ import type { Client, ClientListStats } from '~/types/api'
 import { upperFirst } from 'scule'
 import { sortHeader } from '~/utils/table-sort'
 import { DENSE_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import type { DataTableFilterDefinition, DataTableFilterModel } from '~/types/data-table-filter'
+import { createFilterModel, findDefinition } from '~/utils/data-table-filters'
 import {
   clientsFiltersToPayload,
   clientsPayloadToFilters,
   hasActiveClientsFiltersForSave
 } from '~/utils/saved-list-filters'
+import DataTableFilterRoot from '~/components/data-table-filter/Root.vue'
 import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
 import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
 import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
@@ -99,6 +102,45 @@ type KpiFilter = 'total' | 'with_credential' | 'without_credential' | 'expiring'
 const kpiFilter = ref<KpiFilter>('total')
 const statusFilter = ref('all')
 
+const clientFilterDefinitions: DataTableFilterDefinition[] = [
+  {
+    key: 'status',
+    kind: 'option',
+    label: 'Estado',
+    emptyValue: 'all',
+    items: [
+      { label: 'Ativos', value: 'active' },
+      { label: 'Inativos', value: 'inactive' }
+    ]
+  }
+]
+
+function modelsFromClientStatus(): DataTableFilterModel[] {
+  const def = findDefinition(clientFilterDefinitions, 'status')
+  if (!def) return []
+  const model = createFilterModel(def, statusFilter.value)
+  return model ? [model] : []
+}
+
+const chipModels = ref<DataTableFilterModel[]>(modelsFromClientStatus())
+
+function syncClientChips() {
+  chipModels.value = modelsFromClientStatus()
+}
+
+function onStructuredFilters(models: DataTableFilterModel[]) {
+  const statusModel = models.find(m => m.key === 'status')
+  statusFilter.value = statusModel ? String(statusModel.value) : 'all'
+  chipModels.value = models
+  page.value = 1
+}
+
+function onClearStructuredFilters() {
+  statusFilter.value = 'all'
+  chipModels.value = []
+  page.value = 1
+}
+
 const CLIENT_KPI_KEYS = new Set<string>([
   'total',
   'with_credential',
@@ -155,6 +197,7 @@ const {
       ? next.operational_filter
       : 'total') as KpiFilter
     page.value = 1
+    syncClientChips()
     void nextTick(() => {
       applyingClientsPreset = false
       void load()
@@ -166,7 +209,7 @@ function applyKpiFilter(key: KpiFilter) {
   // segundo clique no mesmo card limpa (volta ao total)
   kpiFilter.value = kpiFilter.value === key && key !== 'total' ? 'total' : key
   statusFilter.value = 'all'
-
+  syncClientChips()
   page.value = 1
 }
 
@@ -571,6 +614,7 @@ function resetTenantScopedList() {
   search.value = ''
   kpiFilter.value = 'total'
   statusFilter.value = 'all'
+  chipModels.value = []
   stats.value = { ...emptyStats }
   formOpen.value = false
   formClient.value = null
@@ -712,16 +756,13 @@ onBeforeUnmount(() => {
       />
 
       <div class="flex flex-wrap items-center gap-1.5">
-        <USelect
-          v-model="statusFilter"
-          :items="[
-            { label: 'Todos', value: 'all' },
-            { label: 'Ativos', value: 'active' },
-            { label: 'Inativos', value: 'inactive' }
-          ]"
-          :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
-          placeholder="Filtrar estado"
-          class="min-w-28"
+        <DataTableFilterRoot
+          :definitions="clientFilterDefinitions"
+          :model-value="chipModels"
+          :reset-key="sessionEpoch"
+          data-testid="clients-structured-filters"
+          @update:model-value="onStructuredFilters"
+          @clear="onClearStructuredFilters"
         />
         <UButton
           v-if="canSavePreset"

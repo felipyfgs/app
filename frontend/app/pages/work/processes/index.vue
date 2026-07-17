@@ -15,11 +15,17 @@ import {
   processStatusLabel,
   workRiskLabel
 } from '~/utils/work-labels'
+import type { DataTableFilterDefinition, DataTableFilterModel } from '~/types/data-table-filter'
+import {
+  createFilterModel,
+  findDefinition
+} from '~/utils/data-table-filters'
 import {
   hasActiveWorkProcessesFiltersForSave,
   workProcessesFiltersToPayload,
   workProcessesPayloadToFilters
 } from '~/utils/saved-list-filters'
+import DataTableFilterRoot from '~/components/data-table-filter/Root.vue'
 import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
 import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
 import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
@@ -36,8 +42,67 @@ const page = ref(Math.max(1, Number(route.query.page) || 1))
 const total = ref(0)
 const q = ref(String(route.query.q || ''))
 const competence = ref(String(route.query.competence || ''))
-/** 'all' = sem filtro (USelect não aceita value vazio). */
+/** 'all' = sem filtro. */
 const status = ref(String(route.query.status || 'all'))
+
+const processFilterDefinitions: DataTableFilterDefinition[] = [
+  {
+    key: 'competence',
+    kind: 'month',
+    label: 'Competência',
+    emptyValue: ''
+  },
+  {
+    key: 'status',
+    kind: 'option',
+    label: 'Status',
+    emptyValue: 'all',
+    items: [
+      { label: 'A fazer', value: 'A_FAZER' },
+      { label: 'Em progresso', value: 'EM_PROGRESSO' },
+      { label: 'Impedido', value: 'IMPEDIDO' },
+      { label: 'Concluído', value: 'CONCLUIDO' },
+      { label: 'Arquivado', value: 'ARQUIVADO' }
+    ]
+  }
+]
+
+function modelsFromProcessState(): DataTableFilterModel[] {
+  const models: DataTableFilterModel[] = []
+  const competenceDef = findDefinition(processFilterDefinitions, 'competence')
+  const statusDef = findDefinition(processFilterDefinitions, 'status')
+  if (competenceDef) {
+    const model = createFilterModel(competenceDef, competence.value)
+    if (model) models.push(model)
+  }
+  if (statusDef) {
+    const model = createFilterModel(statusDef, status.value)
+    if (model) models.push(model)
+  }
+  return models
+}
+
+const chipModels = ref<DataTableFilterModel[]>(modelsFromProcessState())
+
+function syncChipsFromState() {
+  chipModels.value = modelsFromProcessState()
+}
+
+function onStructuredFilters(models: DataTableFilterModel[]) {
+  const competenceModel = models.find(m => m.key === 'competence')
+  const statusModel = models.find(m => m.key === 'status')
+  competence.value = competenceModel ? String(competenceModel.value) : ''
+  status.value = statusModel ? String(statusModel.value) : 'all'
+  chipModels.value = models
+  page.value = 1
+}
+
+function onClearStructuredFilters() {
+  competence.value = ''
+  status.value = 'all'
+  chipModels.value = []
+  page.value = 1
+}
 
 const {
   canSavePreset,
@@ -78,6 +143,7 @@ const {
     competence.value = next.competence
     status.value = next.status
     page.value = 1
+    syncChipsFromState()
     // watch em [page,q,competence,status] sincroniza URL e recarrega
   }
 })
@@ -140,12 +206,16 @@ watch(sessionEpoch, () => {
   q.value = ''
   competence.value = ''
   status.value = 'all'
+  chipModels.value = []
   total.value = 0
   clearPresetCache()
   void load()
 })
 
-onMounted(load)
+onMounted(() => {
+  syncChipsFromState()
+  void load()
+})
 </script>
 
 <template>
@@ -166,49 +236,40 @@ onMounted(load)
       </UDashboardNavbar>
 
       <UDashboardToolbar>
-        <div class="flex flex-wrap items-center gap-2 p-1">
+        <div class="flex w-full min-w-0 flex-wrap items-center justify-between gap-1.5 p-1">
           <UInput
             v-model="q"
             icon="i-lucide-search"
             placeholder="Buscar…"
-            class="w-56"
+            class="w-full min-w-0 max-w-sm"
             aria-label="Buscar processos"
           />
-          <UInput
-            v-model="competence"
-            placeholder="Competência YYYY-MM"
-            class="w-40"
-            aria-label="Filtrar por competência"
-          />
-          <USelect
-            v-model="status"
-            :items="[
-              { label: 'Todos os status', value: 'all' },
-              { label: 'A fazer', value: 'A_FAZER' },
-              { label: 'Em progresso', value: 'EM_PROGRESSO' },
-              { label: 'Impedido', value: 'IMPEDIDO' },
-              { label: 'Concluído', value: 'CONCLUIDO' },
-              { label: 'Arquivado', value: 'ARQUIVADO' }
-            ]"
-            class="w-44"
-            aria-label="Filtrar por status"
-          />
-          <UButton
-            v-if="canSavePreset"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-save"
-            label="Salvar"
-            data-testid="save-filters-button"
-            @click="openSave"
-          />
-          <DataTableFilterSavedFiltersMenu
-            :items="presets"
-            :loading="presetsLoading"
-            @apply="applyPreset"
-            @manage="openManage"
-            @open="onSavedMenuOpen"
-          />
+          <div class="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+            <DataTableFilterRoot
+              :definitions="processFilterDefinitions"
+              :model-value="chipModels"
+              :reset-key="sessionEpoch"
+              data-testid="work-processes-filters"
+              @update:model-value="onStructuredFilters"
+              @clear="onClearStructuredFilters"
+            />
+            <UButton
+              v-if="canSavePreset"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-save"
+              label="Salvar"
+              data-testid="save-filters-button"
+              @click="openSave"
+            />
+            <DataTableFilterSavedFiltersMenu
+              :items="presets"
+              :loading="presetsLoading"
+              @apply="applyPreset"
+              @manage="openManage"
+              @open="onSavedMenuOpen"
+            />
+          </div>
         </div>
       </UDashboardToolbar>
 

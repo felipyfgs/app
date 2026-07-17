@@ -116,6 +116,21 @@ function onDraftValueTo(value: string | null) {
 function onDraftLabel(label: string | undefined) {
   setDraftValue(draft.value?.value ?? null, label)
 }
+
+/**
+ * Popover content props.
+ * Cliente multi: bloqueia dismiss por clique fora (Confirmar/Cancelar fecham).
+ * Não usa onFocusOutside — travar focus quebra a barra de busca do picker.
+ */
+const popoverContent = computed(() => ({
+  align: 'start' as const,
+  side: 'bottom' as const,
+  sideOffset: 6,
+  onInteractOutside: (e: Event) => {
+    if (overlayMode.value !== 'editor' || draftDefinition.value?.kind !== 'client') return
+    e.preventDefault()
+  }
+}))
 </script>
 
 <template>
@@ -137,22 +152,7 @@ function onDraftLabel(label: string | undefined) {
       v-if="!isMobile"
       v-model:open="overlayOpen"
       :portal="true"
-      :content="{
-        align: 'start',
-        side: 'bottom',
-        sideOffset: 6,
-        // Cliente multi: cliques na lista embutida não devem fechar o popover.
-        onInteractOutside: (e: Event) => {
-          if (overlayMode.value === 'editor' && draftDefinition.value?.kind === 'client') {
-            e.preventDefault()
-          }
-        },
-        onFocusOutside: (e: Event) => {
-          if (overlayMode.value === 'editor' && draftDefinition.value?.kind === 'client') {
-            e.preventDefault()
-          }
-        }
-      }"
+      :content="popoverContent"
       :ui="{ content: 'p-0 bg-transparent ring-0 shadow-none' }"
     >
       <UButton
