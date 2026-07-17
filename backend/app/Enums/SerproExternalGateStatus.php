@@ -13,8 +13,9 @@ enum SerproExternalGateStatus: string
 
     public function blocksProduction(): bool
     {
+        // WAIVED não desbloqueia Production (sem waiver silencioso).
         return match ($this) {
-            self::Accepted, self::Waived => false,
+            self::Accepted => false,
             default => true,
         };
     }

@@ -1,22 +1,20 @@
 <script setup lang="ts">
 /**
- * Lista de versões de contrato SERPRO (metadados sanitizados).
+ * Histórico de contratos SERPRO (somente leitura sanitizada).
+ * Ativação/cadastro direto removidos — usar Configuração versionada.
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { SerproContractSanitized } from '~/types/api'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()
-const toast = useToast()
 const { sessionEpoch } = useDashboard()
 
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const rows = ref<SerproContractSanitized[]>([])
 const environment = ref('TRIAL')
-const actingId = ref<number | null>(null)
 
-// Reka/USelect proíbe value "" nos items (reserva para limpar seleção).
 const envItems = [
   { label: 'Trial', value: 'TRIAL' },
   { label: 'Produção', value: 'PRODUCTION' },
@@ -76,32 +74,6 @@ async function load() {
   }
 }
 
-async function activate(row: SerproContractSanitized) {
-  actingId.value = row.id
-  try {
-    await api.platform.serpro.contracts.activate(row.id, { replace: true })
-    toast.add({ title: `Contrato #${row.id} ativado`, color: 'success' })
-    await load()
-  } catch (caught) {
-    toast.add({ title: apiErrorMessage(caught, 'Falha ao ativar.'), color: 'error' })
-  } finally {
-    actingId.value = null
-  }
-}
-
-async function deactivate(row: SerproContractSanitized) {
-  actingId.value = row.id
-  try {
-    await api.platform.serpro.contracts.deactivate(row.id, { reason: 'Desativado via console' })
-    toast.add({ title: `Contrato #${row.id} desativado`, color: 'warning' })
-    await load()
-  } catch (caught) {
-    toast.add({ title: apiErrorMessage(caught, 'Falha ao desativar.'), color: 'error' })
-  } finally {
-    actingId.value = null
-  }
-}
-
 watch(environment, () => {
   void load()
 })
@@ -114,8 +86,27 @@ onMounted(load)
 
 <template>
   <div data-testid="admin-serpro-contracts">
+    <UAlert
+      color="info"
+      icon="i-lucide-info"
+      title="Cadastro e ativação diretos foram removidos"
+      description="Use Configuração SERPRO para upload versionado, teste OAuth e cutover."
+      class="mb-4"
+      data-testid="admin-serpro-contracts-redirect-hint"
+    >
+      <template #actions>
+        <UButton
+          size="sm"
+          label="Ir para Configuração"
+          to="/admin/serpro/configuration"
+          icon="i-lucide-settings-2"
+          data-testid="admin-serpro-contracts-go-config"
+        />
+      </template>
+    </UAlert>
+
     <UPageCard
-      title="Contratos e credenciais"
+      title="Contratos (histórico)"
       description="Somente metadados sanitizados. Sem download de PFX, Consumer Secret ou token."
       variant="naked"
       orientation="horizontal"
@@ -174,44 +165,7 @@ onMounted(load)
             />
           </div>
         </template>
-        <template #actions-cell>
-          <!-- coluna opcional via template se columns tiverem id actions -->
-        </template>
       </UTable>
-
-      <div
-        v-if="rows.length"
-        class="space-y-2 border-t border-default p-4"
-      >
-        <p class="text-xs text-muted">
-          Ações de cutover exigem TOTP e política de quatro olhos no backend.
-        </p>
-        <div class="flex flex-wrap gap-2">
-          <template
-            v-for="row in rows"
-            :key="row.id"
-          >
-            <UButton
-              v-if="row.status !== 'ACTIVE'"
-              size="xs"
-              color="primary"
-              variant="soft"
-              :label="`Ativar #${row.id}`"
-              :loading="actingId === row.id"
-              @click="activate(row)"
-            />
-            <UButton
-              v-if="row.status === 'ACTIVE'"
-              size="xs"
-              color="neutral"
-              variant="ghost"
-              :label="`Desativar #${row.id}`"
-              :loading="actingId === row.id"
-              @click="deactivate(row)"
-            />
-          </template>
-        </div>
-      </div>
 
       <p
         v-if="!loading && !rows.length"

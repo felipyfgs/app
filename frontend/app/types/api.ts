@@ -1349,6 +1349,100 @@ export interface SerproContractSanitized {
   updated_at?: string | null
 }
 
+/** Versão de credencial SERPRO (metadados sanitizados; sem vault id). */
+export interface SerproCredentialVersionSanitized {
+  id: number
+  serpro_contract_id?: number | null
+  environment: SerproEnvironmentCode
+  version_number: number
+  status: string
+  was_exposed?: boolean
+  consumer_key_hint?: string | null
+  consumer_key_last4?: string | null
+  fingerprint_sha256?: string | null
+  contractor_cnpj_masked?: string | null
+  subject_name?: string | null
+  cert_valid_from?: string | null
+  cert_valid_to?: string | null
+  verified_at?: string | null
+  activated_at?: string | null
+  retired_at?: string | null
+  compromised_at?: string | null
+  has_pfx?: boolean
+  has_oauth?: boolean
+  has_cached_token?: boolean
+  has_recent_connection_test?: boolean
+  latest_connection_test?: Record<string, unknown> | null
+  blocks_billable_egress?: boolean
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface SerproExternalGateSanitized {
+  id: number
+  kind: string
+  label?: string
+  environment?: string
+  status: string
+  title?: string
+  description?: string | null
+  ticket_ref?: string | null
+  evidence_ref?: string | null
+  responsible_name?: string | null
+  reference_date?: string | null
+  blocks_production?: boolean
+  is_complete?: boolean
+  answer_summary?: string | null
+  accepted_at?: string | null
+  updated_at?: string | null
+}
+
+export interface SerproPlatformConfiguration {
+  environment: SerproEnvironmentCode
+  endpoints: {
+    oauth_token_url?: string
+    api_base_url?: string
+    role_type?: string
+  }
+  contract?: SerproContractSanitized | null
+  active_credential_version?: SerproCredentialVersionSanitized | null
+  pending_credential_versions?: SerproCredentialVersionSanitized[]
+  credential_history?: SerproCredentialVersionSanitized[]
+  external_gates?: SerproExternalGateSanitized[]
+  external_gates_blocking?: boolean
+  usage_limits?: {
+    config?: Record<string, unknown>
+    office_limits?: Array<Record<string, unknown>>
+    usage?: Record<string, unknown>
+  }
+  runtime_controls?: Array<Record<string, unknown>>
+  kill_switch?: SerproKillSwitchStatus
+  readiness?: SerproReadinessSnapshot | Record<string, unknown> | null
+  pending_offices?: {
+    count: number
+    items: Array<{
+      office_id: number
+      office_name?: string | null
+      office_slug?: string | null
+      status?: string
+      actionable_code?: string | null
+      settings_path?: string
+      updated_at?: string | null
+    }>
+  }
+  summary?: {
+    has_active_credential?: boolean
+    has_pending_credential?: boolean
+    has_recent_connection_test?: boolean
+    gates_blocking?: boolean
+    kill_switch_active?: boolean
+    kill_switch_source?: string | null
+    usage_allowed?: boolean
+    usage_alert_reached?: boolean
+    configuration_ready?: boolean
+  }
+}
+
 export interface SerproKillSwitchStatus {
   global: {
     active: boolean

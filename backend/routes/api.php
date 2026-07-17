@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\CteEmitterPushController;
 use App\Http\Controllers\Api\V1\CteOperationsController;
 use App\Http\Controllers\Api\V1\DocumentImportBatchController;
 use App\Http\Controllers\Api\V1\DocumentImportController;
+use App\Http\Controllers\Api\V1\DteCanaryTenantController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\Fiscal\DctfwebController;
@@ -47,6 +48,8 @@ use App\Http\Controllers\Api\V1\Platform\PlatformOfficeController;
 use App\Http\Controllers\Api\V1\Platform\PlatformOfficeSelectController;
 use App\Http\Controllers\Api\V1\Platform\PlatformOwnerController;
 use App\Http\Controllers\Api\V1\Platform\SerproContractController;
+use App\Http\Controllers\Api\V1\Platform\SerproDteCanaryController;
+use App\Http\Controllers\Api\V1\Platform\SerproPlatformConfigurationController;
 use App\Http\Controllers\Api\V1\Platform\SerproPlatformOpsController;
 use App\Http\Controllers\Api\V1\Platform\SerproUsageAdminController;
 use App\Http\Controllers\Api\V1\Platform\TenantAdminController;
@@ -141,24 +144,32 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/serpro-usage/recompute', [SerproUsageAdminController::class, 'recompute']);
             Route::post('/serpro-usage/reconciliations', [SerproUsageAdminController::class, 'registerReconciliation']);
 
-            // Contrato SERPRO global — metadados sanitizados; sem recuperação de segredo
+            // Contrato SERPRO global — leitura sanitizada; mutações legadas removidas (410)
             Route::get('/serpro/contracts', [SerproContractController::class, 'index']);
-            Route::post('/serpro/contracts', [SerproContractController::class, 'store']);
             Route::get('/serpro/contracts/{serproContract}', [SerproContractController::class, 'show']);
-            Route::post('/serpro/contracts/{serproContract}/activate', [SerproContractController::class, 'activate']);
-            Route::post('/serpro/contracts/{serproContract}/deactivate', [SerproContractController::class, 'deactivate']);
-            Route::post('/serpro/contracts/{serproContract}/block', [SerproContractController::class, 'block']);
+            Route::post('/serpro/contracts', [SerproPlatformConfigurationController::class, 'legacyMutationRemoved']);
+            Route::post('/serpro/contracts/{serproContract}/activate', [SerproPlatformConfigurationController::class, 'legacyMutationRemoved']);
+            Route::post('/serpro/contracts/{serproContract}/deactivate', [SerproPlatformConfigurationController::class, 'legacyMutationRemoved']);
+            Route::post('/serpro/contracts/{serproContract}/block', [SerproPlatformConfigurationController::class, 'legacyMutationRemoved']);
             Route::get('/serpro/health', [SerproContractController::class, 'health']);
             Route::get('/serpro/catalog', [SerproContractController::class, 'catalog']);
             Route::get('/serpro/kill-switch', [SerproContractController::class, 'killSwitchStatus']);
             Route::post('/serpro/kill-switch', [SerproContractController::class, 'killSwitch']);
             Route::post('/serpro/breaker/reset', [SerproContractController::class, 'breakerReset']);
 
-            // Credenciais versionadas, readiness, orçamento e rollout (quatro olhos)
+            // Configuração global unificada (Proprietário)
+            Route::get('/serpro/configuration', [SerproPlatformConfigurationController::class, 'show']);
+            Route::post('/serpro/credential-versions', [SerproPlatformConfigurationController::class, 'storeCredentialVersion']);
+            Route::post('/serpro/credential-versions/{serproCredentialVersion}/verify', [SerproPlatformConfigurationController::class, 'verifyCredentialVersion']);
+            Route::post('/serpro/credential-versions/{serproCredentialVersion}/test-connection', [SerproPlatformConfigurationController::class, 'testConnection']);
+            Route::post('/serpro/credential-versions/{serproCredentialVersion}/cutover', [SerproPlatformConfigurationController::class, 'cutoverCredentialVersion']);
+            Route::patch('/serpro/external-gates/{gate}', [SerproPlatformConfigurationController::class, 'updateExternalGate']);
+            Route::put('/serpro/usage-limits', [SerproPlatformConfigurationController::class, 'updateUsageLimits']);
+
+            // Credenciais versionadas (leitura), readiness, orçamento e rollout
             Route::get('/serpro/credential-versions', [SerproPlatformOpsController::class, 'listCredentialVersions']);
             Route::get('/serpro/credential-versions/{serproCredentialVersion}', [SerproPlatformOpsController::class, 'showCredentialVersion']);
             Route::post('/serpro/credential-versions/{serproCredentialVersion}/approvals', [SerproPlatformOpsController::class, 'approveCredentialVersion']);
-            Route::post('/serpro/credential-versions/{serproCredentialVersion}/cutover', [SerproPlatformOpsController::class, 'cutoverCredentialVersion']);
             Route::get('/serpro/readiness', [SerproPlatformOpsController::class, 'readiness']);
             Route::get('/serpro/metrics', [SerproPlatformOpsController::class, 'metrics']);
             Route::get('/serpro/budgets', [SerproPlatformOpsController::class, 'listBudgets']);
@@ -166,6 +177,24 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/serpro/rollouts', [SerproPlatformOpsController::class, 'requestRollout']);
             Route::post('/serpro/rollouts/{serproRolloutApproval}/approve', [SerproPlatformOpsController::class, 'approveRollout']);
             Route::post('/serpro/rollouts/{serproRolloutApproval}/reject', [SerproPlatformOpsController::class, 'rejectRollout']);
+
+            // Canário DTE controlado (Proprietário) — sem payload fiscal na resposta
+            Route::get('/serpro/dte-canary', [SerproDteCanaryController::class, 'summary']);
+            Route::post('/serpro/dte-canary', [SerproDteCanaryController::class, 'create'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::get('/serpro/dte-canary/{serproDteCanaryRequest}', [SerproDteCanaryController::class, 'show']);
+            Route::post('/serpro/dte-canary/{serproDteCanaryRequest}/target', [SerproDteCanaryController::class, 'selectTarget'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::post('/serpro/dte-canary/{serproDteCanaryRequest}/approve-owner', [SerproDteCanaryController::class, 'approveOwner'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::post('/serpro/dte-canary/{serproDteCanaryRequest}/execute', [SerproDteCanaryController::class, 'execute'])
+                ->middleware(['throttle:10,1', EnsureRecentPasswordConfirmation::class]);
+            Route::post('/serpro/dte-canary/{serproDteCanaryRequest}/reconcile', [SerproDteCanaryController::class, 'reconcile'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::post('/serpro/dte-canary/{serproDteCanaryRequest}/promote-limited', [SerproDteCanaryController::class, 'promoteLimited'])
+                ->middleware(['throttle:10,1', EnsureRecentPasswordConfirmation::class]);
+            Route::post('/serpro/dte-canary/disable', [SerproDteCanaryController::class, 'disable'])
+                ->middleware(['throttle:10,1', EnsureRecentPasswordConfirmation::class]);
         });
 
         Route::middleware([
@@ -200,6 +229,12 @@ Route::prefix('v1')->group(function (): void {
             // Consumo/franquia SERPRO do tenant (sem orçamento global nem outros offices)
             Route::get('/office/serpro-usage', [OfficeSerproUsageController::class, 'summary']);
             Route::get('/office/serpro-usage/entries', [OfficeSerproUsageController::class, 'entries']);
+
+            // Canário DTE — confirmação Office ADMIN + resultado fiscal (membership)
+            Route::get('/serpro/dte-canary/pending', [DteCanaryTenantController::class, 'pending']);
+            Route::post('/serpro/dte-canary/{serproDteCanaryRequest}/confirm', [DteCanaryTenantController::class, 'confirmParticipation'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::get('/serpro/dte-canary/{serproDteCanaryRequest}/result', [DteCanaryTenantController::class, 'result']);
 
             // Núcleo de monitoramento fiscal (tenant-scoped; mutações off por padrão no adapter)
             Route::get('/fiscal/categories', [FiscalCategoryController::class, 'indexCategories']);
@@ -350,13 +385,12 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/office/settings/consent', [OfficeSettingsController::class, 'showConsent']);
             Route::post('/office/settings/consent', [OfficeSettingsController::class, 'grantConsent']);
             Route::post('/office/settings/consent/revoke', [OfficeSettingsController::class, 'revokeConsent']);
+            // A1 canônico: só ADMIN (policy) + senha do PFX. Sem reconfirmação de senha de
+            // login no formulário — o material sensível é a senha do certificado, não a da conta.
             Route::get('/office/settings/credential', [OfficeSettingsController::class, 'showCredential']);
-            Route::post('/office/settings/credential', [OfficeSettingsController::class, 'storeCredential'])
-                ->middleware(EnsureRecentPasswordConfirmation::class);
-            Route::post('/office/settings/credential/replace', [OfficeSettingsController::class, 'replaceCredential'])
-                ->middleware(EnsureRecentPasswordConfirmation::class);
-            Route::post('/office/settings/credential/remove', [OfficeSettingsController::class, 'removeCredential'])
-                ->middleware(EnsureRecentPasswordConfirmation::class);
+            Route::post('/office/settings/credential', [OfficeSettingsController::class, 'storeCredential']);
+            Route::post('/office/settings/credential/replace', [OfficeSettingsController::class, 'replaceCredential']);
+            Route::post('/office/settings/credential/remove', [OfficeSettingsController::class, 'removeCredential']);
             Route::get('/office/settings/monitor-schedules', [OfficeSettingsController::class, 'listMonitorSchedules']);
             Route::put('/office/settings/monitor-schedules/{monitorKey}', [OfficeSettingsController::class, 'updateMonitorSchedule']);
             Route::get('/office/settings/onboarding-status', [OfficeSettingsController::class, 'onboardingStatus']);

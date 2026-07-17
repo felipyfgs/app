@@ -10,8 +10,11 @@ import type {
   PlatformOwner,
   SerproCatalogEntry,
   SerproContractSanitized,
+  SerproCredentialVersionSanitized,
+  SerproExternalGateSanitized,
   SerproGlobalHealth,
   SerproKillSwitchStatus,
+  SerproPlatformConfiguration,
   SerproReadinessSnapshot,
   SerproUsageConsolidation,
   SerproUsageReconciliation,
@@ -91,33 +94,80 @@ export function createPlatformApi(client: ApiClient) {
           })
       },
       serpro: {
+        /**
+         * Configuração global unificada (Proprietário).
+         * Mutações de contrato legado removidas — use credentialVersions.
+         */
+        configuration: {
+          show: (params?: { environment?: string }) =>
+            client<{ data: SerproPlatformConfiguration }>('/api/v1/platform/serpro/configuration', {
+              query: params
+            })
+        },
+        credentialVersions: {
+          list: (params?: { environment?: string }) =>
+            client<{ data: SerproCredentialVersionSanitized[] }>(
+              '/api/v1/platform/serpro/credential-versions',
+              { query: params }
+            ),
+          show: (id: number) =>
+            client<{ data: SerproCredentialVersionSanitized }>(
+              `/api/v1/platform/serpro/credential-versions/${id}`
+            ),
+          store: (body: FormData) =>
+            client<{ data: SerproCredentialVersionSanitized }>(
+              '/api/v1/platform/serpro/credential-versions',
+              { method: 'POST', body }
+            ),
+          verify: (id: number) =>
+            client<{ data: SerproCredentialVersionSanitized }>(
+              `/api/v1/platform/serpro/credential-versions/${id}/verify`,
+              { method: 'POST', body: {} }
+            ),
+          testConnection: (id: number) =>
+            client<{ data: { evidence: Record<string, unknown>, credential_version: SerproCredentialVersionSanitized } }>(
+              `/api/v1/platform/serpro/credential-versions/${id}/test-connection`,
+              { method: 'POST', body: {} }
+            ),
+          cutover: (id: number, body?: { approval_id?: number, reason?: string, serpro_contract_id?: number }) =>
+            client<{ data: SerproCredentialVersionSanitized }>(
+              `/api/v1/platform/serpro/credential-versions/${id}/cutover`,
+              { method: 'POST', body: body || {} }
+            )
+        },
+        externalGates: {
+          update: (gate: string, body: {
+            ticket_ref: string
+            answer_summary: string
+            responsible_name: string
+            reference_date: string
+            environment?: string
+          }) =>
+            client<{ data: SerproExternalGateSanitized }>(
+              `/api/v1/platform/serpro/external-gates/${gate}`,
+              { method: 'PATCH', body }
+            )
+        },
+        usageLimits: {
+          update: (body: {
+            environment: string
+            cycle_start_day: number
+            alert_percent: number
+            global_limit_quantity?: number | null
+            office_limits?: Array<{ office_id: number, limit_quantity?: number | null }>
+          }) =>
+            client<{ data: { config: Record<string, unknown>, office_limits: Array<Record<string, unknown>> } }>(
+              '/api/v1/platform/serpro/usage-limits',
+              { method: 'PUT', body }
+            )
+        },
         contracts: {
           list: (params?: { environment?: string }) =>
             client<{ data: SerproContractSanitized[] }>('/api/v1/platform/serpro/contracts', {
               query: params
             }),
           show: (id: number) =>
-            client<{ data: SerproContractSanitized }>(`/api/v1/platform/serpro/contracts/${id}`),
-          store: (body: FormData | Record<string, unknown>) =>
-            client<{ data: SerproContractSanitized }>('/api/v1/platform/serpro/contracts', {
-              method: 'POST',
-              body
-            }),
-          activate: (id: number, body?: { replace?: boolean }) =>
-            client<{ data: SerproContractSanitized }>(
-              `/api/v1/platform/serpro/contracts/${id}/activate`,
-              { method: 'POST', body: body || {} }
-            ),
-          deactivate: (id: number, body?: { reason?: string }) =>
-            client<{ data: SerproContractSanitized }>(
-              `/api/v1/platform/serpro/contracts/${id}/deactivate`,
-              { method: 'POST', body: body || {} }
-            ),
-          block: (id: number, body: { reason: string }) =>
-            client<{ data: SerproContractSanitized }>(
-              `/api/v1/platform/serpro/contracts/${id}/block`,
-              { method: 'POST', body }
-            )
+            client<{ data: SerproContractSanitized }>(`/api/v1/platform/serpro/contracts/${id}`)
         },
         health: (params?: { environment?: string }) =>
           client<{ data: SerproGlobalHealth }>('/api/v1/platform/serpro/health', { query: params }),
@@ -207,6 +257,58 @@ export function createPlatformApi(client: ApiClient) {
           registerReconciliation: (body: Record<string, unknown>) =>
             client<{ data: SerproUsageReconciliation }>(
               '/api/v1/platform/serpro-usage/reconciliations',
+              { method: 'POST', body }
+            )
+        },
+        /**
+         * Canário DTE controlado — resumo global sanitizado (sem payload fiscal).
+         */
+        dteCanary: {
+          summary: (params?: { request_id?: number }) =>
+            client<{ data: Record<string, unknown> }>('/api/v1/platform/serpro/dte-canary', {
+              query: params
+            }),
+          create: () =>
+            client<{ data: Record<string, unknown> }>('/api/v1/platform/serpro/dte-canary', {
+              method: 'POST',
+              body: {}
+            }),
+          show: (id: number) =>
+            client<{ data: Record<string, unknown> }>(`/api/v1/platform/serpro/dte-canary/${id}`),
+          selectTarget: (id: number, body: { office_id: number, client_id: number }) =>
+            client<{ data: Record<string, unknown> }>(
+              `/api/v1/platform/serpro/dte-canary/${id}/target`,
+              { method: 'POST', body }
+            ),
+          approveOwner: (id: number) =>
+            client<{ data: Record<string, unknown> }>(
+              `/api/v1/platform/serpro/dte-canary/${id}/approve-owner`,
+              { method: 'POST', body: {} }
+            ),
+          execute: (id: number) =>
+            client<{ data: Record<string, unknown>, replay?: boolean }>(
+              `/api/v1/platform/serpro/dte-canary/${id}/execute`,
+              { method: 'POST', body: {} }
+            ),
+          reconcile: (id: number, body: { reference: string, summary: string }) =>
+            client<{ data: Record<string, unknown> }>(
+              `/api/v1/platform/serpro/dte-canary/${id}/reconcile`,
+              { method: 'POST', body }
+            ),
+          promoteLimited: (id: number, body: {
+            confirmation_phrase: string
+            reason: string
+            change_window_start?: string
+            change_window_end?: string
+            max_quantity?: number
+          }) =>
+            client<{ data: Record<string, unknown> }>(
+              `/api/v1/platform/serpro/dte-canary/${id}/promote-limited`,
+              { method: 'POST', body }
+            ),
+          disable: (body: { confirmation_phrase: string, reason: string }) =>
+            client<{ data: Record<string, unknown> }>(
+              '/api/v1/platform/serpro/dte-canary/disable',
               { method: 'POST', body }
             )
         }

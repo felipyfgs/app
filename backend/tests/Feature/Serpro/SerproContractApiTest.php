@@ -4,9 +4,7 @@ namespace Tests\Feature\Serpro;
 
 use App\Contracts\PfxReaderInterface;
 use App\Enums\OfficeRole;
-use App\Enums\SerproContractStatus;
 use App\Enums\SerproEnvironment;
-use App\Models\AuditLog;
 use App\Models\Office;
 use App\Models\SerproContract;
 use App\Models\User;
@@ -17,14 +15,18 @@ use Illuminate\Http\UploadedFile;
 use Mockery;
 use Tests\TestCase;
 
+/**
+ * Mutações legadas de contrato removidas (410).
+ * Cadastro/ativação passa por credential-versions versionadas.
+ */
 class SerproContractApiTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_platform_admin_cadastra_e_lista_sem_segredos(): void
+    public function test_post_contrato_legado_retorna_410_sem_alterar_estado(): void
     {
         $admin = User::factory()->asPlatformAdmin()->create();
-        $this->mockPfx('11222333000181');
+        $before = SerproContract::query()->count();
 
         $response = $this->actingAs($admin)->post('/api/v1/platform/serpro/contracts', [
             'environment' => 'TRIAL',
@@ -36,70 +38,57 @@ class SerproContractApiTest extends TestCase
             'activate' => true,
         ], ['Accept' => 'application/json']);
 
-        $response->assertCreated();
-        $json = $response->json('data');
-        $this->assertSame('ACTIVE', $json['status']);
-        $this->assertTrue($json['has_pfx']);
-        $this->assertTrue($json['has_oauth']);
-        $this->assertArrayNotHasKey('pfx_vault_object_id', $json);
-        $this->assertArrayNotHasKey('oauth_vault_object_id', $json);
-        $this->assertArrayNotHasKey('password', $json);
-        $this->assertArrayNotHasKey('consumer_secret', $json);
-        $content = (string) $response->getContent();
-        $this->assertStringNotContainsString('cs-super-secret-value', $content);
-        $this->assertStringNotContainsString('secret-pfx-pass-xyz', $content);
-        $this->assertStringNotContainsString('BEGIN ', $content);
-
-        $list = $this->actingAs($admin)->getJson('/api/v1/platform/serpro/contracts?environment=TRIAL');
-        $list->assertOk()->assertJsonCount(1, 'data');
+        $response->assertStatus(410)
+            ->assertJsonPath('code', 'legacy_contract_mutation_removed');
+        $this->assertSame($before, SerproContract::query()->count());
+        $this->assertStringNotContainsString('cs-super-secret-value', (string) $response->getContent());
     }
 
-    public function test_segundo_active_exige_replace(): void
+    public function test_activate_deactivate_block_legados_retornam_410(): void
     {
         $admin = User::factory()->asPlatformAdmin()->create();
         $this->mockPfx('11222333000181');
+        $contract = app(SerproContractService::class)->register(
+            SerproEnvironment::Trial,
+            'fake',
+            'pass',
+            'ck',
+            'cs',
+        );
 
-        $this->actingAs($admin)->post('/api/v1/platform/serpro/contracts', [
-            'environment' => 'TRIAL',
-            'pfx' => UploadedFile::fake()->createWithContent('c.pfx', 'fake-pfx-1'),
-            'password' => 'p1',
-            'consumer_key' => 'ck1',
-            'consumer_secret' => 'cs1',
-            'activate' => true,
-        ], ['Accept' => 'application/json'])->assertCreated();
+        $this->actingAs($admin)
+            ->postJson("/api/v1/platform/serpro/contracts/{$contract->id}/activate", ['replace' => true])
+            ->assertStatus(410);
 
-        $this->mockPfx('11222333000181', fingerprint: str_repeat('B', 64));
+        $this->actingAs($admin)
+            ->postJson("/api/v1/platform/serpro/contracts/{$contract->id}/deactivate", ['reason' => 'x'])
+            ->assertStatus(410);
 
-        $second = $this->actingAs($admin)->post('/api/v1/platform/serpro/contracts', [
-            'environment' => 'TRIAL',
-            'pfx' => UploadedFile::fake()->createWithContent('c2.pfx', 'fake-pfx-2'),
-            'password' => 'p2',
-            'consumer_key' => 'ck2',
-            'consumer_secret' => 'cs2',
-            'activate' => true,
-            'replace' => false,
-        ], ['Accept' => 'application/json']);
+        $this->actingAs($admin)
+            ->postJson("/api/v1/platform/serpro/contracts/{$contract->id}/block", ['reason' => 'x'])
+            ->assertStatus(410);
 
-        $second->assertStatus(422);
-        $this->assertStringContainsString('ACTIVE', (string) $second->json('message'));
+        $this->assertSame($contract->status->value, $contract->fresh()->status->value);
+    }
 
-        $this->mockPfx('11222333000181', fingerprint: str_repeat('C', 64));
-        $this->actingAs($admin)->post('/api/v1/platform/serpro/contracts', [
-            'environment' => 'TRIAL',
-            'pfx' => UploadedFile::fake()->createWithContent('c3.pfx', 'fake-pfx-3'),
-            'password' => 'p3',
-            'consumer_key' => 'ck3',
-            'consumer_secret' => 'cs3',
-            'activate' => true,
-            'replace' => true,
-        ], ['Accept' => 'application/json'])->assertCreated();
+    public function test_leitura_historica_sanitizada_permanece(): void
+    {
+        $admin = User::factory()->asPlatformAdmin()->create();
+        $this->mockPfx('11222333000181');
+        app(SerproContractService::class)->register(
+            SerproEnvironment::Trial,
+            'fake',
+            'pass',
+            'ck',
+            'cs',
+        );
 
-        $active = SerproContract::query()
-            ->where('environment', SerproEnvironment::Trial->value)
-            ->where('status', SerproContractStatus::Active->value)
-            ->count();
-        $this->assertSame(1, $active);
-        $this->assertSame(1, SerproContract::query()->where('status', SerproContractStatus::Superseded->value)->count());
+        $list = $this->actingAs($admin)->getJson('/api/v1/platform/serpro/contracts?environment=TRIAL');
+        $list->assertOk()->assertJsonCount(1, 'data');
+        $payload = (string) $list->getContent();
+        $this->assertStringNotContainsString('cs', $payload);
+        $this->assertStringNotContainsString('pass', $payload);
+        $this->assertArrayNotHasKey('pfx_vault_object_id', $list->json('data.0'));
     }
 
     public function test_tenant_admin_nao_acessa_contrato_global(): void
@@ -139,30 +128,6 @@ class SerproContractApiTest extends TestCase
         $response->assertOk();
         $this->assertNotEmpty($response->json('data'));
         $this->assertArrayHasKey('billable_class', $response->json('data.0'));
-    }
-
-    public function test_audit_nao_grava_segredo_em_falha(): void
-    {
-        $admin = User::factory()->asPlatformAdmin()->create();
-        $reader = Mockery::mock(PfxReaderInterface::class);
-        $reader->shouldReceive('read')->andThrow(new \RuntimeException('senha inválida'));
-        $this->app->instance(PfxReaderInterface::class, $reader);
-
-        $secret = 'ultra-secret-password-should-not-log';
-        $this->actingAs($admin)->post('/api/v1/platform/serpro/contracts', [
-            'environment' => 'TRIAL',
-            'pfx' => UploadedFile::fake()->createWithContent('c.pfx', 'fake-pfx-fail'),
-            'password' => $secret,
-            'consumer_key' => 'ck',
-            'consumer_secret' => 'cs-should-not-appear',
-        ], ['Accept' => 'application/json'])->assertStatus(422);
-
-        $logs = AuditLog::query()->where('action', 'like', 'serpro.%')->get();
-        foreach ($logs as $log) {
-            $encoded = json_encode($log->context ?? []);
-            $this->assertStringNotContainsString($secret, (string) $encoded);
-            $this->assertStringNotContainsString('cs-should-not-appear', (string) $encoded);
-        }
     }
 
     private function mockPfx(string $cnpj, string $fingerprint = ''): void

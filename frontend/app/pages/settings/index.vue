@@ -21,7 +21,7 @@ import {
 
 const api = useApi()
 const toast = useToast()
-const { sessionEpoch, isPlatformPrivileged, canManageCredentials } = useDashboard()
+const { sessionEpoch, canManageCredentials } = useDashboard()
 
 const loading = ref(true)
 const saving = ref(false)
@@ -230,15 +230,22 @@ async function revokeConsent() {
 async function uploadCredential(payload: {
   file: File
   password: string
-  reconfirm_password?: string
 }) {
+  // Formulário: só arquivo + senha do PFX. Backend exige CNPJ no perfil antes.
+  const cnpj = (profile.value?.cnpj || '').replace(/\D/g, '')
+  if (!cnpj) {
+    toast.add({
+      title: 'Cadastre o CNPJ no perfil institucional antes de enviar o certificado A1.',
+      color: 'warning'
+    })
+    return
+  }
+
   saving.value = true
   try {
     try {
       const res = credential.value
-        ? await api.office.canonicalCredential.replace(payload.file, payload.password, {
-            reconfirm_password: payload.reconfirm_password
-          })
+        ? await api.office.canonicalCredential.replace(payload.file, payload.password)
         : await api.office.canonicalCredential.upload(payload.file, payload.password)
       credential.value = res.data
     } catch (err) {
@@ -260,13 +267,10 @@ async function uploadCredential(payload: {
   }
 }
 
-async function removeCredential(payload: { reconfirm_password?: string }) {
+async function removeCredential(_payload: { reconfirm_password?: string } = {}) {
   saving.value = true
   try {
-    await api.office.canonicalCredential.remove({
-      confirm: true,
-      reconfirm_password: payload.reconfirm_password
-    })
+    await api.office.canonicalCredential.remove({ confirm: true })
     credential.value = null
     toast.add({ title: 'Certificado removido — finalidades bloqueadas', color: 'warning' })
     await load()
@@ -390,7 +394,7 @@ onMounted(load)
         :loading="loading"
         :saving="saving"
         :readonly="readonly"
-        :require-password-reconfirm="isPlatformPrivileged"
+        :require-password-reconfirm="false"
         @upload="uploadCredential"
         @remove="removeCredential"
       />
@@ -402,6 +406,8 @@ onMounted(load)
         :readonly="readonly"
         @save="saveSchedule"
       />
+
+      <SettingsDteCanaryOfficeCard />
     </div>
   </div>
 </template>

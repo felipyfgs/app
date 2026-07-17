@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 
 #[Fillable([
     'kind',
+    'environment',
     'status',
     'title',
     'description',
@@ -18,6 +19,8 @@ use Illuminate\Database\Eloquent\Model;
     'answered_at',
     'accepted_at',
     'answer_summary',
+    'responsible_name',
+    'reference_date',
     'updated_by_user_id',
     'metadata',
 ])]
@@ -31,6 +34,7 @@ class SerproExternalGate extends Model
             'submitted_at' => 'immutable_datetime',
             'answered_at' => 'immutable_datetime',
             'accepted_at' => 'immutable_datetime',
+            'reference_date' => 'immutable_date',
             'metadata' => 'array',
         ];
     }
@@ -38,6 +42,17 @@ class SerproExternalGate extends Model
     public function blocksProduction(): bool
     {
         return $this->status->blocksProduction();
+    }
+
+    /**
+     * Aceite completo exige referência, resumo, responsável e data (sem waiver).
+     */
+    public function hasCompleteAcceptanceFields(): bool
+    {
+        return filled($this->ticket_ref)
+            && filled($this->answer_summary)
+            && filled($this->responsible_name)
+            && $this->reference_date !== null;
     }
 
     /**
@@ -49,12 +64,17 @@ class SerproExternalGate extends Model
             'id' => $this->id,
             'kind' => $this->kind->value,
             'label' => $this->kind->label(),
+            'environment' => $this->environment ?? 'PRODUCTION',
             'status' => $this->status->value,
             'title' => $this->title,
             'description' => $this->description,
             'ticket_ref' => $this->ticket_ref,
             'evidence_ref' => $this->evidence_ref,
+            'responsible_name' => $this->responsible_name,
+            'reference_date' => $this->reference_date?->toDateString(),
             'blocks_production' => $this->blocksProduction(),
+            'is_complete' => $this->hasCompleteAcceptanceFields()
+                && $this->status === SerproExternalGateStatus::Accepted,
             'submitted_at' => $this->submitted_at?->toIso8601String(),
             'answered_at' => $this->answered_at?->toIso8601String(),
             'accepted_at' => $this->accepted_at?->toIso8601String(),

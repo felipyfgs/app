@@ -176,7 +176,7 @@ final class SerproSmokeAndPromotionTest extends TestCase
         ]);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('quatro olhos');
+        $this->expectExceptionMessage('DUAL_ROLE');
         $promotion->promoteCanaryReady($approval, [
             'office_id' => 1,
             'operation_key' => 'SITFIS.CONSULTAR',

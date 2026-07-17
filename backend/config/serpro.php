@@ -94,6 +94,9 @@ return [
     |--------------------------------------------------------------------------
     */
     'kill_switch' => filter_var(env('SERPRO_KILL_SWITCH', false), FILTER_VALIDATE_BOOL),
+
+    /** TTL (minutos) da evidência de test-connection OAuth para cutover. */
+    'credential_connection_test_ttl_minutes' => (int) env('SERPRO_CREDENTIAL_CONNECTION_TEST_TTL_MINUTES', 15),
     'solution_kill_switches' => [
         // 'INTEGRA_SN' => true,
     ],

@@ -313,6 +313,18 @@ export function createOfficeApi(client: ApiClient) {
             '/api/v1/office/serpro-usage/entries',
             { query: params }
           )
+      },
+      /** Canário DTE — confirmação Office ADMIN e resultado fiscal (membership). */
+      dteCanary: {
+        pending: () =>
+          client<{ data: Record<string, unknown> | null }>('/api/v1/serpro/dte-canary/pending'),
+        confirm: (id: number) =>
+          client<{ data: Record<string, unknown> }>(`/api/v1/serpro/dte-canary/${id}/confirm`, {
+            method: 'POST',
+            body: {}
+          }),
+        result: (id: number) =>
+          client<{ data: Record<string, unknown> }>(`/api/v1/serpro/dte-canary/${id}/result`)
       }
     },
     officeFiscal: {

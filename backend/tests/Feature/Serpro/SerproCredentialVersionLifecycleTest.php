@@ -7,6 +7,7 @@ use App\Enums\SerproContractStatus;
 use App\Enums\SerproCredentialVersionStatus;
 use App\Enums\SerproEnvironment;
 use App\Models\SerproContract;
+use App\Models\SerproCredentialConnectionEvidence;
 use App\Models\SerproCredentialVersion;
 use App\Models\SerproRolloutApproval;
 use App\Models\User;
@@ -150,23 +151,17 @@ class SerproCredentialVersionLifecycleTest extends TestCase
             $contract,
         );
         $service->verifyPending($version);
+        $this->seedRecentConnectionEvidence($version->fresh());
 
         $approval = $this->confirmOwnerCutover($owner, (int) $version->id);
 
-        $oauthCalled = false;
         $active = $service->cutover(
             $version->fresh(),
             $contract->fresh(),
             actorUserId: $owner->id,
-            oauthProbe: function (SerproContract $c) use (&$oauthCalled): void {
-                $oauthCalled = true;
-                $this->assertNotNull($c->pfx_vault_object_id);
-                $this->assertNotNull($c->oauth_vault_object_id);
-            },
             approvalId: $approval->id,
         );
 
-        $this->assertTrue($oauthCalled);
         $this->assertSame(SerproCredentialVersionStatus::Active, $active->status);
         $this->assertSame(SerproCredentialVersionStatus::Retired, $oldActive->fresh()->status);
         $this->assertSame($active->id, $contract->fresh()->active_credential_version_id);
@@ -174,7 +169,7 @@ class SerproCredentialVersionLifecycleTest extends TestCase
         $this->assertSame('EXECUTED', $approval->fresh()->status);
     }
 
-    public function test_cutover_oauth_falha_nao_promove_nem_consome_aprovacao(): void
+    public function test_cutover_sem_evidencia_recente_nao_promove_nem_consome_aprovacao(): void
     {
         [$pfx, $password] = $this->makePfx('11222333000181');
         $service = app(SerproCredentialVersionService::class);
@@ -205,18 +200,62 @@ class SerproCredentialVersionLifecycleTest extends TestCase
                 $version->fresh(),
                 $contract->fresh(),
                 actorUserId: $owner->id,
-                oauthProbe: fn () => throw new RuntimeException('oauth down'),
                 approvalId: $approval->id,
             );
             $this->fail('deveria falhar');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('OAuth pré-cutover', $e->getMessage());
+            $this->assertStringContainsString('teste OAuth recente', $e->getMessage());
         }
 
         $this->assertSame(SerproCredentialVersionStatus::Verified, $version->fresh()->status);
         $this->assertSame('01OLDPFX00000000000000000', $contract->fresh()->pfx_vault_object_id);
         $this->assertSame('APPROVED', $approval->fresh()->status);
         $this->assertNull($approval->fresh()->executed_at);
+    }
+
+    public function test_cutover_cross_environment_falha_antes_de_vault_contrato_versao_e_aprovacao(): void
+    {
+        $owner = User::factory()->asPlatformAdmin()->create();
+        $contract = SerproContract::query()->create([
+            'environment' => SerproEnvironment::Production,
+            'status' => SerproContractStatus::Active,
+            'contractor_cnpj' => '11222333000181',
+            'health_status' => 'OK',
+            'pfx_vault_object_id' => '01PRODUCTIONPFXUNCHANGED0',
+            'oauth_vault_object_id' => '01PRODUCTIONOAUTHUNCHANGED',
+            'token_vault_object_id' => '01PRODUCTIONTOKENUNCHANGED',
+        ]);
+        $version = SerproCredentialVersion::query()->create([
+            'environment' => SerproEnvironment::Trial,
+            'version_number' => 1,
+            'status' => SerproCredentialVersionStatus::Verified,
+            'contractor_cnpj' => '11222333000181',
+            'fingerprint_sha256' => hash('sha256', 'trial-version'),
+            'pfx_vault_object_id' => '01TRIALPFXUNCHANGED0000000',
+            'oauth_vault_object_id' => '01TRIALOAUTHUNCHANGED00000',
+        ]);
+
+        try {
+            app(SerproCredentialVersionService::class)->cutover(
+                $version,
+                $contract,
+                actorUserId: $owner->id,
+                skipOauth: true,
+            );
+            $this->fail('cutover cross-environment deveria falhar');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('mesmo ambiente', $e->getMessage());
+        }
+
+        $this->assertSame(SerproCredentialVersionStatus::Verified, $version->fresh()->status);
+        $this->assertNull($version->fresh()->serpro_contract_id);
+        $this->assertSame('01TRIALPFXUNCHANGED0000000', $version->fresh()->pfx_vault_object_id);
+        $this->assertSame('01TRIALOAUTHUNCHANGED00000', $version->fresh()->oauth_vault_object_id);
+        $this->assertSame('01PRODUCTIONPFXUNCHANGED0', $contract->fresh()->pfx_vault_object_id);
+        $this->assertSame('01PRODUCTIONOAUTHUNCHANGED', $contract->fresh()->oauth_vault_object_id);
+        $this->assertSame('01PRODUCTIONTOKENUNCHANGED', $contract->fresh()->token_vault_object_id);
+        $this->assertNull($contract->fresh()->active_credential_version_id);
+        $this->assertDatabaseCount('serpro_rollout_approvals', 0);
     }
 
     public function test_approval_legado_cutover_recusado(): void
@@ -284,6 +323,21 @@ class SerproCredentialVersionLifecycleTest extends TestCase
             '--id' => 1,
             '--approver-user-id' => 1,
         ])->assertFailed();
+    }
+
+    private function seedRecentConnectionEvidence(SerproCredentialVersion $version): SerproCredentialConnectionEvidence
+    {
+        return SerproCredentialConnectionEvidence::query()->create([
+            'serpro_credential_version_id' => $version->id,
+            'environment' => $version->environment,
+            'fingerprint_sha256' => $version->fingerprint_sha256,
+            'success' => true,
+            'tested_at' => now(),
+            'expires_at' => now()->addMinutes(15),
+            'http_status' => 200,
+            'sanitized_message' => 'evidência de teste',
+            'invalidated' => false,
+        ]);
     }
 
     private function confirmOwnerCutover(User $owner, int $versionId): SerproRolloutApproval

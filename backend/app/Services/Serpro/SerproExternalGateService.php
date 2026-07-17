@@ -2,17 +2,30 @@
 
 namespace App\Services\Serpro;
 
+use App\Enums\SerproEnvironment;
 use App\Enums\SerproExternalGateKind;
 use App\Enums\SerproExternalGateStatus;
 use App\Models\SerproExternalGate;
 use App\Services\Audit\AuditLogger;
+use Carbon\CarbonImmutable;
+use RuntimeException;
 
 /**
  * Gates documentais externos (chamados SERPRO, jurídico, ops).
- * Alternativa OAuth fora de /authenticate permanece bloqueada no autenticador.
+ * Production: seis gates baseline sem waiver nem PDF.
  */
 final class SerproExternalGateService
 {
+    /** @var list<SerproExternalGateKind> */
+    public const BASELINE_KINDS = [
+        SerproExternalGateKind::OauthEndpointDivergence,
+        SerproExternalGateKind::TermoXsdOfficial,
+        SerproExternalGateKind::CnpjAlphanumericSerialization,
+        SerproExternalGateKind::ContractVigencyTariff,
+        SerproExternalGateKind::SoftwareHouseLegalModel,
+        SerproExternalGateKind::OpsRolesRpoRto,
+    ];
+
     public function __construct(
         private readonly AuditLogger $audit,
     ) {}
@@ -22,8 +35,10 @@ final class SerproExternalGateService
      *
      * @return list<SerproExternalGate>
      */
-    public function ensureBaselineGates(): array
+    public function ensureBaselineGates(?SerproEnvironment $environment = null): array
     {
+        $environment ??= SerproEnvironment::Production;
+
         $defs = [
             SerproExternalGateKind::OauthEndpointDivergence->value => [
                 'title' => 'Chamado SERPRO: curl Área do Cliente vs /authenticate',
@@ -56,6 +71,7 @@ final class SerproExternalGateService
             $gates[] = SerproExternalGate::query()->firstOrCreate(
                 ['kind' => $kind],
                 [
+                    'environment' => $environment->value,
                     'status' => SerproExternalGateStatus::Open->value,
                     'title' => $meta['title'],
                     'description' => $meta['description'],
@@ -75,6 +91,7 @@ final class SerproExternalGateService
         $gate = SerproExternalGate::query()->where('kind', $kind->value)->first()
             ?? SerproExternalGate::query()->create([
                 'kind' => $kind->value,
+                'environment' => SerproEnvironment::Production->value,
                 'status' => SerproExternalGateStatus::Open->value,
                 'title' => $kind->label(),
             ]);
@@ -96,22 +113,87 @@ final class SerproExternalGateService
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * Aceita gate Production com referência, resumo, responsável e data (sem waiver/PDF).
      */
-    public function listSanitized(): array
-    {
-        $this->ensureBaselineGates();
+    public function acceptGate(
+        SerproExternalGateKind $kind,
+        string $ticketRef,
+        string $answerSummary,
+        string $responsibleName,
+        CarbonImmutable|string $referenceDate,
+        ?int $actorUserId = null,
+        ?SerproEnvironment $environment = null,
+    ): SerproExternalGate {
+        $environment ??= SerproEnvironment::Production;
+        if ($environment !== SerproEnvironment::Production) {
+            throw new RuntimeException('Gates externos bloqueadores aplicam-se a PRODUCTION.');
+        }
 
-        return SerproExternalGate::query()
-            ->orderBy('kind')
-            ->get()
-            ->map->toSanitizedArray()
-            ->all();
+        $ticketRef = trim($ticketRef);
+        $answerSummary = trim($answerSummary);
+        $responsibleName = trim($responsibleName);
+
+        if ($ticketRef === '' || $answerSummary === '' || $responsibleName === '') {
+            throw new RuntimeException('Referência, resumo e responsável são obrigatórios.');
+        }
+
+        $date = $referenceDate instanceof CarbonImmutable
+            ? $referenceDate
+            : CarbonImmutable::parse($referenceDate);
+
+        $this->ensureBaselineGates($environment);
+
+        $gate = SerproExternalGate::query()->where('kind', $kind->value)->firstOrFail();
+
+        $gate->forceFill([
+            'environment' => $environment->value,
+            'status' => SerproExternalGateStatus::Accepted,
+            'ticket_ref' => mb_substr($ticketRef, 0, 120),
+            'answer_summary' => mb_substr($answerSummary, 0, 1000),
+            'responsible_name' => mb_substr($responsibleName, 0, 200),
+            'reference_date' => $date->toDateString(),
+            'accepted_at' => now(),
+            'answered_at' => $gate->answered_at ?? now(),
+            'submitted_at' => $gate->submitted_at ?? now(),
+            'updated_by_user_id' => $actorUserId,
+        ])->save();
+
+        if (! $gate->hasCompleteAcceptanceFields()) {
+            throw new RuntimeException('Aceite incompleto: referência, resumo, responsável e data são obrigatórios.');
+        }
+
+        $this->audit->record('serpro.external_gate.accepted', 'SUCCESS', $gate, [
+            'kind' => $kind->value,
+            'ticket_ref' => $gate->ticket_ref,
+            'responsible_name' => $gate->responsible_name,
+            'reference_date' => $gate->reference_date?->toDateString(),
+        ], $actorUserId, null);
+
+        return $gate->refresh();
     }
 
-    public function anyBlockingProduction(): bool
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listSanitized(?SerproEnvironment $environment = null): array
     {
-        $this->ensureBaselineGates();
+        $this->ensureBaselineGates($environment ?? SerproEnvironment::Production);
+
+        $q = SerproExternalGate::query()->orderBy('kind');
+        if ($environment !== null) {
+            $q->where(function ($inner) use ($environment): void {
+                $inner->where('environment', $environment->value)
+                    ->orWhereNull('environment');
+            });
+        }
+
+        return $q->get()->map->toSanitizedArray()->all();
+    }
+
+    public function anyBlockingProduction(?SerproEnvironment $environment = null): bool
+    {
+        $environment ??= SerproEnvironment::Production;
+        $this->ensureBaselineGates($environment);
 
         return SerproExternalGate::query()
             ->get()

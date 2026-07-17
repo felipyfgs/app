@@ -9,6 +9,10 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 const { canAccessPlatformSerpro } = useDashboard()
 
 const links = [[{
+  label: 'Configuração',
+  icon: 'i-lucide-settings-2',
+  to: '/admin/serpro/configuration'
+}, {
   label: 'Readiness',
   icon: 'i-lucide-heart-pulse',
   to: '/admin/serpro',
@@ -29,6 +33,10 @@ const links = [[{
   label: 'Rollout',
   icon: 'i-lucide-rocket',
   to: '/admin/serpro/rollout'
+}, {
+  label: 'Canário DTE',
+  icon: 'i-lucide-flask-conical',
+  to: '/admin/serpro/dte-canary'
 }], [{
   label: 'Hub plataforma',
   icon: 'i-lucide-layout-dashboard',

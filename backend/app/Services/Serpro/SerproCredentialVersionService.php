@@ -3,7 +3,6 @@
 namespace App\Services\Serpro;
 
 use App\Contracts\SecureObjectStore;
-use App\Contracts\SerproContractAuthenticator;
 use App\Domain\Cnpj;
 use App\Enums\SecureObjectPurpose;
 use App\Enums\SerproCredentialVersionStatus;
@@ -11,9 +10,11 @@ use App\Enums\SerproDataSegregationClass;
 use App\Enums\SerproEnvironment;
 use App\Models\SerproContract;
 use App\Models\SerproCredentialApproval;
+use App\Models\SerproCredentialConnectionEvidence;
 use App\Models\SerproCredentialVersion;
 use App\Services\Audit\AuditLogger;
 use App\Services\Certificates\ContractorPfxValidator;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
@@ -29,6 +30,7 @@ final class SerproCredentialVersionService
         private readonly SecureObjectStore $store,
         private readonly ContractorPfxValidator $pfxValidator,
         private readonly SerproTokenCache $tokenCache,
+        private readonly SerproHttpTransport $transport,
     ) {}
 
     public function nextVersionNumber(SerproEnvironment $environment): int
@@ -196,11 +198,162 @@ final class SerproCredentialVersionService
     }
 
     /**
-     * Cutover atômico: exige confirmação OWNER vinculada (SerproRolloutApproval),
-     * OAuth prévio da versão, invalida tokens/caches e retira a ACTIVE anterior.
+     * Teste explícito OAuth mTLS no endpoint oficial — sem rota fiscal de negócio.
+     * Não promove a versão; apenas registra evidência sanitizada.
+     */
+    public function testConnection(
+        SerproCredentialVersion $version,
+        ?int $actorUserId = null,
+        ?callable $oauthTransportProbe = null,
+    ): SerproCredentialConnectionEvidence {
+        if ($version->status !== SerproCredentialVersionStatus::Verified
+            && $version->status !== SerproCredentialVersionStatus::Active) {
+            throw new RuntimeException('Teste de conexão exige versão VERIFIED ou ACTIVE.');
+        }
+
+        if ($version->pfx_vault_object_id === null || $version->oauth_vault_object_id === null) {
+            throw new RuntimeException('Versão sem material no cofre.');
+        }
+
+        $env = $version->environment instanceof SerproEnvironment
+            ? $version->environment
+            : SerproEnvironment::from((string) $version->environment);
+
+        $tokenUrl = (string) config('serpro.oauth.token_url');
+        $this->assertCanonicalOauthEndpoint($tokenUrl);
+        $pfx = $this->loadPfxMaterial($version);
+        $oauth = $this->loadOauthSecrets($version);
+        $roleType = (string) config('serpro.oauth.role_type', 'TERCEIROS');
+        $correlationId = $this->audit->correlationId();
+        $ttlMinutes = max(1, (int) config('serpro.credential_connection_test_ttl_minutes', 15));
+
+        $success = false;
+        $httpStatus = null;
+        $message = 'OAuth mTLS falhou.';
+
+        try {
+            if ($oauthTransportProbe !== null) {
+                $result = $oauthTransportProbe($pfx, $oauth, $tokenUrl);
+                $httpStatus = (int) ($result['status'] ?? 0);
+                $success = $httpStatus >= 200 && $httpStatus < 300;
+                $message = $success
+                    ? 'OAuth mTLS bem-sucedido (probe).'
+                    : 'OAuth mTLS rejeitado (HTTP '.$httpStatus.').';
+            } else {
+                $body = http_build_query(['grant_type' => 'client_credentials']);
+                $basic = base64_encode($oauth['consumer_key'].':'.$oauth['consumer_secret']);
+                $headers = [
+                    'Authorization: Basic '.$basic,
+                    'Content-Type: application/x-www-form-urlencoded',
+                    'Accept: application/json',
+                    'role-type: '.$roleType,
+                ];
+
+                $response = $this->transport->request(
+                    'POST',
+                    $tokenUrl,
+                    $pfx,
+                    $body,
+                    $headers,
+                    $correlationId,
+                );
+                $httpStatus = (int) $response['status'];
+                $success = $httpStatus >= 200 && $httpStatus < 300;
+                if ($success) {
+                    $decoded = json_decode((string) $response['body'], true);
+                    $hasBearer = is_array($decoded) && ! empty($decoded['access_token']);
+                    $requireJwt = (bool) config('serpro.oauth.require_jwt_token', true);
+                    $hasJwt = is_array($decoded) && (! empty($decoded['jwt_token']) || ! empty($decoded['jwt']));
+                    if (! $hasBearer || ($requireJwt && ! $hasJwt)) {
+                        $success = false;
+                        $message = 'Resposta OAuth incompleta (tokens ausentes).';
+                    } else {
+                        $message = 'OAuth mTLS bem-sucedido.';
+                    }
+                } else {
+                    $message = 'OAuth mTLS rejeitado (HTTP '.$httpStatus.').';
+                }
+            }
+        } catch (Throwable $e) {
+            $success = false;
+            $message = 'Falha de transporte OAuth (sanitizada).';
+            report($e);
+        } finally {
+            unset($pfx, $oauth, $basic, $body);
+        }
+
+        $now = CarbonImmutable::now();
+        $evidence = SerproCredentialConnectionEvidence::query()->create([
+            'serpro_credential_version_id' => $version->id,
+            'environment' => $env,
+            'fingerprint_sha256' => $version->fingerprint_sha256,
+            'success' => $success,
+            'tested_at' => $now,
+            'expires_at' => $now->addMinutes($ttlMinutes),
+            'http_status' => $httpStatus,
+            'sanitized_message' => mb_substr($message, 0, 500),
+            'actor_user_id' => $actorUserId,
+            'correlation_id' => $correlationId,
+            'invalidated' => false,
+            'metadata' => [
+                'endpoint' => $tokenUrl,
+                'role_type' => $roleType,
+            ],
+        ]);
+
+        $this->audit->record(
+            $success ? 'serpro.credential.connection_test' : 'serpro.credential.connection_test',
+            $success ? 'SUCCESS' : 'FAILED',
+            $version,
+            [
+                'environment' => $env->value,
+                'version_number' => $version->version_number,
+                'fingerprint_sha256' => $version->fingerprint_sha256,
+                'http_status' => $httpStatus,
+                'evidence_id' => $evidence->id,
+                'success' => $success,
+            ],
+            $actorUserId,
+            null,
+        );
+
+        if (! $success) {
+            throw new RuntimeException($message);
+        }
+
+        return $evidence;
+    }
+
+    public function invalidateConnectionEvidences(
+        SerproCredentialVersion $version,
+        string $reason,
+        ?int $actorUserId = null,
+    ): int {
+        $count = SerproCredentialConnectionEvidence::query()
+            ->where('serpro_credential_version_id', $version->id)
+            ->where('invalidated', false)
+            ->update([
+                'invalidated' => true,
+                'invalidated_at' => now(),
+                'invalidation_reason' => mb_substr($reason, 0, 200),
+                'updated_at' => now(),
+            ]);
+
+        if ($count > 0) {
+            $this->audit->record('serpro.credential.connection_evidence_invalidated', 'SUCCESS', $version, [
+                'count' => $count,
+                'reason' => mb_substr($reason, 0, 200),
+            ], $actorUserId, null);
+        }
+
+        return $count;
+    }
+
+    /**
+     * Cutover atômico: exige confirmação OWNER, evidência OAuth recente da mesma
+     * versão/fingerprint, invalida tokens/caches e retira a ACTIVE anterior.
      *
-     * @param  callable(SerproContract): mixed|null  $oauthProbe
-     *                                                            Injetável para testes; default usa SerproContractAuthenticator.
+     * @param  callable(SerproContract): mixed|null  $oauthProbe  legado (testes); preferir evidência
      */
     public function cutover(
         SerproCredentialVersion $version,
@@ -214,10 +367,10 @@ final class SerproCredentialVersionService
             throw new RuntimeException('Cutover exige versão VERIFIED.');
         }
 
-        // skip_oauth só em local/testing — produção exige probe OAuth/mTLS real.
+        // skip_oauth só em local/testing — produção exige evidência OAuth recente.
         if ($skipOauth && ! app()->environment(['local', 'testing'])) {
             throw new RuntimeException(
-                'skip_oauth não é permitido fora de local/testing; execute cutover com probe OAuth.'
+                'skip_oauth não é permitido fora de local/testing; execute test-connection antes do cutover.'
             );
         }
 
@@ -253,6 +406,26 @@ final class SerproCredentialVersionService
                 ? $locked->environment
                 : SerproEnvironment::from((string) $locked->environment);
 
+            $contractLocked = SerproContract::query()->whereKey($contract->id)->lockForUpdate()->firstOrFail();
+            $contractEnv = $contractLocked->environment instanceof SerproEnvironment
+                ? $contractLocked->environment
+                : SerproEnvironment::from((string) $contractLocked->environment);
+
+            if ($contractEnv !== $env) {
+                throw new RuntimeException(
+                    'Cutover exige contrato e versão de credencial no mesmo ambiente SERPRO.'
+                );
+            }
+
+            if (! $skipOauth) {
+                $evidence = $locked->latestValidConnectionEvidence();
+                if ($evidence === null || ! $evidence->isValidFor($locked)) {
+                    throw new RuntimeException(
+                        'Cutover exige teste OAuth recente e bem-sucedido da mesma versão e fingerprint.'
+                    );
+                }
+            }
+
             $rollouts = app(SerproRolloutApprovalService::class);
             $ownerApproval = $rollouts->claimOwnerApproval(
                 action: SerproRolloutApprovalService::ACTION_CREDENTIAL_CUTOVER,
@@ -263,9 +436,6 @@ final class SerproCredentialVersionService
                 approvalId: $approvalId,
             );
 
-            $contractLocked = SerproContract::query()->whereKey($contract->id)->lockForUpdate()->firstOrFail();
-
-            // Snapshot do material atual do contrato para rollback se OAuth falhar.
             $previousPfx = $contractLocked->pfx_vault_object_id;
             $previousOauth = $contractLocked->oauth_vault_object_id;
             $previousToken = $contractLocked->token_vault_object_id;
@@ -276,8 +446,6 @@ final class SerproCredentialVersionService
             $previousCertTo = $contractLocked->cert_valid_to;
             $previousHint = $contractLocked->consumer_key_hint;
 
-            // Re-sela material da versão com AAD do contrato (sem credential_version)
-            // para o autenticador canônico e loaders existentes.
             $contractPfxId = $this->resealVersionMaterialForContract($locked, $contractLocked);
             $contractOauthId = $contractPfxId['oauth'];
             $contractPfxObjectId = $contractPfxId['pfx'];
@@ -295,18 +463,13 @@ final class SerproCredentialVersionService
                 'token_expires_at' => null,
             ])->save();
 
-            // Invalida caches/tokens da versão anterior no contrato.
             $this->tokenCache->invalidate($contractLocked->refresh());
 
-            if (! $skipOauth) {
+            // Probe legado opcional (testes antigos); caminho normal usa evidência prévia.
+            if (! $skipOauth && $oauthProbe !== null) {
                 try {
-                    if ($oauthProbe !== null) {
-                        $oauthProbe($contractLocked);
-                    } else {
-                        app(SerproContractAuthenticator::class)->authenticate($contractLocked);
-                    }
+                    $oauthProbe($contractLocked);
                 } catch (Throwable $e) {
-                    // Rollback material do contrato para o estado anterior.
                     $this->safeDelete($contractPfxObjectId);
                     $this->safeDelete($contractOauthId);
                     $contractLocked->forceFill([
@@ -337,6 +500,7 @@ final class SerproCredentialVersionService
                 ->get();
 
             foreach ($previousActive as $old) {
+                $this->invalidateConnectionEvidences($old, 'cutover_retire', $actorUserId);
                 $old->forceFill([
                     'status' => SerproCredentialVersionStatus::Retired,
                     'retired_at' => now(),
@@ -380,6 +544,23 @@ final class SerproCredentialVersionService
 
             return $locked->refresh();
         });
+    }
+
+    private function assertCanonicalOauthEndpoint(string $tokenUrl): void
+    {
+        $parts = parse_url($tokenUrl);
+        if (! is_array($parts)
+            || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+            || strtolower((string) ($parts['host'] ?? '')) !== 'autenticacao.sapi.serpro.gov.br'
+            || (string) ($parts['path'] ?? '') !== '/authenticate'
+            || isset($parts['user'])
+            || isset($parts['pass'])
+            || isset($parts['query'])
+            || isset($parts['fragment'])
+            || (isset($parts['port']) && (int) $parts['port'] !== 443)
+        ) {
+            throw new RuntimeException('Endpoint OAuth não é o oficial SERPRO.');
+        }
     }
 
     /**
@@ -519,6 +700,25 @@ final class SerproCredentialVersionService
             'token_vault_object_id' => null,
             'token_expires_at' => null,
         ])->save();
+
+        $this->invalidateConnectionEvidences($version, 'compromised: '.$reason, $actorUserId);
+
+        // Tokens derivados no contrato ativo vinculado
+        if ($version->serpro_contract_id) {
+            $contract = SerproContract::query()->find($version->serpro_contract_id);
+            if ($contract !== null) {
+                $this->tokenCache->invalidate($contract);
+                if ((int) $contract->active_credential_version_id === (int) $version->id) {
+                    $contract->forceFill([
+                        'token_vault_object_id' => null,
+                        'token_expires_at' => null,
+                        'credentials_exposed' => true,
+                        'health_status' => 'BLOCKED',
+                        'health_message' => 'Credencial comprometida; rotação obrigatória.',
+                    ])->save();
+                }
+            }
+        }
 
         $this->audit->record('serpro.credential.compromised', 'SUCCESS', $version, [
             'environment' => $version->environment->value,
@@ -670,6 +870,9 @@ final class SerproCredentialVersionService
         return ['pfx' => $pfxId, 'oauth' => $oauthId];
     }
 
+    /**
+     * Metadado sanitizado: mascara o início e preserva os 4 últimos caracteres da Key.
+     */
     private function hint(string $consumerKey): string
     {
         $len = strlen($consumerKey);
@@ -677,7 +880,7 @@ final class SerproCredentialVersionService
             return str_repeat('*', $len);
         }
 
-        return substr($consumerKey, 0, 2).str_repeat('*', min(8, $len - 4)).substr($consumerKey, -2);
+        return str_repeat('*', min(8, $len - 4)).substr($consumerKey, -4);
     }
 
     private function safeDelete(string $objectId): void

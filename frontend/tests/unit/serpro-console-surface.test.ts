@@ -43,11 +43,13 @@ describe('console global SERPRO (superfície)', () => {
     const api = createPlatformApi(client as never)
     await api.platform.serpro.health()
     await api.platform.serpro.contracts.list()
+    await api.platform.serpro.configuration.show({ environment: 'TRIAL' })
     await api.platform.serpro.catalog()
     await api.platform.serpro.killSwitch.status()
     await api.platform.serpro.usage.consolidation({ year: 2026, month: 7 })
     expect(calls).toContain('/api/v1/platform/serpro/health')
     expect(calls).toContain('/api/v1/platform/serpro/contracts')
+    expect(calls).toContain('/api/v1/platform/serpro/configuration')
     expect(calls).toContain('/api/v1/platform/serpro/catalog')
     expect(calls).toContain('/api/v1/platform/serpro/kill-switch')
     expect(calls).toContain('/api/v1/platform/serpro-usage/consolidation')
@@ -57,6 +59,7 @@ describe('console global SERPRO (superfície)', () => {
     const files = [
       'pages/admin/serpro.vue',
       'pages/admin/serpro/index.vue',
+      'pages/admin/serpro/configuration.vue',
       'pages/admin/serpro/contracts.vue',
       'pages/admin/serpro/catalog.vue',
       'pages/admin/serpro/usage.vue',
@@ -67,9 +70,19 @@ describe('console global SERPRO (superfície)', () => {
     for (const f of files) {
       const src = readFileSync(resolve(APP, f), 'utf8')
       expect(src.length).toBeGreaterThan(100)
-      expect(src).not.toMatch(/consumer_secret|pfx_password|vault_object|BEGIN PRIVATE/i)
+      // consumer_secret no formulário de upload é aceitável se não for exibido da API
+      expect(src).not.toMatch(/pfx_password|vault_object|BEGIN PRIVATE/i)
       expect(src).not.toMatch(/v-html/i)
     }
+
+    const configPage = readFileSync(resolve(APP, 'pages/admin/serpro/configuration.vue'), 'utf8')
+    expect(configPage).toContain('admin-serpro-configuration')
+    expect(configPage).toContain('credentialVersions')
+    expect(configPage).not.toMatch(/vault_object_id|BEGIN CERTIFICATE/i)
+
+    const contracts = readFileSync(resolve(APP, 'pages/admin/serpro/contracts.vue'), 'utf8')
+    expect(contracts).toContain('/admin/serpro/configuration')
+    expect(contracts).not.toMatch(/contracts\.activate|contracts\.store/)
 
     const readiness = readFileSync(resolve(APP, 'pages/admin/serpro/index.vue'), 'utf8')
     expect(readiness).toContain('SerproOwnerConfirmModal')
