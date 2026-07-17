@@ -73,9 +73,9 @@ Alternativa considerada: usar ativação pendente ou senha aleatória. Rejeitada
 
 Os defaults `FISCAL_DEMO_SENTINEL_SLUG` e `WORK_DEMO_SENTINEL_SLUG` apontarão para `plataforma`. Assim, os dados sentinela continuam em Office diferente de `demo`, preservando as provas de isolamento, mas deixam de criar `demo-sentinel` e `demo-work-sentinel`. Ao repetir o `DatabaseSeeder`, esses dois slugs legados serão apenas desativados; Offices manuais ou com outros slugs não serão alterados.
 
-### 6. Seletor mostra perfil e Office como conceitos distintos
+### 6. Seletor preserva a composição de uma linha do TeamsMenu e amplia a exploração
 
-O gatilho do seletor global exibirá `PLATFORM_ADMIN` e o nome do Office em duas linhas. O rodapé identificará explicitamente o perfil e o contexto corrente. A estrutura continuará derivada de `TeamsMenu.vue`; somente rótulos e apresentação da identidade serão adaptados.
+O gatilho do seletor global exibirá somente o nome do Office corrente em uma linha, com truncamento nativo, avatar e chevron do `TeamsMenu.vue`. O overlay usará o `USelectMenu` do Nuxt UI, será mais largo que o gatilho dentro do viewport e oferecerá busca por nome ou slug, descrições legíveis e estado vazio explícito. O rodapé fixo mostrará visualmente apenas um escudo, `Plataforma` e, quando for diferente, o Office corrente separado por ponto médio. O papel técnico `PLATFORM_ADMIN` permanecerá no `aria-label` e em texto exclusivo para leitores de tela, sem linguagem interna ostensiva, sem comprimir o cabeçalho da sidebar nem adicionar borda privilegiada.
 
 ## Risks / Trade-offs
 

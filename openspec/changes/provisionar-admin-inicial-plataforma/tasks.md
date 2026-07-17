@@ -15,14 +15,16 @@
 
 ## 3. Identidade visual
 
-- [x] 3.1 Separar `PLATFORM_ADMIN` e o Office corrente em duas linhas no seletor global, mantendo o arquétipo `TeamsMenu`.
-- [ ] 3.2 Validar com Playwright que somente `Plataforma` e `Contador Genérico` aparecem na fixture global e que a troca funciona nos viewports configurados.
+- [x] 3.1 Exibir o Office corrente em uma linha no gatilho do seletor global e manter o contexto global no rodapé, preservando o arquétipo `TeamsMenu`.
+- [x] 3.2 Validar com Playwright que somente `Plataforma` e `Contador Genérico` aparecem na fixture global e que a troca funciona nos viewports configurados.
+- [x] 3.3 Ampliar responsivamente o overlay com `USelectMenu`, busca por nome/slug, descrições legíveis e estado vazio, validando largura, filtro e troca no Playwright.
+- [x] 3.4 Tornar o rodapé global discreto com escudo e nomes de produto, mantendo `PLATFORM_ADMIN` somente na semântica acessível e validando os dois contextos no Playwright.
 
 ## 4. Verificação
 
-- [ ] 4.1 Executar `cd backend && vendor/bin/pint --test && php artisan test --filter=PlatformAdminDemoSeederTest` e a suíte completa `php artisan test`, corrigindo qualquer regressão antes de marcar PASS.
-- [ ] 4.2 Executar lint, typecheck, testes unitários e generate do frontend.
-- [ ] 4.3 Executar `openspec validate provisionar-admin-inicial-plataforma --type change --strict --json` e manter todos os cenários verificáveis em CI, sem live ops.
+- [x] 4.1 Executar `cd backend && vendor/bin/pint --test && php artisan test --filter=PlatformAdminDemoSeederTest` e a suíte completa `php artisan test`, corrigindo qualquer regressão antes de marcar PASS.
+- [x] 4.2 Executar lint, typecheck, testes unitários e generate do frontend.
+- [x] 4.3 Executar `openspec validate provisionar-admin-inicial-plataforma --type change --strict --json` e manter todos os cenários verificáveis em CI, sem live ops.
 
 ## 5. Encerramento
 
