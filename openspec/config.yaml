@@ -2,8 +2,13 @@ schema: spec-driven
 
 # Stack/tenancy/segurança: AGENTS.md na raiz.
 # Artefatos: openspec/specs/ e openspec/changes/ (ainda vazios — criar via propose).
+# Idioma: pt-BR obrigatório em todos os artefatos OpenSpec e na comunicação com o usuário.
 
 context: |
+  Idioma: português do Brasil (pt-BR) em proposal, design, specs, tasks, archive e
+  qualquer texto de change. Comunicação com o usuário também em pt-BR (ver AGENTS.md).
+  Identificadores de código e nomes de API permanecem como no repositório.
+
   Produto: hub fiscal multi-escritório (NFS-e ADN, SEFAZ, SERPRO Integra, monitoramento).
   Monorepo sem package.json na raiz — orquestração Makefile + Docker Compose.
 
@@ -29,12 +34,13 @@ context: |
 
 rules:
   proposal:
-    - "Preferir português (pt-BR) nos artefatos."
+    - "Escrever proposal inteiro em português do Brasil (pt-BR) — títulos, Why, What Changes, Capabilities, Impact."
     - "1 capability principal (máx. 2); non-goals para live SERPRO, jurídico e mutações."
   specs:
+    - "Specs (delta e main) em pt-BR: Purpose, Requirements, Scenarios; identificadores de código em inglês quando forem nomes reais do repo."
     - "Main specs só com SHALL que o código atende."
   design:
-    - "Decisões e trade-offs; não copiar o proposal."
+    - "Design em pt-BR: decisões, trade-offs e riscos; não copiar o proposal."
   tasks:
-    - "Tasks verificáveis; [x] só com evidência real."
+    - "Tasks em pt-BR; verificáveis; [x] só com evidência real."
     - "Task final de archive/sync + commit quando fechar software."
