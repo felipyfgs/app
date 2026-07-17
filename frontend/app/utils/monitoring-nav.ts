@@ -43,7 +43,8 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
     label: 'Simples / MEI',
     sidebarLabel: 'Simples/MEI',
     icon: 'i-lucide-badge-percent',
-    to: '/monitoring/simples-mei/pgdasd',
+    // Depth = item da sidebar (submódulos PGDASD/PGMEI são tabs, não path).
+    to: '/monitoring/simples-mei',
     moduleKey: 'simples_mei',
     pathPrefix: '/monitoring/simples-mei'
   },
@@ -52,7 +53,7 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
     label: 'DCTFWeb / MIT',
     sidebarLabel: 'DCTFWeb/MIT',
     icon: 'i-lucide-file-input',
-    to: '/monitoring/dctfweb/dctfweb',
+    to: '/monitoring/dctfweb',
     moduleKey: 'dctfweb',
     pathPrefix: '/monitoring/dctfweb'
   },
@@ -163,32 +164,44 @@ export function normalizeMonitoringSubmodule(
   )?.value ?? definition.defaultValue
 }
 
-export function monitoringSubmodulePath(
-  moduleKey: RoutedMonitoringModuleKey,
-  raw: unknown
-): string {
-  const definition = ROUTED_SUBMODULES[moduleKey]
-  const value = normalizeMonitoringSubmodule(moduleKey, raw)
-  const slug = definition.entries.find(entry => entry.value === value)!.slug
-  const moduleSegment = moduleKey === 'simples_mei' ? 'simples-mei' : 'dctfweb'
-  return `/monitoring/${moduleSegment}/${slug}`
+/** Path do módulo (1:1 com item da sidebar). Tabs internas NÃO entram na URL. */
+export function monitoringModuleBasePath(moduleKey: RoutedMonitoringModuleKey): string {
+  return moduleKey === 'simples_mei' ? '/monitoring/simples-mei' : '/monitoring/dctfweb'
 }
 
+/**
+ * Location canônica: sempre só o path do módulo da sidebar.
+ * Submódulo (PGDASD, MIT, …) é estado local da página — sem path e sem query.
+ */
+export function monitoringSubmoduleLocation(
+  moduleKey: RoutedMonitoringModuleKey,
+  _raw?: unknown
+): { path: string, query: Record<string, never> } {
+  return { path: monitoringModuleBasePath(moduleKey), query: {} }
+}
+
+/** Path do módulo (ignora raw — tabs não navegáveis por URL). */
+export function monitoringSubmodulePath(
+  moduleKey: RoutedMonitoringModuleKey,
+  _raw?: unknown
+): string {
+  return monitoringModuleBasePath(moduleKey)
+}
+
+/** Filtros/tabs nunca vão na query da URL de monitoramento. */
 export function monitoringCanonicalQuery(
   _query: Record<string, unknown> = {}
 ): Record<string, never> {
   return {}
 }
 
+/** Redirect legado `/modulo/:submodule` → path limpo do item da sidebar. */
 export function monitoringLegacySubmoduleLocation(
   moduleKey: RoutedMonitoringModuleKey,
-  query: Record<string, unknown> = {}
+  _query: Record<string, unknown> = {},
+  _pathSegment?: unknown
 ) {
-  const selected = firstQueryValue(query.submodule) ?? firstQueryValue(query.tab)
-  return {
-    path: monitoringSubmodulePath(moduleKey, selected),
-    query: monitoringCanonicalQuery(query)
-  }
+  return monitoringSubmoduleLocation(moduleKey)
 }
 
 export function monitoringNavActiveModule(path: string): MonitoringModuleKey {

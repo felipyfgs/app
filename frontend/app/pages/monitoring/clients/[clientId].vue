@@ -17,8 +17,10 @@ import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
 
+// Um único path com section opcional — evita warn do Vue Router de alias
+// com params diferentes do record original (`:section` vs só `:clientId`).
 definePageMeta({
-  alias: ['/monitoring/clients/:clientId/:section']
+  path: '/monitoring/clients/:clientId/:section?'
 })
 
 type SectionKey
@@ -1160,14 +1162,14 @@ onMounted(async () => {
               size="sm"
               color="neutral"
               variant="soft"
-              to="/monitoring/dctfweb/dctfweb"
+              to="/monitoring/dctfweb"
               label="DCTFWeb"
             />
             <UButton
               size="sm"
               color="neutral"
               variant="soft"
-              to="/monitoring/simples-mei/pgdasd"
+              to="/monitoring/simples-mei"
               label="Simples/MEI"
             />
             <UButton

@@ -153,7 +153,7 @@ describe('fiscal-modules types e helpers (6.1)', () => {
   it('surface helpers: UNAVAILABLE e allows_document', () => {
     const unavailable: FiscalMonitoringSurfaceSummary = {
       surface_key: 'simples_mei_dasn',
-      route: '/monitoring/simples-mei/dasn-simei',
+      route: '/monitoring/simples-mei',
       responsibility: 'DASN',
       result_kind: 'UNAVAILABLE',
       allows_document: false,

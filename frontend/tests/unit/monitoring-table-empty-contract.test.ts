@@ -103,8 +103,8 @@ describe('contrato empty de tabelas de monitoramento', () => {
 
   it('carteiras usam MonitoringModuleTable (herdam o padrão empty)', () => {
     const portfolioPages = [
-      'simples-mei/[submodule].vue',
-      'dctfweb/[submodule].vue',
+      'simples-mei/index.vue',
+      'dctfweb/index.vue',
       'declarations.vue',
       'fgts.vue',
       'guides.vue',

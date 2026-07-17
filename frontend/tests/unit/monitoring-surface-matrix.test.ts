@@ -158,7 +158,7 @@ describe('documentActionVisible', () => {
 
 describe('source-check: páginas e componentes (contratos estruturais)', () => {
   const structuredPageFiles = [
-    'pages/monitoring/dctfweb/[submodule].vue',
+    'pages/monitoring/dctfweb/index.vue',
     'pages/monitoring/mailbox.vue',
     'pages/monitoring/mailbox/[id].vue',
     'pages/monitoring/mailbox/index.vue',
@@ -177,7 +177,7 @@ describe('source-check: páginas e componentes (contratos estruturais)', () => {
   })
 
   it('MIT submodule path não força botão de PDF genérico', () => {
-    const dctf = readApp('pages/monitoring/dctfweb/[submodule].vue')
+    const dctf = readApp('pages/monitoring/dctfweb/index.vue')
     // Coluna de evidência não deve inventar link de download de artefato
     expect(dctf).not.toMatch(/evidenceDownloadUrl/)
     expect(dctf).not.toContain('/api/v1/fiscal/evidence/')
@@ -194,10 +194,10 @@ describe('source-check: páginas e componentes (contratos estruturais)', () => {
   })
 
   it('DASN: página simples-mei não inventa botão de documento por submodule', () => {
-    const page = readApp('pages/monitoring/simples-mei/[submodule].vue')
+    const page = readApp('pages/monitoring/simples-mei/index.vue')
     expect(page).not.toContain('evidenceDownloadUrl')
     expect(page).not.toMatch(/\/api\/v1\/fiscal\/evidence\//)
-    // Tabs incluem DASN (rota canônica dasn-simei via helper de submodule)
+    // Tabs incluem DASN (query submodule=dasn-simei no path do módulo)
     expect(page).toContain('SIMPLES_MEI_TABS')
   })
 
@@ -207,8 +207,8 @@ describe('source-check: páginas e componentes (contratos estruturais)', () => {
 
     const documentCapablePages = [
       'pages/monitoring/sitfis.vue',
-      'pages/monitoring/simples-mei/[submodule].vue',
-      'pages/monitoring/dctfweb/[submodule].vue',
+      'pages/monitoring/simples-mei/index.vue',
+      'pages/monitoring/dctfweb/index.vue',
       'pages/monitoring/installments.vue',
       'pages/monitoring/guides.vue',
       'pages/monitoring/declarations.vue'

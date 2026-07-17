@@ -28,12 +28,15 @@ export function monitoringSelectionScope(input: {
   page: number
   filters: string
   sorting: unknown
+  /** Tab/submódulo local (ex. PGDASD) — path da rota pode ser compartilhado entre tabs. */
+  submodule?: string
 }): string {
   return JSON.stringify([
     input.officeEpoch,
     input.route,
     input.page,
     input.filters,
-    input.sorting
+    input.sorting,
+    input.submodule ?? ''
   ])
 }

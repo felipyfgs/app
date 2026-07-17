@@ -55,42 +55,42 @@ export const MONITORING_SURFACE_MATRIX: readonly MonitoringSurfaceMatrixEntry[] 
   },
   {
     surfaceKey: 'simples_mei_pgdasd',
-    route: '/monitoring/simples-mei/pgdasd',
+    route: '/monitoring/simples-mei',
     resultKind: 'PDF',
     allowsDocument: true,
     neverDocumentAction: false
   },
   {
     surfaceKey: 'simples_mei_pgmei',
-    route: '/monitoring/simples-mei/pgmei',
+    route: '/monitoring/simples-mei',
     resultKind: 'PDF',
     allowsDocument: true,
     neverDocumentAction: false
   },
   {
     surfaceKey: 'simples_mei_dasn',
-    route: '/monitoring/simples-mei/dasn-simei',
+    route: '/monitoring/simples-mei',
     resultKind: 'UNAVAILABLE',
     allowsDocument: false,
     neverDocumentAction: true
   },
   {
     surfaceKey: 'simples_mei_regime',
-    route: '/monitoring/simples-mei/regime',
+    route: '/monitoring/simples-mei',
     resultKind: 'PDF',
     allowsDocument: true,
     neverDocumentAction: false
   },
   {
     surfaceKey: 'dctfweb',
-    route: '/monitoring/dctfweb/dctfweb',
+    route: '/monitoring/dctfweb',
     resultKind: 'PDF',
     allowsDocument: true,
     neverDocumentAction: false
   },
   {
     surfaceKey: 'mit',
-    route: '/monitoring/dctfweb/mit',
+    route: '/monitoring/dctfweb',
     resultKind: 'STRUCTURED',
     allowsDocument: false,
     neverDocumentAction: true

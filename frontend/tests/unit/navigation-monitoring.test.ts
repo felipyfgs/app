@@ -45,9 +45,9 @@ describe('navigation monitoramento (15.4)', () => {
   it('usa os paths canônicos dos módulos com submódulos', () => {
     const children = monitoringDestinations()[0]?.children || []
     expect(children.find(c => c.id === 'monitoring-simples-mei')?.to)
-      .toBe('/monitoring/simples-mei/pgdasd')
+      .toBe('/monitoring/simples-mei')
     expect(children.find(c => c.id === 'monitoring-dctfweb')?.to)
-      .toBe('/monitoring/dctfweb/dctfweb')
+      .toBe('/monitoring/dctfweb')
   })
 
   it('mantém ícone no grupo e omite ícones dos módulos no submenu da sidebar', () => {

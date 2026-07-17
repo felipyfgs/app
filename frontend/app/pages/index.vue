@@ -191,14 +191,14 @@ watch(sessionEpoch, () => {
             label="Fiscal"
           />
           <UButton
-            to="/monitoring/simples-mei/pgdasd"
+            to="/monitoring/simples-mei"
             size="xs"
             color="neutral"
             variant="ghost"
             label="Simples"
           />
           <UButton
-            to="/monitoring/dctfweb/dctfweb"
+            to="/monitoring/dctfweb"
             size="xs"
             color="neutral"
             variant="ghost"

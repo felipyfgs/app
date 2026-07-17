@@ -45,6 +45,13 @@ const props = withDefaults(defineProps<{
   submodule?: string
   columnLabels?: Record<string, string>
   initialHiddenColumns?: string[]
+  /** Override opt-in da seleção. Omitido preserva a disponibilidade das ações genéricas. */
+  selectionEnabled?: boolean
+  /** Substitui as ações em massa genéricas pelo slot `bulk-actions`. */
+  customBulkActions?: boolean
+  /** Tabela densa: scroll horizontal sem comprimir as colunas. */
+  horizontalScroll?: boolean
+  tableClass?: string
   totalClients?: number
   counters?: FiscalModuleCounters | null
   lastGoodAt?: string | null
@@ -83,6 +90,10 @@ const props = withDefaults(defineProps<{
   submodule: '',
   columnLabels: () => ({}),
   initialHiddenColumns: () => [],
+  selectionEnabled: undefined,
+  customBulkActions: false,
+  horizontalScroll: false,
+  tableClass: undefined,
   counters: null,
   lastGoodAt: null,
   dataOrigin: null,
@@ -120,15 +131,19 @@ const resolvedSurface = computed(() => {
   if (props.surface) return props.surface
   return resolveMonitoringSurface(props.moduleKey)
 })
-const selectionEnabled = computed(() => Boolean(
-  props.moduleKey && props.getClientId && bulkAvailable.value
-))
+const resolvedSelectionEnabled = computed(() => {
+  if (typeof props.selectionEnabled === 'boolean') {
+    return props.selectionEnabled && Boolean(props.getClientId)
+  }
+  return Boolean(props.moduleKey && props.getClientId && bulkAvailable.value)
+})
 const selectionScope = computed(() => monitoringSelectionScope({
   officeEpoch: sessionEpoch.value,
   route: route.fullPath,
   page: props.page,
   filters: monitoringFilterSignature(props.filters),
-  sorting: props.sorting
+  sorting: props.sorting,
+  submodule: props.submodule || ''
 }))
 
 const originMeta = computed(() => dataOriginMeta(props.dataOrigin))
@@ -335,7 +350,9 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
           :sorting="sorting"
           :filters="filters"
           :selection-scope="selectionScope"
-          :selection-enabled="selectionEnabled"
+          :selection-enabled="resolvedSelectionEnabled"
+          :horizontal-scroll="horizontalScroll"
+          :table-class="tableClass"
           :get-row-id="getRowId"
           :get-client-id="getClientId"
           :column-labels="columnLabels"
@@ -363,8 +380,15 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
               @refresh="emit('refresh')"
             >
               <template #actions>
+                <slot
+                  v-if="customBulkActions"
+                  name="bulk-actions"
+                  :selected-client-ids="selectedClientIds"
+                  :selected-count="selectedCount"
+                  :clear-selection="clearSelection"
+                />
                 <MonitoringModuleBulkActions
-                  v-if="moduleKey"
+                  v-else-if="moduleKey"
                   :module-key="moduleKey"
                   :selected-client-ids="selectedClientIds"
                   :selected-count="selectedCount"

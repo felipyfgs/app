@@ -33,14 +33,16 @@ describe('monitoring selection', () => {
     ['rota', { route: '/monitoring/guides' }],
     ['página', { page: 2 }],
     ['filtro', { filters: monitoringFilterSignature(normalizeMonitoringFilters({ status: 'OPEN' })) }],
-    ['ordenação', { sorting: [{ id: 'client', desc: true }] }]
+    ['ordenação', { sorting: [{ id: 'client', desc: true }] }],
+    ['submódulo', { submodule: 'PGDASD' }]
   ])('altera o escopo ao trocar %s', (_label, changed) => {
     const base = {
       officeEpoch: 1,
       route: '/monitoring/registrations',
       page: 1,
       filters: monitoringFilterSignature(normalizeMonitoringFilters()),
-      sorting: [{ id: 'client', desc: false }]
+      sorting: [{ id: 'client', desc: false }],
+      submodule: ''
     }
     expect(monitoringSelectionScope({ ...base, ...changed })).not.toBe(
       monitoringSelectionScope(base)

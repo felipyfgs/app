@@ -260,7 +260,7 @@ describe('useFiscalModulePortfolio behaviours (6.2 / 6.11)', () => {
     const overview = {
       surface: {
         surface_key: 'simples_mei_dasn',
-        route: '/monitoring/simples-mei/dasn-simei',
+        route: '/monitoring/simples-mei',
         responsibility: 'DASN',
         result_kind: 'UNAVAILABLE' as const,
         allows_document: false,

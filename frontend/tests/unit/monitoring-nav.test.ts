@@ -51,9 +51,9 @@ describe('MonitoringModuleNav items (6.3)', () => {
     expect(active[0]?.to).toBe('/monitoring/fgts')
   })
 
-  it('paths batem com o catálogo de módulos', () => {
-    expect(monitoringPathForModule('dctfweb')).toBe('/monitoring/dctfweb/dctfweb')
-    expect(monitoringPathForModule('simples_mei')).toBe('/monitoring/simples-mei/pgdasd')
+  it('paths batem com o catálogo de módulos (depth = sidebar)', () => {
+    expect(monitoringPathForModule('dctfweb')).toBe('/monitoring/dctfweb')
+    expect(monitoringPathForModule('simples_mei')).toBe('/monitoring/simples-mei')
     expect(monitoringPathForModule('dashboard')).toBe('/monitoring')
   })
 

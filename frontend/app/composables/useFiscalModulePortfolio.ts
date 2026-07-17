@@ -30,10 +30,8 @@ import {
 } from '~/utils/monitoring-filters'
 
 export interface UseFiscalModulePortfolioOptions {
-  /** Submódulo controlado pela página (tabs). */
+  /** Submódulo controlado pela página (tabs locais — não entram na URL). */
   submodule?: Ref<string>
-  /** Rota canônica quando o submódulo faz parte do path, não da query. */
-  submodulePath?: (value: string) => string
   /** delivery_status (declarações). */
   deliveryStatus?: Ref<string>
   perPage?: number
@@ -69,8 +67,6 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   options: UseFiscalModulePortfolioOptions = {}
 ) {
   const api = useApi()
-  const route = useRoute()
-  const router = useRouter()
   const { sessionEpoch } = useDashboard()
 
   const page = ref(1)
@@ -236,11 +232,12 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     modality: modality.value
   }) || Boolean(submodule.value && submodule.value !== 'all' && submodule.value.trim()))
 
+  /**
+   * URL = só a rota do módulo (sidebar). Tabs, filtros e página são estado local.
+   * Mantido como no-op nomeado para callers legados (`loadClients` ainda invoca).
+   */
   async function syncUrl() {
-    const path = options.submodulePath?.(submodule.value)
-    if (path !== route.path || Object.keys(route.query).length > 0) {
-      await router.replace({ path: path || route.path })
-    }
+    // intencionalmente vazio
   }
 
   function overviewStillCurrent(seq: number, epoch: number) {

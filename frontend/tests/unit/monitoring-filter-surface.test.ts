@@ -10,7 +10,7 @@ function readPage(relative: string) {
 
 describe('superfície de filtros das nove listas de monitoramento', () => {
   it('Simples/MEI e DCTFWeb/MIT expõem situação, cliente e competência', () => {
-    for (const file of ['simples-mei/[submodule].vue', 'dctfweb/[submodule].vue']) {
+    for (const file of ['simples-mei/index.vue', 'dctfweb/index.vue']) {
       const src = readPage(file)
       expect(src).toContain('key: \'situation\'')
       expect(src).toContain('key: \'clientId\'')
@@ -20,7 +20,7 @@ describe('superfície de filtros das nove listas de monitoramento', () => {
   })
 
   it('Simples/MEI e SITFIS expõem coverage (coluna de negócio)', () => {
-    for (const file of ['simples-mei/[submodule].vue', 'sitfis.vue']) {
+    for (const file of ['simples-mei/index.vue', 'sitfis.vue']) {
       const src = readPage(file)
       expect(src).toContain('key: \'coverage\'')
     }
@@ -115,8 +115,8 @@ describe('superfície de filtros das nove listas de monitoramento', () => {
 
   it('requests de listagem não enviam office_id', () => {
     const files = [
-      'simples-mei/[submodule].vue',
-      'dctfweb/[submodule].vue',
+      'simples-mei/index.vue',
+      'dctfweb/index.vue',
       'installments.vue',
       'sitfis.vue',
       'declarations.vue',

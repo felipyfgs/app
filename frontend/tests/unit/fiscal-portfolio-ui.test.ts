@@ -302,7 +302,7 @@ describe('MonitoringModuleNav (6.3 / 6.11)', () => {
     const items = monitoringNavMenuItems('/monitoring/guides', 'simples_mei')
     const active = items.filter(i => i.active)
     expect(active).toHaveLength(1)
-    expect(active[0]?.to).toBe('/monitoring/simples-mei/pgdasd')
+    expect(active[0]?.to).toBe('/monitoring/simples-mei')
   })
 
   it('lista canônica cobre todos os destinos do hub', () => {
@@ -348,7 +348,13 @@ describe('ações de carteira no contexto da seleção', () => {
     expect(moduleTable).not.toContain('fiscal-module-navbar-actions')
     expect(moduleTable).not.toContain('name="navbar-actions"')
     expect(moduleTable).toContain('MonitoringModuleBulkActions')
-    expect(moduleTable).toContain(':selection-enabled="selectionEnabled"')
+    // Prop de entrada: selectionEnabled; binding real no DataTable: resolvedSelectionEnabled
+    expect(moduleTable).toContain('resolvedSelectionEnabled')
+    expect(moduleTable).toContain(':selection-enabled="resolvedSelectionEnabled"')
+    // Escopo de seleção limpa ao mudar path/page/filtros/ordenação (path-only no hub limpo)
+    expect(moduleTable).toContain(':selection-scope="selectionScope"')
+    expect(moduleTable).toContain('monitoringSelectionScope')
+    expect(moduleTable).toContain('route.fullPath')
     expect(bulk).toContain('data-testid="fiscal-bulk-actions"')
     expect(bulk).toContain('v-if="actionState.visible"')
     expect(bulk).toContain('label="Ações"')
@@ -394,7 +400,7 @@ describe('ações de carteira no contexto da seleção', () => {
       'utf8'
     )
     const dctfweb = readFileSync(
-      resolve(__dirname, '../../app/pages/monitoring/dctfweb/[submodule].vue'),
+      resolve(__dirname, '../../app/pages/monitoring/dctfweb/index.vue'),
       'utf8'
     )
     const editor = readFileSync(
@@ -454,7 +460,7 @@ describe('ações de carteira no contexto da seleção', () => {
 
   it('reduz a densidade inicial da DCTFWeb sem remover colunas do menu Exibir', () => {
     const dctfweb = readFileSync(
-      resolve(__dirname, '../../app/pages/monitoring/dctfweb/[submodule].vue'),
+      resolve(__dirname, '../../app/pages/monitoring/dctfweb/index.vue'),
       'utf8'
     )
 
@@ -472,8 +478,8 @@ describe('ações de carteira no contexto da seleção', () => {
       'pages/monitoring/declarations.vue',
       'pages/monitoring/fgts.vue',
       'pages/monitoring/sitfis.vue',
-      'pages/monitoring/simples-mei/[submodule].vue',
-      'pages/monitoring/dctfweb/[submodule].vue',
+      'pages/monitoring/simples-mei/index.vue',
+      'pages/monitoring/dctfweb/index.vue',
       'pages/monitoring/guides.vue',
       'pages/monitoring/mailbox.vue'
     ]
