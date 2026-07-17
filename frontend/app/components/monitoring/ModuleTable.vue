@@ -117,6 +117,7 @@ const emit = defineEmits<{
   'apply-filters': [filters: MonitoringFilterValue]
   'reset-filters': [filters: MonitoringFilterValue]
   'refresh': []
+  'selection-change': [payload: { rows: T[], clientIds: number[], count: number }]
 }>()
 
 const route = useRoute()
@@ -175,13 +176,25 @@ const surfaceUnavailableTitle = computed(() => {
 })
 
 function onSelectionChange(payload: { rows: T[], clientIds: number[], count: number }) {
+  const same = payload.count === selectedCount.value
+    && payload.clientIds.length === selectedClientIds.value.length
+    && payload.clientIds.every((id, i) => id === selectedClientIds.value[i])
+  if (same) {
+    emit('selection-change', payload)
+    return
+  }
   selectedClientIds.value = payload.clientIds
   selectedCount.value = payload.count
+  emit('selection-change', payload)
 }
 
 function clearSelection() {
   dataTable.value?.clearSelection()
+  selectedClientIds.value = []
+  selectedCount.value = 0
 }
+
+defineExpose({ clearSelection })
 
 function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
   emit('quick-filter-change', {

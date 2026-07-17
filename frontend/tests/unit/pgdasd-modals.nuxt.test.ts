@@ -29,6 +29,18 @@ vi.mock('../../app/composables/usePgmeiMonitoring', () => ({
   })
 }))
 
+// O modal é compartilhado com DCTFWeb, mas estes testes exercitam apenas PGDAS-D.
+// O mock evita inicializar outra API e comprova que a leitura não cruza domínios.
+vi.mock('../../app/composables/useDctfwebMonitoring', () => ({
+  useDctfwebMonitoring: () => ({
+    fetchPreview,
+    fetchTracking,
+    updatePreferences,
+    evidenceDownloadUrl: (clientId: number, id: number) =>
+      `/dctfweb/clients/${clientId}/evidence/${id}`
+  })
+}))
+
 vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
 
 const stubs = {

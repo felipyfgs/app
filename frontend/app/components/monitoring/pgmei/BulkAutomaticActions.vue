@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { apiErrorMessage } from '~/utils/api-error'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   selectedClientIds: number[]
   selectedCount: number
-}>()
+  modelValue?: boolean
+}>(), {
+  modelValue: false
+})
 
 const emit = defineEmits<{
   clear: []
@@ -48,32 +51,20 @@ async function update(automaticRequested: boolean) {
 </script>
 
 <template>
-  <div
-    v-if="selectedCount > 0"
-    class="flex items-center gap-1.5"
-    data-testid="pgmei-bulk-automatic-actions"
+  <UTooltip
+    :text="selectedCount > 0
+      ? `Aplicar envio automático aos ${selectedCount} cliente(s) selecionado(s)`
+      : 'Selecione ao menos um cliente para aplicar em massa'"
   >
-    <UButton
-      size="sm"
-      color="primary"
-      variant="soft"
-      icon="i-lucide-toggle-right"
-      label="Ligar automático"
+    <USwitch
+      :model-value="modelValue"
       :loading="saving"
-      @click="update(true)"
-    >
-      <template #trailing>
-        <UKbd>{{ selectedCount }}</UKbd>
-      </template>
-    </UButton>
-    <UButton
-      size="sm"
-      color="neutral"
-      variant="outline"
-      icon="i-lucide-toggle-left"
-      label="Desligar"
-      :disabled="saving"
-      @click="update(false)"
+      :disabled="selectedCount < 1 || saving"
+      :aria-label="modelValue
+        ? 'Desligar envio automático dos clientes selecionados'
+        : 'Ligar envio automático dos clientes selecionados'"
+      data-testid="pgmei-bulk-automatic-switch"
+      @update:model-value="update"
     />
-  </div>
+  </UTooltip>
 </template>

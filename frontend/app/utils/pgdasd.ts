@@ -19,25 +19,25 @@ export interface PgdasdStateMeta {
 
 const DECLARATION_META: Record<PgdasdDeclarationState, PgdasdStateMeta> = {
   CURRENT: {
-    label: 'Declaração atual',
+    label: 'Em dia',
     description: 'A declaração do período esperado foi localizada.',
     color: 'success',
     icon: 'i-lucide-circle-check'
   },
   DUE_WITHIN_DEADLINE: {
-    label: 'Dentro do prazo',
+    label: 'Pendências',
     description: 'A declaração ainda não foi localizada, mas o prazo confiável não terminou.',
     color: 'warning',
     icon: 'i-lucide-clock-3'
   },
   OVERDUE_NOT_FOUND: {
-    label: 'Declaração vencida não localizada',
+    label: 'Atrasado',
     description: 'Uma consulta válida posterior ao prazo confirmou a ausência da declaração.',
     color: 'error',
     icon: 'i-lucide-circle-alert'
   },
   UNVERIFIED: {
-    label: 'Não verificável',
+    label: 'Não verificado',
     description: 'Ainda não existe evidência produtiva suficiente para classificar o período.',
     color: 'neutral',
     icon: 'i-lucide-circle-help'
@@ -174,9 +174,22 @@ export function pgdasdRbt12Tooltip(rbt12?: PgdasdRbt12Summary | null): string {
   ]
   if (rbt12.internal_market_cents != null) {
     parts.push(`Mercado interno: ${formatAmountCents(rbt12.internal_market_cents)}.`)
+  } else if (rbt12.composition?.internal_market_cents != null) {
+    parts.push(`Mercado interno: ${formatAmountCents(rbt12.composition.internal_market_cents)}.`)
   }
   if (rbt12.external_market_cents != null) {
     parts.push(`Mercado externo: ${formatAmountCents(rbt12.external_market_cents)}.`)
+  } else if (rbt12.composition?.external_market_cents != null) {
+    parts.push(`Mercado externo: ${formatAmountCents(rbt12.composition.external_market_cents)}.`)
+  }
+  const origin = [
+    rbt12.origin?.das_number ? `DAS nº ${rbt12.origin.das_number}` : null,
+    rbt12.origin?.declaration_number
+      ? `declaração nº ${rbt12.origin.declaration_number}`
+      : null
+  ].filter(Boolean).join(' e ')
+  if (origin) {
+    parts.push(`Origem: extrato do ${origin}.`)
   }
   if (rbt12.extracted_at) {
     parts.push(`Extraído em ${formatDateTime(rbt12.extracted_at)}.`)

@@ -1,24 +1,22 @@
 <script setup lang="ts">
 /**
- * DCTFWeb / MIT — tabs + estados independentes (encerramento, transmissão, recibo, evidência, DARF, pagamento).
- * Mutação de alto risco só via FiscalMutationConfirmModal (catálogo de códigos).
- * Task 7.3
+ * DCTFWeb / MIT — cápsulas independentes na mesma rota.
+ * DCTFWeb: oito colunas fixas, comunicação template, histórico local.
+ * MIT: renderer próprio; sem reutilizar colunas DCTFWeb.
+ * Mutações fiscais (transmitir / encerrar / DARF) ficam fora da grade DCTFWeb.
  */
-import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
-import type { DctfwebClientDetail, DctfwebClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
+import type {
+  DctfwebClientRow,
+  MonitoringFilterConfig,
+  PgdasdCommunicationPreference
+} from '~/types/fiscal-modules'
 import { DCTFWEB_TABS } from '~/types/fiscal-modules'
-import { resolveHighRiskCodesFromRow } from '~/utils/fiscal-high-risk'
-import { sortHeader } from '~/utils/table-sort'
+import { buildDctfwebColumns, buildMitColumns } from '~/utils/dctfweb-table'
+import { dctfwebSummary, isDctfwebCapsule, isMitCapsule } from '~/utils/dctfweb'
 
-const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
-const FiscalClientCell = resolveComponent('FiscalClientCell')
-const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
-const UButton = resolveComponent('UButton')
-const UDropdownMenu = resolveComponent('UDropdownMenu')
+const { canManageClients } = useDashboard()
 
-const { canAccessAdministration } = useDashboard()
-
-// Tab local (DCTFWEB default). URL permanece /monitoring/dctfweb — sem query/path de tab.
+// Tab local (DCTFWEB default). URL permanece /monitoring/dctfweb.
 const submodule = ref(normalizeMonitoringSubmodule('dctfweb', undefined))
 
 const {
@@ -40,7 +38,6 @@ const {
   sourceLabel,
   asOf,
   surface,
-  allowsDocument,
   sorting,
   setPage,
   refresh,
@@ -51,221 +48,101 @@ const {
   submodule
 })
 
-/** MIT: never document button even if generic row has a descriptor. */
-const documentActionsEnabled = computed(
-  () => allowsDocument.value && submodule.value !== 'MIT'
-)
+const isDctfweb = computed(() => isDctfwebCapsule(submodule.value))
+const isMit = computed(() => isMitCapsule(submodule.value))
 
-const filterConfig: MonitoringFilterConfig = {
-  fields: [
-    { key: 'situation', kind: 'option', label: 'Situação' },
-    { key: 'clientId', kind: 'client', label: 'Cliente' },
-    { key: 'competence', kind: 'month', label: 'Competência' }
-  ]
-}
+const filterConfig = computed<MonitoringFilterConfig>(() => {
+  if (isMit.value) {
+    return {
+      fields: [
+        { key: 'situation', kind: 'option', label: 'Situação' },
+        { key: 'clientId', kind: 'client', label: 'Cliente' },
+        { key: 'competence', kind: 'month', label: 'Competência' }
+      ]
+    }
+  }
+  return {
+    fields: [
+      { key: 'situation', kind: 'option', label: 'Situação' },
+      { key: 'clientId', kind: 'client', label: 'Cliente' }
+    ]
+  }
+})
 
 function getRowId(row: DctfwebClientRow) {
   return `c:${row.client_id}`
 }
 
-const mutationOpen = ref(false)
-const mutationRequest = ref<{
-  client_id: number
-  solution_code: string
-  service_code: string
-  operation_code: string
-  competence_period_key?: string | null
-  module?: string
-} | null>(null)
-
 const tabItems = DCTFWEB_TABS.map(t => ({ label: t.label, value: t.value }))
 
-function clientHref(id: number) {
-  return `/monitoring/clients/${id}`
+// —— Modais locais (histórico / prévia / rastreio / preferências) ——
+const historyOpen = ref(false)
+const previewOpen = ref(false)
+const trackingOpen = ref(false)
+const prefsOpen = ref(false)
+const modalClientId = ref<number | null>(null)
+const modalClientName = ref<string | null>(null)
+const modalCnpjMasked = ref<string | null>(null)
+const modalPreference = ref<PgdasdCommunicationPreference | null>(null)
+
+function openFor(row: DctfwebClientRow, kind: 'history' | 'preview' | 'tracking' | 'prefs') {
+  modalClientId.value = row.client_id
+  modalClientName.value = row.legal_name || row.name || null
+  modalCnpjMasked.value = row.cnpj_masked || null
+  modalPreference.value = dctfwebSummary(row)?.communication || null
+  historyOpen.value = kind === 'history'
+  previewOpen.value = kind === 'preview'
+  trackingOpen.value = kind === 'tracking'
+  prefsOpen.value = kind === 'prefs'
 }
 
-function detailOf(row: DctfwebClientRow): DctfwebClientDetail {
-  return row.detail || {}
-}
-
-function statusOrDash(status?: string | null) {
-  const s = String(status || '').trim()
-  if (!s || s === '—') return '—'
-  return h(FiscalStatusBadge, { status: s, showHint: true })
-}
-
-function mutationHint(): 'mit' | 'dctfweb' {
-  return submodule.value === 'MIT' ? 'mit' : 'dctfweb'
-}
-
-/** Só oferece mutação se o catálogo oficial resolver códigos (sem inventar fallback). */
-function canOpenTransmit(row: DctfwebClientRow): boolean {
-  if (!canAccessAdministration.value || !row.client_id) return false
-  return resolveHighRiskCodesFromRow(
-    { client_id: row.client_id } as Record<string, unknown>,
-    mutationHint()
-  ) != null
-}
-
-function openTransmit(row: DctfwebClientRow) {
-  const d = detailOf(row)
-  const codes = resolveHighRiskCodesFromRow(
-    { client_id: row.client_id } as Record<string, unknown>,
-    mutationHint()
-  )
-  if (!codes) return
-  mutationRequest.value = {
-    client_id: row.client_id,
-    solution_code: codes.solution_code,
-    service_code: codes.service_code,
-    operation_code: codes.operation_code,
-    competence_period_key: String(
-      row.competence
-      || d.dctfweb?.period_key
-      || d.mit?.period_key
-      || ''
-    ) || null,
-    module: codes.module || mutationHint()
+function onPreferenceSaved(
+  row: DctfwebClientRow,
+  preference: PgdasdCommunicationPreference
+) {
+  if (row.detail.dctfweb) {
+    row.detail.dctfweb.communication = preference
   }
-  mutationOpen.value = true
+  row.detail.communication = preference
+  if (modalClientId.value === row.client_id) modalPreference.value = preference
+  void refresh()
 }
 
-function rowActionItems(row: DctfwebClientRow): DropdownMenuItem[][] {
-  const groups: DropdownMenuItem[][] = [[{
-    label: 'Abrir cliente',
-    icon: 'i-lucide-building-2',
-    to: clientHref(row.client_id)
-  }]]
-
-  if (canOpenTransmit(row)) {
-    groups.push([{
-      label: submodule.value === 'MIT' ? 'Encerrar apuração' : 'Transmitir declaração',
-      icon: submodule.value === 'MIT' ? 'i-lucide-circle-check-big' : 'i-lucide-send',
-      color: 'warning',
-      onSelect: () => openTransmit(row)
-    }])
-  }
-
-  return groups
+function onModalPreferenceSaved(preference: PgdasdCommunicationPreference) {
+  const row = rows.value.find(item => item.client_id === modalClientId.value)
+  if (row) onPreferenceSaved(row, preference)
 }
 
-const columns: TableColumn<DctfwebClientRow>[] = [
-  {
-    id: 'client',
-    header: ({ column }) => sortHeader('Cliente', column),
-    enableHiding: false,
-    cell: ({ row }) => h(FiscalClientCell, {
-      clientId: row.original.client_id,
-      name: row.original.name || row.original.display_name,
-      legalName: row.original.legal_name,
-      cnpjMasked: row.original.cnpj_masked,
-      to: clientHref(row.original.client_id)
-    })
-  },
-  {
-    id: 'competence',
-    header: ({ column }) => sortHeader('Competência', column),
-    cell: ({ row }) => {
-      const d = detailOf(row.original)
-      return String(
-        row.original.competence
-        || d.dctfweb?.period_key
-        || d.mit?.period_key
-        || '—'
-      )
-    }
-  },
-  {
-    id: 'situation',
-    header: ({ column }) => sortHeader('Situação', column),
-    cell: ({ row }) => h(FiscalStatusBadge, { status: row.original.situation })
-  },
-  {
-    id: 'closure',
-    header: 'Encerramento',
-    enableSorting: false,
-    cell: ({ row }) => {
-      // Eixo MIT — independente da transmissão DCTFWeb
-      const mit = detailOf(row.original).mit
-      return statusOrDash(mit?.encerramento_status)
-    }
-  },
-  {
-    id: 'transmission',
-    header: 'Transmissão',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const d = detailOf(row.original)
-      const status = d.dctfweb?.transmission_status
-        || d.mit?.dctfweb_transmission_status
-        || null
-      return statusOrDash(status)
-    }
-  },
-  {
-    id: 'receipt',
-    header: 'Recibo',
-    enableSorting: false,
-    cell: ({ row }) => String(detailOf(row.original).dctfweb?.receipt_number || '—')
-  },
-  {
-    id: 'evidence',
-    header: 'Evidência',
-    enableSorting: false,
-    cell: ({ row }) => {
-      // Portfolio não expõe evidence_version; recibo indica presença de evidência de transmissão.
-      const receipt = detailOf(row.original).dctfweb?.receipt_number
-      if (receipt) {
-        return h(FiscalStatusBadge, { status: 'UP_TO_DATE', showHint: true })
-      }
-      return '—'
-    }
-  },
-  {
-    id: 'darf',
-    header: 'DARF',
-    enableSorting: false,
-    cell: () => {
-      // Contrato da carteira ainda não devolve status de DARF por linha.
-      return '—'
-    }
-  },
-  {
-    id: 'payment',
-    header: 'Pagamento',
-    enableSorting: false,
-    cell: ({ row }) => statusOrDash(detailOf(row.original).dctfweb?.payment_status)
-  },
-  {
-    id: 'actions',
-    enableHiding: false,
-    enableSorting: false,
-    meta: { class: { th: 'w-40', td: 'w-40' } },
-    cell: ({ row }) => {
-      const name = row.original.name || row.original.display_name || `cliente ${row.original.client_id}`
-      return h('div', { class: 'flex justify-end gap-1 items-center' }, [
-        h(FiscalDocumentAction, {
-          document: row.original.document,
-          disabled: !documentActionsEnabled.value
-        }),
-        h(
-          UDropdownMenu,
-          {
-            items: rowActionItems(row.original),
-            content: { align: 'end' }
-          },
-          () => h(UButton, {
-            'icon': 'i-lucide-ellipsis-vertical',
-            'color': 'neutral',
-            'variant': 'ghost',
-            'class': 'ml-auto',
-            'aria-label': `Ações de ${name}`
-          })
-        )
-      ])
-    }
+const dctfwebColumns = computed(() => buildDctfwebColumns({
+  canManage: canManageClients.value,
+  onHistory: row => openFor(row, 'history'),
+  onPreview: row => openFor(row, 'preview'),
+  onTracking: row => openFor(row, 'tracking'),
+  onConfigure: row => openFor(row, 'prefs'),
+  onPreferenceSaved
+}))
+
+const mitColumns = computed(() => buildMitColumns({
+  onOpenClient: row => {
+    navigateTo(`/monitoring/clients/${row.client_id}`)
   }
-]
+}))
+
+const columns = computed(() => {
+  if (isMit.value) return mitColumns.value
+  return dctfwebColumns.value
+})
+
+watch(submodule, (next, prev) => {
+  if (next === prev) return
+  historyOpen.value = false
+  previewOpen.value = false
+  trackingOpen.value = false
+  prefsOpen.value = false
+  modalClientId.value = null
+  setPage(1)
+  resetFilters()
+})
 </script>
 
 <template>
@@ -296,16 +173,26 @@ const columns: TableColumn<DctfwebClientRow>[] = [
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
     :submodule="submodule"
+    :selection-enabled="false"
+    :horizontal-scroll="true"
+    table-class="min-w-[1120px]"
     empty-title="Nenhum cliente"
-    :column-labels="{
-      closure: 'Encerramento',
-      transmission: 'Transmissão',
-      receipt: 'Recibo',
-      evidence: 'Evidência',
-      darf: 'DARF',
-      payment: 'Pagamento'
-    }"
-    :initial-hidden-columns="['evidence', 'darf']"
+    :column-labels="isMit
+      ? {
+        period: 'Competência',
+        situation: 'Situação',
+        closure: 'Encerramento'
+      }
+      : {
+        situation: 'Situação',
+        last_declaration: 'Últ. Declaração',
+        actions: 'Ações',
+        send: 'Enviar',
+        client: 'Cliente',
+        tracking: 'Rastreio de envio',
+        last_search: 'Última Busca',
+        history: 'Histórico de Busca'
+      }"
     @update:page="setPage"
     @update:sorting="sorting = $event"
     @quick-filter-change="applyQuickFilters"
@@ -334,17 +221,25 @@ const columns: TableColumn<DctfwebClientRow>[] = [
         class="w-full"
       />
     </template>
-
-    <template #detail>
-      <FiscalMutationConfirmModal
-        v-model:open="mutationOpen"
-        :request="mutationRequest"
-        :context="{
-          effect: submodule === 'MIT' ? 'Encerrar apuração MIT' : 'Transmitir declaração DCTFWeb',
-          competence: mutationRequest?.competence_period_key || undefined
-        }"
-        @success="refresh"
-      />
-    </template>
   </MonitoringModuleTable>
+
+  <MonitoringDctfwebHistoryModal
+    v-if="isDctfweb"
+    v-model:open="historyOpen"
+    :client-id="modalClientId"
+    :client-name="modalClientName"
+    :cnpj-masked="modalCnpjMasked"
+  />
+  <MonitoringPgdasdCommunicationModals
+    v-if="isDctfweb"
+    v-model:preview-open="previewOpen"
+    v-model:tracking-open="trackingOpen"
+    v-model:prefs-open="prefsOpen"
+    :client-id="modalClientId"
+    :client-name="modalClientName"
+    :preference="modalPreference"
+    :can-manage="canManageClients"
+    context="DCTFWEB"
+    @saved="onModalPreferenceSaved"
+  />
 </template>

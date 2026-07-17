@@ -467,6 +467,17 @@ export interface PgdasdRbt12Summary {
   total_cents?: number | null
   internal_market_cents?: number | null
   external_market_cents?: number | null
+  composition?: {
+    internal_market_cents?: number | null
+    external_market_cents?: number | null
+    total_cents?: number | null
+  } | null
+  origin?: {
+    das_number?: string | null
+    declaration_number?: string | null
+    declaration_transmitted_at?: string | null
+  } | null
+  parser_version?: string | null
   extracted_at?: string | null
   availability_reason?: string | null
   unavailable_reason?: string | null
@@ -489,6 +500,8 @@ export interface PgdasdClientSummary {
   expected_period_key?: string | null
   latest_declaration?: PgdasdLatestDeclaration | null
   declaration_state?: PgdasdDeclarationState | string | null
+  declaration_state_reason?: string | null
+  /** Alias transitório aceito durante deploy escalonado. */
   declaration_reason?: string | null
   last_valid_query_at?: string | null
   rbt12?: PgdasdRbt12Summary | null
@@ -688,16 +701,113 @@ export interface SimplesMeiClientDetail {
   links?: Record<string, string | null>
 }
 
+export type DctfwebDeclarationState
+  = | 'CURRENT'
+    | 'NO_MOVEMENT_VALID'
+    | 'DUE_WITHIN_DEADLINE'
+    | 'OVERDUE_NOT_FOUND'
+    | 'UNVERIFIED'
+
+export interface DctfwebLatestDeclaration {
+  period_key?: string | null
+  category?: string | null
+  receipt_number?: string | null
+  declaration_type?: string | null
+  transmitted_at?: string | null
+  no_movement?: boolean | null
+  declaration_state?: DctfwebDeclarationState | string | null
+  transmission_status?: string | null
+}
+
+export interface DctfwebClientSummary {
+  expected_period_key?: string | null
+  period_key?: string | null
+  category?: string | null
+  declaration_state?: DctfwebDeclarationState | string | null
+  declaration_state_reason?: string | null
+  last_declaration?: DctfwebLatestDeclaration | Record<string, unknown> | null
+  latest_declaration?: DctfwebLatestDeclaration | null
+  last_search_at?: string | null
+  last_valid_query_at?: string | null
+  last_productive_consulted_at?: string | null
+  calendar_verified?: boolean
+  communication?: PgdasdCommunicationPreference | null
+  has_history?: boolean
+  has_tracking?: boolean
+  links?: Record<string, string | null>
+}
+
+export interface DctfwebEvidenceDescriptor {
+  id: number
+  kind?: string | null
+  version?: number | null
+  is_current?: boolean
+  content_type?: string | null
+  byte_size?: number | null
+  observed_at?: string | null
+  download_path?: string | null
+}
+
+export interface DctfwebHistoryPeriod {
+  period_key?: string | null
+  declaration_state?: DctfwebDeclarationState | string | null
+  last_valid_query_at?: string | null
+  declarations?: Array<Record<string, unknown>>
+  observations?: Array<Record<string, unknown>>
+  documents?: DctfwebEvidenceDescriptor[]
+  artifacts?: DctfwebEvidenceDescriptor[]
+}
+
+export interface DctfwebHistoryPayload {
+  client?: {
+    id?: number
+    legal_name?: string | null
+    cnpj_masked?: string | null
+  }
+  expected_period_key?: string | null
+  category?: string | null
+  declaration_state?: DctfwebDeclarationState | string | null
+  last_valid_query_at?: string | null
+  periods?: DctfwebHistoryPeriod[]
+  history?: DctfwebHistoryPeriod[]
+  declarations?: Array<Record<string, unknown>>
+  observations?: Array<Record<string, unknown>>
+  artifacts?: DctfwebEvidenceDescriptor[]
+  provenance?: {
+    source?: string
+    serpro_called?: boolean
+  }
+}
+
 export interface DctfwebClientDetail {
   module_key?: 'dctfweb' | string
   submodule?: string | null
+  declaration_state?: DctfwebDeclarationState | string | null
+  last_declaration?: DctfwebLatestDeclaration | Record<string, unknown> | null
+  last_search_at?: string | null
+  last_productive_consulted_at?: string | null
+  communication?: PgdasdCommunicationPreference | null
+  has_history?: boolean
+  has_tracking?: boolean
   dctfweb?: {
-    id: number
+    id?: number | null
     period_key?: string | null
+    expected_period_key?: string | null
+    category?: string | null
+    declaration_state?: DctfwebDeclarationState | string | null
+    declaration_state_reason?: string | null
     transmission_status?: string | null
     payment_status?: string | null
     receipt_number?: string | null
+    no_movement?: boolean | null
     situation?: string | null
+    last_declaration?: DctfwebLatestDeclaration | null
+    last_search_at?: string | null
+    last_valid_query_at?: string | null
+    calendar_verified?: boolean
+    communication?: PgdasdCommunicationPreference | null
+    has_history?: boolean
+    has_tracking?: boolean
   } | null
   mit?: {
     id: number

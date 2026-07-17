@@ -3,22 +3,35 @@ import type {
   PgdasdCommunicationPreference,
   SimplesMeiClientRow
 } from '~/types/fiscal-modules'
-import { formatDateTime } from '~/utils/format'
+import { documentActionVisible } from '~/types/fiscal-modules'
+import { formatDate, formatDateTime } from '~/utils/format'
+import { pgdasdTrackingMeta } from '~/utils/pgdasd'
 import {
   pgmeiDebtMeta,
   pgmeiDebtTooltip,
-  pgmeiFreshnessMeta,
-  pgmeiSummary,
-  pgmeiTotalLabel
+  pgmeiFreshnessState,
+  pgmeiSummary
 } from '~/utils/pgmei'
-import { pgdasdTrackingMeta } from '~/utils/pgdasd'
 import { sortHeader } from '~/utils/table-sort'
 
-/** Renderer exclusivo da cápsula PGMEI; a seleção é inserida pelo shell autorizado. */
+/**
+ * Renderer PGMEI — sete colunas de negócio na ordem da referência visual:
+ * Situação · Ações · Enviar · Cliente · Rastreio de envio · Última Busca ·
+ * Histórico de Busca. Sem colunas mensais do PGDAS-D.
+ * Seleção é acrescentada pelo shell autorizado antes de Situação.
+ */
 export function buildPgmeiColumns(options: {
   year: number
   canManage: boolean
+  canQueryDebt: boolean
+  /** Lidos no render do header (não no build) para não recriar colunas a cada seleção. */
+  getSelectedClientIds: () => number[]
+  getSelectedCount: () => number
+  getSelectedAutomaticRequested: () => boolean
+  onBulkClear: () => void
+  onBulkRefresh: () => void
   onHistory: (row: SimplesMeiClientRow) => void
+  onConsult: (row: SimplesMeiClientRow) => void
   onPreview: (row: SimplesMeiClientRow) => void
   onTracking: (row: SimplesMeiClientRow) => void
   onConfigure: (row: SimplesMeiClientRow) => void
@@ -29,9 +42,12 @@ export function buildPgmeiColumns(options: {
 }): TableColumn<SimplesMeiClientRow>[] {
   const UBadge = resolveComponent('UBadge')
   const UButton = resolveComponent('UButton')
+  const UDropdownMenu = resolveComponent('UDropdownMenu')
+  const UIcon = resolveComponent('UIcon')
   const UTooltip = resolveComponent('UTooltip')
   const FiscalClientCell = resolveComponent('FiscalClientCell')
   const AutomaticSwitch = resolveComponent('MonitoringPgmeiAutomaticSwitch')
+  const BulkAutomaticSwitch = resolveComponent('MonitoringPgmeiBulkAutomaticActions')
 
   function iconAction(args: {
     label: string
@@ -46,55 +62,140 @@ export function buildPgmeiColumns(options: {
         'color': args.color || 'neutral',
         'variant': 'ghost',
         'icon': args.icon,
-        'ariaLabel': args.label,
+        'aria-label': args.label,
         'data-testid': args.testId,
         'onClick': args.onClick
       })
     })
   }
 
+  function rowActions(row: SimplesMeiClientRow) {
+    return h('div', { class: 'flex items-center gap-0.5' }, [
+      iconAction({
+        label: 'Abrir prévia de envio',
+        icon: 'i-lucide-send',
+        color: 'primary',
+        testId: 'pgmei-send-preview',
+        onClick: () => options.onPreview(row)
+      }),
+      h(UDropdownMenu, {
+        items: [
+          [
+            {
+              label: 'Configurar comunicação',
+              icon: 'i-lucide-settings-2',
+              disabled: !options.canManage,
+              onSelect: () => options.onConfigure(row)
+            },
+            {
+              label: 'Consultar dívida ativa',
+              icon: 'i-lucide-refresh-cw',
+              description: 'Abre a confirmação; nenhuma consulta ocorre pelo menu.',
+              disabled: !options.canQueryDebt,
+              onSelect: () => options.onConsult(row)
+            }
+          ],
+          [
+            {
+              label: 'Abrir cliente',
+              icon: 'i-lucide-user-round',
+              to: `/monitoring/clients/${row.client_id}`
+            }
+          ]
+        ],
+        content: { align: 'end' }
+      }, {
+        default: () => h(UButton, {
+          'size': 'sm',
+          'color': 'neutral',
+          'variant': 'ghost',
+          'icon': 'i-lucide-ellipsis',
+          'aria-label': 'Mais ações PGMEI',
+          'data-testid': 'pgmei-actions-menu'
+        })
+      })
+    ])
+  }
+
+  function trackingCell(row: SimplesMeiClientRow) {
+    const summary = pgmeiSummary(row, options.year)
+    const meta = pgdasdTrackingMeta(summary?.communication?.tracking_status)
+    const artifactHref = documentActionVisible(row.document)
+      ? row.document?.href?.trim() || null
+      : null
+
+    return h('div', { class: 'flex items-center gap-0.5' }, [
+      iconAction({
+        label: `Status do envio: ${meta.label}`,
+        icon: meta.icon,
+        color: meta.color,
+        testId: 'pgmei-tracking-status',
+        onClick: () => options.onTracking(row)
+      }),
+      artifactHref
+        ? h(UTooltip, { text: row.document?.label || 'Baixar anexo local' }, {
+            default: () => h(UButton, {
+              'size': 'sm',
+              'color': 'primary',
+              'variant': 'ghost',
+              'icon': 'i-lucide-download',
+              'href': artifactHref,
+              'target': '_blank',
+              'rel': 'noopener',
+              'aria-label': row.document?.label || 'Baixar anexo local',
+              'data-testid': 'pgmei-tracking-attachment'
+            })
+          })
+        : h(UTooltip, { text: 'Nenhum anexo local disponível' }, {
+            default: () => h(UButton, {
+              'size': 'sm',
+              'color': 'neutral',
+              'variant': 'ghost',
+              'icon': 'i-lucide-download',
+              'disabled': true,
+              'aria-label': 'Nenhum anexo local disponível',
+              'data-testid': 'pgmei-tracking-attachment'
+            })
+          }),
+      iconAction({
+        label: 'Abrir rastreio de envio',
+        icon: 'i-lucide-search',
+        testId: 'pgmei-tracking',
+        onClick: () => options.onTracking(row)
+      })
+    ])
+  }
+
   return [
     {
-      id: 'client',
-      header: ({ column }) => sortHeader('Razão social', column),
-      enableHiding: false,
-      meta: { class: { th: 'min-w-64', td: 'min-w-64' } },
-      cell: ({ row }) => h(FiscalClientCell, {
-        clientId: row.original.client_id,
-        name: row.original.legal_name,
-        legalName: row.original.legal_name,
-        cnpjMasked: undefined,
-        rootCnpjMasked: undefined,
-        to: `/monitoring/clients/${row.original.client_id}`
-      })
-    },
-    {
-      id: 'active_debt',
-      header: 'Dívida ativa',
+      id: 'situation',
+      header: 'Situação',
       enableSorting: false,
-      meta: { class: { th: 'min-w-44', td: 'min-w-44' } },
+      meta: { class: { th: 'min-w-48', td: 'min-w-48' } },
       cell: ({ row }) => {
         const summary = pgmeiSummary(row.original, options.year)
         const debt = pgmeiDebtMeta(summary?.debt_state)
-        const freshness = pgmeiFreshnessMeta(summary?.freshness_state)
-        return h(UTooltip, { text: pgmeiDebtTooltip(summary) }, {
-          default: () => h('span', { class: 'inline-flex flex-wrap items-center gap-1.5' }, [
+        const outdated = summary?.debt_state !== 'UNVERIFIED'
+          && Boolean(summary?.last_valid_query_at)
+          && pgmeiFreshnessState(summary?.freshness_state) === 'OUTDATED'
+        return h(UTooltip, { text: pgmeiDebtTooltip(summary, options.year) }, {
+          default: () => h('span', {
+            'class': 'inline-flex items-center gap-1.5',
+            'aria-label': `Situação PGMEI: ${debt.label}`
+          }, [
             h(UBadge, {
               'label': debt.label,
               'color': debt.color,
               'icon': debt.icon,
               'variant': 'subtle',
-              'aria-label': `${debt.label} no ano ${options.year}`,
-              'data-testid': 'pgmei-debt-state'
+              'class': 'min-w-24 justify-center',
+              'data-testid': 'pgmei-situation'
             }),
-            summary && freshness.label === 'Consulta desatualizada'
-              ? h(UBadge, {
-                  'label': 'Desatualizada',
-                  'color': 'warning',
-                  'icon': freshness.icon,
-                  'variant': 'outline',
-                  'aria-label': freshness.description,
-                  'data-testid': 'pgmei-freshness-outdated'
+            outdated
+              ? h(UIcon, {
+                  name: 'i-lucide-clock-alert',
+                  class: 'size-4 text-warning',
+                  'aria-label': 'Consulta desatualizada'
                 })
               : null
           ])
@@ -102,42 +203,28 @@ export function buildPgmeiColumns(options: {
       }
     },
     {
-      id: 'total_debt',
-      header: 'Total inscrito',
+      id: 'actions',
+      header: 'Ações',
       enableSorting: false,
-      meta: { class: { th: 'min-w-36', td: 'min-w-36' } },
-      cell: ({ row }) => {
-        const summary = pgmeiSummary(row.original, options.year)
-        return h(UTooltip, {
-          text: summary
-            ? `${summary.debt_count} inscrição(ões) no ano ${options.year}.`
-            : `Sem consulta válida para ${options.year}.`
-        }, {
-          default: () => h('span', {
-            'class': 'font-medium tabular-nums text-highlighted',
-            'data-testid': 'pgmei-total-debt'
-          }, pgmeiTotalLabel(summary))
-        })
-      }
+      meta: { class: { th: 'w-24 min-w-24', td: 'w-24 min-w-24' } },
+      cell: ({ row }) => rowActions(row.original)
     },
     {
       id: 'send',
-      header: 'Enviar',
+      header: () => h('div', { class: 'flex items-center gap-2' }, [
+        h('span', 'Enviar'),
+        options.canManage
+          ? h(BulkAutomaticSwitch, {
+              selectedClientIds: options.getSelectedClientIds(),
+              selectedCount: options.getSelectedCount(),
+              modelValue: options.getSelectedAutomaticRequested(),
+              onClear: options.onBulkClear,
+              onRefresh: options.onBulkRefresh
+            })
+          : null
+      ]),
       enableSorting: false,
-      meta: { class: { th: 'w-20 min-w-20', td: 'w-20 min-w-20' } },
-      cell: ({ row }) => iconAction({
-        label: 'Abrir prévia de envio',
-        icon: 'i-lucide-send',
-        color: 'primary',
-        testId: 'pgmei-send-preview',
-        onClick: () => options.onPreview(row.original)
-      })
-    },
-    {
-      id: 'automatic',
-      header: 'Automático',
-      enableSorting: false,
-      meta: { class: { th: 'w-24 min-w-24', td: 'w-24 min-w-24' } },
+      meta: { class: { th: 'w-28 min-w-28', td: 'w-28 min-w-28' } },
       cell: ({ row }) => h(AutomaticSwitch, {
         clientId: row.original.client_id,
         preference: pgmeiSummary(row.original, options.year)?.communication,
@@ -148,42 +235,63 @@ export function buildPgmeiColumns(options: {
       })
     },
     {
+      id: 'client',
+      header: ({ column }) => sortHeader('Cliente', column),
+      enableHiding: false,
+      meta: { class: { th: 'min-w-64', td: 'min-w-64' } },
+      cell: ({ row }) => h(FiscalClientCell, {
+        clientId: row.original.client_id,
+        name: row.original.legal_name,
+        legalName: row.original.legal_name,
+        cnpjMasked: row.original.cnpj_masked,
+        to: `/monitoring/clients/${row.original.client_id}`
+      })
+    },
+    {
       id: 'tracking',
-      header: 'Rastreio',
+      header: 'Rastreio de envio',
       enableSorting: false,
-      meta: { class: { th: 'w-20 min-w-20', td: 'w-20 min-w-20' } },
+      meta: { class: { th: 'min-w-36', td: 'min-w-36' } },
+      cell: ({ row }) => trackingCell(row.original)
+    },
+    {
+      id: 'consulted',
+      header: ({ column }) => sortHeader('Última Busca', column),
+      meta: { class: { th: 'min-w-32', td: 'min-w-32' } },
       cell: ({ row }) => {
-        const tracking = pgdasdTrackingMeta(
-          pgmeiSummary(row.original, options.year)?.communication?.tracking_status
-        )
-        return iconAction({
-          label: `Rastreio: ${tracking.label}`,
-          icon: tracking.icon,
-          color: tracking.color,
-          testId: 'pgmei-tracking',
-          onClick: () => options.onTracking(row.original)
+        const lastQuery = pgmeiSummary(row.original, options.year)?.last_valid_query_at
+        return h(UTooltip, {
+          text: lastQuery
+            ? `Última consulta válida: ${formatDateTime(lastQuery)}`
+            : `Nenhuma consulta produtiva válida para ${options.year}`
+        }, {
+          default: () => h('span', {
+            class: 'whitespace-nowrap tabular-nums text-sm',
+            'data-testid': 'pgmei-last-query'
+          }, formatDate(lastQuery))
         })
       }
     },
     {
-      id: 'consulted',
-      header: ({ column }) => sortHeader('Última consulta', column),
-      meta: { class: { th: 'min-w-36', td: 'min-w-36' } },
-      cell: ({ row }) => formatDateTime(
-        pgmeiSummary(row.original, options.year)?.last_valid_query_at
-      )
-    },
-    {
-      id: 'details',
-      header: 'Detalhes',
+      id: 'history',
+      header: 'Histórico de Busca',
       enableHiding: false,
       enableSorting: false,
-      meta: { class: { th: 'w-20 min-w-20', td: 'w-20 min-w-20' } },
-      cell: ({ row }) => iconAction({
-        label: `Ver histórico PGMEI de ${options.year}`,
-        icon: 'i-lucide-search',
-        testId: 'pgmei-history',
-        onClick: () => options.onHistory(row.original)
+      meta: { class: { th: 'min-w-40', td: 'min-w-40' } },
+      cell: ({ row }) => h(UTooltip, {
+        text: `Ver histórico fiscal PGMEI de ${options.year}`
+      }, {
+        default: () => h(UButton, {
+          'size': 'sm',
+          'color': 'neutral',
+          'variant': 'outline',
+          'icon': 'i-lucide-search',
+          'block': true,
+          'class': 'w-full justify-center',
+          'aria-label': `Ver histórico fiscal PGMEI de ${options.year}`,
+          'data-testid': 'pgmei-history',
+          'onClick': () => options.onHistory(row.original)
+        })
       })
     }
   ]

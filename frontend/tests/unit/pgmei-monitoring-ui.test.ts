@@ -54,33 +54,44 @@ describe('pgmei monitoring UI', () => {
     expect(pgmeiSummary(row(), 2025)).toBeNull()
   })
 
-  it('colunas PGMEI na ordem da spec (fonte)', () => {
+  it('colunas PGMEI na ordem da referência visual (fonte)', () => {
     const source = readFileSync(
       resolve(__dirname, '../../app/utils/pgmei-table.ts'),
       'utf8'
     )
     const ids = [...source.matchAll(/id: '([^']+)'/g)].map(match => match[1])
     expect(ids).toEqual([
-      'client',
-      'active_debt',
-      'total_debt',
+      'situation',
+      'actions',
       'send',
-      'automatic',
+      'client',
       'tracking',
       'consulted',
-      'details'
+      'history'
     ])
+    expect(ids).not.toEqual(
+      expect.arrayContaining(['active_debt', 'total_debt', 'automatic', 'details', 'last_declaration', 'rbt12'])
+    )
+    expect(source).toContain("header: 'Situação'")
+    expect(source).toContain("header: 'Ações'")
+    expect(source).toContain("'Enviar'")
+    expect(source).toContain("sortHeader('Cliente'")
+    expect(source).toContain("header: 'Rastreio de envio'")
+    expect(source).toContain("sortHeader('Última Busca'")
+    expect(source).toContain("header: 'Histórico de Busca'")
+    expect(source).toContain('BulkAutomaticSwitch')
   })
 
-  it('página canônica usa duas cápsulas e filtro anual', () => {
+  it('página canônica usa duas cápsulas sem seletor de ano na UI', () => {
     const page = readFileSync(
       resolve(__dirname, '../../app/pages/monitoring/simples-mei/index.vue'),
       'utf8'
     )
     expect(page).toContain('SIMPLES_MEI_TABS')
     expect(page).toContain('buildPgmeiColumns')
-    expect(page).toContain('pgmei-year-filter')
     expect(page).toContain('MonitoringPgmeiHistoryModal')
+    expect(page).not.toContain('pgmei-year-filter')
+    expect(page).not.toContain('yearOptions')
     expect(page).not.toContain('DASN_SIMEI')
     expect(page).not.toContain('\'REGIME\'')
   })

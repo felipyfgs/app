@@ -28,37 +28,56 @@ function row(detail: SimplesMeiClientRow['detail']): SimplesMeiClientRow {
 }
 
 describe('renderer PGDAS-D', () => {
-  it('materializa as oito colunas exatas; seleção fica a cargo do shell autorizado', () => {
+  it('materializa as nove colunas da referência visual; seleção fica a cargo do shell', () => {
     const source = readFileSync(
       resolve(__dirname, '../../app/utils/pgdasd-table.ts'),
       'utf8'
     )
     const ids = [...source.matchAll(/id: '([^']+)'/g)].map(match => match[1])
     expect(ids).toEqual([
-      'client',
+      'situation',
       'last_declaration',
       'rbt12',
+      'actions',
       'send',
-      'automatic',
+      'client',
       'tracking',
       'consulted',
-      'details'
+      'history'
     ])
     expect(ids).not.toEqual(
-      expect.arrayContaining(['cnpj', 'situation', 'coverage', 'guide', 'payment', 'documents'])
+      expect.arrayContaining(['automatic', 'details', 'cnpj', 'coverage', 'guide', 'payment'])
     )
+    expect(source).toContain("header: 'Situação'")
+    expect(source).toContain("header: 'Últ. Declaração'")
+    expect(source).toContain("'Sublimite (RBT12)'")
+    expect(source).toContain("header: 'Ações'")
+    expect(source).toContain("'Enviar'")
+    expect(source).toContain("sortHeader('Cliente'")
+    expect(source).toContain("header: 'Rastreio de envio'")
+    expect(source).toContain("sortHeader('Última Busca'")
+    expect(source).toContain("header: 'Histórico de Busca'")
+    expect(source).toContain('cnpjMasked: row.original.cnpj_masked')
+    expect(source).toContain('BulkAutomaticSwitch')
+    expect(source).toContain('declaration_state_reason || summary?.declaration_reason')
   })
 
   it('mapeia estado por semântica, ícone, texto e cor sem promover desconhecido', () => {
     expect(pgdasdDeclarationMeta('CURRENT')).toMatchObject({
       color: 'success',
-      label: 'Declaração atual'
+      label: 'Em dia'
     })
-    expect(pgdasdDeclarationMeta('DUE_WITHIN_DEADLINE').color).toBe('warning')
-    expect(pgdasdDeclarationMeta('OVERDUE_NOT_FOUND').color).toBe('error')
+    expect(pgdasdDeclarationMeta('DUE_WITHIN_DEADLINE')).toMatchObject({
+      color: 'warning',
+      label: 'Pendências'
+    })
+    expect(pgdasdDeclarationMeta('OVERDUE_NOT_FOUND')).toMatchObject({
+      color: 'error',
+      label: 'Atrasado'
+    })
     expect(pgdasdDeclarationMeta('valor-inventado')).toMatchObject({
       color: 'neutral',
-      label: 'Não verificável'
+      label: 'Não verificado'
     })
   })
 
@@ -87,6 +106,21 @@ describe('renderer PGDAS-D', () => {
       .toMatch(/indisponível/i)
     expect(pgdasdRbt12Tooltip({ status: 'AMBIGUOUS' }))
       .toMatch(/não estima/i)
+    const detailed = pgdasdRbt12Tooltip({
+      status: 'PARSED',
+      total_cents: 208_092_00,
+      composition: {
+        internal_market_cents: 200_000_00,
+        external_market_cents: 8_092_00
+      },
+      origin: {
+        das_number: '123456789',
+        declaration_number: '987654321'
+      }
+    })
+    expect(detailed).toContain('Mercado interno:')
+    expect(detailed).toContain('Mercado externo:')
+    expect(detailed).toContain('Origem: extrato do DAS nº 123456789 e declaração nº 987654321.')
   })
 
   it('exibe o PA como MM/AAAA para YYYY-MM, YYYYMM e valor já formatado', () => {
@@ -150,14 +184,17 @@ describe('modais e integração da página', () => {
     expect(communication).toContain('disabled')
   })
 
-  it('especializa seleção/scroll/bulk para PGDAS-D e PGMEI', () => {
+  it('especializa seleção/scroll e colunas PGDAS-D e PGMEI com bulk no cabeçalho Enviar', () => {
     const page = readFileSync(resolve(app, 'pages/monitoring/simples-mei/index.vue'), 'utf8')
     expect(page).toContain('selection-enabled')
     expect(page).toContain('custom-bulk-actions')
     expect(page).toContain('horizontal-scroll')
-    expect(page).toContain('MonitoringPgdasdBulkAutomaticActions')
-    expect(page).toContain('MonitoringPgmeiBulkAutomaticActions')
+    expect(page).toContain('selection-change')
     expect(page).toContain('buildPgdasdColumns')
     expect(page).toContain('buildPgmeiColumns')
+    expect(page).toContain('selectedClientIds')
+    // Sem faixa de KPI em tabs (Total / Em dia / Pendências / …).
+    expect(page).toContain(':show-kpis="false"')
+    expect(page).not.toContain(':counters=')
   })
 })

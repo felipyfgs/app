@@ -16,6 +16,12 @@ const { fiscal } = useApi()
 const toast = useToast()
 const saving = ref(false)
 
+const needsConfigure = computed(() => {
+  if (!props.preference) return true
+  return !pgdasdCanRequestAutomatic(props.preference)
+    && props.preference.automatic_requested !== true
+})
+
 async function update(automaticRequested: boolean) {
   if (!props.canManage || saving.value) return
   if (automaticRequested && !pgdasdCanRequestAutomatic(props.preference)) {
@@ -56,6 +62,21 @@ async function update(automaticRequested: boolean) {
 
 <template>
   <UTooltip
+    v-if="needsConfigure && canManage"
+    text="Configure canal e contato elegível para o envio automático"
+  >
+    <UButton
+      size="sm"
+      color="neutral"
+      variant="ghost"
+      icon="i-lucide-user-round-plus"
+      aria-label="Configurar comunicação de envio"
+      data-testid="pgdasd-automatic-configure"
+      @click="emit('configure')"
+    />
+  </UTooltip>
+  <UTooltip
+    v-else
     :text="canManage
       ? 'Registra a intenção de envio automático. Nenhum envio será executado nesta etapa.'
       : 'Somente ADMIN ou OPERATOR pode alterar esta preferência.'"

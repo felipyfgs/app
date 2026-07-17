@@ -5,6 +5,7 @@ import type {
   PgdasdCommunicationPreview,
   PgdasdCommunicationTracking
 } from '~/types/fiscal-modules'
+import { useDctfwebMonitoring } from '~/composables/useDctfwebMonitoring'
 import { usePgdasdMonitoring } from '~/composables/usePgdasdMonitoring'
 import { usePgmeiMonitoring } from '~/composables/usePgmeiMonitoring'
 import { apiErrorMessage } from '~/utils/api-error'
@@ -20,7 +21,7 @@ const props = defineProps<{
   preference?: PgdasdCommunicationPreference | null
   canManage?: boolean
   /** Mantém o mesmo shell TEMPLATE_ONLY, isolando as APIs por domínio. */
-  context?: 'PGDASD' | 'PGMEI'
+  context?: 'PGDASD' | 'PGMEI' | 'DCTFWEB'
   year?: number | null
 }>()
 
@@ -33,6 +34,7 @@ const emit = defineEmits<{
 
 const pgdasdMonitoring = usePgdasdMonitoring()
 const pgmeiMonitoring = usePgmeiMonitoring()
+const dctfwebMonitoring = useDctfwebMonitoring()
 const toast = useToast()
 
 const previewLoading = ref(false)
@@ -54,17 +56,18 @@ let previewGeneration = 0
 let trackingGeneration = 0
 
 const isPgmei = computed(() => props.context === 'PGMEI')
+const isDctfweb = computed(() => props.context === 'DCTFWEB')
 
 function fetchPreview(clientId: number) {
-  return isPgmei.value
-    ? pgmeiMonitoring.fetchPreview(clientId)
-    : pgdasdMonitoring.fetchPreview(clientId)
+  if (isPgmei.value) return pgmeiMonitoring.fetchPreview(clientId)
+  if (isDctfweb.value) return dctfwebMonitoring.fetchPreview(clientId)
+  return pgdasdMonitoring.fetchPreview(clientId)
 }
 
 function fetchTracking(clientId: number) {
-  return isPgmei.value
-    ? pgmeiMonitoring.fetchTracking(clientId)
-    : pgdasdMonitoring.fetchTracking(clientId)
+  if (isPgmei.value) return pgmeiMonitoring.fetchTracking(clientId)
+  if (isDctfweb.value) return dctfwebMonitoring.fetchTracking(clientId)
+  return pgdasdMonitoring.fetchTracking(clientId)
 }
 
 function updatePreferences(
@@ -76,13 +79,16 @@ function updatePreferences(
     lock_version: number
   }
 ) {
-  return isPgmei.value
-    ? pgmeiMonitoring.updatePreferences(clientId, body)
-    : pgdasdMonitoring.updatePreferences(clientId, body)
+  if (isPgmei.value) return pgmeiMonitoring.updatePreferences(clientId, body)
+  if (isDctfweb.value) return dctfwebMonitoring.updatePreferences(clientId, body)
+  return pgdasdMonitoring.updatePreferences(clientId, body)
 }
 
 function documentDownloadHref(document: { id: number, download_href?: string | null }): string {
   if (isPgmei.value) return document.download_href || '#'
+  if (isDctfweb.value && props.clientId) {
+    return dctfwebMonitoring.evidenceDownloadUrl(props.clientId, document.id)
+  }
   return pgdasdMonitoring.artifactDownloadUrl(document.id)
 }
 

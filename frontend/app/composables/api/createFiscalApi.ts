@@ -20,6 +20,7 @@ import type {
   PgdasdCommunicationTracking,
   PgdasdHistoryPayload,
   PgdasdHistoryPeriod,
+  DctfwebHistoryPayload,
   FiscalRegistrationLink,
   FiscalTaxProcess
 } from '~/types/fiscal-modules'
@@ -235,7 +236,45 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
         consult: (body: Record<string, unknown>) =>
           client<{ data: unknown }>('/api/v1/fiscal/dctfweb/consult', { method: 'POST', body }),
         transmit: (body: Record<string, unknown>) =>
-          client<{ data: unknown }>('/api/v1/fiscal/dctfweb/transmit', { method: 'POST', body })
+          client<{ data: unknown }>('/api/v1/fiscal/dctfweb/transmit', { method: 'POST', body }),
+        history: (clientId: number, params?: { year?: number }) =>
+          client<{ data: DctfwebHistoryPayload }>(
+            `/api/v1/fiscal/dctfweb/clients/${clientId}/history`,
+            { query: params }
+          ),
+        evidenceDownloadUrl: (clientId: number, evidenceId: number) =>
+          apiUrl(`/api/v1/fiscal/dctfweb/clients/${clientId}/evidence/${evidenceId}/download`),
+        communication: {
+          updatePreference: (
+            clientId: number,
+            body: {
+              automatic_requested: boolean
+              email_enabled: boolean
+              whatsapp_enabled: boolean
+              lock_version: number
+            }
+          ) =>
+            client<{ data: PgdasdCommunicationPreference }>(
+              `/api/v1/fiscal/dctfweb/clients/${clientId}/communication-preference`,
+              { method: 'PATCH', body }
+            ),
+          updateBulk: (body: { client_ids: number[], automatic_requested: boolean }) =>
+            client<{
+              data: PgdasdCommunicationPreference[]
+              updated_count?: number
+            }>(
+              '/api/v1/fiscal/dctfweb/communication-preferences/bulk',
+              { method: 'PATCH', body }
+            ),
+          preview: (clientId: number) =>
+            client<{ data: PgdasdCommunicationPreview }>(
+              `/api/v1/fiscal/dctfweb/clients/${clientId}/communication-preview`
+            ),
+          tracking: (clientId: number) =>
+            client<{ data: PgdasdCommunicationTracking }>(
+              `/api/v1/fiscal/dctfweb/clients/${clientId}/communications`
+            )
+        }
       },
       mit: {
         list: (params?: { page?: number, per_page?: number, client_id?: number }) =>

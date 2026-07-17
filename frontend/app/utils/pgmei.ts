@@ -17,19 +17,19 @@ export interface PgmeiStateMeta {
 
 const DEBT_META: Record<PgmeiDebtState, PgmeiStateMeta> = {
   HAS_ACTIVE_DEBT: {
-    label: 'Possui dívida ativa',
+    label: 'Dívida ativa',
     color: 'error',
     icon: 'i-lucide-circle-alert',
     description: 'A última consulta válida encontrou inscrições em dívida ativa no ano selecionado.'
   },
   NO_ACTIVE_DEBT: {
-    label: 'Sem dívida localizada',
+    label: 'Sem dívida no ano',
     color: 'success',
     icon: 'i-lucide-circle-check',
     description: 'Nenhuma inscrição foi localizada na última consulta válida, somente para o ano selecionado.'
   },
   UNVERIFIED: {
-    label: 'Não verificável',
+    label: 'Não verificado',
     color: 'neutral',
     icon: 'i-lucide-circle-help',
     description: 'Não existe consulta produtiva válida para confirmar a situação neste ano.'
@@ -78,14 +78,36 @@ export function pgmeiFreshnessMeta(value?: string | null): PgmeiStateMeta {
   }
 }
 
-export function pgmeiDebtTooltip(summary?: PgmeiClientSummary | null): string {
-  if (!summary) return DEBT_META.UNVERIFIED.description
+export function pgmeiDebtTooltip(
+  summary?: PgmeiClientSummary | null,
+  expectedYear?: number | null
+): string {
+  const year = Number(summary?.year || expectedYear)
+  const unverified = !summary
+    || pgmeiDebtState(summary.debt_state) === 'UNVERIFIED'
+    || !summary.last_valid_query_at
+  if (unverified) {
+    return [
+      `Ano: ${Number.isSafeInteger(year) && year > 0 ? year : '—'}.`,
+      'Quantidade: —.',
+      'Total: —.',
+      'Frescor: não verificado.',
+      `Última consulta: ${formatDateTime(null)}.`,
+      DEBT_META.UNVERIFIED.description
+    ].join(' ')
+  }
   const debt = pgmeiDebtMeta(summary.debt_state)
   const freshness = pgmeiFreshnessMeta(summary.freshness_state)
-  const observed = summary.last_valid_query_at
-    ? ` Última consulta: ${formatDateTime(summary.last_valid_query_at)}.`
-    : ''
-  return `${debt.description} ${freshness.description}${observed}`
+  const count = Number(summary.debt_count)
+  return [
+    `Ano: ${Number.isSafeInteger(year) && year > 0 ? year : '—'}.`,
+    `Quantidade: ${Number.isSafeInteger(count) && count >= 0 ? count : '—'}.`,
+    `Total: ${pgmeiTotalLabel(summary)}.`,
+    `Frescor: ${freshness.label}.`,
+    `Última consulta: ${formatDateTime(summary.last_valid_query_at)}.`,
+    debt.description,
+    freshness.description
+  ].join(' ')
 }
 
 /** Valor em centavos inteiro; nunca estima nem arredonda payload inválido. */

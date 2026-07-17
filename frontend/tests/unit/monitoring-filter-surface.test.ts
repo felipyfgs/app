@@ -9,21 +9,27 @@ function readPage(relative: string) {
 }
 
 describe('superfície de filtros das nove listas de monitoramento', () => {
-  it('Simples/MEI e DCTFWeb/MIT expõem situação, cliente e competência', () => {
-    for (const file of ['simples-mei/index.vue', 'dctfweb/index.vue']) {
-      const src = readPage(file)
-      expect(src).toContain('key: \'situation\'')
-      expect(src).toContain('key: \'clientId\'')
-      expect(src).toContain('key: \'competence\'')
-      expect(src).toContain('fields:')
-    }
+  it('Simples/MEI: cliente (+ competência no PGDAS); sem situação genérica nem coverage', () => {
+    const src = readPage('simples-mei/index.vue')
+    expect(src).toContain('key: \'clientId\'')
+    expect(src).toContain('key: \'competence\'')
+    expect(src).toContain('fields:')
+    expect(src).not.toContain('key: \'situation\'')
+    expect(src).not.toContain('key: \'coverage\'')
+    expect(src).toContain(':show-kpis="false"')
   })
 
-  it('Simples/MEI e SITFIS expõem coverage (coluna de negócio)', () => {
-    for (const file of ['simples-mei/index.vue', 'sitfis.vue']) {
-      const src = readPage(file)
-      expect(src).toContain('key: \'coverage\'')
-    }
+  it('DCTFWeb/MIT expõe situação, cliente e competência', () => {
+    const src = readPage('dctfweb/index.vue')
+    expect(src).toContain('key: \'situation\'')
+    expect(src).toContain('key: \'clientId\'')
+    expect(src).toContain('key: \'competence\'')
+    expect(src).toContain('fields:')
+  })
+
+  it('SITFIS expõe coverage (coluna de negócio)', () => {
+    const src = readPage('sitfis.vue')
+    expect(src).toContain('key: \'coverage\'')
   })
 
   it('Parcelamentos expõe situação, cliente e modality (server-side)', () => {

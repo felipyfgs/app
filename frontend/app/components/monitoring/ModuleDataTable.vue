@@ -121,11 +121,18 @@ watch(() => props.rows, (rows) => {
   const pruned = pruneMonitoringSelection(rows, rowSelection.value, props.getRowId)
   if (JSON.stringify(pruned) !== JSON.stringify(rowSelection.value)) rowSelection.value = pruned
 }, { deep: true })
+let lastSelectionSignature = ''
 watch([selectedRows, selectedClientIds], () => {
+  const clientIds = selectedClientIds.value
+  const count = selectedCount.value
+  // Evita reemitir o mesmo snapshot (UTable re-render → loop com colunas reativas).
+  const signature = `${count}:${clientIds.join(',')}`
+  if (signature === lastSelectionSignature) return
+  lastSelectionSignature = signature
   emit('selection-change', {
     rows: selectedRows.value,
-    clientIds: selectedClientIds.value,
-    count: selectedCount.value
+    clientIds,
+    count
   })
 }, { deep: true, immediate: true })
 
