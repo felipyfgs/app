@@ -28,4 +28,4 @@
 
 ## 5. Encerramento
 
-- [ ] 5.1 Após aceite do software, sincronizar/arquivar a change e commitar no mesmo dia a main spec `seed-admin-plataforma-demo` e o histórico arquivado.
+- [x] 5.1 Após aceite do software, sincronizar/arquivar a change e commitar no mesmo dia a main spec `seed-admin-plataforma-demo` e o histórico arquivado.
