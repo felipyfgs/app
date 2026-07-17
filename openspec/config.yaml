@@ -1,109 +1,40 @@
 schema: spec-driven
 
-# Injetado nas instruções de artefatos (proposal / specs / design / tasks).
-# Detalhe operacional de agent e stack: AGENTS.md na raiz.
-# Playbook curto: openspec/README.md
+# Stack/tenancy/segurança: AGENTS.md na raiz.
+# Artefatos: openspec/specs/ e openspec/changes/ (ainda vazios — criar via propose).
+
 context: |
   Produto: hub fiscal multi-escritório (NFS-e ADN, SEFAZ, SERPRO Integra, monitoramento).
   Monorepo sem package.json na raiz — orquestração Makefile + Docker Compose.
 
-  ## OpenSpec neste monorepo (fonte de verdade versionada)
+  Layout OpenSpec (versionado):
+  - openspec/specs/<capability>/spec.md — contrato permanente
+  - openspec/changes/<change>/ — change ativa
+  - openspec/changes/archive/YYYY-MM-DD-<change>/ — pós-archive
 
-  Layout (tudo sob `openspec/` **vai pro git** — não é lixo local de agent):
-  - `openspec/specs/<capability>/spec.md` — contrato permanente (SHALL do produto **agora**)
-  - `openspec/changes/<change>/` — change **ativa** (proposal → design → delta specs → tasks)
-  - `openspec/changes/archive/YYYY-MM-DD-<change>/` — histórico pós-archive (auditoria)
+  Ciclo: propose → apply → verify → archive → commit no mesmo dia.
+  Change pequena: 1 capability (máx. 2), ≤ ~20 tasks, non-goals explícitos.
 
-  Ciclo obrigatório:
-  1. propose (change pequena) e **commitar** artefatos cedo
-  2. apply código em commits focados (não monólito)
-  3. verify (testes/gates reais)
-  4. archive: sync delta → main specs + mover para archive/
-  5. **commitar no mesmo dia** archive + main specs (+ ajustar CI se validava a change)
+  Stack: backend Laravel 13 / PHP 8.4 / Horizon; frontend Nuxt 4 SPA (ssr:false) + Nuxt UI;
+  nginx same-origin; make dev para HMR.
 
-  Anti-padrões (histórico real deste repo — evitar):
-  - Epic de 50–100+ tasks / 5+ capabilities numa única change
-  - `[x]` em task de live ops / ticket SERPRO / jurídico sem evidence real
-  - Archive no disco sem commit (main specs somem do remote)
-  - CI validando change já arquivada
-  - Promover SHALL ao main se o código ainda não atende (main spec mente pro próximo agent)
+  Tenancy: Office + CurrentOffice; nunca confiar office_id do client;
+  PLATFORM_ADMIN sem acesso fiscal implícito a tenants.
 
-  Escopo de change (default):
-  - 1 capability principal (máx. 2 se inseparáveis)
-  - Preferir ≤ ~20 tasks verificáveis; fatiar se passar disso
-  - Live smoke SERPRO, ticket externo, aceite jurídico = non-goal **ou** change ops separada
-  - Platform vs tenant: não misturar mutação fiscal de Office com ops global sem tasks/seções claras
+  Segurança: vault SecureObjectStore; flags default OFF; sem PFX/tokens/XML em JSON.
 
-  Stack:
-  - backend/: Laravel 13, PHP 8.4, Horizon, Sanctum/Fortify, Postgres, Redis
-  - frontend/: Nuxt 4 SPA (ssr: false) + Nuxt UI + nuxt-auth-sanctum (cookie)
-  - Runtime prod/local "up": nginx serve frontend/.output/public e proxy /api /sanctum Fortify → PHP-FPM
-  - Dev UI: make dev (Nuxt :3000 com NUXT_SANCTUM_PROXY → nginx)
-  - Filas: Horizon; cron: container scheduler
+  UI: panel-ui → ui-archetype; template .reference/nuxt-dashboard-template @ 0f30c09.
 
-  Tenancy:
-  - Tenant = Office; contexto via CurrentOffice (nunca confiar office_id do client HTTP)
-  - EnsureOfficeContext remove office_id do request; troca só POST /api/v1/tenants/switch
-  - OfficeRole: ADMIN | OPERATOR | VIEWER (capacidades no enum)
-  - PLATFORM_ADMIN é global e NÃO concede acesso fiscal implícito a tenants
-  - Rotas platform em /api/v1/platform/* sem office context; senha recente (15 min) nas ações sensíveis (TOTP descontinuado)
-
-  Segurança / dados:
-  - Segredos e XML canônico em SecureObjectStore (vault); VAULT_MASTER_KEY fora do git
-  - Não logar/retornar PFX, senhas, tokens, XML bruto em JSON de API
-  - Feature flags hub fiscal (FeatureFlags): default OFF; kill switch global vence;
-    mutações exigem flags mutantes + allowlist de office
-  - Canais SEFAZ MA / SVRS / autXML: default off em env
-  - Controllers tenant-scoped não importam SERPRO global (tests/Architecture)
-
-  UI:
-  - Telas autenticadas: skill panel-ui → ui-archetype
-  - Copiar arquétipo de .reference/nuxt-dashboard-template @ 0f30c09 (gitignored)
-  - Skills de agent: locais em `.grok|opencode|codex/skills/` (gitignored — não versionar engines)
-  - Não scaffold Nuxt novo; estender frontend/
-  - Prod = SPA estática + nginx, não SSR Node
-
-  Verificação:
-  - Backend: vendor/bin/pint --test; php artisan test (--filter=…)
-  - Frontend CI: pnpm lint → typecheck → generate (pnpm@11.9.0)
-  - Hub: ./docker/ops/verify.sh
-  - OpenSpec CI: validar main specs e/ou change **ativa** (nunca path em archive/)
-  - Ops SERPRO: runbooks em docs/ops/runbooks/ quando existirem; código + openspec/specs para produto
-
-  Specs principais atuais (checar antes de inventar capability):
-  - serpro-cadastro-processos-ui, serpro-catalogo-oficial, serpro-gateway-seguro
-  - serpro-monitoramento-familias, serpro-credenciais-produtivas, serpro-go-live-controlado
-  - serpro-onboarding-procuracoes, serpro-operacao-observavel, serpro-termo-procurador
+  Specs principais: nenhuma ainda — criar com as changes.
 
 rules:
   proposal:
     - "Preferir português (pt-BR) nos artefatos."
-    - "Uma intenção de produto por change; 1 capability principal (máx. 2 se inseparáveis). Preferir fatiar a epicar."
-    - "Explicitar Non-goals: live smoke SERPRO, tickets externos, jurídico/LGPD, mutações, flags ON, canais SEFAZ fora de escopo."
-    - "Se tocar multi-tenant, declarar isolamento por Office e proibição de office_id do client."
-    - "Se tocar segredos/XML/credenciais, declarar vault e superfície de API sanitizada."
-    - "Capabilities em kebab-case; listar openspec/specs/ existentes antes de inventar nomes (reusar MODIFIED)."
-    - "Manter proposal enxuta (por que/o quê); como fica em design. Não copiar tasks para a proposal."
-    - "Se o trabalho for só tooling/docs/ops sem novo SHALL, declarar e preferir archive com --skip-specs."
+    - "1 capability principal (máx. 2); non-goals para live SERPRO, jurídico e mutações."
   specs:
-    - "Requisitos com SHALL/MUST; cada requirement com ao menos um Scenario WHEN/THEN (header ####)."
-    - "MODIFIED deve copiar o bloco inteiro do spec main antes de editar."
-    - "Delta = o que esta change entrega de verdade; não reescrever o produto inteiro no delta."
-    - "Só promover ao main (sync/archive) requisitos que o código + testes da change cobrem; gaps ficam fora ou em change futura."
-    - "Cobrir isolamento de tenant, papéis e fail-closed de flags quando aplicável."
-    - "Não exigir defaults ON de feature flags ou canais SEFAZ."
+    - "Main specs só com SHALL que o código atende."
   design:
-    - "Mapear backend (app/ Domain|Services|Http|Jobs) vs frontend (app/ pages|composables)."
-    - "Decidir middleware/rotas Sanctum e se é platform vs office context."
-    - "Jobs assíncronos usam Horizon; não assumir sync em produção."
-    - "UI: skill ui-archetype (template dashboard); não redesenhar shell."
-    - "Listar riscos: vazamento entre offices, segredos em log/API, kill switches, bilhetagem acidental."
-    - "Separar o que é implementável em CI do que é ops-gated (SERPRO real, dual approval prod)."
+    - "Decisões e trade-offs; não copiar o proposal."
   tasks:
-    - "Tarefas pequenas e verificáveis (comando de teste, lint ou gate explícito na própria task)."
-    - "Ordem típica: migrations/domínio → API/policies → jobs → UI → testes → (opcional) docs/runbooks."
-    - "Preferir ≤ ~20 tasks; se passar, fatiar em nova change em vez de epic."
-    - "[x] só com evidência real (teste passou, PR, evidence preenchida). Ticket SERPRO / live smoke / jurídico: [ ] até existir."
-    - "Não marcar scaffold de CLI/runbook como conclusão de go-live live; use sub-bullet 'Scaffold' vs 'Live ops-gated'."
-    - "Não misturar change de plataforma global com mutação fiscal tenant sem seções de tasks separadas."
-    - "Incluir task final de archive/sync + commit docs(openspec) quando a change fechar software."
+    - "Tasks verificáveis; [x] só com evidência real."
+    - "Task final de archive/sync + commit quando fechar software."
