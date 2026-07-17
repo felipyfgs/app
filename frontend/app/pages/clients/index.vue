@@ -12,6 +12,14 @@ import type { Client, ClientListStats } from '~/types/api'
 import { upperFirst } from 'scule'
 import { sortHeader } from '~/utils/table-sort'
 import { DENSE_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import {
+  clientsFiltersToPayload,
+  clientsPayloadToFilters,
+  hasActiveClientsFiltersForSave
+} from '~/utils/saved-list-filters'
+import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
+import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
+import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
 
 /** Mantém o preset customers.vue e reduz apenas o padding das células em xs. */
 const clientsTableUi = {
@@ -90,6 +98,69 @@ type KpiFilter = 'total' | 'with_credential' | 'without_credential' | 'expiring'
 /** Filtro dos cards KPI (clique = filtra a tabela pelo conteúdo do card). */
 const kpiFilter = ref<KpiFilter>('total')
 const statusFilter = ref('all')
+
+const CLIENT_KPI_KEYS = new Set<string>([
+  'total',
+  'with_credential',
+  'without_credential',
+  'expiring'
+])
+
+/** Evita double-fetch quando preset hidrata vários refs de uma vez. */
+let applyingClientsPreset = false
+
+const {
+  canSavePreset,
+  canShare: canShareFilters,
+  presets,
+  presetsLoading,
+  saveOpen,
+  manageOpen,
+  saveLoading,
+  saveError,
+  manageError,
+  actingId,
+  clearPresetCache,
+  onSavedMenuOpen,
+  applyPreset,
+  onSaveConfirm,
+  onRename,
+  onToggleShare,
+  onDeletePreset,
+  openManage,
+  openSave
+} = useSavedListPresets({
+  surface: 'clients.index',
+  resetKey: sessionEpoch,
+  getPayload: () => clientsFiltersToPayload({
+    q: search.value,
+    status: statusFilter.value,
+    operational_filter: kpiFilter.value
+  }),
+  canSave: () => hasActiveClientsFiltersForSave({
+    q: search.value,
+    status: statusFilter.value,
+    operational_filter: kpiFilter.value
+  }),
+  onApply: (payload) => {
+    const next = clientsPayloadToFilters(payload)
+    applyingClientsPreset = true
+    if (searchTimer) {
+      clearTimeout(searchTimer)
+      searchTimer = null
+    }
+    search.value = next.q
+    statusFilter.value = next.status
+    kpiFilter.value = (CLIENT_KPI_KEYS.has(next.operational_filter)
+      ? next.operational_filter
+      : 'total') as KpiFilter
+    page.value = 1
+    void nextTick(() => {
+      applyingClientsPreset = false
+      void load()
+    })
+  }
+})
 
 function applyKpiFilter(key: KpiFilter) {
   // segundo clique no mesmo card limpa (volta ao total)
@@ -506,6 +577,7 @@ function resetTenantScopedList() {
   detailOpen.value = false
   detailClientId.value = null
   loadError.value = null
+  clearPresetCache()
   void load()
 }
 
@@ -540,12 +612,14 @@ watch(formOpen, (open) => {
 })
 
 watch(search, () => {
+  if (applyingClientsPreset) return
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => void load(), 350)
 })
 
 /** Mudança de recorte: volta à página 1 sem double-fetch quando já está nela. */
 watch([statusFilter, kpiFilter, perPage], () => {
+  if (applyingClientsPreset) return
   if (page.value !== 1) {
     page.value = 1
     return
@@ -554,10 +628,12 @@ watch([statusFilter, kpiFilter, perPage], () => {
 })
 
 watch(page, () => {
+  if (applyingClientsPreset) return
   void load()
 })
 
 watch(sorting, () => {
+  if (applyingClientsPreset) return
   if (page.value !== 1) {
     page.value = 1
     return
@@ -647,6 +723,22 @@ onBeforeUnmount(() => {
           placeholder="Filtrar estado"
           class="min-w-28"
         />
+        <UButton
+          v-if="canSavePreset"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-save"
+          label="Salvar"
+          data-testid="save-filters-button"
+          @click="openSave"
+        />
+        <DataTableFilterSavedFiltersMenu
+          :items="presets"
+          :loading="presetsLoading"
+          @apply="applyPreset"
+          @manage="openManage"
+          @open="onSavedMenuOpen"
+        />
         <UDropdownMenu
           :items="
             table?.tableApi
@@ -690,6 +782,25 @@ onBeforeUnmount(() => {
         />
       </div>
     </div>
+
+    <DataTableFilterSaveFilterModal
+      v-model:open="saveOpen"
+      :can-share="canShareFilters"
+      :loading="saveLoading"
+      :error="saveError"
+      @confirm="onSaveConfirm"
+    />
+    <DataTableFilterManageSavedFiltersModal
+      v-model:open="manageOpen"
+      :items="presets"
+      :can-share="canShareFilters"
+      :loading="presetsLoading"
+      :acting-id="actingId"
+      :error="manageError"
+      @rename="onRename"
+      @toggle-share="onToggleShare"
+      @delete="onDeletePreset"
+    />
 
     <UAlert
       v-if="loadError"

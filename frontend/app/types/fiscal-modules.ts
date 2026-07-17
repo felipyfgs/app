@@ -428,6 +428,10 @@ export interface FiscalModulePortfolioFilters {
   delivery_status?: string
   /** Filtro opcional por cliente (picker / deep-link). */
   client_id?: number
+  /** Cobertura (FULL / PARTIAL / …) — ModulePortfolioFilters backend. */
+  coverage?: string
+  /** Modalidade de parcelamento (PARCSN, …) — só installments. */
+  modality?: string
   sort?: 'legal_name' | 'display_name' | 'situation' | 'last_consulted_at' | 'competence' | 'id' | string
   sort_direction?: 'asc' | 'desc'
 }
@@ -441,6 +445,10 @@ export interface MonitoringFilterValue {
   deliveryStatus: string
   paymentStatus: string
   status: string
+  /** Cobertura FULL|PARTIAL|…; default 'all'. */
+  coverage: string
+  /** Modalidade de parcelamento; default 'all'. */
+  modality: string
 }
 
 /** Campos estruturados (chips) — busca `q` permanece dedicada na toolbar. */
@@ -462,7 +470,7 @@ export type MonitoringStructuredFilterField
     label: string
   }
   | {
-    key: 'deliveryStatus' | 'paymentStatus' | 'status'
+    key: 'deliveryStatus' | 'paymentStatus' | 'status' | 'coverage' | 'modality'
     kind: 'option'
     label: string
     items: Array<{ label: string, value: string }>

@@ -378,7 +378,78 @@ final class ModulePortfolioQueryService
             });
         }
 
+        if ($filters->coverage !== null) {
+            $this->applyCoverageFilter($q, $office, $module, $filters);
+        }
+
+        if ($filters->modality !== null && $module === FiscalModuleKey::Installments) {
+            $modality = $filters->modality;
+            $q->whereExists(function (QueryBuilder $exists) use ($office, $modality): void {
+                $exists->select(DB::raw('1'))
+                    ->from('tax_installment_orders as tio')
+                    ->whereColumn('tio.client_id', 'clients.id')
+                    ->where('tio.office_id', $office->id)
+                    ->where('tio.modality', $modality);
+            });
+        }
+
         return $q;
+    }
+
+    /**
+     * Filtra pela cobertura efetiva (snapshot corrente do módulo, senão vínculo de categoria).
+     * Alinhado a loadCoverages() — não inventa FULL.
+     */
+    private function applyCoverageFilter(
+        Builder|QueryBuilder $q,
+        Office $office,
+        FiscalModuleKey $module,
+        ModulePortfolioFilters $filters,
+    ): void {
+        $coverage = $filters->coverage;
+        if ($coverage === null) {
+            return;
+        }
+
+        $systemCodes = $this->systemCodesForModule($module, $filters->submodule);
+        $categoryIds = $this->categoryIdsForModule($module, $filters->submodule);
+        $sysList = $this->quoteList($systemCodes);
+
+        // COALESCE(snapshot.coverage, link.coverage, 'UNKNOWN') = ?
+        $snapshotCoverage = <<<SQL
+(
+    SELECT fs.coverage
+    FROM fiscal_snapshots fs
+    WHERE fs.office_id = {$office->id}
+      AND fs.client_id = clients.id
+      AND fs.is_current = true
+      AND fs.system_code IN ({$sysList})
+    ORDER BY fs.observed_at DESC, fs.id DESC
+    LIMIT 1
+)
+SQL;
+
+        $catList = $categoryIds === []
+            ? 'NULL'
+            : implode(',', array_map(static fn (int $id): string => (string) $id, $categoryIds));
+
+        $linkCoverage = <<<SQL
+(
+    SELECT ofcl.coverage
+    FROM office_fiscal_category_links ofcl
+    WHERE ofcl.office_id = {$office->id}
+      AND ofcl.client_id = clients.id
+      AND ofcl.status = 'ACTIVE'
+      AND ofcl.fiscal_category_id IN ({$catList})
+    ORDER BY ofcl.id DESC
+    LIMIT 1
+)
+SQL;
+
+        $q->whereRaw(
+            "COALESCE({$snapshotCoverage}, {$linkCoverage}, 'UNKNOWN') = ?",
+            [$coverage],
+        );
     }
 
     private function aggregateCounters(
@@ -399,6 +470,8 @@ final class ModulePortfolioQueryService
             sort: $filters->sort,
             sortDirection: $filters->sortDirection,
             clientId: $filters->clientId,
+            coverage: $filters->coverage,
+            modality: $filters->modality,
         );
 
         $ids = $this->scopedClientIdsQuery($office, $module, $scopeFilters);

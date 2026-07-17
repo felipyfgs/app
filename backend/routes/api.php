@@ -54,6 +54,7 @@ use App\Http\Controllers\Api\V1\Platform\SerproPlatformConfigurationController;
 use App\Http\Controllers\Api\V1\Platform\SerproPlatformOpsController;
 use App\Http\Controllers\Api\V1\Platform\SerproUsageAdminController;
 use App\Http\Controllers\Api\V1\Platform\TenantAdminController;
+use App\Http\Controllers\Api\V1\SavedListFilterController;
 use App\Http\Controllers\Api\V1\SerproTenantController;
 use App\Http\Controllers\Api\V1\SvrsNfceRecoveryController;
 use App\Http\Controllers\Api\V1\SyncController;
@@ -465,6 +466,12 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/exports', [ExportController::class, 'index']);
             Route::post('/exports', [ExportController::class, 'store']);
             Route::get('/exports/{export}/download', [ExportController::class, 'download']);
+
+            // Filtros salvos de lista (personal | office; office_id só via CurrentOffice)
+            Route::get('/list-filters', [SavedListFilterController::class, 'index']);
+            Route::post('/list-filters', [SavedListFilterController::class, 'store']);
+            Route::patch('/list-filters/{listFilter}', [SavedListFilterController::class, 'update']);
+            Route::delete('/list-filters/{listFilter}', [SavedListFilterController::class, 'destroy']);
 
             Route::get('/operations/summary', OperationsSummaryController::class);
             Route::get('/operations/inbox', OperationsInboxController::class);

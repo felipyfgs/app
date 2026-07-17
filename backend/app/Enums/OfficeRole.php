@@ -39,6 +39,12 @@ enum OfficeRole: string
         return $this === self::Admin || $this === self::Operator;
     }
 
+    /** Publicar/compartilhar filtros salvos com o Office (ADMIN|OPERATOR; VIEWER só pessoais). */
+    public function canShareListFilters(): bool
+    {
+        return $this === self::Admin || $this === self::Operator;
+    }
+
     /** Importação de XML de saída (OPERATOR/ADMIN). */
     public function canImportDocuments(): bool
     {

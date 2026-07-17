@@ -308,8 +308,9 @@ describe('ações de carteira no contexto da seleção', () => {
       .toBeLessThan(toolbar.indexOf('data-testid="fiscal-filter-refresh"'))
     expect(toolbar.indexOf('data-testid="fiscal-filter-refresh"'))
       .toBeLessThan(toolbar.indexOf('<slot name="trailing"'))
+    // Busca larga à esquerda; filtros + ações à direita.
     expect(toolbar).toContain('class="flex flex-wrap items-center justify-between gap-1.5"')
-    expect(toolbar).toContain('class="w-full sm:w-auto sm:max-w-sm"')
+    expect(toolbar).toContain('sm:max-w-2xl')
     expect(toolbar).toContain('data-testid="fiscal-structured-filters"')
     expect(toolbar).toContain('DataTableFilterRoot')
     expect(toolbar).toContain('onChipsClear')

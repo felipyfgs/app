@@ -208,6 +208,21 @@ export function fiscalSituationFilterItems(includeAll = true): Array<{ label: st
   return items
 }
 
+/** Itens de chip/option para filtro de cobertura (ModulePortfolioFilters). */
+export function fiscalCoverageFilterItems(includeAll = true): Array<{ label: string, value: string }> {
+  const items = [
+    { label: coverageLabel('FULL'), value: 'FULL' },
+    { label: coverageLabel('PARTIAL'), value: 'PARTIAL' },
+    { label: coverageLabel('UNSUPPORTED'), value: 'UNSUPPORTED' },
+    { label: coverageLabel('UNKNOWN'), value: 'UNKNOWN' },
+    { label: coverageLabel('NOT_APPLICABLE'), value: 'NOT_APPLICABLE' }
+  ]
+  if (includeAll) {
+    return [{ label: 'Todas as coberturas', value: 'all' }, ...items]
+  }
+  return items
+}
+
 /** Cobertura de módulo (FULL / PARTIAL / NONE / …). */
 export function coverageLabel(value?: string | null): string {
   const v = String(value || '').toUpperCase()

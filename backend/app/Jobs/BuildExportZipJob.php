@@ -354,21 +354,18 @@ class BuildExportZipJob implements ShouldQueue
             throw new \RuntimeException('Escritório do export não encontrado.');
         }
 
-        $portfolioFilters = new ModulePortfolioFilters(
-            page: 1,
-            perPage: 100,
-            q: isset($filters['q']) && is_string($filters['q']) ? $filters['q'] : null,
-            situation: isset($filters['situation']) && is_string($filters['situation'])
-                ? strtoupper($filters['situation'])
-                : null,
-            competence: isset($filters['competence']) && is_string($filters['competence'])
-                ? $filters['competence']
-                : null,
-            submodule: isset($filters['submodule']) && is_string($filters['submodule'])
-                ? strtoupper($filters['submodule'])
-                : null,
-            clientId: isset($filters['client_id']) ? (int) $filters['client_id'] : null,
-        );
+        $portfolioFilters = ModulePortfolioFilters::fromRequest([
+            'page' => 1,
+            'per_page' => 100,
+            'q' => $filters['q'] ?? null,
+            'situation' => $filters['situation'] ?? null,
+            'competence' => $filters['competence'] ?? null,
+            'submodule' => $filters['submodule'] ?? null,
+            'client_id' => $filters['client_id'] ?? null,
+            'coverage' => $filters['coverage'] ?? null,
+            'modality' => $filters['modality'] ?? null,
+            'delivery_status' => $filters['delivery_status'] ?? null,
+        ]);
 
         $payload = $portfolio->exportSanitizedRows($office, $module, $portfolioFilters);
         /** @var FiscalDataOrigin $origin */

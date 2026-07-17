@@ -857,6 +857,7 @@ onMounted(async () => {
           :clients="clients"
           :establishments="establishments"
           :loading-filters="loadingFilters"
+          :reset-key="sessionEpoch"
           view="document"
           :selected-count="selectedKeys.length"
           :can-export="canCreateExport && kindExportAvailable"

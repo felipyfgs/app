@@ -15,6 +15,14 @@ import {
   processStatusLabel,
   workRiskLabel
 } from '~/utils/work-labels'
+import {
+  hasActiveWorkProcessesFiltersForSave,
+  workProcessesFiltersToPayload,
+  workProcessesPayloadToFilters
+} from '~/utils/saved-list-filters'
+import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
+import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
+import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
 
 const api = useApi()
 const router = useRouter()
@@ -30,6 +38,49 @@ const q = ref(String(route.query.q || ''))
 const competence = ref(String(route.query.competence || ''))
 /** 'all' = sem filtro (USelect não aceita value vazio). */
 const status = ref(String(route.query.status || 'all'))
+
+const {
+  canSavePreset,
+  canShare: canShareFilters,
+  presets,
+  presetsLoading,
+  saveOpen,
+  manageOpen,
+  saveLoading,
+  saveError,
+  manageError,
+  actingId,
+  clearPresetCache,
+  onSavedMenuOpen,
+  applyPreset,
+  onSaveConfirm,
+  onRename,
+  onToggleShare,
+  onDeletePreset,
+  openManage,
+  openSave
+} = useSavedListPresets({
+  surface: 'work.processes',
+  resetKey: sessionEpoch,
+  getPayload: () => workProcessesFiltersToPayload({
+    q: q.value,
+    competence: competence.value,
+    status: status.value
+  }),
+  canSave: () => hasActiveWorkProcessesFiltersForSave({
+    q: q.value,
+    competence: competence.value,
+    status: status.value
+  }),
+  onApply: (payload) => {
+    const next = workProcessesPayloadToFilters(payload)
+    q.value = next.q
+    competence.value = next.competence
+    status.value = next.status
+    page.value = 1
+    // watch em [page,q,competence,status] sincroniza URL e recarrega
+  }
+})
 
 // CTA leva a /work/templates (catálogo/lote) — só ADMIN com 2FA.
 const canOpenTemplates = computed(() => canManageWorkCatalog(me.value))
@@ -90,6 +141,7 @@ watch(sessionEpoch, () => {
   competence.value = ''
   status.value = 'all'
   total.value = 0
+  clearPresetCache()
   void load()
 })
 
@@ -114,7 +166,7 @@ onMounted(load)
       </UDashboardNavbar>
 
       <UDashboardToolbar>
-        <div class="flex flex-wrap gap-2 p-1">
+        <div class="flex flex-wrap items-center gap-2 p-1">
           <UInput
             v-model="q"
             icon="i-lucide-search"
@@ -141,8 +193,43 @@ onMounted(load)
             class="w-44"
             aria-label="Filtrar por status"
           />
+          <UButton
+            v-if="canSavePreset"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-save"
+            label="Salvar"
+            data-testid="save-filters-button"
+            @click="openSave"
+          />
+          <DataTableFilterSavedFiltersMenu
+            :items="presets"
+            :loading="presetsLoading"
+            @apply="applyPreset"
+            @manage="openManage"
+            @open="onSavedMenuOpen"
+          />
         </div>
       </UDashboardToolbar>
+
+      <DataTableFilterSaveFilterModal
+        v-model:open="saveOpen"
+        :can-share="canShareFilters"
+        :loading="saveLoading"
+        :error="saveError"
+        @confirm="onSaveConfirm"
+      />
+      <DataTableFilterManageSavedFiltersModal
+        v-model:open="manageOpen"
+        :items="presets"
+        :can-share="canShareFilters"
+        :loading="presetsLoading"
+        :acting-id="actingId"
+        :error="manageError"
+        @rename="onRename"
+        @toggle-share="onToggleShare"
+        @delete="onDeletePreset"
+      />
     </template>
 
     <template #body>

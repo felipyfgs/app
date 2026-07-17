@@ -2,7 +2,9 @@
 
 namespace App\DTO\Fiscal\Module;
 
+use App\Enums\FiscalCoverage;
 use App\Enums\FiscalSituation;
+use App\Enums\TaxInstallmentModality;
 
 /**
  * Filtros normalizados da carteira/overview (mesmo escopo para contadores e lista).
@@ -20,6 +22,8 @@ final readonly class ModulePortfolioFilters
         public string $sort = 'legal_name',
         public string $sortDirection = 'asc',
         public ?int $clientId = null,
+        public ?string $coverage = null,
+        public ?string $modality = null,
     ) {}
 
     /**
@@ -85,6 +89,20 @@ final readonly class ModulePortfolioFilters
             $clientId = null;
         }
 
+        $coverage = isset($input['coverage']) && is_string($input['coverage'])
+            ? strtoupper(trim($input['coverage']))
+            : null;
+        if ($coverage === '' || FiscalCoverage::tryFrom((string) $coverage) === null) {
+            $coverage = null;
+        }
+
+        $modality = isset($input['modality']) && is_string($input['modality'])
+            ? strtoupper(trim($input['modality']))
+            : null;
+        if ($modality === '' || TaxInstallmentModality::tryFrom((string) $modality) === null) {
+            $modality = null;
+        }
+
         return new self(
             page: $page,
             perPage: $perPage,
@@ -96,6 +114,8 @@ final readonly class ModulePortfolioFilters
             sort: $sort,
             sortDirection: $dir,
             clientId: $clientId,
+            coverage: $coverage,
+            modality: $modality,
         );
     }
 
@@ -115,6 +135,8 @@ final readonly class ModulePortfolioFilters
             sort: $this->sort,
             sortDirection: $this->sortDirection,
             clientId: $this->clientId,
+            coverage: $this->coverage,
+            modality: $this->modality,
         );
     }
 

@@ -11,6 +11,8 @@ import type {
 import {
   canConfirmDraftValue,
   createFilterModel,
+  draftEmptyValue,
+  encodeDateRange,
   findDefinition,
   inactiveDefinitions,
   normalizeFilterModels,
@@ -50,7 +52,11 @@ export function useDataTableFilters(options: UseDataTableFiltersOptions) {
   })
 
   const canConfirm = computed(() =>
-    canConfirmDraftValue(draftDefinition.value, draft.value?.value)
+    canConfirmDraftValue(
+      draftDefinition.value,
+      draft.value?.value,
+      draft.value?.valueTo
+    )
   )
 
   function discardDraft() {
@@ -75,15 +81,11 @@ export function useDataTableFilters(options: UseDataTableFiltersOptions) {
       startEdit(key)
       return
     }
-    const emptyDefault = definition.kind === 'client'
-      ? null
-      : definition.kind === 'month'
-        ? ''
-        : (definition.emptyValue ?? 'all')
     draft.value = {
       mode: 'add',
       key,
-      value: emptyDefault as string | number | null,
+      value: draftEmptyValue(definition),
+      valueTo: definition.kind === 'date_range' ? '' : undefined,
       label: undefined
     }
     selectorOpen.value = false
@@ -94,21 +96,36 @@ export function useDataTableFilters(options: UseDataTableFiltersOptions) {
     const definition = findDefinition(definitions.value, key)
     const model = applied.value.find(item => item.key === key)
     if (!definition || !model) return
+
+    let value: string | number | boolean | null = model.value
+    let valueTo: string | null | undefined
+    if (definition.kind === 'date_range' && typeof model.value === 'string') {
+      const parts = model.value.split('..')
+      value = parts[0]?.trim() || ''
+      valueTo = parts[1]?.trim() || ''
+    }
+
     draft.value = {
       mode: 'edit',
       key,
-      value: model.value,
+      value,
+      valueTo,
       label: model.label
     }
     selectorOpen.value = false
     editorOpen.value = true
   }
 
-  function setDraftValue(value: string | number | null, label?: string) {
+  function setDraftValue(
+    value: string | number | boolean | null,
+    label?: string,
+    valueTo?: string | null
+  ) {
     if (!draft.value) return
     draft.value = {
       ...draft.value,
       value,
+      valueTo: valueTo !== undefined ? valueTo : draft.value.valueTo,
       label: label !== undefined ? label : draft.value.label
     }
     if (draftDefinition.value?.kind === 'client' && value != null && label) {
@@ -126,7 +143,15 @@ export function useDataTableFilters(options: UseDataTableFiltersOptions) {
       label = resolveClientLabel(Number(current.value), current.label)
     }
 
-    const model = createFilterModel(definition, current.value as string | number, label)
+    let rawValue: string | number | boolean = current.value as string | number | boolean
+    if (definition.kind === 'date_range') {
+      rawValue = encodeDateRange(
+        String(current.value ?? ''),
+        String(current.valueTo ?? '')
+      )
+    }
+
+    const model = createFilterModel(definition, rawValue, label)
     if (!model) return
 
     const next = upsertFilterModel(applied.value, definitions.value, model)

@@ -3,10 +3,18 @@
  * Caixa Postal — mestre–detalhe (arquétipo Inbox).
  * Lista + NuxtPage (detalhe canônico em /monitoring/mailbox/[id]).
  * Desktop: painéis adjacentes; mobile: detalhe em USlideover.
+ *
+ * Filtros: triage (status) + client via ModuleToolbar + surface monitoring.mailbox
+ * (presets salvos). API mailbox não aplica `q` — busca desligada.
  */
 import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
-import { MAILBOX_TRIAGE_FILTER_ITEMS } from '~/utils/mailbox-triage'
 import type { MailboxListItem } from '~/components/monitoring/MailboxList.vue'
+import type { MonitoringFilterConfig, MonitoringFilterValue } from '~/types/fiscal-modules'
+import { MAILBOX_TRIAGE_FILTER_ITEMS } from '~/utils/mailbox-triage'
+import {
+  normalizeMonitoringFilters,
+  resetMonitoringFilters
+} from '~/utils/monitoring-filters'
 
 const api = useApi()
 const route = useRoute()
@@ -23,20 +31,41 @@ const rows = ref<MailboxListItem[]>([])
 const listRef = ref<{ focusMessage: (id: number | null | undefined) => void } | null>(null)
 /** ID a restaurar foco ao fechar detalhe (desktop/mobile). */
 const lastFocusedId = ref<number | null>(null)
+let loadSeq = 0
+let filterTransactionDepth = 0
+
+const triageItems = MAILBOX_TRIAGE_FILTER_ITEMS.map(item => ({
+  label: item.label,
+  value: item.value
+}))
+
+const filterConfig: MonitoringFilterConfig = {
+  // List API de mailbox não aceita `q` — busca seria decorativa.
+  search: false,
+  fields: [
+    {
+      key: 'status',
+      kind: 'option',
+      label: 'Triagem',
+      items: triageItems
+    },
+    { key: 'clientId', kind: 'client', label: 'Cliente' }
+  ]
+}
+
+const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({
+  // status reutilizado como eixo de triagem na surface mailbox
+  status: triage.value,
+  clientId: (() => {
+    const n = Number(clientId.value)
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null
+  })(),
+  q: ''
+}))
 
 const selectedId = computed(() => {
   const id = Number(route.params.id)
   return Number.isFinite(id) && id > 0 ? id : null
-})
-
-const clientIdModel = computed<number | null>({
-  get: () => {
-    const n = Number(clientId.value)
-    return Number.isFinite(n) && n > 0 ? n : null
-  },
-  set: (v) => {
-    clientId.value = v && v > 0 ? String(v) : ''
-  }
 })
 
 const breakpoints = useBreakpoints(breakpointsTailwind)
@@ -51,8 +80,6 @@ const mobileOpen = computed({
   }
 })
 
-let loadSeq = 0
-
 async function load() {
   const seq = ++loadSeq
   const epoch = sessionEpoch.value
@@ -61,10 +88,11 @@ async function load() {
   try {
     await syncUrl()
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
+    const clientNum = Number(clientId.value)
     const res = await api.fiscal.mailbox.list({
       page: page.value,
       per_page: perPage.value,
-      client_id: clientId.value ? Number(clientId.value) : undefined,
+      client_id: Number.isFinite(clientNum) && clientNum > 0 ? clientNum : undefined,
       triage_status: triage.value !== 'all' ? triage.value : undefined
     }) as Record<string, unknown>
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
@@ -86,6 +114,30 @@ async function load() {
   }
 }
 
+async function applyModuleFilters(nextValue: MonitoringFilterValue) {
+  const next = normalizeMonitoringFilters(nextValue)
+  const nextClient = next.clientId != null && next.clientId >= 1 ? String(next.clientId) : ''
+  const nextTriage = (next.status || 'all') as MailboxTriageFilter
+  if (triage.value === nextTriage && clientId.value === nextClient) return
+
+  filterTransactionDepth += 1
+  try {
+    triage.value = nextTriage
+    clientId.value = nextClient
+    // API mailbox não aplica q — limpar residual de useServerPage.
+    q.value = ''
+    resetPage()
+    await nextTick()
+  } finally {
+    filterTransactionDepth -= 1
+  }
+  await load()
+}
+
+function resetModuleFilters() {
+  void applyModuleFilters(resetMonitoringFilters())
+}
+
 function selectMessage(id: number) {
   lastFocusedId.value = id
   void router.push(`/monitoring/mailbox/${id}`)
@@ -105,15 +157,27 @@ function onTriaged() {
 }
 
 watch(page, () => {
+  if (filterTransactionDepth > 0) return
   void load()
 })
-watch([clientId, triage, q], () => {
+watch([clientId, triage], () => {
+  if (filterTransactionDepth > 0) return
   resetPage()
   void load()
 })
 watch(sessionEpoch, () => {
-  rows.value = []
-  total.value = 0
+  filterTransactionDepth += 1
+  try {
+    triage.value = 'all'
+    clientId.value = ''
+    q.value = ''
+    rows.value = []
+    total.value = 0
+    lastPage.value = 1
+    page.value = 1
+  } finally {
+    filterTransactionDepth -= 1
+  }
   void load()
 })
 onMounted(load)
@@ -129,7 +193,10 @@ onMounted(load)
       :max-size="40"
     >
       <template #header>
-        <UDashboardNavbar title="Caixas Postais" data-testid="page-navbar">
+        <UDashboardNavbar
+          title="Caixas Postais"
+          data-testid="page-navbar"
+        >
           <template #leading>
             <UDashboardSidebarCollapse />
           </template>
@@ -143,28 +210,27 @@ onMounted(load)
 
         <UDashboardToolbar data-testid="page-toolbar">
           <template #left>
-            <div class="flex min-w-0 flex-1 flex-col gap-2">
+            <div
+              class="flex min-w-0 flex-1 flex-col gap-2"
+              data-testid="mailbox-filter-strip"
+            >
               <MonitoringModuleNav active="mailbox" />
-              <div class="flex flex-wrap items-center gap-2 -ms-1">
-                <USelect
-                  v-model="triage"
-                  :items="[...MAILBOX_TRIAGE_FILTER_ITEMS]"
-                  value-key="value"
-                  class="w-40"
-                  aria-label="Triagem interna"
-                  data-testid="mailbox-triage-filter"
-                />
-                <FiscalClientPicker
-                  v-model="clientIdModel"
-                  class="w-52 sm:w-64"
-                />
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-refresh-cw"
+              <!--
+                Faixa compacta de filtros + presets (surface monitoring.mailbox).
+                Sem reescrever a lista mestre–detalhe em ModuleTable.
+              -->
+              <div data-testid="mailbox-triage-filter">
+                <MonitoringModuleToolbar
+                  surface="monitoring.mailbox"
+                  :filters="filters"
+                  :filter-config="filterConfig"
                   :loading="loading"
-                  aria-label="Atualizar"
-                  @click="load"
+                  :total="total"
+                  :show-total="false"
+                  :reset-key="sessionEpoch"
+                  @apply-filters="applyModuleFilters"
+                  @reset-filters="resetModuleFilters"
+                  @refresh="load"
                 />
               </div>
             </div>

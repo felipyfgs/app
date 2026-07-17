@@ -22,17 +22,54 @@ const config: MonitoringFilterConfig = {
       kind: 'option',
       label: 'Status',
       items: [{ label: 'Todos', value: 'all' }, { label: 'Ativo', value: 'ACTIVE' }]
+    },
+    {
+      key: 'coverage',
+      kind: 'option',
+      label: 'Cobertura',
+      items: [
+        { label: 'Todas', value: 'all' },
+        { label: 'Plena', value: 'FULL' },
+        { label: 'Parcial', value: 'PARTIAL' }
+      ]
+    },
+    {
+      key: 'modality',
+      kind: 'option',
+      label: 'Modalidade',
+      items: [
+        { label: 'Todas', value: 'all' },
+        { label: 'PARCSN', value: 'PARCSN' }
+      ]
     }
   ]
 }
 
 describe('monitoring filters', () => {
+  it('EMPTY inclui coverage e modality default all', () => {
+    expect(EMPTY_MONITORING_FILTERS).toMatchObject({
+      coverage: 'all',
+      modality: 'all',
+      q: '',
+      situation: 'all',
+      clientId: null
+    })
+  })
+
   it('normaliza todos os campos em um único valor controlado', () => {
-    expect(normalizeMonitoringFilters({ q: ' ACME ', clientId: 12.8, status: '' })).toEqual({
+    expect(normalizeMonitoringFilters({
+      q: ' ACME ',
+      clientId: 12.8,
+      status: '',
+      coverage: '',
+      modality: undefined
+    })).toEqual({
       ...EMPTY_MONITORING_FILTERS,
       q: 'ACME',
       clientId: 12,
-      status: 'all'
+      status: 'all',
+      coverage: 'all',
+      modality: 'all'
     })
   })
 
@@ -42,9 +79,11 @@ describe('monitoring filters', () => {
       situation: 'PENDING',
       competence: '2026-07',
       clientId: 42,
-      status: 'ACTIVE'
+      status: 'ACTIVE',
+      coverage: 'FULL',
+      modality: 'PARCSN'
     })
-    expect(countActiveMonitoringFilters(filters, config)).toBe(4)
+    expect(countActiveMonitoringFilters(filters, config)).toBe(6)
   })
 
   it('reseta todos os filtros e gera uma assinatura estável', () => {
@@ -52,6 +91,8 @@ describe('monitoring filters', () => {
     expect(reset).toEqual(EMPTY_MONITORING_FILTERS)
     expect(reset).not.toBe(EMPTY_MONITORING_FILTERS)
     expect(monitoringFilterSignature(reset)).toBe(monitoringFilterSignature({ ...reset }))
+    expect(monitoringFilterSignature({ ...reset, coverage: 'FULL' }))
+      .not.toBe(monitoringFilterSignature(reset))
   })
 
   it('converte chips ↔ MonitoringFilterValue omitindo defaults', () => {
@@ -60,10 +101,12 @@ describe('monitoring filters', () => {
       situation: 'PENDING',
       competence: '2026-07',
       clientId: 7,
-      status: 'all'
+      status: 'all',
+      coverage: 'PARTIAL',
+      modality: 'all'
     })
     const models = monitoringFiltersToModels(filters, config, 'Cliente 7')
-    expect(models.map(m => m.key)).toEqual(['situation', 'competence', 'clientId'])
+    expect(models.map(m => m.key)).toEqual(['situation', 'competence', 'clientId', 'coverage'])
     expect(models.find(m => m.key === 'clientId')?.label).toBe('Cliente 7')
 
     const back = modelsToMonitoringFilters(models, config, { q: 'busca' })
@@ -72,7 +115,9 @@ describe('monitoring filters', () => {
       situation: 'PENDING',
       competence: '2026-07',
       clientId: 7,
-      status: 'all'
+      status: 'all',
+      coverage: 'PARTIAL',
+      modality: 'all'
     })
   })
 

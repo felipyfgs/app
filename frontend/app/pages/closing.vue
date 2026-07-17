@@ -12,6 +12,14 @@ import type {
   OutboundDeadlinePendingItem,
   OutboundUrgencyBand
 } from '~/types/api'
+import {
+  closingFiltersToPayload,
+  closingPayloadToFilters,
+  hasActiveClosingFiltersForSave
+} from '~/utils/saved-list-filters'
+import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
+import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
+import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
 
 const api = useApi()
 const route = useRoute()
@@ -45,6 +53,58 @@ const modelFilter = ref(
 const rootFilter = ref(String(route.query.root || ''))
 const sourceFilter = ref(String(route.query.source || FILTER_ALL))
 const clientFilter = ref(String(route.query.client_id || ''))
+
+const {
+  canSavePreset,
+  canShare: canShareFilters,
+  presets,
+  presetsLoading,
+  saveOpen,
+  manageOpen,
+  saveLoading,
+  saveError,
+  manageError,
+  actingId,
+  clearPresetCache,
+  onSavedMenuOpen,
+  applyPreset,
+  onSaveConfirm,
+  onRename,
+  onToggleShare,
+  onDeletePreset,
+  openManage,
+  openSave
+} = useSavedListPresets({
+  surface: 'closing.list',
+  resetKey: sessionEpoch,
+  getPayload: () => closingFiltersToPayload({
+    competence: competence.value,
+    band: bandFilter.value,
+    model: modelFilter.value,
+    root: rootFilter.value,
+    source: sourceFilter.value,
+    client_id: clientFilter.value
+  }),
+  canSave: () => hasActiveClosingFiltersForSave({
+    competence: competence.value,
+    band: bandFilter.value,
+    model: modelFilter.value,
+    root: rootFilter.value,
+    source: sourceFilter.value,
+    client_id: clientFilter.value
+  }),
+  onApply: (payload) => {
+    const next = closingPayloadToFilters(payload, competence.value)
+    competence.value = next.competence || competence.value
+    bandFilter.value = next.band
+    modelFilter.value = next.model
+    rootFilter.value = next.root
+    sourceFilter.value = next.source
+    clientFilter.value = next.client_id
+    pendingPage.value = 1
+    // watch nos filtros dispara load
+  }
+})
 
 const summary = ref<OutboundCompetenceSummary | null>(null)
 const capacity = ref<OutboundCapacityForecast | null>(null)
@@ -367,6 +427,7 @@ watch(sessionEpoch, () => {
   pendingPage.value = 1
   pendingTotal.value = 0
   loadError.value = null
+  clearPresetCache()
   void load()
 })
 
@@ -457,7 +518,44 @@ onMounted(() => {
             aria-label="Filtrar por fonte de captura"
           />
         </UFormField>
+        <div class="flex flex-wrap items-end gap-1.5 pb-0.5">
+          <UButton
+            v-if="canSavePreset"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-save"
+            label="Salvar"
+            data-testid="save-filters-button"
+            @click="openSave"
+          />
+          <DataTableFilterSavedFiltersMenu
+            :items="presets"
+            :loading="presetsLoading"
+            @apply="applyPreset"
+            @manage="openManage"
+            @open="onSavedMenuOpen"
+          />
+        </div>
       </div>
+
+      <DataTableFilterSaveFilterModal
+        v-model:open="saveOpen"
+        :can-share="canShareFilters"
+        :loading="saveLoading"
+        :error="saveError"
+        @confirm="onSaveConfirm"
+      />
+      <DataTableFilterManageSavedFiltersModal
+        v-model:open="manageOpen"
+        :items="presets"
+        :can-share="canShareFilters"
+        :loading="presetsLoading"
+        :acting-id="actingId"
+        :error="manageError"
+        @rename="onRename"
+        @toggle-share="onToggleShare"
+        @delete="onDeletePreset"
+      />
 
       <UAlert
         v-if="loadError"

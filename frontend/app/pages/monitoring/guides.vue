@@ -411,6 +411,7 @@ onMounted(() => {
     title="Guias"
     panel-id="monitoring-guides"
     module-key="guides"
+    surface="monitoring.guides"
     :columns="columns"
     :rows="rows"
     :loading="loading"

@@ -33,23 +33,6 @@ const {
   resetFilters
 } = useFiscalModulePortfolio('installments')
 
-const filterConfig: MonitoringFilterConfig = {
-  fields: [
-    { key: 'situation', kind: 'option', label: 'Situação' },
-    { key: 'clientId', kind: 'client', label: 'Cliente' }
-  ]
-}
-
-function getRowId(row: InstallmentsClientRow) {
-  return `c:${row.client_id}`
-}
-
-const api = useApi()
-const modalities = ref<Array<Record<string, unknown>>>([])
-const modalitiesError = ref<string | null>(null)
-/** Cápsula de modalidade: `all` ou código oficial (PARCSN, PARCMEI, …). */
-const selectedModality = ref('all')
-
 /** Catálogo oficial Integra-Parcelamento (fallback se a API falhar). */
 const CATALOG_MODALITIES = [
   { code: 'PARCSN', label: 'PARCSN' },
@@ -61,6 +44,59 @@ const CATALOG_MODALITIES = [
   { code: 'PERTMEI', label: 'PERTMEI' },
   { code: 'RELPMEI', label: 'RELPMEI' }
 ] as const
+
+const api = useApi()
+const modalities = ref<Array<Record<string, unknown>>>([])
+const modalitiesError = ref<string | null>(null)
+
+const modalityFilterItems = computed(() => {
+  const fromApi = modalities.value
+    .map((m) => {
+      const code = String(m.code || m.name || m.label || m.id || '').trim().toUpperCase()
+      if (!code) return null
+      return { label: code, value: code }
+    })
+    .filter((x): x is { label: string, value: string } => Boolean(x))
+
+  const catalog = fromApi.length
+    ? fromApi
+    : CATALOG_MODALITIES.map(m => ({ label: m.label, value: m.code }))
+
+  return [
+    { label: 'Todas as modalidades', value: 'all' },
+    ...catalog
+  ]
+})
+
+const filterConfig = computed<MonitoringFilterConfig>(() => ({
+  fields: [
+    { key: 'situation', kind: 'option', label: 'Situação' },
+    { key: 'clientId', kind: 'client', label: 'Cliente' },
+    {
+      key: 'modality',
+      kind: 'option',
+      label: 'Modalidade',
+      items: modalityFilterItems.value
+    }
+  ]
+}))
+
+function getRowId(row: InstallmentsClientRow) {
+  return `c:${row.client_id}`
+}
+
+/**
+ * Cápsula de modalidade sincronizada com o filtro server-side (portfolio.modality).
+ * Trocar a tab aplica modality no portfolio; chips/presets atualizam a cápsula.
+ */
+const selectedModality = computed({
+  get: () => filters.value.modality || 'all',
+  set: (value: string) => {
+    const next = value || 'all'
+    if ((filters.value.modality || 'all') === next) return
+    void applyFilters({ ...filters.value, modality: next })
+  }
+})
 
 const detailOpen = ref(false)
 const detailLoading = ref(false)
@@ -76,41 +112,16 @@ function detailOf(row: InstallmentsClientRow): InstallmentsClientDetail {
   return row.detail || {}
 }
 
-function modalityCodeOf(row: InstallmentsClientRow): string {
-  return String(detailOf(row).modality || '').trim().toUpperCase()
-}
-
 const modalityTabItems = computed(() => {
-  const fromApi = modalities.value
-    .map((m) => {
-      const code = String(m.code || m.name || m.label || m.id || '').trim().toUpperCase()
-      if (!code) return null
-      return { label: code, value: code }
-    })
-    .filter((x): x is { label: string, value: string } => Boolean(x))
-
-  const catalog = fromApi.length
-    ? fromApi
-    : CATALOG_MODALITIES.map(m => ({ label: m.label, value: m.code }))
-
-  return [
-    { label: 'Todas', value: 'all' },
-    ...catalog
-  ]
+  return modalityFilterItems.value.map(item => ({
+    label: item.value === 'all' ? 'Todas' : item.label,
+    value: item.value
+  }))
 })
 
-const displayRows = computed(() => {
-  const mod = selectedModality.value
-  if (!mod || mod === 'all') return rows.value
-  return rows.value.filter(row => modalityCodeOf(row) === mod)
-})
-
-const displayTotal = computed(() => {
-  if (!selectedModality.value || selectedModality.value === 'all') {
-    return total.value
-  }
-  return displayRows.value.length
-})
+/** Lista já filtrada server-side por modality — sem refiltro local. */
+const displayRows = computed(() => rows.value)
+const displayTotal = computed(() => total.value)
 
 async function loadModalities() {
   try {

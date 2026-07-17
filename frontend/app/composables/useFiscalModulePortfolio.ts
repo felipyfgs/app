@@ -76,13 +76,17 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   const deliveryStatus = options.deliveryStatus
     ?? ref('all')
   const clientId = ref<number | null>(null)
+  const coverage = ref('all')
+  const modality = ref('all')
   const sorting = ref<FiscalModuleSortingState>([{ id: 'client', desc: false }])
   const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({
     q: q.value,
     situation: situation.value,
     competence: competence.value,
     clientId: clientId.value,
-    deliveryStatus: deliveryStatus.value
+    deliveryStatus: deliveryStatus.value,
+    coverage: coverage.value,
+    modality: modality.value
   }))
 
   const overviewLoading = ref(false)
@@ -123,18 +127,26 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
         clientId.value != null && clientId.value >= 1
           ? clientId.value
           : undefined,
+      coverage:
+        coverage.value && coverage.value !== 'all'
+          ? coverage.value
+          : undefined,
+      modality:
+        modality.value && modality.value !== 'all'
+          ? modality.value
+          : undefined,
       ...currentSort()
     }
   }
 
   /**
    * Filtros do overview/contadores: independentes da cápsula (situation/KPI).
-   * Só filtros avançados (busca, competência, submódulo, delivery, cliente)
-   * redimensionam Total / Em dia / Pendências / etc.
+   * Só filtros avançados (busca, competência, submódulo, delivery, cliente,
+   * coverage, modality) redimensionam Total / Em dia / Pendências / etc.
    */
   function buildOverviewFilters(): Pick<
     FiscalModulePortfolioFilters,
-    'q' | 'competence' | 'submodule' | 'delivery_status' | 'client_id'
+    'q' | 'competence' | 'submodule' | 'delivery_status' | 'client_id' | 'coverage' | 'modality'
   > {
     const next = buildFilters(1)
     return {
@@ -142,7 +154,9 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
       competence: next.competence,
       submodule: next.submodule,
       delivery_status: next.delivery_status,
-      client_id: next.client_id
+      client_id: next.client_id,
+      coverage: next.coverage,
+      modality: next.modality
     }
   }
 
@@ -203,6 +217,8 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     || (submodule.value && submodule.value !== 'all' && submodule.value.trim())
     || (deliveryStatus.value && deliveryStatus.value !== 'all')
     || clientId.value != null
+    || (coverage.value && coverage.value !== 'all')
+    || (modality.value && modality.value !== 'all')
   ))
 
   async function syncUrl() {
@@ -322,11 +338,15 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     const next = normalizeMonitoringFilters(nextValue)
     const nextSituation = next.situation || 'all'
     const nextDeliveryStatus = next.deliveryStatus || 'all'
+    const nextCoverage = next.coverage || 'all'
+    const nextModality = next.modality || 'all'
 
     const advancedChanged = q.value !== next.q
       || competence.value !== next.competence
       || deliveryStatus.value !== nextDeliveryStatus
       || clientId.value !== next.clientId
+      || coverage.value !== nextCoverage
+      || modality.value !== nextModality
     const situationChanged = situation.value !== nextSituation
 
     if (!advancedChanged && !situationChanged) return
@@ -338,6 +358,8 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
       competence.value = next.competence
       deliveryStatus.value = nextDeliveryStatus
       clientId.value = next.clientId
+      coverage.value = nextCoverage
+      modality.value = nextModality
       resetPage()
       await nextTick()
     } finally {
@@ -381,7 +403,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
 
   // Filtros avançados: recarregam contadores (overview) + lista.
   watch(
-    [q, competence, submodule, deliveryStatus, clientId],
+    [q, competence, submodule, deliveryStatus, clientId, coverage, modality],
     () => {
       if (!ready || filterTransactionDepth > 0) return
       resetPage()
@@ -422,6 +444,8 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
       competence.value = ''
       clientId.value = null
       deliveryStatus.value = 'all'
+      coverage.value = 'all'
+      modality.value = 'all'
       page.value = 1
       lastPage.value = 1
     } finally {
@@ -467,6 +491,8 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     submodule,
     deliveryStatus,
     clientId,
+    coverage,
+    modality,
     filters,
     sorting,
     loading,

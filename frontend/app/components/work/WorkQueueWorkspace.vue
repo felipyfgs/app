@@ -19,6 +19,14 @@ import {
   workQueuePath,
   workTaskPath
 } from '~/composables/useWorkQueueFilters'
+import {
+  hasActiveWorkQueueFiltersForSave,
+  workQueueFiltersToPayload,
+  workQueuePayloadToFilters
+} from '~/utils/saved-list-filters'
+import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
+import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
+import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -33,6 +41,47 @@ const {
   clearTask,
   apiParams
 } = useWorkQueueFilters()
+
+const {
+  canSavePreset,
+  canShare: canShareFilters,
+  presets,
+  presetsLoading,
+  saveOpen,
+  manageOpen,
+  saveLoading,
+  saveError,
+  manageError,
+  actingId,
+  clearPresetCache,
+  onSavedMenuOpen,
+  applyPreset,
+  onSaveConfirm,
+  onRename,
+  onToggleShare,
+  onDeletePreset,
+  openManage,
+  openSave
+} = useSavedListPresets({
+  surface: 'work.queue',
+  resetKey: sessionEpoch,
+  getPayload: () => workQueueFiltersToPayload(filters.value),
+  canSave: () => hasActiveWorkQueueFiltersForSave(filters.value),
+  onApply: (payload) => {
+    const next = workQueuePayloadToFilters(payload)
+    // Hidrata query (page 1); path atual preservado pelo patch.
+    void patch({
+      tab: next.tab,
+      q: next.q,
+      department_id: next.department_id,
+      assignee_membership_id: next.assignee_membership_id,
+      client_id: next.client_id,
+      scope: next.scope,
+      page: 1,
+      per_page: next.per_page
+    }, { resetPage: false })
+  }
+})
 
 // Legado ?task= → path canônico
 watch(
@@ -213,6 +262,7 @@ watch(sessionEpoch, () => {
   detail.value = null
   loadError.value = null
   mobileOpen.value = false
+  clearPresetCache()
   void clearTask()
   void patch({
     page: 1,
@@ -270,15 +320,52 @@ watch(selectedTaskId, (id) => {
             list: 'flex-nowrap'
           }"
         />
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          placeholder="Buscar tarefa ou processo…"
-          class="w-full"
-          aria-label="Buscar na fila"
-          data-testid="work-queue-search"
-        />
+        <div class="flex w-full min-w-0 flex-wrap items-center gap-1.5">
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            placeholder="Buscar tarefa ou processo…"
+            class="min-w-0 flex-1"
+            aria-label="Buscar na fila"
+            data-testid="work-queue-search"
+          />
+          <UButton
+            v-if="canSavePreset"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-save"
+            label="Salvar"
+            data-testid="save-filters-button"
+            @click="openSave"
+          />
+          <DataTableFilterSavedFiltersMenu
+            :items="presets"
+            :loading="presetsLoading"
+            @apply="applyPreset"
+            @manage="openManage"
+            @open="onSavedMenuOpen"
+          />
+        </div>
       </UDashboardToolbar>
+
+      <DataTableFilterSaveFilterModal
+        v-model:open="saveOpen"
+        :can-share="canShareFilters"
+        :loading="saveLoading"
+        :error="saveError"
+        @confirm="onSaveConfirm"
+      />
+      <DataTableFilterManageSavedFiltersModal
+        v-model:open="manageOpen"
+        :items="presets"
+        :can-share="canShareFilters"
+        :loading="presetsLoading"
+        :acting-id="actingId"
+        :error="manageError"
+        @rename="onRename"
+        @toggle-share="onToggleShare"
+        @delete="onDeletePreset"
+      />
     </template>
 
     <template #body>

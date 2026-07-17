@@ -45,7 +45,13 @@ const {
 const filterConfig: MonitoringFilterConfig = {
   fields: [
     { key: 'situation', kind: 'option', label: 'Situação' },
-    { key: 'clientId', kind: 'client', label: 'Cliente' }
+    { key: 'clientId', kind: 'client', label: 'Cliente' },
+    {
+      key: 'coverage',
+      kind: 'option',
+      label: 'Cobertura',
+      items: fiscalCoverageFilterItems()
+    }
   ]
 }
 

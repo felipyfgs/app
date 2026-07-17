@@ -215,6 +215,35 @@ class ModulePortfolioApiTest extends TestCase
             ->assertJsonPath('meta.total', 0);
     }
 
+    public function test_filtro_coverage_no_sql(): void
+    {
+        $this->actingAsOffice($this->admin);
+
+        // Um cliente com cobertura parcial no snapshot corrente
+        $target = $this->clients[0];
+        FiscalSnapshot::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $this->office->id)
+            ->where('client_id', $target->id)
+            ->where('is_current', true)
+            ->update(['coverage' => FiscalCoverage::Partial->value]);
+
+        $this->getJson('/api/v1/fiscal/modules/sitfis/clients?coverage=PARTIAL')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.client_id', $target->id)
+            ->assertJsonPath('data.0.coverage', 'PARTIAL');
+
+        $this->getJson('/api/v1/fiscal/modules/sitfis/clients?coverage=FULL')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 4);
+
+        // Valor inválido é ignorado (sem filtro)
+        $this->getJson('/api/v1/fiscal/modules/sitfis/clients?coverage=EVERYTHING')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 5);
+    }
+
     public function test_modulo_desconhecido_e_desabilitado(): void
     {
         $this->actingAsOffice($this->admin);

@@ -42,6 +42,7 @@ use App\Models\OperationalProcess;
 use App\Models\OperationalTask;
 use App\Models\OutboundCaptureProfile;
 use App\Models\ProcessTemplate;
+use App\Models\SavedListFilter;
 use App\Models\User;
 use App\Models\WorkDepartment;
 use App\Policies\ClientContactPolicy;
@@ -51,6 +52,7 @@ use App\Policies\EstablishmentPolicy;
 use App\Policies\OfficeFiscalCredentialPolicy;
 use App\Policies\OfficeSettingsPolicy;
 use App\Policies\OutboundCaptureProfilePolicy;
+use App\Policies\SavedListFilterPolicy;
 use App\Policies\Work\OperationalExportPolicy;
 use App\Policies\Work\OperationalProcessPolicy;
 use App\Policies\Work\OperationalTaskPolicy;
@@ -408,6 +410,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(OutboundCaptureProfile::class, OutboundCaptureProfilePolicy::class);
         Gate::policy(OfficeFiscalIdentity::class, OfficeFiscalCredentialPolicy::class);
         Gate::policy(OfficeCredential::class, OfficeFiscalCredentialPolicy::class);
+        Gate::policy(SavedListFilter::class, SavedListFilterPolicy::class);
         Gate::define('office-settings.view', [OfficeSettingsPolicy::class, 'view']);
         Gate::define('office-settings.manage', [OfficeSettingsPolicy::class, 'manage']);
 

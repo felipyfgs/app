@@ -2,6 +2,7 @@
 /**
  * Toolbar de filtros no padrão customers.vue:
  * UInput max-w-sm à esquerda + ações à direita.
+ * Presets nomeados: surface docs.catalog.
  */
 import type { Client, Establishment } from '~/types/api'
 import { documentKindFilterItems } from '~/utils/document-kinds'
@@ -11,6 +12,14 @@ import {
   type NotesFilterState,
   type NotesViewMode
 } from '~/utils/notes-filters'
+import {
+  docsFiltersToPayload,
+  docsPayloadToFilters,
+  hasActiveDocsFiltersForSave
+} from '~/utils/saved-list-filters'
+import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
+import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
+import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
 
 const filters = defineModel<NotesFilterState>('filters', { required: true })
 /** Filtro operacional da lista de clientes (Documentos → Por cliente). */
@@ -24,6 +33,8 @@ const props = defineProps<{
   selectedCount?: number
   canExport?: boolean
   exporting?: boolean
+  /** sessionEpoch — limpa cache de presets na troca de Office. */
+  resetKey?: string | number | null
 }>()
 
 const emit = defineEmits<{
@@ -32,6 +43,44 @@ const emit = defineEmits<{
   clientChange: []
   exportSelection: []
 }>()
+
+const { sessionEpoch } = useDashboard()
+
+const {
+  canSavePreset,
+  canShare: canShareFilters,
+  presets,
+  presetsLoading,
+  saveOpen,
+  manageOpen,
+  saveLoading,
+  saveError,
+  manageError,
+  actingId,
+  onSavedMenuOpen,
+  applyPreset,
+  onSaveConfirm,
+  onRename,
+  onToggleShare,
+  onDeletePreset,
+  openManage,
+  openSave
+} = useSavedListPresets({
+  surface: 'docs.catalog',
+  resetKey: () => props.resetKey ?? sessionEpoch.value,
+  getPayload: () => docsFiltersToPayload(filters.value),
+  canSave: () => hasActiveDocsFiltersForSave(filters.value),
+  onApply: (payload) => {
+    const next = docsPayloadToFilters(payload)
+    Object.assign(filters.value, next)
+    // Cliente inválido no Office: limpa estabelecimento se sem client.
+    if (!next.client_id || next.client_id === FILTER_ALL) {
+      filters.value.establishment_id = FILTER_ALL
+    }
+    emit('clientChange')
+    emit('apply')
+  }
+})
 
 /** Só recortes de captura — certificado/cadastro ficam em /clients. */
 const clientOperationalItems = [
@@ -194,6 +243,22 @@ const activeCount = computed(() => {
           @click="() => { open = !open }"
         />
         <UButton
+          v-if="canSavePreset"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-save"
+          label="Salvar"
+          data-testid="save-filters-button"
+          @click="openSave"
+        />
+        <DataTableFilterSavedFiltersMenu
+          :items="presets"
+          :loading="presetsLoading"
+          @apply="applyPreset"
+          @manage="openManage"
+          @open="onSavedMenuOpen"
+        />
+        <UButton
           color="primary"
           variant="soft"
           label="Aplicar"
@@ -208,6 +273,25 @@ const activeCount = computed(() => {
         />
       </div>
     </div>
+
+    <DataTableFilterSaveFilterModal
+      v-model:open="saveOpen"
+      :can-share="canShareFilters"
+      :loading="saveLoading"
+      :error="saveError"
+      @confirm="onSaveConfirm"
+    />
+    <DataTableFilterManageSavedFiltersModal
+      v-model:open="manageOpen"
+      :items="presets"
+      :can-share="canShareFilters"
+      :loading="presetsLoading"
+      :acting-id="actingId"
+      :error="manageError"
+      @rename="onRename"
+      @toggle-share="onToggleShare"
+      @delete="onDeletePreset"
+    />
 
     <form
       v-show="open && view !== 'client'"

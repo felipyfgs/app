@@ -89,12 +89,19 @@ const overlayTitle = computed(() => {
   return 'Adicionar filtro'
 })
 
+/** Painel flutuante: fundo opaco para não “fundir” com o header da tabela. */
+const panelClass = 'w-80 max-w-[min(20rem,calc(100vw-2rem))] min-w-0 overflow-hidden rounded-lg border border-default bg-default shadow-lg'
+
 function definitionFor(key: string) {
   return findDefinition(props.definitions, key)
 }
 
-function onDraftValue(value: string | number | null) {
+function onDraftValue(value: string | number | boolean | null) {
   setDraftValue(value)
+}
+
+function onDraftValueTo(value: string | null) {
+  setDraftValue(draft.value?.value ?? null, undefined, value)
 }
 
 function onDraftLabel(label: string | undefined) {
@@ -104,7 +111,7 @@ function onDraftLabel(label: string | undefined) {
 
 <template>
   <div
-    class="flex min-w-0 w-full flex-wrap items-center gap-1.5"
+    class="flex min-w-0 flex-wrap items-center gap-1.5"
     data-testid="data-table-filters"
   >
     <DataTableFilterChip
@@ -116,11 +123,13 @@ function onDraftLabel(label: string | undefined) {
       @remove="remove(model.key)"
     />
 
-    <!-- Desktop: popover com seletor ou editor -->
+    <!-- Desktop: popover com seletor ou editor (portal + painel elevado). -->
     <UPopover
       v-if="!isMobile"
       v-model:open="overlayOpen"
-      :content="{ align: 'start', side: 'bottom' }"
+      :portal="true"
+      :content="{ align: 'start', side: 'bottom', sideOffset: 6 }"
+      :ui="{ content: 'p-0 bg-transparent ring-0 shadow-none' }"
     >
       <UButton
         v-if="canAdd"
@@ -137,7 +146,7 @@ function onDraftLabel(label: string | undefined) {
       >Filtros</span>
       <template #content>
         <div
-          class="w-80 max-w-[min(20rem,calc(100vw-2rem))] min-w-0 overflow-x-hidden"
+          :class="panelClass"
           data-testid="data-table-filter-overlay"
         >
           <DataTableFilterSelector
@@ -149,9 +158,11 @@ function onDraftLabel(label: string | undefined) {
             v-else-if="overlayMode === 'editor' && draftDefinition"
             :definition="draftDefinition"
             :model-value="draft?.value ?? null"
+            :value-to="draft?.valueTo ?? null"
             :label="draft?.label"
             :can-confirm="canConfirm"
             @update:model-value="onDraftValue"
+            @update:value-to="onDraftValueTo"
             @update:label="onDraftLabel"
             @confirm="confirmDraft"
             @cancel="closeEditor"
@@ -200,9 +211,11 @@ function onDraftLabel(label: string | undefined) {
               v-else-if="overlayMode === 'editor' && draftDefinition"
               :definition="draftDefinition"
               :model-value="draft?.value ?? null"
+              :value-to="draft?.valueTo ?? null"
               :label="draft?.label"
               :can-confirm="canConfirm"
               @update:model-value="onDraftValue"
+              @update:value-to="onDraftValueTo"
               @update:label="onDraftLabel"
               @confirm="confirmDraft"
               @cancel="closeEditor"

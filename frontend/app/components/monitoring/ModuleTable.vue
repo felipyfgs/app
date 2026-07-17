@@ -9,6 +9,7 @@ import type {
   MonitoringFilterValue
 } from '~/types/fiscal-modules'
 import { fiscalKpiSituationFilter, fiscalSituationToKpiKey } from '~/types/fiscal-modules'
+import { resolveMonitoringSurface } from '~/types/saved-list-filters'
 import { formatDateTime } from '~/utils/format'
 import { monitoringFilterSignature } from '~/utils/monitoring-filters'
 import { monitoringSelectionScope } from '~/utils/monitoring-selection'
@@ -44,6 +45,12 @@ const props = withDefaults(defineProps<{
   emptyTitle?: string
   emptyDescription?: string
   emptyKind?: FiscalTableEmptyKind | null
+  /**
+   * Surface de presets salvos. Se omitido, deriva de moduleKey
+   * (ex. installments → monitoring.installments). Páginas sem moduleKey
+   * (registrations, tax_processes) devem passar explicitamente.
+   */
+  surface?: string | null
 }>(), {
   description: undefined,
   panelId: 'fiscal-module',
@@ -63,7 +70,8 @@ const props = withDefaults(defineProps<{
   showColumnVisibility: true,
   emptyTitle: undefined,
   emptyDescription: undefined,
-  emptyKind: null
+  emptyKind: null,
+  surface: null
 })
 
 const emit = defineEmits<{
@@ -83,6 +91,10 @@ const selectedCount = ref(0)
 const bulkAvailable = ref(false)
 
 const activeKpi = computed(() => fiscalSituationToKpiKey(props.filters.situation))
+const resolvedSurface = computed(() => {
+  if (props.surface) return props.surface
+  return resolveMonitoringSurface(props.moduleKey)
+})
 const selectionEnabled = computed(() => Boolean(
   props.moduleKey && props.getClientId && bulkAvailable.value
 ))
@@ -240,6 +252,7 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
               :loading="loading || refreshing"
               :show-total="false"
               :reset-key="sessionEpoch"
+              :surface="resolvedSurface"
               @quick-filter-change="emit('quick-filter-change', $event)"
               @apply-filters="emit('apply-filters', $event)"
               @reset-filters="emit('reset-filters', $event)"

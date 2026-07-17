@@ -18,7 +18,9 @@ export const EMPTY_MONITORING_FILTERS: Readonly<MonitoringFilterValue> = Object.
   clientId: null,
   deliveryStatus: 'all',
   paymentStatus: 'all',
-  status: 'all'
+  status: 'all',
+  coverage: 'all',
+  modality: 'all'
 })
 
 function normalizeClientId(value: unknown): number | null {
@@ -36,7 +38,9 @@ export function normalizeMonitoringFilters(
     clientId: normalizeClientId(value?.clientId),
     deliveryStatus: String(value?.deliveryStatus || 'all'),
     paymentStatus: String(value?.paymentStatus || 'all'),
-    status: String(value?.status || 'all')
+    status: String(value?.status || 'all'),
+    coverage: String(value?.coverage || 'all'),
+    modality: String(value?.modality || 'all')
   }
 }
 
@@ -112,6 +116,21 @@ export function monitoringFieldsToDefinitions(
   })
 }
 
+const OPTION_KEYS = [
+  'situation',
+  'deliveryStatus',
+  'paymentStatus',
+  'status',
+  'coverage',
+  'modality'
+] as const
+
+type OptionFilterKey = (typeof OPTION_KEYS)[number]
+
+function isOptionFilterKey(key: string): key is OptionFilterKey {
+  return (OPTION_KEYS as readonly string[]).includes(key)
+}
+
 /** Converte valor backend-facing → chips (omite defaults vazios). */
 export function monitoringFiltersToModels(
   filters: MonitoringFilterValue,
@@ -123,11 +142,6 @@ export function monitoringFiltersToModels(
   const raw: DataTableFilterModel[] = []
 
   for (const definition of definitions) {
-    if (definition.key === 'situation') {
-      const model = createFilterModel(definition, filters.situation)
-      if (model) raw.push(model)
-      continue
-    }
     if (definition.key === 'competence') {
       const model = createFilterModel(definition, filters.competence)
       if (model) raw.push(model)
@@ -139,18 +153,8 @@ export function monitoringFiltersToModels(
       if (model) raw.push(model)
       continue
     }
-    if (definition.key === 'deliveryStatus') {
-      const model = createFilterModel(definition, filters.deliveryStatus)
-      if (model) raw.push(model)
-      continue
-    }
-    if (definition.key === 'paymentStatus') {
-      const model = createFilterModel(definition, filters.paymentStatus)
-      if (model) raw.push(model)
-      continue
-    }
-    if (definition.key === 'status') {
-      const model = createFilterModel(definition, filters.status)
+    if (isOptionFilterKey(definition.key)) {
+      const model = createFilterModel(definition, filters[definition.key])
       if (model) raw.push(model)
     }
   }
@@ -181,20 +185,8 @@ export function modelsToMonitoringFilters(
       next.competence = model ? String(model.value) : ''
       continue
     }
-    if (definition.key === 'situation') {
-      next.situation = model ? String(model.value) : 'all'
-      continue
-    }
-    if (definition.key === 'deliveryStatus') {
-      next.deliveryStatus = model ? String(model.value) : 'all'
-      continue
-    }
-    if (definition.key === 'paymentStatus') {
-      next.paymentStatus = model ? String(model.value) : 'all'
-      continue
-    }
-    if (definition.key === 'status') {
-      next.status = model ? String(model.value) : 'all'
+    if (isOptionFilterKey(definition.key)) {
+      next[definition.key] = model ? String(model.value) : 'all'
     }
   }
 
@@ -219,6 +211,12 @@ export function monitoringAdvancedFieldActive(
   if (field.key === 'status') {
     return String(filters.status || '').trim() !== '' && filters.status !== 'all'
   }
+  if (field.key === 'coverage') {
+    return String(filters.coverage || '').trim() !== '' && filters.coverage !== 'all'
+  }
+  if (field.key === 'modality') {
+    return String(filters.modality || '').trim() !== '' && filters.modality !== 'all'
+  }
   return false
 }
 
@@ -239,7 +237,9 @@ export function monitoringFilterSignature(filters: MonitoringFilterValue): strin
     normalized.clientId,
     normalized.deliveryStatus,
     normalized.paymentStatus,
-    normalized.status
+    normalized.status,
+    normalized.coverage,
+    normalized.modality
   ])
 }
 
@@ -259,5 +259,3 @@ export function isMonitoringStructuredFieldEmpty(
   if (key === 'competence' || key === 'q') return String(value ?? '').trim() === ''
   return value === 'all' || value === '' || value == null
 }
-
-

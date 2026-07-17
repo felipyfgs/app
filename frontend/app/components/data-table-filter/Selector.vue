@@ -40,7 +40,11 @@ function onSelect(item: CommandPaletteItem | CommandPaletteItem[] | undefined | 
   <UCommandPalette
     :groups="groups"
     placeholder="Buscar campo…"
-    class="min-w-0 w-full"
+    class="min-w-0 w-full max-h-72"
+    :ui="{
+      root: 'min-w-0',
+      input: 'border-b border-default'
+    }"
     data-testid="data-table-filter-selector"
     @update:model-value="onSelect"
   />

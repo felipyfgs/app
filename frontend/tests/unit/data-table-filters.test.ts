@@ -3,7 +3,10 @@ import type { DataTableFilterDefinition, DataTableFilterModel } from '../../app/
 import {
   canConfirmDraftValue,
   createFilterModel,
+  encodeDateRange,
   inactiveDefinitions,
+  isValidDateRangeValue,
+  isValidDateValue,
   isValidMonthValue,
   normalizeFilterModels,
   removeFilterModel,
@@ -22,7 +25,11 @@ const definitions: DataTableFilterDefinition[] = [
     emptyValue: 'all'
   },
   { key: 'competence', kind: 'month', label: 'Competência', emptyValue: '' },
-  { key: 'clientId', kind: 'client', label: 'Cliente', emptyValue: null }
+  { key: 'clientId', kind: 'client', label: 'Cliente', emptyValue: null },
+  { key: 'process_number', kind: 'text', label: 'Processo', operator: 'contains' },
+  { key: 'is_overdue', kind: 'boolean', label: 'Em atraso', trueLabel: 'Sim', falseLabel: 'Não' },
+  { key: 'due_at', kind: 'date', label: 'Vencimento' },
+  { key: 'consulted', kind: 'date_range', label: 'Consultado em' }
 ]
 
 describe('data-table-filters', () => {
@@ -33,11 +40,25 @@ describe('data-table-filters', () => {
     expect(isValidMonthValue('')).toBe(false)
   })
 
+  it('valida data YYYY-MM-DD e rejeita calendário inválido', () => {
+    expect(isValidDateValue('2026-07-17')).toBe(true)
+    expect(isValidDateValue('2026-02-30')).toBe(false)
+    expect(isValidDateValue('2026-13-01')).toBe(false)
+    expect(isValidDateValue('17-07-2026')).toBe(false)
+  })
+
+  it('valida date_range ordenado', () => {
+    expect(isValidDateRangeValue(encodeDateRange('2026-01-01', '2026-01-31'))).toBe(true)
+    expect(isValidDateRangeValue(encodeDateRange('2026-02-01', '2026-01-01'))).toBe(false)
+    expect(isValidDateRangeValue('2026-01-01')).toBe(false)
+  })
+
   it('omite valores vazios e defaults', () => {
     const models: DataTableFilterModel[] = [
       { key: 'situation', operator: 'eq', value: 'all' },
       { key: 'competence', operator: 'eq', value: '' },
-      { key: 'clientId', operator: 'eq', value: 0 }
+      { key: 'clientId', operator: 'eq', value: 0 },
+      { key: 'process_number', operator: 'contains', value: '  ' }
     ]
     expect(normalizeFilterModels(models, definitions)).toEqual([])
   })
@@ -62,12 +83,61 @@ describe('data-table-filters', () => {
     expect(canConfirmDraftValue(definitions[1], '2026-07')).toBe(true)
   })
 
+  it('cria modelo text com operator contains', () => {
+    const model = createFilterModel(definitions[3]!, '  ABC  ')
+    expect(model).toEqual({
+      key: 'process_number',
+      operator: 'contains',
+      value: 'ABC',
+      label: 'ABC'
+    })
+    expect(canConfirmDraftValue(definitions[3], '')).toBe(false)
+    expect(canConfirmDraftValue(definitions[3], 'x')).toBe(true)
+  })
+
+  it('cria modelo boolean com rótulos', () => {
+    expect(createFilterModel(definitions[4]!, true)).toEqual({
+      key: 'is_overdue',
+      operator: 'eq',
+      value: true,
+      label: 'Sim'
+    })
+    expect(createFilterModel(definitions[4]!, false)?.label).toBe('Não')
+    expect(canConfirmDraftValue(definitions[4], true)).toBe(true)
+    expect(canConfirmDraftValue(definitions[4], null)).toBe(false)
+  })
+
+  it('cria modelo date e date_range', () => {
+    expect(createFilterModel(definitions[5]!, '2026-07-17')).toMatchObject({
+      key: 'due_at',
+      operator: 'eq',
+      value: '2026-07-17'
+    })
+    expect(createFilterModel(definitions[5]!, '2026-99-01')).toBeNull()
+
+    const range = createFilterModel(definitions[6]!, '2026-01-01..2026-01-31')
+    expect(range).toMatchObject({
+      key: 'consulted',
+      operator: 'between',
+      value: '2026-01-01..2026-01-31'
+    })
+    expect(canConfirmDraftValue(definitions[6], '2026-01-01', '2026-01-31')).toBe(true)
+    expect(canConfirmDraftValue(definitions[6], '2026-02-01', '2026-01-01')).toBe(false)
+  })
+
   it('não lista campos já ativos para adição', () => {
     const applied = normalizeFilterModels([
       { key: 'situation', operator: 'eq', value: 'PENDING' }
     ], definitions)
     const inactive = inactiveDefinitions(applied, definitions)
-    expect(inactive.map(item => item.key)).toEqual(['competence', 'clientId'])
+    expect(inactive.map(item => item.key)).toEqual([
+      'competence',
+      'clientId',
+      'process_number',
+      'is_overdue',
+      'due_at',
+      'consulted'
+    ])
   })
 
   it('upsert substitui e remove emite sem a chave', () => {
