@@ -13,12 +13,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:gate": "pnpm run lint && pnpm run typecheck && pnpm run test",
-    "test:e2e": "playwright test",
-    "test:e2e:fast": "playwright test --project=desktop-1440",
-    "test:e2e:smoke": "playwright test smoke.spec.ts --project=desktop-1440",
-    "test:e2e:visual": "PLAYWRIGHT_INCLUDE_VISUAL=1 playwright test visual.spec.ts monitoring-visual.spec.ts work-visual.spec.ts",
+    "test:e2e": "node -e \"console.error('E2E Playwright desabilitado no frontend. Gate: pnpm run test:gate (vitest unit).'); process.exit(1)\"",
+    "test:e2e:fast": "pnpm run test:e2e",
+    "test:e2e:smoke": "pnpm run test:e2e",
+    "test:e2e:visual": "pnpm run test:e2e",
     "test:artifacts": "node tests/security/scan-artifacts.mjs",
-    "test:fidelity": "node scripts/template-fidelity-gate.mjs"
+    "test:fidelity": "node scripts/template-fidelity-gate.mjs",
+    "cleanup:browsers": "node scripts/cleanup-dev-browsers.mjs"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.116",
@@ -40,13 +41,11 @@
   "devDependencies": {
     "@nuxt/eslint": "^1.16.0",
     "@nuxt/test-utils": "^4.0.3",
-    "@playwright/test": "^1.61.1",
     "@types/node": "^26.1.1",
     "@vite-pwa/nuxt": "^1.1.1",
     "@vue/test-utils": "^2.4.11",
     "eslint": "^10.7.0",
     "happy-dom": "^20.10.6",
-    "playwright": "^1.61.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
     "vue-tsc": "^3.3.7"

@@ -455,6 +455,89 @@ export async function installPlatformApiFixtures(page: Page) {
       })
     }
 
+    if (pathname.endsWith('/api/v1/platform/offices/admin') && method === 'GET') {
+      return fulfill(route, {
+        data: [{
+          id: 1,
+          name: PLATFORM_OFFICE_NAME,
+          slug: 'plataforma',
+          is_active: true,
+          lifecycle_status: 'ACTIVE',
+          subscription: { plan: 'PROFESSIONAL' },
+          activation: null,
+          created_at: FIXED_NOW
+        }, {
+          id: 2,
+          name: GENERIC_ACCOUNTANT_OFFICE_NAME,
+          slug: 'demo',
+          is_active: false,
+          lifecycle_status: 'PENDING_ACTIVATION',
+          subscription: { plan: 'STARTER' },
+          activation: {
+            id: 22,
+            purpose: 'PLATFORM_OFFICE_ACTIVATION',
+            method: 'MANUAL_LINK',
+            status: 'pending',
+            expires_at: '2026-07-21T15:00:00.000Z'
+          },
+          created_at: FIXED_NOW
+        }]
+      })
+    }
+
+    if (/\/api\/v1\/platform\/offices\/\d+$/.test(pathname) && method === 'GET') {
+      const id = Number(pathname.split('/').at(-1))
+      return fulfill(route, {
+        data: {
+          id,
+          name: id === 2 ? GENERIC_ACCOUNTANT_OFFICE_NAME : PLATFORM_OFFICE_NAME,
+          slug: id === 2 ? 'demo' : 'plataforma',
+          is_active: id !== 2,
+          lifecycle_status: id === 2 ? 'PENDING_ACTIVATION' : 'ACTIVE',
+          created_at: FIXED_NOW,
+          profile: {
+            id,
+            cnpj: id === 2 ? '98XYZ765432100' : '12ABC345678900',
+            legal_name: id === 2 ? 'Contador Genérico LTDA' : 'Plataforma Fiscal LTDA',
+            institutional_email: 'contato@example.com',
+            institutional_phone: '+55 98 3000-0000',
+            is_complete: true
+          },
+          subscription: { plan: id === 2 ? 'STARTER' : 'PROFESSIONAL' },
+          first_admin: {
+            membership_id: 202,
+            user_id: 102,
+            name: 'Admin Inicial',
+            email: 'admin.inicial@example.com',
+            is_active: true
+          },
+          activation: id === 2
+            ? {
+                id: 22,
+                purpose: 'PLATFORM_OFFICE_ACTIVATION',
+                method: 'MANUAL_LINK',
+                status: 'pending',
+                expires_at: '2026-07-21T15:00:00.000Z'
+              }
+            : null
+        }
+      })
+    }
+
+    if (pathname.endsWith('/api/v1/platform/owner') && method === 'GET') {
+      return fulfill(route, {
+        data: {
+          user_id: 99,
+          name: 'Admin Plataforma Demo',
+          email: 'plataforma@example.com',
+          is_active: true,
+          default_office_id: activeOfficeId,
+          default_office: office(),
+          created_at: FIXED_NOW
+        }
+      })
+    }
+
     if (pathname.endsWith('/api/v1/platform/offices') && method === 'GET') {
       return fulfill(route, {
         data: {

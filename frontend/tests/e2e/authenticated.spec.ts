@@ -53,15 +53,15 @@ for (const role of ['ADMIN', 'OPERATOR', 'VIEWER'] satisfies OfficeRole[]) {
         await page.getByRole('button', { name: 'Abrir barra lateral' }).click()
       }
       const settings = page.getByRole('button', { name: 'Configurações', exact: true })
-      const platformHub = page.getByRole('link', { name: 'Hub plataforma', exact: true })
+      const platformAdmin = page.getByRole('button', { name: 'Admin', exact: true })
       if (role === 'ADMIN') {
         await settings.click()
         await expect(page.getByRole('link', { name: 'Escritório', exact: true })).toBeVisible()
         // Hub /admin é exclusivo PLATFORM_ADMIN
-        await expect(platformHub).toHaveCount(0)
+        await expect(platformAdmin).toHaveCount(0)
       } else {
         await expect(settings).toHaveCount(0)
-        await expect(platformHub).toHaveCount(0)
+        await expect(platformAdmin).toHaveCount(0)
       }
     })
   })

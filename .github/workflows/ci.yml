@@ -58,20 +58,14 @@ jobs:
       - name: Validar tipos
         run: pnpm run typecheck
       - name: Gerar SPA
-        # O preview/E2E consome o artefato estático; generate deve vir antes.
         run: pnpm run generate
       - name: Executar testes unitários
         run: pnpm run test
       - name: Validar fidelidade ao arquétipo do change ativo
         run: pnpm run test:fidelity
-      # Política: E2E funcional é gate obrigatório no CI (desktop + móvel, fixtures
-      # sanitizadas). Specs *visual* e baselines PNG em __screenshots__/ são só
-      # locais (gitignored) — rodar com `pnpm run test:e2e:visual` quando precisar.
-      # O scanner de artefatos roda mesmo se o Playwright falhar.
-      - name: Instalar Chromium do Playwright
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Executar testes E2E
-        run: pnpm run test:e2e
+      # Política: gate frontend = lint + typecheck + generate + vitest unit + fidelity.
+      # Playwright E2E foi desabilitado (custo de RAM/CPU no VPS/CI e sessões órfãs).
+      # Cobertura de UI/contrato fica em tests/unit/** (happy-dom/node).
       - name: Varrer artefatos sensíveis
         if: always()
         run: pnpm run test:artifacts

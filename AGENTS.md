@@ -61,12 +61,14 @@ pnpm run lint
 pnpm run typecheck
 pnpm run generate          # CI + produção (static)
 pnpm run test              # vitest: tests/unit/**
-pnpm run test:e2e          # playwright funcional (pula *visual*; sobe preview se PLAYWRIGHT_BASE_URL vazio)
-pnpm run test:e2e:visual   # regressão visual local (__screenshots__/ gitignored; use --update-snapshots)
+pnpm run test:gate         # lint + typecheck + test (gate oficial)
 pnpm run test:fidelity     # gate template (precisa matrix OpenSpec se referenciada)
+pnpm run cleanup:browsers  # encerra playwright-mcp / chrome headless / vite preview e2e órfãos
 ```
 
-CI frontend: `lint` → `typecheck` → `generate` (não roda vitest/e2e no workflow atual).
+**Playwright E2E está desabilitado.** Não rodar `test:e2e*`, não instalar Chromium do Playwright, não reintroduzir `@playwright/test` no gate. Specs legados em `frontend/tests/e2e/` são só referência (`tests/e2e/README.md`). Cobertura = **unit** (`tests/unit/**`).
+
+CI frontend: `lint` → `typecheck` → `generate` → `test` (vitest) → `test:fidelity` → `test:artifacts`.
 
 ## Runtime (não adivinhar)
 
@@ -124,6 +126,22 @@ CI valida main specs e/ou change **ativa** — nunca path já em `archive/`.
 
 Produto: confiar em **código + CI + `openspec/specs/`**. Ops SERPRO: `docs/ops/runbooks/` quando existir. Não inventar docs/runbooks ausentes.
 
+## Higiene de recursos (VPS) — browser / MCP
+
+Playwright MCP, Chrome headless e `vite preview` de e2e **não devem ficar residuais**. No VPS isso enche swap e load (vários GBs).
+
+**Sempre ao terminar** uma tarefa que usou browser (MCP Playwright, chrome-devtools, inspeção visual):
+
+1. Fechar páginas/browser da sessão MCP (não deixar tab/Chromium aberto).
+2. Se a sessão do agente encerrar ou a tarefa acabar: rodar cleanup se houver dúvida de órfãos:
+   ```bash
+   cd frontend && pnpm run cleanup:browsers
+   # dry-run: CLEANUP_DRY_RUN=1 pnpm run cleanup:browsers
+   ```
+3. Preferir **unit/vitest** e leitura de código a browser automation para validar UI.
+4. **Não** subir `pnpm run test:e2e` / `playwright install` / preview na porta 4173 “por padrão”.
+5. Não acumular várias sessões de agente com MCP Playwright ao mesmo tempo no mesmo host.
+
 ## Não fazer
 
 - Commitar `.env`, `secrets/`, vault, certificados, dumps SQL, `frontend/.output`.
@@ -134,3 +152,4 @@ Produto: confiar em **código + CI + `openspec/specs/`**. Ops SERPRO: `docs/ops/
 - Archive OpenSpec sem commit de `openspec/specs/` + `changes/archive/` (ou CI apontando change arquivada).
 - Epic OpenSpec (dezenas de tasks / 5+ capabilities) sem fatiar; `[x]` em live ops sem evidence.
 - Commitar pastas de engine de agente (`.grok/`, `.codex/`, `.opencode/`) — gitignored; só local.
+- Rodar Playwright E2E do frontend (gate = unit); deixar `playwright-mcp` / Chrome headless / preview 4173 órfãos após a tarefa.

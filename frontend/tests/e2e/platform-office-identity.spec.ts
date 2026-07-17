@@ -16,6 +16,13 @@ async function revealOfficeIdentity(page: Page, projectName: string) {
   return page.getByRole('button', { name: /^Perfil PLATFORM_ADMIN\./ })
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const hasHorizontalScroll = await page.evaluate(() => (
+    document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+  ))
+  expect(hasHorizontalScroll).toBe(false)
+}
+
 test.describe('identidade PLATFORM_ADMIN e escritórios demo', () => {
   test.describe.configure({ timeout: 60_000 })
 
@@ -23,9 +30,46 @@ test.describe('identidade PLATFORM_ADMIN e escritórios demo', () => {
     await installPlatformApiFixtures(page)
   })
 
+  test('entrada admin redireciona para a lista de escritórios', async ({ page }) => {
+    await page.goto('/admin')
+
+    await expect(page).toHaveURL(/\/admin\/offices\/?$/)
+    await expect(page.getByTestId('admin-offices-panel')).toBeVisible()
+    await expect(page.getByTestId('admin-offices-toolbar')).toBeVisible()
+    await expect(page.getByTestId('admin-offices-table')).toBeVisible()
+    await expect(page.getByTestId('admin-global-office-selector')).toHaveCount(0)
+    await expect(page.getByTestId('admin-actor-card')).toHaveCount(0)
+
+    await expectNoHorizontalOverflow(page)
+  })
+
+  test('cadastro, detalhe e Proprietário mantêm hierarquia sem overflow', async ({ page }, testInfo) => {
+    await page.goto('/admin/offices/new')
+    await expect(page.getByTestId('admin-offices-new')).toBeVisible()
+    if (testInfo.project.name === 'desktop-1440') {
+      await expect(page.getByTestId('admin-office-stepper')).toBeVisible()
+    } else {
+      await expect(page.getByTestId('admin-office-mobile-progress')).toBeVisible()
+    }
+    await expectNoHorizontalOverflow(page)
+
+    await page.goto('/admin/offices/2')
+    await expect(page.getByTestId('admin-office-detail')).toBeVisible()
+    await expect(page.getByTestId('admin-office-summary')).toBeVisible()
+    await expect(page.getByTestId('admin-office-regenerate-card')).toBeVisible()
+    await expect(page.getByTestId('admin-office-first-admin-card')).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+
+    await page.goto('/admin/owner')
+    await expect(page.getByTestId('admin-owner-panel')).toBeVisible()
+    await expect(page.getByTestId('admin-owner-card')).toBeVisible()
+    await expect(page.getByTestId('admin-owner-save')).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+  })
+
   test('mantém o Office ativo em uma linha e o contexto discreto no rodapé', async ({ page }, testInfo) => {
     await page.goto('/admin')
-    await expect(page.getByTestId('admin-platform-panel')).toBeVisible()
+    await expect(page.getByTestId('admin-offices-panel')).toBeVisible()
 
     const identity = await revealOfficeIdentity(page, testInfo.project.name)
     await expect(identity).toBeVisible()

@@ -1,3 +1,8 @@
+/**
+ * LEGADO — E2E Playwright desabilitado no gate (ver tests/e2e/README.md e AGENTS.md).
+ * Este arquivo permanece só como referência; `pnpm run test:e2e` é stub e as deps
+ * @playwright/test / playwright foram removidas do package.json.
+ */
 import { defineConfig, devices } from '@playwright/test'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4173'
@@ -35,7 +40,7 @@ export default defineConfig({
         command: 'pnpm run generate && pnpm exec vite preview --host 127.0.0.1 --port 4173 --strictPort --outDir .output/public',
         url: baseURL,
         reuseExistingServer: false,
-        timeout: 180_000
+        timeout: 360_000
       },
   use: {
     baseURL,
