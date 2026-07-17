@@ -352,6 +352,26 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/fiscal/simples-mei/das', [SimplesMeiController::class, 'generateDas']);
             Route::post('/fiscal/simples-mei/transmit', [SimplesMeiController::class, 'transmit']);
 
+            // PGDAS-D: histórico local, documentos, comunicação TEMPLATE_ONLY
+            // Contrato canônico do SPA: /fiscal/simples-mei/pgdasd/...
+            Route::get('/fiscal/simples-mei/pgdasd/clients/{client}/history', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'history']);
+            Route::post('/fiscal/simples-mei/pgdasd/clients/{client}/documents', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'collectDocuments']);
+            Route::get('/fiscal/simples-mei/pgdasd/artifacts/{artifact}/download', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'downloadArtifactById']);
+            Route::patch('/fiscal/simples-mei/pgdasd/clients/{client}/communication-preference', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'updatePreferences']);
+            Route::patch('/fiscal/simples-mei/pgdasd/communication-preferences/bulk', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'batchPreferences']);
+            Route::get('/fiscal/simples-mei/pgdasd/clients/{client}/communication-preview', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'preview']);
+            Route::get('/fiscal/simples-mei/pgdasd/clients/{client}/communications', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'tracking']);
+
+            // Alias legado (prefixo /fiscal/pgdasd) — HATEOAS/SPA usam o canônico simples-mei/pgdasd
+            Route::get('/fiscal/pgdasd/clients/{client}/history', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'history']);
+            Route::post('/fiscal/pgdasd/clients/{client}/documents', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'collectDocuments']);
+            Route::get('/fiscal/pgdasd/artifacts/{artifact}/download', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'downloadArtifactById']);
+            Route::get('/fiscal/pgdasd/clients/{client}/artifacts/{artifact}/download', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'downloadArtifact']);
+            Route::patch('/fiscal/pgdasd/clients/{client}/communication-preference', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'updatePreferences']);
+            Route::patch('/fiscal/pgdasd/communication-preferences/bulk', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'batchPreferences']);
+            Route::get('/fiscal/pgdasd/clients/{client}/communication-preview', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'preview']);
+            Route::get('/fiscal/pgdasd/clients/{client}/communications', [\App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController::class, 'tracking']);
+
             // FGTS parcial via eSocial (cobertura explícita; sem portal FGTS Digital)
             Route::get('/fiscal/fgts/coverage', [FgtsEsocialController::class, 'coverage']);
             Route::get('/fiscal/fgts/competences', [FgtsEsocialController::class, 'competences']);

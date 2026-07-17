@@ -10,6 +10,10 @@ use App\DTO\Serpro\MutationAuthorization;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutability;
 use App\Enums\SerproEnvironment;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdConsDeclaracao13Codec;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdDocumentCodecs;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPeriod;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPostConsultService;
 use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\OfficeSerproAuthorizationService;
@@ -18,6 +22,7 @@ use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproOperationService;
 use App\Support\FeatureFlags;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 /**
  * Adapter genérico por definição do catálogo Simples/MEI.
@@ -34,6 +39,9 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         private readonly RegimeApplicabilityService $regimeApplicability,
         private readonly DasGuideHookService $dasGuideHook,
         private readonly ContributorCnpjResolver $contributors,
+        private readonly PgdasdConsDeclaracao13Codec $pgdasdCodec13,
+        private readonly PgdasdDocumentCodecs $pgdasdDocumentCodecs,
+        private readonly PgdasdPostConsultService $pgdasdPostConsult,
     ) {}
 
     public function systemCode(): string
@@ -176,16 +184,24 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         $correlationId = $request->run->correlation_id ?? (string) Str::uuid();
         $idempotencyKey = 'sm:'.$request->run->idempotency_key.':'.$def->operationCode;
 
-        $payload = $this->buildPayload($request, $periodKey);
-
         try {
             $operationKey = OperationKeyMap::require(
                 null,
                 $def->systemCode,
                 $def->serviceCode,
-                $def->operationCode,
+                $this->mapExternalOperation($def),
             );
+            $payload = $this->buildPayload($request, $periodKey, $operationKey);
+        } catch (InvalidArgumentException $e) {
+            return FiscalAdapterResult::failed($e->getMessage(), 'INVALID_PAYLOAD');
+        } catch (\Throwable $e) {
+            return FiscalAdapterResult::failed(
+                'Falha ao montar payload da operação.',
+                'PAYLOAD_BUILD_ERROR',
+            );
+        }
 
+        try {
             $response = $this->operations->execute(
                 office: $office,
                 client: $client,
@@ -204,6 +220,14 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         }
 
         $result = $this->mapper->map($def, $response, $periodKey);
+
+        // PGDAS-D 13–16: projeção + sanitização documental
+        if (strtoupper($def->serviceCode) === 'PGDASD'
+            && str_starts_with($operationKey, 'pgdasd.')
+            && $result->result->value === 'SUCCESS') {
+            $post = $this->pgdasdPostConsult->handle($request, $response, $result, $operationKey);
+            $result = $post['result'];
+        }
 
         // Projeções laterais (regime / guia) sem alterar evidência
         if ($result->result->value === 'SUCCESS' && is_array($result->normalized)) {
@@ -260,10 +284,16 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
     }
 
     /**
+     * Payload oficial por operation_key. PGDAS-D 13 usa XOR ano/PA.
+     *
      * @return array<string, mixed>
      */
-    private function buildPayload(FiscalAdapterRequest $request, string $periodKey): array
+    private function buildPayload(FiscalAdapterRequest $request, string $periodKey, string $operationKey): array
     {
+        if (str_starts_with($operationKey, 'pgdasd.')) {
+            return $this->buildPgdasdPayload($request, $periodKey, $operationKey);
+        }
+
         $payload = [
             'periodo' => $periodKey,
             'competencia' => $periodKey,
@@ -278,5 +308,76 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         }
 
         return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildPgdasdPayload(FiscalAdapterRequest $request, string $periodKey, string $operationKey): array
+    {
+        $ctx = $request->context;
+        $progress = $request->progress;
+
+        return match ($operationKey) {
+            'pgdasd.consdeclaracao' => $this->buildConsDeclaracao13Payload($request, $periodKey),
+            'pgdasd.consultimadecrec' => $this->pgdasdDocumentCodecs->buildPayload14(
+                (string) ($ctx['periodoApuracao']
+                    ?? $progress['periodo_apuracao']
+                    ?? ($periodKey !== '' ? PgdasdPeriod::periodoApuracaoFromPeriodKey($periodKey) : ''))
+            ),
+            'pgdasd.consdecrec' => $this->pgdasdDocumentCodecs->buildPayload15(
+                (string) ($ctx['numeroDeclaracao'] ?? $progress['numero_declaracao'] ?? '')
+            ),
+            'pgdasd.consextrato' => $this->pgdasdDocumentCodecs->buildPayload16(
+                (string) ($ctx['numeroDas'] ?? $progress['numero_das'] ?? '')
+            ),
+            default => [
+                'periodo' => $periodKey,
+                'competencia' => $periodKey,
+            ],
+        };
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function buildConsDeclaracao13Payload(FiscalAdapterRequest $request, string $periodKey): array
+    {
+        $ctx = $request->context;
+        $progress = $request->progress;
+
+        $ano = isset($ctx['anoCalendario'])
+            ? (string) $ctx['anoCalendario']
+            : (isset($progress['ano_calendario']) ? (string) $progress['ano_calendario'] : null);
+        $pa = isset($ctx['periodoApuracao'])
+            ? (string) $ctx['periodoApuracao']
+            : (isset($progress['periodo_apuracao']) ? (string) $progress['periodo_apuracao'] : null);
+
+        // Scheduler congela PA esperado e consulta o ANO do PA (serviço 13 anual).
+        if (($ano === null || $ano === '') && ($pa === null || $pa === '')) {
+            $expected = $progress['expected_periodo_apuracao']
+                ?? $ctx['expected_periodo_apuracao']
+                ?? null;
+            if (is_string($expected) && preg_match('/^\d{6}$/', $expected) === 1) {
+                $ano = substr($expected, 0, 4);
+            } elseif ($periodKey !== '') {
+                try {
+                    $parsed = PgdasdPeriod::parse($periodKey);
+                    $ano = PgdasdPeriod::yearFromPa($parsed);
+                } catch (\Throwable) {
+                    $ano = null;
+                }
+            } else {
+                $tz = (string) ($request->office->timezone ?? 'America/Sao_Paulo') ?: 'America/Sao_Paulo';
+                $expectedPa = PgdasdPeriod::expectedPa(null, $tz);
+                $ano = PgdasdPeriod::yearFromPa($expectedPa);
+            }
+        }
+
+        // Se ambos vierem, rejeita (XOR). Se só PA, usa PA. Se só ano, usa ano.
+        return $this->pgdasdCodec13->buildPayload(
+            ($ano !== null && $ano !== '') ? $ano : null,
+            ($pa !== null && $pa !== '') ? $pa : null,
+        );
     }
 }

@@ -109,6 +109,21 @@ class Client extends Model
         return $this->hasMany(ClientContact::class);
     }
 
+    public function communicationPreferences(): HasMany
+    {
+        return $this->hasMany(ClientCommunicationPreference::class);
+    }
+
+    public function communicationDispatches(): HasMany
+    {
+        return $this->hasMany(ClientCommunicationDispatch::class);
+    }
+
+    public function pgdasdOperations(): HasMany
+    {
+        return $this->hasMany(PgdasdOperation::class);
+    }
+
     public function customFields(): HasMany
     {
         return $this->hasMany(ClientCustomField::class);

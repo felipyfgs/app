@@ -69,6 +69,9 @@ use App\Services\Fiscal\Guides\SerproGuideEmissionClient;
 use App\Services\Fiscal\Mutations\FakeFiscalMutationTransport;
 use App\Services\Fiscal\Mutations\IntegraFiscalMutationTransport;
 use App\Services\Fiscal\SimplesMei\DasGuideHookService;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdConsDeclaracao13Codec;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdDocumentCodecs;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPostConsultService;
 use App\Services\Fiscal\SimplesMei\RegimeApplicabilityService;
 use App\Services\Fiscal\SimplesMei\SimplesMeiAdapter;
 use App\Services\Fiscal\SimplesMei\SimplesMeiCatalog;
@@ -464,6 +467,9 @@ class AppServiceProvider extends ServiceProvider
                 regimeApplicability: $this->app->make(RegimeApplicabilityService::class),
                 dasGuideHook: $this->app->make(DasGuideHookService::class),
                 contributors: $this->app->make(ContributorCnpjResolver::class),
+                pgdasdCodec13: $this->app->make(PgdasdConsDeclaracao13Codec::class),
+                pgdasdDocumentCodecs: $this->app->make(PgdasdDocumentCodecs::class),
+                pgdasdPostConsult: $this->app->make(PgdasdPostConsultService::class),
             ));
         }
 

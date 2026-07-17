@@ -41,14 +41,18 @@ final class OperationKeyMap
         'MIT|MIT|ENCAPURACAO' => 'mit.encapuracao',
         'MIT|MIT|LISTAAPURACOES' => 'mit.listaapuracoes',
 
-        // PGDASD / DEFIS / REGIME
+        // PGDASD / DEFIS / REGIME (oficiais 13–16)
         'INTEGRA_SN|PGDASD|MONITOR' => 'pgdasd.consdeclaracao',
         'INTEGRA_SN|PGDASD|CONSULTAR_DECLARACAO' => 'pgdasd.consdeclaracao',
+        'INTEGRA_SN|PGDASD|CONSULTAR_ULTIMA_DECLARACAO_RECIBO' => 'pgdasd.consultimadecrec',
         'INTEGRA_SN|PGDASD|CONSULTAR_RECIBO' => 'pgdasd.consdecrec',
         'INTEGRA_SN|PGDASD|CONSULTAR_EXTRATO' => 'pgdasd.consextrato',
         'INTEGRA_SN|PGDASD|GERAR_DAS' => 'pgdasd.gerardas',
         'INTEGRA_SN|PGDASD|TRANSMITIR' => 'pgdasd.transdeclaracao',
         'PGDASD|PGDASD|CONSDECLARACAO' => 'pgdasd.consdeclaracao',
+        'PGDASD|PGDASD|CONSULTIMADECREC' => 'pgdasd.consultimadecrec',
+        'PGDASD|PGDASD|CONSDECREC' => 'pgdasd.consdecrec',
+        'PGDASD|PGDASD|CONSEXTRATO' => 'pgdasd.consextrato',
         'PGDASD|PGDASD|TRANSDECLARACAO' => 'pgdasd.transdeclaracao',
         'PGDASD|PGDASD|GERARDAS' => 'pgdasd.gerardas',
 

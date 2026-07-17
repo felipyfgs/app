@@ -132,13 +132,11 @@ final class MonitoringSurfaceRegistry
                 responsibility: 'Declarações PGDAS-D e seus documentos',
                 channel: MonitoringChannel::Integra,
                 operationKeys: [
+                    // Superfície de monitoramento: apenas consultas oficiais 13–16 (sem emissão)
                     'pgdasd.consdeclaracao',
+                    'pgdasd.consultimadecrec',
                     'pgdasd.consdecrec',
                     'pgdasd.consextrato',
-                    'pgdasd.gerardas',
-                    'pgdasd.gerardascobranca',
-                    'pgdasd.gerardasprocesso',
-                    'pgdasd.gerardasavulso',
                 ],
                 officialState: MonitoringOfficialStateSummary::Production,
                 resultKind: MonitoringResultKind::Pdf,

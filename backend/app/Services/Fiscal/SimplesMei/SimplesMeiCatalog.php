@@ -29,11 +29,13 @@ final class SimplesMeiCatalog
         $mei = TaxRegimeCode::Mei;
 
         return [
-            // —— Simples Nacional (PGDAS-D, DEFIS, Regime) ——
-            new SimplesMeiOperationDef('INTEGRA_SN', 'PGDASD', 'MONITOR', self::DTO_VERSION, $ro, $full, $sn, ['PGDASD'], 'CONSULTA', true, 'Monitor PGDAS-D'),
-            new SimplesMeiOperationDef('INTEGRA_SN', 'PGDASD', 'CONSULTAR_DECLARACAO', self::DTO_VERSION, $ro, $full, $sn, ['PGDASD'], 'CONSULTA', false, 'Consultar declaração PGDAS-D'),
-            new SimplesMeiOperationDef('INTEGRA_SN', 'PGDASD', 'CONSULTAR_RECIBO', self::DTO_VERSION, $ro, $full, $sn, ['PGDASD'], 'CONSULTA', false, 'Consultar recibo PGDAS-D'),
-            new SimplesMeiOperationDef('INTEGRA_SN', 'PGDASD', 'CONSULTAR_EXTRATO', self::DTO_VERSION, $ro, $full, $sn, ['PGDASD'], 'CONSULTA', false, 'Consultar extrato PGDAS-D'),
+            // —— Simples Nacional (PGDAS-D oficiais 13–16 + emissão fora da superfície de monitoramento) ——
+            new SimplesMeiOperationDef('INTEGRA_SN', 'PGDASD', 'MONITOR', self::DTO_VERSION, $ro, $full, $sn, ['PGDASD'], 'CONSULTA', true, 'Monitor PGDAS-D (CONSDECLARACAO13)'),
+            new SimplesMeiOperationDef('INTEGRA_SN', 'PGDASD', 'CONSULTAR_DECLARACAO', self::DTO_VERSION, $ro, $full, $sn, ['PGDASD'], 'CONSULTA', false, 'Consultar declarações por ano/PA (13)'),
+            new SimplesMeiOperationDef('INTEGRA_SN', 'PGDASD', 'CONSULTAR_ULTIMA_DECLARACAO_RECIBO', self::DTO_VERSION, $ro, $full, $sn, ['PGDASD'], 'CONSULTA', false, 'Consultar última declaração/recibo (14)'),
+            new SimplesMeiOperationDef('INTEGRA_SN', 'PGDASD', 'CONSULTAR_RECIBO', self::DTO_VERSION, $ro, $full, $sn, ['PGDASD'], 'CONSULTA', false, 'Consultar declaração/recibo por número (15)'),
+            new SimplesMeiOperationDef('INTEGRA_SN', 'PGDASD', 'CONSULTAR_EXTRATO', self::DTO_VERSION, $ro, $full, $sn, ['PGDASD'], 'CONSULTA', false, 'Consultar extrato do DAS (16)'),
+            // Emissão permanece no catálogo de domínio, fora da surface de monitoramento
             new SimplesMeiOperationDef('INTEGRA_SN', 'PGDASD', 'GERAR_DAS', self::DTO_VERSION, $mu, $full, $sn, ['PGDASD'], 'EMISSAO', false, 'Gerar DAS (assistido)'),
             new SimplesMeiOperationDef('INTEGRA_SN', 'PGDASD', 'TRANSMITIR', self::DTO_VERSION, $mu, $full, $sn, ['PGDASD'], 'DECLARACAO', false, 'Transmitir PGDAS-D'),
 

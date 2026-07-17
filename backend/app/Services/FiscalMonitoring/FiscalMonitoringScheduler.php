@@ -16,6 +16,7 @@ use App\Models\MonitorCommercialLedgerEntry;
 use App\Models\Office;
 use App\Models\OfficeMonitorSchedulePolicy;
 use App\Models\OfficeSubscription;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPeriod;
 use App\Services\Serpro\CapabilityDriverResolver;
 use App\Services\Usage\CommercialMonitorCatalog;
 use App\Services\Usage\MonitorCommercialLedgerService;
@@ -511,12 +512,17 @@ final class FiscalMonitoringScheduler
             'coverage' => 'UNKNOWN',
             'mutability' => 'READ_ONLY',
             'correlation_id' => bin2hex(random_bytes(8)),
-            'progress' => [
-                'commercial_ledger_entry_id' => $entry->id,
-                'monitor_key' => $monitorKey,
-                'commercial_origin' => $entry->origin->value,
-                'period_key' => $entry->period_key,
-            ],
+            // PGDAS primeiro; period_key comercial por cima — não sobrescrever o ledger
+            // (assinatura = data YYYY-MM-DD) com o PA fiscal (YYYY-MM).
+            'progress' => array_merge(
+                $this->pgdasdProgressForCodes($systemCode, $serviceCode, $officeId, $now),
+                [
+                    'commercial_ledger_entry_id' => $entry->id,
+                    'monitor_key' => $monitorKey,
+                    'commercial_origin' => $entry->origin->value,
+                    'period_key' => $entry->period_key,
+                ],
+            ),
         ]);
 
         // Metadata no ledger (sem mutar identidade).
@@ -630,6 +636,12 @@ final class FiscalMonitoringScheduler
                 'coverage' => 'UNKNOWN',
                 'mutability' => 'READ_ONLY',
                 'correlation_id' => bin2hex(random_bytes(8)),
+                'progress' => $this->pgdasdProgressForCodes(
+                    (string) $locked->system_code,
+                    (string) $locked->service_code,
+                    (int) $locked->office_id,
+                    $now,
+                ) ?: null,
             ]);
 
             $locked->forceFill([
@@ -647,6 +659,39 @@ final class FiscalMonitoringScheduler
         }
 
         return $created;
+    }
+
+    /**
+     * Congela PA esperado (mês anterior no fuso do escritório) no progress da run PGDAS-D.
+     * O serviço 13 usa o ano desse PA; última consulta válida avança só em resposta produtiva.
+     *
+     * @return array<string, mixed>
+     */
+    private function pgdasdProgressForCodes(string $systemCode, string $serviceCode, int $officeId, CarbonImmutable $now): array
+    {
+        $isPgdasd = strtoupper($serviceCode) === 'PGDASD'
+            || (strtoupper($systemCode) === 'INTEGRA_SN' && strtoupper($serviceCode) === 'PGDASD')
+            || strtoupper($systemCode) === 'PGDASD';
+
+        if (! $isPgdasd && ! in_array(strtoupper($serviceCode), ['PGDASD', 'SIMPLES'], true)) {
+            // monitores comerciais simples_mei usam monitor_key pgdasd
+            if (! str_contains(strtolower($serviceCode), 'pgdas')) {
+                return [];
+            }
+        }
+
+        $office = Office::query()->find($officeId);
+        $tz = is_string($office?->timezone) && $office->timezone !== ''
+            ? $office->timezone
+            : 'America/Sao_Paulo';
+        $pa = PgdasdPeriod::expectedPa($now, $tz);
+
+        return [
+            'expected_periodo_apuracao' => PgdasdPeriod::toPeriodoApuracao($pa),
+            'period_key' => PgdasdPeriod::toPeriodKey($pa),
+            'ano_calendario' => PgdasdPeriod::yearFromPa($pa),
+            'pgdasd_pa_frozen_at' => $now->toIso8601String(),
+        ];
     }
 
     /**

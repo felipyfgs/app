@@ -34,7 +34,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'closed_at',
     'conclusive_evidence_id',
     'evidence_artifact_id',
+    'last_valid_query_at',
+    'last_valid_run_id',
+    'last_valid_snapshot_id',
     'metadata',
+    'pgdasd_declaration_state',
+    'pgdasd_last_productive_consulted_at',
+    'pgdasd_last_declaration_operation_id',
+    'pgdasd_latest_rbt12_projection_id',
+    'pgdasd_calendar_version_code',
+    'pgdasd_calendar_verified',
 ])]
 class TaxObligationProjection extends Model
 {
@@ -53,7 +62,11 @@ class TaxObligationProjection extends Model
             'due_history' => 'array',
             'is_open' => 'boolean',
             'closed_at' => 'immutable_datetime',
+            'last_valid_query_at' => 'immutable_datetime',
             'metadata' => 'array',
+            'pgdasd_declaration_state' => \App\Enums\PgdasdDeclarationState::class,
+            'pgdasd_last_productive_consulted_at' => 'immutable_datetime',
+            'pgdasd_calendar_verified' => 'boolean',
         ];
     }
 
@@ -97,6 +110,41 @@ class TaxObligationProjection extends Model
         return $this->hasMany(TaxDeliveryEvidence::class, 'projection_id');
     }
 
+    public function lastValidRun(): BelongsTo
+    {
+        return $this->belongsTo(FiscalMonitoringRun::class, 'last_valid_run_id');
+    }
+
+    public function lastValidSnapshot(): BelongsTo
+    {
+        return $this->belongsTo(FiscalSnapshot::class, 'last_valid_snapshot_id');
+    }
+
+    public function pgdasdOperations(): HasMany
+    {
+        return $this->hasMany(PgdasdOperation::class, 'projection_id');
+    }
+
+    public function pgdasdArtifacts(): HasMany
+    {
+        return $this->hasMany(PgdasdArtifact::class, 'projection_id');
+    }
+
+    public function pgdasdRbt12Projections(): HasMany
+    {
+        return $this->hasMany(PgdasdRbt12Projection::class, 'projection_id');
+    }
+
+    public function pgdasdLastDeclarationOperation(): BelongsTo
+    {
+        return $this->belongsTo(PgdasdOperation::class, 'pgdasd_last_declaration_operation_id');
+    }
+
+    public function pgdasdLatestRbt12Projection(): BelongsTo
+    {
+        return $this->belongsTo(PgdasdRbt12Projection::class, 'pgdasd_latest_rbt12_projection_id');
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -137,6 +185,7 @@ class TaxObligationProjection extends Model
             'closed_at' => $this->closed_at?->toIso8601String(),
             'conclusive_evidence_id' => $this->conclusive_evidence_id,
             'evidence_artifact_id' => $this->evidence_artifact_id,
+            'last_valid_query_at' => $this->last_valid_query_at?->toIso8601String(),
             'obligation_version' => $this->relationLoaded('obligationVersion')
                 ? $this->obligationVersion?->toPublicArray()
                 : null,

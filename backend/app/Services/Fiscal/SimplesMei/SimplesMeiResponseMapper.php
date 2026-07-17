@@ -36,10 +36,15 @@ final class SimplesMeiResponseMapper
         }
 
         $body = $response->body;
-        $evidence = json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        // Preferir response.dados (contrato oficial); fallback body para fixtures legadas
+        $payload = $this->resolvePayload($response);
+        $evidence = json_encode(
+            $this->evidenceSafeBody($body, $payload, $def),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
 
         try {
-            [$situation, $normalized, $findings] = $this->parse($def, $body, $periodKey);
+            [$situation, $normalized, $findings] = $this->parse($def, $payload, $periodKey);
         } catch (InvalidArgumentException $e) {
             return FiscalAdapterResult::failed($e->getMessage(), 'DTO_VERSION_UNSUPPORTED', $def->coverage);
         }
@@ -80,7 +85,13 @@ final class SimplesMeiResponseMapper
         $service = strtoupper($def->serviceCode);
         $op = strtoupper($def->operationCode);
 
-        if ($service === 'PGDASD' && in_array($op, ['MONITOR', 'CONSULTAR_DECLARACAO', 'CONSULTAR_RECIBO', 'CONSULTAR_EXTRATO'], true)) {
+        if ($service === 'PGDASD' && in_array($op, [
+            'MONITOR',
+            'CONSULTAR_DECLARACAO',
+            'CONSULTAR_ULTIMA_DECLARACAO_RECIBO',
+            'CONSULTAR_RECIBO',
+            'CONSULTAR_EXTRATO',
+        ], true)) {
             $dto = PgdasdDeclarationDto::fromIntegraBody($body, $periodKey);
 
             return [$dto->situation, $dto->toNormalized(), $this->findingsFromSituation($dto->situation, 'PGDASD', $dto->status)];
@@ -217,5 +228,76 @@ final class SimplesMeiResponseMapper
         }
 
         return [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolvePayload(IntegraResponse $response): array
+    {
+        $dados = $response->dados;
+        if (is_string($dados) && $dados !== '') {
+            $decoded = json_decode($dados, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+        if (is_array($dados) && $dados !== []) {
+            return $dados;
+        }
+        if (isset($response->body['dados'])) {
+            $inner = $response->body['dados'];
+            if (is_string($inner)) {
+                $decoded = json_decode($inner, true);
+                if (is_array($decoded)) {
+                    return $decoded;
+                }
+            }
+            if (is_array($inner)) {
+                return $inner;
+            }
+        }
+
+        return $response->body;
+    }
+
+    /**
+     * Evidence JSON: para ops documentais, não embute Base64 de PDF.
+     *
+     * @param  array<string, mixed>  $body
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function evidenceSafeBody(array $body, array $payload, SimplesMeiOperationDef $def): array
+    {
+        if (strtoupper($def->serviceCode) !== 'PGDASD') {
+            return $body;
+        }
+        $op = strtoupper($def->operationCode);
+        if (! in_array($op, [
+            'CONSULTAR_ULTIMA_DECLARACAO_RECIBO',
+            'CONSULTAR_RECIBO',
+            'CONSULTAR_EXTRATO',
+        ], true)) {
+            return ['dados' => $payload, 'status' => $body['status'] ?? null];
+        }
+
+        $strip = static function (array $node) use (&$strip): array {
+            foreach (['pdf', 'recibo', 'pdfNotificacao', 'pdfDarf', 'extrato', 'declaracao'] as $field) {
+                if (isset($node[$field]) && is_string($node[$field]) && strlen($node[$field]) > 64) {
+                    $node[$field] = ['sanitized' => true, 'omitted' => true];
+                }
+            }
+            if (isset($node['maed']) && is_array($node['maed'])) {
+                $node['maed'] = $strip($node['maed']);
+            }
+
+            return $node;
+        };
+
+        return [
+            'status' => $body['status'] ?? null,
+            'dados' => $strip($payload),
+        ];
     }
 }

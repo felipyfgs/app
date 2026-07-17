@@ -196,8 +196,8 @@ final class SerproOperationAttemptStore
             'business_status' => $response->businessStatus,
             'functional_route' => $response->functionalRoute,
             'mensagens' => $response->mensagens,
-            'dados' => is_array($response->dados) ? $response->dados : null,
-            'body' => $response->body,
+            'dados' => $this->sanitizeAttemptDados($attempt->operation_key, $response->dados),
+            'body' => $this->sanitizeAttemptBody($attempt->operation_key, $response->body),
             'headers' => $response->headers,
             'request_tag' => $response->requestTag ?? $attempt->request_tag,
             'correlation_id' => $response->correlationId ?? $attempt->correlation_id,
@@ -252,5 +252,90 @@ final class SerproOperationAttemptStore
             requestTag: $requestTag,
             sourceProvenance: FiscalSourceProvenance::Unverified->value,
         );
+    }
+
+    /**
+     * Remove Base64 de PDFs PGDAS-D 14–16 antes de persistir no attempt store.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function sanitizeAttemptDados(?string $operationKey, mixed $dados): ?array
+    {
+        if (! is_array($dados)) {
+            if (is_string($dados) && $dados !== '') {
+                $decoded = json_decode($dados, true);
+                if (is_array($decoded)) {
+                    $dados = $decoded;
+                } else {
+                    return null;
+                }
+            } else {
+                return null;
+            }
+        }
+
+        if (! $this->isPgdasdDocumentalKey($operationKey)) {
+            return $dados;
+        }
+
+        return $this->stripPdfBase64Fields($dados);
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    private function sanitizeAttemptBody(?string $operationKey, array $body): array
+    {
+        if (! $this->isPgdasdDocumentalKey($operationKey)) {
+            return $body;
+        }
+
+        if (isset($body['dados'])) {
+            if (is_array($body['dados'])) {
+                $body['dados'] = $this->stripPdfBase64Fields($body['dados']);
+            } elseif (is_string($body['dados'])) {
+                $decoded = json_decode($body['dados'], true);
+                if (is_array($decoded)) {
+                    $body['dados'] = $this->stripPdfBase64Fields($decoded);
+                }
+            }
+        }
+
+        return $this->stripPdfBase64Fields($body);
+    }
+
+    private function isPgdasdDocumentalKey(?string $operationKey): bool
+    {
+        return in_array($operationKey, [
+            'pgdasd.consultimadecrec',
+            'pgdasd.consdecrec',
+            'pgdasd.consextrato',
+        ], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @return array<string, mixed>
+     */
+    private function stripPdfBase64Fields(array $node): array
+    {
+        foreach (['pdf', 'recibo', 'pdfNotificacao', 'pdfDarf', 'extrato', 'declaracao'] as $field) {
+            if (isset($node[$field]) && is_string($node[$field]) && strlen($node[$field]) > 32) {
+                $node[$field] = [
+                    'sanitized' => true,
+                    'omitted_from_attempt_store' => true,
+                    'byte_length_estimate' => (int) floor(strlen($node[$field]) * 0.75),
+                ];
+            }
+        }
+        if (isset($node['maed']) && is_array($node['maed'])) {
+            $node['maed'] = $this->stripPdfBase64Fields($node['maed']);
+        }
+        if (isset($node['recibo']) && is_array($node['recibo'])) {
+            $node['recibo'] = $this->stripPdfBase64Fields($node['recibo']);
+        }
+
+        return $node;
     }
 }

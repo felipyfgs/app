@@ -71,7 +71,7 @@ return [
     'evidence' => [
         /** Dias de retenção padrão no cofre (metadado; purge opcional). */
         'retention_days' => (int) env('FISCAL_EVIDENCE_RETENTION_DAYS', 2555), // ~7 anos
-        'max_bytes' => (int) env('FISCAL_EVIDENCE_MAX_BYTES', 5_242_880), // 5 MiB
+        'max_bytes' => (int) env('FISCAL_EVIDENCE_MAX_BYTES', 10_485_760), // 10 MiB (PDFs PGDAS-D 14–16)
     ],
 
     'cache' => [

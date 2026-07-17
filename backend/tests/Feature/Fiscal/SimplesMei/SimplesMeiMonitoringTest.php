@@ -101,7 +101,8 @@ class SimplesMeiMonitoringTest extends TestCase
 
         $this->assertSame(FiscalRunStatus::Completed, $out->status);
         $this->assertSame(FiscalRunResult::Success, $out->result);
-        $this->assertSame(FiscalSituation::UpToDate, $out->situation);
+        // Fake/simulated: estado fail-closed permanece UNKNOWN (UNVERIFIED), sem promover verde
+        $this->assertSame(FiscalSituation::Unknown, $out->situation);
 
         $this->assertSame(1, FiscalSnapshot::query()->withoutGlobalScopes()
             ->where('office_id', $this->office->id)

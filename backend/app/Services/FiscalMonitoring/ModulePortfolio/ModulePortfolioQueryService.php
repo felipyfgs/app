@@ -37,6 +37,7 @@ use App\Models\TaxGuide;
 use App\Models\TaxInstallmentOrder;
 use App\Models\TaxInstallmentParcel;
 use App\Models\TaxObligationProjection;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdMonitoringQueryService;
 use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceContract;
 use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceRegistry;
 use Carbon\CarbonImmutable;
@@ -1346,10 +1347,17 @@ SQL);
             ->orderByDesc('period_month')
             ->get();
 
+        $sub = strtoupper((string) ($filters->submodule ?? 'PGDASD'));
+        $pgdasdDetails = [];
+        if (in_array($sub, ['PGDASD', 'PGDAS-D', 'SIMPLES', 'SIMPLES_NACIONAL', ''], true)) {
+            $pgdasdDetails = app(PgdasdMonitoringQueryService::class)
+                ->portfolioDetails($office, $clientIds);
+        }
+
         $map = [];
         foreach ($clientIds as $cid) {
             $comp = $comps->firstWhere('client_id', $cid);
-            $map[$cid] = [
+            $base = [
                 'module_key' => FiscalModuleKey::SimplesMei->value,
                 'submodule' => $filters->submodule,
                 'period_key' => $comp?->period_key,
@@ -1361,6 +1369,29 @@ SQL);
                     'guide_stubs' => "/api/v1/fiscal/simples-mei/clients/{$cid}/guide-stubs",
                 ],
             ];
+
+            if (isset($pgdasdDetails[$cid])) {
+                $pg = $pgdasdDetails[$cid];
+                $base['pgdasd'] = [
+                    'expected_period_key' => $pg['expected_period_key'] ?? $pg['period_key'] ?? null,
+                    'latest_declaration' => $pg['latest_declaration'] ?? null,
+                    'declaration_state' => $pg['declaration_state'] ?? null,
+                    'last_valid_query_at' => $pg['last_valid_query_at'] ?? null,
+                    'rbt12' => $pg['rbt12'] ?? null,
+                    'communication' => $pg['communication'] ?? null,
+                ];
+                $base['declaration_state'] = $pg['declaration_state'];
+                $base['last_declaration'] = $pg['last_declaration'];
+                $base['rbt12'] = $pg['rbt12'];
+                $base['last_productive_consulted_at'] = $pg['last_productive_consulted_at'];
+                $base['communication'] = $pg['communication'];
+                $base['links'] = array_merge($base['links'], $pg['links'] ?? []);
+                if (($pg['period_key'] ?? null) !== null) {
+                    $base['period_key'] = $pg['period_key'];
+                }
+            }
+
+            $map[$cid] = $base;
         }
 
         return $map;

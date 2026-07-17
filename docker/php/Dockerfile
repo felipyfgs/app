@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     libssl-dev \
     postgresql-client \
+    poppler-utils \
     $PHPIZE_DEPS \
   && docker-php-ext-configure intl \
   && docker-php-ext-install -j$(nproc) \
