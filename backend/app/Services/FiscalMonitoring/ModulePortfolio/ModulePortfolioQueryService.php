@@ -20,7 +20,6 @@ use App\Enums\MonitoringDocumentPolicy;
 use App\Enums\MonitoringResultKind;
 use App\Enums\TaxInstallmentParcelStatus;
 use App\Models\Client;
-use App\Models\DctfwebDeclaration;
 use App\Models\FgtsCompetenceStatus;
 use App\Models\FiscalCategory;
 use App\Models\FiscalCompetence;
@@ -37,6 +36,7 @@ use App\Models\TaxGuide;
 use App\Models\TaxInstallmentOrder;
 use App\Models\TaxInstallmentParcel;
 use App\Models\TaxObligationProjection;
+use App\Services\Fiscal\Dctfweb\DctfwebMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiMonitoringQueryService;
 use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceContract;
@@ -870,6 +870,23 @@ SQL;
         FiscalModuleKey $module,
         ModulePortfolioFilters $filters,
     ): QueryBuilder {
+        $submodule = strtoupper((string) ($filters->submodule ?? ''));
+        if ($module === FiscalModuleKey::SimplesMei && in_array($submodule, ['', 'PGDASD'], true)) {
+            return DB::query()->selectRaw(<<<SQL
+(
+    SELECT top.last_valid_query_at
+    FROM tax_obligation_projections top
+    INNER JOIN tax_obligation_definitions tod
+      ON tod.id = top.obligation_definition_id
+    WHERE top.office_id = {$office->id}
+      AND top.client_id = clients.id
+      AND tod.code = 'PGDAS_D'
+      AND top.last_valid_query_at IS NOT NULL
+    ORDER BY top.last_valid_query_at DESC, top.id DESC LIMIT 1
+)
+SQL);
+        }
+
         $systemCodes = $this->systemCodesForModule($module, $filters->submodule);
         $sysList = $this->quoteList($systemCodes);
 
@@ -1379,6 +1396,7 @@ SQL);
                     'expected_period_key' => $pg['expected_period_key'] ?? $pg['period_key'] ?? null,
                     'latest_declaration' => $pg['latest_declaration'] ?? null,
                     'declaration_state' => $pg['declaration_state'] ?? null,
+                    'declaration_state_reason' => $pg['declaration_state_reason'] ?? null,
                     'last_valid_query_at' => $pg['last_valid_query_at'] ?? null,
                     'rbt12' => $pg['rbt12'] ?? null,
                     'communication' => $pg['communication'] ?? null,
@@ -1422,12 +1440,12 @@ SQL);
      */
     private function detailDctfwebMit(Office $office, array $clientIds, ModulePortfolioFilters $filters): array
     {
-        $declarations = DctfwebDeclaration::query()
-            ->withoutGlobalScopes()
-            ->where('office_id', $office->id)
-            ->whereIn('client_id', $clientIds)
-            ->orderByDesc('id')
-            ->get();
+        $sub = strtoupper((string) ($filters->submodule ?? 'DCTFWEB'));
+        $dctfwebDetails = [];
+        if (in_array($sub, ['DCTFWEB', 'DCTF', ''], true)) {
+            $dctfwebDetails = app(DctfwebMonitoringQueryService::class)
+                ->portfolioDetails($office, $clientIds);
+        }
 
         $mits = MitApuracao::query()
             ->withoutGlobalScopes()
@@ -1438,19 +1456,10 @@ SQL);
 
         $map = [];
         foreach ($clientIds as $cid) {
-            $decl = $declarations->firstWhere('client_id', $cid);
             $mit = $mits->firstWhere('client_id', $cid);
-            $map[$cid] = [
+            $base = [
                 'module_key' => FiscalModuleKey::Dctfweb->value,
                 'submodule' => $filters->submodule,
-                'dctfweb' => $decl === null ? null : [
-                    'id' => $decl->id,
-                    'period_key' => $decl->period_key,
-                    'transmission_status' => $decl->transmission_status?->value,
-                    'payment_status' => $decl->payment_status?->value,
-                    'receipt_number' => $decl->receipt_number,
-                    'situation' => $decl->situation?->value,
-                ],
                 'mit' => $mit === null ? null : [
                     'id' => $mit->id,
                     'period_key' => $mit->period_key,
@@ -1463,6 +1472,47 @@ SQL);
                     'mit' => '/api/v1/fiscal/mit/apuracoes?client_id='.$cid,
                 ],
             ];
+
+            if (isset($dctfwebDetails[$cid])) {
+                $d = $dctfwebDetails[$cid];
+                $last = $d['latest_declaration'] ?? $d['last_declaration'] ?? null;
+                $base['dctfweb'] = [
+                    'id' => is_array($d['last_declaration'] ?? null) ? ($d['last_declaration']['id'] ?? null) : null,
+                    'period_key' => $d['period_key'] ?? null,
+                    'expected_period_key' => $d['expected_period_key'] ?? null,
+                    'category' => $d['category'] ?? null,
+                    'declaration_state' => $d['declaration_state'] ?? null,
+                    'declaration_state_reason' => $d['declaration_state_reason'] ?? null,
+                    'transmission_status' => is_array($last) ? ($last['transmission_status'] ?? null) : null,
+                    'receipt_number' => is_array($last) ? ($last['receipt_number'] ?? null) : null,
+                    'no_movement' => is_array($last) ? ($last['no_movement'] ?? null) : null,
+                    'situation' => is_array($d['last_declaration'] ?? null)
+                        ? ($d['last_declaration']['situation'] ?? null)
+                        : null,
+                    'payment_status' => is_array($d['last_declaration'] ?? null)
+                        ? ($d['last_declaration']['payment_status'] ?? null)
+                        : null,
+                    'last_declaration' => $last,
+                    'last_search_at' => $d['last_search_at'] ?? $d['last_valid_query_at'] ?? null,
+                    'last_valid_query_at' => $d['last_valid_query_at'] ?? null,
+                    'calendar_verified' => $d['calendar_verified'] ?? false,
+                    'communication' => $d['communication'] ?? null,
+                    'has_history' => $d['has_history'] ?? false,
+                    'has_tracking' => $d['has_tracking'] ?? false,
+                ];
+                $base['declaration_state'] = $d['declaration_state'] ?? null;
+                $base['last_declaration'] = $last;
+                $base['last_search_at'] = $d['last_search_at'] ?? null;
+                $base['last_productive_consulted_at'] = $d['last_productive_consulted_at'] ?? null;
+                $base['communication'] = $d['communication'] ?? null;
+                $base['has_history'] = $d['has_history'] ?? false;
+                $base['has_tracking'] = $d['has_tracking'] ?? false;
+                $base['links'] = array_merge($base['links'], $d['links'] ?? []);
+            } else {
+                $base['dctfweb'] = null;
+            }
+
+            $map[$cid] = $base;
         }
 
         return $map;

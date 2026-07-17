@@ -3,6 +3,8 @@
 namespace App\Services\Integra\Dctfweb;
 
 use App\Enums\DctfwebArtifactKind;
+use App\Enums\DctfwebCategory;
+use App\Enums\DctfwebDeclarationState;
 use App\Enums\DctfwebTransmissionStatus;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalPaymentStatus;
@@ -32,8 +34,12 @@ final class DctfwebDeclarationService
         Office $office,
         Client $client,
         string $periodKey,
+        DctfwebCategory|string $category = DctfwebCategory::GeralMensal,
     ): DctfwebDeclaration {
         $periodKey = $this->competences->normalizePeriodKey($periodKey);
+        $cat = $category instanceof DctfwebCategory
+            ? $category
+            : (DctfwebCategory::fromOfficialCode($category) ?? DctfwebCategory::default());
         $competence = $this->competences->resolve($office, $client, $periodKey, DctfwebCodes::CATEGORY_DCTFWEB);
 
         $existing = DctfwebDeclaration::query()
@@ -41,11 +47,35 @@ final class DctfwebDeclarationService
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
             ->where('period_key', $periodKey)
+            ->where('category', $cat->value)
             ->first();
 
+        // Legado: registros sem category (ou default implícito) no mesmo PA.
+        if ($existing === null) {
+            $existing = DctfwebDeclaration::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $office->id)
+                ->where('client_id', $client->id)
+                ->where('period_key', $periodKey)
+                ->where(function ($q) use ($cat): void {
+                    $q->whereNull('category')
+                        ->orWhere('category', '')
+                        ->orWhere('category', $cat->value);
+                })
+                ->orderBy('id')
+                ->first();
+        }
+
         if ($existing !== null) {
+            $fill = [];
             if ($existing->competence_id === null) {
-                $existing->forceFill(['competence_id' => $competence->id])->save();
+                $fill['competence_id'] = $competence->id;
+            }
+            if ($existing->category === null) {
+                $fill['category'] = $cat;
+            }
+            if ($fill !== []) {
+                $existing->forceFill($fill)->save();
             }
 
             return $existing->fresh();
@@ -56,9 +86,11 @@ final class DctfwebDeclarationService
             'client_id' => $client->id,
             'competence_id' => $competence->id,
             'period_key' => $periodKey,
+            'category' => $cat,
             'declaration_type' => 'ORIGINAL',
             'transmission_status' => DctfwebTransmissionStatus::Unknown,
             'situation' => FiscalSituation::Unknown,
+            'declaration_state' => DctfwebDeclarationState::Unverified,
             'coverage' => FiscalCoverage::Full,
             'payment_status' => FiscalPaymentStatus::Unknown,
             'evidence_version' => 0,

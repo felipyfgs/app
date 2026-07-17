@@ -44,6 +44,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'pgdasd_latest_rbt12_projection_id',
     'pgdasd_calendar_version_code',
     'pgdasd_calendar_verified',
+    'dctfweb_declaration_state',
+    'dctfweb_last_productive_consulted_at',
+    'dctfweb_last_declaration_id',
+    'dctfweb_calendar_version_code',
+    'dctfweb_calendar_verified',
+    'dctfweb_category',
 ])]
 class TaxObligationProjection extends Model
 {
@@ -67,6 +73,9 @@ class TaxObligationProjection extends Model
             'pgdasd_declaration_state' => \App\Enums\PgdasdDeclarationState::class,
             'pgdasd_last_productive_consulted_at' => 'immutable_datetime',
             'pgdasd_calendar_verified' => 'boolean',
+            'dctfweb_declaration_state' => \App\Enums\DctfwebDeclarationState::class,
+            'dctfweb_last_productive_consulted_at' => 'immutable_datetime',
+            'dctfweb_calendar_verified' => 'boolean',
         ];
     }
 

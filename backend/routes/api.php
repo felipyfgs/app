@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\DteCanaryTenantController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\Fiscal\DctfwebController;
+use App\Http\Controllers\Api\V1\Fiscal\DctfwebMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\DeclarationHubController;
 use App\Http\Controllers\Api\V1\Fiscal\FgtsEsocialController;
 use App\Http\Controllers\Api\V1\Fiscal\FiscalCategoryController;
@@ -371,6 +372,15 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/fiscal/simples-mei/pgmei/communication-preferences/bulk', [PgmeiMonitoringController::class, 'batchPreferences']);
             Route::get('/fiscal/simples-mei/pgmei/clients/{client}/communication-preview', [PgmeiMonitoringController::class, 'preview']);
             Route::get('/fiscal/simples-mei/pgmei/clients/{client}/communications', [PgmeiMonitoringController::class, 'tracking']);
+
+            // DCTFWeb — histórico local, evidências, comunicação TEMPLATE_ONLY (sem SERPRO implícito)
+            Route::get('/fiscal/dctfweb/clients/{client}/history', [DctfwebMonitoringController::class, 'history']);
+            Route::get('/fiscal/dctfweb/clients/{client}/evidence/{evidence}/download', [DctfwebMonitoringController::class, 'downloadEvidence']);
+            Route::get('/fiscal/dctfweb/evidence/{evidence}/download', [DctfwebMonitoringController::class, 'downloadEvidenceById']);
+            Route::patch('/fiscal/dctfweb/clients/{client}/communication-preference', [DctfwebMonitoringController::class, 'updatePreferences']);
+            Route::patch('/fiscal/dctfweb/communication-preferences/bulk', [DctfwebMonitoringController::class, 'batchPreferences']);
+            Route::get('/fiscal/dctfweb/clients/{client}/communication-preview', [DctfwebMonitoringController::class, 'preview']);
+            Route::get('/fiscal/dctfweb/clients/{client}/communications', [DctfwebMonitoringController::class, 'tracking']);
 
             // FGTS parcial via eSocial (cobertura explícita; sem portal FGTS Digital)
             Route::get('/fiscal/fgts/coverage', [FgtsEsocialController::class, 'coverage']);

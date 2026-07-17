@@ -4,19 +4,27 @@ namespace App\Services\Integra\Dctfweb\Adapters;
 
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
+use App\Enums\DctfwebCategory;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalSituation;
+use App\Services\Fiscal\Dctfweb\DctfwebConsReciboCodec;
+use App\Services\Fiscal\Dctfweb\DctfwebPeriod;
+use App\Services\Fiscal\Dctfweb\DctfwebPostConsultService;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebCompetenceResolver;
-use App\Services\Integra\Dctfweb\DctfwebDeclarationService;
 use App\Services\Integra\Dctfweb\DctfwebIntegraCaller;
 
+/**
+ * CONSRECIBO32 — única consulta oficial de recibo (payload categoria/anoPA/mesPA).
+ * Sem fallback faturável para relatório/XML/DARF/transmissão.
+ */
 final class DctfwebReciboAdapter extends AbstractDctfwebAdapter
 {
     public function __construct(
         DctfwebIntegraCaller $caller,
         DctfwebCompetenceResolver $competences,
-        private readonly DctfwebDeclarationService $declarations,
+        private readonly DctfwebConsReciboCodec $codec,
+        private readonly DctfwebPostConsultService $postConsult,
     ) {
         parent::__construct($caller, $competences);
     }
@@ -38,46 +46,44 @@ final class DctfwebReciboAdapter extends AbstractDctfwebAdapter
 
     public function execute(FiscalAdapterRequest $request): FiscalAdapterResult
     {
-        $periodKey = $this->resolvePeriodKey($request);
-        $response = $this->callUpstream($request, [
-            'competencia' => $periodKey,
-            'periodo' => $periodKey,
-        ]);
+        $periodKey = $this->resolveFrozenPeriodKey($request);
+        $pa = DctfwebPeriod::parse($periodKey);
+        $payload = $this->codec->buildPayload(
+            DctfwebPeriod::toAnoPa($pa),
+            DctfwebPeriod::toMesPa($pa),
+            DctfwebCategory::default(),
+        );
+
+        $response = $this->callUpstream($request, $payload);
 
         if (! $response->success) {
-            return $this->failedFromResponse($response);
+            $failed = $this->failedFromResponse($response);
+            $pack = $this->postConsult->handle($request, $response, $failed);
+
+            return $pack['result'];
         }
 
-        $bytes = DctfwebIntegraCaller::evidenceBytes($response->body);
-        $projected = $this->declarations->projectFromRecibo(
-            run: $request->run,
-            office: $request->office,
-            client: $request->client,
-            periodKey: $periodKey,
-            evidenceBytes: $bytes,
-            body: $response->body,
-            sourceVersion: isset($response->body['versao']) ? (string) $response->body['versao'] : null,
-        );
-
-        $situation = $projected['declaration']->situation ?? FiscalSituation::Unknown;
-        if ($response->simulated && $situation === FiscalSituation::UpToDate) {
-            $situation = FiscalSituation::Unknown;
-        }
-
-        return $this->successResult(
-            situation: $situation,
-            evidenceBytes: $bytes,
+        $base = $this->successResult(
+            situation: FiscalSituation::Unknown,
+            evidenceBytes: '{}',
             normalized: [
                 'period_key' => $periodKey,
-                'artifact_kind' => 'RECIBO',
-                'receipt_number' => $projected['declaration']->receipt_number,
-                'transmission_status' => $projected['declaration']->transmission_status?->value,
-                'retification' => $projected['retification'],
-                'evidence_version' => $projected['version']->version,
-                'simulated' => $response->simulated,
+                'operation_key' => DctfwebCodes::OPERATION_KEY_CONSRECIBO,
+                'payload' => $payload,
             ],
-            findings: $this->retificationFinding($projected['retification']),
             coverage: FiscalCoverage::Full,
         );
+
+        $pack = $this->postConsult->handle($request, $response, $base);
+
+        return $pack['result'];
+    }
+
+    /**
+     * PA congelado no progress do run; period_key comercial não sobrescreve.
+     */
+    private function resolveFrozenPeriodKey(FiscalAdapterRequest $request): string
+    {
+        return $this->postConsult->resolveExpectedPeriodKey($request);
     }
 }

@@ -18,7 +18,7 @@ enum DctfwebArtifactKind: string
     {
         return match ($this) {
             self::Xml => 'application/xml',
-            self::Darf => 'application/pdf',
+            self::Darf, self::Recibo => 'application/pdf',
             default => 'application/json',
         };
     }

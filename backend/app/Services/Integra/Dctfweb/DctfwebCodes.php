@@ -48,6 +48,11 @@ final class DctfwebCodes
 
     public const CATEGORY_MIT = 'MIT';
 
+    /** Categoria oficial mensal geral (CONSRECIBO32). */
+    public const CATEGORIA_GERAL_MENSAL = '40';
+
+    public const OPERATION_KEY_CONSRECIBO = 'dctfweb.consrecibo';
+
     /** @return list<string> */
     public static function readOnlyOperationsDctfweb(): array
     {
