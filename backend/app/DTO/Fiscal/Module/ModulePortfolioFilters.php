@@ -29,6 +29,8 @@ final readonly class ModulePortfolioFilters
         public ?string $clientId = null,
         public ?string $coverage = null,
         public ?string $modality = null,
+        /** Ano-calendário opcional da cápsula PGMEI. */
+        public ?int $year = null,
     ) {}
 
     /**
@@ -105,6 +107,17 @@ final readonly class ModulePortfolioFilters
             static fn (string $token): ?string => TaxInstallmentModality::tryFrom(strtoupper(trim($token)))?->value,
         );
 
+        $year = null;
+        if (isset($input['year']) && (is_string($input['year']) || is_int($input['year']))) {
+            $rawYear = trim((string) $input['year']);
+            if (preg_match('/^\d{4}$/', $rawYear) === 1) {
+                $candidate = (int) $rawYear;
+                if ($candidate >= 2000 && $candidate <= 2100) {
+                    $year = $candidate;
+                }
+            }
+        }
+
         return new self(
             page: $page,
             perPage: $perPage,
@@ -118,6 +131,7 @@ final readonly class ModulePortfolioFilters
             clientId: $clientId,
             coverage: $coverage,
             modality: $modality,
+            year: $year,
         );
     }
 
@@ -139,6 +153,7 @@ final readonly class ModulePortfolioFilters
             clientId: $this->clientId,
             coverage: $this->coverage,
             modality: $this->modality,
+            year: $this->year,
         );
     }
 

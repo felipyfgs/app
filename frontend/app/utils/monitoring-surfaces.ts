@@ -42,7 +42,7 @@ export interface MonitoringSurfaceMatrixEntry {
 }
 
 /**
- * Todas as surface_key da page-payload-matrix.md (17 entradas).
+ * Todas as surface_key públicas da matriz de monitoramento.
  * Ordem alinhada ao MonitoringSurfaceRegistry backend.
  */
 export const MONITORING_SURFACE_MATRIX: readonly MonitoringSurfaceMatrixEntry[] = [
@@ -63,23 +63,9 @@ export const MONITORING_SURFACE_MATRIX: readonly MonitoringSurfaceMatrixEntry[] 
   {
     surfaceKey: 'simples_mei_pgmei',
     route: '/monitoring/simples-mei',
-    resultKind: 'PDF',
-    allowsDocument: true,
-    neverDocumentAction: false
-  },
-  {
-    surfaceKey: 'simples_mei_dasn',
-    route: '/monitoring/simples-mei',
-    resultKind: 'UNAVAILABLE',
+    resultKind: 'STRUCTURED',
     allowsDocument: false,
     neverDocumentAction: true
-  },
-  {
-    surfaceKey: 'simples_mei_regime',
-    route: '/monitoring/simples-mei',
-    resultKind: 'PDF',
-    allowsDocument: true,
-    neverDocumentAction: false
   },
   {
     surfaceKey: 'dctfweb',
@@ -183,8 +169,7 @@ export const ALL_RESULT_KINDS: readonly MonitoringResultKind[] = [
   'STRUCTURED',
   'PDF',
   'ASYNC_PDF',
-  'AGGREGATE',
-  'UNAVAILABLE'
+  'AGGREGATE'
 ] as const
 
 export function getMonitoringSurface(surfaceKey: string): MonitoringSurfaceMatrixEntry | undefined {

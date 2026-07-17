@@ -7,6 +7,7 @@ use App\Models\TaxDeadlineCalendarVersion;
 use App\Models\TaxDeadlineRule;
 use App\Models\TaxObligationDefinition;
 use App\Models\TaxObligationProjection;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdBankingCalendar;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -19,6 +20,7 @@ final class TaxDeadlineCalendarService
 {
     public function __construct(
         private readonly TaxObligationCatalogService $catalog,
+        private readonly PgdasdBankingCalendar $bankingCalendar,
     ) {}
 
     /**
@@ -66,7 +68,24 @@ final class TaxDeadlineCalendarService
         }
 
         $tz = $rule->timezone ?: $calendar->timezone ?: $obligation->default_timezone ?: 'America/Sao_Paulo';
-        $dueAt = $this->computeDueAt($rule, $periodYear, $periodMonth, $tz);
+        $rawDueAt = $this->computeDueAt($rule, $periodYear, $periodMonth, $tz);
+        $calendarMetadata = is_array($calendar->metadata) ? $calendar->metadata : [];
+        $ruleMetadata = is_array($rule->metadata) ? $rule->metadata : [];
+        $nonBusinessDates = $ruleMetadata['non_business_dates']
+            ?? $calendarMetadata['non_business_dates']
+            ?? [];
+        if (! is_array($nonBusinessDates)) {
+            $nonBusinessDates = [];
+        }
+        $verification = strtoupper((string) ($calendarMetadata['verification'] ?? $calendarMetadata['status'] ?? ''));
+        $calendarVerified = $verification === 'VERIFIED' || ($calendarMetadata['verified'] ?? false) === true;
+        $adjustment = $rawDueAt === null ? null : $this->bankingCalendar->applyAdjustment(
+            $rawDueAt,
+            (string) $rule->business_day_adjustment,
+            array_values($nonBusinessDates),
+            $calendarVerified,
+        );
+        $dueAt = $adjustment['date'] ?? null;
 
         return [
             'due_at' => $dueAt,
@@ -85,6 +104,9 @@ final class TaxDeadlineCalendarService
                 'fixed_due_month' => $rule->fixed_due_month,
                 'fixed_due_day' => $rule->fixed_due_day,
                 'business_day_adjustment' => $rule->business_day_adjustment,
+                'business_day_adjustment_reason' => $adjustment['reason'] ?? 'DUE_DATE_UNAVAILABLE',
+                'calendar_verified' => $adjustment['verified'] ?? false,
+                'raw_due_at' => $rawDueAt?->toIso8601String(),
                 'computed_at' => CarbonImmutable::now($tz)->toIso8601String(),
                 'due_at' => $dueAt?->toIso8601String(),
             ],

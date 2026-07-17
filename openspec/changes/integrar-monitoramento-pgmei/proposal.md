@@ -6,7 +6,7 @@ O monitoramento de Simples/MEI ainda expõe quatro superfícies genéricas e tra
 
 - **BREAKING**: limitar `/monitoring/simples-mei` às cápsulas locais `Simples Nacional` (`PGDAS-D`) e `MEI` (`PGMEI`), removendo `Regime` e `DASN-SIMEI` das superfícies públicas, do portfólio e dos monitores automáticos.
 - Rejeitar `REGIME` e `DASN_SIMEI` nas APIs de portfólio com `422` e redirecionar deep links legados apenas para a rota canônica, cuja cápsula padrão é `Simples Nacional`.
-- Especializar a cápsula PGMEI para dívida ativa por ano, total em centavos, frescor, última consulta e histórico detalhado, sem criar colunas de DAS pendente ou pagamento.
+- Aplicar às duas cápsulas o mesmo template operacional de sete colunas; no PGMEI, dívida ativa, total em centavos e frescor alimentam Situação, tooltip e histórico, sem colunas fiscais independentes.
 - Integrar exclusivamente `PGMEI/DIVIDAATIVA24/1.0` ao monitor automático e remover o mapeamento fictício `CONSULTAR_DAS`.
 - Persistir projeção atual, observações imutáveis e itens normalizados de dívida, com isolamento por escritório, cliente e ano.
 - Alternar os cinco anos mais recentes no ciclo diário e oferecer consulta manual, explícita e limitada a 100 clientes.

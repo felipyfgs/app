@@ -1,0 +1,33 @@
+{
+  "operation_key": "pgdasd.consdeclaracao",
+  "idSistema": "PGDASD",
+  "idServico": "CONSDECLARACAO13",
+  "request_year": { "anoCalendario": "2026" },
+  "request_period": { "periodoApuracao": "202606" },
+  "response_dados": {
+    "anoCalendario": 2026,
+    "periodos": [
+      {
+        "periodoApuracao": 202606,
+        "operacoes": [
+          {
+            "tipoOperacao": "DECLARACAO ORIGINAL",
+            "indiceDeclaracao": {
+              "numeroDeclaracao": "20260600000000001",
+              "dataHoraTransmissao": 20260715123045
+            },
+            "malha": "LIBERADA"
+          },
+          {
+            "tipoOperacao": "DAS",
+            "indiceDas": {
+              "numeroDas": "20260600000000002",
+              "dataHoraEmissaoDas": 20260715123100,
+              "dasPago": false
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

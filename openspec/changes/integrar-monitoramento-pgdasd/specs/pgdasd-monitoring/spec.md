@@ -76,14 +76,26 @@ O sistema SHALL extrair RBT12 do extrato 16 no máximo uma vez por referência f
 - **THEN** a projeção não contém valor e assume `NOT_FOUND`, `AMBIGUOUS` ou `FAILED`
 
 ### Requirement: Superfície PGDAS-D especializada
-O sistema SHALL mostrar, nesta ordem, seleção autorizada, Razão social, Última declaração, RBT12, Enviar, Automático, Rastreio, Última consulta e Detalhes, sem alterar as colunas dos demais submódulos.
+O sistema SHALL mostrar, nesta ordem, Situação, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca. O shell SHALL acrescentar seleção antes de Situação somente para ADMIN e OPERATOR, sem contá-la como coluna de negócio. O sistema MUST NOT criar colunas independentes para Última declaração, RBT12, Automático ou Detalhes.
 
 #### Cenário: Linha da tabela
 - **WHEN** a carteira PGDAS-D é carregada
-- **THEN** o CNPJ não aparece como coluna, continua pesquisável e os estados usam cor, ícone, tooltip e texto acessível
+- **THEN** Cliente apresenta razão social e CNPJ, e Situação usa cor, ícone, texto acessível e tooltip com PA, última declaração, RBT12, motivo e última consulta válida
+
+#### Cenário: Estado visual
+- **WHEN** o estado é `CURRENT`, `DUE_WITHIN_DEADLINE`, `OVERDUE_NOT_FOUND` ou `UNVERIFIED`
+- **THEN** a interface mostra respectivamente Em dia, Pendente no prazo, Atrasado ou Não verificado sem depender somente da cor
+
+#### Cenário: Ações e envio automático
+- **WHEN** ADMIN ou OPERATOR interage com a linha
+- **THEN** Ações oferece prévia e menu contextual, Enviar controla `automatic_requested` e o switch em massa afeta somente os clientes selecionados
+
+#### Cenário: Última busca compacta
+- **WHEN** existe consulta real produtiva e corretamente interpretada do serviço 13
+- **THEN** Última Busca mostra a data compacta e oferece data e hora completas em tooltip
 
 #### Cenário: Detalhes locais
-- **WHEN** o usuário seleciona a lupa de detalhes
+- **WHEN** o usuário seleciona a lupa de Histórico de Busca
 - **THEN** o modal apresenta histórico, documentos e observações locais em ordem decrescente sem chamada faturável
 
 ### Requirement: Isolamento e permissões

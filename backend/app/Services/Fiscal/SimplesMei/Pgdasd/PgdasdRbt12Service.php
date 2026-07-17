@@ -22,15 +22,25 @@ final class PgdasdRbt12Service
     ) {}
 
     /**
-     * @param list<PgdasdOperation> $operations
+     * @param  list<PgdasdOperation>  $operations
+     * @param  list<TaxObligationProjection>  $periodProjections
      * @return list<PgdasdRbt12Projection>
      */
-    public function reserveFromOperations(FiscalMonitoringRun $run, array $operations): array
+    public function reserveFromOperations(
+        FiscalMonitoringRun $run,
+        array $operations,
+        array $periodProjections = [],
+    ): array
     {
         $byProjection = collect($operations)->groupBy('projection_id');
+        $projectionIds = collect($periodProjections)
+            ->map(static fn (TaxObligationProjection $projection): int => (int) $projection->id)
+            ->merge($byProjection->keys()->map(static fn ($id): int => (int) $id))
+            ->unique()
+            ->values();
         $created = [];
 
-        foreach ($byProjection as $projectionId => $periodOperations) {
+        foreach ($projectionIds as $projectionId) {
             $projection = TaxObligationProjection::query()
                 ->withoutGlobalScopes()
                 ->where('office_id', $run->office_id)
@@ -41,12 +51,22 @@ final class PgdasdRbt12Service
             }
 
             $latestDeclaration = $this->latestDeclarationForProjection($projection);
-            $dasOperations = $periodOperations
-                ->filter(static fn (PgdasdOperation $operation): bool => $operation->operationKind() === PgdasdOperationKind::Das)
-                ->values();
+            $dasOperations = PgdasdOperation::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $run->office_id)
+                ->where('client_id', $run->client_id)
+                ->where('projection_id', $projection->id)
+                ->where('kind', PgdasdOperationKind::Das->value)
+                ->orderBy('issued_at')
+                ->orderBy('das_number')
+                ->get();
 
             if ($dasOperations->isEmpty()) {
-                $this->reserveNoDas($run, $projection, $latestDeclaration);
+                $reserved = $this->reserveNoDas($run, $projection, $latestDeclaration);
+                if ($reserved !== null) {
+                    $created[] = $reserved;
+                    $this->pointProjectionAtLatestRbt12($projection, $reserved);
+                }
                 continue;
             }
 
@@ -72,8 +92,13 @@ final class PgdasdRbt12Service
                 );
                 if ($reserved !== null) {
                     $created[] = $reserved;
-                    FetchPgdasdRbt12Job::dispatch((int) $reserved->id)
-                        ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
+                    $this->pointProjectionAtLatestRbt12($projection, $reserved);
+                    try {
+                        FetchPgdasdRbt12Job::dispatch((int) $reserved->id)
+                            ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
+                    } catch (\Throwable) {
+                        $this->markFailed($reserved, 'EXTRACT_JOB_DISPATCH_FAILED', (int) $run->id);
+                    }
                 }
             }
         }
@@ -105,8 +130,9 @@ final class PgdasdRbt12Service
         int $artifactId,
         ?int $sourceRunId = null,
     ): PgdasdRbt12Projection {
+        $metadata = is_array($projection->metadata) ? $projection->metadata : [];
         $periodKey = $projection->projection?->period_key
-            ?? ($projection->metadata['period_key'] ?? null);
+            ?? ($metadata['period_key'] ?? null);
         $periodoApuracao = is_string($periodKey) ? str_replace('-', '', $periodKey) : '';
 
         try {
@@ -156,11 +182,32 @@ final class PgdasdRbt12Service
         return $projection->refresh();
     }
 
+    public function reconcileTerminalFailure(FiscalMonitoringRun $run): int
+    {
+        if (strtoupper((string) $run->operation_code) !== 'CONSULTAR_EXTRATO') {
+            return 0;
+        }
+
+        return PgdasdRbt12Projection::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $run->office_id)
+            ->where('client_id', $run->client_id)
+            ->where('source_run_id', $run->id)
+            ->where('status', PgdasdRbt12Status::Pending->value)
+            ->update([
+                'status' => PgdasdRbt12Status::Failed->value,
+                'sanitized_error' => 'EXTRACT_QUERY_FAILED',
+                'parser_version' => PgdasdRbt12Parser::VERSION,
+                'extracted_at' => CarbonImmutable::now(),
+                'updated_at' => CarbonImmutable::now(),
+            ]);
+    }
+
     private function reserveNoDas(
         FiscalMonitoringRun $run,
         TaxObligationProjection $projection,
         ?PgdasdOperation $latestDeclaration,
-    ): void {
+    ): ?PgdasdRbt12Projection {
         $key = $this->sourceReferenceKey(
             (int) $run->office_id,
             (int) $run->client_id,
@@ -169,7 +216,7 @@ final class PgdasdRbt12Service
             $latestDeclaration?->declaration_number,
             $latestDeclaration?->transmitted_at?->toIso8601String(),
         );
-        $this->reserve(
+        return $this->reserve(
             run: $run,
             projection: $projection,
             sourceKey: $key,
@@ -242,5 +289,12 @@ final class PgdasdRbt12Service
             ->orderByDesc('transmitted_at')
             ->orderByDesc('declaration_number')
             ->first();
+    }
+
+    private function pointProjectionAtLatestRbt12(
+        TaxObligationProjection $projection,
+        PgdasdRbt12Projection $rbt12,
+    ): void {
+        $projection->forceFill(['pgdasd_latest_rbt12_projection_id' => $rbt12->id])->save();
     }
 }

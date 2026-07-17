@@ -32,6 +32,8 @@ import {
 export interface UseFiscalModulePortfolioOptions {
   /** Submódulo controlado pela página (tabs locais — não entram na URL). */
   submodule?: Ref<string>
+  /** Ano-calendário controlado pela cápsula PGMEI; nulo nas demais. */
+  year?: Ref<number | null>
   /** delivery_status (declarações). */
   deliveryStatus?: Ref<string>
   perPage?: number
@@ -77,6 +79,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   const situation = ref('all')
   const competence = ref('')
   const submodule = options.submodule ?? ref('')
+  const year = options.year ?? ref<number | null>(null)
   const deliveryStatus = options.deliveryStatus
     ?? ref('all')
   const clientIds = ref<number[]>([])
@@ -123,6 +126,9 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
         submodule.value && submodule.value !== 'all' && submodule.value.trim()
           ? submodule.value
           : undefined,
+      year: Number.isInteger(year.value) && Number(year.value) >= 2000
+        ? Number(year.value)
+        : undefined,
       delivery_status:
         deliveryStatus.value && deliveryStatus.value !== 'all'
           ? deliveryStatus.value
@@ -150,13 +156,14 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
    */
   function buildOverviewFilters(): Pick<
     FiscalModulePortfolioFilters,
-    'q' | 'competence' | 'submodule' | 'delivery_status' | 'client_id' | 'coverage' | 'modality'
+    'q' | 'competence' | 'submodule' | 'year' | 'delivery_status' | 'client_id' | 'coverage' | 'modality'
   > {
     const next = buildFilters(1)
     return {
       q: next.q,
       competence: next.competence,
       submodule: next.submodule,
+      year: next.year,
       delivery_status: next.delivery_status,
       client_id: next.client_id,
       coverage: next.coverage,
@@ -416,7 +423,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
 
   // Filtros avançados: recarregam contadores (overview) + lista.
   watch(
-    [q, competence, submodule, deliveryStatus, clientIds, coverage, modality],
+    [q, competence, submodule, year, deliveryStatus, clientIds, coverage, modality],
     () => {
       if (!ready || filterTransactionDepth > 0) return
       resetPage()
@@ -508,6 +515,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     situation,
     competence,
     submodule,
+    year,
     deliveryStatus,
     clientIds,
     coverage,

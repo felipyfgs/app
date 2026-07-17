@@ -5,6 +5,11 @@ import type {
   PgdasdCommunicationPreview,
   PgdasdCommunicationTracking
 } from '~/types/fiscal-modules'
+import { usePgdasdMonitoring } from '~/composables/usePgdasdMonitoring'
+import { usePgmeiMonitoring } from '~/composables/usePgmeiMonitoring'
+import { apiErrorMessage } from '~/utils/api-error'
+import { formatDateTime } from '~/utils/format'
+import { formatPgdasdPeriod, pgdasdTrackingMeta } from '~/utils/pgdasd'
 
 const props = defineProps<{
   previewOpen: boolean
@@ -14,21 +19,20 @@ const props = defineProps<{
   clientName?: string | null
   preference?: PgdasdCommunicationPreference | null
   canManage?: boolean
+  /** Mantém o mesmo shell TEMPLATE_ONLY, isolando as APIs por domínio. */
+  context?: 'PGDASD' | 'PGMEI'
+  year?: number | null
 }>()
 
 const emit = defineEmits<{
   'update:previewOpen': [value: boolean]
   'update:trackingOpen': [value: boolean]
   'update:prefsOpen': [value: boolean]
-  saved: [preference: PgdasdCommunicationPreference]
+  'saved': [preference: PgdasdCommunicationPreference]
 }>()
 
-const {
-  fetchPreview,
-  fetchTracking,
-  updatePreferences,
-  artifactDownloadUrl
-} = usePgdasdMonitoring()
+const pgdasdMonitoring = usePgdasdMonitoring()
+const pgmeiMonitoring = usePgmeiMonitoring()
 const toast = useToast()
 
 const previewLoading = ref(false)
@@ -43,18 +47,51 @@ const form = reactive({
   automatic_requested: false,
   email_enabled: false,
   whatsapp_enabled: false,
-  // Default alinhado à migration/create (1); 0 gerava 409 no primeiro PATCH.
-  lock_version: 1
+  // A preferência ainda inexistente é representada pelo backend com versão 0.
+  lock_version: 0
 })
 let previewGeneration = 0
 let trackingGeneration = 0
+
+const isPgmei = computed(() => props.context === 'PGMEI')
+
+function fetchPreview(clientId: number) {
+  return isPgmei.value
+    ? pgmeiMonitoring.fetchPreview(clientId)
+    : pgdasdMonitoring.fetchPreview(clientId)
+}
+
+function fetchTracking(clientId: number) {
+  return isPgmei.value
+    ? pgmeiMonitoring.fetchTracking(clientId)
+    : pgdasdMonitoring.fetchTracking(clientId)
+}
+
+function updatePreferences(
+  clientId: number,
+  body: {
+    automatic_requested: boolean
+    email_enabled: boolean
+    whatsapp_enabled: boolean
+    lock_version: number
+  }
+) {
+  return isPgmei.value
+    ? pgmeiMonitoring.updatePreferences(clientId, body)
+    : pgdasdMonitoring.updatePreferences(clientId, body)
+}
+
+function documentDownloadHref(document: { id: number, download_href?: string | null }): string {
+  if (isPgmei.value) return document.download_href || '#'
+  return pgdasdMonitoring.artifactDownloadUrl(document.id)
+}
 
 function hydrateForm(preference?: PgdasdCommunicationPreference | null) {
   form.automatic_requested = preference?.automatic_requested === true
   form.email_enabled = preference?.email_enabled === true
   form.whatsapp_enabled = preference?.whatsapp_enabled === true
   const lv = Number(preference?.lock_version)
-  form.lock_version = Number.isFinite(lv) && lv >= 1 ? lv : 1
+  form.lock_version = Number.isFinite(lv) && lv >= 0 ? lv : 0
 }
 
 function channelLabel(channel?: string | null): string {
@@ -174,6 +211,11 @@ async function savePreferences() {
     saving.value = false
   }
 }
+
+function openPreferences() {
+  emit('update:previewOpen', false)
+  emit('update:prefsOpen', true)
+}
 </script>
 
 <template>
@@ -186,10 +228,17 @@ async function savePreferences() {
     @update:open="emit('update:previewOpen', $event)"
   >
     <template #body>
-      <div class="space-y-4" data-testid="pgdasd-communication-preview">
+      <div
+        class="space-y-4"
+        :data-testid="isPgmei ? 'pgmei-communication-preview' : 'pgdasd-communication-preview'"
+      >
         <div>
-          <p class="font-medium text-highlighted">{{ preview?.client?.legal_name || clientName || `Cliente #${clientId || '—'}` }}</p>
-          <p class="text-xs text-muted">PA {{ preview?.period_key || '—' }}</p>
+          <p class="font-medium text-highlighted">
+            {{ preview?.client?.legal_name || clientName || `Cliente #${clientId || '—'}` }}
+          </p>
+          <p class="text-xs text-muted">
+            {{ isPgmei ? `Ano ${year || '—'}` : `PA ${formatPgdasdPeriod(preview?.period_key)}` }}
+          </p>
         </div>
 
         <UAlert
@@ -202,7 +251,13 @@ async function savePreferences() {
 
         <UAlert v-if="previewError" color="error" :title="previewError">
           <template #actions>
-            <UButton size="xs" color="neutral" variant="outline" label="Tentar novamente" @click="loadPreview" />
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="outline"
+              label="Tentar novamente"
+              @click="loadPreview"
+            />
           </template>
         </UAlert>
         <div v-if="previewLoading" class="space-y-3" aria-label="Carregando prévia">
@@ -212,7 +267,9 @@ async function savePreferences() {
 
         <template v-else-if="preview">
           <section>
-            <h3 class="mb-2 text-sm font-medium">Canais e destinatários</h3>
+            <h3 class="mb-2 text-sm font-medium">
+              Canais e destinatários
+            </h3>
             <div v-if="preview.channels?.length" class="grid gap-2 sm:grid-cols-2">
               <div
                 v-for="channel in preview.channels"
@@ -232,14 +289,20 @@ async function savePreferences() {
                     {{ recipient.name || 'Contato' }} · {{ recipient.masked || 'destinatário protegido' }}
                   </li>
                 </ul>
-                <p v-else class="mt-2 text-xs text-muted">Nenhum contato elegível.</p>
+                <p v-else class="mt-2 text-xs text-muted">
+                  Nenhum contato elegível.
+                </p>
               </div>
             </div>
-            <p v-else class="text-sm text-muted">Nenhum canal configurado.</p>
+            <p v-else class="text-sm text-muted">
+              Nenhum canal configurado.
+            </p>
           </section>
 
           <section>
-            <h3 class="mb-2 text-sm font-medium">Documentos locais</h3>
+            <h3 class="mb-2 text-sm font-medium">
+              Documentos locais
+            </h3>
             <ul v-if="preview.documents?.length" class="space-y-2">
               <li
                 v-for="document in preview.documents"
@@ -253,14 +316,16 @@ async function savePreferences() {
                   variant="outline"
                   icon="i-lucide-download"
                   label="Baixar"
-                  :to="artifactDownloadUrl(document.id)"
+                  :to="documentDownloadHref(document)"
                   external
                   target="_blank"
                   rel="noopener noreferrer"
                 />
               </li>
             </ul>
-            <p v-else class="text-sm text-muted">Nenhum documento local disponível para a prévia.</p>
+            <p v-else class="text-sm text-muted">
+              Nenhum documento local disponível para a prévia.
+            </p>
           </section>
 
           <UAlert
@@ -275,9 +340,27 @@ async function savePreferences() {
     </template>
     <template #footer>
       <div class="flex w-full flex-wrap justify-end gap-2">
-        <UButton color="neutral" variant="ghost" label="Fechar" @click="emit('update:previewOpen', false)" />
+        <UButton
+          color="neutral"
+          variant="ghost"
+          label="Fechar"
+          @click="emit('update:previewOpen', false)"
+        />
+        <UButton
+          v-if="canManage"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-settings-2"
+          label="Preferências"
+          @click="openPreferences"
+        />
         <UTooltip text="Envio real não implementado nesta etapa">
-          <UButton color="primary" icon="i-lucide-send" label="Enviar agora" disabled />
+          <UButton
+            color="primary"
+            icon="i-lucide-send"
+            label="Enviar agora"
+            :disabled="!preview?.can_send"
+          />
         </UTooltip>
       </div>
     </template>
@@ -291,7 +374,10 @@ async function savePreferences() {
     @update:open="emit('update:prefsOpen', $event)"
   >
     <template #body>
-      <div class="space-y-4" data-testid="pgdasd-communication-preferences">
+      <div
+        class="space-y-4"
+        :data-testid="isPgmei ? 'pgmei-communication-preferences' : 'pgdasd-communication-preferences'"
+      >
         <UAlert
           color="warning"
           variant="subtle"
@@ -326,12 +412,19 @@ async function savePreferences() {
           variant="subtle"
           title="Selecione um canal com destinatário elegível."
         />
-        <p v-if="!canManage" class="text-xs text-muted">VIEWER possui acesso somente leitura.</p>
+        <p v-if="!canManage" class="text-xs text-muted">
+          VIEWER possui acesso somente leitura.
+        </p>
       </div>
     </template>
     <template #footer>
       <div class="flex w-full justify-end gap-2">
-        <UButton color="neutral" variant="ghost" label="Cancelar" @click="emit('update:prefsOpen', false)" />
+        <UButton
+          color="neutral"
+          variant="ghost"
+          label="Cancelar"
+          @click="emit('update:prefsOpen', false)"
+        />
         <UButton
           v-if="canManage"
           color="primary"
@@ -353,10 +446,19 @@ async function savePreferences() {
     @update:open="emit('update:trackingOpen', $event)"
   >
     <template #body>
-      <div class="space-y-4" data-testid="pgdasd-communication-tracking">
+      <div
+        class="space-y-4"
+        :data-testid="isPgmei ? 'pgmei-communication-tracking' : 'pgdasd-communication-tracking'"
+      >
         <UAlert v-if="trackingError" color="error" :title="trackingError">
           <template #actions>
-            <UButton size="xs" color="neutral" variant="outline" label="Tentar novamente" @click="loadTracking" />
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="outline"
+              label="Tentar novamente"
+              @click="loadTracking"
+            />
           </template>
         </UAlert>
         <div v-if="trackingLoading" class="space-y-3" aria-label="Carregando rastreio">
@@ -392,7 +494,8 @@ async function savePreferences() {
                   class="rounded-md border border-default p-3 text-sm"
                 >
                   <p class="font-medium text-highlighted">
-                    {{ dispatch.recipient_masked || 'Destinatário protegido' }} · PA {{ dispatch.period_key || '—' }}
+                    {{ dispatch.recipient_masked || 'Destinatário protegido' }} ·
+                    {{ isPgmei ? `Ano ${dispatch.period_key || '—'}` : `PA ${formatPgdasdPeriod(dispatch.period_key)}` }}
                   </p>
                   <p class="mt-1 text-xs text-muted">
                     {{ pgdasdTrackingMeta(dispatch.status).label }} ·
@@ -405,14 +508,20 @@ async function savePreferences() {
                   </ul>
                 </div>
               </div>
-              <p v-else class="text-sm text-muted">Nenhum envio registrado neste canal.</p>
+              <p v-else class="text-sm text-muted">
+                Nenhum envio registrado neste canal.
+              </p>
             </UCard>
           </div>
 
           <div v-else class="py-10 text-center">
             <UIcon name="i-lucide-message-square-dashed" class="mx-auto mb-2 size-8 text-dimmed" />
-            <p class="font-medium text-highlighted">Nenhum envio registrado</p>
-            <p class="text-sm text-muted">O modo template não fabrica eventos de entrega ou leitura.</p>
+            <p class="font-medium text-highlighted">
+              Nenhum envio registrado
+            </p>
+            <p class="text-sm text-muted">
+              O modo template não fabrica eventos de entrega ou leitura.
+            </p>
           </div>
         </template>
       </div>

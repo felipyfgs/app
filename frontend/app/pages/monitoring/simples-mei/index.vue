@@ -1,9 +1,8 @@
 <script setup lang="ts">
 /**
- * Simples Nacional / MEI — carteira via MonitoringModuleTable.
- * PGDAS-D: renderer especializado (colunas da spec); demais submódulos: tabela genérica.
+ * Simples Nacional / MEI — cápsulas locais PGDAS-D e PGMEI.
+ * Rota canônica única; troca de cápsula reseta paginação/filtros exclusivos.
  */
-import type { TableColumn } from '@nuxt/ui'
 import type {
   MonitoringFilterConfig,
   PgdasdCommunicationPreference,
@@ -11,18 +10,17 @@ import type {
 } from '~/types/fiscal-modules'
 import { SIMPLES_MEI_TABS } from '~/types/fiscal-modules'
 import { buildPgdasdColumns } from '~/utils/pgdasd-table'
-import { sortHeader } from '~/utils/table-sort'
-
-const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
-const FiscalClientCell = resolveComponent('FiscalClientCell')
-const FiscalCoverageBadge = resolveComponent('FiscalCoverageBadge')
-const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
-const UButton = resolveComponent('UButton')
+import { buildPgmeiColumns } from '~/utils/pgmei-table'
+import { pgdasdSummary } from '~/utils/pgdasd'
+import { pgmeiSummary } from '~/utils/pgmei'
 
 const { canManageClients, canTriggerSync } = useDashboard()
 
-// Tab local (PGDASD default). URL permanece /monitoring/simples-mei — sem query/path de tab.
+// Tab local (PGDASD default). URL permanece /monitoring/simples-mei.
 const submodule = ref(normalizeMonitoringSubmodule('simples_mei', undefined))
+
+// Filtro anual PGMEI (ano corrente no fuso local do browser).
+const pgmeiYear = ref(new Date().getFullYear())
 
 const {
   page,
@@ -43,7 +41,6 @@ const {
   sourceLabel,
   asOf,
   surface,
-  allowsDocument,
   sorting,
   setPage,
   refresh,
@@ -51,39 +48,62 @@ const {
   applyQuickFilters,
   resetFilters
 } = useFiscalModulePortfolio('simples_mei', {
-  submodule
+  submodule,
+  year: computed(() => isPgmeiCapsule(submodule.value) ? pgmeiYear.value : null)
 })
+
+function isPgmeiCapsule(value: string | undefined | null): boolean {
+  const s = String(value || '').toLowerCase()
+  return s === 'pgmei' || s === 'mei'
+}
 
 const isPgdasd = computed(() => {
   const s = String(submodule.value || '').toLowerCase()
   return s === 'pgdasd' || s === 'pgdas-d' || s === 'simples'
 })
 
-const filterConfig: MonitoringFilterConfig = {
-  fields: [
-    { key: 'situation', kind: 'option', label: 'Situação' },
-    { key: 'clientId', kind: 'client', label: 'Cliente' },
-    { key: 'competence', kind: 'month', label: 'Competência' },
-    {
-      key: 'coverage',
-      kind: 'option',
-      label: 'Cobertura',
-      items: fiscalCoverageFilterItems()
+const isPgmei = computed(() => isPgmeiCapsule(submodule.value))
+
+const filterConfig = computed<MonitoringFilterConfig>(() => {
+  if (isPgmei.value) {
+    return {
+      fields: [
+        { key: 'situation', kind: 'option', label: 'Situação' },
+        { key: 'clientId', kind: 'client', label: 'Cliente' },
+        {
+          key: 'coverage',
+          kind: 'option',
+          label: 'Cobertura',
+          items: fiscalCoverageFilterItems()
+        }
+      ]
     }
-  ]
-}
+  }
+  return {
+    fields: [
+      { key: 'situation', kind: 'option', label: 'Situação' },
+      { key: 'clientId', kind: 'client', label: 'Cliente' },
+      { key: 'competence', kind: 'month', label: 'Competência' },
+      {
+        key: 'coverage',
+        kind: 'option',
+        label: 'Cobertura',
+        items: fiscalCoverageFilterItems()
+      }
+    ]
+  }
+})
 
 function getRowId(row: SimplesMeiClientRow) {
   return `c:${row.client_id}`
 }
 
-const tabItems = SIMPLES_MEI_TABS.map(t => ({ label: t.label, value: t.value }))
+const tabItems = SIMPLES_MEI_TABS.map((t: { label: string, badge: string, value: string }) => ({
+  label: `${t.label} · ${t.badge}`,
+  value: t.value
+}))
 
-function clientHref(clientId: number) {
-  return `/monitoring/clients/${clientId}`
-}
-
-// —— Modais PGDAS-D ——
+// —— Modais compartilhados por cápsula ——
 const historyOpen = ref(false)
 const previewOpen = ref(false)
 const trackingOpen = ref(false)
@@ -97,7 +117,11 @@ function openFor(row: SimplesMeiClientRow, kind: 'history' | 'preview' | 'tracki
   modalClientId.value = row.client_id
   modalClientName.value = row.legal_name || row.name || null
   modalCnpjMasked.value = row.cnpj_masked || null
-  modalPreference.value = pgdasdSummary(row)?.communication || null
+  if (isPgmei.value) {
+    modalPreference.value = pgmeiSummary(row, pgmeiYear.value)?.communication || null
+  } else {
+    modalPreference.value = pgdasdSummary(row)?.communication || null
+  }
   historyOpen.value = kind === 'history'
   previewOpen.value = kind === 'preview'
   trackingOpen.value = kind === 'tracking'
@@ -108,104 +132,20 @@ function onPreferenceSaved(
   row: SimplesMeiClientRow,
   preference: PgdasdCommunicationPreference
 ) {
-  if (row.detail.pgdasd) row.detail.pgdasd.communication = preference
+  if (isPgmei.value) {
+    if (row.detail.pgmei) row.detail.pgmei.communication = preference
+  } else if (row.detail.pgdasd) {
+    row.detail.pgdasd.communication = preference
+  }
   row.detail.communication = preference
   if (modalClientId.value === row.client_id) modalPreference.value = preference
   void refresh()
 }
 
-const genericColumns: TableColumn<SimplesMeiClientRow>[] = [
-  {
-    id: 'client',
-    header: ({ column }) => sortHeader('Cliente', column),
-    enableHiding: false,
-    cell: ({ row }) => h(FiscalClientCell, {
-      clientId: row.original.client_id,
-      name: row.original.name || row.original.display_name,
-      legalName: row.original.legal_name,
-      cnpjMasked: row.original.cnpj_masked,
-      to: clientHref(row.original.client_id)
-    })
-  },
-  {
-    id: 'competence',
-    header: ({ column }) => sortHeader('Competência', column),
-    cell: ({ row }) => {
-      const d = row.original.detail
-      return String(row.original.competence || d?.period_key || '—')
-    }
-  },
-  {
-    id: 'obligation',
-    header: 'Obrigação / submódulo',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const d = row.original.detail
-      const sub = d?.submodule || submodule.value || '—'
-      const action = row.original.next_action
-      return action ? `${sub} · ${action}` : String(sub)
-    }
-  },
-  {
-    id: 'situation',
-    header: ({ column }) => sortHeader('Situação', column),
-    cell: ({ row }) => h(FiscalStatusBadge, { status: row.original.situation })
-  },
-  {
-    id: 'coverage',
-    header: 'Cobertura',
-    enableSorting: false,
-    cell: ({ row }) => h(FiscalCoverageBadge, { coverage: row.original.coverage })
-  },
-  {
-    id: 'guide',
-    header: 'Guia',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const hasGuideHint = Boolean(row.original.next_action || row.original.next_deadline_at)
-      return hasGuideHint
-        ? h(UButton, {
-            size: 'xs',
-            color: 'neutral',
-            variant: 'ghost',
-            label: 'Ver guias',
-            to: `/monitoring/clients/${row.original.client_id}/guides`
-          })
-        : '—'
-    }
-  },
-  {
-    id: 'next',
-    header: 'Próximo prazo',
-    enableSorting: false,
-    cell: ({ row }) => formatDateTime(row.original.next_deadline_at)
-  },
-  {
-    id: 'consulted',
-    header: ({ column }) => sortHeader('Última consulta', column),
-    cell: ({ row }) => formatDateTime(row.original.last_consulted_at)
-  },
-  {
-    id: 'actions',
-    header: 'Ações',
-    enableHiding: false,
-    enableSorting: false,
-    meta: { class: { th: 'w-48', td: 'w-48' } },
-    cell: ({ row }) => h('div', { class: 'flex justify-end gap-1 items-center' }, [
-      h(FiscalDocumentAction, {
-        document: row.original.document,
-        disabled: !allowsDocument.value
-      }),
-      h(UButton, {
-        size: 'xs',
-        color: 'neutral',
-        variant: 'ghost',
-        label: 'Cliente',
-        to: clientHref(row.original.client_id)
-      })
-    ])
-  }
-]
+function onModalPreferenceSaved(preference: PgdasdCommunicationPreference) {
+  const row = rows.value.find(item => item.client_id === modalClientId.value)
+  if (row) onPreferenceSaved(row, preference)
+}
 
 const pgdasdColumns = computed(() => buildPgdasdColumns({
   canManage: canManageClients.value,
@@ -216,7 +156,43 @@ const pgdasdColumns = computed(() => buildPgdasdColumns({
   onPreferenceSaved
 }))
 
-const columns = computed(() => isPgdasd.value ? pgdasdColumns.value : genericColumns)
+const pgmeiColumns = computed(() => buildPgmeiColumns({
+  year: pgmeiYear.value,
+  canManage: canManageClients.value,
+  onHistory: row => openFor(row, 'history'),
+  onPreview: row => openFor(row, 'preview'),
+  onTracking: row => openFor(row, 'tracking'),
+  onConfigure: row => openFor(row, 'prefs'),
+  onPreferenceSaved
+}))
+
+const columns = computed(() => {
+  if (isPgmei.value) return pgmeiColumns.value
+  return pgdasdColumns.value
+})
+
+// Troca de cápsula: reseta paginação e filtros exclusivos; descarta resposta obsoleta via submodule reativo.
+watch(submodule, (next, prev) => {
+  if (next === prev) return
+  historyOpen.value = false
+  previewOpen.value = false
+  trackingOpen.value = false
+  prefsOpen.value = false
+  modalClientId.value = null
+  setPage(1)
+  resetFilters()
+  if (isPgmeiCapsule(next)) {
+    pgmeiYear.value = new Date().getFullYear()
+  }
+})
+
+const yearOptions = computed(() => {
+  const current = new Date().getFullYear()
+  return Array.from({ length: 5 }, (_, i) => {
+    const y = current - i
+    return { label: String(y), value: y }
+  })
+})
 </script>
 
 <template>
@@ -247,27 +223,30 @@ const columns = computed(() => isPgdasd.value ? pgdasdColumns.value : genericCol
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
     :submodule="submodule"
-    :selection-enabled="isPgdasd ? canManageClients : undefined"
-    :custom-bulk-actions="isPgdasd"
-    :horizontal-scroll="isPgdasd"
-    :table-class="isPgdasd ? 'min-w-[1120px]' : undefined"
+    :selection-enabled="(isPgdasd || isPgmei) ? canManageClients : undefined"
+    :custom-bulk-actions="isPgdasd || isPgmei"
+    :horizontal-scroll="true"
+    table-class="min-w-[1120px]"
     empty-title="Nenhum cliente"
-    :column-labels="isPgdasd
+    :column-labels="isPgmei
       ? {
-          last_declaration: 'Última declaração',
-          rbt12: 'RBT12',
-          send: 'Enviar',
-          automatic: 'Automático',
-          tracking: 'Rastreio',
-          consulted: 'Última consulta',
-          details: 'Detalhes'
-        }
+        active_debt: 'Dívida ativa',
+        total_debt: 'Total inscrito',
+        send: 'Enviar',
+        automatic: 'Automático',
+        tracking: 'Rastreio',
+        consulted: 'Última consulta',
+        details: 'Detalhes'
+      }
       : {
-          obligation: 'Obrigação / submódulo',
-          guide: 'Guia',
-          next: 'Próximo prazo',
-          consulted: 'Última consulta'
-        }"
+        last_declaration: 'Última declaração',
+        rbt12: 'RBT12',
+        send: 'Enviar',
+        automatic: 'Automático',
+        tracking: 'Rastreio',
+        consulted: 'Última consulta',
+        details: 'Detalhes'
+      }"
     @update:page="setPage"
     @update:sorting="sorting = $event"
     @quick-filter-change="applyQuickFilters"
@@ -276,22 +255,41 @@ const columns = computed(() => isPgdasd.value ? pgdasdColumns.value : genericCol
     @refresh="refresh"
   >
     <template #submodules>
-      <UTabs
-        v-model="submodule"
-        :items="tabItems"
-        :content="false"
-        size="sm"
-        class="w-auto max-w-full"
-        data-testid="simples-mei-submodule-tabs"
-      />
+      <div class="flex flex-wrap items-center gap-3">
+        <UTabs
+          v-model="submodule"
+          :items="tabItems"
+          :content="false"
+          size="sm"
+          class="w-auto max-w-full"
+          data-testid="simples-mei-submodule-tabs"
+        />
+        <USelect
+          v-if="isPgmei"
+          v-model="pgmeiYear"
+          :items="yearOptions"
+          value-key="value"
+          size="sm"
+          class="w-28"
+          data-testid="pgmei-year-filter"
+          aria-label="Ano calendário PGMEI"
+        />
+      </div>
     </template>
 
     <template
-      v-if="isPgdasd"
+      v-if="isPgdasd || isPgmei"
       #bulk-actions="{ selectedClientIds, selectedCount, clearSelection }"
     >
       <MonitoringPgdasdBulkAutomaticActions
-        v-if="canManageClients"
+        v-if="isPgdasd && canManageClients"
+        :selected-client-ids="selectedClientIds"
+        :selected-count="selectedCount"
+        @clear="clearSelection"
+        @refresh="refresh"
+      />
+      <MonitoringPgmeiBulkAutomaticActions
+        v-if="isPgmei && canManageClients"
         :selected-client-ids="selectedClientIds"
         :selected-count="selectedCount"
         @clear="clearSelection"
@@ -339,9 +337,26 @@ const columns = computed(() => isPgdasd.value ? pgdasdColumns.value : genericCol
     :client-name="modalClientName"
     :preference="modalPreference"
     :can-manage="canManageClients"
-    @saved="(preference) => {
-      const row = rows.find(item => item.client_id === modalClientId)
-      if (row) onPreferenceSaved(row, preference)
-    }"
+    @saved="onModalPreferenceSaved"
+  />
+
+  <MonitoringPgmeiHistoryModal
+    v-if="isPgmei"
+    v-model:open="historyOpen"
+    :client-id="modalClientId"
+    :client-name="modalClientName"
+    :cnpj-masked="modalCnpjMasked"
+    :year="pgmeiYear"
+  />
+  <MonitoringPgmeiCommunicationModals
+    v-if="isPgmei"
+    v-model:preview-open="previewOpen"
+    v-model:tracking-open="trackingOpen"
+    v-model:prefs-open="prefsOpen"
+    :client-id="modalClientId"
+    :client-name="modalClientName"
+    :preference="modalPreference"
+    :can-manage="canManageClients"
+    @saved="onModalPreferenceSaved"
   />
 </template>

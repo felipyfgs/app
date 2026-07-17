@@ -82,15 +82,14 @@ class PgdasdArtifact extends Model
 
         return [
             'id' => $this->id,
-            'document_kind' => $this->kind,
-            'source_operation_key' => is_array($this->metadata) ? ($this->metadata['source_operation_key'] ?? null) : null,
+            'kind' => $this->kind,
             'period_key' => is_array($this->metadata) ? ($this->metadata['period_key'] ?? null) : null,
-            'periodo_apuracao' => is_array($this->metadata) ? ($this->metadata['periodo_apuracao'] ?? null) : null,
-            'numero_declaracao' => $this->declaration_number,
-            'numero_das' => $this->das_number,
-            'filename_hint' => $this->filename,
+            'declaration_number' => $this->declaration_number,
+            'das_number' => $this->das_number,
+            'filename' => $this->filename,
+            'content_type' => $this->content_type,
+            'byte_size' => $evidence?->byte_size,
             'observed_at' => $this->observed_at?->toIso8601String(),
-            'evidence' => $evidence?->toTenantDocumentArray(),
             'download_path' => '/api/v1/fiscal/simples-mei/pgdasd/artifacts/'.$this->id.'/download',
         ];
     }

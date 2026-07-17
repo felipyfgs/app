@@ -42,13 +42,13 @@ export function buildPgdasdColumns(options: {
   }) {
     return h(UTooltip, { text: args.label }, {
       default: () => h(UButton, {
-        size: 'sm',
-        color: args.color || 'neutral',
-        variant: 'ghost',
-        icon: args.icon,
-        ariaLabel: args.label,
+        'size': 'sm',
+        'color': args.color || 'neutral',
+        'variant': 'ghost',
+        'icon': args.icon,
+        'ariaLabel': args.label,
         'data-testid': args.testId,
-        onClick: args.onClick
+        'onClick': args.onClick
       })
     })
   }

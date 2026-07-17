@@ -75,6 +75,7 @@ class PgdasdDeclarationStateResolverTest extends TestCase
             'timezone' => 'America/Sao_Paulo',
             'effective_from' => CarbonImmutable::now()->subYear(),
             'is_current' => true,
+            'source_ref' => 'https://www.gov.br/receitafederal/calendario-oficial',
             'metadata' => ['verification' => 'VERIFIED'],
         ]);
 
@@ -108,5 +109,34 @@ class PgdasdDeclarationStateResolverTest extends TestCase
             false,
         );
         $this->assertSame(PgdasdDeclarationState::Unverified, $pack['state']);
+    }
+
+    #[Test]
+    public function overdue_with_unverified_banking_adjustment_remains_unverified(): void
+    {
+        $calendar = TaxDeadlineCalendarVersion::query()->create([
+            'code' => 'TEST_PGDASD_ADJUSTMENT',
+            'version' => 1,
+            'label' => 'Test',
+            'timezone' => 'America/Sao_Paulo',
+            'effective_from' => CarbonImmutable::now()->subYear(),
+            'is_current' => true,
+            'source_ref' => 'https://www.gov.br/fonte-oficial',
+            'metadata' => ['verification' => 'VERIFIED'],
+        ]);
+        $projection = new TaxObligationProjection([
+            'due_at' => CarbonImmutable::now()->subDays(3),
+            'calendar_version_id' => $calendar->id,
+            'due_rule_snapshot' => [
+                'business_day_adjustment' => 'NEXT_BUSINESS_DAY',
+                'calendar_verified' => false,
+                'business_day_adjustment_reason' => 'WEEKEND_ONLY_UNVERIFIED_HOLIDAYS',
+            ],
+        ]);
+
+        $pack = $this->resolver->resolve(null, CarbonImmutable::now(), $projection);
+
+        $this->assertSame(PgdasdDeclarationState::Unverified, $pack['state']);
+        $this->assertFalse($pack['calendar_verified']);
     }
 }

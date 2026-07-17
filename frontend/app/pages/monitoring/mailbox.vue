@@ -56,7 +56,10 @@ const filterConfig: MonitoringFilterConfig = {
 const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({
   // status reutilizado como eixo de triagem na surface mailbox
   status: triage.value,
-  clientIds: (() => { const n = Number(clientId.value); return Number.isFinite(n) && n >= 1 ? [Math.floor(n)] : [] })(),
+  clientIds: (() => {
+    const n = Number(clientId.value)
+    return Number.isFinite(n) && n >= 1 ? [Math.floor(n)] : []
+  })(),
   q: ''
 }))
 

@@ -8,7 +8,7 @@ import {
   isSyntheticFiscalOrigin
 } from '../../app/types/fiscal-modules'
 import type {
-  buildFiscalModuleClients } from '../e2e/support/fiscal-fixtures'
+  buildFiscalModuleClients } from './support/fiscal-fixtures'
 import {
   assertClientRowEnvelope,
   assertClientsPageEnvelope,
@@ -35,7 +35,7 @@ import {
   FISCAL_FIXTURE_CNPJ_MASKED,
   FISCAL_FIXTURE_CNPJ_RAW,
   FISCAL_FORBIDDEN_KEYS
-} from '../e2e/support/fiscal-fixtures'
+} from './support/fiscal-fixtures'
 
 describe('contrato fiscal — overview discriminado por module_key (9.2)', () => {
   for (const module of FISCAL_PORTFOLIO_MODULE_KEYS) {

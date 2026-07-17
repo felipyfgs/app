@@ -14,6 +14,7 @@ use App\Models\Office;
 use App\Models\PgdasdArtifact;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -34,7 +35,14 @@ final class PgdasdCommunicationService
 
     public function __construct(
         private readonly AuditLogger $audit,
+        private readonly string $submoduleKey = self::SUBMODULE,
+        private readonly string $auditPrefix = 'pgdasd.communication',
     ) {}
+
+    public function submoduleKey(): string
+    {
+        return $this->submoduleKey;
+    }
 
     /**
      * Leitura sem efeito colateral: preferência ausente vira default somente em memória.
@@ -48,17 +56,17 @@ final class PgdasdCommunicationService
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
             ->where('module_key', self::MODULE)
-            ->where('submodule_key', self::SUBMODULE)
+            ->where('submodule_key', $this->submoduleKey)
             ->first() ?? new ClientCommunicationPreference([
                 'office_id' => $office->id,
                 'client_id' => $client->id,
                 'module_key' => self::MODULE,
-                'submodule_key' => self::SUBMODULE,
+                'submodule_key' => $this->submoduleKey,
                 'automatic_requested' => false,
                 'email_enabled' => false,
                 'whatsapp_enabled' => false,
-                // Alinhado ao default da migration (1); create aceita 0|1 na ausência de linha.
-                'lock_version' => 1,
+                // Default transitório: primeira mutação espera 0 e persiste versão 1.
+                'lock_version' => 0,
             ]);
     }
 
@@ -92,7 +100,7 @@ final class PgdasdCommunicationService
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
             ->where('module_key', self::MODULE)
-            ->where('submodule_key', self::SUBMODULE)
+            ->where('submodule_key', $this->submoduleKey)
             ->get()
             ->keyBy('client_id');
         $eligible = $this->eligibleChannelsForClients($office, $clientIds);
@@ -101,7 +109,7 @@ final class PgdasdCommunicationService
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
             ->where('module_key', self::MODULE)
-            ->where('submodule_key', self::SUBMODULE)
+            ->where('submodule_key', $this->submoduleKey)
             ->get(['id', 'client_id', 'status'])
             ->groupBy('client_id');
 
@@ -113,12 +121,11 @@ final class PgdasdCommunicationService
                 'office_id' => $office->id,
                 'client_id' => $clientId,
                 'module_key' => self::MODULE,
-                'submodule_key' => self::SUBMODULE,
+                'submodule_key' => $this->submoduleKey,
                 'automatic_requested' => false,
                 'email_enabled' => false,
                 'whatsapp_enabled' => false,
-                // Virtual: lock_version 1 = default de linha recém-criada (migration).
-                'lock_version' => 1,
+                'lock_version' => 0,
             ]);
             $eligibleChannels = $eligible[$clientId] ?? [];
             /** @var Collection<int, ClientCommunicationDispatch> $clientDispatches */
@@ -168,13 +175,12 @@ final class PgdasdCommunicationService
                     ->where('office_id', $office->id)
                     ->where('client_id', $client->id)
                     ->where('module_key', self::MODULE)
-                    ->where('submodule_key', self::SUBMODULE)
+                    ->where('submodule_key', $this->submoduleKey)
                     ->lockForUpdate()
                     ->first();
 
                 if ($current === null) {
-                    // 1 = default virtual/migration; 0 = sentinel legado de "ainda sem linha".
-                    if ($expectedVersion !== 0 && $expectedVersion !== 1) {
+                    if ($expectedVersion !== 0) {
                         throw $this->conflict();
                     }
 
@@ -182,7 +188,7 @@ final class PgdasdCommunicationService
                         'office_id' => $office->id,
                         'client_id' => $client->id,
                         'module_key' => self::MODULE,
-                        'submodule_key' => self::SUBMODULE,
+                        'submodule_key' => $this->submoduleKey,
                         'automatic_requested' => $automatic,
                         'email_enabled' => $email,
                         'whatsapp_enabled' => $whatsapp,
@@ -223,7 +229,7 @@ final class PgdasdCommunicationService
         }
 
         $this->audit->record(
-            action: 'pgdasd.communication.preference.update',
+            action: $this->auditPrefix.'.preference.update',
             result: 'SUCCESS',
             subject: $preference,
             context: [
@@ -288,7 +294,7 @@ final class PgdasdCommunicationService
                 ->where('office_id', $office->id)
                 ->whereIn('client_id', $clientIds)
                 ->where('module_key', self::MODULE)
-                ->where('submodule_key', self::SUBMODULE)
+                ->where('submodule_key', $this->submoduleKey)
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('client_id');
@@ -321,7 +327,7 @@ final class PgdasdCommunicationService
                         'office_id' => $office->id,
                         'client_id' => $clientId,
                         'module_key' => self::MODULE,
-                        'submodule_key' => self::SUBMODULE,
+                        'submodule_key' => $this->submoduleKey,
                         'automatic_requested' => false,
                         'email_enabled' => false,
                         'whatsapp_enabled' => false,
@@ -343,7 +349,7 @@ final class PgdasdCommunicationService
         });
 
         $this->audit->record(
-            action: 'pgdasd.communication.preference.bulk_update',
+            action: $this->auditPrefix.'.preference.bulk_update',
             result: 'SUCCESS',
             subject: $office,
             context: [
@@ -373,18 +379,23 @@ final class PgdasdCommunicationService
         $timezone = is_string($office->timezone) && $office->timezone !== ''
             ? $office->timezone
             : 'America/Sao_Paulo';
-        $periodKey = PgdasdPeriod::toPeriodKey(PgdasdPeriod::expectedPa(null, $timezone));
+        $periodKey = $this->submoduleKey === 'pgmei'
+            ? (string) CarbonImmutable::now($timezone)->year
+            : PgdasdPeriod::toPeriodKey(PgdasdPeriod::expectedPa(null, $timezone));
 
-        $documents = PgdasdArtifact::query()
-            ->withoutGlobalScopes()
-            ->where('office_id', $office->id)
-            ->where('client_id', $client->id)
-            ->orderByDesc('observed_at')
-            ->limit(20)
-            ->get()
-            ->map(static fn (PgdasdArtifact $artifact): array => $artifact->toTenantDocumentArray())
-            ->values()
-            ->all();
+        $documents = [];
+        if ($this->submoduleKey === self::SUBMODULE) {
+            $documents = PgdasdArtifact::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $office->id)
+                ->where('client_id', $client->id)
+                ->orderByDesc('observed_at')
+                ->limit(20)
+                ->get()
+                ->map(static fn (PgdasdArtifact $artifact): array => $artifact->toTenantDocumentArray())
+                ->values()
+                ->all();
+        }
 
         $channels = [
             $this->previewChannel(
@@ -442,7 +453,7 @@ final class PgdasdCommunicationService
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
             ->where('module_key', self::MODULE)
-            ->where('submodule_key', self::SUBMODULE)
+            ->where('submodule_key', $this->submoduleKey)
             ->orderByDesc('id')
             ->get();
         $status = $this->trackingStatus(
@@ -638,7 +649,7 @@ final class PgdasdCommunicationService
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
             ->where('module_key', self::MODULE)
-            ->where('submodule_key', self::SUBMODULE)
+            ->where('submodule_key', $this->submoduleKey)
             ->get(['id', 'status']);
 
         return $this->trackingStatus(

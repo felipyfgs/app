@@ -39,6 +39,7 @@ class ModulePortfolioFiltersTest extends TestCase
         $this->assertNull($f->coverage);
         $this->assertNull($f->modality);
         $this->assertNull($f->q);
+        $this->assertNull($f->year);
     }
 
     public function test_with_page_preserva_coverage_e_modality(): void
@@ -48,6 +49,7 @@ class ModulePortfolioFiltersTest extends TestCase
             'modality' => 'PARCMEI',
             'page' => 1,
             'per_page' => 15,
+            'year' => '2026',
         ]);
 
         $next = $base->withPage(2, 50);
@@ -56,6 +58,14 @@ class ModulePortfolioFiltersTest extends TestCase
         $this->assertSame(50, $next->perPage);
         $this->assertSame('FULL', $next->coverage);
         $this->assertSame('PARCMEI', $next->modality);
+        $this->assertSame(2026, $next->year);
+    }
+
+    public function test_from_request_normaliza_ano_calendario_pgmei(): void
+    {
+        $this->assertSame(2026, ModulePortfolioFilters::fromRequest(['year' => '2026'])->year);
+        $this->assertNull(ModulePortfolioFilters::fromRequest(['year' => '26'])->year);
+        $this->assertNull(ModulePortfolioFilters::fromRequest(['year' => 'fora'])->year);
     }
 
     public function test_from_request_aceita_listas_csv_e_array(): void

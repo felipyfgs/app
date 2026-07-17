@@ -201,29 +201,28 @@ class ModulePortfolioDocumentDescriptorTest extends TestCase
         $this->assertSame('STRUCTURED_ONLY', $mailboxRow['document']['unavailable_reason']);
     }
 
-    public function test_dasn_surface_is_not_production(): void
+    public function test_removed_simples_mei_submodules_are_rejected(): void
     {
         $this->actingAsOffice($this->admin);
 
-        // Overview expõe o contrato mesmo sem linhas (submódulo em prospecção).
         $this->getJson('/api/v1/fiscal/modules/simples_mei/overview?submodule=DASN_SIMEI')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['submodule']);
+
+        $this->getJson('/api/v1/fiscal/modules/simples_mei/clients?submodule=REGIME')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['submodule']);
+    }
+
+    public function test_pgmei_surface_is_structured_without_document(): void
+    {
+        $this->actingAsOffice($this->admin);
+
+        $this->getJson('/api/v1/fiscal/modules/simples_mei/overview?submodule=PGMEI')
             ->assertOk()
-            ->assertJsonPath('data.surface.surface_key', 'simples_mei_dasn')
-            ->assertJsonPath('data.surface.result_kind', 'UNAVAILABLE')
+            ->assertJsonPath('data.surface.surface_key', 'simples_mei_pgmei')
+            ->assertJsonPath('data.surface.result_kind', 'STRUCTURED')
             ->assertJsonPath('data.surface.allows_document', false);
-
-        // Descritor fail-closed a partir do contrato da superfície.
-        $surface = app(MonitoringSurfaceRegistry::class)
-            ->get('simples_mei_dasn');
-        $descriptor = FiscalDocumentDescriptorDto::unavailable(
-            DocumentUnavailableReason::NotProduction,
-            $surface,
-        )->toArray();
-
-        $this->assertFalse($descriptor['available']);
-        $this->assertNull($descriptor['href']);
-        $this->assertSame('NOT_PRODUCTION', $descriptor['unavailable_reason']);
-        $this->assertSame('simples_mei_dasn', $descriptor['source_surface']);
     }
 
     public function test_overview_includes_surface_summary_without_serpro_coords(): void

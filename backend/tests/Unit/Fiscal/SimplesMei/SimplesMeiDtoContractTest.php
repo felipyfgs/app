@@ -13,6 +13,7 @@ use App\DTO\Serpro\IntegraResponse;
 use App\Enums\FiscalGuidePaymentStatus;
 use App\Enums\FiscalSituation;
 use App\Enums\TaxRegimeCode;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiDividaAtiva24Codec;
 use App\Services\Fiscal\SimplesMei\SimplesMeiCatalog;
 use App\Services\Fiscal\SimplesMei\SimplesMeiResponseMapper;
 use InvalidArgumentException;
@@ -143,7 +144,7 @@ class SimplesMeiDtoContractTest extends TestCase
     public function test_mapper_inconclusivo_pgdasd(): void
     {
         $def = SimplesMeiCatalog::find('INTEGRA_SN', 'PGDASD', 'CONSULTAR_DECLARACAO');
-        $mapper = new SimplesMeiResponseMapper;
+        $mapper = new SimplesMeiResponseMapper(app(PgmeiDividaAtiva24Codec::class));
         $result = $mapper->map($def, new IntegraResponse(
             success: true,
             httpStatus: 200,
@@ -163,13 +164,25 @@ class SimplesMeiDtoContractTest extends TestCase
     public function test_mapper_versao_dto_invalida(): void
     {
         $def = SimplesMeiCatalog::find('INTEGRA_MEI', 'PGMEI', 'CONSULTAR');
-        $mapper = new SimplesMeiResponseMapper;
+        $mapper = new SimplesMeiResponseMapper(app(PgmeiDividaAtiva24Codec::class));
         $result = $mapper->map($def, new IntegraResponse(
             success: true,
             httpStatus: 200,
-            body: ['dto_version' => '9', 'data' => []],
-        ));
+            body: [
+                'dados' => json_encode([
+                    [
+                        'periodoApuracao' => '202601',
+                        'tributo' => 'INSS',
+                        'valor' => '1,00',
+                        'enteFederado' => 'União',
+                        'situacaoDebito' => 'Ativa',
+                    ],
+                ], JSON_THROW_ON_ERROR),
+            ],
+        ), '2026');
 
-        $this->assertSame('DTO_VERSION_UNSUPPORTED', $result->errorCode);
+        $this->assertSame(FiscalSituation::Pending, $result->situation);
+        $this->assertSame('HAS_ACTIVE_DEBT', $result->normalized['debt_state'] ?? null);
+        $this->assertSame(100, $result->normalized['total_cents'] ?? null);
     }
 }

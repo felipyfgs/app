@@ -87,11 +87,22 @@ class PgdasdRbt12Projection extends Model
             'total_cents' => $this->total_cents,
             'internal_market_cents' => $this->internal_market_cents,
             'external_market_cents' => $this->external_market_cents,
+            'composition' => [
+                'internal_market_cents' => $this->internal_market_cents,
+                'external_market_cents' => $this->external_market_cents,
+                'total_cents' => $this->total_cents,
+            ],
+            'origin' => [
+                'das_number' => $this->source_das_number,
+                'declaration_number' => $this->source_declaration_number,
+                'declaration_transmitted_at' => $this->source_transmitted_at?->toIso8601String(),
+            ],
             'parser_version' => $this->parser_version,
             'unavailable_reason' => $this->sanitized_error,
             'numero_das' => $this->source_das_number,
             'numero_declaracao' => $this->source_declaration_number,
             'resolved_at' => $this->extracted_at?->toIso8601String(),
+            'extracted_at' => $this->extracted_at?->toIso8601String(),
         ];
     }
 }

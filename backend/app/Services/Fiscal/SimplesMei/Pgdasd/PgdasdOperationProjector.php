@@ -62,7 +62,9 @@ final class PgdasdOperationProjector
                     client: $client,
                     obligation: $definition,
                     periodKey: $periodKey,
-                    competenceId: $run->competence_id,
+                    competenceId: $run->competence?->period_key === $periodKey
+                        ? $run->competence_id
+                        : null,
                 );
                 $periodProjections[$periodKey] = $projection;
 
@@ -150,6 +152,21 @@ final class PgdasdOperationProjector
             ->all();
 
         return $this->chooseLatestDeclaration($operations);
+    }
+
+    public function ensureProjectionForPeriod(
+        Office $office,
+        Client $client,
+        string $periodKey,
+        ?int $competenceId = null,
+    ): TaxObligationProjection {
+        return $this->projections->project(
+            office: $office,
+            client: $client,
+            obligation: $this->definition(),
+            periodKey: $periodKey,
+            competenceId: $competenceId,
+        );
     }
 
     private function definition(): TaxObligationDefinition

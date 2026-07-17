@@ -10,6 +10,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EnsureOfficeContext
 {
+    public const CLIENT_OFFICE_ID_SUPPLIED = 'client_office_id_supplied';
+
     public function __construct(private readonly CurrentOffice $currentOffice) {}
 
     public function handle(Request $request, Closure $next): Response
@@ -42,6 +44,15 @@ class EnsureOfficeContext
 
     private function stripClientOfficeId(Request $request): void
     {
+        $supplied = $request->request->has('office_id')
+            || $request->query->has('office_id')
+            || ($request->isJson() && $request->json() !== null && $request->json()->has('office_id'));
+        if ($supplied) {
+            // Endpoints novos que exigem rejeição explícita podem consultar o marker
+            // sem jamais ler/confiar no valor fornecido pelo cliente.
+            $request->attributes->set(self::CLIENT_OFFICE_ID_SUPPLIED, true);
+        }
+
         $request->request->remove('office_id');
         $request->query->remove('office_id');
         if ($request->isJson() && $request->json() !== null) {

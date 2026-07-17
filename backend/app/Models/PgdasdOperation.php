@@ -112,9 +112,10 @@ class PgdasdOperation extends Model
             'numero_das' => $this->das_number,
             'transmitted_at' => $this->transmitted_at?->toIso8601String(),
             'das_emitted_at' => $this->issued_at?->toIso8601String(),
-            'das_pago' => $this->payment_located,
-            'payment_localized' => $this->payment_located === true,
-            'payment_not_located' => $this->payment_located === false,
+            'payment_located' => $this->payment_located,
+            'payment_observation' => $this->payment_located === false
+                ? 'Pagamento não localizado até a consulta.'
+                : ($this->payment_located === true ? 'Pagamento localizado até a consulta.' : null),
             'malha' => $this->malha,
             'observed_at' => $this->last_seen_at?->toIso8601String(),
         ];

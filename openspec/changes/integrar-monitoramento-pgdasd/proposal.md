@@ -4,7 +4,7 @@ O monitoramento PGDAS-D atual usa campos e payloads que não representam o contr
 
 ## O que muda
 
-- Especializar somente a tabela PGDAS-D com razão social, última declaração, RBT12, controles de comunicação em modo template, última consulta válida e histórico detalhado.
+- Especializar a cápsula PGDAS-D no template operacional compartilhado de sete colunas — Situação, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca — mantendo última declaração e RBT12 no tooltip e no histórico detalhado.
 - Integrar `CONSDECLARACAO13`, `CONSULTIMADECREC14`, `CONSDECREC15` e `CONSEXTRATO16` pelos contratos oficiais, sem chamar operações de emissão de DAS.
 - Persistir original e retificadoras, DAS observados, documentos no cofre e uma projeção idempotente de RBT12 extraída do PDF oficial.
 - Consolidar os estados `CURRENT`, `DUE_WITHIN_DEADLINE`, `OVERDUE_NOT_FOUND` e `UNVERIFIED`, impedindo vermelho sem consulta produtiva posterior ao prazo e calendário verificado.

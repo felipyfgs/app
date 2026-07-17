@@ -5,21 +5,22 @@ namespace App\Services\Fiscal\SimplesMei\Pgdasd;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
 use App\DTO\Serpro\IntegraResponse;
+use App\Enums\FiscalRunResult;
 use App\Enums\FiscalSituation;
+use App\Enums\FiscalSourceProvenance;
 use App\Enums\PgdasdDeclarationState;
 use App\Enums\PgdasdRbt12Status;
-use App\Models\FiscalEvidenceArtifact;
+use App\Models\FiscalMonitoringRun;
+use App\Models\FiscalSnapshot;
 use App\Models\PgdasdArtifact;
+use App\Models\PgdasdOperation;
 use App\Models\PgdasdRbt12Projection;
-use App\Models\TaxObligationDefinition;
 use App\Models\TaxObligationProjection;
 use App\Services\FiscalMonitoring\FiscalEvidenceStore;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Orquestra projeção pós-consulta PGDAS-D (13–16): operações, estado, RBT12 e documentos.
- */
+/** Projeta somente respostas PGDAS-D oficiais, completas e tenant-scoped. */
 final class PgdasdPostConsultService
 {
     public function __construct(
@@ -29,21 +30,18 @@ final class PgdasdPostConsultService
         private readonly PgdasdOperationProjector $projector,
         private readonly PgdasdDeclarationStateResolver $stateResolver,
         private readonly PgdasdRbt12Service $rbt12,
+        private readonly FiscalEvidenceStore $evidenceStore,
     ) {}
 
-    /**
-     * Enriquece o resultado do adapter com projeção e sanitização.
-     *
-     * @return array{result: FiscalAdapterResult, sanitized_dados: mixed}
-     */
+    /** @return array{result:FiscalAdapterResult,sanitized_dados:mixed} */
     public function handle(
         FiscalAdapterRequest $request,
         IntegraResponse $response,
         FiscalAdapterResult $result,
         string $operationKey,
     ): array {
-        if (! $response->success || $result->result->value !== 'SUCCESS') {
-            return ['result' => $result, 'sanitized_dados' => $response->dados];
+        if (! $response->success || $result->result !== FiscalRunResult::Success) {
+            return ['result' => $result, 'sanitized_dados' => null];
         }
 
         return match ($operationKey) {
@@ -51,322 +49,388 @@ final class PgdasdPostConsultService
             'pgdasd.consultimadecrec',
             'pgdasd.consdecrec',
             'pgdasd.consextrato' => $this->handleDocumental($request, $response, $result, $operationKey),
-            default => ['result' => $result, 'sanitized_dados' => $response->dados],
+            default => ['result' => $result, 'sanitized_dados' => null],
         };
     }
 
-    /**
-     * @return array{result: FiscalAdapterResult, sanitized_dados: mixed}
-     */
+    public function attachSnapshotToValidProjections(
+        FiscalMonitoringRun $run,
+        ?FiscalSnapshot $snapshot,
+    ): int {
+        if ($snapshot === null
+            || (int) $snapshot->run_id !== (int) $run->id
+            || strtoupper((string) $run->service_code) !== 'PGDASD'
+            || ! in_array(strtoupper((string) $run->operation_code), ['MONITOR', 'CONSULTAR_DECLARACAO'], true)
+            || $run->source_provenance !== FiscalSourceProvenance::SerproReal
+        ) {
+            return 0;
+        }
+
+        return TaxObligationProjection::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $run->office_id)
+            ->where('client_id', $run->client_id)
+            ->where('last_valid_run_id', $run->id)
+            ->update([
+                'last_valid_snapshot_id' => $snapshot->id,
+                'updated_at' => CarbonImmutable::now(),
+            ]);
+    }
+
+    /** @return array{result:FiscalAdapterResult,sanitized_dados:mixed} */
     private function handle13(
         FiscalAdapterRequest $request,
         IntegraResponse $response,
         FiscalAdapterResult $result,
     ): array {
-        $normalized = is_array($result->normalized) ? $result->normalized : [];
-        $productive = $response->isProductiveEvidence();
-        $simulated = $response->simulated || ! $productive;
-
-        try {
-            $decoded = $this->codec13->decodeDados($response->dados ?? $response->body['dados'] ?? null);
-        } catch (\Throwable $e) {
-            Log::warning('pgdasd.consdeclaracao.decode_failed', [
-                'run_id' => $request->run->id,
-                'reason' => $e->getMessage(),
-            ]);
-            $normalized['pgdasd'] = [
-                'incomplete' => true,
-                'declaration_state' => PgdasdDeclarationState::Unverified->value,
-                'error' => 'DECODE_FAILED',
-            ];
-
-            return [
-                'result' => $this->withNormalized($result, $normalized, FiscalSituation::Unknown),
-                'sanitized_dados' => $response->dados,
-            ];
-        }
-
-        $projection = $this->resolveOrCreateProjection($request);
-        if ($projection === null) {
-            $normalized['pgdasd'] = [
-                'incomplete' => true,
-                'declaration_state' => PgdasdDeclarationState::Unverified->value,
-                'error' => 'PROJECTION_UNAVAILABLE',
-            ];
-
-            return [
-                'result' => $this->withNormalized($result, $normalized, FiscalSituation::Unknown),
-                'sanitized_dados' => $response->dados,
-            ];
-        }
-
-        $decodedIncomplete = (bool) ($decoded['incomplete'] ?? true);
-        $projected = [
-            'upserted' => [],
-            'projections' => [],
-            'last_declaration' => null,
-            'incomplete' => $decodedIncomplete,
-        ];
-
-        // Resposta incompleta não pode ser projetada (projector lança RuntimeException).
-        if (! $decodedIncomplete) {
-            try {
-                $projected = $this->projector->projectFromDecoded(
-                    $request->run,
-                    $request->office,
-                    $request->client,
-                    $decoded,
-                );
-                $projected['incomplete'] = false;
-            } catch (\Throwable $e) {
-                Log::warning('pgdasd.consdeclaracao.project_failed', [
-                    'run_id' => $request->run->id,
-                    'reason' => $e->getMessage(),
-                ]);
-                $projected['incomplete'] = true;
-            }
+        if (! $this->isRealProductive($response)) {
+            return $this->unverified13($result, 'SOURCE_NOT_SERPRO_REAL');
         }
 
         $expectedPa = $this->resolveExpectedPa($request);
-        $declForPa = null;
-        if ($expectedPa !== null) {
-            try {
-                $periodKey = PgdasdPeriod::periodKeyFromPeriodoApuracao($expectedPa);
-                $declForPa = $this->projector->latestDeclarationForPeriod(
-                    (int) $request->office->id,
-                    (int) $request->client->id,
-                    $periodKey,
-                );
-            } catch (\Throwable) {
-                $declForPa = null;
-            }
+        if ($expectedPa === null) {
+            return $this->unverified13($result, 'EXPECTED_PERIOD_UNAVAILABLE');
         }
 
-        $lastProductive = $productive ? CarbonImmutable::now() : null;
-        if ($productive) {
+        try {
+            $decoded = $this->codec13->decodeDados($response->dados ?? ($response->body['dados'] ?? null));
+        } catch (\Throwable $exception) {
+            Log::warning('pgdasd.consdeclaracao.decode_failed', [
+                'run_id' => $request->run->id,
+                'reason_code' => 'DECODE_FAILED',
+            ]);
+
+            return $this->unverified13($result, 'DECODE_FAILED');
+        }
+
+        if (($decoded['incomplete'] ?? true) === true || ! $this->codec13->coversPeriodo($decoded, $expectedPa)) {
+            return $this->unverified13($result, 'INCOMPLETE_OR_PERIOD_NOT_COVERED');
+        }
+
+        try {
+            $projected = $this->projector->projectFromDecoded(
+                $request->run,
+                $request->office,
+                $request->client,
+                $decoded,
+            );
+            $expectedPeriodKey = PgdasdPeriod::periodKeyFromPeriodoApuracao($expectedPa);
+            $expectedProjection = $projected['projections'][$expectedPeriodKey]
+                ?? $this->projector->ensureProjectionForPeriod(
+                    $request->office,
+                    $request->client,
+                    $expectedPeriodKey,
+                    $request->competence?->period_key === $expectedPeriodKey
+                        ? $request->competence?->id
+                        : null,
+                );
+        } catch (\Throwable $exception) {
+            Log::warning('pgdasd.consdeclaracao.project_failed', [
+                'run_id' => $request->run->id,
+                'reason_code' => 'PROJECTION_FAILED',
+            ]);
+
+            return $this->unverified13($result, 'PROJECTION_FAILED');
+        }
+
+        $periodProjections = collect($projected['projections'])
+            ->push($expectedProjection)
+            ->unique('id')
+            ->values();
+        $observedAt = CarbonImmutable::now();
+        foreach ($periodProjections as $projection) {
             $projection->forceFill([
-                'pgdasd_last_productive_consulted_at' => $lastProductive,
-                'last_valid_query_at' => $lastProductive,
+                'last_valid_query_at' => $observedAt,
                 'last_valid_run_id' => $request->run->id,
+                'pgdasd_last_productive_consulted_at' => $observedAt,
             ])->save();
         }
 
-        $responseIncomplete = $projected['incomplete'] || $decodedIncomplete;
-        $statePack = $this->stateResolver->resolve(
-            declarationForExpectedPa: $declForPa,
-            lastProductiveConsultedAt: $productive
-                ? ($projection->pgdasd_last_productive_consulted_at ?? $lastProductive)
-                : null,
-            projection: $projection,
-            responseIncomplete: $responseIncomplete,
-            simulated: $simulated,
+        $declaration = $this->projector->latestDeclarationForPeriod(
+            (int) $request->office->id,
+            (int) $request->client->id,
+            $expectedPeriodKey,
         );
-
-        $projection->forceFill([
+        $statePack = $this->stateResolver->resolve(
+            declarationForExpectedPa: $declaration,
+            lastProductiveConsultedAt: $observedAt,
+            projection: $expectedProjection->refresh(),
+        );
+        $expectedProjection->forceFill([
             'pgdasd_declaration_state' => $statePack['state'],
-            'pgdasd_last_declaration_operation_id' => $projected['last_declaration']?->id
-                ?? $declForPa?->id,
+            'pgdasd_last_declaration_operation_id' => $declaration?->id,
             'pgdasd_calendar_version_code' => $statePack['calendar_version_code'],
             'pgdasd_calendar_verified' => $statePack['calendar_verified'],
         ])->save();
 
-        $rbt12New = [];
-        if ($productive && ! $responseIncomplete) {
-            $rbt12New = $this->rbt12->reserveFromOperations(
-                $request->run,
-                $projected['upserted'],
-            );
-            if ($rbt12New !== []) {
-                $latest = $rbt12New[array_key_last($rbt12New)];
-                $projection->forceFill([
-                    'pgdasd_latest_rbt12_projection_id' => $latest->id,
-                ])->save();
-            }
-        }
+        $reservedRbt12 = $this->rbt12->reserveFromOperations(
+            $request->run,
+            $projected['upserted'],
+            $periodProjections->all(),
+        );
 
+        $normalized = is_array($result->normalized) ? $result->normalized : [];
         $normalized['pgdasd'] = [
-            'incomplete' => $responseIncomplete,
-            'declaration_state' => $statePack['state']->value,
-            'calendar_verified' => $statePack['calendar_verified'],
-            'operations_count' => count($projected['upserted']),
-            'last_declaration_id' => $projected['last_declaration']?->id,
-            'last_declaration_number' => $projected['last_declaration']?->declaration_number,
-            'rbt12_pending_ids' => array_map(static fn ($p) => $p->id, $rbt12New),
             'expected_periodo_apuracao' => $expectedPa,
-            'productive' => $productive,
-            'periods' => array_map(static function (array $p): array {
-                return [
-                    'periodo_apuracao' => $p['periodo_apuracao'],
-                    'period_key' => $p['period_key'],
-                    'operations_count' => count($p['operations']),
-                    'incomplete' => $p['incomplete'],
-                ];
-            }, $decoded['periods'] ?? []),
+            'expected_period_key' => $expectedPeriodKey,
+            'declaration_state' => $statePack['state']->value,
+            'declaration_state_reason' => $statePack['reason'],
+            'calendar_verified' => $statePack['calendar_verified'],
+            'last_valid_query_at' => $observedAt->toIso8601String(),
+            'latest_declaration' => $declaration?->toPublicArray(),
+            'operations_count' => count($projected['upserted']),
+            'rbt12_projection_ids' => array_map(
+                static fn (PgdasdRbt12Projection $projection): int => (int) $projection->id,
+                $reservedRbt12,
+            ),
+            'productive' => true,
+            'incomplete' => false,
         ];
 
         $situation = match ($statePack['state']) {
             PgdasdDeclarationState::Current => FiscalSituation::UpToDate,
-            PgdasdDeclarationState::DueWithinDeadline => FiscalSituation::Pending,
+            PgdasdDeclarationState::DueWithinDeadline,
             PgdasdDeclarationState::OverdueNotFound => FiscalSituation::Pending,
             PgdasdDeclarationState::Unverified => FiscalSituation::Unknown,
         };
 
-        // Operação incompleta ou simulada não promove verde
-        if ($responseIncomplete || $simulated) {
-            $situation = FiscalSituation::Unknown;
-        }
-
-        // Evidence JSON sem Base64 (serviço 13 não tem PDF)
-        $evidence = json_encode($normalized, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
-
         return [
-            'result' => new FiscalAdapterResult(
-                result: $result->result,
-                situation: $situation,
-                coverage: $result->coverage,
-                evidenceBytes: $evidence,
-                evidenceContentType: 'application/json',
-                sourceVersion: $result->sourceVersion,
-                normalized: $normalized,
-                findings: $result->findings,
-                itemsProcessed: $result->itemsProcessed,
-                pagesProcessed: $result->pagesProcessed,
+            'result' => $this->replaceResult(
+                $result,
+                $normalized,
+                $situation,
+                json_encode($normalized, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
             ),
             'sanitized_dados' => $response->dados,
         ];
     }
 
-    /**
-     * @return array{result: FiscalAdapterResult, sanitized_dados: mixed}
-     */
+    /** @return array{result:FiscalAdapterResult,sanitized_dados:mixed} */
     private function handleDocumental(
         FiscalAdapterRequest $request,
         IntegraResponse $response,
         FiscalAdapterResult $result,
         string $operationKey,
     ): array {
-        $periodKey = $request->competence?->period_key
-            ?? (string) ($request->context['period_key'] ?? $request->progress['period_key'] ?? '');
-        $periodoApuracao = (string) ($request->context['periodoApuracao']
-            ?? $request->progress['periodo_apuracao']
-            ?? ($periodKey !== '' ? PgdasdPeriod::periodoApuracaoFromPeriodKey($periodKey) : ''));
-        $numeroDas = isset($request->context['numeroDas'])
-            ? (string) $request->context['numeroDas']
-            : (isset($request->progress['numero_das']) ? (string) $request->progress['numero_das'] : null);
+        $dados = $response->dados ?? ($response->body['dados'] ?? null);
+        if (! $this->isRealProductive($response)) {
+            try {
+                $sanitized = $this->documentCodecs->sanitizeDados($dados, []);
+            } catch (\Throwable) {
+                $sanitized = [];
+            }
 
-        $projection = $this->resolveOrCreateProjection($request);
-        if ($projection === null) {
-            return ['result' => $result, 'sanitized_dados' => $response->dados];
+            return [
+                'result' => $this->documentResult($result, [], [['reason' => 'SOURCE_NOT_SERPRO_REAL']]),
+                'sanitized_dados' => $sanitized,
+            ];
         }
 
+        $periodKey = $this->resolvePeriodKey($request);
+        if ($periodKey === null) {
+            return [
+                'result' => $this->documentResult($result, [], [['reason' => 'PERIOD_UNAVAILABLE']]),
+                'sanitized_dados' => [],
+            ];
+        }
+
+        $projection = $this->projector->ensureProjectionForPeriod(
+            $request->office,
+            $request->client,
+            $periodKey,
+            $request->competence?->period_key === $periodKey ? $request->competence?->id : null,
+        );
+        $numeroDas = $this->requestValue($request, 'numeroDas', 'numero_das');
         $pack = $this->sanitizer->sanitizeAndStore(
             run: $request->run,
             clientId: (int) $request->client->id,
-            dados: $response->dados ?? $response->body['dados'] ?? null,
+            dados: $dados,
             operationKey: $operationKey,
             projectionId: (int) $projection->id,
-            periodKey: $periodKey !== '' ? $periodKey : null,
-            periodoApuracao: $periodoApuracao !== '' ? $periodoApuracao : null,
+            periodKey: $periodKey,
+            periodoApuracao: PgdasdPeriod::periodoApuracaoFromPeriodKey($periodKey),
             numeroDas: $numeroDas,
         );
-
-        $normalized = is_array($result->normalized) ? $result->normalized : [];
-        $normalized['pgdasd_documents'] = [
-            'artifacts' => array_map(
-                static fn ($a) => $a->toPublicArray(),
-                $pack['artifacts'],
-            ),
-            'failures' => $pack['failures'],
-        ];
-
-        // Resolve RBT12 se for extrato 16 e houver projeção PENDING
-        if ($operationKey === 'pgdasd.consextrato' && $pack['evidence'] !== []) {
-            $this->resolvePendingRbt12($request, $numeroDas, $pack);
+        if ($pack['artifacts'] === []) {
+            $pack['artifacts'] = PgdasdArtifact::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $request->office->id)
+                ->where('client_id', $request->client->id)
+                ->where('projection_id', $projection->id)
+                ->where('source_run_id', $request->run->id)
+                ->orderBy('id')
+                ->get()
+                ->filter(static fn (PgdasdArtifact $artifact): bool => is_array($artifact->metadata)
+                    && ($artifact->metadata['source_operation_key'] ?? null) === $operationKey)
+                ->values()
+                ->all();
         }
 
-        $evidenceMeta = json_encode([
-            'dto' => 'pgdasd_document',
-            'operation_key' => $operationKey,
-            'artifacts' => $normalized['pgdasd_documents']['artifacts'],
-            'failures' => $pack['failures'],
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        if ($operationKey === 'pgdasd.consextrato') {
+            $this->resolveReservedRbt12($request, $numeroDas, $pack['artifacts']);
+        }
 
         return [
-            'result' => new FiscalAdapterResult(
-                result: $result->result,
-                situation: $result->situation,
-                coverage: $result->coverage,
-                evidenceBytes: $evidenceMeta,
-                evidenceContentType: 'application/json',
-                sourceVersion: $result->sourceVersion,
-                normalized: $normalized,
-                findings: $result->findings,
-                itemsProcessed: $result->itemsProcessed,
-                pagesProcessed: $result->pagesProcessed,
-            ),
+            'result' => $this->documentResult($result, $pack['artifacts'], $pack['failures']),
             'sanitized_dados' => $pack['sanitized_dados'],
         ];
     }
 
-    /**
-     * @param  array{artifacts: list<PgdasdArtifact>, evidence: list<FiscalEvidenceArtifact>, failures: list<array<string, string>>}  $pack
-     */
-    private function resolvePendingRbt12(FiscalAdapterRequest $request, ?string $numeroDas, array $pack): void
-    {
-        if ($numeroDas === null || $numeroDas === '' || $pack['evidence'] === []) {
+    /** @param list<PgdasdArtifact> $artifacts */
+    private function resolveReservedRbt12(
+        FiscalAdapterRequest $request,
+        ?string $numeroDas,
+        array $artifacts,
+    ): void {
+        $reservationId = $request->progress['rbt12_projection_id']
+            ?? $request->context['rbt12_projection_id']
+            ?? null;
+        $sourceReferenceKey = $request->progress['rbt12_source_reference_key']
+            ?? $request->context['rbt12_source_reference_key']
+            ?? null;
+        if (! is_numeric($reservationId)
+            || ! is_string($sourceReferenceKey)
+            || $sourceReferenceKey === ''
+            || $numeroDas === null
+            || $artifacts === []
+        ) {
             return;
         }
 
-        $rbt = PgdasdRbt12Projection::query()
+        $reservation = PgdasdRbt12Projection::query()
             ->withoutGlobalScopes()
+            ->whereKey((int) $reservationId)
             ->where('office_id', $request->office->id)
             ->where('client_id', $request->client->id)
             ->where('source_das_number', $numeroDas)
-            ->where('status', PgdasdRbt12Status::Pending)
-            ->orderByDesc('id')
+            ->where('source_reference_key', $sourceReferenceKey)
+            ->where('source_run_id', $request->run->id)
+            ->where('status', PgdasdRbt12Status::Pending->value)
             ->first();
-
-        if ($rbt === null) {
+        if ($reservation === null) {
             return;
         }
 
-        $artifactId = $pack['artifacts'][0]->id ?? null;
-        if ($artifactId === null) {
+        $artifact = collect($artifacts)->first(
+            static fn (PgdasdArtifact $candidate): bool => (string) $candidate->kind === 'EXTRATO'
+        );
+        if (! $artifact instanceof PgdasdArtifact) {
+            $this->rbt12->markFailed($reservation, 'EXTRATO_ARTIFACT_MISSING', (int) $request->run->id);
+
+            return;
+        }
+
+        $artifact->loadMissing('evidenceArtifact');
+        if ($artifact->evidenceArtifact === null) {
+            $this->rbt12->markFailed($reservation, 'EXTRATO_EVIDENCE_MISSING', (int) $request->run->id);
+
             return;
         }
 
         try {
-            $bytes = app(FiscalEvidenceStore::class)
-                ->readAuthorized($pack['evidence'][0], (int) $request->office->id);
-            $this->rbt12->resolveFromPdfBytes(
-                $rbt,
-                $bytes,
-                artifactId: (int) $artifactId,
-                sourceRunId: $request->run->id,
+            $bytes = $this->evidenceStore->readAuthorized(
+                $artifact->evidenceArtifact,
+                (int) $request->office->id,
             );
-        } catch (\Throwable $e) {
-            $this->rbt12->markFailed($rbt, 'READ_OR_PARSE_FAILED', $request->run->id);
-            Log::warning('pgdasd.rbt12.resolve_failed', [
-                'projection_id' => $rbt->id,
-                'reason' => $e->getMessage(),
-            ]);
+            $this->rbt12->resolveFromPdfBytes(
+                $reservation,
+                $bytes,
+                (int) $artifact->id,
+                (int) $request->run->id,
+            );
+        } catch (\Throwable) {
+            $this->rbt12->markFailed($reservation, 'READ_OR_PARSE_FAILED', (int) $request->run->id);
         }
+    }
+
+    /** @return array{result:FiscalAdapterResult,sanitized_dados:null} */
+    private function unverified13(FiscalAdapterResult $result, string $reason): array
+    {
+        $normalized = is_array($result->normalized) ? $result->normalized : [];
+        $normalized['pgdasd'] = [
+            'declaration_state' => PgdasdDeclarationState::Unverified->value,
+            'declaration_state_reason' => $reason,
+            'productive' => false,
+            'incomplete' => true,
+        ];
+
+        return [
+            'result' => $this->replaceResult(
+                $result,
+                $normalized,
+                FiscalSituation::Unknown,
+                json_encode($normalized, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+            ),
+            'sanitized_dados' => null,
+        ];
+    }
+
+    /** @param list<PgdasdArtifact> $artifacts @param list<array<string,mixed>> $failures */
+    private function documentResult(
+        FiscalAdapterResult $result,
+        array $artifacts,
+        array $failures,
+    ): FiscalAdapterResult {
+        $normalized = is_array($result->normalized) ? $result->normalized : [];
+        $normalized['pgdasd_documents'] = [
+            'artifacts' => array_map(
+                static fn (PgdasdArtifact $artifact): array => $artifact->toPublicArray(),
+                $artifacts,
+            ),
+            'failures' => $failures,
+        ];
+
+        return $this->replaceResult(
+            $result,
+            $normalized,
+            $result->situation,
+            json_encode($normalized['pgdasd_documents'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+        );
+    }
+
+    private function replaceResult(
+        FiscalAdapterResult $result,
+        array $normalized,
+        FiscalSituation $situation,
+        string $evidenceBytes,
+    ): FiscalAdapterResult {
+        return new FiscalAdapterResult(
+            result: $result->result,
+            situation: $situation,
+            coverage: $result->coverage,
+            evidenceBytes: $evidenceBytes,
+            evidenceContentType: 'application/json',
+            sourceVersion: $result->sourceVersion,
+            normalized: $normalized,
+            findings: $result->findings,
+            itemsProcessed: $result->itemsProcessed,
+            pagesProcessed: $result->pagesProcessed,
+        );
+    }
+
+    private function isRealProductive(IntegraResponse $response): bool
+    {
+        return $response->success
+            && ! $response->simulated
+            && $response->sourceProvenance === FiscalSourceProvenance::SerproReal->value;
     }
 
     private function resolveExpectedPa(FiscalAdapterRequest $request): ?string
     {
-        $fromProgress = $request->progress['expected_periodo_apuracao']
+        $candidate = $request->progress['expected_periodo_apuracao']
             ?? $request->context['expected_periodo_apuracao']
             ?? $request->progress['periodo_apuracao']
             ?? $request->context['periodoApuracao']
             ?? null;
-        if (is_string($fromProgress) && preg_match('/^\d{6}$/', $fromProgress) === 1) {
-            return $fromProgress;
+        if (is_string($candidate) && preg_match('/^\d{6}$/', $candidate) === 1) {
+            return $candidate;
         }
 
         $periodKey = $request->competence?->period_key
-            ?? (string) ($request->progress['period_key'] ?? $request->context['period_key'] ?? '');
-        if ($periodKey !== '') {
+            ?? $request->progress['period_key']
+            ?? $request->context['period_key']
+            ?? null;
+        if (is_string($periodKey) && $periodKey !== '') {
             try {
                 return PgdasdPeriod::periodoApuracaoFromPeriodKey($periodKey);
             } catch (\Throwable) {
@@ -374,78 +438,55 @@ final class PgdasdPostConsultService
             }
         }
 
-        $tz = (string) ($request->office->timezone ?? 'America/Sao_Paulo');
-        if ($tz === '') {
-            $tz = 'America/Sao_Paulo';
-        }
-        $pa = PgdasdPeriod::expectedPa(null, $tz);
+        $timezone = (string) ($request->office->timezone ?: 'America/Sao_Paulo');
 
-        return PgdasdPeriod::toPeriodoApuracao($pa);
+        return PgdasdPeriod::toPeriodoApuracao(PgdasdPeriod::expectedPa(null, $timezone));
     }
 
-    private function resolveOrCreateProjection(FiscalAdapterRequest $request): ?TaxObligationProjection
+    private function resolvePeriodKey(FiscalAdapterRequest $request): ?string
     {
-        $def = TaxObligationDefinition::query()
-            ->where('code', 'PGDAS_D')
-            ->orWhere(function ($q): void {
-                $q->where('module_key', 'simples_mei')
-                    ->where('service_code', 'PGDASD');
-            })
-            ->first();
-
-        if ($def === null) {
-            return null;
-        }
-
         $periodKey = $request->competence?->period_key
-            ?? (string) ($request->progress['period_key'] ?? '');
-        if ($periodKey === '') {
-            $tz = (string) ($request->office->timezone ?? 'America/Sao_Paulo') ?: 'America/Sao_Paulo';
-            $pa = PgdasdPeriod::expectedPa(null, $tz);
-            $periodKey = PgdasdPeriod::toPeriodKey($pa);
+            ?? $request->progress['period_key']
+            ?? $request->context['period_key']
+            ?? null;
+        if (is_string($periodKey) && preg_match('/^\d{4}-\d{2}$/', $periodKey) === 1) {
+            return $periodKey;
         }
 
-        try {
-            $parsed = PgdasdPeriod::parse($periodKey);
-        } catch (\Throwable) {
-            return null;
+        $pa = $this->requestValue($request, 'periodoApuracao', 'periodo_apuracao');
+        if ($pa !== null) {
+            try {
+                return PgdasdPeriod::periodKeyFromPeriodoApuracao($pa);
+            } catch (\Throwable) {
+                return null;
+            }
         }
 
-        return TaxObligationProjection::query()->withoutGlobalScopes()->firstOrCreate(
-            [
-                'office_id' => $request->office->id,
-                'client_id' => $request->client->id,
-                'obligation_definition_id' => $def->id,
-                'period_key' => $periodKey,
-            ],
-            [
-                'period_year' => (int) $parsed->format('Y'),
-                'period_month' => (int) $parsed->format('m'),
-                'competence_id' => $request->competence?->id,
-                'applicability' => 'APPLICABLE',
-                'situation' => 'UNKNOWN',
-                'delivery_status' => 'UNKNOWN',
-                'is_open' => true,
-            ],
-        );
+        $declarationNumber = $this->requestValue($request, 'numeroDeclaracao', 'numero_declaracao');
+        if ($declarationNumber !== null) {
+            $resolved = PgdasdOperation::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $request->office->id)
+                ->where('client_id', $request->client->id)
+                ->where('declaration_number', $declarationNumber)
+                ->orderByDesc('transmitted_at')
+                ->value('period_key');
+            if (is_string($resolved) && preg_match('/^\d{4}-\d{2}$/', $resolved) === 1) {
+                return $resolved;
+            }
+        }
+
+        return null;
     }
 
-    private function withNormalized(
-        FiscalAdapterResult $result,
-        array $normalized,
-        FiscalSituation $situation,
-    ): FiscalAdapterResult {
-        return new FiscalAdapterResult(
-            result: $result->result,
-            situation: $situation,
-            coverage: $result->coverage,
-            evidenceBytes: $result->evidenceBytes,
-            evidenceContentType: $result->evidenceContentType,
-            sourceVersion: $result->sourceVersion,
-            normalized: $normalized,
-            findings: $result->findings,
-            itemsProcessed: $result->itemsProcessed,
-            pagesProcessed: $result->pagesProcessed,
-        );
+    private function requestValue(FiscalAdapterRequest $request, string $contextKey, string $progressKey): ?string
+    {
+        $value = $request->context[$contextKey] ?? $request->progress[$progressKey] ?? null;
+        if (! is_scalar($value)) {
+            return null;
+        }
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
     }
 }

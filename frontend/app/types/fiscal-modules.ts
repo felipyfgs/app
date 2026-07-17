@@ -434,7 +434,6 @@ export type PgdasdDeclarationState
 export type PgdasdRbt12Status
   = | 'PENDING'
     | 'PARSED'
-    | 'RESOLVED'
     | 'NO_DAS'
     | 'NOT_FOUND'
     | 'AMBIGUOUS'
@@ -494,6 +493,81 @@ export interface PgdasdClientSummary {
   last_valid_query_at?: string | null
   rbt12?: PgdasdRbt12Summary | null
   communication?: PgdasdCommunicationPreference | null
+}
+
+export type PgmeiDebtState
+  = | 'HAS_ACTIVE_DEBT'
+    | 'NO_ACTIVE_DEBT'
+    | 'UNVERIFIED'
+
+export type PgmeiFreshnessState = 'CURRENT' | 'OUTDATED'
+
+/**
+ * Projeção local da última consulta válida do DIVIDAATIVA24 para um ano.
+ * `NO_ACTIVE_DEBT` vale somente para `year`; a UI nunca o generaliza para outros anos.
+ */
+export interface PgmeiClientSummary {
+  year: number
+  debt_state: PgmeiDebtState | string
+  freshness_state: PgmeiFreshnessState | string
+  debt_count: number
+  total_cents: number
+  last_valid_query_at?: string | null
+  communication?: PgdasdCommunicationPreference | null
+}
+
+export interface PgmeiDebtItem {
+  id?: number | null
+  period_key?: string | null
+  tribute?: string | null
+  amount_cents: number
+  federated_entity?: string | null
+  original_status?: string | null
+  /** Aliases aceitos durante rollout aditivo do backend. */
+  periodo_apuracao?: string | null
+  tributo?: string | null
+  ente_federado?: string | null
+  situacao_original?: string | null
+}
+
+export interface PgmeiLocalGuideDescriptor {
+  id: number
+  period_key?: string | null
+  label?: string | null
+  status?: string | null
+  amount_cents?: number | null
+  due_at?: string | null
+  href?: string | null
+  download_href?: string | null
+}
+
+export interface PgmeiDebtObservation {
+  id?: number | null
+  year: number
+  debt_state?: PgmeiDebtState | string | null
+  freshness_state?: PgmeiFreshnessState | string | null
+  debt_count?: number | null
+  total_cents?: number | null
+  observed_at?: string | null
+  queried_at?: string | null
+  items?: PgmeiDebtItem[]
+}
+
+export interface PgmeiHistoryPayload {
+  client?: {
+    id?: number | null
+    legal_name?: string | null
+    cnpj_masked?: string | null
+  } | null
+  year?: number | null
+  current?: PgmeiClientSummary | null
+  observations?: PgmeiDebtObservation[]
+  history?: PgmeiDebtObservation[]
+  guides?: PgmeiLocalGuideDescriptor[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
 }
 
 export interface PgdasdArtifactDescriptor {
@@ -601,6 +675,7 @@ export interface SimplesMeiClientDetail {
   period_key?: string | null
   competence_id?: number | null
   pgdasd?: PgdasdClientSummary | null
+  pgmei?: PgmeiClientSummary | null
   /** Campos espelhados no detail (além de detail.pgdasd) para tabela. */
   declaration_state?: PgdasdDeclarationState | string | null
   last_declaration?: PgdasdLatestDeclaration & {
@@ -754,6 +829,8 @@ export interface FiscalModulePortfolioFilters {
   situation?: string
   competence?: string
   submodule?: string
+  /** Ano-calendário da projeção PGMEI; omitido nas demais cápsulas. */
+  year?: number
   delivery_status?: string
   /** Um id ou CSV "1,2,3" (multi-cliente no portfolio). */
   client_id?: number | string
@@ -893,10 +970,8 @@ export type FiscalTableEmptyKind
 
 /** Submódulos de UI (tabs) → valor de filtro da API. */
 export const SIMPLES_MEI_TABS = [
-  { label: 'PGDAS-D', value: 'PGDASD' },
-  { label: 'PGMEI', value: 'PGMEI' },
-  { label: 'DASN-SIMEI', value: 'DASN_SIMEI' },
-  { label: 'Regime', value: 'REGIME' }
+  { label: 'Simples Nacional', badge: 'PGDAS-D', value: 'PGDASD' },
+  { label: 'MEI', badge: 'PGMEI', value: 'PGMEI' }
 ] as const
 
 export const DCTFWEB_TABS = [

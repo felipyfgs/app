@@ -320,21 +320,20 @@ final class SerproOperationAttemptStore
      */
     private function stripPdfBase64Fields(array $node): array
     {
-        foreach (['pdf', 'recibo', 'pdfNotificacao', 'pdfDarf', 'extrato', 'declaracao'] as $field) {
-            if (isset($node[$field]) && is_string($node[$field]) && strlen($node[$field]) > 32) {
-                $node[$field] = [
+        $binaryFields = ['pdf', 'pdfNotificacao', 'pdfDarf'];
+        foreach ($node as $field => &$value) {
+            if (in_array((string) $field, $binaryFields, true) && is_string($value)) {
+                $value = [
                     'sanitized' => true,
                     'omitted_from_attempt_store' => true,
-                    'byte_length_estimate' => (int) floor(strlen($node[$field]) * 0.75),
                 ];
+                continue;
+            }
+            if (is_array($value)) {
+                $value = $this->stripPdfBase64Fields($value);
             }
         }
-        if (isset($node['maed']) && is_array($node['maed'])) {
-            $node['maed'] = $this->stripPdfBase64Fields($node['maed']);
-        }
-        if (isset($node['recibo']) && is_array($node['recibo'])) {
-            $node['recibo'] = $this->stripPdfBase64Fields($node['recibo']);
-        }
+        unset($value);
 
         return $node;
     }

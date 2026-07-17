@@ -9,7 +9,9 @@ use App\Enums\FiscalVerificationState;
 use App\Enums\MonitorCommercialDispatchState;
 use App\Enums\MonitorCommercialOrigin;
 use App\Enums\SerproCapabilityDriver;
+use App\Enums\TaxRegimeCode;
 use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
+use App\Models\Client;
 use App\Models\FiscalMonitoringRun;
 use App\Models\FiscalMonitoringSchedule;
 use App\Models\MonitorCommercialLedgerEntry;
@@ -17,6 +19,7 @@ use App\Models\Office;
 use App\Models\OfficeMonitorSchedulePolicy;
 use App\Models\OfficeSubscription;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPeriod;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiYear;
 use App\Services\Serpro\CapabilityDriverResolver;
 use App\Services\Usage\CommercialMonitorCatalog;
 use App\Services\Usage\MonitorCommercialLedgerService;
@@ -451,7 +454,7 @@ final class FiscalMonitoringScheduler
     ): string {
         $systemService = match ($monitorKey) {
             'sitfis' => ['INTEGRA_SITFIS', 'SITFIS', 'MONITOR'],
-            'simples_mei' => ['PGDASD', 'PGDASD', 'MONITOR'],
+            'simples_mei' => $this->simplesMeiSystemServiceForClient($officeId, $clientId),
             'dctfweb' => ['DCTFWEB', 'DCTFWEB', 'MONITOR'],
             'mailbox' => ['CAIXA_POSTAL', 'CAIXA_POSTAL', 'MONITOR'],
             'fgts' => ['ESOCIAL', 'FGTS', 'MONITOR'],
@@ -515,7 +518,7 @@ final class FiscalMonitoringScheduler
             // PGDAS primeiro; period_key comercial por cima — não sobrescrever o ledger
             // (assinatura = data YYYY-MM-DD) com o PA fiscal (YYYY-MM).
             'progress' => array_merge(
-                $this->pgdasdProgressForCodes($systemCode, $serviceCode, $officeId, $now),
+                $this->monitorProgressForCodes($systemCode, $serviceCode, $officeId, $now),
                 [
                     'commercial_ledger_entry_id' => $entry->id,
                     'monitor_key' => $monitorKey,
@@ -585,7 +588,7 @@ final class FiscalMonitoringScheduler
                 return 'skipped';
             }
 
-            $slot = FiscalIdempotency::scheduledSlot($now);
+            $slot = $this->scheduledSlot($locked, $now);
             $key = FiscalIdempotency::runKey(
                 (int) $locked->office_id,
                 (int) $locked->client_id,
@@ -636,7 +639,7 @@ final class FiscalMonitoringScheduler
                 'coverage' => 'UNKNOWN',
                 'mutability' => 'READ_ONLY',
                 'correlation_id' => bin2hex(random_bytes(8)),
-                'progress' => $this->pgdasdProgressForCodes(
+                'progress' => $this->monitorProgressForCodes(
                     (string) $locked->system_code,
                     (string) $locked->service_code,
                     (int) $locked->office_id,
@@ -662,28 +665,41 @@ final class FiscalMonitoringScheduler
     }
 
     /**
-     * Congela PA esperado (mês anterior no fuso do escritório) no progress da run PGDAS-D.
-     * O serviço 13 usa o ano desse PA; última consulta válida avança só em resposta produtiva.
+     * Progresso por serviço: PGDAS-D congela PA; PGMEI alterna um dos 5 anos recentes por ciclo diário.
      *
      * @return array<string, mixed>
      */
-    private function pgdasdProgressForCodes(string $systemCode, string $serviceCode, int $officeId, CarbonImmutable $now): array
+    private function progressForCodes(string $systemCode, string $serviceCode, int $officeId, CarbonImmutable $now): array
     {
-        $isPgdasd = strtoupper($serviceCode) === 'PGDASD'
-            || (strtoupper($systemCode) === 'INTEGRA_SN' && strtoupper($serviceCode) === 'PGDASD')
-            || strtoupper($systemCode) === 'PGDASD';
-
-        if (! $isPgdasd && ! in_array(strtoupper($serviceCode), ['PGDASD', 'SIMPLES'], true)) {
-            // monitores comerciais simples_mei usam monitor_key pgdasd
-            if (! str_contains(strtolower($serviceCode), 'pgdas')) {
-                return [];
-            }
-        }
+        $svc = strtoupper($serviceCode);
+        $sys = strtoupper($systemCode);
 
         $office = Office::query()->find($officeId);
         $tz = is_string($office?->timezone) && $office->timezone !== ''
             ? $office->timezone
             : 'America/Sao_Paulo';
+
+        if ($svc === 'PGMEI' || $sys === 'PGMEI' || ($sys === 'INTEGRA_MEI' && $svc === 'PGMEI')) {
+            $year = PgmeiYear::yearForDailyCycle($now, $tz);
+
+            return [
+                'ano_calendario' => (string) $year,
+                'anoCalendario' => (string) $year,
+                'period_key' => PgmeiYear::toPeriodKey($year),
+                'pgmei_year_frozen_at' => $now->toIso8601String(),
+            ];
+        }
+
+        $isPgdasd = $svc === 'PGDASD'
+            || ($sys === 'INTEGRA_SN' && $svc === 'PGDASD')
+            || $sys === 'PGDASD';
+
+        if (! $isPgdasd && ! in_array($svc, ['PGDASD', 'SIMPLES'], true)) {
+            if (! str_contains(strtolower($serviceCode), 'pgdas')) {
+                return [];
+            }
+        }
+
         $pa = PgdasdPeriod::expectedPa($now, $tz);
 
         return [
@@ -692,6 +708,93 @@ final class FiscalMonitoringScheduler
             'ano_calendario' => PgdasdPeriod::yearFromPa($pa),
             'pgdasd_pa_frozen_at' => $now->toIso8601String(),
         ];
+    }
+
+    /** @deprecated use progressForCodes */
+    private function pgdasdProgressForCodes(string $systemCode, string $serviceCode, int $officeId, CarbonImmutable $now): array
+    {
+        return $this->progressForCodes($systemCode, $serviceCode, $officeId, $now);
+    }
+
+    /**
+     * Congela o contexto fiscal antes de enfileirar. Cada execução PGMEI observa
+     * exatamente um dos cinco anos-calendário mais recentes.
+     *
+     * @return array<string, mixed>
+     */
+    private function monitorProgressForCodes(
+        string $systemCode,
+        string $serviceCode,
+        int $officeId,
+        CarbonImmutable $now,
+    ): array {
+        if ($this->isPgmeiCodes($systemCode, $serviceCode)) {
+            $office = Office::query()->find($officeId);
+            $tz = is_string($office?->timezone) && $office->timezone !== ''
+                ? $office->timezone
+                : 'America/Sao_Paulo';
+            $local = $now->timezone($tz);
+            $year = ((int) $local->format('Y')) - (((int) $local->format('z')) % 5);
+
+            return [
+                'query_year' => $year,
+                'ano_calendario' => (string) $year,
+                'period_key' => (string) $year,
+                'pgmei_year_frozen_at' => $now->toIso8601String(),
+            ];
+        }
+
+        return $this->pgdasdProgressForCodes($systemCode, $serviceCode, $officeId, $now);
+    }
+
+    /**
+     * PGMEI é diário: duas agendas equivalentes do mesmo cliente não podem
+     * produzir duas chamadas no mesmo ciclo local.
+     */
+    private function scheduledSlot(FiscalMonitoringSchedule $schedule, CarbonImmutable $now): string
+    {
+        if (! $this->isPgmeiCodes((string) $schedule->system_code, (string) $schedule->service_code)) {
+            return FiscalIdempotency::scheduledSlot($now);
+        }
+
+        $office = Office::query()->find((int) $schedule->office_id);
+        $tz = is_string($office?->timezone) && $office->timezone !== ''
+            ? $office->timezone
+            : 'America/Sao_Paulo';
+
+        return 'pgmei-day:'.$now->timezone($tz)->format('Ymd');
+    }
+
+    private function isPgmeiCodes(string $systemCode, string $serviceCode): bool
+    {
+        $system = strtoupper(trim($systemCode));
+        $service = strtoupper(trim($serviceCode));
+
+        return $service === 'PGMEI'
+            || $service === 'MEI'
+            || $system === 'PGMEI'
+            || ($system === 'INTEGRA_MEI' && $service === 'PGMEI');
+    }
+
+    /**
+     * O monitor comercial compartilhado respeita o regime interno do cliente;
+     * ele não transforma MEI em consulta PGDAS-D nem o inverso.
+     *
+     * @return array{0:string,1:string,2:string}
+     */
+    private function simplesMeiSystemServiceForClient(int $officeId, int $clientId): array
+    {
+        $rawRegime = Client::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $officeId)
+            ->whereKey($clientId)
+            ->value('tax_regime');
+
+        if (TaxRegimeCode::normalize(is_string($rawRegime) ? $rawRegime : null)->isMeiFamily()) {
+            return ['INTEGRA_MEI', 'PGMEI', 'MONITOR'];
+        }
+
+        return ['INTEGRA_SN', 'PGDASD', 'MONITOR'];
     }
 
     /**
@@ -710,7 +813,8 @@ final class FiscalMonitoringScheduler
             'TRANSMITIR', 'TRANSMITIR_DECLARACAO', 'TRANSDECLARACAO',
             'EMITIR_GUIA', 'GERARGUIA', 'GERARDAS', 'GERAR_DAS',
             'ENCERRAR', 'ENCAPURACAO', 'ADERIR', 'EFETUAROPCAOREGIME',
-            'ATUBENEFICIO', 'SOLICRENUNCIA',
+            'GERARDASPDF21', 'GERARDASCODBARRA22', 'ATUBENEFICIO', 'ATUBENEFICIO23',
+            'SOLICRENUNCIA',
         ];
 
         return in_array($op, $mutatingOps, true);

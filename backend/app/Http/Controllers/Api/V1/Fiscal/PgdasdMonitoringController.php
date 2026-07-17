@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api\V1\Fiscal;
 
 use App\Enums\OfficeRole;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureOfficeContext;
 use App\Models\Client;
+use App\Models\PgdasdArtifact;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdCommunicationService;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdMonitoringQueryService;
 use App\Services\FiscalMonitoring\FiscalEvidenceStore;
@@ -29,6 +31,9 @@ class PgdasdMonitoringController extends Controller
     public function history(Request $request, int $client): JsonResponse
     {
         $this->assertCanRead();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
         $office = $this->currentOffice->office();
         $model = $this->findClient($office->id, $client);
         if ($model === null) {
@@ -39,8 +44,10 @@ class PgdasdMonitoringController extends Controller
             ], 404);
         }
 
-        $year = $request->query('year');
-        $yearInt = is_numeric($year) ? (int) $year : null;
+        $validated = $request->validate([
+            'year' => ['sometimes', 'integer', 'between:2000,2100'],
+        ]);
+        $yearInt = isset($validated['year']) ? (int) $validated['year'] : null;
 
         try {
             $data = $this->queries->history($office, $model, $yearInt);
@@ -54,6 +61,9 @@ class PgdasdMonitoringController extends Controller
     public function collectDocuments(Request $request, int $client): JsonResponse
     {
         $this->assertCanWrite();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
         $this->assertModuleEnabled();
         $office = $this->currentOffice->office();
         $model = $this->findClient($office->id, $client);
@@ -62,31 +72,18 @@ class PgdasdMonitoringController extends Controller
         }
 
         $data = $request->validate([
-            'operation' => ['sometimes', 'string', 'max:40'],
-            'period_key' => ['sometimes', 'string', 'max:20'],
-            'periodoApuracao' => ['sometimes', 'string', 'size:6'],
+            'period_key' => ['required', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/'],
             'declaration_number' => ['sometimes', 'nullable', 'string', 'max:17'],
-            'numeroDeclaracao' => ['sometimes', 'string', 'max:17'],
-            'numeroDas' => ['sometimes', 'string', 'max:17'],
         ]);
 
-        // SPA envia period_key + declaration_number; resolve operação 14 (PA) ou 15 (nº).
-        $operation = (string) ($data['operation'] ?? '');
-        if ($operation === '') {
-            $numero = (string) ($data['declaration_number'] ?? $data['numeroDeclaracao'] ?? '');
-            $operation = $numero !== '' ? 'CONSULTAR_RECIBO' : 'CONSULTAR_ULTIMA_DECLARACAO_RECIBO';
-        }
-
-        $params = $data;
-        if (isset($data['period_key']) && ! isset($data['periodoApuracao'])) {
-            $pk = (string) $data['period_key'];
-            $params['periodoApuracao'] = str_contains($pk, '-')
-                ? str_replace('-', '', $pk)
-                : $pk;
-            $params['period_key'] = $pk;
-        }
-        if (isset($data['declaration_number']) && ! isset($data['numeroDeclaracao'])) {
-            $params['numeroDeclaracao'] = (string) $data['declaration_number'];
+        $declarationNumber = trim((string) ($data['declaration_number'] ?? ''));
+        $operation = $declarationNumber !== '' ? 'CONSULTAR_RECIBO' : 'CONSULTAR_ULTIMA_DECLARACAO_RECIBO';
+        $params = [
+            'period_key' => $data['period_key'],
+            'periodoApuracao' => str_replace('-', '', (string) $data['period_key']),
+        ];
+        if ($declarationNumber !== '') {
+            $params['numeroDeclaracao'] = $declarationNumber;
         }
 
         try {
@@ -101,12 +98,18 @@ class PgdasdMonitoringController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['data' => $run->toPublicArray()], 201);
+        return response()->json([
+            'data' => $run->toPublicArray(),
+            'serpro_call' => 'QUEUED',
+        ], 201);
     }
 
-    public function downloadArtifact(int $client, int $artifact): Response|JsonResponse
+    public function downloadArtifact(Request $request, int $client, int $artifact): Response|JsonResponse
     {
         $this->assertCanRead();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
         $office = $this->currentOffice->office();
         $model = $this->findClient($office->id, $client);
         if ($model === null) {
@@ -121,16 +124,19 @@ class PgdasdMonitoringController extends Controller
     /**
      * Download por id do artefato (contrato SPA: /simples-mei/pgdasd/artifacts/{id}/download).
      */
-    public function downloadArtifactById(int $artifact): Response|JsonResponse
+    public function downloadArtifactById(Request $request, int $artifact): Response|JsonResponse
     {
         $this->assertCanRead();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
         $office = $this->currentOffice->office();
         $pgArtifact = $this->queries->findArtifactForOffice($office, $artifact);
 
         return $this->streamArtifact((int) $office->id, $pgArtifact);
     }
 
-    private function streamArtifact(int $officeId, ?\App\Models\PgdasdArtifact $pgArtifact): Response|JsonResponse
+    private function streamArtifact(int $officeId, ?PgdasdArtifact $pgArtifact): Response|JsonResponse
     {
         if ($pgArtifact === null) {
             return response()->json(['message' => 'Artefato não encontrado.'], 404);
@@ -196,6 +202,9 @@ class PgdasdMonitoringController extends Controller
     {
         // Papel antes da validação — VIEWER deve receber 403, não 422 de campos.
         $this->assertCanWrite();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
         $office = $this->currentOffice->office();
         $role = $this->currentOffice->role();
         if ($role === null) {
@@ -231,7 +240,10 @@ class PgdasdMonitoringController extends Controller
                 $data,
             );
         } catch (ConflictHttpException $e) {
-            return response()->json(['message' => $e->getMessage(), 'code' => 'CONFLICT'], 409);
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code' => 'OPTIMISTIC_LOCK_CONFLICT',
+            ], 409);
         } catch (HttpException $e) {
             return response()->json(['message' => $e->getMessage()], $e->getStatusCode());
         } catch (RuntimeException $e) {
@@ -245,6 +257,10 @@ class PgdasdMonitoringController extends Controller
 
     public function batchPreferences(Request $request): JsonResponse
     {
+        $this->assertCanWrite();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
         $office = $this->currentOffice->office();
         $role = $this->currentOffice->role();
         if ($role === null) {
@@ -287,9 +303,12 @@ class PgdasdMonitoringController extends Controller
         ]);
     }
 
-    public function preview(int $client): JsonResponse
+    public function preview(Request $request, int $client): JsonResponse
     {
         $this->assertCanRead();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
         $office = $this->currentOffice->office();
         $model = $this->findClient($office->id, $client);
         if ($model === null) {
@@ -301,9 +320,12 @@ class PgdasdMonitoringController extends Controller
         ]);
     }
 
-    public function tracking(int $client): JsonResponse
+    public function tracking(Request $request, int $client): JsonResponse
     {
         $this->assertCanRead();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
         $office = $this->currentOffice->office();
         $model = $this->findClient($office->id, $client);
         if ($model === null) {
@@ -322,6 +344,18 @@ class PgdasdMonitoringController extends Controller
             ->where('office_id', $officeId)
             ->whereKey($clientId)
             ->first();
+    }
+
+    private function rejectClientOfficeId(Request $request): ?JsonResponse
+    {
+        if ($request->attributes->get(EnsureOfficeContext::CLIENT_OFFICE_ID_SUPPLIED) !== true) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => 'office_id não é aceito; o escritório é obtido do contexto autenticado.',
+            'code' => 'CLIENT_OFFICE_ID_REJECTED',
+        ], 422);
     }
 
     private function assertCanRead(): void

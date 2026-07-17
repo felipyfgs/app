@@ -8,13 +8,15 @@ use App\DTO\Fiscal\SimplesMei\DasGuideDto;
 use App\DTO\Fiscal\SimplesMei\DasnSimeiDto;
 use App\DTO\Fiscal\SimplesMei\DefisDto;
 use App\DTO\Fiscal\SimplesMei\PgdasdDeclarationDto;
-use App\DTO\Fiscal\SimplesMei\PgmeiDto;
 use App\DTO\Fiscal\SimplesMei\RegimeApuracaoDto;
 use App\DTO\Fiscal\SimplesMei\SimplesMeiOperationDef;
 use App\DTO\Serpro\IntegraResponse;
 use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalSituation;
+use App\Enums\PgmeiDebtState;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiDividaAtiva24Codec;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiYear;
 use InvalidArgumentException;
 
 /**
@@ -22,6 +24,10 @@ use InvalidArgumentException;
  */
 final class SimplesMeiResponseMapper
 {
+    public function __construct(
+        private readonly PgmeiDividaAtiva24Codec $pgmeiCodec24,
+    ) {}
+
     public function map(
         SimplesMeiOperationDef $def,
         IntegraResponse $response,
@@ -86,11 +92,20 @@ final class SimplesMeiResponseMapper
         $op = strtoupper($def->operationCode);
 
         if ($service === 'PGDASD' && in_array($op, [
-            'MONITOR',
-            'CONSULTAR_DECLARACAO',
             'CONSULTAR_ULTIMA_DECLARACAO_RECIBO',
             'CONSULTAR_RECIBO',
             'CONSULTAR_EXTRATO',
+        ], true)) {
+            return [FiscalSituation::Unknown, [
+                'dto' => 'pgdasd_document_response',
+                'operation' => $op,
+                'status' => $body['status'] ?? 'OBSERVED',
+            ], []];
+        }
+
+        if ($service === 'PGDASD' && in_array($op, [
+            'MONITOR',
+            'CONSULTAR_DECLARACAO',
         ], true)) {
             $dto = PgdasdDeclarationDto::fromIntegraBody($body, $periodKey);
 
@@ -134,10 +149,56 @@ final class SimplesMeiResponseMapper
             return [$situation, $dto->toNormalized(), []];
         }
 
-        if ($service === 'PGMEI' && in_array($op, ['MONITOR', 'CONSULTAR', 'CONSULTAR_DAS'], true)) {
-            $dto = PgmeiDto::fromIntegraBody($body, $periodKey);
+        if ($service === 'PGMEI' && in_array($op, ['MONITOR', 'CONSULTAR'], true)) {
+            $year = preg_match('/^(\d{4})/', $periodKey, $matches) === 1
+                ? (int) $matches[1]
+                : (int) now()->format('Y');
 
-            return [$dto->situation, $dto->toNormalized(), $this->findingsFromSituation($dto->situation, 'PGMEI', $dto->status)];
+            try {
+                $decoded = $this->pgmeiCodec24->decodeDados($body, PgmeiYear::assertValid($year));
+                $state = $decoded['items_count'] > 0
+                    ? PgmeiDebtState::HasActiveDebt
+                    : PgmeiDebtState::NoActiveDebt;
+                $situation = $state === PgmeiDebtState::HasActiveDebt
+                    ? FiscalSituation::Pending
+                    : FiscalSituation::UpToDate;
+                $normalized = [
+                    'dto' => 'pgmei_divida_ativa',
+                    'dto_version' => SimplesMeiCatalog::DTO_VERSION,
+                    'calendar_year' => $decoded['calendar_year'],
+                    'status' => $state->value,
+                    'debt_state' => $state->value,
+                    'items_count' => $decoded['items_count'],
+                    'total_cents' => $decoded['total_cents'],
+                    'items' => $decoded['items'],
+                    'regime_family' => 'MEI',
+                    'payment_inferred' => false,
+                ];
+
+                return [
+                    $situation,
+                    $normalized,
+                    $this->findingsFromSituation($situation, 'PGMEI', $state->value),
+                ];
+            } catch (\Throwable $e) {
+                return [FiscalSituation::Unknown, [
+                    'dto' => 'pgmei_divida_ativa',
+                    'dto_version' => SimplesMeiCatalog::DTO_VERSION,
+                    'calendar_year' => $year,
+                    'status' => PgmeiDebtState::Unverified->value,
+                    'debt_state' => PgmeiDebtState::Unverified->value,
+                    'items_count' => 0,
+                    'total_cents' => 0,
+                    'items' => [],
+                    'reason' => 'INVALID_OR_AMBIGUOUS_RESPONSE',
+                    'regime_family' => 'MEI',
+                    'payment_inferred' => false,
+                ], $this->findingsFromSituation(
+                    FiscalSituation::Unknown,
+                    'PGMEI',
+                    PgmeiDebtState::Unverified->value,
+                )];
+            }
         }
 
         if ($service === 'PGMEI' && $op === 'GERAR_DAS') {
@@ -283,14 +344,17 @@ final class SimplesMeiResponseMapper
         }
 
         $strip = static function (array $node) use (&$strip): array {
-            foreach (['pdf', 'recibo', 'pdfNotificacao', 'pdfDarf', 'extrato', 'declaracao'] as $field) {
-                if (isset($node[$field]) && is_string($node[$field]) && strlen($node[$field]) > 64) {
-                    $node[$field] = ['sanitized' => true, 'omitted' => true];
+            foreach ($node as $field => &$value) {
+                if (in_array((string) $field, ['pdf', 'pdfNotificacao', 'pdfDarf'], true) && is_string($value)) {
+                    $value = ['sanitized' => true, 'omitted' => true];
+
+                    continue;
+                }
+                if (is_array($value)) {
+                    $value = $strip($value);
                 }
             }
-            if (isset($node['maed']) && is_array($node['maed'])) {
-                $node['maed'] = $strip($node['maed']);
-            }
+            unset($value);
 
             return $node;
         };

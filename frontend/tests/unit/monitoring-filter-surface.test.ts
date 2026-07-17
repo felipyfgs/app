@@ -94,7 +94,7 @@ describe('superfície de filtros das nove listas de monitoramento', () => {
       'utf8'
     )
     expect(portfolio).toContain('clearFiltersForTenantSwitch')
-    expect(portfolio).toContain('clientId.value = null')
+    expect(portfolio).toContain('clientIds.value = []')
     expect(portfolio).toContain('coverage.value = \'all\'')
     expect(portfolio).toContain('modality.value = \'all\'')
 

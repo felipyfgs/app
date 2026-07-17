@@ -86,7 +86,12 @@ export function pgdasdStateMeta(state: string | null | undefined): {
   tooltip: string
 } {
   const meta = pgdasdDeclarationMeta(state)
-  return { ...meta, tooltip: meta.description }
+  return {
+    label: meta.label,
+    color: meta.color === 'info' ? 'neutral' : meta.color,
+    icon: meta.icon,
+    tooltip: meta.description
+  }
 }
 
 export type { PgdasdDeclarationState }

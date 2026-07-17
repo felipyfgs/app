@@ -461,7 +461,7 @@ const filterResetKey = computed(() => props.resetKey)
               Editor repassa multiple + model (number | number[]).
               Sem :multiple o picker cai no UInputMenu single e a busca multi some.
             -->
-            <template #client="{ modelValue, update, select, selectMany, multiple }">
+            <template #client="{ modelValue, update, select, multiple }">
               <FiscalClientPicker
                 :model-value="modelValue"
                 :multiple="Boolean(multiple)"
@@ -469,9 +469,9 @@ const filterResetKey = computed(() => props.resetKey)
                 :placeholder="multiple ? 'Buscar…' : 'Cliente'"
                 class="w-full min-w-0"
                 data-testid="fiscal-filter-client"
-                @update:model-value="update"
+                @update:model-value="(value) => update?.(value as number | null)"
                 @select="(client) => { select?.(client); if (!multiple) onClientPicked(client) }"
-                @select-many="(clients) => { selectMany?.(clients); onClientsPicked(clients) }"
+                @select-many="(clients) => { onClientsPicked(clients) }"
               />
             </template>
           </DataTableFilterRoot>

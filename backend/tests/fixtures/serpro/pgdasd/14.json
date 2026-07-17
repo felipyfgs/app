@@ -1,0 +1,23 @@
+{
+  "operation_key": "pgdasd.consultimadecrec",
+  "idSistema": "PGDASD",
+  "idServico": "CONSULTIMADECREC14",
+  "request": { "periodoApuracao": "202606" },
+  "response_dados": {
+    "numeroDeclaracao": "20260600000000001",
+    "recibo": {
+      "nomeArquivo": "recibo-202606.pdf",
+      "pdf": "JVBERi0xLjQKJSVFT0Y="
+    },
+    "declaracao": {
+      "nomeArquivo": "declaracao-202606.pdf",
+      "pdf": "JVBERi0xLjQKJSVFT0Y="
+    },
+    "maed": {
+      "nomeArquivoNotificacao": "notificacao-maed.pdf",
+      "pdfNotificacao": "JVBERi0xLjQKJSVFT0Y=",
+      "nomeArquivoDarf": "darf-maed.pdf",
+      "pdfDarf": "JVBERi0xLjQKJSVFT0Y="
+    }
+  }
+}

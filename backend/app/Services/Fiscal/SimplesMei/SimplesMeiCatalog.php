@@ -43,19 +43,16 @@ final class SimplesMeiCatalog
             new SimplesMeiOperationDef('INTEGRA_SN', 'DEFIS', 'CONSULTAR', self::DTO_VERSION, $ro, $full, $sn, ['DEFIS'], 'CONSULTA', false, 'Consultar DEFIS'),
             new SimplesMeiOperationDef('INTEGRA_SN', 'DEFIS', 'TRANSMITIR', self::DTO_VERSION, $mu, $full, $sn, ['DEFIS'], 'DECLARACAO', false, 'Transmitir DEFIS'),
 
-            new SimplesMeiOperationDef('INTEGRA_SN', 'REGIME_APURACAO', 'MONITOR', self::DTO_VERSION, $ro, $full, $sn, ['REGIME_APURACAO', 'PGDASD'], 'CONSULTA', true, 'Monitor Regime de Apuração'),
             new SimplesMeiOperationDef('INTEGRA_SN', 'REGIME_APURACAO', 'CONSULTAR', self::DTO_VERSION, $ro, $full, $sn, ['REGIME_APURACAO', 'PGDASD'], 'CONSULTA', false, 'Consultar Regime de Apuração'),
 
             // —— MEI (PGMEI, CCMEI, DASN-SIMEI) ——
-            new SimplesMeiOperationDef('INTEGRA_MEI', 'PGMEI', 'MONITOR', self::DTO_VERSION, $ro, $full, $mei, ['PGMEI'], 'CONSULTA', true, 'Monitor PGMEI'),
-            new SimplesMeiOperationDef('INTEGRA_MEI', 'PGMEI', 'CONSULTAR', self::DTO_VERSION, $ro, $full, $mei, ['PGMEI'], 'CONSULTA', false, 'Consultar PGMEI'),
-            new SimplesMeiOperationDef('INTEGRA_MEI', 'PGMEI', 'CONSULTAR_DAS', self::DTO_VERSION, $ro, $full, $mei, ['PGMEI'], 'CONSULTA', false, 'Consultar DAS MEI'),
+            new SimplesMeiOperationDef('INTEGRA_MEI', 'PGMEI', 'MONITOR', self::DTO_VERSION, $ro, $full, $mei, ['PGMEI'], 'CONSULTA', true, 'Monitor dívida ativa PGMEI (DIVIDAATIVA24)'),
+            new SimplesMeiOperationDef('INTEGRA_MEI', 'PGMEI', 'CONSULTAR', self::DTO_VERSION, $ro, $full, $mei, ['PGMEI'], 'CONSULTA', false, 'Consultar dívida ativa PGMEI (DIVIDAATIVA24)'),
             new SimplesMeiOperationDef('INTEGRA_MEI', 'PGMEI', 'GERAR_DAS', self::DTO_VERSION, $mu, $full, $mei, ['PGMEI'], 'EMISSAO', false, 'Gerar DAS MEI (assistido)'),
 
             new SimplesMeiOperationDef('INTEGRA_MEI', 'CCMEI', 'MONITOR', self::DTO_VERSION, $ro, $full, $mei, ['CCMEI'], 'CONSULTA', true, 'Monitor CCMEI'),
             new SimplesMeiOperationDef('INTEGRA_MEI', 'CCMEI', 'CONSULTAR', self::DTO_VERSION, $ro, $full, $mei, ['CCMEI'], 'CONSULTA', false, 'Consultar CCMEI'),
 
-            new SimplesMeiOperationDef('INTEGRA_MEI', 'DASN_SIMEI', 'MONITOR', self::DTO_VERSION, $ro, $full, $mei, ['DASN_SIMEI', 'PGMEI'], 'CONSULTA', true, 'Monitor DASN-SIMEI'),
             new SimplesMeiOperationDef('INTEGRA_MEI', 'DASN_SIMEI', 'CONSULTAR', self::DTO_VERSION, $ro, $full, $mei, ['DASN_SIMEI', 'PGMEI'], 'CONSULTA', false, 'Consultar DASN-SIMEI'),
             new SimplesMeiOperationDef('INTEGRA_MEI', 'DASN_SIMEI', 'TRANSMITIR', self::DTO_VERSION, $mu, $full, $mei, ['DASN_SIMEI'], 'DECLARACAO', false, 'Transmitir DASN-SIMEI'),
         ];

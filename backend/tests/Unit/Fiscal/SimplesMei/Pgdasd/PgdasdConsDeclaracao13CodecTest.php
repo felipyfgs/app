@@ -5,6 +5,7 @@ namespace Tests\Unit\Fiscal\SimplesMei\Pgdasd;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdConsDeclaracao13Codec;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
+use RuntimeException;
 use Tests\TestCase;
 
 class PgdasdConsDeclaracao13CodecTest extends TestCase
@@ -82,5 +83,64 @@ class PgdasdConsDeclaracao13CodecTest extends TestCase
         $this->assertContains('RECTIFIER', $normalized);
         $this->assertContains('ORIGINAL', $normalized);
         $this->assertContains('DAS', $normalized);
+    }
+
+    #[Test]
+    public function null_or_empty_dados_never_confirms_absence(): void
+    {
+        foreach ([null, ''] as $dados) {
+            try {
+                $this->codec->decodeDados($dados);
+                $this->fail('Dados ausentes deveriam falhar.');
+            } catch (RuntimeException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    #[Test]
+    public function annual_empty_period_list_is_a_valid_covered_absence(): void
+    {
+        $decoded = $this->codec->decodeDados([
+            'anoCalendario' => 2026,
+            'periodos' => [],
+        ]);
+
+        $this->assertFalse($decoded['incomplete']);
+        $this->assertTrue($this->codec->coversPeriodo($decoded, '202606'));
+    }
+
+    #[Test]
+    public function official_nested_fixture_maps_declaration_and_das(): void
+    {
+        $path = dirname(__DIR__, 4).'/fixtures/serpro/pgdasd/13.json';
+        $fixture = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+        $decoded = $this->codec->decodeDados($fixture['response_dados']);
+
+        $this->assertFalse($decoded['incomplete']);
+        $this->assertCount(2, $decoded['periods'][0]['operations']);
+        $this->assertSame('20260600000000001', $decoded['periods'][0]['operations'][0]['declaration_number']);
+        $this->assertSame('20260600000000002', $decoded['periods'][0]['operations'][1]['das_number']);
+    }
+
+    #[Test]
+    public function official_identifier_keeps_logical_key_stable_when_timestamp_changes(): void
+    {
+        $base = [
+            'periodoApuracao' => 202606,
+            'operacoes' => [[
+                'tipoOperacao' => 'DECLARACAO ORIGINAL',
+                'numeroDeclaracao' => '20260600000000001',
+                'dataHoraTransmissao' => 20260715123045,
+            ]],
+        ];
+        $first = $this->codec->decodeDados($base);
+        $base['operacoes'][0]['dataHoraTransmissao'] = 20260715123046;
+        $second = $this->codec->decodeDados($base);
+
+        $this->assertSame(
+            $first['periods'][0]['operations'][0]['logical_key'],
+            $second['periods'][0]['operations'][0]['logical_key'],
+        );
     }
 }

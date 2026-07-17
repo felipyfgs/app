@@ -148,7 +148,7 @@ function toggleClient(item: ClientItem) {
   emitMulti([...set])
 }
 
-function isSelected(id: number) {
+function _isSelected(id: number) {
   return selectedIds.value.includes(id)
 }
 

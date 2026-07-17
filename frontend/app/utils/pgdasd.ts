@@ -141,13 +141,24 @@ export function pgdasdTrackingMeta(value?: string | null): PgdasdStateMeta {
 }
 
 export function pgdasdDeclarationPeriod(summary?: PgdasdClientSummary | null): string {
-  return summary?.latest_declaration?.period_key
-    || summary?.expected_period_key
-    || '—'
+  return formatPgdasdPeriod(
+    summary?.latest_declaration?.period_key || summary?.expected_period_key
+  )
+}
+
+/** Formata as chaves oficiais YYYY-MM/YYYYMM sem expor o formato técnico na UI. */
+export function formatPgdasdPeriod(value?: string | null): string {
+  const raw = String(value || '').trim()
+  const technical = raw.match(/^(\d{4})-?(\d{2})$/)
+  const displayed = raw.match(/^(\d{2})\/(\d{4})$/)
+  const year = technical?.[1] || displayed?.[2]
+  const month = technical?.[2] || displayed?.[1]
+  if (!year || !month || Number(month) < 1 || Number(month) > 12) return '—'
+  return `${month}/${year}`
 }
 
 export function pgdasdRbt12Tooltip(rbt12?: PgdasdRbt12Summary | null): string {
-  const parsed = rbt12?.status === 'PARSED' || rbt12?.status === 'RESOLVED'
+  const parsed = rbt12?.status === 'PARSED'
   const hasValue = rbt12?.total_cents != null || Boolean(rbt12?.rbt12_value)
   if (!rbt12 || !parsed || !hasValue) {
     return rbt12?.availability_reason?.trim()

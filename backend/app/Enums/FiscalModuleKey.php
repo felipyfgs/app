@@ -142,7 +142,7 @@ enum FiscalModuleKey: string
     public function knownSubmodules(): array
     {
         return match ($this) {
-            self::SimplesMei => ['PGDASD', 'PGMEI', 'DASN_SIMEI', 'REGIME', 'SIMPLES_NACIONAL', 'MEI'],
+            self::SimplesMei => ['PGDASD', 'PGMEI'],
             self::Dctfweb => ['DCTFWEB', 'MIT'],
             self::Installments => ['PARCELAMENTOS'],
             self::Sitfis => ['SITFIS'],

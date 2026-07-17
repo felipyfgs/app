@@ -12,6 +12,7 @@ use App\Support\CurrentOffice;
 use App\Support\FeatureFlags;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Read model de overview + carteira por módulo (tenant-scoped).
@@ -35,6 +36,7 @@ class FiscalModulePortfolioController extends Controller
         $request->query->remove('office_id');
         $request->request->remove('office_id');
 
+        $this->assertSubmoduleAllowed($request, $moduleKey);
         $filters = ModulePortfolioFilters::fromRequest($request->query->all());
         $dto = $this->portfolio->overview($office, $moduleKey, $filters);
 
@@ -51,6 +53,7 @@ class FiscalModulePortfolioController extends Controller
         $request->query->remove('office_id');
         $request->request->remove('office_id');
 
+        $this->assertSubmoduleAllowed($request, $moduleKey);
         $filters = ModulePortfolioFilters::fromRequest($request->query->all());
         $page = $this->portfolio->clients($office, $moduleKey, $filters);
 
@@ -80,5 +83,26 @@ class FiscalModulePortfolioController extends Controller
         if ($this->currentOffice->role() === null) {
             abort(403, 'Perfil não resolvido.');
         }
+    }
+
+    /**
+     * A API nunca redireciona um submódulo removido para outra superfície fiscal.
+     * O estado ausente continua selecionando a superfície padrão do módulo.
+     */
+    private function assertSubmoduleAllowed(Request $request, FiscalModuleKey $module): void
+    {
+        if (! $request->query->has('submodule')) {
+            return;
+        }
+
+        $raw = $request->query('submodule');
+        $submodule = is_string($raw) ? strtoupper(trim($raw)) : '';
+        if ($submodule !== '' && in_array($submodule, $module->knownSubmodules(), true)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'submodule' => ['Submódulo não disponível para este módulo de monitoramento.'],
+        ]);
     }
 }

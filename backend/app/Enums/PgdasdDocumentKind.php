@@ -9,5 +9,6 @@ enum PgdasdDocumentKind: string
     case Extrato = 'EXTRATO';
     case NotificacaoMaed = 'NOTIFICACAO_MAED';
     case DarfMaed = 'DARF_MAED';
+    case GuiaDasPreexistente = 'GUIA_DAS_PREEXISTENTE';
     case Other = 'OTHER';
 }

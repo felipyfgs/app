@@ -288,6 +288,36 @@ class CommercialMonthlySchedulerTest extends TestCase
         $this->assertTrue(CommercialMonitorCatalog::isRealtimeNonFranchiseChannel('ADN_NFSE', 'EVENTO'));
     }
 
+    public function test_monitor_simples_mei_usa_divida_ativa_para_cliente_mei(): void
+    {
+        Bus::fake();
+        $this->client->forceFill(['tax_regime' => 'MEI'])->save();
+        OfficeMonitorSchedulePolicy::setCustomDay((int) $this->office->id, 'simples_mei', 5);
+        FiscalMonitoringSchedule::query()->create([
+            'office_id' => $this->office->id,
+            'client_id' => $this->client->id,
+            'system_code' => 'INTEGRA_MEI',
+            'service_code' => 'PGMEI',
+            'operation_code' => 'MONITOR',
+            'is_enabled' => true,
+            'interval_minutes' => 1440,
+            'preferred_minute' => 0,
+        ]);
+
+        $now = CarbonImmutable::parse('2026-06-05 09:00:00', 'America/Sao_Paulo')->utc();
+        $result = app(FiscalMonitoringScheduler::class)->dispatchCommercialMonthlyDue($now);
+
+        $this->assertGreaterThanOrEqual(1, $result['dispatched']);
+        $run = FiscalMonitoringRun::query()
+            ->withoutGlobalScopes()
+            ->where('client_id', $this->client->id)
+            ->where('service_code', 'PGMEI')
+            ->sole();
+        $this->assertSame('INTEGRA_MEI', $run->system_code);
+        $this->assertSame('MONITOR', $run->operation_code);
+        $this->assertArrayHasKey('ano_calendario', $run->progress);
+    }
+
     public function test_legacy_interval_pausa_monitor_comercial_quando_mensal_ativo(): void
     {
         Bus::fake();

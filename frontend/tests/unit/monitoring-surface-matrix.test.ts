@@ -7,7 +7,6 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  ALL_RESULT_KINDS,
   documentActionVisible,
   documentActionVisibleForSurface,
   getMonitoringSurface,
@@ -33,15 +32,13 @@ function optionalRead(rel: string): string | null {
 }
 
 describe('monitoring surface matrix (page-payload-matrix)', () => {
-  it('enumera todas as surface_key da matriz (17)', () => {
-    expect(MONITORING_SURFACE_KEYS).toHaveLength(17)
-    expect(new Set(MONITORING_SURFACE_KEYS).size).toBe(17)
+  it('enumera todas as surface_key da matriz (15 — sem Regime/DASN públicos)', () => {
+    expect(MONITORING_SURFACE_KEYS).toHaveLength(15)
+    expect(new Set(MONITORING_SURFACE_KEYS).size).toBe(15)
     expect(MONITORING_SURFACE_KEYS).toEqual([
       'monitoring_dashboard',
       'simples_mei_pgdasd',
       'simples_mei_pgmei',
-      'simples_mei_dasn',
-      'simples_mei_regime',
       'dctfweb',
       'mit',
       'fgts',
@@ -57,31 +54,41 @@ describe('monitoring surface matrix (page-payload-matrix)', () => {
     ])
   })
 
-  it('cobre STRUCTURED, PDF, ASYNC_PDF, AGGREGATE e UNAVAILABLE', () => {
+  it('cobre STRUCTURED, PDF, ASYNC_PDF e AGGREGATE (sem UNAVAILABLE DASN)', () => {
     const kinds = resultKindsInMatrix().sort()
-    expect(kinds).toEqual([...ALL_RESULT_KINDS].sort())
+    expect(kinds).toEqual(
+      expect.arrayContaining(['STRUCTURED', 'PDF', 'ASYNC_PDF', 'AGGREGATE'])
+    )
 
     const byKind = (k: MonitoringResultKind) =>
       MONITORING_SURFACE_MATRIX.filter(e => e.resultKind === k).map(e => e.surfaceKey)
 
     expect(byKind('STRUCTURED')).toEqual(
-      expect.arrayContaining(['mit', 'mailbox_list', 'mailbox_detail', 'registrations', 'tax_processes', 'fgts'])
+      expect.arrayContaining([
+        'simples_mei_pgmei',
+        'mit',
+        'mailbox_list',
+        'mailbox_detail',
+        'registrations',
+        'tax_processes',
+        'fgts'
+      ])
     )
     expect(byKind('PDF')).toEqual(
       expect.arrayContaining([
         'simples_mei_pgdasd',
-        'simples_mei_pgmei',
-        'simples_mei_regime',
         'dctfweb',
         'installments',
         'guides'
       ])
     )
+    expect(byKind('PDF')).not.toContain('simples_mei_pgmei')
     expect(byKind('ASYNC_PDF')).toEqual(['sitfis'])
     expect(byKind('AGGREGATE')).toEqual(
       expect.arrayContaining(['monitoring_dashboard', 'declarations', 'client_detail'])
     )
-    expect(byKind('UNAVAILABLE')).toEqual(['simples_mei_dasn'])
+    expect(getMonitoringSurface('simples_mei_dasn')).toBeUndefined()
+    expect(getMonitoringSurface('simples_mei_regime')).toBeUndefined()
   })
 
   it('MIT, Caixa Postal, Cadastros e e-Processo nunca permitem documento', () => {
@@ -96,11 +103,11 @@ describe('monitoring surface matrix (page-payload-matrix)', () => {
     }
   })
 
-  it('DASN é UNAVAILABLE e nunca mostra ação de documento', () => {
-    const dasn = getMonitoringSurface('simples_mei_dasn')!
-    expect(dasn.resultKind).toBe('UNAVAILABLE')
-    expect(dasn.allowsDocument).toBe(false)
-    expect(surfaceNeverShowsDocumentAction('simples_mei_dasn')).toBe(true)
+  it('PGMEI é STRUCTURED e nunca mostra ação de documento', () => {
+    const pgmei = getMonitoringSurface('simples_mei_pgmei')!
+    expect(pgmei.resultKind).toBe('STRUCTURED')
+    expect(pgmei.allowsDocument).toBe(false)
+    expect(surfaceNeverShowsDocumentAction('simples_mei_pgmei')).toBe(true)
   })
 
   it('SITFIS é ASYNC_PDF e permite documento somente com artefato', () => {

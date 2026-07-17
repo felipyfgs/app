@@ -57,8 +57,9 @@ const multiOptionModel = computed({
       return
     }
     if (props.definition.kind !== 'option') return
+    const def = props.definition
     const labels = decodeOptionValues(encoded)
-      .map(value => optionLabel(props.definition.items, value))
+      .map(value => optionLabel(def.items, value))
     emit('update:label', labels.join(', '))
   }
 })
@@ -166,7 +167,7 @@ function onOption(value: string) {
   emit('update:label', item?.label)
 }
 
-function onMultiOption(value: unknown) {
+function _onMultiOption(value: unknown) {
   const list = Array.isArray(value)
     ? value.map(item => String(item ?? '')).filter(Boolean)
     : value == null || value === ''
@@ -217,7 +218,11 @@ const multiClientModel = computed({
   }
 })
 
-function onClientId(value: number | null) {
+function onClientId(value: number | number[] | null) {
+  if (Array.isArray(value)) {
+    emit('update:modelValue', value[0] ?? null)
+    return
+  }
   emit('update:modelValue', value)
 }
 

@@ -2,6 +2,8 @@
 
 namespace App\Jobs\Fiscal;
 
+use App\Models\FiscalMonitoringRun;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdRbt12Service;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -46,5 +48,15 @@ class ExecuteFiscalMonitoringRunJob implements ShouldQueue
     public function backoff(): array
     {
         return [15, 60, 120];
+    }
+
+    public function failed(?Throwable $exception): void
+    {
+        $run = FiscalMonitoringRun::query()
+            ->withoutGlobalScopes()
+            ->find($this->fiscalMonitoringRunId);
+        if ($run !== null) {
+            app(PgdasdRbt12Service::class)->reconcileTerminalFailure($run);
+        }
     }
 }

@@ -5,7 +5,6 @@ namespace App\Services\Fiscal\SimplesMei\Pgdasd;
 use App\Enums\PgdasdDeclarationState;
 use App\Enums\PgdasdOperationKind;
 use App\Models\Client;
-use App\Models\ClientCommunicationPreference;
 use App\Models\Office;
 use App\Models\PgdasdArtifact;
 use App\Models\PgdasdOperation;
@@ -13,6 +12,8 @@ use App\Models\PgdasdRbt12Projection;
 use App\Models\TaxObligationDefinition;
 use App\Models\TaxObligationProjection;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
+use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -23,6 +24,7 @@ final class PgdasdMonitoringQueryService
     public function __construct(
         private readonly FiscalMonitoringRunService $runs,
         private readonly PgdasdOperationProjector $projector,
+        private readonly PgdasdCommunicationService $communication,
     ) {}
 
     /**
@@ -43,22 +45,17 @@ final class PgdasdMonitoringQueryService
         $expectedPa = PgdasdPeriod::toPeriodoApuracao(PgdasdPeriod::expectedPa(null, $tz));
         $periodKey = PgdasdPeriod::periodKeyFromPeriodoApuracao($expectedPa);
 
+        $definition = TaxObligationDefinition::query()->where('code', 'PGDAS_D')->first();
         $projections = TaxObligationProjection::query()
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
             ->where('period_key', $periodKey)
+            ->where('obligation_definition_id', $definition?->id ?? 0)
             ->get()
             ->keyBy('client_id');
 
-        $prefs = ClientCommunicationPreference::query()
-            ->withoutGlobalScopes()
-            ->where('office_id', $office->id)
-            ->whereIn('client_id', $clientIds)
-            ->where('module_key', PgdasdCommunicationService::MODULE)
-            ->where('submodule_key', PgdasdCommunicationService::SUBMODULE)
-            ->get()
-            ->keyBy('client_id');
+        $communications = $this->communication->summariesForClients($office, $clientIds);
 
         $lastOps = PgdasdOperation::query()
             ->withoutGlobalScopes()
@@ -72,6 +69,7 @@ final class PgdasdMonitoringQueryService
 
         $rbt12 = PgdasdRbt12Projection::query()
             ->withoutGlobalScopes()
+            ->with('projection')
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
             ->orderByDesc('id')
@@ -85,23 +83,16 @@ final class PgdasdMonitoringQueryService
             $lastDecl = $clientOps->first(
                 static fn (PgdasdOperation $op) => $op->period_key === $periodKey
             ) ?? $clientOps->first();
-            $latestRbt = $rbt12->get($cid, collect())->first();
-            $pref = $prefs->get($cid);
+            $displayPeriodKey = $lastDecl?->period_key ?: $periodKey;
+            $latestRbt = $rbt12->get($cid, collect())->first(
+                static fn (PgdasdRbt12Projection $item): bool => $item->projection?->period_key === $displayPeriodKey
+            );
 
             $state = $proj?->pgdasd_declaration_state?->value
                 ?? PgdasdDeclarationState::Unverified->value;
             $lastPublic = $lastDecl?->toPublicArray();
             $rbtPublic = $latestRbt?->toPublicArray();
-            // lock_version virtual = 1 (default da migration). DB submodule_key canônico: pgdasd
-            // (PgdasdCommunicationService::SUBMODULE) — distinto do submodule público PGDASD na carteira.
-            $comm = $pref?->toPublicArray() ?? [
-                'automatic_requested' => false,
-                'automatic_effective' => false,
-                'execution_mode' => 'TEMPLATE_ONLY',
-                'email_enabled' => false,
-                'whatsapp_enabled' => false,
-                'lock_version' => 1,
-            ];
+            $comm = $communications[$cid];
 
             $map[$cid] = [
                 'module_key' => 'simples_mei',
@@ -110,6 +101,7 @@ final class PgdasdMonitoringQueryService
                 'expected_period_key' => $periodKey,
                 'period_key' => $periodKey,
                 'declaration_state' => $state,
+                'declaration_state_reason' => $this->stateReason($proj),
                 'last_declaration' => $lastPublic,
                 'latest_declaration' => $lastPublic === null ? null : [
                     'period_key' => $lastPublic['period_key'] ?? null,
@@ -119,10 +111,8 @@ final class PgdasdMonitoringQueryService
                     'transmitted_at' => $lastPublic['transmitted_at'] ?? null,
                 ],
                 'rbt12' => $rbtPublic,
-                'last_productive_consulted_at' => $proj?->pgdasd_last_productive_consulted_at?->toIso8601String()
-                    ?? $proj?->last_valid_query_at?->toIso8601String(),
-                'last_valid_query_at' => $proj?->pgdasd_last_productive_consulted_at?->toIso8601String()
-                    ?? $proj?->last_valid_query_at?->toIso8601String(),
+                'last_productive_consulted_at' => $proj?->last_valid_query_at?->toIso8601String(),
+                'last_valid_query_at' => $proj?->last_valid_query_at?->toIso8601String(),
                 'calendar_verified' => (bool) ($proj?->pgdasd_calendar_verified ?? false),
                 'communication' => $comm,
                 'links' => [
@@ -145,11 +135,16 @@ final class PgdasdMonitoringQueryService
     public function history(Office $office, Client $client, ?int $year = null): array
     {
         $this->assertClient($office, $client);
+        if ($year !== null && ($year < 2000 || $year > 2100)) {
+            throw new RuntimeException('Ano do histórico inválido.');
+        }
+        $definitionId = TaxObligationDefinition::query()->where('code', 'PGDAS_D')->value('id');
 
         $operations = PgdasdOperation::query()
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
+            ->whereHas('projection', fn ($query) => $query->where('obligation_definition_id', $definitionId ?? 0))
             ->when($year !== null, function ($q) use ($year): void {
                 $q->where('period_key', 'like', sprintf('%04d-%%', $year));
             })
@@ -163,6 +158,10 @@ final class PgdasdMonitoringQueryService
             ->with('evidenceArtifact')
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
+            ->whereHas('projection', function ($query) use ($definitionId, $year): void {
+                $query->where('obligation_definition_id', $definitionId ?? 0)
+                    ->when($year !== null, fn ($inner) => $inner->where('period_key', 'like', sprintf('%04d-%%', $year)));
+            })
             ->orderByDesc('observed_at')
             ->get();
 
@@ -170,6 +169,10 @@ final class PgdasdMonitoringQueryService
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
+            ->whereHas('projection', function ($query) use ($definitionId, $year): void {
+                $query->where('obligation_definition_id', $definitionId ?? 0)
+                    ->when($year !== null, fn ($inner) => $inner->where('period_key', 'like', sprintf('%04d-%%', $year)));
+            })
             ->orderByDesc('id')
             ->get();
 
@@ -209,6 +212,9 @@ final class PgdasdMonitoringQueryService
                     'das_number' => $op->das_number,
                     'issued_at' => $op->issued_at?->toIso8601String(),
                     'payment_located' => $op->payment_located,
+                    'payment_observation' => $op->payment_located === false
+                        ? 'Pagamento não localizado até a consulta.'
+                        : ($op->payment_located === true ? 'Pagamento localizado até a consulta.' : null),
                     'payment_observed_at' => $op->payment_observed_at?->toIso8601String(),
                 ];
             }
@@ -232,14 +238,7 @@ final class PgdasdMonitoringQueryService
                     ];
                 }
             }
-            $doc = [
-                'id' => $art->id,
-                'kind' => $art->kind,
-                'filename' => $art->filename,
-                'content_type' => $art->content_type,
-                'observed_at' => $art->observed_at?->toIso8601String(),
-                'download_href' => '/api/v1/fiscal/simples-mei/pgdasd/artifacts/'.$art->id.'/download',
-            ];
+            $doc = $art->toPublicArray();
             $byPeriod[$pk]['documents'][] = $doc;
             $byPeriod[$pk]['artifacts'][] = $doc;
         }
@@ -261,16 +260,18 @@ final class PgdasdMonitoringQueryService
                     'rbt12' => null,
                 ];
             }
-            $byPeriod[$pk]['rbt12'] = $r->toPublicArray();
+            if ($byPeriod[$pk]['rbt12'] === null) {
+                $byPeriod[$pk]['rbt12'] = $r->toPublicArray();
+            }
         }
 
         // Estado do PA esperado na projeção
         $state = $proj?->pgdasd_declaration_state?->value
             ?? PgdasdDeclarationState::Unverified->value;
-        $lastValid = $proj?->pgdasd_last_productive_consulted_at?->toIso8601String()
-            ?? $proj?->last_valid_query_at?->toIso8601String();
+        $lastValid = $proj?->last_valid_query_at?->toIso8601String();
         if (isset($byPeriod[$expectedPeriodKey])) {
             $byPeriod[$expectedPeriodKey]['declaration_state'] = $state;
+            $byPeriod[$expectedPeriodKey]['declaration_state_reason'] = $this->stateReason($proj);
             $byPeriod[$expectedPeriodKey]['last_valid_query_at'] = $lastValid;
         }
 
@@ -281,12 +282,11 @@ final class PgdasdMonitoringQueryService
             'client' => [
                 'id' => $client->id,
                 'legal_name' => $client->legal_name,
-                'cnpj_masked' => method_exists($client, 'cnpjMasked')
-                    ? $client->cnpjMasked()
-                    : null,
+                'cnpj_masked' => $this->historyCnpjMasked($client),
             ],
             'expected_period_key' => $expectedPeriodKey,
             'declaration_state' => $state,
+            'declaration_state_reason' => $this->stateReason($proj),
             'last_valid_query_at' => $lastValid,
             'periods' => $periods,
             'history' => $periods,
@@ -298,7 +298,7 @@ final class PgdasdMonitoringQueryService
             'artifacts' => $artifacts->map->toPublicArray()->values()->all(),
             'rbt12_projections' => $rbt12->map->toPublicArray()->values()->all(),
             'provenance' => [
-                'source' => 'local_projection',
+                'source' => 'LOCAL_PROJECTION',
                 'serpro_called' => false,
             ],
         ];
@@ -343,9 +343,20 @@ final class PgdasdMonitoringQueryService
         $operationCode = match ($op) {
             '14', 'CONSULTIMADECREC', 'CONSULTAR_ULTIMA_DECLARACAO_RECIBO' => 'CONSULTAR_ULTIMA_DECLARACAO_RECIBO',
             '15', 'CONSDECREC', 'CONSULTAR_RECIBO' => 'CONSULTAR_RECIBO',
-            '16', 'CONSEXTRATO', 'CONSULTAR_EXTRATO' => 'CONSULTAR_EXTRATO',
             default => throw new RuntimeException('Operação documental PGDAS-D inválida.'),
         };
+
+        $periodKey = trim((string) ($params['period_key'] ?? ''));
+        try {
+            PgdasdPeriod::parse($periodKey);
+        } catch (\Throwable) {
+            throw new RuntimeException('PA inválido para coleta documental.');
+        }
+        if ($operationCode === 'CONSULTAR_RECIBO'
+            && trim((string) ($params['numeroDeclaracao'] ?? '')) === ''
+        ) {
+            throw new RuntimeException('Número da declaração é obrigatório para o serviço 15.');
+        }
 
         $run = $this->runs->enqueueManual(
             office: $office,
@@ -354,6 +365,7 @@ final class PgdasdMonitoringQueryService
             serviceCode: 'PGDASD',
             operationCode: $operationCode,
             actorId: $actorId,
+            dispatch: false,
         );
 
         $progress = is_array($run->progress) ? $run->progress : [];
@@ -375,6 +387,60 @@ final class PgdasdMonitoringQueryService
             $progress['numero_das'] = (string) $params['numeroDas'];
         }
         $run->forceFill(['progress' => $progress])->save();
+        ExecuteFiscalMonitoringRunJob::dispatch((int) $run->id)
+            ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
+
+        return $run->fresh() ?? $run;
+    }
+
+    public function enqueueAutomaticRbt12Extract(
+        PgdasdRbt12Projection $rbt12,
+    ): \App\Models\FiscalMonitoringRun {
+        $rbt12->loadMissing(['projection', 'client']);
+        $projection = $rbt12->projection;
+        $client = $rbt12->client;
+        $office = Office::query()->find($rbt12->office_id);
+        if ($projection === null || $client === null || $office === null
+            || (int) $projection->office_id !== (int) $office->id
+            || (int) $client->office_id !== (int) $office->id
+            || $rbt12->status?->value !== 'PENDING'
+            || ! is_string($rbt12->source_das_number)
+            || $rbt12->source_das_number === ''
+        ) {
+            throw new RuntimeException('Reserva RBT12 inválida para consulta do extrato.');
+        }
+
+        $originRunId = $rbt12->source_run_id;
+        $run = $this->runs->enqueueManual(
+            office: $office,
+            client: $client,
+            systemCode: 'INTEGRA_SN',
+            serviceCode: 'PGDASD',
+            operationCode: 'CONSULTAR_EXTRATO',
+            dispatch: false,
+        );
+        $progress = [
+            'period_key' => $projection->period_key,
+            'periodo_apuracao' => str_replace('-', '', (string) $projection->period_key),
+            'numero_das' => $rbt12->source_das_number,
+            'rbt12_projection_id' => (int) $rbt12->id,
+            'rbt12_source_reference_key' => $rbt12->source_reference_key,
+        ];
+        $run->forceFill([
+            'operation_key' => 'pgdasd.consextrato',
+            'progress' => $progress,
+        ])->save();
+
+        $metadata = is_array($rbt12->metadata) ? $rbt12->metadata : [];
+        $metadata['reservation_run_id'] = $originRunId;
+        $metadata['extract_run_id'] = $run->id;
+        $rbt12->forceFill([
+            'source_run_id' => $run->id,
+            'metadata' => $metadata,
+        ])->save();
+
+        ExecuteFiscalMonitoringRunJob::dispatch((int) $run->id)
+            ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
 
         return $run->fresh() ?? $run;
     }
@@ -396,9 +462,7 @@ final class PgdasdMonitoringQueryService
             ->where('client_id', $client->id)
             ->where('period_key', $periodKey);
 
-        if ($def !== null) {
-            $q->where('obligation_definition_id', $def->id);
-        }
+        $q->where('obligation_definition_id', $def?->id ?? 0);
 
         return $q->first();
     }
@@ -408,5 +472,41 @@ final class PgdasdMonitoringQueryService
         if ((int) $client->office_id !== (int) $office->id) {
             throw new RuntimeException('Cliente não pertence ao escritório ativo.');
         }
+    }
+
+    private function stateReason(?TaxObligationProjection $projection): string
+    {
+        if ($projection === null || $projection->last_valid_query_at === null) {
+            return 'NO_VALID_QUERY';
+        }
+
+        return match ($projection->pgdasd_declaration_state?->value) {
+            'CURRENT' => 'EXPECTED_PA_FOUND',
+            'DUE_WITHIN_DEADLINE' => 'WITHIN_DEADLINE',
+            'OVERDUE_NOT_FOUND' => 'ABSENT_AFTER_VERIFIED_DEADLINE',
+            default => 'UNVERIFIED',
+        };
+    }
+
+    private function maskCnpj(?string $cnpj): string
+    {
+        $normalized = preg_replace('/[^A-Z0-9]/', '', strtoupper((string) $cnpj)) ?? '';
+        if (strlen($normalized) < 8) {
+            return '****';
+        }
+
+        return substr($normalized, 0, 4)
+            .str_repeat('*', max(4, strlen($normalized) - 8))
+            .(strlen($normalized) > 8 ? substr($normalized, -4) : '');
+    }
+
+    private function historyCnpjMasked(Client $client): string
+    {
+        $cnpj = $client->establishments()
+            ->orderByDesc('is_matrix')
+            ->orderBy('id')
+            ->value('cnpj');
+
+        return $this->maskCnpj(is_string($cnpj) && $cnpj !== '' ? $cnpj : $client->root_cnpj);
     }
 }

@@ -5,6 +5,14 @@ import type {
   PgdasdHistoryPayload,
   PgdasdHistoryPeriod
 } from '~/types/fiscal-modules'
+import { usePgdasdMonitoring } from '~/composables/usePgdasdMonitoring'
+import { apiErrorMessage } from '~/utils/api-error'
+import { formatBytes, formatDateTime } from '~/utils/format'
+import {
+  formatPgdasdPeriod,
+  pgdasdDeclarationMeta,
+  pgdasdHistoryPeriods
+} from '~/utils/pgdasd'
 
 const props = defineProps<{
   open: boolean
@@ -180,7 +188,7 @@ async function requestDocuments(period: PgdasdHistoryPeriod) {
               :label="stateMeta.label"
               variant="subtle"
             />
-            <span>PA esperado: {{ payload.expected_period_key || '—' }}</span>
+            <span>PA esperado: {{ formatPgdasdPeriod(payload.expected_period_key) }}</span>
             <span>Última consulta válida: {{ formatDateTime(payload.last_valid_query_at) }}</span>
           </div>
 
@@ -201,7 +209,7 @@ async function requestDocuments(period: PgdasdHistoryPeriod) {
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p class="font-semibold text-highlighted">
-                      Período {{ period.period_key || '—' }}
+                      Período {{ formatPgdasdPeriod(period.period_key) }}
                     </p>
                     <p class="text-xs text-muted">
                       Última observação: {{ formatDateTime(period.last_valid_query_at || payload.last_valid_query_at) }}
@@ -223,7 +231,9 @@ async function requestDocuments(period: PgdasdHistoryPeriod) {
               </template>
 
               <section>
-                <h3 class="mb-2 text-sm font-medium">Declarações</h3>
+                <h3 class="mb-2 text-sm font-medium">
+                  Declarações
+                </h3>
                 <div v-if="period.declarations?.length" class="grid gap-2 lg:grid-cols-2">
                   <div
                     v-for="declaration in period.declarations"
@@ -240,11 +250,15 @@ async function requestDocuments(period: PgdasdHistoryPeriod) {
                     </div>
                   </div>
                 </div>
-                <p v-else class="text-sm text-muted">Nenhuma declaração observada.</p>
+                <p v-else class="text-sm text-muted">
+                  Nenhuma declaração observada.
+                </p>
               </section>
 
               <section>
-                <h3 class="mb-2 text-sm font-medium">DAS observados</h3>
+                <h3 class="mb-2 text-sm font-medium">
+                  DAS observados
+                </h3>
                 <div v-if="period.das?.length" class="grid gap-2 lg:grid-cols-2">
                   <div
                     v-for="das in period.das"
@@ -260,19 +274,27 @@ async function requestDocuments(period: PgdasdHistoryPeriod) {
                     </div>
                   </div>
                 </div>
-                <p v-else class="text-sm text-muted">Nenhum DAS observado.</p>
+                <p v-else class="text-sm text-muted">
+                  Nenhum DAS observado.
+                </p>
               </section>
 
               <section class="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h3 class="text-sm font-medium">RBT12</h3>
-                  <p class="text-xs text-muted">Valor extraído do extrato oficial, sem estimativa.</p>
+                  <h3 class="text-sm font-medium">
+                    RBT12
+                  </h3>
+                  <p class="text-xs text-muted">
+                    Valor extraído do extrato oficial, sem estimativa.
+                  </p>
                 </div>
                 <MonitoringPgdasdRbt12Value :rbt12="period.rbt12" />
               </section>
 
               <section>
-                <h3 class="mb-2 text-sm font-medium">Documentos locais</h3>
+                <h3 class="mb-2 text-sm font-medium">
+                  Documentos locais
+                </h3>
                 <ul v-if="artifacts(period).length" class="space-y-2">
                   <li
                     v-for="artifact in artifacts(period)"
@@ -285,7 +307,9 @@ async function requestDocuments(period: PgdasdHistoryPeriod) {
                       </p>
                       <p class="text-xs text-muted">
                         {{ artifact.kind || 'Documento' }}
-                        <template v-if="artifact.byte_size != null"> · {{ formatBytes(artifact.byte_size) }}</template>
+                        <template v-if="artifact.byte_size != null">
+                          · {{ formatBytes(artifact.byte_size) }}
+                        </template>
                         · {{ formatDateTime(artifact.observed_at) }}
                       </p>
                     </div>
@@ -311,8 +335,12 @@ async function requestDocuments(period: PgdasdHistoryPeriod) {
 
           <div v-else class="py-10 text-center">
             <UIcon name="i-lucide-file-clock" class="mx-auto mb-2 size-8 text-dimmed" />
-            <p class="font-medium text-highlighted">Nenhum histórico local</p>
-            <p class="text-sm text-muted">Os dados aparecerão após uma consulta produtiva válida.</p>
+            <p class="font-medium text-highlighted">
+              Nenhum histórico local
+            </p>
+            <p class="text-sm text-muted">
+              Os dados aparecerão após uma consulta produtiva válida.
+            </p>
           </div>
         </template>
       </div>

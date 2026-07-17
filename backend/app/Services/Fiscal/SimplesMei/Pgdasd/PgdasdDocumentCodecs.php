@@ -6,148 +6,119 @@ use App\Enums\PgdasdDocumentKind;
 use InvalidArgumentException;
 use RuntimeException;
 
-/**
- * Codecs de payload/resposta para serviços documentais 14–16.
- */
+/** Codecs estritos dos serviços documentais PGDAS-D 14, 15 e 16. */
 final class PgdasdDocumentCodecs
 {
-    /**
-     * @return array{periodoApuracao: string}
-     */
+    /** @return array{periodoApuracao:string} */
     public function buildPayload14(string $periodoApuracao): array
     {
         $pa = trim($periodoApuracao);
-        if (preg_match('/^\d{6}$/', $pa) !== 1) {
+        if (! $this->validPeriodoApuracao($pa)) {
             throw new InvalidArgumentException('CONSULTIMADECREC14 exige periodoApuracao AAAAMM.');
         }
 
         return ['periodoApuracao' => $pa];
     }
 
-    /**
-     * @return array{numeroDeclaracao: string}
-     */
+    /** @return array{numeroDeclaracao:string} */
     public function buildPayload15(string $numeroDeclaracao): array
     {
-        $n = trim($numeroDeclaracao);
-        if ($n === '' || strlen($n) > 17) {
-            throw new InvalidArgumentException('CONSDECREC15 exige numeroDeclaracao (até 17 chars).');
+        $number = trim($numeroDeclaracao);
+        if ($number === '' || mb_strlen($number) > 17) {
+            throw new InvalidArgumentException('CONSDECREC15 exige numeroDeclaracao (até 17 caracteres).');
         }
 
-        return ['numeroDeclaracao' => $n];
+        return ['numeroDeclaracao' => $number];
     }
 
-    /**
-     * @return array{numeroDas: string}
-     */
+    /** @return array{numeroDas:string} */
     public function buildPayload16(string $numeroDas): array
     {
-        $n = trim($numeroDas);
-        if ($n === '' || strlen($n) > 17) {
-            throw new InvalidArgumentException('CONSEXTRATO16 exige numeroDas (até 17 chars).');
+        $number = trim($numeroDas);
+        if ($number === '' || mb_strlen($number) > 17) {
+            throw new InvalidArgumentException('CONSEXTRATO16 exige numeroDas (até 17 caracteres).');
         }
 
-        return ['numeroDas' => $n];
+        return ['numeroDas' => $number];
     }
 
     /**
-     * Extrai descritores de documentos (ainda com Base64 bruto) a partir de dados.
-     *
      * @return list<array{
-     *   kind: PgdasdDocumentKind,
-     *   base64: string,
-     *   filename_hint: ?string,
-     *   numero_declaracao: ?string,
-     *   field: string
+     *   kind:PgdasdDocumentKind,
+     *   base64:string,
+     *   filename_hint:?string,
+     *   numero_declaracao:?string,
+     *   numero_das:?string,
+     *   path:string
      * }>
      */
     public function extractDocumentFields(mixed $dados, string $operationKey): array
     {
         $root = $this->coerceArray($dados);
-        $docs = [];
+        $declarationNumber = $this->stringOrNull($root['numeroDeclaracao'] ?? null);
+        $dasNumber = $this->stringOrNull($root['numeroDas'] ?? null);
 
-        $map = match ($operationKey) {
+        $paths = match ($operationKey) {
             'pgdasd.consultimadecrec', 'pgdasd.consdecrec' => [
-                ['pdf', PgdasdDocumentKind::Declaracao, 'nomeArquivo'],
-                ['recibo', PgdasdDocumentKind::Recibo, 'nomeArquivo'],
-                ['pdfNotificacao', PgdasdDocumentKind::NotificacaoMaed, 'nomeArquivoNotificacao'],
-                ['pdfDarf', PgdasdDocumentKind::DarfMaed, 'nomeArquivoDarf'],
+                ['declaracao.pdf', PgdasdDocumentKind::Declaracao, 'declaracao.nomeArquivo'],
+                ['recibo.pdf', PgdasdDocumentKind::Recibo, 'recibo.nomeArquivo'],
+                ['maed.pdfNotificacao', PgdasdDocumentKind::NotificacaoMaed, 'maed.nomeArquivoNotificacao'],
+                ['maed.pdfDarf', PgdasdDocumentKind::DarfMaed, 'maed.nomeArquivoDarf'],
             ],
             'pgdasd.consextrato' => [
-                ['pdf', PgdasdDocumentKind::Extrato, 'nomeArquivo'],
-                ['extrato', PgdasdDocumentKind::Extrato, 'nomeArquivo'],
+                ['extrato.pdf', PgdasdDocumentKind::Extrato, 'extrato.nomeArquivo'],
             ],
-            default => [],
+            default => throw new InvalidArgumentException('Operação documental PGDAS-D não suportada.'),
         };
 
-        $numeroDec = isset($root['numeroDeclaracao']) ? trim((string) $root['numeroDeclaracao']) : null;
-        if ($numeroDec === '') {
-            $numeroDec = null;
-        }
-
-        // maed aninhado
-        $nodes = [$root];
-        if (is_array($root['maed'] ?? null)) {
-            $nodes[] = $root['maed'];
-        }
-        if (is_array($root['recibo'] ?? null) && ! is_string($root['recibo'])) {
-            $nodes[] = $root['recibo'];
-        }
-
-        foreach ($nodes as $node) {
-            foreach ($map as [$field, $kind, $nameField]) {
-                if (! isset($node[$field]) || ! is_string($node[$field]) || trim($node[$field]) === '') {
-                    continue;
-                }
-                $b64 = trim($node[$field]);
-                // placeholders sintéticos não são PDF
-                if ($b64 === 'EXEMPLO_SINTETICO') {
-                    continue;
-                }
-                $hint = isset($node[$nameField]) && is_string($node[$nameField])
-                    ? $node[$nameField]
-                    : null;
-                $docs[] = [
-                    'kind' => $kind,
-                    'base64' => $b64,
-                    'filename_hint' => $hint,
-                    'numero_declaracao' => $numeroDec,
-                    'field' => $field,
-                ];
+        $documents = [];
+        foreach ($paths as [$path, $kind, $filenamePath]) {
+            $base64 = $this->valueAtPath($root, $path);
+            if (! is_string($base64) || trim($base64) === '') {
+                continue;
             }
+
+            $filename = $this->valueAtPath($root, $filenamePath);
+            $documents[] = [
+                'kind' => $kind,
+                'base64' => trim($base64),
+                'filename_hint' => is_string($filename) && trim($filename) !== '' ? trim($filename) : null,
+                'numero_declaracao' => $declarationNumber,
+                'numero_das' => $dasNumber,
+                'path' => $path,
+            ];
         }
 
-        return $docs;
+        return $documents;
     }
 
     /**
-     * Remove campos de PDF Base64 de dados, substituindo por descritores sanitizados.
+     * Substitui todo campo binário oficial pelo descritor da mesma posição.
      *
-     * @param  array<string, mixed>  $descriptors  field => public descriptor
+     * @param  array<string, array<string, mixed>>  $descriptorsByPath
      * @return array<string, mixed>
      */
-    public function sanitizeDados(mixed $dados, array $descriptors): array
+    public function sanitizeDados(mixed $dados, array $descriptorsByPath): array
     {
         $root = $this->coerceArray($dados);
-        $pdfFields = [
-            'pdf', 'recibo', 'pdfNotificacao', 'pdfDarf', 'extrato', 'declaracao',
-        ];
+        $binaryNames = ['pdf', 'pdfNotificacao', 'pdfDarf'];
 
-        $walk = function (array &$node) use (&$walk, $pdfFields, $descriptors): void {
-            foreach ($pdfFields as $field) {
-                if (array_key_exists($field, $node) && is_string($node[$field])) {
-                    $node[$field] = $descriptors[$field] ?? [
+        $walk = function (array &$node, string $prefix = '') use (&$walk, $binaryNames, $descriptorsByPath): void {
+            foreach ($node as $key => &$value) {
+                $path = $prefix === '' ? (string) $key : $prefix.'.'.$key;
+                if (in_array((string) $key, $binaryNames, true) && is_string($value)) {
+                    $value = $descriptorsByPath[$path] ?? [
                         'sanitized' => true,
-                        'content_type' => 'application/pdf',
+                        'available' => false,
+                        'reason' => 'DOCUMENT_NOT_STORED',
                     ];
+                    continue;
+                }
+                if (is_array($value)) {
+                    $walk($value, $path);
                 }
             }
-            if (isset($node['maed']) && is_array($node['maed'])) {
-                $walk($node['maed']);
-            }
-            if (isset($node['recibo']) && is_array($node['recibo'])) {
-                $walk($node['recibo']);
-            }
+            unset($value);
         };
 
         $walk($root);
@@ -155,13 +126,11 @@ final class PgdasdDocumentCodecs
         return $root;
     }
 
-    /**
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     private function coerceArray(mixed $dados): array
     {
         if ($dados === null || $dados === '') {
-            return [];
+            throw new RuntimeException('Resposta documental sem dados.');
         }
         if (is_string($dados)) {
             $decoded = json_decode($dados, true);
@@ -176,5 +145,39 @@ final class PgdasdDocumentCodecs
         }
 
         return $dados;
+    }
+
+    private function valueAtPath(array $root, string $path): mixed
+    {
+        $value = $root;
+        foreach (explode('.', $path) as $segment) {
+            if (! is_array($value) || ! array_key_exists($segment, $value)) {
+                return null;
+            }
+            $value = $value[$segment];
+        }
+
+        return $value;
+    }
+
+    private function stringOrNull(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    private function validPeriodoApuracao(string $value): bool
+    {
+        if (preg_match('/^\d{6}$/', $value) !== 1) {
+            return false;
+        }
+
+        $month = (int) substr($value, 4, 2);
+
+        return $month >= 1 && $month <= 12;
     }
 }

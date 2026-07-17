@@ -14,6 +14,7 @@ import type {
   FiscalModuleOverviewResponse,
   FiscalModulePortfolioFilters,
   FiscalPortfolioModuleKey,
+  PgmeiHistoryPayload,
   PgdasdCommunicationPreference,
   PgdasdCommunicationPreview,
   PgdasdCommunicationTracking,
@@ -152,6 +153,49 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           tracking: (clientId: number) =>
             client<{ data: PgdasdCommunicationTracking }>(
               `/api/v1/fiscal/simples-mei/pgdasd/clients/${clientId}/communications`
+            )
+        }
+      },
+      pgmei: {
+        history: (clientId: number, params: { year: number }) =>
+          client<{ data: PgmeiHistoryPayload }>(
+            `/api/v1/fiscal/simples-mei/pgmei/clients/${clientId}/history`,
+            { query: params }
+          ),
+        consult: (body: { client_ids: number[], year: number, confirmed: true }) =>
+          client<{ data: Array<Record<string, unknown>>, enqueued_count?: number, year?: number }>(
+            '/api/v1/fiscal/simples-mei/pgmei/consult',
+            { method: 'POST', body }
+          ),
+        communication: {
+          updatePreference: (
+            clientId: number,
+            body: {
+              automatic_requested: boolean
+              email_enabled: boolean
+              whatsapp_enabled: boolean
+              lock_version: number
+            }
+          ) =>
+            client<{ data: PgdasdCommunicationPreference }>(
+              `/api/v1/fiscal/simples-mei/pgmei/clients/${clientId}/communication-preference`,
+              { method: 'PATCH', body }
+            ),
+          updateBulk: (body: { client_ids: number[], automatic_requested: boolean }) =>
+            client<{
+              data: PgdasdCommunicationPreference[]
+              updated_count?: number
+            }>(
+              '/api/v1/fiscal/simples-mei/pgmei/communication-preferences/bulk',
+              { method: 'PATCH', body }
+            ),
+          preview: (clientId: number) =>
+            client<{ data: PgdasdCommunicationPreview }>(
+              `/api/v1/fiscal/simples-mei/pgmei/clients/${clientId}/communication-preview`
+            ),
+          tracking: (clientId: number) =>
+            client<{ data: PgdasdCommunicationTracking }>(
+              `/api/v1/fiscal/simples-mei/pgmei/clients/${clientId}/communications`
             )
         }
       },

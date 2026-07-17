@@ -38,6 +38,7 @@ use App\Models\TaxInstallmentOrder;
 use App\Models\TaxInstallmentParcel;
 use App\Models\TaxObligationProjection;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdMonitoringQueryService;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiMonitoringQueryService;
 use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceContract;
 use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceRegistry;
 use Carbon\CarbonImmutable;
@@ -498,6 +499,7 @@ SQL;
             clientId: $filters->clientId,
             coverage: $filters->coverage,
             modality: $filters->modality,
+            year: $filters->year,
         );
 
         $ids = $this->scopedClientIdsQuery($office, $module, $scopeFilters);
@@ -1027,10 +1029,8 @@ SQL);
     {
         return match ($module) {
             FiscalModuleKey::SimplesMei => match ($submodule) {
-                'PGDASD', 'PGDAS-D', 'SIMPLES' => 'SIMPLES_NACIONAL',
-                'PGMEI', 'MEI' => 'MEI',
-                'DASN_SIMEI', 'DASN-SIMEI' => 'MEI',
-                'REGIME' => 'SIMPLES_NACIONAL',
+                'PGDASD' => 'SIMPLES_NACIONAL',
+                'PGMEI' => 'MEI',
                 default => $submodule,
             },
             default => $submodule,
@@ -1041,10 +1041,8 @@ SQL);
     {
         return match ($module) {
             FiscalModuleKey::SimplesMei => match ($submodule) {
-                'PGDAS-D', 'PGDASD' => 'PGDASD',
+                'PGDASD' => 'PGDASD',
                 'PGMEI' => 'PGMEI',
-                'DASN_SIMEI', 'DASN-SIMEI' => 'DASN',
-                'REGIME' => 'REGIME',
                 default => $submodule,
             },
             default => $submodule,
@@ -1349,9 +1347,14 @@ SQL);
 
         $sub = strtoupper((string) ($filters->submodule ?? 'PGDASD'));
         $pgdasdDetails = [];
-        if (in_array($sub, ['PGDASD', 'PGDAS-D', 'SIMPLES', 'SIMPLES_NACIONAL', ''], true)) {
+        $pgmeiDetails = [];
+        if (in_array($sub, ['PGDASD', ''], true)) {
             $pgdasdDetails = app(PgdasdMonitoringQueryService::class)
                 ->portfolioDetails($office, $clientIds);
+        }
+        if ($sub === 'PGMEI') {
+            $pgmeiDetails = app(PgmeiMonitoringQueryService::class)
+                ->portfolioDetails($office, $clientIds, $filters->year);
         }
 
         $map = [];
@@ -1388,6 +1391,22 @@ SQL);
                 $base['links'] = array_merge($base['links'], $pg['links'] ?? []);
                 if (($pg['period_key'] ?? null) !== null) {
                     $base['period_key'] = $pg['period_key'];
+                }
+            }
+
+            if (isset($pgmeiDetails[$cid])) {
+                $pm = $pgmeiDetails[$cid];
+                $base['pgmei'] = $pm['pgmei'] ?? null;
+                $base['calendar_year'] = $pm['calendar_year'] ?? $filters->year;
+                $base['debt_state'] = $pm['debt_state'] ?? null;
+                $base['freshness_state'] = $pm['freshness_state'] ?? null;
+                $base['items_count'] = $pm['items_count'] ?? 0;
+                $base['total_cents'] = $pm['total_cents'] ?? 0;
+                $base['last_valid_query_at'] = $pm['last_valid_query_at'] ?? null;
+                $base['communication'] = $pm['communication'] ?? null;
+                $base['links'] = array_merge($base['links'], $pm['links'] ?? []);
+                if (($pm['period_key'] ?? null) !== null) {
+                    $base['period_key'] = $pm['period_key'];
                 }
             }
 

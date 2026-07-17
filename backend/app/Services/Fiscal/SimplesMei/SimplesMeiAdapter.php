@@ -9,11 +9,15 @@ use App\DTO\Fiscal\SimplesMei\SimplesMeiOperationDef;
 use App\DTO\Serpro\MutationAuthorization;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutability;
+use App\Enums\FiscalSourceProvenance;
 use App\Enums\SerproEnvironment;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdConsDeclaracao13Codec;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdDocumentCodecs;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPeriod;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPostConsultService;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiDividaAtiva24Codec;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiPostConsultService;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiYear;
 use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\OfficeSerproAuthorizationService;
@@ -42,6 +46,8 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         private readonly PgdasdConsDeclaracao13Codec $pgdasdCodec13,
         private readonly PgdasdDocumentCodecs $pgdasdDocumentCodecs,
         private readonly PgdasdPostConsultService $pgdasdPostConsult,
+        private readonly PgmeiDividaAtiva24Codec $pgmeiCodec24,
+        private readonly PgmeiPostConsultService $pgmeiPostConsult,
     ) {}
 
     public function systemCode(): string
@@ -127,7 +133,7 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
 
         // 3. Regime: não misturar SN e MEI
         $periodKey = $request->competence?->period_key
-            ?? (string) ($request->context['period_key'] ?? '');
+            ?? (string) ($request->context['period_key'] ?? $request->progress['period_key'] ?? '');
         $regimeCheck = $this->regimeApplicability->assertOperationApplicable(
             $office,
             $client,
@@ -219,6 +225,15 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
             );
         }
 
+        $sourceProvenance = match (true) {
+            $response->sourceProvenance === FiscalSourceProvenance::SerproReal->value
+                && ! $response->simulated => FiscalSourceProvenance::SerproReal,
+            $response->simulated
+                || $response->sourceProvenance === FiscalSourceProvenance::Simulated->value => FiscalSourceProvenance::Simulated,
+            default => FiscalSourceProvenance::Unverified,
+        };
+        $request->run->forceFill(['source_provenance' => $sourceProvenance])->save();
+
         $result = $this->mapper->map($def, $response, $periodKey);
 
         // PGDAS-D 13–16: projeção + sanitização documental
@@ -226,6 +241,13 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
             && str_starts_with($operationKey, 'pgdasd.')
             && $result->result->value === 'SUCCESS') {
             $post = $this->pgdasdPostConsult->handle($request, $response, $result, $operationKey);
+            $result = $post['result'];
+        }
+
+        // PGMEI DIVIDAATIVA24: projeção de dívida ativa (só promove resposta produtiva válida)
+        if (strtoupper($def->serviceCode) === 'PGMEI'
+            && str_starts_with($operationKey, 'pgmei.')) {
+            $post = $this->pgmeiPostConsult->handle($request, $response, $result, $operationKey);
             $result = $post['result'];
         }
 
@@ -292,6 +314,10 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
     {
         if (str_starts_with($operationKey, 'pgdasd.')) {
             return $this->buildPgdasdPayload($request, $periodKey, $operationKey);
+        }
+
+        if ($operationKey === 'pgmei.dividaativa') {
+            return $this->buildPgmeiDividaAtivaPayload($request, $periodKey);
         }
 
         $payload = [
@@ -379,5 +405,33 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
             ($ano !== null && $ano !== '') ? $ano : null,
             ($pa !== null && $pa !== '') ? $pa : null,
         );
+    }
+
+    /**
+     * Payload oficial DIVIDAATIVA24: exatamente um anoCalendario AAAA.
+     *
+     * @return array{anoCalendario: string}
+     */
+    private function buildPgmeiDividaAtivaPayload(FiscalAdapterRequest $request, string $periodKey): array
+    {
+        $ctx = $request->context;
+        $progress = $request->progress;
+
+        $raw = $ctx['anoCalendario']
+            ?? $ctx['ano_calendario']
+            ?? $progress['ano_calendario']
+            ?? $progress['anoCalendario']
+            ?? $progress['period_key']
+            ?? ($periodKey !== '' ? $periodKey : null);
+
+        if ($raw === null || $raw === '') {
+            $tz = (string) ($request->office->timezone ?? 'America/Sao_Paulo') ?: 'America/Sao_Paulo';
+            $raw = (string) PgmeiYear::yearForDailyCycle(null, $tz);
+        }
+
+        $digits = preg_replace('/\D/', '', (string) $raw) ?? '';
+        $year = substr($digits, 0, 4);
+
+        return $this->pgmeiCodec24->buildPayload($year);
     }
 }

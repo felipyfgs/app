@@ -6,7 +6,7 @@ const props = defineProps<{
 }>()
 
 const available = computed(() => {
-  const parsed = props.rbt12?.status === 'PARSED' || props.rbt12?.status === 'RESOLVED'
+  const parsed = props.rbt12?.status === 'PARSED'
   return parsed && (props.rbt12?.total_cents != null || Boolean(props.rbt12?.rbt12_value))
 })
 const value = computed(() => available.value

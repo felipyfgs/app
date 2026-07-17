@@ -17,7 +17,7 @@ export const EMPTY_MONITORING_FILTERS: Readonly<MonitoringFilterValue> = Object.
   q: '',
   situation: 'all',
   competence: '',
-  clientIds: Object.freeze([]) as number[],
+  clientIds: [] as number[],
   deliveryStatus: 'all',
   paymentStatus: 'all',
   status: 'all',

@@ -29,8 +29,6 @@ class MonitoringSurfaceRegistryTest extends TestCase
         'monitoring_dashboard',
         'simples_mei_pgdasd',
         'simples_mei_pgmei',
-        'simples_mei_dasn',
-        'simples_mei_regime',
         'dctfweb',
         'mit',
         'fgts',
@@ -61,7 +59,7 @@ class MonitoringSurfaceRegistryTest extends TestCase
         sort($expected);
 
         $this->assertSame($expected, $keys);
-        $this->assertCount(17, $keys);
+        $this->assertCount(15, $keys);
     }
 
     public function test_contracts_validate_against_official_catalog(): void
@@ -105,11 +103,11 @@ class MonitoringSurfaceRegistryTest extends TestCase
         }
     }
 
-    public function test_dasn_is_unavailable_and_not_production(): void
+    public function test_pgmei_is_structured_without_document_action(): void
     {
-        $c = $this->registry->get('simples_mei_dasn');
-        $this->assertSame(MonitoringResultKind::Unavailable, $c->resultKind);
-        $this->assertSame(MonitoringOfficialStateSummary::Prospection, $c->officialState);
+        $c = $this->registry->get('simples_mei_pgmei');
+        $this->assertSame(MonitoringResultKind::Structured, $c->resultKind);
+        $this->assertSame(['pgmei.dividaativa'], $c->operationKeys);
         $this->assertFalse($c->allowsDocument);
         $this->assertSame(MonitoringDocumentPolicy::Never, $c->documentPolicy);
     }
@@ -206,10 +204,12 @@ class MonitoringSurfaceRegistryTest extends TestCase
             'mit',
             $this->registry->resolveForModule(FiscalModuleKey::Dctfweb, 'MIT')->surfaceKey,
         );
-        $this->assertSame(
-            'simples_mei_dasn',
-            $this->registry->resolveForModule(FiscalModuleKey::SimplesMei, 'DASN_SIMEI')->surfaceKey,
-        );
+        $this->expectException(InvalidArgumentException::class);
+        $this->registry->resolveForModule(FiscalModuleKey::SimplesMei, 'DASN_SIMEI');
+    }
+
+    public function test_resolve_sitfis(): void
+    {
         $this->assertSame(
             'sitfis',
             $this->registry->resolveForModule(FiscalModuleKey::Sitfis)->surfaceKey,
@@ -256,9 +256,7 @@ class MonitoringSurfaceRegistryTest extends TestCase
         return [
             'monitoring_dashboard' => MonitoringResultKind::Aggregate,
             'simples_mei_pgdasd' => MonitoringResultKind::Pdf,
-            'simples_mei_pgmei' => MonitoringResultKind::Pdf,
-            'simples_mei_dasn' => MonitoringResultKind::Unavailable,
-            'simples_mei_regime' => MonitoringResultKind::Pdf,
+            'simples_mei_pgmei' => MonitoringResultKind::Structured,
             'dctfweb' => MonitoringResultKind::Pdf,
             'mit' => MonitoringResultKind::Structured,
             'fgts' => MonitoringResultKind::Structured,
@@ -293,14 +291,19 @@ class MonitoringSurfaceRegistryTest extends TestCase
         }
     }
 
-    public function test_all_result_kinds_are_represented(): void
+    public function test_core_result_kinds_are_represented(): void
     {
         $kinds = [];
         foreach ($this->registry->all() as $c) {
             $kinds[$c->resultKind->value] = true;
         }
 
-        foreach (MonitoringResultKind::cases() as $case) {
+        foreach ([
+            MonitoringResultKind::Structured,
+            MonitoringResultKind::Pdf,
+            MonitoringResultKind::AsyncPdf,
+            MonitoringResultKind::Aggregate,
+        ] as $case) {
             $this->assertArrayHasKey(
                 $case->value,
                 $kinds,
@@ -338,7 +341,7 @@ class MonitoringSurfaceRegistryTest extends TestCase
 
     public function test_never_document_surfaces_include_mit_mailbox_registrations_tax_processes(): void
     {
-        $never = ['mit', 'mailbox_list', 'mailbox_detail', 'registrations', 'tax_processes', 'fgts', 'simples_mei_dasn', 'monitoring_dashboard', 'client_detail'];
+        $never = ['mit', 'mailbox_list', 'mailbox_detail', 'registrations', 'tax_processes', 'fgts', 'simples_mei_pgmei', 'monitoring_dashboard', 'client_detail'];
         foreach ($never as $key) {
             $c = $this->registry->get($key);
             $this->assertFalse($c->allowsDocument, $key);

@@ -57,9 +57,11 @@ Preferências são separadas por cliente/módulo/submódulo e usam optimistic lo
 
 Dispatches e eventos modelam o rastreio futuro, mas nenhuma leitura, prévia ou alteração de preferência os cria. Destinatários futuros são armazenados apenas mascarados e com hash.
 
-### UI especializada, shell compartilhado
+### Template operacional compartilhado entre as cápsulas
 
-A página mantém o arquétipo de lista de `.reference/nuxt-dashboard-template/app/pages/customers.vue`: toolbar, seleção real, `UTable`, estados e largura fluida. Um renderer PGDAS-D próprio evita alterar as colunas dos demais submódulos. Histórico, prévia e rastreio usam `UModal` responsivo com rolagem interna.
+A página mantém o arquétipo de lista de `.reference/nuxt-dashboard-template/app/pages/customers.vue`: toolbar, seleção real, `UTable`, estados e largura fluida. PGDAS-D e PGMEI usam a mesma ordem visual de sete colunas de negócio: Situação, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca. A seleção autorizada é acrescentada pelo shell antes de Situação e não conta como coluna de negócio.
+
+No PGDAS-D, Situação concentra o estado semântico e um tooltip acessível com PA, última declaração, RBT12, motivo e última consulta válida. Ações reúne a prévia de envio e um menu contextual; Enviar contém `automatic_requested`, inclusive ação em massa limitada à seleção atual. Cliente mostra razão social e CNPJ. Rastreio reúne indicadores compactos e acesso ao modal. Última Busca exibe data compacta, mantendo data/hora completa no tooltip, e Histórico de Busca abre o modal fiscal local. Histórico, prévia e rastreio usam `UModal` responsivo com rolagem interna.
 
 ## Riscos / Trade-offs
 

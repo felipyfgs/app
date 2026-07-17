@@ -219,8 +219,6 @@ final class PgdasdConsDeclaracao13Codec
             $pa,
             $declarationNumber ?? '',
             $dasNumber ?? '',
-            $transmittedRaw ?? '',
-            $issuedRaw ?? '',
         ]));
 
         return [

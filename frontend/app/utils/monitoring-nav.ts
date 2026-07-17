@@ -128,9 +128,7 @@ const ROUTED_SUBMODULES = {
     defaultValue: 'PGDASD',
     entries: [
       { value: 'PGDASD', slug: 'pgdasd' },
-      { value: 'PGMEI', slug: 'pgmei' },
-      { value: 'DASN_SIMEI', slug: 'dasn-simei' },
-      { value: 'REGIME', slug: 'regime' }
+      { value: 'PGMEI', slug: 'pgmei' }
     ]
   },
   dctfweb: {

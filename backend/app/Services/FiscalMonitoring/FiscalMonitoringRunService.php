@@ -20,6 +20,8 @@ use App\Models\FiscalMonitoringSchedule;
 use App\Models\MonitorCommercialLedgerEntry;
 use App\Models\Office;
 use App\Services\Audit\AuditLogger;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPostConsultService;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdRbt12Service;
 use App\Services\Operations\OperationsMetrics;
 use App\Services\Operations\StructuredLogger;
 use App\Services\Platform\OfficeSubscriptionGate;
@@ -46,6 +48,8 @@ final class FiscalMonitoringRunService
         private readonly StructuredLogger $structuredLog,
         private readonly OperationsMetrics $metrics,
         private readonly MonitorCommercialLedgerService $commercialLedger,
+        private readonly PgdasdPostConsultService $pgdasdPostConsult,
+        private readonly PgdasdRbt12Service $pgdasdRbt12,
     ) {}
 
     /**
@@ -263,6 +267,10 @@ final class FiscalMonitoringRunService
             $persist = FiscalPersistPayload::fromAdapterResult($run, $result, $adapter::class);
             $out = $this->persistence->persist($persist);
             $fresh = $out['run'];
+            $this->pgdasdPostConsult->attachSnapshotToValidProjections($fresh, $out['snapshot']);
+            if ($fresh->result !== FiscalRunResult::Success) {
+                $this->pgdasdRbt12->reconcileTerminalFailure($fresh);
+            }
 
             $latencyMs = null;
             if ($fresh->started_at !== null) {

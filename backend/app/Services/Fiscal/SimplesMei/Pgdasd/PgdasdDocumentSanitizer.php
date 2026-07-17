@@ -6,13 +6,12 @@ use App\Enums\PgdasdDocumentKind;
 use App\Models\FiscalEvidenceArtifact;
 use App\Models\FiscalMonitoringRun;
 use App\Models\PgdasdArtifact;
+use App\Models\PgdasdOperation;
 use App\Services\FiscalMonitoring\FiscalEvidenceStore;
 use Carbon\CarbonImmutable;
 use RuntimeException;
 
-/**
- * Decodifica Base64 estrito, valida %PDF + limite, grava no cofre e devolve descritor sanitizado.
- */
+/** Valida PDFs oficiais, guarda bytes somente no cofre e remove Base64 da projeção pública. */
 final class PgdasdDocumentSanitizer
 {
     public const MAX_PDF_BYTES = 10 * 1024 * 1024;
@@ -24,10 +23,10 @@ final class PgdasdDocumentSanitizer
 
     /**
      * @return array{
-     *   sanitized_dados: array<string, mixed>,
-     *   artifacts: list<PgdasdArtifact>,
-     *   evidence: list<FiscalEvidenceArtifact>,
-     *   failures: list<array{field: string, reason: string}>
+     *   sanitized_dados:array<string,mixed>,
+     *   artifacts:list<PgdasdArtifact>,
+     *   evidence:list<FiscalEvidenceArtifact>,
+     *   failures:list<array{path:string,reason:string}>
      * }
      */
     public function sanitizeAndStore(
@@ -41,73 +40,84 @@ final class PgdasdDocumentSanitizer
         ?string $numeroDas = null,
         ?int $pgdasdOperationId = null,
     ): array {
-        $docs = $this->codecs->extractDocumentFields($dados, $operationKey);
+        $documents = $this->codecs->extractDocumentFields($dados, $operationKey);
         $descriptors = [];
         $artifacts = [];
-        $evidence = [];
+        $evidenceArtifacts = [];
         $failures = [];
-        $observed = CarbonImmutable::now();
+        $observedAt = CarbonImmutable::now();
 
-        foreach ($docs as $doc) {
+        foreach ($documents as $document) {
+            $path = $document['path'];
             try {
-                $bytes = $this->decodeStrictBase64($doc['base64']);
+                $bytes = $this->decodeStrictBase64($document['base64']);
                 $this->assertPdf($bytes);
 
-                $artifact = $this->evidenceStore->store(
+                $evidence = $this->evidenceStore->store(
                     run: $run,
                     bytes: $bytes,
                     contentType: 'application/pdf',
-                    source: 'PGDASD_'.$operationKey,
+                    source: 'PGDASD_'.strtoupper(str_replace('.', '_', $operationKey)),
                     sourceVersion: '1',
-                    observedAt: $observed,
+                    observedAt: $observedAt,
                 );
-                $evidence[] = $artifact;
 
-                $kind = $doc['kind'] instanceof PgdasdDocumentKind
-                    ? $doc['kind']->value
-                    : (string) $doc['kind'];
+                $kind = $document['kind'] instanceof PgdasdDocumentKind
+                    ? $document['kind']->value
+                    : (string) $document['kind'];
+                $dasNumber = $document['numero_das'] ?? $numeroDas;
+                $operationId = $pgdasdOperationId ?? $this->resolveOperationId(
+                    (int) $run->office_id,
+                    $clientId,
+                    $projectionId,
+                    $document['numero_declaracao'],
+                    $dasNumber,
+                );
 
-                $pgArtifact = PgdasdArtifact::query()->create([
-                    'office_id' => $run->office_id,
-                    'client_id' => $clientId,
+                $pgArtifact = PgdasdArtifact::query()
+                    ->withoutGlobalScopes()
+                    ->firstOrNew([
+                        'office_id' => $run->office_id,
+                        'client_id' => $clientId,
+                        'kind' => $kind,
+                        'fiscal_evidence_artifact_id' => $evidence->id,
+                    ]);
+                $pgArtifact->forceFill([
                     'projection_id' => $projectionId,
-                    'operation_id' => $pgdasdOperationId,
-                    'fiscal_evidence_artifact_id' => $artifact->id,
-                    'declaration_number' => $doc['numero_declaracao'],
-                    'das_number' => $numeroDas,
-                    'kind' => $kind,
-                    'filename' => $doc['filename_hint'] ?: ('pgdasd-'.$kind.'-'.$artifact->id.'.pdf'),
+                    'operation_id' => $operationId,
+                    'declaration_number' => $document['numero_declaracao'],
+                    'das_number' => $dasNumber,
+                    'filename' => $this->safeFilename(
+                        $document['filename_hint'],
+                        'pgdasd-'.strtolower($kind).'-'.$evidence->id.'.pdf',
+                    ),
                     'content_type' => 'application/pdf',
-                    'observed_at' => $observed,
+                    'observed_at' => $observedAt,
                     'source_run_id' => $run->id,
                     'metadata' => [
-                        'field' => $doc['field'],
+                        'source_path' => $path,
                         'source_operation_key' => $operationKey,
                         'period_key' => $periodKey,
                         'periodo_apuracao' => $periodoApuracao,
-                        'sha256' => $artifact->content_sha256,
-                        'byte_size' => $artifact->byte_size,
                     ],
-                ]);
-                $artifacts[] = $pgArtifact;
+                ])->save();
 
-                $descriptors[$doc['field']] = [
+                $artifacts[] = $pgArtifact->refresh();
+                $evidenceArtifacts[] = $evidence;
+                $descriptors[$path] = [
                     'sanitized' => true,
-                    'document_kind' => $kind,
-                    'pgdasd_artifact_id' => $pgArtifact->id,
-                    'evidence_artifact_id' => $artifact->id,
+                    'available' => true,
+                    'artifact_id' => $pgArtifact->id,
+                    'kind' => $kind,
                     'content_type' => 'application/pdf',
-                    'byte_size' => $artifact->byte_size,
-                    'content_sha256' => $artifact->content_sha256,
+                    'byte_size' => (int) $evidence->byte_size,
+                    'download_path' => '/api/v1/fiscal/simples-mei/pgdasd/artifacts/'.$pgArtifact->id.'/download',
                 ];
-            } catch (\Throwable $e) {
-                $failures[] = [
-                    'field' => $doc['field'],
-                    'reason' => $e->getMessage(),
-                ];
-                $descriptors[$doc['field']] = [
+            } catch (\Throwable) {
+                $failures[] = ['path' => $path, 'reason' => 'DOCUMENT_SANITIZE_FAILED'];
+                $descriptors[$path] = [
                     'sanitized' => true,
-                    'failed' => true,
+                    'available' => false,
                     'reason' => 'DOCUMENT_SANITIZE_FAILED',
                 ];
             }
@@ -116,7 +126,7 @@ final class PgdasdDocumentSanitizer
         return [
             'sanitized_dados' => $this->codecs->sanitizeDados($dados, $descriptors),
             'artifacts' => $artifacts,
-            'evidence' => $evidence,
+            'evidence' => $evidenceArtifacts,
             'failures' => $failures,
         ];
     }
@@ -124,15 +134,15 @@ final class PgdasdDocumentSanitizer
     public function decodeStrictBase64(string $base64): string
     {
         $clean = preg_replace('/\s+/', '', $base64) ?? '';
-        if ($clean === '' || ! preg_match('/^[A-Za-z0-9+\/]+=*$/', $clean)) {
-            throw new RuntimeException('Base64 inválido (não estrito).');
+        if ($clean === '' || preg_match('/^(?:[A-Za-z0-9+\/] {4})*(?:[A-Za-z0-9+\/]{4}|[A-Za-z0-9+\/]{3}=|[A-Za-z0-9+\/]{2}==)$/x', $clean) !== 1) {
+            throw new RuntimeException('Base64 inválido.');
         }
         $decoded = base64_decode($clean, true);
-        if ($decoded === false) {
-            throw new RuntimeException('Falha ao decodificar Base64.');
+        if ($decoded === false || base64_encode($decoded) !== $clean) {
+            throw new RuntimeException('Base64 não canônico.');
         }
         if (strlen($decoded) > self::MAX_PDF_BYTES) {
-            throw new RuntimeException('PDF excede limite de '.self::MAX_PDF_BYTES.' bytes.');
+            throw new RuntimeException('PDF excede o limite permitido.');
         }
 
         return $decoded;
@@ -140,8 +150,48 @@ final class PgdasdDocumentSanitizer
 
     public function assertPdf(string $bytes): void
     {
-        if ($bytes === '' || ! str_starts_with($bytes, '%PDF')) {
-            throw new RuntimeException('Conteúdo não começa com assinatura %PDF.');
+        if (strlen($bytes) < 5 || ! str_starts_with($bytes, '%PDF-')) {
+            throw new RuntimeException('Assinatura PDF inválida.');
         }
+    }
+
+    private function resolveOperationId(
+        int $officeId,
+        int $clientId,
+        int $projectionId,
+        ?string $declarationNumber,
+        ?string $dasNumber,
+    ): ?int {
+        if ($declarationNumber === null && $dasNumber === null) {
+            return null;
+        }
+
+        return PgdasdOperation::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $officeId)
+            ->where('client_id', $clientId)
+            ->where('projection_id', $projectionId)
+            ->when(
+                $declarationNumber !== null,
+                fn ($query) => $query->where('declaration_number', $declarationNumber),
+                fn ($query) => $query->where('das_number', $dasNumber),
+            )
+            ->value('id');
+    }
+
+    private function safeFilename(?string $filename, string $fallback): string
+    {
+        $candidate = is_string($filename) ? $filename : '';
+        $candidate = basename(str_replace(["\0", "\r", "\n", '\\'], ['', '', '', '/'], $candidate));
+        $candidate = preg_replace('/[^\pL\pN._-]+/u', '_', $candidate) ?? '';
+        $candidate = trim($candidate, '._-');
+        if ($candidate === '') {
+            $candidate = $fallback;
+        }
+        if (! str_ends_with(strtolower($candidate), '.pdf')) {
+            $candidate .= '.pdf';
+        }
+
+        return mb_substr($candidate, 0, 180);
     }
 }

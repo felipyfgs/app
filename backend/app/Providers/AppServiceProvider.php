@@ -470,6 +470,8 @@ class AppServiceProvider extends ServiceProvider
                 pgdasdCodec13: $this->app->make(PgdasdConsDeclaracao13Codec::class),
                 pgdasdDocumentCodecs: $this->app->make(PgdasdDocumentCodecs::class),
                 pgdasdPostConsult: $this->app->make(PgdasdPostConsultService::class),
+                pgmeiCodec24: $this->app->make(\App\Services\Fiscal\SimplesMei\Pgmei\PgmeiDividaAtiva24Codec::class),
+                pgmeiPostConsult: $this->app->make(\App\Services\Fiscal\SimplesMei\Pgmei\PgmeiPostConsultService::class),
             ));
         }
 
