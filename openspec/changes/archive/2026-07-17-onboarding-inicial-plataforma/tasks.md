@@ -22,4 +22,4 @@
 ## 4. Verificação e encerramento
 
 - [x] 4.1 Executar Pint e testes Laravel focados/completos; executar lint, typecheck, Vitest, generate e E2E relevante no frontend.
-- [ ] 4.2 OpenSpec strict validado (PASS). Após aceite: sincronizar/arquivar e commitar main spec no mesmo dia.
+- [x] 4.2 OpenSpec strict validado (PASS). Após aceite: sincronizar/arquivar e commitar main spec no mesmo dia.
