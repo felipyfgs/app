@@ -48,6 +48,10 @@ watch(open, (isOpen) => {
   }
 })
 
+function close() {
+  open.value = false
+}
+
 async function submit() {
   const check = validateOwnerConfirmationInput({
     reason: reason.value,
@@ -69,7 +73,7 @@ async function submit() {
       confirmation_phrase: confirmationPhrase.value.trim(),
       password: password.value.trim()
     })
-    open.value = false
+    close()
   } catch (caught) {
     toast.add({
       title: apiErrorMessage(caught, 'Senha inválida ou confirmação expirada.'),
@@ -143,7 +147,7 @@ async function submit() {
           variant="ghost"
           label="Cancelar"
           :disabled="submitting"
-          @click="open = false"
+          @click="close"
         />
         <UButton
           color="error"

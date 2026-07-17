@@ -3,11 +3,11 @@
  * Frase esperada espelha o backend: CONFIRMO-{ACTION}.
  */
 
-export type SerproOwnerAction =
-  | 'KILL_SWITCH_OFF'
-  | 'KILL_SWITCH_SOLUTION_OFF'
-  | 'CONTRACT_ACTIVATE'
-  | 'CREDENTIAL_CUTOVER'
+export type SerproOwnerAction
+  = | 'KILL_SWITCH_OFF'
+    | 'KILL_SWITCH_SOLUTION_OFF'
+    | 'CONTRACT_ACTIVATE'
+    | 'CREDENTIAL_CUTOVER'
 
 export type SerproApprovalPolicy = 'OWNER_CONFIRMATION' | 'DUAL_ROLE'
 
