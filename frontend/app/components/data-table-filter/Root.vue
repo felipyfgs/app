@@ -92,8 +92,14 @@ const overlayTitle = computed(() => {
   return 'Adicionar filtro'
 })
 
-/** Painel flutuante: fundo opaco para não “fundir” com o header da tabela. */
-const panelClass = 'w-80 max-w-[min(20rem,calc(100vw-2rem))] min-w-0 overflow-hidden rounded-lg border border-default bg-default shadow-lg'
+/** Painel flutuante: um pouco mais largo no editor de cliente multi. */
+const panelClass = computed(() => {
+  const wide = overlayMode.value === 'editor' && draftDefinition.value?.kind === 'client'
+  return [
+    wide ? 'w-96' : 'w-80',
+    'max-w-[min(24rem,calc(100vw-2rem))] min-w-0 overflow-hidden rounded-lg border border-default bg-default shadow-lg'
+  ].join(' ')
+})
 
 function definitionFor(key: string) {
   return findDefinition(props.definitions, key)
@@ -131,7 +137,22 @@ function onDraftLabel(label: string | undefined) {
       v-if="!isMobile"
       v-model:open="overlayOpen"
       :portal="true"
-      :content="{ align: 'start', side: 'bottom', sideOffset: 6 }"
+      :content="{
+        align: 'start',
+        side: 'bottom',
+        sideOffset: 6,
+        // Cliente multi: cliques na lista embutida não devem fechar o popover.
+        onInteractOutside: (e: Event) => {
+          if (overlayMode.value === 'editor' && draftDefinition.value?.kind === 'client') {
+            e.preventDefault()
+          }
+        },
+        onFocusOutside: (e: Event) => {
+          if (overlayMode.value === 'editor' && draftDefinition.value?.kind === 'client') {
+            e.preventDefault()
+          }
+        }
+      }"
       :ui="{ content: 'p-0 bg-transparent ring-0 shadow-none' }"
     >
       <UButton

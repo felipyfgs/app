@@ -286,7 +286,7 @@ function onClientSelectMany(clients: Array<{
       v-else-if="definition.kind === 'client' && isClientMultiple"
       :label="definition.label"
       class="min-w-0"
-      hint="Um ou mais clientes"
+      hint="Marque na lista — o painel só fecha em Confirmar"
     >
       <slot
         name="client"
@@ -302,7 +302,7 @@ function onClientSelectMany(clients: Array<{
           :model-value="multiClientModel"
           multiple
           search-mode="select"
-          placeholder="Buscar e adicionar clientes"
+          placeholder="Filtrar por nome ou CNPJ"
           class="w-full min-w-0"
           data-testid="data-table-filter-client-multi"
           @update:model-value="(v) => {
