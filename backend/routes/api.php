@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\Activation\PublicActivationController;
 use App\Http\Controllers\Api\V1\Auth\ConfirmPasswordController;
+use App\Http\Controllers\Api\V1\Auth\UpdateAccountController;
 use App\Http\Controllers\Api\V1\ClientContactController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\ClientCredentialController;
@@ -100,6 +101,10 @@ Route::prefix('v1')->group(function (): void {
         // Reconfirmação de senha (janela curta) — usada por ações privilegiadas sensíveis
         Route::post('/auth/confirm-password', ConfirmPasswordController::class)
             ->middleware('throttle:10,1');
+
+        // Identidade global do próprio usuário (independe de Office/papel).
+        Route::patch('/account', UpdateAccountController::class)
+            ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
 
         // Administração global da plataforma (SEM office context de membership).
         // Navegação comum NÃO exige TOTP (spec acesso-global-platform-admin).
