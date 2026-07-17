@@ -18,7 +18,7 @@ return new class extends Migration
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->foreignId('client_id')->nullable()->constrained()->nullOnDelete();
             $table->string('environment', 20)->nullable();
-            $table->string('status', 30)->default('PENDING');
+            $table->string('status', 32)->default('PENDING');
             $table->string('correlation_id', 64)->nullable();
             $table->unsignedInteger('attempt')->default(0);
             $table->string('cursor', 255)->nullable();
@@ -53,7 +53,7 @@ return new class extends Migration
             $table->timestampTz('expires_at')->nullable();
             $table->boolean('result_consumed')->default(false);
             $table->boolean('one_shot_complete')->default(false);
-            $table->string('status', 30)->default('PENDING');
+            $table->string('status', 32)->default('PENDING');
             $table->string('correlation_id', 64)->nullable();
             $table->string('operation_key_solicit', 120)->nullable();
             $table->string('operation_key_obter', 120)->nullable();

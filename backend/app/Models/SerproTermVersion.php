@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\SerproDataSegregationClass;
 use App\Enums\SerproEnvironment;
+use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
@@ -37,6 +38,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class SerproTermVersion extends Model
 {
+    use BelongsToOffice;
+
     protected function casts(): array
     {
         return [

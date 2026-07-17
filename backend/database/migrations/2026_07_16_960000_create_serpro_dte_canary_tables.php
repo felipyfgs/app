@@ -42,7 +42,7 @@ return new class extends Migration
             Schema::create('serpro_dte_canary_requests', function (Blueprint $table): void {
                 $table->id();
                 $table->string('environment', 20)->default('PRODUCTION');
-                $table->string('status', 30)->default('DRAFT');
+                $table->string('status', 32)->default('DRAFT');
 
                 // Alvo server-side imutável após TARGET_SET
                 $table->unsignedBigInteger('office_id')->nullable();

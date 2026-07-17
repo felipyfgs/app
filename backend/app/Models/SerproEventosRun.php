@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\SerproEnvironment;
+use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -37,6 +38,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class SerproEventosRun extends Model
 {
+    use BelongsToOffice;
+
     public const PHASE_IDLE = 'IDLE';
 
     public const PHASE_SOLICITED = 'SOLICITED';
@@ -81,11 +84,6 @@ class SerproEventosRun extends Model
             'solicited_at' => 'immutable_datetime',
             'obtained_at' => 'immutable_datetime',
         ];
-    }
-
-    public function office(): BelongsTo
-    {
-        return $this->belongsTo(Office::class);
     }
 
     public function client(): BelongsTo

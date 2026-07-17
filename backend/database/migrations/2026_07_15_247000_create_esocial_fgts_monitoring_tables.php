@@ -29,7 +29,7 @@ return new class extends Migration
             $table->string('receipt_number', 80)->nullable();
             $table->string('establishment_cnpj', 14)->nullable();
             $table->string('content_sha256', 64);
-            $table->string('vault_object_id', 40)->nullable();
+            $table->string('vault_object_id', 26)->nullable();
             $table->string('content_type', 80)->default('application/json');
             $table->unsignedBigInteger('byte_size')->default(0);
             $table->string('source', 80)->default('esocial');

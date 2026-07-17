@@ -39,7 +39,7 @@ return new class extends Migration
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->foreignId('client_id')->constrained()->cascadeOnDelete();
             $table->foreignId('fiscal_category_id')->constrained('fiscal_categories')->cascadeOnDelete();
-            $table->string('status', 20)->default('ACTIVE');
+            $table->string('status', 32)->default('ACTIVE');
             $table->string('coverage', 30)->default('UNKNOWN');
             $table->timestampTz('activated_at')->nullable();
             $table->timestampTz('deactivated_at')->nullable();
@@ -118,7 +118,7 @@ return new class extends Migration
             /** Hash canônico para deduplicação (tenant + origem + id/payload). */
             $table->string('event_hash', 64);
             $table->string('payload_digest', 64)->nullable();
-            $table->string('status', 20)->default('RECEIVED');
+            $table->string('status', 32)->default('RECEIVED');
             $table->timestampTz('occurred_at')->nullable();
             $table->timestampTz('received_at');
             $table->timestampTz('processed_at')->nullable();
@@ -145,7 +145,7 @@ return new class extends Migration
             $table->string('operation_code', 80);
             $table->string('trigger', 30);
             $table->string('idempotency_key', 160);
-            $table->string('status', 20)->default('QUEUED');
+            $table->string('status', 32)->default('QUEUED');
             $table->string('result', 30)->nullable();
             $table->string('situation', 30)->default('UNKNOWN');
             $table->string('coverage', 30)->default('UNKNOWN');
@@ -193,7 +193,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->foreignId('run_id')->constrained('fiscal_monitoring_runs')->cascadeOnDelete();
-            $table->string('vault_object_id', 40);
+            $table->string('vault_object_id', 26);
             $table->string('content_sha256', 64);
             $table->string('content_type', 80)->default('application/json');
             $table->unsignedBigInteger('byte_size')->default(0);
@@ -272,7 +272,7 @@ return new class extends Migration
             $table->string('title', 255);
             $table->text('detail')->nullable();
             $table->string('severity', 20)->default('MEDIUM');
-            $table->string('status', 20)->default('OPEN');
+            $table->string('status', 32)->default('OPEN');
             $table->string('situation', 30)->default('PENDING');
             $table->timestampTz('due_at')->nullable();
             $table->timestampTz('resolved_at')->nullable();

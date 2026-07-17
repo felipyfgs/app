@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->string('status', 20)->default('PENDING');
+            $table->string('status', 32)->default('PENDING');
             $table->json('filters');
             $table->boolean('include_events')->default(false);
             $table->string('storage_path')->nullable();

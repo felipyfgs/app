@@ -14,7 +14,7 @@ return new class extends Migration
             $table->foreignId('establishment_id')->constrained()->cascadeOnDelete();
             $table->string('environment', 40);
             $table->unsignedBigInteger('last_nsu')->default(0);
-            $table->string('status', 20)->default('IDLE');
+            $table->string('status', 32)->default('IDLE');
             $table->unsignedInteger('consecutive_decode_failures')->default(0);
             $table->unsignedInteger('attempts')->default(0);
             $table->timestampTz('next_sync_at')->nullable();
@@ -32,7 +32,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->foreignId('sync_cursor_id')->constrained()->cascadeOnDelete();
-            $table->string('status', 20);
+            $table->string('status', 32);
             $table->string('trigger', 20)->default('SCHEDULED');
             $table->foreignId('triggered_by')->nullable()->constrained('users')->nullOnDelete();
             $table->unsignedInteger('pages_processed')->default(0);
@@ -88,7 +88,7 @@ return new class extends Migration
             $table->string('competence', 7)->nullable();
             $table->timestampTz('issued_at')->nullable();
             $table->decimal('service_amount', 15, 2)->nullable();
-            $table->string('status', 30)->default('UNKNOWN');
+            $table->string('status', 32)->default('UNKNOWN');
             $table->timestamps();
 
             $table->unique(['office_id', 'access_key']);
@@ -105,7 +105,7 @@ return new class extends Migration
             $table->string('access_key', 50);
             $table->string('event_type', 40)->nullable();
             $table->timestampTz('event_at')->nullable();
-            $table->string('status', 30)->nullable();
+            $table->string('status', 32)->nullable();
             $table->timestamps();
 
             $table->index(['office_id', 'access_key']);

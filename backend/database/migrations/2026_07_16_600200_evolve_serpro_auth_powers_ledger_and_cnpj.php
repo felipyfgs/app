@@ -149,7 +149,7 @@ return new class extends Migration
             $table->date('period_start');
             $table->date('period_end');
             $table->string('label', 120)->nullable();
-            $table->string('status', 20)->default('OPEN');
+            $table->string('status', 32)->default('OPEN');
             $table->json('metadata')->nullable();
             $table->timestamps();
 

@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('instance_backup_runs', function (Blueprint $table) {
             $table->id();
             $table->string('kind', 32);
-            $table->string('status', 20);
+            $table->string('status', 32);
             $table->timestampTz('started_at')->nullable();
             $table->timestampTz('finished_at')->nullable();
             $table->unsignedBigInteger('byte_size')->nullable();

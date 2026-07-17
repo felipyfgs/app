@@ -46,7 +46,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('office_id')->nullable()->constrained()->nullOnDelete();
             $table->string('category', 40);
-            $table->string('status', 20)->default('PENDING');
+            $table->string('status', 32)->default('PENDING');
             $table->string('trigger', 40)->default('OFFBOARDING');
             $table->timestampTz('revoked_at')->nullable();
             $table->timestampTz('eligible_purge_at')->nullable();

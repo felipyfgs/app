@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('channel', 40); // NFSE_ADN | NFE_DISTDFE | …
             $table->unsignedBigInteger('last_nsu')->default(0);
             $table->unsignedBigInteger('max_nsu_seen')->nullable();
-            $table->string('status', 20)->default('IDLE');
+            $table->string('status', 32)->default('IDLE');
             $table->string('last_cstat', 10)->nullable();
             $table->string('last_xmotivo', 255)->nullable();
             $table->unsignedInteger('consecutive_decode_failures')->default(0);
@@ -52,7 +52,7 @@ return new class extends Migration
             $table->string('fiscal_role', 20)->nullable();
             $table->timestampTz('issued_at')->nullable();
             $table->decimal('total_amount', 15, 2)->nullable();
-            $table->string('status', 30)->default('UNKNOWN');
+            $table->string('status', 32)->default('UNKNOWN');
             $table->string('official_status_code', 10)->nullable();
             $table->boolean('is_summary')->default(false);
             $table->string('manifestation_status', 40)->nullable();
@@ -75,7 +75,7 @@ return new class extends Migration
             $table->string('event_type', 40)->nullable();
             $table->unsignedSmallInteger('sequence')->nullable();
             $table->timestampTz('event_at')->nullable();
-            $table->string('status', 30)->nullable();
+            $table->string('status', 32)->nullable();
             $table->string('protocol', 40)->nullable();
             $table->timestamps();
 

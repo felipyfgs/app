@@ -23,7 +23,7 @@ return new class extends Migration
             $table->string('environment', 40); // production | homologation
             $table->string('model', 5); // 55 | 65
             $table->string('mode', 20)->default('ASSISTED'); // ASSISTED | AUTOMATIC
-            $table->string('status', 30)->default('DRAFT');
+            $table->string('status', 32)->default('DRAFT');
             $table->boolean('consent_recorded')->default(false);
             $table->timestampTz('consent_recorded_at')->nullable();
             $table->string('mandate_reference', 255)->nullable();
@@ -33,7 +33,7 @@ return new class extends Migration
             $table->string('kill_switch_reason', 500)->nullable();
             $table->timestampTz('kill_switch_at')->nullable();
             // Referência opcional de CSC no vault (somente metadados — sem valor)
-            $table->string('csc_vault_object_id', 64)->nullable();
+            $table->string('csc_vault_object_id', 26)->nullable();
             $table->string('csc_id', 20)->nullable(); // ID CSC público (não é o token)
             $table->boolean('csc_configured')->default(false);
             $table->timestampTz('csc_configured_at')->nullable();
@@ -61,10 +61,10 @@ return new class extends Migration
             $table->unsignedBigInteger('seed_nnf');
             $table->unsignedBigInteger('discovery_position'); // próximo nNF a reconciliar
             $table->unsignedBigInteger('highest_confirmed_nnf')->nullable();
-            $table->string('status', 30)->default('SEED_READY');
+            $table->string('status', 32)->default('SEED_READY');
             $table->string('tp_emis', 5)->default('1');
             $table->string('seed_access_key', 50)->nullable();
-            $table->string('seed_vault_object_id', 64)->nullable();
+            $table->string('seed_vault_object_id', 26)->nullable();
             $table->string('seed_sha256', 64)->nullable();
             $table->timestampTz('seed_issued_at')->nullable();
             $table->timestampTz('next_run_at')->nullable();
@@ -129,7 +129,7 @@ return new class extends Migration
             $table->string('model', 5);
             $table->string('direction', 10)->default('OUT');
             $table->string('competence', 7); // YYYY-MM
-            $table->string('status', 30)->default('PENDING');
+            $table->string('status', 32)->default('PENDING');
             $table->string('mode', 20)->default('ASSISTED');
             $table->string('external_ref', 120)->nullable();
             $table->timestampTz('requested_at')->nullable();
@@ -153,7 +153,7 @@ return new class extends Migration
             $table->foreignId('outbound_capture_profile_id')->constrained('outbound_capture_profiles')->cascadeOnDelete();
             $table->foreignId('outbound_series_cursor_id')->nullable()->constrained('outbound_series_cursors')->nullOnDelete();
             $table->string('run_type', 40)->default('SEQUENCE_QUERY'); // SEQUENCE_QUERY | PACKAGE_INGEST | MUTATING_SAGA
-            $table->string('status', 30)->default('QUEUED');
+            $table->string('status', 32)->default('QUEUED');
             $table->unsignedBigInteger('nnf_start')->nullable();
             $table->unsignedBigInteger('nnf_end')->nullable();
             $table->unsignedInteger('numbers_consulted')->default(0);

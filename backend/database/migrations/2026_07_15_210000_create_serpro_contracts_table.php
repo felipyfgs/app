@@ -15,7 +15,7 @@ return new class extends Migration
         Schema::create('serpro_contracts', function (Blueprint $table) {
             $table->id();
             $table->string('environment', 20);
-            $table->string('status', 20);
+            $table->string('status', 32);
             $table->string('contractor_cnpj', 14);
             $table->string('contractor_name')->nullable();
             $table->string('subject_name')->nullable();

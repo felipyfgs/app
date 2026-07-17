@@ -161,7 +161,7 @@ return new class extends Migration
             $table->string('operation_code', 80);
             $table->string('period_key', 20)->nullable();
             $table->string('idempotency_key', 160);
-            $table->string('status', 30)->default('PENDING');
+            $table->string('status', 32)->default('PENDING');
             $table->string('correlation_id', 64)->nullable();
             $table->timestampTz('sent_at')->nullable();
             $table->timestampTz('resolved_at')->nullable();

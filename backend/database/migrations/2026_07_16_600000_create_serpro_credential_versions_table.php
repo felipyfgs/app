@@ -21,7 +21,7 @@ return new class extends Migration
                 ->nullOnDelete();
             $table->string('environment', 20);
             $table->unsignedInteger('version_number');
-            $table->string('status', 20);
+            $table->string('status', 32);
             $table->boolean('was_exposed')->default(false);
             $table->string('exposure_reason', 500)->nullable();
             $table->timestampTz('exposed_at')->nullable();

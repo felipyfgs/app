@@ -9,6 +9,13 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * Canário DTE: orquestrado pela plataforma com office_id de piloto.
+ * Acesso dual (Platform/* + tenant result/confirm) — sem BelongsToOffice;
+ * isolamento explícito nos services (DteCanaryTenantService / SerproDteCanaryService).
+ *
+ * @see config/schema_conventions.php belongs_to_office_exceptions
+ */
 #[Fillable([
     'environment',
     'status',

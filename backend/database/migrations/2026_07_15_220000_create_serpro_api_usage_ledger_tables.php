@@ -89,7 +89,7 @@ return new class extends Migration
             $table->string('consumption_class', 30);
             $table->unsignedInteger('quantity')->default(1);
             $table->boolean('is_essential')->default(false);
-            $table->string('status', 20);
+            $table->string('status', 32);
             $table->string('correlation_id', 64)->nullable();
             $table->foreignId('price_version_id')->nullable()->constrained('serpro_price_versions')->nullOnDelete();
             // null quando DESCONHECIDA (não inventar zero)
@@ -176,7 +176,7 @@ return new class extends Migration
             $table->unsignedBigInteger('official_total_cost_micros');
             $table->unsignedBigInteger('internal_total_estimated_cost_micros')->default(0);
             $table->bigInteger('difference_micros')->default(0);
-            $table->string('status', 20);
+            $table->string('status', 32);
             $table->string('difference_cause', 120)->nullable();
             $table->text('notes')->nullable();
             $table->foreignId('imported_by_user_id')->nullable()->constrained('users')->nullOnDelete();

@@ -55,7 +55,7 @@ return new class extends Migration
             $table->string('modality', 20);
             $table->string('parcel_key', 40);
             $table->unsignedSmallInteger('parcel_number')->nullable();
-            $table->string('status', 30)->default('UNKNOWN');
+            $table->string('status', 32)->default('UNKNOWN');
             $table->string('source_status', 80)->nullable();
             $table->timestampTz('due_at')->nullable();
             $table->unsignedBigInteger('amount_cents')->nullable();
@@ -88,7 +88,7 @@ return new class extends Migration
             $table->foreignId('order_id')->constrained('tax_installment_orders')->cascadeOnDelete();
             $table->foreignId('parcel_id')->constrained('tax_installment_parcels')->cascadeOnDelete();
             $table->string('modality', 20);
-            $table->string('status', 30)->default('UNKNOWN');
+            $table->string('status', 32)->default('UNKNOWN');
             $table->unsignedBigInteger('amount_cents')->nullable();
             $table->timestampTz('paid_at')->nullable();
             $table->string('payment_ref', 120)->nullable();

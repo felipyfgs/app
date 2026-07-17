@@ -33,7 +33,7 @@ return new class extends Migration
         Schema::create('serpro_external_gates', function (Blueprint $table) {
             $table->id();
             $table->string('kind', 80)->unique();
-            $table->string('status', 20)->default('OPEN');
+            $table->string('status', 32)->default('OPEN');
             $table->string('title', 200);
             $table->text('description')->nullable();
             $table->string('ticket_ref', 120)->nullable();
@@ -80,7 +80,7 @@ return new class extends Migration
                 ->cascadeOnDelete();
             $table->string('gate', 40);
             $table->string('scope', 20);
-            $table->string('status', 20);
+            $table->string('status', 32);
             $table->boolean('live_evidence')->default(false);
             $table->string('fingerprint', 64)->nullable();
             $table->string('document_revision', 80)->nullable();
@@ -101,7 +101,7 @@ return new class extends Migration
             $table->string('action', 40);
             $table->string('environment', 20);
             $table->foreignId('office_id')->nullable()->constrained()->nullOnDelete();
-            $table->string('status', 20)->default('PENDING');
+            $table->string('status', 32)->default('PENDING');
             $table->string('reason', 500)->nullable();
             $table->unsignedBigInteger('requested_by_user_id')->nullable();
             $table->unsignedBigInteger('first_approver_user_id')->nullable();

@@ -32,7 +32,7 @@ return new class extends Migration
             $table->string('module_key', 40)->nullable();
             $table->string('competence_period_key', 20)->nullable();
 
-            $table->string('status', 30)->default('PENDING');
+            $table->string('status', 32)->default('PENDING');
             $table->string('effect_summary', 500)->nullable();
             $table->string('confirmation_phrase', 120)->nullable();
             $table->boolean('confirmation_required')->default(true);

@@ -18,7 +18,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->foreignId('client_id')->constrained()->cascadeOnDelete();
-            $table->string('status', 20);
+            $table->string('status', 32);
             $table->timestampTz('valid_from')->nullable();
             $table->timestampTz('valid_to')->nullable();
             $table->timestampTz('last_verified_at')->nullable();

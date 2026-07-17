@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,6 +20,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class SerproAuthorizationConsent extends Model
 {
+    use BelongsToOffice;
+
     public const TYPE_MANAGED_A1 = 'MANAGED_A1_SIGN';
 
     public const TYPE_MANAGED_A1_CUSTODY = 'MANAGED_A1_CUSTODY';

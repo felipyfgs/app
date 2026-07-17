@@ -25,7 +25,7 @@ return new class extends Migration
             $table->string('service_code', 120)->nullable();
             $table->string('power_code', 120);
             $table->string('source', 40);
-            $table->string('status', 20);
+            $table->string('status', 32);
             $table->timestamp('valid_from')->nullable();
             $table->timestamp('valid_to')->nullable();
             $table->string('evidence_ref', 120)->nullable();

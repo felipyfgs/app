@@ -30,7 +30,7 @@ return new class extends Migration
             $table->unsignedBigInteger('byte_size');
             $table->string('sha256', 64);
             // Identificador opaco do cofre — nunca expor via API/resource
-            $table->string('vault_object_id', 64);
+            $table->string('vault_object_id', 26);
             $table->foreignId('uploaded_by_membership_id')->constrained('office_user')->cascadeOnDelete();
             $table->text('removal_reason')->nullable();
             $table->timestampTz('removed_at')->nullable();
@@ -47,7 +47,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->foreignId('requested_by_membership_id')->constrained('office_user')->cascadeOnDelete();
-            $table->string('status', 20)->default('PENDING');
+            $table->string('status', 32)->default('PENDING');
             $table->json('filters_snapshot');
             // path interno — Hidden no model, nunca no resource
             $table->string('storage_path')->nullable();

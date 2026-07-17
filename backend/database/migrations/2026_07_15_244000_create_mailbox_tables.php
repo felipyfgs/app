@@ -82,7 +82,7 @@ return new class extends Migration
             $table->text('triage_note')->nullable();
 
             // Corpo no cofre
-            $table->string('body_vault_object_id', 40)->nullable();
+            $table->string('body_vault_object_id', 26)->nullable();
             $table->string('body_sha256', 64)->nullable();
             $table->string('body_content_type', 80)->nullable();
             $table->unsignedBigInteger('body_byte_size')->default(0);
@@ -114,7 +114,7 @@ return new class extends Migration
             $table->string('external_id', 160)->nullable();
             $table->string('filename_sanitized', 255)->nullable();
             $table->string('content_type', 80)->default('application/octet-stream');
-            $table->string('vault_object_id', 40);
+            $table->string('vault_object_id', 26);
             $table->string('content_sha256', 64);
             $table->unsignedBigInteger('byte_size')->default(0);
             $table->string('sensitivity_class', 40)->default('FISCAL_RESTRICTED');

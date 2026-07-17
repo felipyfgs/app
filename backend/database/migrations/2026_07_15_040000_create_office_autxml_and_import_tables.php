@@ -21,7 +21,7 @@ return new class extends Migration
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->string('cnpj', 14); // completo uppercase, numérico ou alfanumérico
             $table->string('root_cnpj', 8); // raiz derivada
-            $table->string('status', 20)->default('ACTIVE'); // ACTIVE | INACTIVE
+            $table->string('status', 32)->default('ACTIVE'); // ACTIVE | INACTIVE
             $table->string('legal_name')->nullable();
             $table->timestampTz('activated_at')->nullable();
             $table->timestampTz('deactivated_at')->nullable();
@@ -37,7 +37,7 @@ return new class extends Migration
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->foreignId('office_fiscal_identity_id')->constrained('office_fiscal_identities')->cascadeOnDelete();
             $table->string('purpose', 40)->default('NFE_AUTXML_DISTDFE');
-            $table->string('status', 20); // CredentialStatus
+            $table->string('status', 32); // CredentialStatus
             $table->string('subject_name');
             $table->string('holder_cnpj', 14);
             $table->string('fingerprint_sha256', 64);
@@ -75,7 +75,7 @@ return new class extends Migration
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->foreignId('office_fiscal_identity_id')->constrained('office_fiscal_identities')->cascadeOnDelete();
             $table->foreignId('establishment_id')->constrained()->cascadeOnDelete();
-            $table->string('status', 20)->default('PENDING'); // PENDING | CONFIRMED | INACTIVE
+            $table->string('status', 32)->default('PENDING'); // PENDING | CONFIRMED | INACTIVE
             $table->timestampTz('activated_at')->nullable();
             $table->timestampTz('first_seen_at')->nullable();
             $table->timestampTz('last_seen_at')->nullable();
@@ -101,7 +101,7 @@ return new class extends Migration
             $table->string('channel', 40)->default('NFE_AUTXML_DISTDFE');
             $table->unsignedBigInteger('last_nsu')->default(0);
             $table->unsignedBigInteger('max_nsu_seen')->nullable();
-            $table->string('status', 20)->default('IDLE');
+            $table->string('status', 32)->default('IDLE');
             $table->string('last_cstat', 10)->nullable();
             $table->string('last_xmotivo', 255)->nullable();
             $table->unsignedInteger('consecutive_decode_failures')->default(0);
@@ -128,7 +128,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->foreignId('office_distribution_cursor_id')->constrained('office_distribution_cursors')->cascadeOnDelete();
-            $table->string('status', 20);
+            $table->string('status', 32);
             $table->string('trigger', 20)->default('SCHEDULED');
             $table->foreignId('triggered_by')->nullable()->constrained('users')->nullOnDelete();
             $table->unsignedBigInteger('from_nsu')->default(0);

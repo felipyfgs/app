@@ -88,7 +88,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->string('competence', 7); // YYYY-MM
-            $table->string('status', 30)->default('NOT_READY'); // COMPLETE_KNOWN | PARTIAL_CONFIRMED | NOT_READY
+            $table->string('status', 32)->default('NOT_READY'); // COMPLETE_KNOWN | PARTIAL_CONFIRMED | NOT_READY
             $table->unsignedInteger('known_total')->default(0);
             $table->unsignedInteger('captured_total')->default(0);
             $table->unsignedInteger('pending_total')->default(0);

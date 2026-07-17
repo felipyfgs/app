@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('token_prefix', 12); // para identificação sem revelar segredo
             $table->string('token_hash', 64); // sha256 do token
             $table->string('scope', 40)->default('cte:ingest');
-            $table->string('status', 20)->default('ACTIVE'); // ACTIVE | REVOKED | EXPIRED
+            $table->string('status', 32)->default('ACTIVE'); // ACTIVE | REVOKED | EXPIRED
             $table->timestampTz('expires_at')->nullable();
             $table->timestampTz('last_used_at')->nullable();
             $table->timestampTz('revoked_at')->nullable();

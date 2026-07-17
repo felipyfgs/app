@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,6 +28,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class SerproAsyncJobRun extends Model
 {
+    use BelongsToOffice;
+
     public const STATUS_PENDING = 'PENDING';
 
     public const STATUS_RUNNING = 'RUNNING';
@@ -49,11 +52,6 @@ class SerproAsyncJobRun extends Model
             'finished_at' => 'immutable_datetime',
             'next_retry_at' => 'immutable_datetime',
         ];
-    }
-
-    public function office(): BelongsTo
-    {
-        return $this->belongsTo(Office::class);
     }
 
     public function client(): BelongsTo

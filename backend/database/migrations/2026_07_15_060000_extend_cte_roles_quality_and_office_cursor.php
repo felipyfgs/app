@@ -157,7 +157,7 @@ return new class extends Migration
                 $table->string('protocol_number', 30)->nullable();
                 $table->string('cstat', 10)->nullable();
                 $table->timestampTz('event_at')->nullable();
-                $table->string('status', 30)->nullable();
+                $table->string('status', 32)->nullable();
                 $table->timestamps();
 
                 $table->unique(

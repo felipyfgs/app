@@ -30,7 +30,7 @@ return new class extends Migration
             $table->string('direction', 10)->default('IN');
             $table->timestampTz('issued_at')->nullable();
             $table->decimal('total_amount', 15, 2)->nullable();
-            $table->string('status', 30)->default('UNKNOWN');
+            $table->string('status', 32)->default('UNKNOWN');
             $table->string('official_status_code', 10)->nullable();
             $table->boolean('is_summary')->default(false);
             $table->string('schema_hint', 80)->nullable();

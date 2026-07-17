@@ -7,6 +7,7 @@ use App\Enums\PlatformRole;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\PlatformMembership;
+use App\Models\SerproAsyncJobRun;
 use App\Models\User;
 use App\Support\CurrentOffice;
 use App\Support\FiscalDataModel\PrivilegedOfficeContext;
@@ -112,5 +113,46 @@ class TenantFailClosedTest extends TestCase
         $this->assertNull(app(CurrentOffice::class)->resolve($admin));
         $this->assertSame(0, Client::query()->count());
         $this->assertTrue($admin->isPlatformAdmin());
+    }
+
+    public function test_serpro_async_job_run_fail_closed_sem_office(): void
+    {
+        $officeA = Office::factory()->create();
+        $officeB = Office::factory()->create();
+
+        PrivilegedOfficeContext::run('test:seed-async-jobs', function () use ($officeA, $officeB): void {
+            SerproAsyncJobRun::query()->create([
+                'job_type' => 'TEST',
+                'office_id' => $officeA->id,
+                'environment' => 'PRODUCTION',
+                'status' => SerproAsyncJobRun::STATUS_PENDING,
+                'attempt' => 0,
+                'pages_done' => 0,
+                'flag_checked_at_dispatch' => true,
+                'flag_checked_at_handle' => true,
+            ]);
+            SerproAsyncJobRun::query()->create([
+                'job_type' => 'TEST',
+                'office_id' => $officeB->id,
+                'environment' => 'PRODUCTION',
+                'status' => SerproAsyncJobRun::STATUS_PENDING,
+                'attempt' => 0,
+                'pages_done' => 0,
+                'flag_checked_at_dispatch' => true,
+                'flag_checked_at_handle' => true,
+            ]);
+        });
+
+        app(CurrentOffice::class)->clear();
+        PrivilegedOfficeContext::reset();
+        $this->assertSame(0, SerproAsyncJobRun::query()->count());
+
+        $user = User::factory()->forOffice($officeA, OfficeRole::Admin)->create();
+        $this->actingAs($user);
+        app(CurrentOffice::class)->clear();
+        app(CurrentOffice::class)->resolve($user);
+
+        $this->assertSame(1, SerproAsyncJobRun::query()->count());
+        $this->assertSame($officeA->id, SerproAsyncJobRun::query()->first()->office_id);
     }
 }

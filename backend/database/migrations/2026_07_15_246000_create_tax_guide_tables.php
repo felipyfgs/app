@@ -76,7 +76,7 @@ return new class extends Migration
                 $table->timestampTz('due_at')->nullable();
                 $table->timestampTz('valid_until')->nullable();
                 $table->string('content_sha256', 64)->nullable();
-                $table->string('vault_object_id', 40)->nullable();
+                $table->string('vault_object_id', 26)->nullable();
                 $table->string('content_type', 80)->nullable();
                 $table->unsignedBigInteger('byte_size')->default(0);
                 $table->string('idempotency_key', 160);
@@ -164,7 +164,7 @@ return new class extends Migration
                 $table->string('currency', 3)->default('BRL');
                 $table->timestampTz('paid_at')->nullable();
                 $table->string('content_sha256', 64)->nullable();
-                $table->string('vault_object_id', 40)->nullable();
+                $table->string('vault_object_id', 26)->nullable();
                 $table->string('content_type', 80)->nullable();
                 $table->unsignedBigInteger('byte_size')->default(0);
                 /** Digest estável source|external_id para idempotência. */

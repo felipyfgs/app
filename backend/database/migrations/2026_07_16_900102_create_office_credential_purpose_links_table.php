@@ -23,7 +23,7 @@ return new class extends Migration
                 ->constrained('office_credentials')
                 ->cascadeOnDelete();
             $table->string('purpose', 40);
-            $table->string('status', 20)->default('ACTIVE');
+            $table->string('status', 32)->default('ACTIVE');
             $table->timestampTz('linked_at')->nullable();
             $table->timestampTz('revoked_at')->nullable();
             $table->foreignId('linked_by_user_id')->nullable()->constrained('users')->nullOnDelete();
