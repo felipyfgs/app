@@ -6,7 +6,7 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { FgtsCoverageManifest } from '~/types/api'
-import type { FgtsClientDetail, FgtsClientRow } from '~/types/fiscal-modules'
+import type { FgtsClientDetail, FgtsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
@@ -20,10 +20,7 @@ const {
   perPage,
   total,
   lastPage,
-  q,
-  situation,
-  competence,
-  clientId,
+  filters,
   loading,
   refreshing,
   loadError,
@@ -35,9 +32,21 @@ const {
   sorting,
   setPage,
   refresh,
-  selectKpi,
-  applyFilters
+  applyFilters,
+  applyQuickFilters,
+  resetFilters
 } = useFiscalModulePortfolio('fgts')
+
+const filterConfig: MonitoringFilterConfig = {
+  advanced: [
+    { key: 'clientId', kind: 'client', label: 'Cliente específico' },
+    { key: 'competence', kind: 'month', label: 'Competência' }
+  ]
+}
+
+function getRowId(row: FgtsClientRow) {
+  return `c:${row.client_id}`
+}
 
 const coverage = ref<FgtsCoverageManifest | null>(null)
 const coverageError = ref<string | null>(null)
@@ -52,10 +61,6 @@ const detailClient = ref<FgtsClientRow | null>(null)
 
 function clientHref(id: number) {
   return `/monitoring/clients/${id}/fgts`
-}
-
-function onClientId(id: number | null) {
-  clientId.value = id != null && id > 0 ? String(id) : ''
 }
 
 function detailOf(row: FgtsClientRow): FgtsClientDetail {
@@ -94,7 +99,7 @@ async function openDetail(row: FgtsClientRow) {
     if (!statusId) {
       const listRes = await api.fiscal.fgts.competences({
         client_id: row.client_id,
-        competence_period_key: d.competence_period_key || competence.value || undefined,
+        competence_period_key: d.competence_period_key || filters.value.competence || undefined,
         per_page: 5
       })
       const first = (listRes.data || [])[0] as { id?: number } | undefined
@@ -269,16 +274,14 @@ onMounted(() => {
     :last-page="lastPage"
     :total="total"
     :per-page="perPage"
-    :q="q"
-    :situation="situation"
-    :competence="competence"
-    :client-id="clientId"
+    :filters="filters"
+    :filter-config="filterConfig"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
     :sorting="sorting"
-    show-competence-filter
-    show-client-picker
+    :get-row-id="getRowId"
+    :get-client-id="row => row.client_id"
     empty-title="Nenhum cliente FGTS"
     :column-labels="{
       closure: 'Fechamento',
@@ -288,15 +291,11 @@ onMounted(() => {
       synced: 'Último sync'
     }"
     @update:page="setPage"
-    @update:q="q = $event"
-    @update:situation="situation = $event"
-    @update:competence="competence = $event"
-    @update:client-id="onClientId"
     @update:sorting="sorting = $event"
+    @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"
-    @reset-filters="applyFilters"
+    @reset-filters="resetFilters"
     @refresh="refresh"
-    @kpi-select="selectKpi"
   >
     <template #utilities>
       <UAlert

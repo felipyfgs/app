@@ -432,14 +432,46 @@ export interface FiscalModulePortfolioFilters {
   sort_direction?: 'asc' | 'desc'
 }
 
-/** Estado completo do formulário de filtros da carteira (valores já normalizados pela UI). */
-export interface FiscalModuleFilterFormValue {
+/** Valor aplicado e controlado por todas as listas do monitoramento. */
+export interface MonitoringFilterValue {
   q: string
   situation: string
   competence: string
-  submodule: string
-  deliveryStatus: string
   clientId: number | null
+  deliveryStatus: string
+  paymentStatus: string
+  status: string
+}
+
+export type MonitoringAdvancedFilterField
+  = | {
+    key: 'competence'
+    kind: 'month'
+    label: string
+    hint?: string
+  }
+  | {
+    key: 'clientId'
+    kind: 'client'
+    label: string
+    hint?: string
+  }
+  | {
+    key: 'deliveryStatus' | 'paymentStatus' | 'status'
+    kind: 'select'
+    label: string
+    hint?: string
+    items: Array<{ label: string, value: string }>
+  }
+
+/** Schema visual da toolbar; submódulos continuam sendo identidade da rota. */
+export interface MonitoringFilterConfig {
+  search?: false | {
+    placeholder?: string
+    ariaLabel?: string
+  }
+  situation?: boolean
+  advanced?: MonitoringAdvancedFilterField[]
 }
 
 /** Alias usado por useApi / páginas. */

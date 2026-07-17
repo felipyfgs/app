@@ -166,10 +166,6 @@ function pageHasChromeWithParents(pageFile, text) {
   return { ok: false, via: null }
 }
 
-function findLooseTableUi(_file, _text) {
-  return []
-}
-
 function findListContractIssues(file, text) {
   const rel = relApp(file)
   const violations = []

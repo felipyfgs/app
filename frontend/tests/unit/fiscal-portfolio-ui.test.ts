@@ -219,17 +219,17 @@ describe('empty states distintos (6.9 / 6.11)', () => {
   })
 
   it('tabela permanece montada no vazio (customers.vue: UTable + #empty)', () => {
-    const moduleTable = readFileSync(
-      resolve(__dirname, '../../app/components/monitoring/ModuleTable.vue'),
+    const dataTable = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleDataTable.vue'),
       'utf8'
     )
-    expect(moduleTable).toContain('data-testid="fiscal-table"')
-    expect(moduleTable).toContain('#empty')
-    expect(moduleTable).toContain('MonitoringTableEmptyState')
+    expect(dataTable).toContain('data-testid="fiscal-table"')
+    expect(dataTable).toContain('#empty')
+    expect(dataTable).toContain('MonitoringTableEmptyState')
     // Não troca a tabela inteira por empty/skeleton
-    expect(moduleTable).not.toContain('showTableSkeleton')
-    expect(moduleTable).not.toContain('v-else-if="showEmpty"')
-    expect(moduleTable).not.toContain('fiscal-table-skeleton')
+    expect(dataTable).not.toContain('showTableSkeleton')
+    expect(dataTable).not.toContain('v-else-if="showEmpty"')
+    expect(dataTable).not.toContain('fiscal-table-skeleton')
   })
 })
 
@@ -267,29 +267,35 @@ describe('MonitoringModuleNav (6.3 / 6.11)', () => {
 })
 
 describe('ações de carteira no contexto da seleção', () => {
-  it('não renderiza ações globais no navbar e preserva bulk condicionado à seleção', () => {
+  it('não renderiza ações globais no navbar e delega bulk condicionado à seleção', () => {
     const moduleTable = readFileSync(
       resolve(__dirname, '../../app/components/monitoring/ModuleTable.vue'),
+      'utf8'
+    )
+    const bulk = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleBulkActions.vue'),
+      'utf8'
+    )
+    const dataTable = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleDataTable.vue'),
       'utf8'
     )
 
     expect(moduleTable).not.toContain('fiscal-module-navbar-actions')
     expect(moduleTable).not.toContain('name="navbar-actions"')
-    expect(moduleTable).toContain('v-if="selectionEnabled && selectedCount > 0"')
-    expect(moduleTable).not.toContain('|| Boolean(props.moduleKey)')
-    expect(moduleTable).toContain('data-testid="fiscal-bulk-actions"')
-    expect(moduleTable).toContain(':items="bulkActionItems"')
-    expect(moduleTable).toContain('label="Ações"')
-    expect(moduleTable.match(/<UKbd>/g)).toHaveLength(1)
-    // customers.vue: cápsulas → toolbar colada à tabela
+    expect(moduleTable).toContain('MonitoringModuleBulkActions')
+    expect(moduleTable).toContain(':selection-enabled="selectionEnabled"')
+    expect(bulk).toContain('data-testid="fiscal-bulk-actions"')
+    expect(bulk).toContain('v-if="actionState.visible"')
+    expect(bulk).toContain('label="Ações"')
+    expect(bulk.match(/<UKbd>/g)).toHaveLength(1)
+    // customers.vue: cápsulas → KPIs → stack com toolbar + tabela
     expect(moduleTable.indexOf('data-testid="fiscal-submodules"'))
       .toBeLessThan(moduleTable.indexOf('data-testid="fiscal-kpi-block"'))
     expect(moduleTable.indexOf('data-testid="fiscal-kpi-block"'))
       .toBeLessThan(moduleTable.indexOf('data-testid="fiscal-table-stack"'))
-    expect(moduleTable.indexOf('<slot name="toolbar">'))
-      .toBeLessThan(moduleTable.indexOf('data-testid="fiscal-table"'))
-    expect(moduleTable.indexOf('data-testid="fiscal-table-stack"'))
-      .toBeLessThan(moduleTable.indexOf('data-testid="fiscal-table"'))
+    expect(dataTable.indexOf('name="toolbar"'))
+      .toBeLessThan(dataTable.indexOf('data-testid="fiscal-table"'))
   })
 
   it('segue customers.vue: ações em massa precedem filtros e Exibir', () => {
@@ -311,11 +317,11 @@ describe('ações de carteira no contexto da seleção', () => {
     expect(toolbar).toContain('data-testid="fiscal-filters-reset"')
     expect(toolbar).toContain(':label="advancedFiltersLabel"')
     expect(toolbar).not.toContain('label="Atualizar"')
-    expect(toolbar).toMatch(/const qDraft = ref\(props\.q \|\| ''\)/)
+    expect(toolbar).toContain('const qDraft = ref(appliedFilters.value.q)')
     expect(toolbar).toContain('@keyup.enter="submitQ"')
   })
 
-  it('filtros avançados usam rascunho validado e cliente controlado', () => {
+  it('filtros avançados usam rascunho controlado e contrato filters/filterConfig', () => {
     const toolbar = readFileSync(
       resolve(__dirname, '../../app/components/monitoring/ModuleToolbar.vue'),
       'utf8'
@@ -329,22 +335,21 @@ describe('ações de carteira no contexto da seleção', () => {
       'utf8'
     )
 
-    expect(toolbar).toContain('const competenceDraft = ref')
-    expect(toolbar).toContain('const clientIdDraft = ref<number | null>')
-    expect(toolbar).toContain('v-model="clientIdDraft"')
-    expect(toolbar).toContain('v-model="competenceDraft"')
-    expect(toolbar).toContain('v-model="advancedQDraft"')
-    expect(toolbar).toContain('v-model="advancedSituationDraft"')
-    expect(toolbar).toContain('label="Busca geral"')
-    expect(toolbar).toContain('label="Situação"')
+    expect(toolbar).toContain('const advancedDraft = ref')
+    expect(toolbar).toContain('advancedDraft.clientId')
     expect(toolbar).toContain('type="month"')
     expect(toolbar).toContain('Use uma competência válida no formato AAAA-MM.')
     expect(toolbar).toContain(':disabled="Boolean(competenceError)"')
-    expect(toolbar).not.toContain('@update:model-value="onClientId"')
-    expect(moduleTable).toContain(':client-id="clientId"')
+    expect(toolbar).not.toContain('advancedQDraft')
+    expect(toolbar).not.toContain('advancedSituationDraft')
+    expect(moduleTable).toContain(':filters="filters"')
+    expect(moduleTable).toContain(':filter-config="filterConfig"')
     expect(moduleTable).toContain('emit(\'apply-filters\', $event)')
-    expect(dctfweb).toContain(':client-id="clientId"')
+    expect(moduleTable).toContain('emit(\'quick-filter-change\', $event)')
+    expect(dctfweb).toContain(':filters="filters"')
+    expect(dctfweb).toContain(':filter-config="filterConfig"')
     expect(dctfweb).toContain('@apply-filters="applyFilters"')
+    expect(dctfweb).toContain('@quick-filter-change="applyQuickFilters"')
   })
 
   it('aplica o formulário completo em uma única transação da carteira', () => {
@@ -353,7 +358,8 @@ describe('ações de carteira no contexto da seleção', () => {
       'utf8'
     )
 
-    expect(portfolio).toContain('async function applyFilters(next: FiscalModuleFilterFormValue)')
+    expect(portfolio).toContain('async function applyFilters(nextValue: MonitoringFilterValue)')
+    expect(portfolio).toContain('async function applyQuickFilters(nextValue: MonitoringFilterValue)')
     expect(portfolio).toContain('filterTransactionDepth += 1')
     expect(portfolio).toContain('await nextTick()')
     expect(portfolio).toContain('if (!ready || filterTransactionDepth > 0) return')
@@ -366,10 +372,14 @@ describe('ações de carteira no contexto da seleção', () => {
       resolve(__dirname, '../../app/components/monitoring/ModuleTable.vue'),
       'utf8'
     )
+    const dataTable = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleDataTable.vue'),
+      'utf8'
+    )
 
     expect(moduleTable).not.toContain('class="mb-4"')
-    expect(moduleTable).toContain('<div class="text-sm text-muted">')
-    expect(moduleTable).toContain('<div class="flex items-center gap-1.5">')
+    expect(dataTable).toContain('<div class="text-sm text-muted">')
+    expect(dataTable).toContain('<div class="flex items-center gap-1.5">')
   })
 
   it('reduz a densidade inicial da DCTFWeb sem remover colunas do menu Exibir', () => {

@@ -21,8 +21,8 @@ function walk(dir: string, acc: string[] = []): string[] {
 }
 
 describe('contrato empty de tabelas de monitoramento', () => {
-  it('ModuleTable mantém UTable + #empty (sem skeleton/empty que substitui a tabela)', () => {
-    const src = readFileSync(join(COMPONENTS, 'ModuleTable.vue'), 'utf8')
+  it('ModuleDataTable mantém UTable + #empty (sem skeleton/empty que substitui a tabela)', () => {
+    const src = readFileSync(join(COMPONENTS, 'ModuleDataTable.vue'), 'utf8')
     expect(src).toContain('data-testid="fiscal-table"')
     expect(src).toContain('#empty')
     expect(src).toContain('MonitoringTableEmptyState')
@@ -31,16 +31,26 @@ describe('contrato empty de tabelas de monitoramento', () => {
     expect(src).not.toContain('showTableSkeleton')
   })
 
-  it('ModuleTable: busca/filtros imediatamente acima da tabela (customers.vue)', () => {
-    const src = readFileSync(join(COMPONENTS, 'ModuleTable.vue'), 'utf8')
-    const stack = src.indexOf('data-testid="fiscal-table-stack"')
-    const toolbar = src.indexOf('<slot name="toolbar">')
-    const table = src.indexOf('data-testid="fiscal-table"')
-    const kpis = src.indexOf('data-testid="fiscal-kpi-block"')
+  it('mantém o cabeçalho visível no scroll do painel', () => {
+    const src = readFileSync(join(COMPONENTS, 'ModuleDataTable.vue'), 'utf8')
+    expect(src).toContain('sticky="header"')
+    expect(src).toContain("root: 'overflow-visible'")
+    expect(src).toMatch(/thead: '[^']*bg-default/)
+  })
+
+  it('ModuleTable: KPIs → stack → toolbar colada à data table (customers.vue)', () => {
+    const moduleTable = readFileSync(join(COMPONENTS, 'ModuleTable.vue'), 'utf8')
+    const dataTable = readFileSync(join(COMPONENTS, 'ModuleDataTable.vue'), 'utf8')
+    const stack = moduleTable.indexOf('data-testid="fiscal-table-stack"')
+    const kpis = moduleTable.indexOf('data-testid="fiscal-kpi-block"')
+    const dataTableTag = moduleTable.indexOf('<MonitoringModuleDataTable')
+    const toolbarSlot = dataTable.indexOf('name="toolbar"')
+    const table = dataTable.indexOf('data-testid="fiscal-table"')
     expect(stack).toBeGreaterThan(-1)
     expect(kpis).toBeLessThan(stack)
-    expect(toolbar).toBeGreaterThan(stack)
-    expect(toolbar).toBeLessThan(table)
+    expect(dataTableTag).toBeGreaterThan(stack)
+    expect(toolbarSlot).toBeGreaterThan(-1)
+    expect(toolbarSlot).toBeLessThan(table)
   })
 
   it('carteiras usam MonitoringModuleTable (herdam o padrão empty)', () => {

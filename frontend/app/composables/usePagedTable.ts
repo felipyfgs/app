@@ -39,13 +39,12 @@ export function laravelPageBatch<T>(payload: LaravelPagePayload<T>): PagedTableB
 
 export interface PagedTableRequest {
   page: number
-  cursor: string | null
   signal: AbortSignal
 }
 
 export interface UsePagedTableOptions<T> {
   load: (request: PagedTableRequest) => Promise<PagedTableBatch<T>>
-  /** Ignorado — mantido por compat com call sites do infinite. */
+  /** Aceito e ignorado — identidade de linha é responsabilidade da tabela visual. */
   getKey?: (row: T) => string | number
   pageSize?: number
 }
@@ -62,8 +61,6 @@ export function usePagedTable<T>(options: UsePagedTableOptions<T>) {
   let controller: AbortController | null = null
 
   const pendingInitial = computed(() => pending.value && rows.value.length === 0)
-  /** Compat: infinite usava pendingMore — sempre false no paged. */
-  const pendingMore = computed(() => false)
   const hasMore = computed(() => page.value < lastPage.value)
 
   async function load(targetPage = page.value) {
@@ -77,7 +74,6 @@ export function usePagedTable<T>(options: UsePagedTableOptions<T>) {
     try {
       const batch = await options.load({
         page: page.value,
-        cursor: null,
         signal: controller.signal
       })
       if (my !== seq) return
@@ -111,11 +107,6 @@ export function usePagedTable<T>(options: UsePagedTableOptions<T>) {
     await load(Math.max(1, Math.floor(p)))
   }
 
-  /** Compat API do infinite — recarrega a página atual (não anexa). */
-  async function loadMore() {
-    await load(page.value)
-  }
-
   function reset() {
     controller?.abort()
     rows.value = []
@@ -138,13 +129,11 @@ export function usePagedTable<T>(options: UsePagedTableOptions<T>) {
     lastPage,
     pending,
     pendingInitial,
-    pendingMore,
     hasMore,
     error,
     load,
     resetAndLoad,
     setPage,
-    loadMore,
     reset,
     retry
   }

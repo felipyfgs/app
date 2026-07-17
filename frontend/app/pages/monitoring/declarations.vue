@@ -4,7 +4,7 @@
  * competência, vencimento, entrega, evidência). Task 7.8
  */
 import type { TableColumn } from '@nuxt/ui'
-import type { DeclarationsClientDetail, DeclarationsClientRow } from '~/types/fiscal-modules'
+import type { DeclarationsClientDetail, DeclarationsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
@@ -19,11 +19,7 @@ const {
   perPage,
   total,
   lastPage,
-  q,
-  situation,
-  competence,
-  deliveryStatus,
-  clientId,
+  filters,
   loading,
   refreshing,
   loadError,
@@ -35,8 +31,9 @@ const {
   sorting,
   setPage,
   refresh,
-  selectKpi,
-  applyFilters
+  applyFilters,
+  applyQuickFilters,
+  resetFilters
 } = useFiscalModulePortfolio('declarations')
 
 /** Resumo real da API (por obrigação × aplicabilidade × entrega). */
@@ -76,12 +73,20 @@ const deliveryStatusItems = [
   { label: 'Não suportado', value: 'UNSUPPORTED' }
 ]
 
-function clientHref(id: number) {
-  return `/monitoring/clients/${id}/declarations`
+const filterConfig: MonitoringFilterConfig = {
+  advanced: [
+    { key: 'clientId', kind: 'client', label: 'Cliente específico' },
+    { key: 'competence', kind: 'month', label: 'Competência' },
+    { key: 'deliveryStatus', kind: 'select', label: 'Status de entrega', items: deliveryStatusItems }
+  ]
 }
 
-function onClientId(id: number | null) {
-  clientId.value = id != null && id > 0 ? String(id) : ''
+function getRowId(row: DeclarationsClientRow) {
+  return `c:${row.client_id}`
+}
+
+function clientHref(id: number) {
+  return `/monitoring/clients/${id}/declarations`
 }
 
 function detailOf(row: DeclarationsClientRow): DeclarationsClientDetail {
@@ -352,19 +357,14 @@ onMounted(() => {
     :last-page="lastPage"
     :total="total"
     :per-page="perPage"
-    :q="q"
-    :situation="situation"
-    :competence="competence"
-    :delivery-status="deliveryStatus"
-    :client-id="clientId"
+    :filters="filters"
+    :filter-config="filterConfig"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
-    show-competence-filter
-    show-delivery-status-filter
-    show-client-picker
     :sorting="sorting"
-    :delivery-status-items="deliveryStatusItems"
+    :get-row-id="getRowId"
+    :get-client-id="row => row.client_id"
     empty-title="Nenhuma declaração"
     :column-labels="{
       obligation: 'Obrigação',
@@ -375,16 +375,11 @@ onMounted(() => {
       open: 'Abertas'
     }"
     @update:page="setPage"
-    @update:q="q = $event"
-    @update:situation="situation = $event"
-    @update:competence="competence = $event"
-    @update:delivery-status="deliveryStatus = $event"
-    @update:client-id="onClientId"
     @update:sorting="sorting = $event"
+    @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"
-    @reset-filters="applyFilters"
+    @reset-filters="resetFilters"
     @refresh="() => { refresh(); loadSummary() }"
-    @kpi-select="selectKpi"
   >
     <template #utilities>
       <UAlert

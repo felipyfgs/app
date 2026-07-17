@@ -4,7 +4,11 @@
  * detalhe + download com token efêmero; FiscalClientPicker; demo quando origem DEMO.
  */
 import type { TableColumn } from '@nuxt/ui'
-import type { FiscalModuleFilterFormValue, FiscalModuleOverview } from '~/types/fiscal-modules'
+import type {
+  FiscalModuleOverview,
+  MonitoringFilterConfig,
+  MonitoringFilterValue
+} from '~/types/fiscal-modules'
 import { resolveGuideEmissionCodes } from '~/utils/fiscal-high-risk'
 import { sortHeader } from '~/utils/table-sort'
 
@@ -25,7 +29,7 @@ const { sessionEpoch, canAccessAdministration } = useDashboard()
 const toast = useToast()
 const {
   page, perPage, total, lastPage, clientId, competence, q,
-  loading, loadError, applyPaginator, syncUrl, resetPage
+  loading, loadError, applyPaginator, syncUrl
 } = useServerPage()
 
 const paymentStatus = ref('all')
@@ -51,15 +55,36 @@ const mutationRequest = ref<{
   module?: string
 } | null>(null)
 
-const clientIdModel = computed<number | null>({
-  get: () => {
-    const n = Number(clientId.value)
-    return Number.isFinite(n) && n > 0 ? n : null
-  },
-  set: (v) => {
-    clientId.value = v && v > 0 ? String(v) : ''
-  }
-})
+const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({
+  q: q.value,
+  competence: competence.value,
+  clientId: Number(clientId.value) || null,
+  paymentStatus: paymentStatus.value
+}))
+const filterConfig: MonitoringFilterConfig = {
+  // List API de guias não aceita `q` — busca rápida ficaria decorativa.
+  search: false,
+  situation: false,
+  advanced: [
+    { key: 'clientId', kind: 'client', label: 'Cliente específico' },
+    { key: 'competence', kind: 'month', label: 'Competência' },
+    {
+      key: 'paymentStatus',
+      kind: 'select',
+      label: 'Status de pagamento',
+      items: PAYMENT_STATUS_ITEMS
+    }
+  ]
+}
+
+function getGuideRowId(row: Record<string, unknown>) {
+  return `guide:${String(row.id)}`
+}
+
+function getGuideClientId(row: Record<string, unknown>) {
+  const id = Number(row.client_id)
+  return Number.isFinite(id) && id > 0 ? Math.floor(id) : null
+}
 
 function versionOf(row: Record<string, unknown>): Record<string, unknown> | null {
   const v = row.current_version
@@ -305,19 +330,36 @@ function setPage(next: number) {
   page.value = Math.max(1, Math.floor(Number(next) || 1))
 }
 
-function onClientId(id: number | null) {
-  clientIdModel.value = id
+/** Transação de filtro: evita double-load entre watch(page) e mutação de filtros. */
+let filterTransactionDepth = 0
+
+async function applyModuleFilters(nextValue: MonitoringFilterValue) {
+  const next = normalizeMonitoringFilters(nextValue)
+  const nextClientId = next.clientId ? String(next.clientId) : ''
+  if (
+    q.value === next.q
+    && competence.value === next.competence
+    && clientId.value === nextClientId
+    && paymentStatus.value === next.paymentStatus
+  ) return
+
+  filterTransactionDepth += 1
+  try {
+    q.value = next.q
+    competence.value = next.competence
+    clientId.value = nextClientId
+    paymentStatus.value = next.paymentStatus
+    page.value = 1
+    await nextTick()
+  } finally {
+    filterTransactionDepth -= 1
+  }
+
+  await Promise.all([load(), loadOverview()])
 }
 
-function applyModuleFilters(filters: FiscalModuleFilterFormValue) {
-  q.value = filters.q
-  competence.value = filters.competence
-  clientIdModel.value = filters.clientId
-}
-
-function resetModuleFilters(filters: FiscalModuleFilterFormValue) {
-  paymentStatus.value = 'all'
-  applyModuleFilters(filters)
+async function resetModuleFilters() {
+  await applyModuleFilters(resetMonitoringFilters())
 }
 
 /** Métricas opcionais do overview (campo extra pode existir no payload). */
@@ -333,15 +375,14 @@ function refreshAll() {
 }
 
 watch(page, () => {
+  if (filterTransactionDepth > 0) return
   void load()
-})
-watch([paymentStatus, clientId, competence, q], () => {
-  resetPage()
-  void load()
-  void loadOverview()
 })
 watch(sessionEpoch, () => {
   rows.value = []
+  total.value = 0
+  lastPage.value = 1
+  page.value = 1
   overview.value = null
   detail.value = null
   detailOpen.value = false
@@ -369,15 +410,13 @@ onMounted(() => {
     :last-page="lastPage"
     :total="total"
     :per-page="perPage"
-    :q="q"
-    :competence="competence"
-    :client-id="clientId"
+    :filters="filters"
+    :filter-config="filterConfig"
     :sorting="sorting"
+    :get-row-id="getGuideRowId"
+    :get-client-id="getGuideClientId"
     :total-clients="overview?.total_clients"
     :counters="overview?.counters"
-    show-competence-filter
-    show-client-picker
-    :show-situation-filter="false"
     empty-title="Nenhuma guia"
     :column-labels="{
       system: 'Sistema / tipo',
@@ -389,27 +428,14 @@ onMounted(() => {
       version: 'Versão'
     }"
     @update:page="setPage"
-    @update:q="q = $event"
-    @update:competence="competence = $event"
-    @update:client-id="onClientId"
     @update:sorting="sorting = $event"
+    @quick-filter-change="applyModuleFilters"
     @apply-filters="applyModuleFilters"
     @reset-filters="resetModuleFilters"
     @refresh="refreshAll"
   >
     <template #nav>
       <MonitoringModuleNav active="guides" />
-    </template>
-
-    <template #toolbar-filters>
-      <USelect
-        v-model="paymentStatus"
-        :items="PAYMENT_STATUS_ITEMS"
-        value-key="value"
-        class="w-full sm:min-w-48 sm:w-auto"
-        aria-label="Filtrar por payment_status"
-        data-testid="guides-payment-status-filter"
-      />
     </template>
 
     <template #utilities>

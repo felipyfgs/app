@@ -4,7 +4,7 @@
  * Task 7.2 · deep-links para /monitoring/clients/{id}
  */
 import type { TableColumn } from '@nuxt/ui'
-import type { SimplesMeiClientRow } from '~/types/fiscal-modules'
+import type { MonitoringFilterConfig, SimplesMeiClientRow } from '~/types/fiscal-modules'
 import { SIMPLES_MEI_TABS } from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
 
@@ -22,10 +22,7 @@ const {
   perPage,
   total,
   lastPage,
-  q,
-  situation,
-  competence,
-  clientId,
+  filters,
   loading,
   refreshing,
   loadError,
@@ -37,12 +34,24 @@ const {
   sorting,
   setPage,
   refresh,
-  selectKpi,
-  applyFilters
+  applyFilters,
+  applyQuickFilters,
+  resetFilters
 } = useFiscalModulePortfolio('simples_mei', {
   submodule,
   submodulePath: value => monitoringSubmodulePath('simples_mei', value)
 })
+
+const filterConfig: MonitoringFilterConfig = {
+  advanced: [
+    { key: 'clientId', kind: 'client', label: 'Cliente específico' },
+    { key: 'competence', kind: 'month', label: 'Competência' }
+  ]
+}
+
+function getRowId(row: SimplesMeiClientRow) {
+  return `c:${row.client_id}`
+}
 
 const tabItems = SIMPLES_MEI_TABS.map(t => ({ label: t.label, value: t.value }))
 
@@ -56,10 +65,6 @@ watch(
 
 function clientHref(clientId: number) {
   return `/monitoring/clients/${clientId}`
-}
-
-function onClientId(id: number | null) {
-  clientId.value = id != null && id > 0 ? String(id) : ''
 }
 
 const columns: TableColumn<SimplesMeiClientRow>[] = [
@@ -165,17 +170,15 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
     :last-page="lastPage"
     :total="total"
     :per-page="perPage"
-    :q="q"
-    :situation="situation"
-    :competence="competence"
-    :submodule="submodule"
-    :client-id="clientId"
+    :filters="filters"
+    :filter-config="filterConfig"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
     :sorting="sorting"
-    show-competence-filter
-    show-client-picker
+    :get-row-id="getRowId"
+    :get-client-id="row => row.client_id"
+    :submodule="submodule"
     empty-title="Nenhum cliente"
     :column-labels="{
       obligation: 'Obrigação / submódulo',
@@ -184,16 +187,11 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
       consulted: 'Última consulta'
     }"
     @update:page="setPage"
-    @update:q="q = $event"
-    @update:situation="situation = $event"
-    @update:competence="competence = $event"
-    @update:submodule="submodule = $event"
-    @update:client-id="onClientId"
     @update:sorting="sorting = $event"
+    @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"
-    @reset-filters="applyFilters"
+    @reset-filters="resetFilters"
     @refresh="refresh"
-    @kpi-select="selectKpi"
   >
     <template #submodules>
       <UTabs

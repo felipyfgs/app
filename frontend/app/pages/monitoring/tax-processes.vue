@@ -4,7 +4,11 @@
  * Arquétipo customers.vue; isolamento por office da sessão; sem segredos.
  */
 import type { TableColumn } from '@nuxt/ui'
-import type { FiscalTaxProcess } from '~/types/fiscal-modules'
+import type {
+  FiscalTaxProcess,
+  MonitoringFilterConfig,
+  MonitoringFilterValue
+} from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
 
 const UButton = resolveComponent('UButton')
@@ -31,6 +35,22 @@ const statusItems = [
   { label: 'Aberto', value: 'OPEN' },
   { label: 'Desconhecido', value: 'UNKNOWN' }
 ]
+const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({ status: status.value }))
+const filterConfig: MonitoringFilterConfig = {
+  search: false,
+  situation: false,
+  advanced: [{ key: 'status', kind: 'select', label: 'Status', items: statusItems }]
+}
+
+function applyFilters(nextValue: MonitoringFilterValue) {
+  const next = normalizeMonitoringFilters(nextValue)
+  if (status.value === next.status) return
+  status.value = next.status
+}
+
+function resetFilters() {
+  applyFilters(resetMonitoringFilters())
+}
 
 async function load() {
   const seq = ++loadSeq
@@ -148,6 +168,10 @@ watch(status, () => {
   void load()
 }, { immediate: true })
 watch(sessionEpoch, () => {
+  loadSeq += 1
+  rows.value = []
+  total.value = 0
+  lastPage.value = 1
   page.value = 1
   void load()
 })
@@ -157,7 +181,6 @@ watch(sessionEpoch, () => {
   <MonitoringModuleTable
     title="Processos fiscais"
     panel-id="monitoring-tax-processes"
-    module-key="tax_processes"
     :columns="columns"
     :rows="rows"
     :loading="loading"
@@ -166,11 +189,11 @@ watch(sessionEpoch, () => {
     :last-page="lastPage"
     :total="total"
     :per-page="perPage"
-    :situation="status"
+    :filters="filters"
+    :filter-config="filterConfig"
     :sorting="sorting"
+    :get-row-id="row => `tax-process:${row.id}`"
     :show-kpis="false"
-    :show-situation-filter="false"
-    :show-search="false"
     empty-title="Nenhum processo"
     empty-description="Atualize por cliente."
     :column-labels="{
@@ -181,22 +204,12 @@ watch(sessionEpoch, () => {
     }"
     @update:page="setPage"
     @update:sorting="sorting = $event"
-    @reset-filters="status = 'all'"
+    @apply-filters="applyFilters"
+    @reset-filters="resetFilters"
     @refresh="load"
   >
     <template #nav>
       <MonitoringModuleNav active="tax_processes" />
-    </template>
-
-    <template #toolbar-filters>
-      <USelect
-        v-model="status"
-        :items="statusItems"
-        value-key="value"
-        class="w-full sm:min-w-40 sm:w-auto"
-        aria-label="Filtrar processos por status"
-        data-testid="tax-processes-status-filter"
-      />
     </template>
   </MonitoringModuleTable>
 </template>

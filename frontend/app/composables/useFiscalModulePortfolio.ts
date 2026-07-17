@@ -1,21 +1,25 @@
 /**
- * Carteira fiscal tenant-aware: overview + lista incremental do read model.
+ * Carteira fiscal tenant-aware: overview + lista paginada do read model.
  * - Filtros, ordenação e paginação são estado local; a URL identifica apenas a rota
  * - Sem fallback sintético em erro/vazio
  * - Aborta/descarta requests quando o office ou módulo muda
  * - Ordenação é sempre server-side para não reordenar apenas o lote carregado
  */
-import type { InjectionKey, Ref } from 'vue'
+import type { Ref } from 'vue'
 import type {
   FiscalKpiKey,
-  FiscalModuleFilterFormValue,
   FiscalModuleClientRowFor,
   FiscalModuleOverview,
   FiscalModulePortfolioFilters,
-  FiscalPortfolioModuleKey
+  FiscalPortfolioModuleKey,
+  MonitoringFilterValue
 } from '~/types/fiscal-modules'
 import { fiscalKpiSituationFilter, isSyntheticFiscalOrigin } from '~/types/fiscal-modules'
 import { laravelPageBatch, usePagedTable } from '~/composables/usePagedTable'
+import {
+  normalizeMonitoringFilters,
+  resetMonitoringFilters
+} from '~/utils/monitoring-filters'
 
 export interface UseFiscalModulePortfolioOptions {
   /** Submódulo controlado pela página (tabs). */
@@ -37,20 +41,6 @@ export interface FiscalModuleSortEntry {
 }
 
 export type FiscalModuleSortingState = FiscalModuleSortEntry[]
-
-export interface MonitoringModuleTableContext {
-  sorting: Ref<FiscalModuleSortingState>
-  hasMore: Ref<boolean>
-  pending: Ref<boolean>
-  pendingMore: Ref<boolean>
-  error: Ref<string | null>
-  loadMore: () => Promise<void>
-  retry: () => Promise<void>
-}
-
-/** Contexto privado entre a carteira e sua casca de tabela, sem repetir props em seis páginas. */
-export const FISCAL_MODULE_TABLE_CONTEXT: InjectionKey<MonitoringModuleTableContext>
-  = Symbol('fiscal-module-table-context')
 
 const SORT_COLUMN_TO_API = Object.freeze<Record<string, NonNullable<FiscalModulePortfolioFilters['sort']>>>({
   client: 'legal_name',
@@ -75,8 +65,6 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   const router = useRouter()
   const { sessionEpoch } = useDashboard()
 
-  // `page`/`lastPage` permanecem no retorno por compatibilidade das páginas,
-  // mas não são estado de navegação nem reaparecem na URL.
   const page = ref(1)
   /** pageSize alinhado ao template customers (10). */
   const perPage = ref(options.perPage ?? 10)
@@ -87,8 +75,15 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   const submodule = options.submodule ?? ref('')
   const deliveryStatus = options.deliveryStatus
     ?? ref('all')
-  const clientId = ref('')
+  const clientId = ref<number | null>(null)
   const sorting = ref<FiscalModuleSortingState>([{ id: 'client', desc: false }])
+  const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({
+    q: q.value,
+    situation: situation.value,
+    competence: competence.value,
+    clientId: clientId.value,
+    deliveryStatus: deliveryStatus.value
+  }))
 
   const overviewLoading = ref(false)
   const overviewError = ref<string | null>(null)
@@ -110,7 +105,6 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   }
 
   function buildFilters(requestPage = page.value): FiscalModulePortfolioFilters {
-    const clientIdNum = Number(clientId.value)
     return {
       page: requestPage,
       per_page: perPage.value,
@@ -126,8 +120,8 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
           ? deliveryStatus.value
           : undefined,
       client_id:
-        Number.isFinite(clientIdNum) && clientIdNum >= 1
-          ? Math.floor(clientIdNum)
+        clientId.value != null && clientId.value >= 1
+          ? clientId.value
           : undefined,
       ...currentSort()
     }
@@ -142,18 +136,17 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     FiscalModulePortfolioFilters,
     'q' | 'competence' | 'submodule' | 'delivery_status' | 'client_id'
   > {
-    const filters = buildFilters(1)
+    const next = buildFilters(1)
     return {
-      q: filters.q,
-      competence: filters.competence,
-      submodule: filters.submodule,
-      delivery_status: filters.delivery_status,
-      client_id: filters.client_id
+      q: next.q,
+      competence: next.competence,
+      submodule: next.submodule,
+      delivery_status: next.delivery_status,
+      client_id: next.client_id
     }
   }
 
   const clientsFeed = usePagedTable<FiscalModuleClientRowFor<M>>({
-    getKey: row => row.client_id,
     load: async ({ page: requestPage, signal }) => {
       const mod = toValue(moduleKey)
       const epoch = sessionEpoch.value
@@ -185,21 +178,11 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
 
   const rows = clientsFeed.rows
   const loading = clientsFeed.pendingInitial
-  const refreshing = computed(() => manualRefreshing.value || clientsFeed.pendingMore.value)
+  const refreshing = computed(() => manualRefreshing.value)
   const total = computed(() => clientsFeed.total.value ?? rows.value.length)
   const loadError = computed(() => clientsFeed.error.value
     ? apiErrorMessage(clientsFeed.error.value, 'Falha ao carregar carteira do módulo.')
     : null)
-
-  provide(FISCAL_MODULE_TABLE_CONTEXT, {
-    sorting,
-    hasMore: clientsFeed.hasMore,
-    pending: clientsFeed.pending,
-    pendingMore: clientsFeed.pendingMore,
-    error: loadError,
-    loadMore: clientsFeed.loadMore,
-    retry: retryClients
-  })
 
   const isSynthetic = computed(() =>
     isSyntheticFiscalOrigin(overview.value?.data_origin)
@@ -219,7 +202,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     || competence.value.trim()
     || (submodule.value && submodule.value !== 'all' && submodule.value.trim())
     || (deliveryStatus.value && deliveryStatus.value !== 'all')
-    || clientId.value
+    || clientId.value != null
   ))
 
   async function syncUrl() {
@@ -269,7 +252,6 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
       ? {
           rows: [...rows.value],
           total: clientsFeed.total.value,
-          hasMore: clientsFeed.hasMore.value,
           page: page.value,
           lastPage: lastPage.value
         }
@@ -278,7 +260,6 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     await clientsFeed.resetAndLoad()
 
     // Refresh manual: se falhar e havia carteira válida, restaura rows locais.
-    // total/page do feed permanecem os da última carga bem-sucedida no retry.
     if (previous && clientsFeed.error.value) {
       clientsFeed.rows.value = previous.rows
       clientsFeed.total.value = previous.total ?? previous.rows.length
@@ -304,9 +285,6 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     await clientsFeed.setPage(target)
     page.value = clientsFeed.page.value
     lastPage.value = clientsFeed.lastPage.value
-    if (typeof clientsFeed.total.value === 'number') {
-      // total já reativo via computed `total`
-    }
   }
 
   async function load(opts?: { silent?: boolean }) {
@@ -340,16 +318,15 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
    * Aplica o formulário inteiro como uma transação reativa. Os watchers ignoram o
    * lote intermediário e a carteira faz uma única carga com o estado final.
    */
-  async function applyFilters(next: FiscalModuleFilterFormValue) {
-    const nextClientId = next.clientId && next.clientId > 0 ? String(next.clientId) : ''
+  async function applyFilters(nextValue: MonitoringFilterValue) {
+    const next = normalizeMonitoringFilters(nextValue)
     const nextSituation = next.situation || 'all'
     const nextDeliveryStatus = next.deliveryStatus || 'all'
 
     const advancedChanged = q.value !== next.q
       || competence.value !== next.competence
-      || submodule.value !== next.submodule
       || deliveryStatus.value !== nextDeliveryStatus
-      || clientId.value !== nextClientId
+      || clientId.value !== next.clientId
     const situationChanged = situation.value !== nextSituation
 
     if (!advancedChanged && !situationChanged) return
@@ -359,9 +336,8 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
       q.value = next.q
       situation.value = nextSituation
       competence.value = next.competence
-      submodule.value = next.submodule
       deliveryStatus.value = nextDeliveryStatus
-      clientId.value = nextClientId
+      clientId.value = next.clientId
       resetPage()
       await nextTick()
     } finally {
@@ -374,6 +350,31 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
       return
     }
     if (situationChanged) await loadClients()
+  }
+
+  async function applyQuickFilters(nextValue: MonitoringFilterValue) {
+    const next = normalizeMonitoringFilters(nextValue)
+    const qChanged = q.value !== next.q
+    const situationChanged = situation.value !== next.situation
+    if (!qChanged && !situationChanged) return
+
+    filterTransactionDepth += 1
+    try {
+      q.value = next.q
+      situation.value = next.situation
+      resetPage()
+      await nextTick()
+    } finally {
+      filterTransactionDepth -= 1
+    }
+
+    if (!ready) return
+    if (qChanged) await load()
+    else await loadClients()
+  }
+
+  async function resetFilters() {
+    await applyFilters(resetMonitoringFilters())
   }
 
   let ready = false
@@ -449,6 +450,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     submodule,
     deliveryStatus,
     clientId,
+    filters,
     sorting,
     loading,
     refreshing,
@@ -466,9 +468,6 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     hasRows,
     hasPreviousData,
     isFiltered,
-    hasMore: clientsFeed.hasMore,
-    pendingMore: clientsFeed.pendingMore,
-    loadMore: clientsFeed.loadMore,
     setPage,
     retry: retryClients,
     load,
@@ -478,7 +477,9 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     resetPage,
     setSituationFromKpi,
     selectKpi,
+    applyQuickFilters,
     applyFilters,
+    resetFilters,
     syncUrl,
     buildFilters,
     buildOverviewFilters

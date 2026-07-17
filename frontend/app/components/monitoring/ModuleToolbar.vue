@@ -1,180 +1,147 @@
 <script setup lang="ts">
 /**
- * Toolbar de lista no padrão customers.vue: busca à esquerda e controles essenciais
- * à direita. Os refinamentos ocultos usam rascunho local e só são aplicados no submit.
+ * Toolbar de lista no padrão customers.vue: busca/situação rápidas à esquerda/direita
+ * e painel avançado recolhível com rascunho controlado e apply/reset atômicos.
  */
 import { fiscalSituationFilterItems } from '~/utils/fiscal-status'
-import type { FiscalModuleFilterFormValue } from '~/types/fiscal-modules'
+import type {
+  MonitoringFilterConfig,
+  MonitoringFilterValue
+} from '~/types/fiscal-modules'
+import {
+  countActiveMonitoringFilters,
+  normalizeMonitoringFilters,
+  resetMonitoringFilters
+} from '~/utils/monitoring-filters'
 
 const props = withDefaults(defineProps<{
-  q?: string
-  situation?: string
-  competence?: string
-  submodule?: string
-  deliveryStatus?: string
-  clientId?: number | string | null
+  filters: MonitoringFilterValue
+  filterConfig?: MonitoringFilterConfig
   total?: number
   loading?: boolean
-  showSearch?: boolean
-  showSituation?: boolean
-  showCompetence?: boolean
-  showSubmodule?: boolean
-  showDeliveryStatus?: boolean
-  showClientPicker?: boolean
   showExport?: boolean
   canExport?: boolean
   /** Contagem no canto (default true). ModuleTable usa o footer. */
   showTotal?: boolean
-  submoduleItems?: Array<{ label: string, value: string }>
-  deliveryStatusItems?: Array<{ label: string, value: string }>
-  searchPlaceholder?: string
 }>(), {
-  showSearch: true,
-  showSituation: true,
-  showCompetence: false,
-  showSubmodule: false,
-  showDeliveryStatus: false,
-  showClientPicker: true,
+  filterConfig: () => ({}),
   showExport: false,
   canExport: false,
   showTotal: true,
-  searchPlaceholder: 'Buscar nome ou CNPJ…',
   total: 0
 })
 
 const emit = defineEmits<{
-  'update:q': [value: string]
-  'update:situation': [value: string]
-  'update:competence': [value: string]
-  'update:submodule': [value: string]
-  'update:deliveryStatus': [value: string]
-  'update:clientId': [value: number | null]
-  'apply': [filters: FiscalModuleFilterFormValue]
-  'reset': [filters: FiscalModuleFilterFormValue]
+  'quick-filter-change': [filters: MonitoringFilterValue]
+  'apply-filters': [filters: MonitoringFilterValue]
+  'reset-filters': [filters: MonitoringFilterValue]
   'refresh': []
   'export': []
 }>()
 
-const slots = useSlots()
 const situationItems = fiscalSituationFilterItems(true)
 
-const qDraft = ref(props.q || '')
+const config = computed<MonitoringFilterConfig>(() => props.filterConfig || {})
+const showSearch = computed(() => config.value.search !== false)
+const showSituation = computed(() => config.value.situation !== false)
+const advancedFields = computed(() => config.value.advanced || [])
+const hasAdvancedFilters = computed(() => advancedFields.value.length > 0)
 
-watch(() => props.q, (value) => {
-  const next = value || ''
-  if (next !== qDraft.value) qDraft.value = next
+const searchPlaceholder = computed(() => {
+  const search = config.value.search
+  if (search && typeof search === 'object' && search.placeholder) return search.placeholder
+  return 'Buscar nome ou CNPJ…'
+})
+
+const searchAriaLabel = computed(() => {
+  const search = config.value.search
+  if (search && typeof search === 'object' && search.ariaLabel) return search.ariaLabel
+  return 'Buscar por razão social ou CNPJ'
+})
+
+const appliedFilters = computed(() => normalizeMonitoringFilters(props.filters))
+
+const qDraft = ref(appliedFilters.value.q)
+watch(() => appliedFilters.value.q, (value) => {
+  if (value !== qDraft.value) qDraft.value = value
 })
 
 const situationModel = computed({
-  get: () => props.situation || 'all',
-  set: (v: string) => emit('update:situation', v)
+  get: () => appliedFilters.value.situation || 'all',
+  set: (value: string) => {
+    emit('quick-filter-change', normalizeMonitoringFilters({
+      ...appliedFilters.value,
+      situation: value || 'all'
+    }))
+  }
 })
-function normalizedClientId(value: number | string | null | undefined): number | null {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null
-}
 
-const competenceDraft = ref(props.competence || '')
-const submoduleDraft = ref(props.submodule || '')
-const deliveryDraft = ref(props.deliveryStatus || 'all')
-const clientIdDraft = ref<number | null>(normalizedClientId(props.clientId))
-const advancedQDraft = ref(props.q || '')
-const advancedSituationDraft = ref(props.situation || 'all')
+const advancedDraft = ref<MonitoringFilterValue>(normalizeMonitoringFilters(appliedFilters.value))
+const advancedFiltersOpen = ref(false)
 
-const hasAdvancedFilters = computed(() => Boolean(
-  props.showCompetence
-  || (props.showSubmodule && props.submoduleItems?.length)
-  || (props.showDeliveryStatus && props.deliveryStatusItems?.length)
-  || props.showClientPicker
-  || slots.filters
-))
-
-const activeAdvancedFilterCount = computed(() => {
-  let count = 0
-  if (props.showSearch && String(props.q || '').trim()) count++
-  if (props.showSituation && props.situation && props.situation !== 'all') count++
-  if (props.showCompetence && String(props.competence || '').trim()) count++
-  if (props.showSubmodule && props.submodule && props.submodule !== 'all') count++
-  if (props.showDeliveryStatus && props.deliveryStatus && props.deliveryStatus !== 'all') count++
-  if (props.showClientPicker && normalizedClientId(props.clientId)) count++
-  return count
-})
+const activeAdvancedFilterCount = computed(() =>
+  countActiveMonitoringFilters(appliedFilters.value, config.value)
+)
 const hasActiveAdvancedFilters = computed(() => activeAdvancedFilterCount.value > 0)
 const advancedFiltersLabel = computed(() => activeAdvancedFilterCount.value
   ? `Filtros (${activeAdvancedFilterCount.value})`
   : 'Filtros')
-const advancedFiltersOpen = ref(false)
 
 const competenceError = computed(() => {
-  const value = competenceDraft.value.trim()
+  const field = advancedFields.value.find(item => item.key === 'competence')
+  if (!field) return undefined
+  const value = String(advancedDraft.value.competence || '').trim()
   if (!value || /^\d{4}-(0[1-9]|1[0-2])$/.test(value)) return undefined
   return 'Use uma competência válida no formato AAAA-MM.'
 })
 
 function syncAdvancedDraft() {
-  advancedQDraft.value = props.q || ''
-  advancedSituationDraft.value = props.situation || 'all'
-  competenceDraft.value = props.competence || ''
-  submoduleDraft.value = props.submodule || ''
-  deliveryDraft.value = props.deliveryStatus || 'all'
-  clientIdDraft.value = normalizedClientId(props.clientId)
+  advancedDraft.value = normalizeMonitoringFilters(appliedFilters.value)
 }
 
-function advancedFilterValue(): FiscalModuleFilterFormValue {
-  return {
-    q: props.showSearch ? advancedQDraft.value.trim() : (props.q || ''),
-    situation: props.showSituation ? advancedSituationDraft.value : (props.situation || 'all'),
-    competence: props.showCompetence ? competenceDraft.value.trim() : (props.competence || ''),
-    submodule: props.showSubmodule ? submoduleDraft.value : (props.submodule || ''),
-    deliveryStatus: props.showDeliveryStatus
-      ? deliveryDraft.value
-      : (props.deliveryStatus || 'all'),
-    clientId: props.showClientPicker
-      ? clientIdDraft.value
-      : normalizedClientId(props.clientId)
-  }
-}
+watch(advancedFiltersOpen, (open, wasOpen) => {
+  if (open && !wasOpen) syncAdvancedDraft()
+  if (!open && wasOpen) syncAdvancedDraft()
+})
+
+watch(
+  () => appliedFilters.value,
+  () => {
+    if (!advancedFiltersOpen.value) syncAdvancedDraft()
+  },
+  { deep: true }
+)
 
 function toggleAdvancedFilters() {
-  if (!advancedFiltersOpen.value) syncAdvancedDraft()
   advancedFiltersOpen.value = !advancedFiltersOpen.value
-  if (!advancedFiltersOpen.value) syncAdvancedDraft()
 }
 
 function applyAdvancedFilters() {
   if (competenceError.value) return
-  emit('apply', advancedFilterValue())
-  advancedFiltersOpen.value = false
-}
-
-function resetAdvancedFilters() {
-  advancedQDraft.value = ''
-  advancedSituationDraft.value = 'all'
-  competenceDraft.value = ''
-  deliveryDraft.value = 'all'
-  clientIdDraft.value = null
-
-  // Submódulos estruturais (sem opção "all") pertencem à rota e são preservados.
-  const allSubmodule = props.submoduleItems?.find(item => item.value === 'all')?.value
-  submoduleDraft.value = allSubmodule || props.submodule || ''
-
-  emit('reset', advancedFilterValue())
-  advancedFiltersOpen.value = false
-}
-
-watch(
-  () => [
-    props.q,
-    props.situation,
-    props.competence,
-    props.submodule,
-    props.deliveryStatus,
-    props.clientId
-  ],
-  () => {
-    if (!advancedFiltersOpen.value) syncAdvancedDraft()
+  if (qDebounce) {
+    clearTimeout(qDebounce)
+    qDebounce = null
   }
-)
+  // Combina rascunho avançado com busca/situação mais recentes (não as do painel).
+  emit('apply-filters', normalizeMonitoringFilters({
+    ...advancedDraft.value,
+    q: qDraft.value,
+    situation: appliedFilters.value.situation
+  }))
+  advancedFiltersOpen.value = false
+}
+
+function resetAllFilters() {
+  const next = resetMonitoringFilters()
+  if (qDebounce) {
+    clearTimeout(qDebounce)
+    qDebounce = null
+  }
+  advancedDraft.value = next
+  qDraft.value = next.q
+  emit('reset-filters', next)
+  advancedFiltersOpen.value = false
+}
 
 let qDebounce: ReturnType<typeof setTimeout> | null = null
 function onQInput(value: string | number) {
@@ -182,7 +149,10 @@ function onQInput(value: string | number) {
   qDraft.value = next
   if (qDebounce) clearTimeout(qDebounce)
   qDebounce = setTimeout(() => {
-    emit('update:q', next)
+    emit('quick-filter-change', normalizeMonitoringFilters({
+      ...appliedFilters.value,
+      q: next
+    }))
   }, 320)
 }
 
@@ -191,7 +161,10 @@ function submitQ() {
     clearTimeout(qDebounce)
     qDebounce = null
   }
-  emit('update:q', qDraft.value)
+  emit('quick-filter-change', normalizeMonitoringFilters({
+    ...appliedFilters.value,
+    q: qDraft.value
+  }))
 }
 
 onBeforeUnmount(() => {
@@ -211,7 +184,7 @@ onBeforeUnmount(() => {
         icon="i-lucide-search"
         :placeholder="searchPlaceholder"
         class="w-full sm:w-auto sm:max-w-sm"
-        aria-label="Buscar por razão social ou CNPJ"
+        :aria-label="searchAriaLabel"
         data-testid="fiscal-filter-q"
         @update:model-value="onQInput"
         @keyup.enter="submitQ"
@@ -232,6 +205,7 @@ onBeforeUnmount(() => {
           data-testid="fiscal-filter-situation"
         />
 
+        <!-- Na mesma faixa da toolbar (não em linha solta sobre a tabela). -->
         <UButton
           v-if="hasAdvancedFilters"
           color="neutral"
@@ -307,98 +281,74 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="grid min-w-0 grid-cols-1 gap-3 pt-3 sm:grid-cols-2 lg:grid-cols-3">
-            <UFormField
-              v-if="showSearch"
-              label="Busca geral"
-              hint="Razão social, nome fantasia ou CNPJ"
-              class="lg:col-span-2"
+            <template
+              v-for="field in advancedFields"
+              :key="field.key"
             >
-              <UInput
-                v-model="advancedQDraft"
-                icon="i-lucide-search"
-                :placeholder="searchPlaceholder"
-                class="w-full"
-                aria-label="Busca geral nos clientes"
-                data-testid="fiscal-advanced-filter-q"
-              />
-            </UFormField>
+              <UFormField
+                v-if="field.kind === 'client'"
+                :label="field.label"
+                :hint="field.hint || 'Restringe a carteira a um único cliente'"
+                class="lg:col-span-2"
+              >
+                <FiscalClientPicker
+                  :model-value="advancedDraft.clientId"
+                  search-mode="select"
+                  placeholder="Selecione um cliente"
+                  class="w-full"
+                  @update:model-value="advancedDraft = normalizeMonitoringFilters({
+                    ...advancedDraft,
+                    clientId: $event
+                  })"
+                />
+              </UFormField>
 
-            <UFormField
-              v-if="showSituation"
-              label="Situação"
-            >
-              <USelect
-                v-model="advancedSituationDraft"
-                :items="situationItems"
-                value-key="value"
-                :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
-                class="w-full"
-                aria-label="Situação fiscal"
-                data-testid="fiscal-advanced-filter-situation"
-              />
-            </UFormField>
+              <UFormField
+                v-else-if="field.kind === 'month'"
+                :label="field.label"
+                :hint="field.hint || 'Mês de apuração'"
+                :error="field.key === 'competence' ? competenceError : undefined"
+              >
+                <UInput
+                  :model-value="String(advancedDraft[field.key] || '')"
+                  type="month"
+                  placeholder="AAAA-MM"
+                  class="w-full"
+                  :aria-label="field.label"
+                  :data-testid="field.key === 'competence' ? 'fiscal-filter-competence' : undefined"
+                  @update:model-value="advancedDraft = normalizeMonitoringFilters({
+                    ...advancedDraft,
+                    [field.key]: $event
+                  })"
+                />
+              </UFormField>
 
-            <UFormField
-              v-if="showClientPicker"
-              label="Cliente específico"
-              hint="Restringe a carteira a um único cliente"
-              class="lg:col-span-2"
-            >
-              <FiscalClientPicker
-                v-model="clientIdDraft"
-                search-mode="select"
-                placeholder="Selecione um cliente"
-                class="w-full"
-              />
-            </UFormField>
-
-            <UFormField
-              v-if="showCompetence"
-              label="Competência"
-              hint="Mês de apuração"
-              :error="competenceError"
-            >
-              <UInput
-                v-model="competenceDraft"
-                type="month"
-                placeholder="AAAA-MM"
-                class="w-full"
-                aria-label="Filtrar por competência"
-                data-testid="fiscal-filter-competence"
-              />
-            </UFormField>
-
-            <UFormField
-              v-if="showSubmodule && submoduleItems?.length"
-              label="Submódulo"
-            >
-              <USelect
-                v-model="submoduleDraft"
-                :items="submoduleItems"
-                value-key="value"
-                :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
-                class="w-full"
-                aria-label="Filtrar por submódulo"
-                data-testid="fiscal-filter-submodule"
-              />
-            </UFormField>
-
-            <UFormField
-              v-if="showDeliveryStatus && deliveryStatusItems?.length"
-              label="Status de entrega"
-            >
-              <USelect
-                v-model="deliveryDraft"
-                :items="deliveryStatusItems"
-                value-key="value"
-                :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
-                class="w-full"
-                aria-label="Filtrar por entrega"
-                data-testid="fiscal-filter-delivery"
-              />
-            </UFormField>
-
-            <slot name="filters" />
+              <UFormField
+                v-else-if="field.kind === 'select'"
+                :label="field.label"
+                :hint="field.hint"
+              >
+                <USelect
+                  :model-value="String(advancedDraft[field.key] || 'all')"
+                  :items="field.items"
+                  value-key="value"
+                  :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
+                  class="w-full"
+                  :aria-label="field.label"
+                  :data-testid="field.key === 'deliveryStatus'
+                    ? 'fiscal-filter-delivery'
+                    : field.key === 'paymentStatus'
+                      ? 'guides-payment-status-filter'
+                      : field.key === 'status'
+                        ? 'fiscal-filter-status'
+                        : undefined"
+                  @update:model-value="advancedDraft = normalizeMonitoringFilters({
+                    ...advancedDraft,
+                    [field.key]: $event
+                  })"
+                />
+              </UFormField>
+            </template>
           </div>
 
           <div class="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-default pt-3">
@@ -408,7 +358,7 @@ onBeforeUnmount(() => {
               variant="ghost"
               label="Limpar"
               data-testid="fiscal-filters-reset"
-              @click="resetAdvancedFilters"
+              @click="resetAllFilters"
             />
             <UButton
               type="submit"

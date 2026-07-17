@@ -4,7 +4,7 @@
  * Detalhe do pedido em slideover navegável. Task 7.4
  */
 import type { TableColumn } from '@nuxt/ui'
-import type { InstallmentsClientDetail, InstallmentsClientRow } from '~/types/fiscal-modules'
+import type { InstallmentsClientDetail, InstallmentsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
@@ -16,9 +16,7 @@ const {
   perPage,
   total,
   lastPage,
-  q,
-  situation,
-  clientId,
+  filters,
   loading,
   refreshing,
   loadError,
@@ -30,9 +28,18 @@ const {
   sorting,
   setPage,
   refresh,
-  selectKpi,
-  applyFilters
+  applyFilters,
+  applyQuickFilters,
+  resetFilters
 } = useFiscalModulePortfolio('installments')
+
+const filterConfig: MonitoringFilterConfig = {
+  advanced: [{ key: 'clientId', kind: 'client', label: 'Cliente específico' }]
+}
+
+function getRowId(row: InstallmentsClientRow) {
+  return `c:${row.client_id}`
+}
 
 const api = useApi()
 const modalities = ref<Array<Record<string, unknown>>>([])
@@ -60,10 +67,6 @@ const detailParcels = ref<Array<Record<string, unknown>>>([])
 
 function clientHref(id: number) {
   return `/monitoring/clients/${id}`
-}
-
-function onClientId(id: number | null) {
-  clientId.value = id != null && id > 0 ? String(id) : ''
 }
 
 function detailOf(row: InstallmentsClientRow): InstallmentsClientDetail {
@@ -274,14 +277,14 @@ onMounted(() => {
     :last-page="lastPage"
     :total="displayTotal"
     :per-page="perPage"
-    :q="q"
-    :situation="situation"
-    :client-id="clientId"
+    :filters="filters"
+    :filter-config="filterConfig"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
     :sorting="sorting"
-    show-client-picker
+    :get-row-id="getRowId"
+    :get-client-id="row => row.client_id"
     empty-title="Nenhum parcelamento"
     :column-labels="{
       modality: 'Modalidade',
@@ -293,14 +296,11 @@ onMounted(() => {
       guide: 'Guia'
     }"
     @update:page="setPage"
-    @update:q="q = $event"
-    @update:situation="situation = $event"
-    @update:client-id="onClientId"
     @update:sorting="sorting = $event"
+    @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"
-    @reset-filters="applyFilters"
+    @reset-filters="resetFilters"
     @refresh="refresh"
-    @kpi-select="selectKpi"
   >
     <!-- Modalidades oficiais como cápsulas em largura total (padrão KPI/submódulos) -->
     <template #submodules>

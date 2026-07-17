@@ -5,7 +5,7 @@
  * Task 7.3
  */
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
-import type { DctfwebClientDetail, DctfwebClientRow } from '~/types/fiscal-modules'
+import type { DctfwebClientDetail, DctfwebClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
 import { DCTFWEB_TABS } from '~/types/fiscal-modules'
 import { resolveHighRiskCodesFromRow } from '~/utils/fiscal-high-risk'
 import { sortHeader } from '~/utils/table-sort'
@@ -25,10 +25,7 @@ const {
   perPage,
   total,
   lastPage,
-  q,
-  situation,
-  competence,
-  clientId,
+  filters,
   loading,
   refreshing,
   loadError,
@@ -40,12 +37,24 @@ const {
   sorting,
   setPage,
   refresh,
-  selectKpi,
-  applyFilters
+  applyFilters,
+  applyQuickFilters,
+  resetFilters
 } = useFiscalModulePortfolio('dctfweb', {
   submodule,
   submodulePath: value => monitoringSubmodulePath('dctfweb', value)
 })
+
+const filterConfig: MonitoringFilterConfig = {
+  advanced: [
+    { key: 'clientId', kind: 'client', label: 'Cliente específico' },
+    { key: 'competence', kind: 'month', label: 'Competência' }
+  ]
+}
+
+function getRowId(row: DctfwebClientRow) {
+  return `c:${row.client_id}`
+}
 
 const mutationOpen = ref(false)
 const mutationRequest = ref<{
@@ -69,10 +78,6 @@ watch(
 
 function clientHref(id: number) {
   return `/monitoring/clients/${id}`
-}
-
-function onClientId(id: number | null) {
-  clientId.value = id != null && id > 0 ? String(id) : ''
 }
 
 function detailOf(row: DctfwebClientRow): DctfwebClientDetail {
@@ -267,17 +272,15 @@ const columns: TableColumn<DctfwebClientRow>[] = [
     :last-page="lastPage"
     :total="total"
     :per-page="perPage"
-    :q="q"
-    :situation="situation"
-    :competence="competence"
-    :submodule="submodule"
-    :client-id="clientId"
+    :filters="filters"
+    :filter-config="filterConfig"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
     :sorting="sorting"
-    show-competence-filter
-    show-client-picker
+    :get-row-id="getRowId"
+    :get-client-id="row => row.client_id"
+    :submodule="submodule"
     empty-title="Nenhum cliente"
     :column-labels="{
       closure: 'Encerramento',
@@ -289,16 +292,11 @@ const columns: TableColumn<DctfwebClientRow>[] = [
     }"
     :initial-hidden-columns="['evidence', 'darf']"
     @update:page="setPage"
-    @update:q="q = $event"
-    @update:situation="situation = $event"
-    @update:competence="competence = $event"
-    @update:submodule="submodule = $event"
-    @update:client-id="onClientId"
     @update:sorting="sorting = $event"
+    @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"
-    @reset-filters="applyFilters"
+    @reset-filters="resetFilters"
     @refresh="refresh"
-    @kpi-select="selectKpi"
   >
     <template #submodules>
       <UTabs

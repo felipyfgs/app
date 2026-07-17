@@ -16,6 +16,7 @@ import {
   hasConfirmedAdminAccess
 } from '~/utils/permissions'
 import type { FiscalModuleKey } from '~/types/fiscal-modules'
+import { isFiscalPortfolioModule } from '~/types/fiscal-modules'
 import { defaultReadCodesForModule } from '~/utils/fiscal-high-risk'
 
 export type MonitoringActionId
@@ -104,5 +105,28 @@ export function moduleSupportsEnqueueRead(moduleKey: FiscalModuleKey | string): 
 }
 
 export function moduleSupportsPortfolioExport(moduleKey: FiscalModuleKey | string): boolean {
-  return moduleKey !== 'dashboard'
+  return isFiscalPortfolioModule(moduleKey)
+}
+
+export function monitoringBulkActionState(input: {
+  moduleKey: string | null
+  selectedCount: number
+  canAssociate: boolean
+  canEnqueue: boolean
+  canExport: boolean
+}) {
+  const supported = Boolean(input.moduleKey && isFiscalPortfolioModule(input.moduleKey))
+  const associate = supported && input.canAssociate
+  const enqueue = supported && input.canEnqueue
+    && moduleSupportsEnqueueRead(input.moduleKey || '')
+  const exportPortfolio = supported && input.canExport
+    && moduleSupportsPortfolioExport(input.moduleKey || '')
+  const available = associate || enqueue || exportPortfolio
+  return {
+    associate,
+    enqueue,
+    export: exportPortfolio,
+    available,
+    visible: available && input.selectedCount > 0
+  }
 }

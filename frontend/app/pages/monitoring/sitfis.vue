@@ -6,7 +6,7 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { FiscalFinding, FiscalPendingItem } from '~/types/api'
-import type { SitfisClientDetail, SitfisClientRow } from '~/types/fiscal-modules'
+import type { MonitoringFilterConfig, SitfisClientDetail, SitfisClientRow } from '~/types/fiscal-modules'
 import { commercialBlockLabel } from '~/utils/monitor-commercial'
 import { sortHeader } from '~/utils/table-sort'
 
@@ -25,9 +25,7 @@ const {
   perPage,
   total,
   lastPage,
-  q,
-  situation,
-  clientId,
+  filters,
   loading,
   refreshing,
   loadError,
@@ -39,9 +37,18 @@ const {
   sorting,
   setPage,
   refresh,
-  selectKpi,
-  applyFilters
+  applyFilters,
+  applyQuickFilters,
+  resetFilters
 } = useFiscalModulePortfolio('sitfis')
+
+const filterConfig: MonitoringFilterConfig = {
+  advanced: [{ key: 'clientId', kind: 'client', label: 'Cliente específico' }]
+}
+
+function getRowId(row: SitfisClientRow) {
+  return `c:${row.client_id}`
+}
 
 const slideOpen = ref(false)
 const selected = ref<SitfisClientRow | null>(null)
@@ -74,10 +81,6 @@ const detailRefreshing = ref(false)
 
 function clientHref(id: number) {
   return `/monitoring/clients/${id}/sitfis`
-}
-
-function onClientId(id: number | null) {
-  clientId.value = id != null && id > 0 ? String(id) : ''
 }
 
 function detailOf(row: SitfisClientRow): SitfisClientDetail {
@@ -313,14 +316,14 @@ const columns: TableColumn<SitfisClientRow>[] = [
     :last-page="lastPage"
     :total="total"
     :per-page="perPage"
-    :q="q"
-    :situation="situation"
-    :client-id="clientId"
+    :filters="filters"
+    :filter-config="filterConfig"
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
     :sorting="sorting"
-    show-client-picker
+    :get-row-id="getRowId"
+    :get-client-id="row => row.client_id"
     empty-title="Nenhum cliente"
     :column-labels="{
       procuracao: 'Procuração',
@@ -331,14 +334,11 @@ const columns: TableColumn<SitfisClientRow>[] = [
       observed: 'Observado'
     }"
     @update:page="setPage"
-    @update:q="q = $event"
-    @update:situation="situation = $event"
-    @update:client-id="onClientId"
     @update:sorting="sorting = $event"
+    @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"
-    @reset-filters="applyFilters"
+    @reset-filters="resetFilters"
     @refresh="refresh"
-    @kpi-select="selectKpi"
   >
     <template
       v-if="overviewError"
