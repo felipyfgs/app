@@ -574,8 +574,8 @@ export interface FiscalModulePortfolioFilters {
   competence?: string
   submodule?: string
   delivery_status?: string
-  /** Filtro opcional por cliente (picker / deep-link). */
-  client_id?: number
+  /** Um id ou CSV "1,2,3" (multi-cliente no portfolio). */
+  client_id?: number | string
   /** Cobertura (FULL / PARTIAL / …) — ModulePortfolioFilters backend. */
   coverage?: string
   /** Modalidade de parcelamento (PARCSN, …) — só installments. */
@@ -589,7 +589,11 @@ export interface MonitoringFilterValue {
   q: string
   situation: string
   competence: string
-  clientId: number | null
+  /**
+   * Clientes selecionados (multi). `[]` = sem filtro de cliente.
+   * Serializa para `client_id=1,2,3` na API do portfolio.
+   */
+  clientIds: number[]
   deliveryStatus: string
   paymentStatus: string
   status: string
@@ -618,6 +622,8 @@ export type MonitoringStructuredFilterField
     key: 'clientId'
     kind: 'client'
     label: string
+    /** Default true no adapter (vários clientes no portfolio). */
+    multiple?: boolean
   }
   | {
     key: 'deliveryStatus' | 'paymentStatus' | 'status' | 'coverage' | 'modality'

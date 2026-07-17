@@ -49,17 +49,14 @@ const filterConfig: MonitoringFilterConfig = {
       label: 'Triagem',
       items: triageItems
     },
-    { key: 'clientId', kind: 'client', label: 'Cliente' }
+    { key: 'clientId', kind: 'client', label: 'Cliente', multiple: false }
   ]
 }
 
 const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({
   // status reutilizado como eixo de triagem na surface mailbox
   status: triage.value,
-  clientId: (() => {
-    const n = Number(clientId.value)
-    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null
-  })(),
+  clientIds: (() => { const n = Number(clientId.value); return Number.isFinite(n) && n >= 1 ? [Math.floor(n)] : [] })(),
   q: ''
 }))
 
@@ -116,7 +113,7 @@ async function load() {
 
 async function applyModuleFilters(nextValue: MonitoringFilterValue) {
   const next = normalizeMonitoringFilters(nextValue)
-  const nextClient = next.clientId != null && next.clientId >= 1 ? String(next.clientId) : ''
+  const nextClient = next.clientIds[0] != null ? String(next.clientIds[0]) : ''
   const nextTriage = (next.status || 'all') as MailboxTriageFilter
   if (triage.value === nextTriage && clientId.value === nextClient) return
 

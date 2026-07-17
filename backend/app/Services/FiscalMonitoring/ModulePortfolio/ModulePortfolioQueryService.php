@@ -345,8 +345,13 @@ final class ModulePortfolioQueryService
                     ->whereIn('ofcl.fiscal_category_id', $categoryIds);
             });
 
-        if ($filters->clientId !== null) {
-            $q->where('clients.id', $filters->clientId);
+        $clientIds = $filters->clientIdList();
+        if ($clientIds !== []) {
+            if (count($clientIds) === 1) {
+                $q->where('clients.id', $clientIds[0]);
+            } else {
+                $q->whereIn('clients.id', $clientIds);
+            }
         }
 
         if ($filters->q !== null) {

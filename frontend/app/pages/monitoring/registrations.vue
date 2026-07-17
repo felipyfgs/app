@@ -39,23 +39,23 @@ const statusItems = [
 ]
 const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({
   status: status.value,
-  clientId: clientId.value
+  clientIds: clientId.value != null && clientId.value >= 1 ? [clientId.value] : []
 }))
 const filterConfig: MonitoringFilterConfig = {
   search: false,
   fields: [
     { key: 'status', kind: 'option', label: 'Status', items: statusItems },
-    { key: 'clientId', kind: 'client', label: 'Cliente' }
+    { key: 'clientId', kind: 'client', label: 'Cliente', multiple: false }
   ]
 }
 
 async function applyFilters(nextValue: MonitoringFilterValue) {
   const next = normalizeMonitoringFilters(nextValue)
-  if (status.value === next.status && clientId.value === next.clientId) return
+  if (status.value === next.status && (clientId.value ?? null) === (next.clientIds[0] ?? null) && next.clientIds.length <= 1) return
   filterTransactionDepth += 1
   try {
     status.value = next.status
-    clientId.value = next.clientId
+    clientId.value = next.clientIds[0] ?? null
     page.value = 1
     await nextTick()
   } finally {

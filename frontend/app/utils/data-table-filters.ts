@@ -77,6 +77,39 @@ export function isMultipleOption(
   return definition.kind === 'option' && definition.multiple === true
 }
 
+export function isMultipleClient(
+  definition: DataTableFilterDefinition
+): definition is Extract<DataTableFilterDefinition, { kind: 'client' }> & { multiple: true } {
+  return definition.kind === 'client' && definition.multiple === true
+}
+
+/**
+ * Serializa ids de cliente (unique + sort numérico).
+ * Mesma regra de CSV que options — ids positivos apenas.
+ */
+export function encodeClientIds(ids: readonly number[]): string {
+  const unique = new Set<number>()
+  for (const raw of ids) {
+    const id = Math.floor(Number(raw))
+    if (Number.isFinite(id) && id >= 1) unique.add(id)
+  }
+  return [...unique].sort((a, b) => a - b).join(',')
+}
+
+/** Parse de client id único, CSV "1,2" ou array. */
+export function decodeClientIds(value: unknown): number[] {
+  if (value == null || value === '') return []
+  if (Array.isArray(value)) {
+    return encodeClientIds(value.map(Number)).split(',').filter(Boolean).map(Number)
+  }
+  if (typeof value === 'number') {
+    return encodeClientIds([value]) ? [Math.floor(value)].filter(id => id >= 1) : []
+  }
+  const parts = String(value).split(',').map(part => Math.floor(Number(part.trim())))
+  const encoded = encodeClientIds(parts)
+  return encoded ? encoded.split(',').map(Number) : []
+}
+
 /** Rótulos visíveis no chip multi; o resto vira `+N`. */
 export const CHIP_OPTION_LABEL_MAX = 2
 
@@ -141,6 +174,7 @@ export function isEmptyFilterValue(
 ): boolean {
   if (value === undefined || value === null) return true
   if (definition.kind === 'client') {
+    if (definition.multiple) return decodeClientIds(value).length === 0
     const n = Number(value)
     return !Number.isFinite(n) || n <= 0
   }
@@ -213,6 +247,7 @@ function operatorForDefinition(
 ): DataTableFilterOperator {
   if (definition.kind === 'date_range') return 'between'
   if (definition.kind === 'option' && definition.multiple) return 'in'
+  if (definition.kind === 'client' && definition.multiple) return 'in'
   if (definition.kind === 'text') return definition.operator === 'contains' ? 'contains' : 'eq'
   return 'eq'
 }
@@ -229,6 +264,17 @@ export function createFilterModel(
   if (definition.kind === 'date_range' && !isValidDateRangeValue(value)) return null
 
   if (definition.kind === 'client') {
+    if (definition.multiple) {
+      const ids = decodeClientIds(value)
+      if (ids.length === 0) return null
+      const encoded = encodeClientIds(ids)
+      return {
+        key: definition.key,
+        operator: 'in',
+        value: encoded,
+        label: label?.trim() || (ids.length === 1 ? `#${ids[0]}` : `${ids.length} clientes`)
+      }
+    }
     const id = Math.floor(Number(value))
     if (!Number.isFinite(id) || id <= 0) return null
     return {
@@ -346,6 +392,7 @@ export function canConfirmDraftValue(
   if (definition.kind === 'month') return isValidMonthValue(value)
   if (definition.kind === 'date') return isValidDateValue(value)
   if (definition.kind === 'client') {
+    if (definition.multiple) return decodeClientIds(value).length > 0
     const n = Number(value)
     return Number.isFinite(n) && n > 0
   }
@@ -385,6 +432,28 @@ export function formatChipDisplay(
       valueLabel = model.label?.trim()
         || optionLabel(definition.items, String(model.value))
     }
+  } else if (definition.kind === 'client' && definition.multiple) {
+    const ids = decodeClientIds(model.value)
+    multiTokenCount = ids.length
+    if (model.label?.trim() && !model.label.includes(',')) {
+      // label de um nome único
+      valueLabel = model.label.trim()
+    } else if (model.label?.trim() && ids.length <= CHIP_OPTION_LABEL_MAX) {
+      valueLabel = model.label.trim()
+    } else if (ids.length === 0) {
+      valueLabel = model.label?.trim() || '—'
+    } else if (ids.length === 1) {
+      valueLabel = model.label?.trim() || `#${ids[0]}`
+    } else {
+      // Preferir label composto se parecer lista de nomes; senão contagem.
+      const label = model.label?.trim()
+      if (label && label.includes(',')) {
+        const parts = label.split(',').map(part => part.trim()).filter(Boolean)
+        valueLabel = formatOptionChipValueLabel(parts)
+      } else {
+        valueLabel = `${ids.length} clientes`
+      }
+    }
   } else if (model.label?.trim()) {
     valueLabel = model.label.trim()
   } else if (definition.kind === 'boolean') {
@@ -401,10 +470,16 @@ export function formatChipDisplay(
     operatorLabel = 'contém'
   } else if (model.operator === 'between' || definition.kind === 'date_range') {
     operatorLabel = 'entre'
-  } else if (model.operator === 'in' || (definition.kind === 'option' && definition.multiple)) {
-    operatorLabel = multiTokenCount > 1 || decodeOptionValues(model.value).length > 1
-      ? 'é um de'
-      : 'é'
+  } else if (
+    model.operator === 'in'
+    || (definition.kind === 'option' && definition.multiple)
+    || (definition.kind === 'client' && definition.multiple)
+  ) {
+    const n = multiTokenCount
+      || (definition.kind === 'client'
+        ? decodeClientIds(model.value).length
+        : decodeOptionValues(model.value).length)
+    operatorLabel = n > 1 ? 'é um de' : 'é'
   }
 
   return {
@@ -438,10 +513,35 @@ export function removeFilterModel(
 export function draftEmptyValue(
   definition: DataTableFilterDefinition
 ): string | number | boolean | null {
-  if (definition.kind === 'client' || definition.kind === 'boolean') return null
+  if (definition.kind === 'boolean') return null
+  if (definition.kind === 'client') {
+    return definition.multiple ? '' : null
+  }
   if (definition.kind === 'month' || definition.kind === 'date' || definition.kind === 'date_range' || definition.kind === 'text') {
     return ''
   }
   if (definition.kind === 'option' && definition.multiple) return ''
   return definition.emptyValue ?? 'all'
+}
+
+/** Ícone Lucide por kind de filtro (seletor + chip). */
+export function filterKindIcon(definition: DataTableFilterDefinition): string {
+  switch (definition.kind) {
+    case 'client':
+      return definition.multiple ? 'i-lucide-users' : 'i-lucide-user'
+    case 'month':
+      return 'i-lucide-calendar-range'
+    case 'date':
+      return 'i-lucide-calendar'
+    case 'date_range':
+      return 'i-lucide-calendar-clock'
+    case 'text':
+      return 'i-lucide-text-cursor-input'
+    case 'boolean':
+      return 'i-lucide-toggle-left'
+    case 'option':
+      return definition.multiple ? 'i-lucide-tags' : 'i-lucide-list-filter'
+    default:
+      return 'i-lucide-list-filter'
+  }
 }

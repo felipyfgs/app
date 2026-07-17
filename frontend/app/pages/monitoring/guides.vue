@@ -59,7 +59,7 @@ const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters
   q: q.value,
   // Competência não é filtro da UI de Guias (endpoint não aplica).
   competence: '',
-  clientId: Number(clientId.value) || null,
+  clientIds: Number(clientId.value) >= 1 ? [Number(clientId.value)] : [],
   paymentStatus: paymentStatus.value
 }))
 const filterConfig: MonitoringFilterConfig = {
@@ -67,7 +67,7 @@ const filterConfig: MonitoringFilterConfig = {
   search: false,
   // Endpoint atual não aplica competência — não expor na UI.
   fields: [
-    { key: 'clientId', kind: 'client', label: 'Cliente' },
+    { key: 'clientId', kind: 'client', label: 'Cliente', multiple: false },
     {
       key: 'paymentStatus',
       kind: 'option',
@@ -336,7 +336,7 @@ async function applyModuleFilters(nextValue: MonitoringFilterValue) {
   const next = normalizeMonitoringFilters(nextValue)
   // UI de Guias não expõe competência — sempre limpar residual.
   next.competence = ''
-  const nextClientId = next.clientId ? String(next.clientId) : ''
+  const nextClientId = next.clientIds[0] ? String(next.clientIds[0]) : ''
   if (
     q.value === next.q
     && clientId.value === nextClientId

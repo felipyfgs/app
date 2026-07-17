@@ -52,21 +52,21 @@ describe('monitoring filters', () => {
       modality: 'all',
       q: '',
       situation: 'all',
-      clientId: null
+      clientIds: []
     })
   })
 
   it('normaliza todos os campos em um único valor controlado', () => {
     expect(normalizeMonitoringFilters({
       q: ' ACME ',
-      clientId: 12.8,
+      clientIds: [12],
       status: '',
       coverage: '',
       modality: undefined
     })).toEqual({
       ...EMPTY_MONITORING_FILTERS,
       q: 'ACME',
-      clientId: 12,
+      clientIds: [12],
       status: 'all',
       coverage: 'all',
       modality: 'all'
@@ -78,7 +78,7 @@ describe('monitoring filters', () => {
       q: 'fora do contador',
       situation: 'PENDING',
       competence: '2026-07',
-      clientId: 42,
+      clientIds: [42],
       status: 'ACTIVE',
       coverage: 'FULL',
       modality: 'PARCSN'
@@ -143,7 +143,7 @@ describe('monitoring filters', () => {
       q: 'busca',
       situation: 'PENDING',
       competence: '2026-07',
-      clientId: 7,
+      clientIds: [7],
       status: 'all',
       coverage: 'PARTIAL',
       modality: 'all'
@@ -157,7 +157,7 @@ describe('monitoring filters', () => {
       q: 'busca',
       situation: 'PENDING',
       competence: '2026-07',
-      clientId: 7,
+      clientIds: [7],
       status: 'all',
       coverage: 'PARTIAL',
       modality: 'all'

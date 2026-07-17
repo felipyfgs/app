@@ -77,7 +77,7 @@ describe('saved-list-filters monitoring adapters', () => {
       q: '  ACME  ',
       situation: 'PENDING',
       competence: '2026-07',
-      clientId: 7,
+      clientIds: [7],
       status: 'all'
     })
     const payload = monitoringFiltersToPayload(filters, config, 'Cliente 7')
@@ -85,7 +85,8 @@ describe('saved-list-filters monitoring adapters', () => {
     expect(payload.q).toBe('ACME')
     expect(payload.filters.map(f => f.key)).toEqual(['situation', 'competence', 'clientId'])
     expect(payload.filters.find(f => f.key === 'clientId')).toMatchObject({
-      value: 7,
+      operator: 'in',
+      value: '7',
       label: 'Cliente 7'
     })
     expect(payload.filters.some(f => f.key === 'status')).toBe(false)
@@ -110,7 +111,7 @@ describe('saved-list-filters monitoring adapters', () => {
       q: 'busca',
       situation: 'PENDING',
       competence: '2026-07',
-      clientId: 3
+      clientIds: [3]
     })
     const payload = monitoringFiltersToPayload(original, config, 'Cli')
     const back = monitoringPayloadToFilters(payload, config)
@@ -118,7 +119,7 @@ describe('saved-list-filters monitoring adapters', () => {
       q: 'busca',
       situation: 'PENDING',
       competence: '2026-07',
-      clientId: 3,
+      clientIds: [3],
       status: 'all',
       deliveryStatus: 'all',
       paymentStatus: 'all',

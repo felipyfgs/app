@@ -9,7 +9,8 @@ use App\Enums\TaxInstallmentModality;
 /**
  * Filtros normalizados da carteira/overview (mesmo escopo para contadores e lista).
  *
- * Eixos option aceitam valor único ou lista CSV / array (ex.: situation=PENDING,ATTENTION).
+ * Eixos option e client_id aceitam valor único ou lista CSV / array
+ * (ex.: situation=PENDING,ATTENTION; client_id=12,34).
  * Propriedades string guardam a forma canônica serializada (valores válidos, sorted, join `,`).
  */
 final readonly class ModulePortfolioFilters
@@ -24,7 +25,8 @@ final readonly class ModulePortfolioFilters
         public ?string $deliveryStatus = null,
         public string $sort = 'legal_name',
         public string $sortDirection = 'asc',
-        public ?int $clientId = null,
+        /** CSV de ids positivos canônicos (ex.: "12,34"); null = sem filtro. */
+        public ?string $clientId = null,
         public ?string $coverage = null,
         public ?string $modality = null,
     ) {}
@@ -81,12 +83,17 @@ final readonly class ModulePortfolioFilters
             $dir = 'asc';
         }
 
-        $clientId = isset($input['client_id']) && is_numeric($input['client_id'])
-            ? (int) $input['client_id']
-            : null;
-        if ($clientId !== null && $clientId < 1) {
-            $clientId = null;
-        }
+        $clientId = self::normalizeTokenList(
+            $input['client_id'] ?? null,
+            static function (string $token): ?string {
+                if (! is_numeric($token)) {
+                    return null;
+                }
+                $id = (int) $token;
+
+                return $id >= 1 ? (string) $id : null;
+            },
+        );
 
         $coverage = self::normalizeTokenList(
             $input['coverage'] ?? null,
@@ -144,6 +151,25 @@ final readonly class ModulePortfolioFilters
     }
 
     /**
+     * @return list<int>
+     */
+    public function clientIdList(): array
+    {
+        $out = [];
+        foreach (self::splitList($this->clientId) as $token) {
+            if (! is_numeric($token)) {
+                continue;
+            }
+            $id = (int) $token;
+            if ($id >= 1) {
+                $out[] = $id;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
      * @return list<string>
      */
     public function deliveryStatusList(): array
@@ -194,6 +220,8 @@ final readonly class ModulePortfolioFilters
             }
         } elseif (is_string($raw)) {
             $tokens = preg_split('/\s*,\s*/', trim($raw)) ?: [];
+        } elseif (is_numeric($raw)) {
+            $tokens = [(string) $raw];
         } else {
             return null;
         }

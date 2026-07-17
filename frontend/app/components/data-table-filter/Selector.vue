@@ -5,6 +5,7 @@
  */
 import type { DataTableFilterDefinition } from '~/types/data-table-filter'
 import type { CommandPaletteGroup, CommandPaletteItem } from '@nuxt/ui'
+import { filterKindIcon } from '~/utils/data-table-filters'
 
 const props = defineProps<{
   definitions: readonly DataTableFilterDefinition[]
@@ -20,11 +21,7 @@ const groups = computed<CommandPaletteGroup[]>(() => [{
   items: props.definitions.map((definition): CommandPaletteItem & { key: string } => ({
     key: definition.key,
     label: definition.label,
-    icon: definition.kind === 'client'
-      ? 'i-lucide-user'
-      : definition.kind === 'month'
-        ? 'i-lucide-calendar'
-        : 'i-lucide-list-filter',
+    icon: filterKindIcon(definition),
     onSelect: () => emit('select', definition.key)
   }))
 }])

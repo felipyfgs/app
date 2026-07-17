@@ -4,7 +4,7 @@
  * Rótulo: "Campo é Valor" com espaçamento explícito (evita "SituaçãoéBloqueado").
  */
 import type { DataTableFilterDefinition, DataTableFilterModel } from '~/types/data-table-filter'
-import { formatChipDisplay } from '~/utils/data-table-filters'
+import { filterKindIcon, formatChipDisplay } from '~/utils/data-table-filters'
 
 const props = defineProps<{
   definition: DataTableFilterDefinition
@@ -17,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const display = computed(() => formatChipDisplay(props.definition, props.model))
+const kindIcon = computed(() => filterKindIcon(props.definition))
 
 /** Texto legível com espaços reais (acessibilidade + fallback visual). */
 const labelText = computed(
@@ -39,7 +40,12 @@ const removeAria = computed(() => `Remover filtro ${display.value.fieldLabel}`)
       data-testid="data-table-filter-chip-edit"
       @click="emit('edit')"
     >
-      <span class="inline-flex max-w-64 min-w-0 items-center gap-1.5">
+      <span class="inline-flex max-w-72 min-w-0 items-center gap-1.5">
+        <UIcon
+          :name="kindIcon"
+          class="size-3.5 shrink-0 text-muted"
+          aria-hidden="true"
+        />
         <span class="truncate text-muted">{{ display.fieldLabel }}</span>
         <span class="shrink-0 text-dimmed">{{ display.operatorLabel }}</span>
         <span class="truncate font-medium text-highlighted">{{ display.valueLabel }}</span>

@@ -35,6 +35,11 @@ export type DataTableFilterDefinition
     kind: 'client'
     label: string
     emptyValue?: null
+    /**
+     * Vários clientes (valor "1,2,3", operator `in`).
+     * Default false (um id numérico / `eq`).
+     */
+    multiple?: boolean
   }
   | {
     key: string
@@ -70,7 +75,8 @@ export type DataTableFilterDefinition
  * Modelo aplicado (chip).
  * - option/month/text/date: string
  * - option multiple: "valor1,valor2" (operator `in`)
- * - client: number (id)
+ * - client single: number (id)
+ * - client multiple: "1,2,3" (operator `in`)
  * - boolean: boolean
  * - date_range: "YYYY-MM-DD..YYYY-MM-DD"
  */

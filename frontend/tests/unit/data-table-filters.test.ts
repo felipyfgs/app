@@ -3,9 +3,12 @@ import type { DataTableFilterDefinition, DataTableFilterModel } from '../../app/
 import {
   canConfirmDraftValue,
   createFilterModel,
+  decodeClientIds,
   decodeOptionValues,
+  encodeClientIds,
   encodeDateRange,
   encodeOptionValues,
+  filterKindIcon,
   formatChipDisplay,
   formatOptionChipValueLabel,
   inactiveDefinitions,
@@ -34,7 +37,7 @@ const definitions: DataTableFilterDefinition[] = [
     multiple: true
   },
   { key: 'competence', kind: 'month', label: 'Competência', emptyValue: '' },
-  { key: 'clientId', kind: 'client', label: 'Cliente', emptyValue: null },
+  { key: 'clientId', kind: 'client', label: 'Cliente', emptyValue: null, multiple: true },
   { key: 'process_number', kind: 'text', label: 'Processo', operator: 'contains' },
   { key: 'is_overdue', kind: 'boolean', label: 'Em atraso', trueLabel: 'Sim', falseLabel: 'Não' },
   { key: 'due_at', kind: 'date', label: 'Vencimento' },
@@ -74,16 +77,31 @@ describe('data-table-filters', () => {
 
   it('deduplica por chave e ordena conforme definitions', () => {
     const models: DataTableFilterModel[] = [
-      { key: 'clientId', operator: 'eq', value: 9, label: 'Z' },
+      { key: 'clientId', operator: 'in', value: '9', label: 'Z' },
       { key: 'situation', operator: 'eq', value: 'PENDING' },
-      { key: 'clientId', operator: 'eq', value: 3, label: 'A' },
+      { key: 'clientId', operator: 'in', value: '3', label: 'A' },
       { key: 'competence', operator: 'eq', value: '2026-01' }
     ]
     expect(normalizeFilterModels(models, definitions)).toEqual([
       { key: 'situation', operator: 'in', value: 'PENDING', label: 'Pendente' },
       { key: 'competence', operator: 'eq', value: '2026-01', label: '2026-01' },
-      { key: 'clientId', operator: 'eq', value: 3, label: 'A' }
+      { key: 'clientId', operator: 'in', value: '3', label: 'A' }
     ])
+  })
+
+  it('client multiple serializa ids e chip é um de', () => {
+    expect(encodeClientIds([3, 1, 3])).toBe('1,3')
+    expect(decodeClientIds('3,1,0')).toEqual([1, 3])
+    const model = createFilterModel(definitions[2]!, '3,1', 'Acme, Beta')
+    expect(model).toMatchObject({
+      key: 'clientId',
+      operator: 'in',
+      value: '1,3',
+      label: 'Acme, Beta'
+    })
+    const display = formatChipDisplay(definitions[2]!, model!)
+    expect(display.operatorLabel).toBe('é um de')
+    expect(filterKindIcon(definitions[2]!)).toBe('i-lucide-users')
   })
 
   it('option multiple serializa IN com rótulos e chip "é um de"', () => {

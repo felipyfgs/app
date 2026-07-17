@@ -22,6 +22,7 @@ import {
   surfaceAllowsDocument
 } from '~/types/fiscal-modules'
 import { laravelPageBatch, usePagedTable } from '~/composables/usePagedTable'
+import { encodeClientIds } from '~/utils/data-table-filters'
 import {
   hasActiveMonitoringFilters,
   normalizeMonitoringFilters,
@@ -82,7 +83,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   const submodule = options.submodule ?? ref('')
   const deliveryStatus = options.deliveryStatus
     ?? ref('all')
-  const clientId = ref<number | null>(null)
+  const clientIds = ref<number[]>([])
   const coverage = ref('all')
   const modality = ref('all')
   const sorting = ref<FiscalModuleSortingState>([{ id: 'client', desc: false }])
@@ -90,7 +91,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     q: q.value,
     situation: situation.value,
     competence: competence.value,
-    clientId: clientId.value,
+    clientIds: clientIds.value,
     deliveryStatus: deliveryStatus.value,
     coverage: coverage.value,
     modality: modality.value
@@ -130,10 +131,10 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
         deliveryStatus.value && deliveryStatus.value !== 'all'
           ? deliveryStatus.value
           : undefined,
-      client_id:
-        clientId.value != null && clientId.value >= 1
-          ? clientId.value
-          : undefined,
+      client_id: (() => {
+        const encoded = encodeClientIds(clientIds.value)
+        return encoded || undefined
+      })(),
       coverage:
         coverage.value && coverage.value !== 'all'
           ? coverage.value
@@ -229,7 +230,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     q: q.value,
     situation: situation.value,
     competence: competence.value,
-    clientId: clientId.value,
+    clientIds: clientIds.value,
     deliveryStatus: deliveryStatus.value,
     coverage: coverage.value,
     modality: modality.value
@@ -355,10 +356,11 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     const nextCoverage = next.coverage || 'all'
     const nextModality = next.modality || 'all'
 
+    const clientSig = (ids: number[]) => encodeClientIds(ids)
     const advancedChanged = q.value !== next.q
       || competence.value !== next.competence
       || deliveryStatus.value !== nextDeliveryStatus
-      || clientId.value !== next.clientId
+      || clientSig(clientIds.value) !== clientSig(next.clientIds)
       || coverage.value !== nextCoverage
       || modality.value !== nextModality
     const situationChanged = situation.value !== nextSituation
@@ -371,7 +373,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
       situation.value = nextSituation
       competence.value = next.competence
       deliveryStatus.value = nextDeliveryStatus
-      clientId.value = next.clientId
+      clientIds.value = [...next.clientIds]
       coverage.value = nextCoverage
       modality.value = nextModality
       resetPage()
@@ -417,12 +419,13 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
 
   // Filtros avançados: recarregam contadores (overview) + lista.
   watch(
-    [q, competence, submodule, deliveryStatus, clientId, coverage, modality],
+    [q, competence, submodule, deliveryStatus, clientIds, coverage, modality],
     () => {
       if (!ready || filterTransactionDepth > 0) return
       resetPage()
       void load()
-    }
+    },
+    { deep: true }
   )
 
   // Cápsula de situação + ordenação: só a lista — badges das cápsulas ficam estáveis.
@@ -461,7 +464,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
       q.value = ''
       situation.value = 'all'
       competence.value = ''
-      clientId.value = null
+      clientIds.value = []
       deliveryStatus.value = 'all'
       coverage.value = 'all'
       modality.value = 'all'
@@ -509,7 +512,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     competence,
     submodule,
     deliveryStatus,
-    clientId,
+    clientIds,
     coverage,
     modality,
     filters,

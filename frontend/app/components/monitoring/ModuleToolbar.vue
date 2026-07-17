@@ -113,9 +113,9 @@ watch(() => appliedFilters.value.q, (value) => {
 const clientLabelCache = ref<string | null>(null)
 
 watch(
-  () => appliedFilters.value.clientId,
-  (id) => {
-    if (id == null) clientLabelCache.value = null
+  () => appliedFilters.value.clientIds,
+  (ids) => {
+    if (!ids?.length) clientLabelCache.value = null
   }
 )
 

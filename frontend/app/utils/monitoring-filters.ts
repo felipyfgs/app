@@ -8,6 +8,8 @@ import type {
 import { fiscalSituationFilterItems } from '~/utils/fiscal-status'
 import {
   createFilterModel,
+  decodeClientIds,
+  encodeClientIds,
   normalizeFilterModels
 } from '~/utils/data-table-filters'
 
@@ -15,7 +17,7 @@ export const EMPTY_MONITORING_FILTERS: Readonly<MonitoringFilterValue> = Object.
   q: '',
   situation: 'all',
   competence: '',
-  clientId: null,
+  clientIds: Object.freeze([]) as number[],
   deliveryStatus: 'all',
   paymentStatus: 'all',
   status: 'all',
@@ -23,19 +25,29 @@ export const EMPTY_MONITORING_FILTERS: Readonly<MonitoringFilterValue> = Object.
   modality: 'all'
 })
 
-function normalizeClientId(value: unknown): number | null {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null
+/** Aceita clientIds[], clientId legado (número) ou CSV. */
+function normalizeClientIds(value: unknown, legacySingle?: unknown): number[] {
+  if (Array.isArray(value) || (typeof value === 'string' && value.includes(','))) {
+    return decodeClientIds(value)
+  }
+  if (value != null && value !== '') {
+    return decodeClientIds(value)
+  }
+  if (legacySingle != null && legacySingle !== '') {
+    return decodeClientIds(legacySingle)
+  }
+  return []
 }
 
 export function normalizeMonitoringFilters(
-  value?: Partial<MonitoringFilterValue> | null
+  value?: (Partial<MonitoringFilterValue> & { clientId?: number | string | null }) | null
 ): MonitoringFilterValue {
+  const legacy = value as { clientId?: unknown } | null | undefined
   return {
     q: String(value?.q ?? '').trim(),
     situation: String(value?.situation || 'all'),
     competence: String(value?.competence ?? '').trim(),
-    clientId: normalizeClientId(value?.clientId),
+    clientIds: normalizeClientIds(value?.clientIds, legacy?.clientId),
     deliveryStatus: String(value?.deliveryStatus || 'all'),
     paymentStatus: String(value?.paymentStatus || 'all'),
     status: String(value?.status || 'all'),
@@ -45,7 +57,10 @@ export function normalizeMonitoringFilters(
 }
 
 export function resetMonitoringFilters(): MonitoringFilterValue {
-  return { ...EMPTY_MONITORING_FILTERS }
+  return {
+    ...EMPTY_MONITORING_FILTERS,
+    clientIds: []
+  }
 }
 
 /**
@@ -60,7 +75,7 @@ export function hasActiveMonitoringFilters(
     n.q
     || (n.situation && n.situation !== 'all')
     || n.competence
-    || n.clientId != null
+    || n.clientIds.length > 0
     || (n.deliveryStatus && n.deliveryStatus !== 'all')
     || (n.paymentStatus && n.paymentStatus !== 'all')
     || (n.status && n.status !== 'all')
@@ -133,7 +148,14 @@ export function monitoringFieldsToDefinitions(
 ): DataTableFilterDefinition[] {
   return fields.map((field): DataTableFilterDefinition => {
     if (field.kind === 'client') {
-      return { key: field.key, kind: 'client', label: field.label, emptyValue: null }
+      return {
+        key: field.key,
+        kind: 'client',
+        label: field.label,
+        emptyValue: null,
+        // Portfolio: multi por default; override field.multiple=false se necessário.
+        multiple: field.multiple ?? true
+      }
     }
     if (field.kind === 'month') {
       return { key: field.key, kind: 'month', label: field.label, emptyValue: '' }
@@ -188,8 +210,16 @@ export function monitoringFiltersToModels(
       continue
     }
     if (definition.key === 'clientId') {
-      if (filters.clientId == null) continue
-      const model = createFilterModel(definition, filters.clientId, clientLabel || undefined)
+      const ids = filters.clientIds || []
+      if (ids.length === 0) continue
+      const value = definition.kind === 'client' && definition.multiple
+        ? encodeClientIds(ids)
+        : ids[0]!
+      const model = createFilterModel(
+        definition,
+        value,
+        clientLabel || (ids.length > 1 ? `${ids.length} clientes` : undefined)
+      )
       if (model) raw.push(model)
       continue
     }
@@ -218,7 +248,7 @@ export function modelsToMonitoringFilters(
   for (const definition of definitions) {
     const model = byKey.get(definition.key)
     if (definition.key === 'clientId') {
-      next.clientId = model ? Number(model.value) : null
+      next.clientIds = model ? decodeClientIds(model.value) : []
       continue
     }
     if (definition.key === 'competence') {
@@ -237,7 +267,7 @@ export function monitoringAdvancedFieldActive(
   filters: MonitoringFilterValue,
   field: MonitoringAdvancedFilterField | MonitoringStructuredFilterField
 ): boolean {
-  if (field.key === 'clientId') return filters.clientId != null
+  if (field.key === 'clientId') return (filters.clientIds?.length ?? 0) > 0
   if (field.key === 'competence') return String(filters.competence || '').trim() !== ''
   if (field.key === 'situation') {
     return String(filters.situation || '').trim() !== '' && filters.situation !== 'all'
@@ -274,7 +304,7 @@ export function monitoringFilterSignature(filters: MonitoringFilterValue): strin
     normalized.q,
     normalized.situation,
     normalized.competence,
-    normalized.clientId,
+    encodeClientIds(normalized.clientIds),
     normalized.deliveryStatus,
     normalized.paymentStatus,
     normalized.status,
@@ -295,7 +325,7 @@ export function isMonitoringStructuredFieldEmpty(
   key: keyof MonitoringFilterValue,
   value: unknown
 ): boolean {
-  if (key === 'clientId') return value == null || Number(value) <= 0
+  if (key === 'clientIds') return !Array.isArray(value) || value.length === 0
   if (key === 'competence' || key === 'q') return String(value ?? '').trim() === ''
   return value === 'all' || value === '' || value == null
 }

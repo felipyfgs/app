@@ -5,7 +5,9 @@
  */
 import type { DataTableFilterDefinition } from '~/types/data-table-filter'
 import {
+  decodeClientIds,
   decodeOptionValues,
+  encodeClientIds,
   encodeOptionValues,
   isValidDateValue,
   isValidMonthValue,
@@ -170,6 +172,17 @@ function onBoolean(value: string) {
   emit('update:label', item?.label)
 }
 
+const isClientMultiple = computed(
+  () => props.definition.kind === 'client' && props.definition.multiple === true
+)
+
+const multiClientModel = computed({
+  get: () => decodeClientIds(props.modelValue),
+  set: (ids: number[]) => {
+    emit('update:modelValue', encodeClientIds(ids) || '')
+  }
+})
+
 function onClientId(value: number | null) {
   emit('update:modelValue', value)
 }
@@ -186,6 +199,19 @@ function onClientSelect(client: {
   }
   const name = client.display_name || client.legal_name || client.name || 'Cliente'
   emit('update:label', name)
+}
+
+function onClientSelectMany(clients: Array<{
+  display_name?: string | null
+  legal_name?: string | null
+  name?: string | null
+}>) {
+  if (!clients.length) {
+    emit('update:label', undefined)
+    return
+  }
+  const names = clients.map(c => c.display_name || c.legal_name || c.name || 'Cliente')
+  emit('update:label', names.join(', '))
 }
 </script>
 
@@ -257,6 +283,38 @@ function onClientSelect(client: {
     </UFormField>
 
     <UFormField
+      v-else-if="definition.kind === 'client' && isClientMultiple"
+      :label="definition.label"
+      class="min-w-0"
+      hint="Um ou mais clientes"
+    >
+      <slot
+        name="client"
+        :model-value="multiClientModel"
+        :multiple="true"
+        :update="(v: number | number[] | null) => {
+          multiClientModel = Array.isArray(v) ? v : (v != null ? [v] : [])
+        }"
+        :select="onClientSelect"
+        :select-many="onClientSelectMany"
+      >
+        <FiscalClientPicker
+          :model-value="multiClientModel"
+          multiple
+          search-mode="select"
+          placeholder="Buscar e adicionar clientes"
+          class="w-full min-w-0"
+          data-testid="data-table-filter-client-multi"
+          @update:model-value="(v) => {
+            multiClientModel = Array.isArray(v) ? v : (typeof v === 'number' ? [v] : [])
+          }"
+          @select="onClientSelect"
+          @select-many="onClientSelectMany"
+        />
+      </slot>
+    </UFormField>
+
+    <UFormField
       v-else-if="definition.kind === 'client'"
       :label="definition.label"
       class="min-w-0"
@@ -264,6 +322,7 @@ function onClientSelect(client: {
       <slot
         name="client"
         :model-value="typeof modelValue === 'number' ? modelValue : null"
+        :multiple="false"
         :update="onClientId"
         :select="onClientSelect"
       >

@@ -138,7 +138,7 @@ function onDraftLabel(label: string | undefined) {
         v-if="canAdd"
         color="neutral"
         variant="outline"
-        icon="i-lucide-list-filter"
+        icon="i-lucide-funnel-plus"
         :label="addLabel"
         data-testid="data-table-filter-add"
       />
@@ -192,7 +192,7 @@ function onDraftLabel(label: string | undefined) {
         v-if="canAdd"
         color="neutral"
         variant="outline"
-        icon="i-lucide-list-filter"
+        icon="i-lucide-funnel-plus"
         :label="addLabel"
         data-testid="data-table-filter-add"
         @click="openSelector"

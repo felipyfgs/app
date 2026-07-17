@@ -91,4 +91,25 @@ class ModulePortfolioFiltersTest extends TestCase
         $this->assertSame('PENDING', $f->situation);
         $this->assertSame('PARCSN', $f->modality);
     }
+
+    public function test_from_request_client_id_multi_csv_e_array(): void
+    {
+        $csv = ModulePortfolioFilters::fromRequest([
+            'client_id' => '3,1,3,0,-1',
+        ]);
+        $this->assertSame('1,3', $csv->clientId);
+        $this->assertSame([1, 3], $csv->clientIdList());
+
+        $array = ModulePortfolioFilters::fromRequest([
+            'client_id' => [9, 2, 9],
+        ]);
+        $this->assertSame('2,9', $array->clientId);
+        $this->assertSame([2, 9], $array->clientIdList());
+
+        $single = ModulePortfolioFilters::fromRequest([
+            'client_id' => 7,
+        ]);
+        $this->assertSame('7', $single->clientId);
+        $this->assertSame([7], $single->clientIdList());
+    }
 }

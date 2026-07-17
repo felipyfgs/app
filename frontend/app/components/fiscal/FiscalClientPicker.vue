@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
  * Busca server-side de cliente por razão social, nome fantasia ou CNPJ.
- * Não exige ID numérico como fluxo principal.
+ * Single: um id; multiple: vários ids (carteira / filtros estruturados).
  */
 import type { Client } from '~/types/api'
 import { formatCnpj, normalizeCnpj } from '~/utils/format'
 
 const props = withDefaults(defineProps<{
-  modelValue?: number | null
+  /** Single: number | null. Multiple: number[]. */
+  modelValue?: number | number[] | null
+  multiple?: boolean
   /** Texto livre opcional (quando o pai controla só o q da carteira). */
   searchMode?: 'select' | 'query'
   placeholder?: string
@@ -15,32 +17,28 @@ const props = withDefaults(defineProps<{
   class?: string
 }>(), {
   modelValue: null,
+  multiple: false,
   searchMode: 'select',
   placeholder: 'Cliente (nome ou CNPJ)'
 })
 
 const emit = defineEmits<{
-  'update:modelValue': [value: number | null]
+  'update:modelValue': [value: number | number[] | null]
   'update:query': [value: string]
   'select': [client: Client | null]
+  /** Multi: emite lista de clientes conhecidos (rótulos). */
+  'select-many': [clients: Client[]]
 }>()
 
 const api = useApi()
 
 const searchTerm = ref('')
 const items = ref<Array<{ label: string, value: number, client: Client }>>([])
+/** Mantém itens já escolhidos no multi (fora da última busca). */
+const selectedCache = ref<Map<number, { label: string, value: number, client: Client }>>(new Map())
 const loading = ref(false)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let requestGen = 0
-
-const selected = computed<number | undefined>({
-  get: () => props.modelValue ?? undefined,
-  set: (v: number | undefined) => {
-    emit('update:modelValue', v ?? null)
-    const found = items.value.find(i => i.value === v)
-    emit('select', found?.client ?? null)
-  }
-})
 
 function toItem(c: Client) {
   const cnpj = c.cnpj || c.root_cnpj
@@ -53,6 +51,51 @@ function toItem(c: Client) {
   }
 }
 
+const menuItems = computed(() => {
+  if (!props.multiple) return items.value
+  const byId = new Map(items.value.map(item => [item.value, item]))
+  for (const [id, item] of selectedCache.value) {
+    if (!byId.has(id)) byId.set(id, item)
+  }
+  return [...byId.values()]
+})
+
+const selectedSingle = computed<number | undefined>({
+  get: () => {
+    if (props.multiple) return undefined
+    const v = props.modelValue
+    return typeof v === 'number' && v >= 1 ? v : undefined
+  },
+  set: (v: number | undefined) => {
+    emit('update:modelValue', v ?? null)
+    const found = menuItems.value.find(i => i.value === v)
+    emit('select', found?.client ?? null)
+  }
+})
+
+const selectedMulti = computed<number[]>({
+  get: () => {
+    if (!props.multiple) return []
+    const v = props.modelValue
+    if (Array.isArray(v)) return v.filter(id => Number.isFinite(id) && id >= 1)
+    if (typeof v === 'number' && v >= 1) return [v]
+    return []
+  },
+  set: (ids: number[]) => {
+    const unique = [...new Set(ids.map(id => Math.floor(Number(id))).filter(id => id >= 1))]
+    emit('update:modelValue', unique)
+    const clients = unique
+      .map(id => selectedCache.value.get(id)?.client || menuItems.value.find(i => i.value === id)?.client)
+      .filter((c): c is Client => c != null)
+    for (const c of clients) {
+      const item = toItem(c)
+      selectedCache.value.set(item.value, item)
+    }
+    emit('select-many', clients)
+    emit('select', clients[clients.length - 1] ?? null)
+  }
+})
+
 async function search(term: string) {
   const gen = ++requestGen
   const raw = term.trim()
@@ -64,7 +107,6 @@ async function search(term: string) {
 
   loading.value = true
   try {
-    // Normaliza CNPJ se o termo parecer documento.
     const digits = normalizeCnpj(raw)
     const q = digits.length >= 8 && /^[A-Z0-9]+$/i.test(digits) && digits.length <= 14
       ? digits
@@ -73,6 +115,11 @@ async function search(term: string) {
     const res = await api.clients.list({ q, per_page: 15, page: 1 })
     if (gen !== requestGen) return
     items.value = (res.data || []).map(toItem)
+    for (const item of items.value) {
+      if (selectedMulti.value.includes(item.value) || selectedSingle.value === item.value) {
+        selectedCache.value.set(item.value, item)
+      }
+    }
   } catch {
     if (gen !== requestGen) return
     items.value = []
@@ -90,7 +137,6 @@ function onSearchChange(term: string) {
   }, 280)
 }
 
-// query mode: só emite o texto (carteira usa `q` na API de modules/clients)
 function onQueryInput(value: string | number) {
   const term = String(value ?? '')
   searchTerm.value = term
@@ -108,16 +154,42 @@ onBeforeUnmount(() => {
     :class="props.class || 'w-56 sm:w-72'"
   >
     <UInputMenu
-      v-if="searchMode === 'select'"
-      v-model="selected"
+      v-if="searchMode === 'select' && multiple"
+      v-model="selectedMulti"
       v-model:search-term="searchTerm"
-      :items="items"
+      :items="menuItems"
+      value-key="value"
+      label-key="label"
+      multiple
+      :loading="loading"
+      :disabled="disabled"
+      :placeholder="placeholder || 'Clientes (nome ou CNPJ)'"
+      icon="i-lucide-users"
+      trailing-icon="i-lucide-chevrons-up-down"
+      ignore-filter
+      class="w-full"
+      aria-label="Selecionar clientes"
+      data-testid="fiscal-client-picker-multi"
+      @update:search-term="onSearchChange"
+    >
+      <template #empty>
+        <span class="text-sm text-muted">
+          {{ searchTerm.length < 2 ? 'Digite ao menos 2 caracteres' : 'Nenhum cliente encontrado' }}
+        </span>
+      </template>
+    </UInputMenu>
+
+    <UInputMenu
+      v-else-if="searchMode === 'select'"
+      v-model="selectedSingle"
+      v-model:search-term="searchTerm"
+      :items="menuItems"
       value-key="value"
       label-key="label"
       :loading="loading"
       :disabled="disabled"
       :placeholder="placeholder"
-      icon="i-lucide-search"
+      icon="i-lucide-user-search"
       trailing-icon="i-lucide-chevrons-up-down"
       ignore-filter
       class="w-full"
