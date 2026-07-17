@@ -62,8 +62,9 @@ export const FISCAL_MODULE_LABELS: Record<FiscalModuleKey, string> = {
 
 export const FISCAL_MODULE_PATHS: Record<FiscalModuleKey, string> = {
   dashboard: '/monitoring',
-  simples_mei: '/monitoring/simples-mei/pgdasd',
-  dctfweb: '/monitoring/dctfweb/dctfweb',
+  /** Path = item da sidebar; tabs PGDASD/PGMEI… via query `submodule`. */
+  simples_mei: '/monitoring/simples-mei',
+  dctfweb: '/monitoring/dctfweb',
   installments: '/monitoring/installments',
   sitfis: '/monitoring/sitfis',
   mailbox: '/monitoring/mailbox',
@@ -424,11 +425,191 @@ export interface FiscalClientRowBase<
   detail: D
 }
 
+export type PgdasdDeclarationState
+  = | 'CURRENT'
+    | 'DUE_WITHIN_DEADLINE'
+    | 'OVERDUE_NOT_FOUND'
+    | 'UNVERIFIED'
+
+export type PgdasdRbt12Status
+  = | 'PENDING'
+    | 'PARSED'
+    | 'RESOLVED'
+    | 'NO_DAS'
+    | 'NOT_FOUND'
+    | 'AMBIGUOUS'
+    | 'FAILED'
+
+export type PgdasdTrackingStatus
+  = | 'NOT_CONFIGURED'
+    | 'NO_HISTORY'
+    | 'QUEUED'
+    | 'SENT'
+    | 'DELIVERED'
+    | 'READ'
+    | 'PARTIAL'
+    | 'FAILED'
+    | 'CANCELED'
+
+export type PgdasdCommunicationChannel = 'EMAIL' | 'WHATSAPP'
+
+export interface PgdasdLatestDeclaration {
+  period_key?: string | null
+  declaration_number?: string | null
+  number?: string | null
+  operation_type?: string | null
+  transmitted_at?: string | null
+}
+
+export interface PgdasdRbt12Summary {
+  status?: PgdasdRbt12Status | string | null
+  /** Valor monetário formatável (string decimal) — preferido na API atual. */
+  rbt12_value?: string | null
+  total_cents?: number | null
+  internal_market_cents?: number | null
+  external_market_cents?: number | null
+  extracted_at?: string | null
+  availability_reason?: string | null
+  unavailable_reason?: string | null
+}
+
+/** Preferência pública: intenção registrada, sem envio efetivo nesta capacidade. */
+export interface PgdasdCommunicationPreference {
+  client_id?: number | null
+  automatic_requested: boolean
+  automatic_effective: false
+  email_enabled: boolean
+  whatsapp_enabled: boolean
+  lock_version: number
+  execution_mode: 'TEMPLATE_ONLY'
+  eligible_channels?: PgdasdCommunicationChannel[]
+  tracking_status?: PgdasdTrackingStatus | string | null
+}
+
+export interface PgdasdClientSummary {
+  expected_period_key?: string | null
+  latest_declaration?: PgdasdLatestDeclaration | null
+  declaration_state?: PgdasdDeclarationState | string | null
+  declaration_reason?: string | null
+  last_valid_query_at?: string | null
+  rbt12?: PgdasdRbt12Summary | null
+  communication?: PgdasdCommunicationPreference | null
+}
+
+export interface PgdasdArtifactDescriptor {
+  id: number
+  kind?: string | null
+  filename?: string | null
+  content_type?: string | null
+  byte_size?: number | null
+  observed_at?: string | null
+  download_href?: string | null
+}
+
+export interface PgdasdHistoryDeclaration extends PgdasdLatestDeclaration {
+  id?: number | null
+  normalized_operation_type?: string | null
+  malha?: string | boolean | null
+  documents?: PgdasdArtifactDescriptor[]
+}
+
+export interface PgdasdHistoryDas {
+  id?: number | null
+  normalized_operation_type?: string | null
+  das_number?: string | null
+  issued_at?: string | null
+  payment_located?: boolean | null
+  payment_observed_at?: string | null
+  documents?: PgdasdArtifactDescriptor[]
+}
+
+export interface PgdasdHistoryPeriod {
+  period_key?: string | null
+  declaration_state?: PgdasdDeclarationState | string | null
+  declaration_reason?: string | null
+  last_valid_query_at?: string | null
+  declarations?: PgdasdHistoryDeclaration[]
+  das?: PgdasdHistoryDas[]
+  artifacts?: PgdasdArtifactDescriptor[]
+  documents?: PgdasdArtifactDescriptor[]
+  rbt12?: PgdasdRbt12Summary | null
+}
+
+export interface PgdasdHistoryPayload {
+  client?: {
+    id?: number | null
+    legal_name?: string | null
+    cnpj_masked?: string | null
+  } | null
+  expected_period_key?: string | null
+  declaration_state?: PgdasdDeclarationState | string | null
+  declaration_state_reason?: string | null
+  last_valid_query_at?: string | null
+  periods?: PgdasdHistoryPeriod[]
+  history?: PgdasdHistoryPeriod[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
+export interface PgdasdCommunicationPreview {
+  client?: { id?: number | null, legal_name?: string | null } | null
+  period_key?: string | null
+  execution_mode: 'TEMPLATE_ONLY'
+  can_send: false
+  channels?: Array<{
+    channel: PgdasdCommunicationChannel | string
+    enabled: boolean
+    eligible: boolean
+    recipients?: Array<{
+      contact_id?: number | null
+      name?: string | null
+      masked?: string | null
+    }>
+  }>
+  documents?: PgdasdArtifactDescriptor[]
+  warnings?: string[]
+  preferences?: PgdasdCommunicationPreference | null
+}
+
+export interface PgdasdCommunicationTracking {
+  client_id?: number | null
+  status: PgdasdTrackingStatus | string
+  channels?: Array<{
+    channel: PgdasdCommunicationChannel | string
+    status: PgdasdTrackingStatus | string
+    dispatches?: Array<{
+      id?: number | null
+      status?: PgdasdTrackingStatus | string | null
+      recipient_masked?: string | null
+      period_key?: string | null
+      queued_at?: string | null
+      sent_at?: string | null
+      delivered_at?: string | null
+      read_at?: string | null
+      failed_at?: string | null
+      canceled_at?: string | null
+      events?: Array<{ status?: string | null, occurred_at?: string | null }>
+    }>
+  }>
+}
+
 export interface SimplesMeiClientDetail {
   module_key?: 'simples_mei' | string
   submodule?: string | null
   period_key?: string | null
   competence_id?: number | null
+  pgdasd?: PgdasdClientSummary | null
+  /** Campos espelhados no detail (além de detail.pgdasd) para tabela. */
+  declaration_state?: PgdasdDeclarationState | string | null
+  last_declaration?: PgdasdLatestDeclaration & {
+    numero_declaracao?: string | null
+    operation_kind?: string | null
+  } | null
+  rbt12?: PgdasdRbt12Summary | null
+  last_productive_consulted_at?: string | null
+  communication?: PgdasdCommunicationPreference | null
   links?: Record<string, string | null>
 }
 

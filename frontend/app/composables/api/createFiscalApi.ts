@@ -14,6 +14,11 @@ import type {
   FiscalModuleOverviewResponse,
   FiscalModulePortfolioFilters,
   FiscalPortfolioModuleKey,
+  PgdasdCommunicationPreference,
+  PgdasdCommunicationPreview,
+  PgdasdCommunicationTracking,
+  PgdasdHistoryPayload,
+  PgdasdHistoryPeriod,
   FiscalRegistrationLink,
   FiscalTaxProcess
 } from '~/types/fiscal-modules'
@@ -101,6 +106,54 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           ),
         get: (id: number) =>
           client<{ data: FiscalSnapshot }>(`/api/v1/fiscal/snapshots/${id}`)
+      },
+      pgdasd: {
+        history: (clientId: number, params?: { year?: number }) =>
+          client<{ data: PgdasdHistoryPayload | PgdasdHistoryPeriod[] }>(
+            `/api/v1/fiscal/simples-mei/pgdasd/clients/${clientId}/history`,
+            { query: params }
+          ),
+        collectDocuments: (
+          clientId: number,
+          body: { period_key: string, declaration_number?: string | null }
+        ) =>
+          client<{ data: Record<string, unknown> }>(
+            `/api/v1/fiscal/simples-mei/pgdasd/clients/${clientId}/documents`,
+            { method: 'POST', body }
+          ),
+        artifactDownloadUrl: (artifactId: number) =>
+          apiUrl(`/api/v1/fiscal/simples-mei/pgdasd/artifacts/${artifactId}/download`),
+        communication: {
+          updatePreference: (
+            clientId: number,
+            body: {
+              automatic_requested: boolean
+              email_enabled: boolean
+              whatsapp_enabled: boolean
+              lock_version: number
+            }
+          ) =>
+            client<{ data: PgdasdCommunicationPreference }>(
+              `/api/v1/fiscal/simples-mei/pgdasd/clients/${clientId}/communication-preference`,
+              { method: 'PATCH', body }
+            ),
+          updateBulk: (body: { client_ids: number[], automatic_requested: boolean }) =>
+            client<{
+              data: PgdasdCommunicationPreference[]
+              updated_count?: number
+            }>(
+              '/api/v1/fiscal/simples-mei/pgdasd/communication-preferences/bulk',
+              { method: 'PATCH', body }
+            ),
+          preview: (clientId: number) =>
+            client<{ data: PgdasdCommunicationPreview }>(
+              `/api/v1/fiscal/simples-mei/pgdasd/clients/${clientId}/communication-preview`
+            ),
+          tracking: (clientId: number) =>
+            client<{ data: PgdasdCommunicationTracking }>(
+              `/api/v1/fiscal/simples-mei/pgdasd/clients/${clientId}/communications`
+            )
+        }
       },
       findings: (params?: {
         page?: number
