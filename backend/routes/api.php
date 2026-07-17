@@ -357,6 +357,9 @@ Route::prefix('v1')->group(function (): void {
                 ->middleware(EnsureRecentPasswordConfirmation::class);
             Route::post('/office/settings/credential/remove', [OfficeSettingsController::class, 'removeCredential'])
                 ->middleware(EnsureRecentPasswordConfirmation::class);
+            Route::get('/office/settings/monitor-schedules', [OfficeSettingsController::class, 'listMonitorSchedules']);
+            Route::put('/office/settings/monitor-schedules/{monitorKey}', [OfficeSettingsController::class, 'updateMonitorSchedule']);
+            Route::get('/office/settings/onboarding-status', [OfficeSettingsController::class, 'onboardingStatus']);
 
             // Equipe do escritório — exige membership ADMIN real (checado no serviço)
             Route::get('/office/members', [OfficeMemberController::class, 'index']);

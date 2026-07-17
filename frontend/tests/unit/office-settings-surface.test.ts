@@ -65,11 +65,11 @@ describe('configuração unificada /settings (6.1)', () => {
     expect(src).not.toMatch(/href=.*\/(pfx|download)/i)
   })
 
-  it('API office unificada usa paths canônicos', async () => {
+  it('API office unificada usa paths /office/settings/*', async () => {
     const calls: string[] = []
     const client = async (path: string) => {
       calls.push(path)
-      return { data: {} }
+      return { data: { profile: {}, credential: null } }
     }
     const api = createOfficeApi(client as never)
     await api.office.profile.show()
@@ -77,11 +77,11 @@ describe('configuração unificada /settings (6.1)', () => {
     await api.office.canonicalCredential.show()
     await api.office.monitorSchedules.list()
     await api.office.onboardingStatus()
-    expect(calls).toContain('/api/v1/office/profile')
-    expect(calls).toContain('/api/v1/office/technical-consent')
-    expect(calls).toContain('/api/v1/office/canonical-credential')
-    expect(calls).toContain('/api/v1/office/monitor-schedules')
-    expect(calls).toContain('/api/v1/office/onboarding-status')
+    expect(calls).toContain('/api/v1/office/settings')
+    expect(calls).toContain('/api/v1/office/settings/consent')
+    expect(calls).toContain('/api/v1/office/settings/credential')
+    expect(calls).toContain('/api/v1/office/settings/monitor-schedules')
+    expect(calls).toContain('/api/v1/office/settings/onboarding-status')
   })
 
   it('labels de onboarding e alertas de A1', () => {
@@ -138,7 +138,7 @@ describe('plataforma /admin e seletor global (6.2)', () => {
     expect(calls[2]?.method).toBe('DELETE')
   })
 
-  it('admin hub e selo compacto Plataforma · Office (sem banner privilegiado)', () => {
+  it('admin hub usa gatilho TeamsMenu de uma linha com seletor amplo e pesquisável', () => {
     const admin = readFileSync(resolve(APP, 'pages/admin/index.vue'), 'utf8')
     expect(admin).toContain('admin-platform-panel')
     expect(admin).toContain('admin-global-office-selector')
@@ -147,7 +147,14 @@ describe('plataforma /admin e seletor global (6.2)', () => {
     const identity = readFileSync(resolve(APP, 'components/OfficeIdentity.vue'), 'utf8')
     expect(identity).toContain('platform-global')
     expect(identity).toContain('usePlatformOfficeSelect')
-    expect(identity).toContain('Plataforma ·')
+    expect(identity).toContain('<USelectMenu')
+    expect(identity).toContain('Buscar escritório…')
+    expect(identity).toContain('content: \'w-88')
+    expect(identity).toMatch(/filter-fields=.*label.*description/)
+    expect(identity).not.toContain('PLATFORM_ADMIN\\n')
+    expect(identity).toMatch(/data-context-style=.*compact.*detailed/)
+    expect(identity).not.toContain('Atuando em:')
+    expect(identity).not.toContain('ring-warning')
     expect(identity).toContain('data-platform-seal')
     // Banner privilegiado removido — identidade compacta no seletor.
     expect(identity).not.toContain('privileged-context-banner')

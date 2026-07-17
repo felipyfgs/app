@@ -23,6 +23,61 @@ import type {
 } from '~/types/api'
 import type { ApiClient } from './types'
 
+const PURPOSE_LABELS: Record<string, string> = {
+  CANONICAL_ECNPJ_A1: 'Credencial canônica e-CNPJ A1 do escritório',
+  SERPRO_TERM_SIGNING: 'Assinatura do Termo de autorização (automatizada)',
+  NFE_AUTXML_DISTDFE: 'autXML DistDFe (NFe/CTe) do escritório'
+}
+
+function purposeItems(codes: unknown): OfficeTechnicalConsent['purposes'] {
+  if (!Array.isArray(codes)) return []
+  return codes.map((code) => {
+    const key = String(code)
+    return { code: key, label: PURPOSE_LABELS[key] || key }
+  })
+}
+
+/** Normaliza GET /office/settings/consent → OfficeTechnicalConsent da UI. */
+function mapTechnicalConsentStatus(raw: Record<string, unknown> | null | undefined): OfficeTechnicalConsent {
+  const data = raw || {}
+  const active = (data.active_consent as Record<string, unknown> | null | undefined) || null
+  const requires = Boolean(data.requires_consent)
+  return {
+    version: String(data.version_code || active?.version_code || '1'),
+    accepted: active != null && active.active !== false && !requires,
+    accepted_at: active?.consented_at != null ? String(active.consented_at) : null,
+    purposes: purposeItems(data.purposes_presented ?? active?.purposes_presented),
+    requires_reacceptance: requires,
+    text_summary: undefined
+  }
+}
+
+/** Normaliza POST grant/revoke (registro de consentimento) → UI. */
+function mapTechnicalConsentRecord(
+  raw: Record<string, unknown> | null | undefined,
+  fallback: { accepted: boolean }
+): OfficeTechnicalConsent {
+  const data = raw || {}
+  const active = data.active === true || (fallback.accepted && data.revoked_at == null && data.active !== false)
+  return {
+    version: String(data.version_code || '1'),
+    accepted: Boolean(active) && fallback.accepted,
+    accepted_at: data.consented_at != null ? String(data.consented_at) : null,
+    purposes: purposeItems(data.purposes_presented),
+    requires_reacceptance: !fallback.accepted || data.active === false,
+    text_summary: undefined
+  }
+}
+
+function unwrapCredential(
+  data: { credential?: OfficeCanonicalCredential | null } | OfficeCanonicalCredential | null | undefined
+): OfficeCanonicalCredential {
+  if (data && typeof data === 'object' && 'credential' in data) {
+    return (data.credential || data) as OfficeCanonicalCredential
+  }
+  return data as OfficeCanonicalCredential
+}
+
 export function createOfficeApi(client: ApiClient) {
   return {
     office: {
@@ -70,54 +125,81 @@ export function createOfficeApi(client: ApiClient) {
       },
       /**
        * Perfil institucional unificado (OpenSpec configuracao-escritorio-unificada).
-       * Paths canônicos; se a API ainda não existir, a UI trata 404 com empty state.
+       * Paths reais do backend: /api/v1/office/settings/* (não /office/profile etc.).
+       * Respostas são normalizadas para o contrato da UI.
        */
       profile: {
-        show: () =>
-          client<{ data: OfficeInstitutionalProfile }>('/api/v1/office/profile'),
-        update: (body: {
+        show: async () => {
+          const res = await client<{
+            data: {
+              profile?: OfficeInstitutionalProfile | null
+            }
+          }>('/api/v1/office/settings')
+          return { data: (res.data?.profile ?? null) as OfficeInstitutionalProfile }
+        },
+        update: async (body: {
           cnpj?: string
           legal_name?: string
           institutional_email?: string
           institutional_phone?: string
           /** Confirmação forte obrigatória na troca de CNPJ. */
           confirm_cnpj_change?: boolean
-        }) =>
-          client<{ data: OfficeInstitutionalProfile }>('/api/v1/office/profile', {
-            method: 'PUT',
+        }) => {
+          const res = await client<{
+            data: {
+              profile: OfficeInstitutionalProfile
+              cnpj_changed?: boolean
+            }
+          }>('/api/v1/office/settings/profile', {
+            method: 'PATCH',
             body
           })
+          return { data: res.data.profile }
+        }
       },
       technicalConsent: {
-        show: () =>
-          client<{ data: OfficeTechnicalConsent }>('/api/v1/office/technical-consent'),
-        accept: (body?: { version?: string }) =>
-          client<{ data: OfficeTechnicalConsent }>('/api/v1/office/technical-consent', {
+        show: async () => {
+          const res = await client<{ data: Record<string, unknown> }>('/api/v1/office/settings/consent')
+          return { data: mapTechnicalConsentStatus(res.data) }
+        },
+        accept: async (body?: { version?: string }) => {
+          const res = await client<{ data: Record<string, unknown> }>('/api/v1/office/settings/consent', {
             method: 'POST',
-            body: body || {}
-          }),
-        revoke: () =>
-          client<{ data: OfficeTechnicalConsent }>('/api/v1/office/technical-consent/revoke', {
-            method: 'POST',
-            body: {}
+            body: {
+              accepted: true,
+              ...(body?.version ? { version_code: body.version } : {})
+            }
           })
+          return { data: mapTechnicalConsentRecord(res.data, { accepted: true }) }
+        },
+        revoke: async () => {
+          const res = await client<{ data: Record<string, unknown> }>(
+            '/api/v1/office/settings/consent/revoke',
+            { method: 'POST', body: {} }
+          )
+          return { data: mapTechnicalConsentRecord(res.data, { accepted: false }) }
+        }
       },
       canonicalCredential: {
-        show: () =>
-          client<{ data: OfficeCanonicalCredential | null }>('/api/v1/office/canonical-credential'),
-        upload: (pfx: File, password: string, options?: { password_confirmation?: string }) => {
+        show: async () => {
+          const res = await client<{
+            data: { credential?: OfficeCanonicalCredential | null }
+          }>('/api/v1/office/settings/credential')
+          return { data: res.data?.credential ?? null }
+        },
+        upload: async (pfx: File, password: string, options?: { password_confirmation?: string }) => {
           const body = new FormData()
           body.append('pfx', pfx)
           body.append('password', password)
           if (options?.password_confirmation) {
             body.append('password_confirmation', options.password_confirmation)
           }
-          return client<{ data: OfficeCanonicalCredential }>(
-            '/api/v1/office/canonical-credential',
-            { method: 'POST', body }
-          )
+          const res = await client<{
+            data: { credential?: OfficeCanonicalCredential } | OfficeCanonicalCredential
+          }>('/api/v1/office/settings/credential', { method: 'POST', body })
+          return { data: unwrapCredential(res.data) }
         },
-        replace: (pfx: File, password: string, options?: {
+        replace: async (pfx: File, password: string, options?: {
           password_confirmation?: string
           reconfirm_password?: string
         }) => {
@@ -130,28 +212,28 @@ export function createOfficeApi(client: ApiClient) {
           if (options?.reconfirm_password) {
             body.append('reconfirm_password', options.reconfirm_password)
           }
-          return client<{ data: OfficeCanonicalCredential }>(
-            '/api/v1/office/canonical-credential/replace',
-            { method: 'POST', body }
-          )
+          const res = await client<{
+            data: { credential?: OfficeCanonicalCredential } | OfficeCanonicalCredential
+          }>('/api/v1/office/settings/credential/replace', { method: 'POST', body })
+          return { data: unwrapCredential(res.data) }
         },
         remove: (body?: { confirm?: boolean, reconfirm_password?: string }) =>
-          client<{ data: null }>('/api/v1/office/canonical-credential/remove', {
+          client<{ data: null }>('/api/v1/office/settings/credential/remove', {
             method: 'POST',
             body: { confirm: true, ...body }
           })
       },
       monitorSchedules: {
         list: () =>
-          client<{ data: OfficeMonitorSchedulePolicy[] }>('/api/v1/office/monitor-schedules'),
+          client<{ data: OfficeMonitorSchedulePolicy[] }>('/api/v1/office/settings/monitor-schedules'),
         update: (monitorKey: string, body: { day_of_month: number }) =>
           client<{ data: OfficeMonitorSchedulePolicy }>(
-            `/api/v1/office/monitor-schedules/${encodeURIComponent(monitorKey)}`,
+            `/api/v1/office/settings/monitor-schedules/${encodeURIComponent(monitorKey)}`,
             { method: 'PUT', body }
           )
       },
       onboardingStatus: () =>
-        client<{ data: OfficeOnboardingActionable }>('/api/v1/office/onboarding-status'),
+        client<{ data: OfficeOnboardingActionable }>('/api/v1/office/settings/onboarding-status'),
       serproAuthorization: {
         show: (params?: { environment?: string }) =>
           client<{

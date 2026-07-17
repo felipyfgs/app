@@ -8,11 +8,13 @@ use App\Http\Requests\Office\RemoveOfficeCanonicalCredentialRequest;
 use App\Http\Requests\Office\UpdateOfficeInstitutionalProfileRequest;
 use App\Models\OfficeCredential;
 use App\Models\OfficeCredentialPurposeLink;
+use App\Models\OfficeMonitorSchedulePolicy;
 use App\Policies\OfficeSettingsPolicy;
 use App\Services\Audit\AuditLogger;
 use App\Services\Certificates\OfficeCredentialService;
 use App\Services\Certificates\OfficeInstitutionalProfileService;
 use App\Services\Certificates\OfficeTechnicalConsentService;
+use App\Services\Integra\SerproTenantActionableStatusService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,11 +28,46 @@ use Throwable;
  */
 class OfficeSettingsController extends Controller
 {
+    /**
+     * Monitores com agenda mensal (dia 1–28) — chaves estáveis alinhadas ao painel.
+     *
+     * @var array<string, string>
+     */
+    private const MONITOR_SCHEDULE_LABELS = [
+        'sitfis' => 'Situação fiscal',
+        'simples_mei' => 'Simples / MEI',
+        'dctfweb' => 'DCTFWeb / MIT',
+        'installments' => 'Parcelamentos',
+        'mailbox' => 'Caixa postal',
+        'declarations' => 'Declarações',
+        'guides' => 'Guias',
+        'fgts' => 'FGTS (parcial)',
+    ];
+
+    /**
+     * Labels acionáveis (tenant-facing) para códigos de onboarding.
+     *
+     * @var array<string, string>
+     */
+    private const ACTIONABLE_LABELS = [
+        'COMPLETE_PROFILE' => 'Completar perfil',
+        'ACCEPT_CONSENT' => 'Aceitar consentimento',
+        'UPLOAD_A1' => 'Enviar certificado A1',
+        'UPLOAD_TERMO' => 'Regularizar Termo de autorização',
+        'SIGNATURE_REQUIRED' => 'Assinatura do Termo pendente',
+        'REONBOARD_REQUIRED' => 'Reativar integrações',
+        'PLATFORM_UNAVAILABLE' => 'Aguardar suporte da plataforma',
+        'MISSING_PROFILE' => 'Completar perfil',
+        'MISSING_CONSENT' => 'Aceitar consentimento',
+        'MISSING_A1' => 'Enviar certificado A1',
+    ];
+
     public function __construct(
         private readonly CurrentOffice $currentOffice,
         private readonly OfficeInstitutionalProfileService $profiles,
         private readonly OfficeCredentialService $credentials,
         private readonly OfficeTechnicalConsentService $consents,
+        private readonly SerproTenantActionableStatusService $actionableStatus,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -303,6 +340,146 @@ class OfficeSettingsController extends Controller
                 'removed' => true,
             ],
         ]);
+    }
+
+    /**
+     * Políticas de agenda mensal por monitor (dia 1–28) do escritório corrente.
+     */
+    public function listMonitorSchedules(): JsonResponse
+    {
+        $this->authorizeView();
+
+        $officeId = $this->currentOffice->office()->id;
+        $items = [];
+
+        foreach (self::MONITOR_SCHEDULE_LABELS as $monitorKey => $label) {
+            $policy = OfficeMonitorSchedulePolicy::ensureDefault($officeId, $monitorKey);
+            $items[] = $this->schedulePublicArray($policy, $label);
+        }
+
+        return response()->json(['data' => $items]);
+    }
+
+    /**
+     * Atualiza o dia do mês (1–28) de um monitor do escritório corrente.
+     */
+    public function updateMonitorSchedule(Request $request, string $monitorKey): JsonResponse
+    {
+        $this->authorizeManage();
+        $request->request->remove('office_id');
+
+        if (! array_key_exists($monitorKey, self::MONITOR_SCHEDULE_LABELS)) {
+            return response()->json([
+                'message' => 'Monitor desconhecido para agendamento.',
+            ], 404);
+        }
+
+        $data = $request->validate([
+            'day_of_month' => ['required', 'integer', 'min:1', 'max:28'],
+            'office_id' => ['prohibited'],
+        ]);
+
+        $office = $this->currentOffice->office();
+        $policy = OfficeMonitorSchedulePolicy::setCustomDay(
+            $office->id,
+            $monitorKey,
+            (int) $data['day_of_month'],
+            $request->user()?->id,
+            'America/Sao_Paulo',
+        );
+
+        $this->audit->record('office.monitor_schedule.update', 'SUCCESS', $policy, [
+            'monitor_key' => $monitorKey,
+            'day_of_month' => $policy->day_of_month,
+            'is_custom' => $policy->is_custom,
+        ], $request->user()?->id, $office->id);
+
+        return response()->json([
+            'data' => $this->schedulePublicArray($policy, self::MONITOR_SCHEDULE_LABELS[$monitorKey]),
+        ]);
+    }
+
+    /**
+     * Estado de onboarding acionável (sem jargão OAuth/mTLS).
+     */
+    public function onboardingStatus(): JsonResponse
+    {
+        $this->authorizeView();
+
+        $office = $this->currentOffice->office();
+        $status = $this->actionableStatus->forOffice($office);
+        $onboarding = $status['onboarding'] ?? [];
+        $actions = [];
+
+        foreach ($status['actionable'] ?? [] as $item) {
+            $code = (string) ($item['code'] ?? 'ACTION_REQUIRED');
+            $actions[] = [
+                'code' => $code,
+                'label' => self::ACTIONABLE_LABELS[$code] ?? 'Ação necessária',
+                'description' => isset($item['message']) ? (string) $item['message'] : null,
+                'href' => null,
+            ];
+        }
+
+        if ($actions === [] && (($onboarding['status'] ?? null) === 'incomplete')) {
+            $prereq = $status['prerequisites'] ?? [];
+            if (! ($prereq['profile'] ?? true)) {
+                $actions[] = [
+                    'code' => 'COMPLETE_PROFILE',
+                    'label' => self::ACTIONABLE_LABELS['COMPLETE_PROFILE'],
+                    'description' => 'Preencha CNPJ, razão social, e-mail e telefone institucionais.',
+                    'href' => null,
+                ];
+            }
+            if (! ($prereq['consent'] ?? true)) {
+                $actions[] = [
+                    'code' => 'ACCEPT_CONSENT',
+                    'label' => self::ACTIONABLE_LABELS['ACCEPT_CONSENT'],
+                    'description' => 'Aceite o consentimento técnico para uso do A1.',
+                    'href' => null,
+                ];
+            }
+            if (! ($prereq['a1'] ?? true)) {
+                $actions[] = [
+                    'code' => 'UPLOAD_A1',
+                    'label' => self::ACTIONABLE_LABELS['UPLOAD_A1'],
+                    'description' => 'Envie o certificado e-CNPJ A1 canônico do escritório.',
+                    'href' => null,
+                ];
+            }
+        }
+
+        $message = null;
+        if (isset($onboarding['actionable']['message'])) {
+            $message = (string) $onboarding['actionable']['message'];
+        } elseif ($actions !== []) {
+            $message = (string) ($actions[0]['description'] ?? null);
+        }
+
+        return response()->json([
+            'data' => [
+                'status' => $onboarding['status'] ?? 'incomplete',
+                'actions' => $actions,
+                'correlation_id' => $status['correlation_id'] ?? null,
+                'message' => $message,
+            ],
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function schedulePublicArray(OfficeMonitorSchedulePolicy $policy, string $label): array
+    {
+        return [
+            'monitor_key' => $policy->monitor_key,
+            'monitor_label' => $label,
+            'day_of_month' => $policy->day_of_month,
+            'is_default' => ! $policy->is_custom,
+            'timezone' => $policy->timezone ?? 'America/Sao_Paulo',
+            'next_run_at' => null,
+            'last_run_at' => null,
+        ];
     }
 
     /**

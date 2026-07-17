@@ -28,8 +28,7 @@ test.describe('monitoring troca de office (9.6)', () => {
     await expect(officeBtn).toContainText(FISCAL_OFFICE_A_NAME)
 
     await officeBtn.click()
-    const sentinel = page.getByRole('menuitemcheckbox', { name: new RegExp(FISCAL_OFFICE_B_NAME, 'i') })
-      .or(page.getByRole('menuitem', { name: new RegExp(FISCAL_OFFICE_B_NAME, 'i') }))
+    const sentinel = page.getByRole('option', { name: new RegExp(FISCAL_OFFICE_B_NAME, 'i') })
       .or(page.getByText(FISCAL_OFFICE_B_NAME, { exact: true }))
 
     await expect(sentinel.first()).toBeVisible({ timeout: 10_000 })

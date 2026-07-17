@@ -612,49 +612,78 @@ export async function installApiFixtures(
         }
       })
     }
-    // Configuração unificada do escritório (OpenSpec 6.1)
-    if (pathname.endsWith('/api/v1/office/profile') && method === 'GET') {
+    // Configuração unificada do escritório (OpenSpec 6.1) — paths /office/settings/*
+    if (pathname.endsWith('/api/v1/office/settings') && method === 'GET') {
       const cnpj = activeOfficeId === 1 ? '12ABC345678900' : '98XYZ765432100'
       return fulfill(route, {
         data: {
-          cnpj,
-          legal_name: officeMeta(activeOfficeId).name,
-          institutional_email: 'contato@escritorio.example',
-          institutional_phone: '+55 98 3000-0000'
+          profile: {
+            cnpj,
+            legal_name: officeMeta(activeOfficeId).name,
+            institutional_email: 'contato@escritorio.example',
+            institutional_phone: '+55 98 3000-0000'
+          },
+          consent: {
+            version_code: 'unified-a1.v1',
+            purposes_presented: ['SERPRO_TERM_SIGNING', 'NFE_AUTXML_DISTDFE'],
+            active_consent: {
+              version_code: 'unified-a1.v1',
+              active: true,
+              consented_at: FIXED_NOW
+            },
+            requires_consent: false
+          },
+          credential: {
+            id: activeOfficeId,
+            status: 'ACTIVE',
+            subject_name: 'A1 sintético — somente metadados',
+            holder_cnpj: cnpj,
+            fingerprint_sha256: 'f'.repeat(64),
+            valid_to: '2027-07-14T15:00:00.000Z',
+            expires_alert_30: false,
+            expires_alert_7: false,
+            expires_alert_1: false
+          },
+          purpose_links: [],
+          alerts: []
         }
       })
     }
-    if (pathname.endsWith('/api/v1/office/technical-consent') && method === 'GET') {
+    if (pathname.endsWith('/api/v1/office/settings/consent') && method === 'GET') {
       return fulfill(route, {
         data: {
-          version: '1',
-          accepted: true,
-          requires_reacceptance: false,
-          accepted_at: FIXED_NOW,
-          purposes: [
-            { code: 'SERPRO_TERM_SIGNING', label: 'Assinatura do Termo' },
-            { code: 'NFE_AUTXML_DISTDFE', label: 'autXML DistDFe' }
-          ]
+          version_code: 'unified-a1.v1',
+          purposes_presented: ['SERPRO_TERM_SIGNING', 'NFE_AUTXML_DISTDFE'],
+          active_consent: {
+            version_code: 'unified-a1.v1',
+            active: true,
+            consented_at: FIXED_NOW,
+            purposes_presented: ['SERPRO_TERM_SIGNING', 'NFE_AUTXML_DISTDFE']
+          },
+          requires_consent: false
         }
       })
     }
-    if (pathname.endsWith('/api/v1/office/canonical-credential') && method === 'GET') {
+    if (pathname.endsWith('/api/v1/office/settings/credential') && method === 'GET') {
       const cnpj = activeOfficeId === 1 ? '12ABC345678900' : '98XYZ765432100'
       return fulfill(route, {
         data: {
-          id: activeOfficeId,
-          status: 'ACTIVE',
-          subject_name: 'A1 sintético — somente metadados',
-          holder_cnpj: cnpj,
-          fingerprint_sha256: 'f'.repeat(64),
-          valid_to: '2027-07-14T15:00:00.000Z',
-          expires_alert_30: false,
-          expires_alert_7: false,
-          expires_alert_1: false
+          credential: {
+            id: activeOfficeId,
+            status: 'ACTIVE',
+            subject_name: 'A1 sintético — somente metadados',
+            holder_cnpj: cnpj,
+            fingerprint_sha256: 'f'.repeat(64),
+            valid_to: '2027-07-14T15:00:00.000Z',
+            expires_alert_30: false,
+            expires_alert_7: false,
+            expires_alert_1: false
+          },
+          alerts: []
         }
       })
     }
-    if (pathname.endsWith('/api/v1/office/monitor-schedules') && method === 'GET') {
+    if (pathname.endsWith('/api/v1/office/settings/monitor-schedules') && method === 'GET') {
       return fulfill(route, {
         data: [{
           monitor_key: 'sitfis',
@@ -667,7 +696,7 @@ export async function installApiFixtures(
         }]
       })
     }
-    if (pathname.endsWith('/api/v1/office/onboarding-status') && method === 'GET') {
+    if (pathname.endsWith('/api/v1/office/settings/onboarding-status') && method === 'GET') {
       return fulfill(route, {
         data: {
           status: 'authorized',
