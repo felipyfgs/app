@@ -4,7 +4,7 @@ import {
   documentKindLabel,
   documentKindLabelFromModel,
   isDocumentKindCaptureAvailable
-} from '../../app/utils/documentKinds'
+} from '../../app/utils/document-kinds'
 
 describe('documentKinds', () => {
   it('rotula CT-e e modelos SEFAZ do lote misto', () => {

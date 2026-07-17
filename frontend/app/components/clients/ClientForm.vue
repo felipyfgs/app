@@ -2,7 +2,7 @@
 import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Client, CnpjLookupResult } from '~/types/api'
-import { registrationStatusLabel } from '~/utils/registrationLabels'
+import { registrationStatusLabel } from '~/utils/registration-labels'
 
 const props = defineProps<{
   /** null/undefined = criar; Client = editar o mesmo formulário */

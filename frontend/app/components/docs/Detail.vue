@@ -16,7 +16,7 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { NfseEvent, NfseNote, NoteDetail } from '~/types/api'
-import { documentKindLabel } from '~/utils/documentKinds'
+import { documentKindLabel } from '~/utils/document-kinds'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const props = defineProps<{

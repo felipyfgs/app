@@ -4,7 +4,7 @@
  * UInput max-w-sm à esquerda + ações à direita.
  */
 import type { Client, Establishment } from '~/types/api'
-import { documentKindFilterItems } from '~/utils/documentKinds'
+import { documentKindFilterItems } from '~/utils/document-kinds'
 import {
   FILTER_ALL,
   selectAllItem,

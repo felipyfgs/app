@@ -4,7 +4,7 @@
  * Arquétipo: settings + customers table.
  */
 import type { TableColumn } from '@nuxt/ui'
-import { documentKindLabelFromModel } from '~/utils/documentKinds'
+import { documentKindLabelFromModel } from '~/utils/document-kinds'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const api = useApi()

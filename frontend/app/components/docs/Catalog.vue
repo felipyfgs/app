@@ -11,7 +11,7 @@
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { Row } from '@tanstack/table-core'
 import type { NfseNote } from '~/types/api'
-import { documentKindLabel } from '~/utils/documentKinds'
+import { documentKindLabel } from '~/utils/document-kinds'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const props = withDefaults(defineProps<{

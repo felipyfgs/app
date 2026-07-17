@@ -6,7 +6,7 @@ import {
   registrationStatusLabel,
   registrationStatusIcon,
   registrationStatusColor
-} from '../../app/utils/registrationLabels'
+} from '../../app/utils/registration-labels'
 import { clientSectionPath } from '../../app/composables/useClientDetail'
 
 const APP_ROOT = resolve(__dirname, '../../app')

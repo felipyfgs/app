@@ -9,7 +9,7 @@ import {
   registrationStatusColor,
   registrationStatusIcon,
   registrationStatusLabel
-} from '~/utils/registrationLabels'
+} from '~/utils/registration-labels'
 
 const props = defineProps<{
   client: Client

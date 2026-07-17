@@ -5,7 +5,7 @@
  * ficam no submenu do sidebar (`navigation.ts`), não em tabs da página.
  * Fonte: .reference/nuxt-dashboard-template/app/pages/customers.vue
  */
-import { documentKindLabel, isDocumentKindCaptureAvailable } from '~/utils/documentKinds'
+import { documentKindLabel, isDocumentKindCaptureAvailable } from '~/utils/document-kinds'
 import type { Client, Establishment, ExportFilters, NfseNote, NotesInsights } from '~/types/api'
 import type { NoteListParams } from '~/composables/useApi'
 import {

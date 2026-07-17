@@ -4,7 +4,7 @@
  * Campos bloqueados até clicar em Editar; CNPJ permanece imutável.
  */
 import type { Client, ClientContact } from '~/types/api'
-import { formatSourceDate, registrationSourceLabel } from '~/utils/registrationLabels'
+import { formatSourceDate, registrationSourceLabel } from '~/utils/registration-labels'
 
 const props = defineProps<{
   client: Client
