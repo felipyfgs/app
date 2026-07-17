@@ -84,8 +84,9 @@ final class SerproKillSwitchService
     }
 
     /**
-     * Desativar kill switch global exige aprovação dupla (quatro olhos) no caller.
-     * Este método só aplica o estado; SerproRolloutApprovalService garante os olhos.
+     * Desativar kill switch global exige confirmação OWNER no caller
+     * (senha recente + frase + motivo + janela). Ativação permanece imediata/fail-closed.
+     * Este método só aplica o estado; SerproRolloutApprovalService garante a autorização.
      */
     public function deactivateGlobal(string $reason, ?int $userId = null): void
     {

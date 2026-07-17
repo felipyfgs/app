@@ -200,11 +200,11 @@ class SerproContractManageCommand extends Command
             return self::SUCCESS;
         }
 
-        // Desligar é four-eyes: só local/testing podem forçar via CLI; produção usa rollout dual.
+        // Desligar exige confirmação OWNER via API HTTP; CLI não fabrica aprovação.
         if (! app()->environment(['local', 'testing'])) {
             throw new RuntimeException(
-                'kill-off via CLI exige dual approval (platform API / SerproRolloutApprovalService KILL_SWITCH_OFF). '.
-                'Desativação imediata só é permitida em local/testing.'
+                'kill-off via CLI exige confirmação OWNER (platform API / SerproRolloutApprovalService KILL_SWITCH_OFF). '.
+                'Desativação imediata só é permitida em local/testing; produção usa frase + senha recente + janela.'
             );
         }
 

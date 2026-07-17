@@ -196,8 +196,8 @@ final class SerproCredentialVersionService
     }
 
     /**
-     * Cutover atômico: exige N aprovações distintas + TOTP, OAuth prévio da versão,
-     * invalida tokens/caches e retira a ACTIVE anterior.
+     * Cutover atômico: exige confirmação OWNER vinculada (SerproRolloutApproval),
+     * OAuth prévio da versão, invalida tokens/caches e retira a ACTIVE anterior.
      *
      * @param  callable(SerproContract): mixed|null  $oauthProbe
      *                                                            Injetável para testes; default usa SerproContractAuthenticator.
@@ -208,6 +208,7 @@ final class SerproCredentialVersionService
         ?int $actorUserId = null,
         ?callable $oauthProbe = null,
         bool $skipOauth = false,
+        ?int $approvalId = null,
     ): SerproCredentialVersion {
         if ($version->status !== SerproCredentialVersionStatus::Verified) {
             throw new RuntimeException('Cutover exige versão VERIFIED.');
@@ -220,11 +221,9 @@ final class SerproCredentialVersionService
             );
         }
 
-        $required = max(2, (int) config('serpro.contractor_pfx.cutover_approvals_required', 2));
-        $approvers = $this->distinctApprovers($version, 'CUTOVER');
-        if ($approvers < $required) {
+        if ($actorUserId === null || $actorUserId <= 0) {
             throw new RuntimeException(
-                "Cutover exige {$required} aprovadores PLATFORM_ADMIN distintos com TOTP; há {$approvers}."
+                'Cutover exige ator PLATFORM_ADMIN com confirmação OWNER vinculada à versão.'
             );
         }
 
@@ -237,11 +236,32 @@ final class SerproCredentialVersionService
             throw new RuntimeException('Cutover exige contrato vinculado à versão.');
         }
 
-        return DB::transaction(function () use ($version, $contract, $actorUserId, $oauthProbe, $skipOauth): SerproCredentialVersion {
+        return DB::transaction(function () use (
+            $version,
+            $contract,
+            $actorUserId,
+            $oauthProbe,
+            $skipOauth,
+            $approvalId,
+        ): SerproCredentialVersion {
             $locked = SerproCredentialVersion::query()->whereKey($version->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== SerproCredentialVersionStatus::Verified) {
                 throw new RuntimeException('Estado da versão mudou durante o cutover.');
             }
+
+            $env = $locked->environment instanceof SerproEnvironment
+                ? $locked->environment
+                : SerproEnvironment::from((string) $locked->environment);
+
+            $rollouts = app(SerproRolloutApprovalService::class);
+            $ownerApproval = $rollouts->claimOwnerApproval(
+                action: SerproRolloutApprovalService::ACTION_CREDENTIAL_CUTOVER,
+                subjectType: 'CREDENTIAL_VERSION',
+                subjectId: (int) $locked->id,
+                environment: $env,
+                actorUserId: $actorUserId,
+                approvalId: $approvalId,
+            );
 
             $contractLocked = SerproContract::query()->whereKey($contract->id)->lockForUpdate()->firstOrFail();
 
@@ -309,10 +329,6 @@ final class SerproCredentialVersionService
                 }
             }
 
-            $env = $locked->environment instanceof SerproEnvironment
-                ? $locked->environment
-                : SerproEnvironment::from((string) $locked->environment);
-
             $previousActive = SerproCredentialVersion::query()
                 ->where('environment', $env->value)
                 ->where('status', SerproCredentialVersionStatus::Active->value)
@@ -352,11 +368,14 @@ final class SerproCredentialVersionService
                 'last_verified_at' => now(),
             ])->save();
 
+            $rollouts->markOwnerApprovalExecuted($ownerApproval, $actorUserId);
+
             $this->audit->record('serpro.credential.cutover', 'SUCCESS', $locked, [
                 'environment' => $env->value,
                 'version_number' => $locked->version_number,
                 'retired_count' => $previousActive->count(),
-                'approvers' => $this->distinctApprovers($locked, 'CUTOVER'),
+                'approval_id' => $ownerApproval->id,
+                'approval_policy' => 'OWNER_CONFIRMATION',
             ], $actorUserId, null);
 
             return $locked->refresh();
@@ -541,7 +560,9 @@ final class SerproCredentialVersionService
     }
 
     /**
-     * Registra um dos dois olhos de aprovação (cutover / retire / compromise).
+     * Registro legado de decisão por versão (retire/compromise).
+     * Cutover produtivo usa {@see SerproRolloutApprovalService} OWNER_CONFIRMATION —
+     * este método NÃO satisfaz cutover e NÃO deve ser chamado por CLI para fabricar olhos.
      */
     public function recordApproval(
         SerproCredentialVersion $version,
@@ -550,15 +571,29 @@ final class SerproCredentialVersionService
         bool $totpVerified,
         string $decision,
         ?string $reason = null,
+        bool $fromHttp = true,
     ): SerproCredentialApproval {
+        if (! $fromHttp) {
+            throw new RuntimeException(
+                'Aprovação de credencial SERPRO só pode ser registrada via API HTTP; CLI/job não fabricam confirmação.'
+            );
+        }
+
         // $totpVerified legado: significa confirmação de senha recente (PASSWORD).
         if (! $totpVerified) {
             throw new RuntimeException('Aprovação de credencial SERPRO exige reconfirmação de senha recente.');
         }
 
+        $action = strtoupper($action);
+        if ($action === 'CUTOVER') {
+            throw new RuntimeException(
+                'Cutover não aceita contagem de aprovadores legada; use confirmação OWNER via SerproRolloutApproval (CREDENTIAL_CUTOVER).'
+            );
+        }
+
         return SerproCredentialApproval::query()->create([
             'serpro_credential_version_id' => $version->id,
-            'action' => strtoupper($action),
+            'action' => $action,
             'approver_user_id' => $approverUserId,
             'approver_role' => 'PLATFORM_ADMIN',
             'totp_verified' => true, // coluna legada: true = confirmação humana válida
@@ -573,7 +608,7 @@ final class SerproCredentialVersionService
     }
 
     /**
-     * Contagem de aprovadores distintos para uma ação.
+     * Contagem legada de aprovadores (não usada para cutover OWNER).
      */
     public function distinctApprovers(SerproCredentialVersion $version, string $action): int
     {

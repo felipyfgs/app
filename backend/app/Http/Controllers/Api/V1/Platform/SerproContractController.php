@@ -6,12 +6,14 @@ use App\Enums\SerproEnvironment;
 use App\Http\Controllers\Controller;
 use App\Models\SerproContract;
 use App\Services\Audit\AuditLogger;
+use App\Services\Auth\RecentPasswordConfirmationGate;
 use App\Services\Serpro\SerproCatalogService;
 use App\Services\Serpro\SerproCircuitBreaker;
 use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproHealthService;
 use App\Services\Serpro\SerproKillSwitchService;
 use App\Services\Serpro\SerproRolloutApprovalService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -111,6 +113,7 @@ class SerproContractController extends Controller
     {
         $data = $request->validate([
             'replace' => ['sometimes', 'boolean'],
+            'approval_id' => ['sometimes', 'integer', 'min:1'],
         ]);
 
         try {
@@ -118,6 +121,7 @@ class SerproContractController extends Controller
                 $serproContract,
                 replace: ! empty($data['replace']),
                 actorUserId: $request->user()?->id,
+                approvalId: isset($data['approval_id']) ? (int) $data['approval_id'] : null,
             );
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -181,11 +185,14 @@ class SerproContractController extends Controller
             'active' => ['required', 'boolean'],
             'reason' => ['required', 'string', 'max:500'],
             'solution' => ['nullable', 'string', 'max:80'],
+            'confirmation_phrase' => ['required_if:active,false', 'nullable', 'string', 'max:120'],
+            'change_window_start' => ['required_if:active,false', 'nullable', 'date'],
+            'change_window_end' => ['required_if:active,false', 'nullable', 'date', 'after:change_window_start'],
         ]);
 
         $userId = (int) $request->user()->id;
 
-        // Ativar kill switch: imediato (fail-closed). Desativar: quatro olhos.
+        // Ativar kill switch: imediato (fail-closed). Desativar: confirmação OWNER.
         if (! empty($data['solution'])) {
             if ($data['active']) {
                 $this->killSwitch->activateSolution($data['solution'], $data['reason'], $userId);
@@ -193,26 +200,18 @@ class SerproContractController extends Controller
                 return response()->json(['data' => $this->killSwitch->status()]);
             }
 
-            $approval = $this->rollouts->request(
+            return $this->deactivateKillWithOwnerConfirmation(
+                $request,
                 action: SerproRolloutApprovalService::ACTION_KILL_SWITCH_SOLUTION_OFF,
                 subjectType: 'KILL_SWITCH_SOLUTION',
-                subjectId: null,
                 reason: $data['reason'],
-                requestedByUserId: $userId,
-                context: ['solution' => strtoupper($data['solution'])],
+                userId: $userId,
+                context: ['solution' => strtoupper((string) $data['solution'])],
+                confirmationPhrase: (string) ($data['confirmation_phrase'] ?? ''),
+                windowStart: (string) ($data['change_window_start'] ?? ''),
+                windowEnd: (string) ($data['change_window_end'] ?? ''),
+                successMessage: 'Kill switch de solução desativado.',
             );
-
-            // primeiro olho do solicitante
-            $result = $this->rollouts->approve($approval, $userId, totpVerified: true, reason: $data['reason']);
-
-            return response()->json([
-                'data' => $this->killSwitch->status(),
-                'approval' => $this->rollouts->toSanitized($result['approval']),
-                'executed' => $result['executed'],
-                'message' => $result['executed']
-                    ? 'Kill switch de solução desativado.'
-                    : 'Aguardando segundo PLATFORM_ADMIN (quatro olhos).',
-            ]);
         }
 
         if ($data['active']) {
@@ -221,22 +220,86 @@ class SerproContractController extends Controller
             return response()->json(['data' => $this->killSwitch->status()]);
         }
 
-        $approval = $this->rollouts->request(
+        return $this->deactivateKillWithOwnerConfirmation(
+            $request,
             action: SerproRolloutApprovalService::ACTION_KILL_SWITCH_OFF,
             subjectType: 'KILL_SWITCH',
-            subjectId: null,
             reason: $data['reason'],
-            requestedByUserId: $userId,
+            userId: $userId,
+            context: [],
+            confirmationPhrase: (string) ($data['confirmation_phrase'] ?? ''),
+            windowStart: (string) ($data['change_window_start'] ?? ''),
+            windowEnd: (string) ($data['change_window_end'] ?? ''),
+            successMessage: 'Kill switch global desativado.',
         );
-        $result = $this->rollouts->approve($approval, $userId, totpVerified: true, reason: $data['reason']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function deactivateKillWithOwnerConfirmation(
+        Request $request,
+        string $action,
+        string $subjectType,
+        string $reason,
+        int $userId,
+        array $context,
+        string $confirmationPhrase,
+        string $windowStart,
+        string $windowEnd,
+        string $successMessage,
+    ): JsonResponse {
+        $passwordOk = app(RecentPasswordConfirmationGate::class)
+            ->isRecentlyConfirmed($request->user(), $request);
+
+        if (! $passwordOk) {
+            return response()->json([
+                'message' => 'Retirada de kill switch exige reconfirmação de senha recente.',
+                'code' => 'password_confirmation_required',
+            ], 403);
+        }
+
+        try {
+            $start = CarbonImmutable::parse($windowStart);
+            $end = CarbonImmutable::parse($windowEnd);
+
+            // Sem estado parcial: request + approve OWNER no mesmo fluxo; falha não deixa PARTIAL.
+            $approval = $this->rollouts->request(
+                action: $action,
+                subjectType: $subjectType,
+                subjectId: null,
+                reason: $reason,
+                requestedByUserId: $userId,
+                context: $context,
+                changeWindowStart: $start,
+                changeWindowEnd: $end,
+                fromHttp: true,
+            );
+
+            $result = $this->rollouts->approve(
+                $approval,
+                $userId,
+                passwordRecentlyConfirmed: true,
+                reason: $reason,
+                confirmationPhrase: $confirmationPhrase,
+                changeWindowStart: $start,
+                changeWindowEnd: $end,
+                fromHttp: true,
+            );
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code' => 'owner_confirmation_failed',
+            ], 422);
+        }
 
         return response()->json([
             'data' => $this->killSwitch->status(),
             'approval' => $this->rollouts->toSanitized($result['approval']),
             'executed' => $result['executed'],
             'message' => $result['executed']
-                ? 'Kill switch global desativado.'
-                : 'Aguardando segundo PLATFORM_ADMIN (quatro olhos).',
+                ? $successMessage
+                : 'Confirmação registrada; execução pendente de gates.',
         ]);
     }
 

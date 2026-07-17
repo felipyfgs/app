@@ -60,7 +60,9 @@ describe('console global SERPRO (superfície)', () => {
       'pages/admin/serpro/contracts.vue',
       'pages/admin/serpro/catalog.vue',
       'pages/admin/serpro/usage.vue',
-      'pages/admin/serpro/rollout.vue'
+      'pages/admin/serpro/rollout.vue',
+      'components/serpro/SerproOwnerConfirmModal.vue',
+      'utils/serpro-owner-confirmation.ts'
     ]
     for (const f of files) {
       const src = readFileSync(resolve(APP, f), 'utf8')
@@ -68,6 +70,15 @@ describe('console global SERPRO (superfície)', () => {
       expect(src).not.toMatch(/consumer_secret|pfx_password|vault_object|BEGIN PRIVATE/i)
       expect(src).not.toMatch(/v-html/i)
     }
+
+    const readiness = readFileSync(resolve(APP, 'pages/admin/serpro/index.vue'), 'utf8')
+    expect(readiness).toContain('SerproOwnerConfirmModal')
+    expect(readiness).toContain('KILL_SWITCH_OFF')
+    expect(readiness).not.toMatch(/segundo PLATFORM_ADMIN|quatro olhos/i)
+
+    const rollout = readFileSync(resolve(APP, 'pages/admin/serpro/rollout.vue'), 'utf8')
+    expect(rollout).toMatch(/DUAL|Office ADMIN|canário/i)
+    expect(rollout).toContain('approval_policy')
   })
 
   it('settings unificado e health usam superfícies tenant-safe', () => {

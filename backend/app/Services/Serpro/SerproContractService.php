@@ -125,9 +125,14 @@ final class SerproContractService
 
     /**
      * Ativa o contrato; se já houver ACTIVE no ambiente, exige replace=true (substituição).
+     * Produção exige confirmação OWNER vinculada (CONTRACT_ACTIVATE).
      */
-    public function activate(SerproContract $contract, bool $replace = false, ?int $actorUserId = null): SerproContract
-    {
+    public function activate(
+        SerproContract $contract,
+        bool $replace = false,
+        ?int $actorUserId = null,
+        ?int $approvalId = null,
+    ): SerproContract {
         if ($contract->status === SerproContractStatus::Active) {
             return $contract;
         }
@@ -140,8 +145,31 @@ final class SerproContractService
             throw new RuntimeException('Contrato sem material de credencial no cofre.');
         }
 
-        return DB::transaction(function () use ($contract, $replace, $actorUserId): SerproContract {
-            $env = $contract->environment->value;
+        return DB::transaction(function () use ($contract, $replace, $actorUserId, $approvalId): SerproContract {
+            $envEnum = $contract->environment instanceof SerproEnvironment
+                ? $contract->environment
+                : SerproEnvironment::from((string) $contract->environment);
+            $env = $envEnum->value;
+
+            $ownerApproval = null;
+            $requiresOwner = $envEnum === SerproEnvironment::Production
+                || (bool) config('serpro.owner_confirmation.require_for_all_environments', false);
+
+            if ($requiresOwner) {
+                if ($actorUserId === null || $actorUserId <= 0) {
+                    throw new RuntimeException(
+                        'Ativação de contrato exige ator com confirmação OWNER vinculada (CONTRACT_ACTIVATE).'
+                    );
+                }
+                $ownerApproval = app(SerproRolloutApprovalService::class)->claimOwnerApproval(
+                    action: SerproRolloutApprovalService::ACTION_CONTRACT_ACTIVATE,
+                    subjectType: 'CONTRACT',
+                    subjectId: (int) $contract->id,
+                    environment: $envEnum,
+                    actorUserId: $actorUserId,
+                    approvalId: $approvalId,
+                );
+            }
 
             $existing = SerproContract::query()
                 ->where('environment', $env)
@@ -174,9 +202,18 @@ final class SerproContractService
             $contract->health_message = 'Contrato ativo.';
             $contract->save();
 
+            if ($ownerApproval !== null) {
+                app(SerproRolloutApprovalService::class)->markOwnerApprovalExecuted(
+                    $ownerApproval,
+                    (int) $actorUserId,
+                );
+            }
+
             $this->audit->record('serpro.contract.activate', 'SUCCESS', $contract, [
                 'environment' => $env,
                 'replaced' => $existing->isNotEmpty(),
+                'approval_id' => $ownerApproval?->id,
+                'approval_policy' => $ownerApproval !== null ? 'OWNER_CONFIRMATION' : null,
             ], $actorUserId, null);
 
             return $contract->refresh();

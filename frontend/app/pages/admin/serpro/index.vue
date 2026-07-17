@@ -4,6 +4,10 @@
  * Sem exibir Consumer Secret, PFX, token ou vault id.
  */
 import type { SerproGlobalHealth, SerproKillSwitchStatus, SerproReadinessSnapshot } from '~/types/api'
+import {
+  buildKillSwitchOffBody,
+  expectedOwnerConfirmationPhrase
+} from '~/utils/serpro-owner-confirmation'
 
 const api = useApi()
 const toast = useToast()
@@ -17,6 +21,7 @@ const kill = ref<SerproKillSwitchStatus | null>(null)
 const environment = ref('TRIAL')
 const killReason = ref('')
 const killLoading = ref(false)
+const ownerConfirmOpen = ref(false)
 
 const envItems = [
   { label: 'Trial', value: 'TRIAL' },
@@ -131,20 +136,66 @@ async function toggleKill(active: boolean) {
     toast.add({ title: 'Informe o motivo auditável do kill switch.', color: 'warning' })
     return
   }
+  // Ligar: imediato fail-closed. Desligar: confirmação OWNER (modal).
+  if (!active) {
+    ownerConfirmOpen.value = true
+    return
+  }
   killLoading.value = true
   try {
     const res = await api.platform.serpro.killSwitch.set({
-      active,
+      active: true,
       reason: killReason.value.trim()
     })
     kill.value = res.data
     toast.add({
-      title: active ? 'Kill switch SERPRO global ligado.' : 'Kill switch SERPRO desligado.',
+      title: 'Kill switch SERPRO global ligado.',
       color: 'warning'
     })
     await load()
   } catch (caught) {
     toast.add({ title: apiErrorMessage(caught, 'Falha no kill switch SERPRO.'), color: 'error' })
+  } finally {
+    killLoading.value = false
+  }
+}
+
+async function confirmKillOff(payload: {
+  reason: string
+  confirmation_phrase: string
+  password: string
+}) {
+  killLoading.value = true
+  try {
+    const res = await api.platform.serpro.killSwitch.set(
+      buildKillSwitchOffBody({
+        reason: payload.reason || killReason.value,
+        confirmationPhrase: payload.confirmation_phrase
+      }) as {
+        active: boolean
+        reason: string
+        confirmation_phrase?: string
+        change_window_start?: string
+        change_window_end?: string
+      }
+    )
+    kill.value = res.data
+    toast.add({
+      title: res.executed === false
+        ? (res.message || 'Confirmação registrada.')
+        : 'Kill switch SERPRO desligado com confirmação do proprietário.',
+      color: 'success'
+    })
+    killReason.value = ''
+    await load()
+  } catch (caught) {
+    const code = (caught as { data?: { code?: string } })?.data?.code
+    toast.add({
+      title: code === 'password_confirmation_required'
+        ? 'Senha expirada — reconfirme e tente novamente.'
+        : apiErrorMessage(caught, 'Falha ao desligar kill switch SERPRO.'),
+      color: 'error'
+    })
   } finally {
     killLoading.value = false
   }
@@ -290,7 +341,7 @@ onMounted(load)
       <UPageCard
         variant="subtle"
         title="Kill switch SERPRO"
-        description="Bloqueia egress Integra Contador. Persistência no backend; não apaga contratos nem ledger."
+        description="Ligar é imediato (fail-closed). Desligar exige confirmação do proprietário (senha recente + frase + motivo + janela). Não apaga contratos nem ledger."
         data-testid="admin-serpro-kill-switch"
       >
         <div class="flex flex-wrap items-center gap-3 text-sm">
@@ -317,6 +368,7 @@ onMounted(load)
               class="w-full"
               placeholder="Motivo auditável…"
               autocomplete="off"
+              data-testid="serpro-kill-reason"
             />
           </UFormField>
           <UButton
@@ -329,12 +381,20 @@ onMounted(load)
           />
           <UButton
             variant="ghost"
-            label="Desligar"
+            label="Desligar (confirmação)"
             :loading="killLoading"
             data-testid="serpro-kill-off"
             @click="toggleKill(false)"
           />
         </div>
+        <SerproOwnerConfirmModal
+          v-model:open="ownerConfirmOpen"
+          action="KILL_SWITCH_OFF"
+          :expected-phrase="expectedOwnerConfirmationPhrase('KILL_SWITCH_OFF')"
+          title="Desligar kill switch global"
+          description="Confirmação reforçada do proprietário único da instalação."
+          @confirm="confirmKillOff"
+        />
       </UPageCard>
 
       <UPageCard

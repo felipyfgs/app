@@ -13,6 +13,7 @@ use App\Services\Serpro\SerproKillSwitchService;
 use App\Services\Serpro\SerproMetricsExporter;
 use App\Services\Serpro\SerproReadinessService;
 use App\Services\Serpro\SerproRolloutApprovalService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -104,13 +105,24 @@ class SerproPlatformOpsController extends Controller
         $data = $request->validate([
             'skip_oauth' => ['sometimes', 'boolean'],
             'reason' => ['nullable', 'string', 'max:500'],
+            'approval_id' => ['sometimes', 'integer', 'min:1'],
         ]);
+
+        $passwordOk = app(RecentPasswordConfirmationGate::class)
+            ->isRecentlyConfirmed($request->user(), $request);
+        if (! $passwordOk) {
+            return response()->json([
+                'message' => 'Cutover exige reconfirmação de senha recente.',
+                'code' => 'password_confirmation_required',
+            ], 403);
+        }
 
         try {
             $version = $this->credentials->cutover(
                 $serproCredentialVersion,
                 actorUserId: $request->user()?->id,
                 skipOauth: (bool) ($data['skip_oauth'] ?? false),
+                approvalId: isset($data['approval_id']) ? (int) $data['approval_id'] : null,
             );
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -197,24 +209,43 @@ class SerproPlatformOpsController extends Controller
             'subject_id' => ['nullable', 'integer'],
             'reason' => ['required', 'string', 'max:500'],
             'environment' => ['sometimes', 'string', Rule::enum(SerproEnvironment::class)],
+            'office_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'context' => ['sometimes', 'array'],
             'ttl_hours' => ['sometimes', 'integer', 'min:1', 'max:168'],
+            'change_window_start' => ['sometimes', 'nullable', 'date'],
+            'change_window_end' => ['sometimes', 'nullable', 'date', 'after:change_window_start'],
         ]);
 
         $env = isset($data['environment'])
             ? SerproEnvironment::from($data['environment'])
             : null;
 
-        $approval = $this->rollouts->request(
-            action: $data['action'],
-            subjectType: $data['subject_type'],
-            subjectId: $data['subject_id'] ?? null,
-            reason: $data['reason'],
-            requestedByUserId: (int) $request->user()->id,
-            environment: $env,
-            context: $data['context'] ?? [],
-            ttlHours: (int) ($data['ttl_hours'] ?? 24),
-        );
+        // office_id do body só é aceito para delimitar canário no registro da aprovação
+        // (não altera CurrentOffice / escopo tenant de dados fiscais).
+        $officeId = isset($data['office_id']) ? (int) $data['office_id'] : null;
+
+        try {
+            $approval = $this->rollouts->request(
+                action: $data['action'],
+                subjectType: $data['subject_type'],
+                subjectId: $data['subject_id'] ?? null,
+                reason: $data['reason'],
+                requestedByUserId: (int) $request->user()->id,
+                environment: $env,
+                officeId: $officeId,
+                context: $data['context'] ?? [],
+                ttlHours: (int) ($data['ttl_hours'] ?? 24),
+                changeWindowStart: isset($data['change_window_start'])
+                    ? CarbonImmutable::parse($data['change_window_start'])
+                    : null,
+                changeWindowEnd: isset($data['change_window_end'])
+                    ? CarbonImmutable::parse($data['change_window_end'])
+                    : null,
+                fromHttp: true,
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
         return response()->json([
             'data' => $this->rollouts->toSanitized($approval),
@@ -225,17 +256,36 @@ class SerproPlatformOpsController extends Controller
     {
         $data = $request->validate([
             'reason' => ['nullable', 'string', 'max:500'],
+            'confirmation_phrase' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'change_window_start' => ['sometimes', 'nullable', 'date'],
+            'change_window_end' => ['sometimes', 'nullable', 'date', 'after:change_window_start'],
         ]);
+
+        $passwordOk = app(RecentPasswordConfirmationGate::class)
+            ->isRecentlyConfirmed($request->user(), $request);
 
         try {
             $result = $this->rollouts->approve(
                 $serproRolloutApproval,
                 (int) $request->user()->id,
-                totpVerified: true,
+                passwordRecentlyConfirmed: $passwordOk,
                 reason: $data['reason'] ?? null,
+                confirmationPhrase: $data['confirmation_phrase'] ?? null,
+                changeWindowStart: isset($data['change_window_start'])
+                    ? CarbonImmutable::parse($data['change_window_start'])
+                    : null,
+                changeWindowEnd: isset($data['change_window_end'])
+                    ? CarbonImmutable::parse($data['change_window_end'])
+                    : null,
+                fromHttp: true,
             );
         } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            $code = $passwordOk ? 'approval_error' : 'password_confirmation_required';
+
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code' => $code,
+            ], $passwordOk ? 422 : 403);
         }
 
         return response()->json([

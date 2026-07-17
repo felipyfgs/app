@@ -44,34 +44,53 @@ class SerproPlatformSecurityApiTest extends TestCase
         $this->assertTrue((bool) $status->json('data.global.durable'));
     }
 
-    public function test_desligar_kill_switch_exige_dois_platform_admins(): void
+    public function test_desligar_kill_switch_exige_confirmacao_owner(): void
     {
-        $a = User::factory()->asPlatformAdmin()->create();
-        $b = User::factory()->asPlatformAdmin()->create();
+        $owner = User::factory()->asPlatformAdmin()->create(['password' => 'password']);
         $ks = app(SerproKillSwitchService::class);
-        $ks->activateGlobal('prep', $a->id);
+        $ks->activateGlobal('prep', $owner->id);
         $this->assertTrue($ks->isGlobalActive());
 
-        $first = $this->actingAs($a)->postJson('/api/v1/platform/serpro/kill-switch', [
+        $windowStart = now()->subMinutes(5)->toIso8601String();
+        $windowEnd = now()->addHour()->toIso8601String();
+
+        // Sem senha recente → 403
+        $denied = $this->actingAs($owner)->postJson('/api/v1/platform/serpro/kill-switch', [
             'active' => false,
             'reason' => 'tentativa reabrir',
+            'confirmation_phrase' => 'CONFIRMO-KILL_SWITCH_OFF',
+            'change_window_start' => $windowStart,
+            'change_window_end' => $windowEnd,
         ]);
-        $first->assertOk();
-        $this->assertFalse((bool) $first->json('executed'));
+        $denied->assertStatus(403)->assertJsonPath('code', 'password_confirmation_required');
         $this->assertTrue(app(SerproKillSwitchService::class)->isGlobalActive());
-        $approvalId = $first->json('approval.id');
-        $this->assertNotNull($approvalId);
 
-        // mesmo admin não fecha o segundo olho
-        $same = $this->actingAs($a)->postJson("/api/v1/platform/serpro/rollouts/{$approvalId}/approve", [
-            'reason' => 'mesmo admin',
-        ]);
-        $same->assertStatus(422);
+        $this->actingAs($owner)
+            ->postJson('/api/v1/auth/confirm-password', ['password' => 'password'])
+            ->assertOk();
 
-        $second = $this->actingAs($b)->postJson("/api/v1/platform/serpro/rollouts/{$approvalId}/approve", [
-            'reason' => 'segundo olho',
+        // Frase errada → 422, kill permanece ativo
+        $badPhrase = $this->actingAs($owner)->postJson('/api/v1/platform/serpro/kill-switch', [
+            'active' => false,
+            'reason' => 'tentativa reabrir',
+            'confirmation_phrase' => 'FRASE-ERRADA',
+            'change_window_start' => $windowStart,
+            'change_window_end' => $windowEnd,
         ]);
-        $second->assertOk()->assertJsonPath('executed', true);
+        $badPhrase->assertStatus(422);
+        $this->assertTrue(app(SerproKillSwitchService::class)->isGlobalActive());
+
+        $ok = $this->actingAs($owner)->postJson('/api/v1/platform/serpro/kill-switch', [
+            'active' => false,
+            'reason' => 'reabertura autorizada',
+            'confirmation_phrase' => 'CONFIRMO-KILL_SWITCH_OFF',
+            'change_window_start' => $windowStart,
+            'change_window_end' => $windowEnd,
+        ]);
+        $ok->assertOk()
+            ->assertJsonPath('executed', true)
+            ->assertJsonPath('approval.approval_policy', 'OWNER_CONFIRMATION');
+        $this->assertStringNotContainsString('segundo PLATFORM_ADMIN', (string) $ok->getContent());
         $this->assertFalse(app(SerproKillSwitchService::class)->isGlobalActive());
 
         Cache::flush();

@@ -26,10 +26,11 @@ class SerproCredentialVersionCommand extends Command
         {--pfx-file= : Caminho do arquivo PFX (não o conteúdo)}
         {--consumer-key-file= : Arquivo com Consumer Key (uma linha)}
         {--consumer-secret-file= : Arquivo com Consumer Secret (uma linha)}
-        {--approver-user-id= : ID do aprovador PLATFORM_ADMIN}
-        {--reason= : Motivo (retire/compromise/approve)}
+        {--approver-user-id= : ID do proprietário PLATFORM_ADMIN (consumo)}
+        {--approval-id= : ID de confirmação OWNER HTTP vigente (cutover)}
+        {--reason= : Motivo (retire/compromise)}
         {--notes= : Notas}
-        {--skip-oauth : Apenas em ambientes de teste controlados}';
+        {--skip-oauth : Apenas em local/testing}';
 
     protected $description = 'Versões de credencial SERPRO (PENDING/VERIFIED/cutover) sem segredo em argv/resposta';
 
@@ -162,30 +163,13 @@ class SerproCredentialVersionCommand extends Command
 
     private function doApproveCutover(SerproCredentialVersionService $versions): int
     {
-        $version = $this->resolveVersion();
-        $userId = (int) ($this->option('approver-user-id') ?: 0);
-        if ($userId <= 0) {
-            throw new RuntimeException('Informe --approver-user-id= do PLATFORM_ADMIN com TOTP.');
-        }
-
-        // CLI de console: TOTP já validado pelo operador humano no shell privilegiado.
-        $approval = $versions->recordApproval(
-            $version,
-            'CUTOVER',
-            $userId,
-            totpVerified: true,
-            decision: 'APPROVE',
-            reason: $this->option('reason') ? (string) $this->option('reason') : 'approve-cutover',
+        unset($versions);
+        // CLI NÃO fabrica confirmação humana (OWNER_CONFIRMATION).
+        throw new RuntimeException(
+            'approve-cutover via CLI é bloqueado: confirmação do proprietário só via API HTTP '.
+            '(POST /platform/serpro/rollouts + approve com senha recente, frase, motivo e janela). '.
+            'Para executar cutover técnico, use action=cutover com --approval-id= da aprovação HTTP vigente.'
         );
-
-        $count = $versions->distinctApprovers($version, 'CUTOVER');
-        $this->info(sprintf(
-            'Aprovação #%d registrada; aprovadores distintos=%d',
-            $approval->id,
-            $count,
-        ));
-
-        return self::SUCCESS;
     }
 
     private function doCutover(SerproCredentialVersionService $versions): int
@@ -198,11 +182,24 @@ class SerproCredentialVersionCommand extends Command
             $contract = SerproContract::query()->find($version->serpro_contract_id);
         }
 
+        $approvalId = $this->option('approval-id') ? (int) $this->option('approval-id') : null;
+        if ($approvalId === null || $approvalId <= 0) {
+            throw new RuntimeException(
+                'Cutover via CLI exige --approval-id= de confirmação OWNER HTTP persistida e vigente; CLI não fabrica aprovação.'
+            );
+        }
+
+        $actorId = $this->option('approver-user-id') ? (int) $this->option('approver-user-id') : null;
+        if ($actorId === null || $actorId <= 0) {
+            throw new RuntimeException('Informe --approver-user-id= do proprietário que confirmou a aprovação.');
+        }
+
         $version = $versions->cutover(
             $version,
             $contract,
-            actorUserId: $this->option('approver-user-id') ? (int) $this->option('approver-user-id') : null,
+            actorUserId: $actorId,
             skipOauth: (bool) $this->option('skip-oauth'),
+            approvalId: $approvalId,
         );
 
         $payload = $version->toSanitizedArray();

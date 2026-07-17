@@ -248,12 +248,12 @@ final class SerproReadinessPromotionService
             );
         }
 
-        $dualOk = $approval->first_approver_user_id !== null
-            && $approval->second_approver_user_id !== null
-            && (int) $approval->first_approver_user_id !== (int) $approval->second_approver_user_id;
-
-        if (! $dualOk) {
-            throw new RuntimeException('CANARY_READY bloqueado: quatro olhos (dois PLATFORM_ADMIN distintos) obrigatório.');
+        // Canário/promoção: política DUAL_ROLE (Proprietário + Office ADMIN ou dual de promoção).
+        // Confirmação OWNER singleton NUNCA satisfaz este gate.
+        if ($approval->policy()->value === 'OWNER_CONFIRMATION' || ! $approval->isFullyApproved()) {
+            throw new RuntimeException(
+                'CANARY_READY bloqueado: exige política DUAL_ROLE completa (Proprietário + Office ADMIN distintos); confirmação singleton não satisfaz.'
+            );
         }
 
         if (in_array((string) $approval->status, ['PENDING', 'PARTIAL', 'REJECTED', 'EXPIRED', ''], true)) {

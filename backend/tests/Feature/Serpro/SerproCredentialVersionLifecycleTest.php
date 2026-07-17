@@ -8,8 +8,12 @@ use App\Enums\SerproCredentialVersionStatus;
 use App\Enums\SerproEnvironment;
 use App\Models\SerproContract;
 use App\Models\SerproCredentialVersion;
+use App\Models\SerproRolloutApproval;
+use App\Models\User;
 use App\Services\Serpro\SerproCredentialVersionService;
+use App\Services\Serpro\SerproRolloutApprovalService;
 use App\Services\Vault\EnvelopeCrypto;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
@@ -36,11 +40,9 @@ class SerproCredentialVersionLifecycleTest extends TestCase
             'vault.master_key_version' => 1,
             'serpro.contractor_pfx.min_horizon_days' => 1,
             'serpro.contractor_pfx.require_chain' => false,
-            'serpro.contractor_pfx.cutover_approvals_required' => 2,
             'serpro.trial.use_fake_clients' => true,
         ]);
 
-        // Rebind vault after config change (singletons may already resolve).
         $this->app->forgetInstance(EnvelopeCrypto::class);
         $this->app->forgetInstance(SecureObjectStore::class);
     }
@@ -86,10 +88,11 @@ class SerproCredentialVersionLifecycleTest extends TestCase
         $this->assertNotNull($verified->verified_at);
     }
 
-    public function test_cutover_exige_dois_aprovadores(): void
+    public function test_cutover_exige_confirmacao_owner_vinculada(): void
     {
         [$pfx, $password] = $this->makePfx('11222333000181');
         $service = app(SerproCredentialVersionService::class);
+        $owner = User::factory()->asPlatformAdmin()->create();
 
         $contract = SerproContract::query()->create([
             'environment' => SerproEnvironment::Trial,
@@ -109,14 +112,15 @@ class SerproCredentialVersionLifecycleTest extends TestCase
         $service->verifyPending($version);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/aprovadores/i');
-        $service->cutover($version->fresh(), $contract, skipOauth: true);
+        $this->expectExceptionMessageMatches('/confirmação|OWNER|aprovação/i');
+        $service->cutover($version->fresh(), $contract, actorUserId: $owner->id, skipOauth: true);
     }
 
-    public function test_cutover_atomico_com_aprovacao_dupla_e_oauth_mock(): void
+    public function test_cutover_atomico_com_owner_confirmation_e_oauth_mock(): void
     {
         [$pfx, $password] = $this->makePfx('11222333000181');
         $service = app(SerproCredentialVersionService::class);
+        $owner = User::factory()->asPlatformAdmin()->create();
 
         $contract = SerproContract::query()->create([
             'environment' => SerproEnvironment::Trial,
@@ -147,19 +151,19 @@ class SerproCredentialVersionLifecycleTest extends TestCase
         );
         $service->verifyPending($version);
 
-        $service->recordApproval($version, 'CUTOVER', 10, true, 'APPROVE', 'eye1');
-        $service->recordApproval($version, 'CUTOVER', 20, true, 'APPROVE', 'eye2');
+        $approval = $this->confirmOwnerCutover($owner, (int) $version->id);
 
         $oauthCalled = false;
         $active = $service->cutover(
             $version->fresh(),
             $contract->fresh(),
-            actorUserId: null,
+            actorUserId: $owner->id,
             oauthProbe: function (SerproContract $c) use (&$oauthCalled): void {
                 $oauthCalled = true;
                 $this->assertNotNull($c->pfx_vault_object_id);
                 $this->assertNotNull($c->oauth_vault_object_id);
             },
+            approvalId: $approval->id,
         );
 
         $this->assertTrue($oauthCalled);
@@ -167,12 +171,14 @@ class SerproCredentialVersionLifecycleTest extends TestCase
         $this->assertSame(SerproCredentialVersionStatus::Retired, $oldActive->fresh()->status);
         $this->assertSame($active->id, $contract->fresh()->active_credential_version_id);
         $this->assertNull($contract->fresh()->token_vault_object_id);
+        $this->assertSame('EXECUTED', $approval->fresh()->status);
     }
 
-    public function test_cutover_oauth_falha_nao_promove(): void
+    public function test_cutover_oauth_falha_nao_promove_nem_consome_aprovacao(): void
     {
         [$pfx, $password] = $this->makePfx('11222333000181');
         $service = app(SerproCredentialVersionService::class);
+        $owner = User::factory()->asPlatformAdmin()->create();
 
         $contract = SerproContract::query()->create([
             'environment' => SerproEnvironment::Trial,
@@ -192,14 +198,15 @@ class SerproCredentialVersionLifecycleTest extends TestCase
             $contract,
         );
         $service->verifyPending($version);
-        $service->recordApproval($version, 'CUTOVER', 1, true, 'APPROVE');
-        $service->recordApproval($version, 'CUTOVER', 2, true, 'APPROVE');
+        $approval = $this->confirmOwnerCutover($owner, (int) $version->id);
 
         try {
             $service->cutover(
                 $version->fresh(),
                 $contract->fresh(),
+                actorUserId: $owner->id,
                 oauthProbe: fn () => throw new RuntimeException('oauth down'),
+                approvalId: $approval->id,
             );
             $this->fail('deveria falhar');
         } catch (RuntimeException $e) {
@@ -208,6 +215,27 @@ class SerproCredentialVersionLifecycleTest extends TestCase
 
         $this->assertSame(SerproCredentialVersionStatus::Verified, $version->fresh()->status);
         $this->assertSame('01OLDPFX00000000000000000', $contract->fresh()->pfx_vault_object_id);
+        $this->assertSame('APPROVED', $approval->fresh()->status);
+        $this->assertNull($approval->fresh()->executed_at);
+    }
+
+    public function test_approval_legado_cutover_recusado(): void
+    {
+        $version = SerproCredentialVersion::query()->create([
+            'environment' => SerproEnvironment::Trial,
+            'version_number' => 1,
+            'status' => SerproCredentialVersionStatus::Verified,
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/OWNER|CREDENTIAL_CUTOVER|legado/i');
+        app(SerproCredentialVersionService::class)->recordApproval(
+            $version,
+            'CUTOVER',
+            1,
+            totpVerified: true,
+            decision: 'APPROVE',
+        );
     }
 
     public function test_approval_exige_senha_recente(): void
@@ -222,7 +250,7 @@ class SerproCredentialVersionLifecycleTest extends TestCase
         $this->expectExceptionMessageMatches('/senha|password|reconfirm/i');
         app(SerproCredentialVersionService::class)->recordApproval(
             $version,
-            'CUTOVER',
+            'RETIRE',
             1,
             totpVerified: false,
             decision: 'APPROVE',
@@ -247,6 +275,43 @@ class SerproCredentialVersionLifecycleTest extends TestCase
                 $_SERVER['argv'] = $argvBackup;
             }
         }
+    }
+
+    public function test_cli_approve_cutover_nao_fabrica(): void
+    {
+        $this->artisan('serpro:credential-version', [
+            'action' => 'approve-cutover',
+            '--id' => 1,
+            '--approver-user-id' => 1,
+        ])->assertFailed();
+    }
+
+    private function confirmOwnerCutover(User $owner, int $versionId): SerproRolloutApproval
+    {
+        $svc = app(SerproRolloutApprovalService::class);
+        $start = CarbonImmutable::now()->subMinutes(5);
+        $end = CarbonImmutable::now()->addHour();
+        $approval = $svc->request(
+            action: SerproRolloutApprovalService::ACTION_CREDENTIAL_CUTOVER,
+            subjectType: 'CREDENTIAL_VERSION',
+            subjectId: $versionId,
+            reason: 'cutover teste',
+            requestedByUserId: $owner->id,
+            environment: SerproEnvironment::Trial,
+            changeWindowStart: $start,
+            changeWindowEnd: $end,
+        );
+        $svc->approve(
+            $approval,
+            $owner->id,
+            passwordRecentlyConfirmed: true,
+            reason: 'cutover teste',
+            confirmationPhrase: 'CONFIRMO-CREDENTIAL_CUTOVER',
+            changeWindowStart: $start,
+            changeWindowEnd: $end,
+        );
+
+        return $approval->fresh();
     }
 
     /**

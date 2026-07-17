@@ -100,7 +100,7 @@ onMounted(load)
       color="info"
       icon="i-lucide-info"
       title="Snapshot de smoke e kill switch"
-      description="Estado operacional derivado de /platform/serpro/health. Aprovações de rollout (quatro olhos) vêm de /platform/serpro/rollouts."
+      description="Health de /platform/serpro/health. Ações globais (kill-off, cutover, contrato) usam confirmação do proprietário; canário faturável permanece dual (Proprietário + Office ADMIN)."
       class="mb-4"
     />
 
@@ -187,16 +187,26 @@ onMounted(load)
         v-if="pendingApprovals.length"
         variant="subtle"
         title="Aprovações de rollout"
-        description="Pedidos recentes (metadados sanitizados)."
+        description="Metadados sanitizados: política, status e frase esperada (sem segredos)."
       >
         <ul class="divide-y divide-default text-sm">
           <li
             v-for="(item, idx) in pendingApprovals.slice(0, 10)"
             :key="String(item.id ?? idx)"
             class="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0"
+            data-testid="serpro-rollout-approval-row"
           >
             <span class="font-medium text-highlighted">
               {{ item.action || '—' }}
+              <UBadge
+                v-if="item.approval_policy"
+                class="ms-1"
+                size="sm"
+                variant="subtle"
+                :color="item.approval_policy === 'OWNER_CONFIRMATION' ? 'warning' : 'info'"
+              >
+                {{ item.approval_policy }}
+              </UBadge>
               <span class="text-muted font-normal">
                 · {{ item.status || '—' }}
               </span>

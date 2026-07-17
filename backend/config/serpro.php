@@ -140,8 +140,29 @@ return [
         'min_horizon_days' => (int) env('SERPRO_CONTRACTOR_PFX_MIN_HORIZON_DAYS', 7),
         /** Exigir extracerts no PFX (cadeia). */
         'require_chain' => filter_var(env('SERPRO_CONTRACTOR_PFX_REQUIRE_CHAIN', false), FILTER_VALIDATE_BOOL),
-        /** Aprovações distintas (quatro olhos) para cutover. */
-        'cutover_approvals_required' => (int) env('SERPRO_CREDENTIAL_CUTOVER_APPROVALS', 2),
+        /**
+         * Legado: contagem de olhos para cutover. Cutover usa OWNER_CONFIRMATION
+         * vinculada (SerproRolloutApproval); este valor não autoriza cutover sozinho.
+         */
+        'cutover_approvals_required' => (int) env('SERPRO_CREDENTIAL_CUTOVER_APPROVALS', 1),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Confirmação do proprietário único (OWNER_CONFIRMATION)
+    |--------------------------------------------------------------------------
+    */
+    'owner_confirmation' => [
+        /** Janela máxima (horas) entre change_window_start e change_window_end. */
+        'max_window_hours' => (int) env('SERPRO_OWNER_CONFIRMATION_MAX_WINDOW_HOURS', 48),
+        /**
+         * Se true, CONTRACT_ACTIVATE exige OWNER também em TRIAL/HOMOLOGATION.
+         * Default false: somente PRODUCTION (contrato produtivo).
+         */
+        'require_for_all_environments' => filter_var(
+            env('SERPRO_OWNER_CONFIRMATION_ALL_ENVS', false),
+            FILTER_VALIDATE_BOOL,
+        ),
     ],
 
     'termo_destination_cnpj' => env('SERPRO_TERMO_DESTINATION_CNPJ', ''),
