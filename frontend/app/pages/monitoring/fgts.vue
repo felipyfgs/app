@@ -29,6 +29,11 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  dataOrigin,
+  dataOriginLabel,
+  sourceLabel,
+  asOf,
+  surface,
   sorting,
   setPage,
   refresh,
@@ -280,6 +285,11 @@ onMounted(() => {
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
+    :data-origin="dataOrigin"
+    :data-origin-label="dataOriginLabel"
+    :source-label="sourceLabel"
+    :as-of="asOf"
+    :surface-summary="surface"
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"

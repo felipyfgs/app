@@ -8,6 +8,9 @@ use App\Enums\TaxInstallmentModality;
 
 /**
  * Filtros normalizados da carteira/overview (mesmo escopo para contadores e lista).
+ *
+ * Eixos option aceitam valor único ou lista CSV / array (ex.: situation=PENDING,ATTENTION).
+ * Propriedades string guardam a forma canônica serializada (valores válidos, sorted, join `,`).
  */
 final readonly class ModulePortfolioFilters
 {
@@ -39,12 +42,10 @@ final readonly class ModulePortfolioFilters
             $q = null;
         }
 
-        $situation = isset($input['situation']) && is_string($input['situation'])
-            ? strtoupper(trim($input['situation']))
-            : null;
-        if ($situation === '') {
-            $situation = null;
-        }
+        $situation = self::normalizeTokenList(
+            $input['situation'] ?? null,
+            static fn (string $token): ?string => FiscalSituation::tryFrom(strtoupper($token))?->value,
+        );
 
         $competence = isset($input['competence']) && is_string($input['competence'])
             ? trim($input['competence'])
@@ -60,12 +61,10 @@ final readonly class ModulePortfolioFilters
             $submodule = null;
         }
 
-        $delivery = isset($input['delivery_status']) && is_string($input['delivery_status'])
-            ? strtoupper(trim($input['delivery_status']))
-            : null;
-        if ($delivery === '') {
-            $delivery = null;
-        }
+        $delivery = self::normalizeTokenList(
+            $input['delivery_status'] ?? null,
+            static fn (string $token): ?string => strtoupper(trim($token)) ?: null,
+        );
 
         $sort = isset($input['sort']) && is_string($input['sort'])
             ? strtolower(trim($input['sort']))
@@ -89,19 +88,15 @@ final readonly class ModulePortfolioFilters
             $clientId = null;
         }
 
-        $coverage = isset($input['coverage']) && is_string($input['coverage'])
-            ? strtoupper(trim($input['coverage']))
-            : null;
-        if ($coverage === '' || FiscalCoverage::tryFrom((string) $coverage) === null) {
-            $coverage = null;
-        }
+        $coverage = self::normalizeTokenList(
+            $input['coverage'] ?? null,
+            static fn (string $token): ?string => FiscalCoverage::tryFrom(strtoupper(trim($token)))?->value,
+        );
 
-        $modality = isset($input['modality']) && is_string($input['modality'])
-            ? strtoupper(trim($input['modality']))
-            : null;
-        if ($modality === '' || TaxInstallmentModality::tryFrom((string) $modality) === null) {
-            $modality = null;
-        }
+        $modality = self::normalizeTokenList(
+            $input['modality'] ?? null,
+            static fn (string $token): ?string => TaxInstallmentModality::tryFrom(strtoupper(trim($token)))?->value,
+        );
 
         return new self(
             page: $page,
@@ -140,12 +135,105 @@ final readonly class ModulePortfolioFilters
         );
     }
 
+    /**
+     * @return list<string>
+     */
+    public function situationList(): array
+    {
+        return self::splitList($this->situation);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function deliveryStatusList(): array
+    {
+        return self::splitList($this->deliveryStatus);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function coverageList(): array
+    {
+        return self::splitList($this->coverage);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function modalityList(): array
+    {
+        return self::splitList($this->modality);
+    }
+
+    /**
+     * Compat: primeiro valor quando multi (ou único).
+     */
     public function situationEnum(): ?FiscalSituation
     {
-        if ($this->situation === null) {
+        $list = $this->situationList();
+        if ($list === []) {
             return null;
         }
 
-        return FiscalSituation::tryFrom($this->situation);
+        return FiscalSituation::tryFrom($list[0]);
+    }
+
+    /**
+     * @param  callable(string): (?string)  $map  normaliza token; null = descarta
+     */
+    private static function normalizeTokenList(mixed $raw, callable $map): ?string
+    {
+        $tokens = [];
+        if (is_array($raw)) {
+            foreach ($raw as $item) {
+                if (is_string($item) || is_numeric($item)) {
+                    $tokens[] = (string) $item;
+                }
+            }
+        } elseif (is_string($raw)) {
+            $tokens = preg_split('/\s*,\s*/', trim($raw)) ?: [];
+        } else {
+            return null;
+        }
+
+        $out = [];
+        foreach ($tokens as $token) {
+            $token = trim((string) $token);
+            if ($token === '' || strcasecmp($token, 'all') === 0) {
+                continue;
+            }
+            $mapped = $map($token);
+            if ($mapped !== null && $mapped !== '') {
+                $out[$mapped] = $mapped;
+            }
+        }
+
+        if ($out === []) {
+            return null;
+        }
+
+        $values = array_values($out);
+        sort($values, SORT_STRING);
+
+        return implode(',', $values);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function splitList(?string $value): array
+    {
+        if ($value === null || $value === '') {
+            return [];
+        }
+
+        $parts = array_values(array_filter(
+            array_map('trim', explode(',', $value)),
+            static fn (string $part): bool => $part !== '',
+        ));
+
+        return $parts;
     }
 }

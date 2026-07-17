@@ -14,6 +14,7 @@ final readonly class ModuleOverviewDto
      * @param  list<ModuleAgendaItemDto>  $agenda
      * @param  list<ModuleCategorySummaryDto>  $categories
      * @param  array<string, mixed>  $metrics
+     * @param  array<string, mixed>|null  $surface  resumo público da superfície (sem coordenadas SERPRO)
      */
     public function __construct(
         public FiscalModuleKey $moduleKey,
@@ -26,6 +27,7 @@ final readonly class ModuleOverviewDto
         public array $agenda = [],
         public array $categories = [],
         public array $metrics = [],
+        public ?array $surface = null,
     ) {}
 
     /**
@@ -47,6 +49,7 @@ final readonly class ModuleOverviewDto
             'agenda' => array_map(static fn (ModuleAgendaItemDto $a) => $a->toArray(), $this->agenda),
             'categories' => array_map(static fn (ModuleCategorySummaryDto $c) => $c->toArray(), $this->categories),
             'metrics' => $this->metrics,
+            'surface' => $this->surface,
         ];
     }
 }

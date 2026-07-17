@@ -11,12 +11,19 @@ import type {
   FiscalModuleClientRowFor,
   FiscalModuleOverview,
   FiscalModulePortfolioFilters,
+  FiscalMonitoringSurfaceSummary,
   FiscalPortfolioModuleKey,
   MonitoringFilterValue
 } from '~/types/fiscal-modules'
-import { fiscalKpiSituationFilter, isSyntheticFiscalOrigin } from '~/types/fiscal-modules'
+import {
+  fiscalKpiSituationFilter,
+  isSurfaceUnavailable,
+  isSyntheticFiscalOrigin,
+  surfaceAllowsDocument
+} from '~/types/fiscal-modules'
 import { laravelPageBatch, usePagedTable } from '~/composables/usePagedTable'
 import {
+  hasActiveMonitoringFilters,
   normalizeMonitoringFilters,
   resetMonitoringFilters
 } from '~/utils/monitoring-filters'
@@ -204,22 +211,29 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   )
 
   const dataOrigin = computed(() => overview.value?.data_origin ?? null)
+  const dataOriginLabel = computed(() => overview.value?.data_origin_label ?? null)
+  const sourceLabel = computed(() => overview.value?.source_label ?? null)
+  const asOf = computed(() => overview.value?.as_of ?? null)
+  const surface = computed<FiscalMonitoringSurfaceSummary | null>(() =>
+    overview.value?.surface ?? null
+  )
+  const surfaceUnavailable = computed(() => isSurfaceUnavailable(surface.value))
+  const allowsDocument = computed(() => surfaceAllowsDocument(surface.value))
   const counters = computed(() => overview.value?.counters ?? null)
   const totalClients = computed(() => overview.value?.total_clients ?? total.value)
   const hasRows = computed(() => rows.value.length > 0)
   const hasPreviousData = computed(() =>
     hasLoadedOnce.value && (hasRows.value || overview.value != null)
   )
-  const isFiltered = computed(() => Boolean(
-    q.value.trim()
-    || (situation.value && situation.value !== 'all')
-    || competence.value.trim()
-    || (submodule.value && submodule.value !== 'all' && submodule.value.trim())
-    || (deliveryStatus.value && deliveryStatus.value !== 'all')
-    || clientId.value != null
-    || (coverage.value && coverage.value !== 'all')
-    || (modality.value && modality.value !== 'all')
-  ))
+  const isFiltered = computed(() => hasActiveMonitoringFilters({
+    q: q.value,
+    situation: situation.value,
+    competence: competence.value,
+    clientId: clientId.value,
+    deliveryStatus: deliveryStatus.value,
+    coverage: coverage.value,
+    modality: modality.value
+  }) || Boolean(submodule.value && submodule.value !== 'all' && submodule.value.trim()))
 
   async function syncUrl() {
     const path = options.submodulePath?.(submodule.value)
@@ -422,6 +436,10 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     { deep: true }
   )
 
+  /**
+   * Troca de Office/módulo: invalida época, descarta overview/origem/contadores/linhas
+   * e impede que resposta atrasada seja aplicada (seq + sessionEpoch).
+   */
   function clearForContextChange() {
     overviewSeq += 1
     clientsLoadSeq += 1
@@ -433,6 +451,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     hasLoadedOnce.value = false
     manualRefreshing.value = false
     overviewError.value = null
+    overviewLoading.value = false
   }
 
   /** Limpa filtros aplicados (incl. cliente) antes da carga do novo Office. */
@@ -505,6 +524,12 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     counters,
     totalClients,
     dataOrigin,
+    dataOriginLabel,
+    sourceLabel,
+    asOf,
+    surface,
+    surfaceUnavailable,
+    allowsDocument,
     isSynthetic,
     lastValidAt,
     hasLoadedOnce,

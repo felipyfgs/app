@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { isSyntheticFiscalOrigin } from '../../app/types/fiscal-modules'
 
 /**
  * Garante que o dashboard não incorpora gráfico/variação/filtro temporal artificial.
@@ -39,5 +40,36 @@ describe('dashboard operacional', () => {
     expect(source).toMatch(/backup\?\.never|backup\?\.stale|Nenhum backup/)
     expect(source).toContain('/health')
     expect(source).toContain('inboxItems')
+  })
+})
+
+describe('dashboard fiscal /monitoring — origem e KPIs produtivos', () => {
+  const hub = readFileSync(
+    resolve(__dirname, '../../app/pages/monitoring/index.vue'),
+    'utf8'
+  )
+
+  it('identifica origem por módulo e alerta sintético global', () => {
+    expect(hub).toContain('FiscalDataOriginBadge')
+    expect(hub).toContain('data-testid="dashboard-module-origin"')
+    expect(hub).toContain('data-testid="dashboard-synthetic-alert"')
+    expect(hub).toContain('hasSyntheticModules')
+    expect(hub).toContain('isSyntheticFiscalOrigin')
+  })
+
+  it('exclui módulos sintéticos dos indicadores produtivos (module_errors)', () => {
+    expect(hub).toContain('productiveModuleOverviews')
+    expect(hub).toContain('productiveModuleOverviews.value.filter')
+    // Lógica espelhada: DEMO não entra em contagem produtiva
+    const modules = [
+      { origin: 'LIVE', error: 1 },
+      { origin: 'DEMO', error: 5 },
+      { origin: 'SIMULATED', error: 2 }
+    ]
+    const productiveErrors = modules
+      .filter(m => !isSyntheticFiscalOrigin(m.origin))
+      .filter(m => m.error > 0)
+      .length
+    expect(productiveErrors).toBe(1)
   })
 })

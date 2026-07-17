@@ -11,6 +11,7 @@ import { sortHeader } from '~/utils/table-sort'
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
 const FiscalCoverageBadge = resolveComponent('FiscalCoverageBadge')
+const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
 const UButton = resolveComponent('UButton')
 
 const route = useRoute()
@@ -31,6 +32,12 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  dataOrigin,
+  dataOriginLabel,
+  sourceLabel,
+  asOf,
+  surface,
+  allowsDocument,
   sorting,
   setPage,
   refresh,
@@ -151,14 +158,20 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
     header: 'Ações',
     enableHiding: false,
     enableSorting: false,
-    meta: { class: { th: 'w-28', td: 'w-28' } },
-    cell: ({ row }) => h(UButton, {
-      size: 'xs',
-      color: 'neutral',
-      variant: 'ghost',
-      label: 'Cliente',
-      to: clientHref(row.original.client_id)
-    })
+    meta: { class: { th: 'w-48', td: 'w-48' } },
+    cell: ({ row }) => h('div', { class: 'flex justify-end gap-1 items-center' }, [
+      h(FiscalDocumentAction, {
+        document: row.original.document,
+        disabled: !allowsDocument.value
+      }),
+      h(UButton, {
+        size: 'xs',
+        color: 'neutral',
+        variant: 'ghost',
+        label: 'Cliente',
+        to: clientHref(row.original.client_id)
+      })
+    ])
   }
 ]
 </script>
@@ -182,6 +195,11 @@ const columns: TableColumn<SimplesMeiClientRow>[] = [
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
+    :data-origin="dataOrigin"
+    :data-origin-label="dataOriginLabel"
+    :source-label="sourceLabel"
+    :as-of="asOf"
+    :surface-summary="surface"
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"

@@ -3,13 +3,22 @@ import type { TableColumn } from '@nuxt/ui'
 import type { FiscalModuleSortingState } from '~/composables/useFiscalModulePortfolio'
 import type {
   FiscalModuleCounters,
+  FiscalMonitoringSurfaceSummary,
   FiscalPortfolioModuleKey,
   FiscalTableEmptyKind,
   MonitoringFilterConfig,
   MonitoringFilterValue
 } from '~/types/fiscal-modules'
-import { fiscalKpiSituationFilter, fiscalSituationToKpiKey } from '~/types/fiscal-modules'
+import {
+  fiscalAsOfLabel,
+  fiscalDataOriginLabel,
+  fiscalKpiSituationFilter,
+  fiscalSituationToKpiKey,
+  isSurfaceUnavailable,
+  isSyntheticFiscalOrigin
+} from '~/types/fiscal-modules'
 import { resolveMonitoringSurface } from '~/types/saved-list-filters'
+import { dataOriginMeta } from '~/utils/fiscal-status'
 import { formatDateTime } from '~/utils/format'
 import { monitoringFilterSignature } from '~/utils/monitoring-filters'
 import { monitoringSelectionScope } from '~/utils/monitoring-selection'
@@ -39,6 +48,12 @@ const props = withDefaults(defineProps<{
   totalClients?: number
   counters?: FiscalModuleCounters | null
   lastGoodAt?: string | null
+  /** Origem fiscal do overview (DEMO / SIMULATED / LIVE). */
+  dataOrigin?: string | null
+  dataOriginLabel?: string | null
+  sourceLabel?: string | null
+  /** Observação fiscal oficial (as_of) — não confundir com lastGoodAt. */
+  asOf?: string | null
   showModuleNav?: boolean
   showKpis?: boolean
   showColumnVisibility?: boolean
@@ -51,6 +66,11 @@ const props = withDefaults(defineProps<{
    * (registrations, tax_processes) devem passar explicitamente.
    */
   surface?: string | null
+  /**
+   * Resumo público da superfície do overview (result_kind / allows_document).
+   * Distinto de `surface` (preset de filtros salvos).
+   */
+  surfaceSummary?: FiscalMonitoringSurfaceSummary | null
 }>(), {
   description: undefined,
   panelId: 'fiscal-module',
@@ -65,13 +85,18 @@ const props = withDefaults(defineProps<{
   initialHiddenColumns: () => [],
   counters: null,
   lastGoodAt: null,
+  dataOrigin: null,
+  dataOriginLabel: null,
+  sourceLabel: null,
+  asOf: null,
   showModuleNav: true,
   showKpis: true,
   showColumnVisibility: true,
   emptyTitle: undefined,
   emptyDescription: undefined,
   emptyKind: null,
-  surface: null
+  surface: null,
+  surfaceSummary: null
 })
 
 const emit = defineEmits<{
@@ -105,6 +130,34 @@ const selectionScope = computed(() => monitoringSelectionScope({
   filters: monitoringFilterSignature(props.filters),
   sorting: props.sorting
 }))
+
+const originMeta = computed(() => dataOriginMeta(props.dataOrigin))
+const isSyntheticOrigin = computed(() => isSyntheticFiscalOrigin(props.dataOrigin))
+const originLabel = computed(() =>
+  props.dataOriginLabel?.trim()
+  || fiscalDataOriginLabel(props.dataOrigin)
+  || originMeta.value.label
+)
+const provenanceSource = computed(() =>
+  props.sourceLabel?.trim() || null
+)
+const asOfDisplay = computed(() => fiscalAsOfLabel(props.asOf))
+const asOfFormatted = computed(() => {
+  if (!props.asOf) return asOfDisplay.value
+  try {
+    return formatDateTime(props.asOf)
+  } catch {
+    return asOfDisplay.value
+  }
+})
+const surfaceIsUnavailable = computed(() => isSurfaceUnavailable(props.surfaceSummary))
+const surfaceUnavailableTitle = computed(() => {
+  const label = props.surfaceSummary?.official_state_label?.trim()
+  if (label) {
+    return `Operação ainda não produtiva no catálogo SERPRO (${label})`
+  }
+  return 'Operação ainda não produtiva no catálogo SERPRO'
+})
 
 function onSelectionChange(payload: { rows: T[], clientIds: number[], count: number }) {
   selectedClientIds.value = payload.clientIds
@@ -155,6 +208,57 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
         data-testid="fiscal-submodules"
       >
         <slot name="submodules" />
+      </div>
+
+      <!-- Superfície UNAVAILABLE (ex. DASN-SIMEI) — antes dos KPIs; sem dados sintéticos. -->
+      <UAlert
+        v-if="surfaceIsUnavailable"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-circle-off"
+        :title="surfaceUnavailableTitle"
+        data-testid="fiscal-surface-unavailable-alert"
+      />
+
+      <!-- Proveniência / frescor fiscal — antes dos KPIs; sintético persiste em filtro/paginação. -->
+      <div
+        v-if="counters != null || dataOrigin != null || dataOriginLabel"
+        data-testid="fiscal-provenance"
+        class="flex flex-col gap-2"
+      >
+        <UAlert
+          v-if="isSyntheticOrigin"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-flask-conical"
+          :title="`Dados demonstrativos — sem validade fiscal (${originLabel})`"
+          data-testid="fiscal-synthetic-alert"
+        />
+        <div
+          v-else
+          class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted"
+          data-testid="fiscal-live-meta"
+        >
+          <span
+            class="inline-flex items-center gap-1"
+            data-testid="fiscal-origin-label"
+          >
+            <UIcon
+              :name="originMeta.icon"
+              class="size-3.5 shrink-0"
+            />
+            {{ originLabel }}
+          </span>
+          <span
+            v-if="provenanceSource"
+            data-testid="fiscal-source-label"
+          >
+            Fonte: {{ provenanceSource }}
+          </span>
+          <span data-testid="fiscal-as-of">
+            {{ props.asOf ? `Observado: ${asOfFormatted}` : asOfDisplay }}
+          </span>
+        </div>
       </div>
 
       <div

@@ -79,7 +79,8 @@ class FiscalEvidenceArtifact extends Model
     }
 
     /**
-     * Metadados públicos — sem vault_object_id (path/id interno de cofre).
+     * Metadados internos/admin — não usar em resposta tenant de produto.
+     * Preferir {@see toTenantDocumentArray()} ou FiscalDocumentDescriptorDto.
      *
      * @return array<string, mixed>
      */
@@ -99,6 +100,30 @@ class FiscalEvidenceArtifact extends Model
             'verification_state' => $this->verification_state?->value,
             'observed_at' => $this->observed_at?->toIso8601String(),
             'retention_until' => $this->retention_until?->toIso8601String(),
+            'created_at' => $this->created_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Metadados sanitizados para UI tenant — sem hash, operation_key, run_id, vault ou path.
+     *
+     * @return array{
+     *   id: int|string|null,
+     *   content_type: string|null,
+     *   byte_size: int|null,
+     *   source: string|null,
+     *   observed_at: string|null,
+     *   created_at: string|null
+     * }
+     */
+    public function toTenantDocumentArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'content_type' => $this->content_type,
+            'byte_size' => $this->byte_size,
+            'source' => $this->source,
+            'observed_at' => $this->observed_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

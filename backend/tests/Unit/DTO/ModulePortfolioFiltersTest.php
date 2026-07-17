@@ -57,4 +57,38 @@ class ModulePortfolioFiltersTest extends TestCase
         $this->assertSame('FULL', $next->coverage);
         $this->assertSame('PARCMEI', $next->modality);
     }
+
+    public function test_from_request_aceita_listas_csv_e_array(): void
+    {
+        $csv = ModulePortfolioFilters::fromRequest([
+            'situation' => 'pending,ATTENTION,pending',
+            'modality' => 'parcsn,PARCMEI',
+            'delivery_status' => 'DELIVERED,PENDING',
+        ]);
+
+        $this->assertSame('ATTENTION,PENDING', $csv->situation);
+        $this->assertSame(['ATTENTION', 'PENDING'], $csv->situationList());
+        $this->assertSame('PARCMEI,PARCSN', $csv->modality);
+        $this->assertSame(['PARCMEI', 'PARCSN'], $csv->modalityList());
+        $this->assertSame(['DELIVERED', 'PENDING'], $csv->deliveryStatusList());
+
+        $array = ModulePortfolioFilters::fromRequest([
+            'situation' => ['ERROR', 'PENDING'],
+            'coverage' => ['partial', 'full'],
+        ]);
+
+        $this->assertSame('ERROR,PENDING', $array->situation);
+        $this->assertSame('FULL,PARTIAL', $array->coverage);
+    }
+
+    public function test_from_request_descarta_tokens_invalidos_em_lista(): void
+    {
+        $f = ModulePortfolioFilters::fromRequest([
+            'situation' => 'PENDING,NOT_A_REAL_SITUATION',
+            'modality' => 'PARCSN,FAKE',
+        ]);
+
+        $this->assertSame('PENDING', $f->situation);
+        $this->assertSame('PARCSN', $f->modality);
+    }
 }

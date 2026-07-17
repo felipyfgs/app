@@ -3,23 +3,28 @@
 namespace App\Services\FiscalMonitoring\ModulePortfolio;
 
 use App\Domain\Cnpj;
+use App\DTO\Fiscal\FiscalDocumentDescriptorDto;
 use App\DTO\Fiscal\Module\ModuleAgendaItemDto;
 use App\DTO\Fiscal\Module\ModuleCategorySummaryDto;
 use App\DTO\Fiscal\Module\ModuleClientRowDto;
 use App\DTO\Fiscal\Module\ModuleCountersDto;
 use App\DTO\Fiscal\Module\ModuleOverviewDto;
 use App\DTO\Fiscal\Module\ModulePortfolioFilters;
+use App\Enums\DocumentUnavailableReason;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalDataOrigin;
 use App\Enums\FiscalLinkStatus;
 use App\Enums\FiscalModuleKey;
 use App\Enums\FiscalSituation;
+use App\Enums\MonitoringDocumentPolicy;
+use App\Enums\MonitoringResultKind;
 use App\Enums\TaxInstallmentParcelStatus;
 use App\Models\Client;
 use App\Models\DctfwebDeclaration;
 use App\Models\FgtsCompetenceStatus;
 use App\Models\FiscalCategory;
 use App\Models\FiscalCompetence;
+use App\Models\FiscalEvidenceArtifact;
 use App\Models\FiscalFinding;
 use App\Models\FiscalPendingItem;
 use App\Models\FiscalSnapshot;
@@ -32,6 +37,8 @@ use App\Models\TaxGuide;
 use App\Models\TaxInstallmentOrder;
 use App\Models\TaxInstallmentParcel;
 use App\Models\TaxObligationProjection;
+use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceContract;
+use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceRegistry;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -48,6 +55,7 @@ final class ModulePortfolioQueryService
 {
     public function __construct(
         private readonly DataOriginResolver $dataOrigin,
+        private readonly MonitoringSurfaceRegistry $surfaces,
     ) {}
 
     public function overview(
@@ -57,10 +65,11 @@ final class ModulePortfolioQueryService
     ): ModuleOverviewDto {
         $origin = $this->dataOrigin->resolve($office);
         $categories = $this->moduleCategories($module);
-        $base = $this->scopedClientIdsQuery($office, $module, $filters);
+        $surface = $this->surfaces->resolveForModule($module, $filters->submodule);
 
-        $total = (clone $base)->count();
+        // Contadores + total no mesmo agrupamento (sem filtro de situation).
         $counters = $this->aggregateCounters($office, $module, $filters);
+        $total = $counters->total();
         $agenda = $this->buildAgenda($office, $module, $filters);
         $categorySummaries = $this->categorySummaries($office, $categories, $filters);
         $asOf = $this->latestObservedAt($office, $module, $filters);
@@ -77,6 +86,7 @@ final class ModulePortfolioQueryService
             agenda: $agenda,
             categories: $categorySummaries,
             metrics: $this->moduleMetrics($office, $module, $filters, $total),
+            surface: $surface->toPublicArray(),
         );
     }
 
@@ -131,6 +141,7 @@ final class ModulePortfolioQueryService
         $coverages = $this->loadCoverages($office, $module, $clientIds, $filters);
         $details = $this->loadModuleDetails($office, $module, $clientIds, $filters);
         $deadlines = $this->loadNextDeadlines($office, $module, $clientIds, $filters);
+        $documents = $this->loadDocuments($office, $module, $filters, $clientIds);
 
         $rows = $clients->map(function (Client $client) use (
             $module,
@@ -139,6 +150,7 @@ final class ModulePortfolioQueryService
             $coverages,
             $details,
             $deadlines,
+            $documents,
         ): ModuleClientRowDto {
             $id = (int) $client->id;
             $situation = (string) ($client->getAttribute('portfolio_situation') ?? FiscalSituation::Unknown->value);
@@ -167,6 +179,7 @@ final class ModulePortfolioQueryService
                 nextAction: $this->nextActionFor($module, $situation, $detail),
                 detail: $detail,
                 links: $this->rowLinks($module, $id, $detail),
+                document: $documents[$id] ?? null,
             );
         });
 
@@ -340,12 +353,15 @@ final class ModulePortfolioQueryService
             $this->applySearch($q, $filters->q);
         }
 
-        if ($filters->situation !== null) {
-            $situation = $filters->situation;
-            $q->whereRaw(
-                '('.$this->situationSqlExpression($office, $module, $filters).') = ?',
-                [$situation],
-            );
+        $situations = $filters->situationList();
+        if ($situations !== []) {
+            $expr = '('.$this->situationSqlExpression($office, $module, $filters).')';
+            if (count($situations) === 1) {
+                $q->whereRaw($expr.' = ?', [$situations[0]]);
+            } else {
+                $placeholders = implode(',', array_fill(0, count($situations), '?'));
+                $q->whereRaw($expr.' IN ('.$placeholders.')', $situations);
+            }
         }
 
         if ($filters->competence !== null) {
@@ -367,29 +383,29 @@ final class ModulePortfolioQueryService
             });
         }
 
-        if ($filters->deliveryStatus !== null && $module === FiscalModuleKey::Declarations) {
-            $delivery = $filters->deliveryStatus;
-            $q->whereExists(function (QueryBuilder $exists) use ($office, $delivery): void {
+        $deliveries = $filters->deliveryStatusList();
+        if ($deliveries !== [] && $module === FiscalModuleKey::Declarations) {
+            $q->whereExists(function (QueryBuilder $exists) use ($office, $deliveries): void {
                 $exists->select(DB::raw('1'))
                     ->from('tax_obligation_projections as top')
                     ->whereColumn('top.client_id', 'clients.id')
                     ->where('top.office_id', $office->id)
-                    ->where('top.delivery_status', $delivery);
+                    ->whereIn('top.delivery_status', $deliveries);
             });
         }
 
-        if ($filters->coverage !== null) {
+        if ($filters->coverageList() !== []) {
             $this->applyCoverageFilter($q, $office, $module, $filters);
         }
 
-        if ($filters->modality !== null && $module === FiscalModuleKey::Installments) {
-            $modality = $filters->modality;
-            $q->whereExists(function (QueryBuilder $exists) use ($office, $modality): void {
+        $modalities = $filters->modalityList();
+        if ($modalities !== [] && $module === FiscalModuleKey::Installments) {
+            $q->whereExists(function (QueryBuilder $exists) use ($office, $modalities): void {
                 $exists->select(DB::raw('1'))
                     ->from('tax_installment_orders as tio')
                     ->whereColumn('tio.client_id', 'clients.id')
                     ->where('tio.office_id', $office->id)
-                    ->where('tio.modality', $modality);
+                    ->whereIn('tio.modality', $modalities);
             });
         }
 
@@ -406,8 +422,8 @@ final class ModulePortfolioQueryService
         FiscalModuleKey $module,
         ModulePortfolioFilters $filters,
     ): void {
-        $coverage = $filters->coverage;
-        if ($coverage === null) {
+        $coverages = $filters->coverageList();
+        if ($coverages === []) {
             return;
         }
 
@@ -415,7 +431,7 @@ final class ModulePortfolioQueryService
         $categoryIds = $this->categoryIdsForModule($module, $filters->submodule);
         $sysList = $this->quoteList($systemCodes);
 
-        // COALESCE(snapshot.coverage, link.coverage, 'UNKNOWN') = ?
+        // COALESCE(snapshot.coverage, link.coverage, 'UNKNOWN') IN (…)
         $snapshotCoverage = <<<SQL
 (
     SELECT fs.coverage
@@ -446,10 +462,13 @@ SQL;
 )
 SQL;
 
-        $q->whereRaw(
-            "COALESCE({$snapshotCoverage}, {$linkCoverage}, 'UNKNOWN') = ?",
-            [$coverage],
-        );
+        $expr = "COALESCE({$snapshotCoverage}, {$linkCoverage}, 'UNKNOWN')";
+        if (count($coverages) === 1) {
+            $q->whereRaw("{$expr} = ?", [$coverages[0]]);
+        } else {
+            $placeholders = implode(',', array_fill(0, count($coverages), '?'));
+            $q->whereRaw("{$expr} IN ({$placeholders})", $coverages);
+        }
     }
 
     private function aggregateCounters(
@@ -459,6 +478,7 @@ SQL;
     ): ModuleCountersDto {
         // Contadores no escopo completo — situation filter removed so KPI strip stays useful;
         // other filters (q, competence, submodule) still apply via a clone without situation.
+        // total_clients do overview usa a soma deste mesmo mapa (partição exaustiva).
         $scopeFilters = new ModulePortfolioFilters(
             page: 1,
             perPage: 1,
@@ -487,28 +507,21 @@ SQL;
             ->groupBy(DB::raw("({$expr})"))
             ->get();
 
-        $map = [
-            FiscalSituation::UpToDate->value => 0,
-            FiscalSituation::Processing->value => 0,
-            FiscalSituation::Pending->value => 0,
-            FiscalSituation::Attention->value => 0,
-            FiscalSituation::Error->value => 0,
-        ];
+        $map = [];
+        foreach (FiscalSituation::cases() as $case) {
+            $map[$case->value] = 0;
+        }
 
         foreach ($rows as $row) {
             $sit = (string) $row->sit;
-            if (array_key_exists($sit, $map)) {
-                $map[$sit] = (int) $row->cnt;
+            // Valor fora do enum canônico → UNKNOWN (fail-closed).
+            if (! array_key_exists($sit, $map)) {
+                $sit = FiscalSituation::Unknown->value;
             }
+            $map[$sit] += (int) $row->cnt;
         }
 
-        return new ModuleCountersDto(
-            upToDate: $map[FiscalSituation::UpToDate->value],
-            processing: $map[FiscalSituation::Processing->value],
-            pending: $map[FiscalSituation::Pending->value],
-            attention: $map[FiscalSituation::Attention->value],
-            error: $map[FiscalSituation::Error->value],
-        );
+        return ModuleCountersDto::fromSituationMap($map);
     }
 
     /**
@@ -1055,6 +1068,119 @@ SQL);
         }
 
         return FiscalCoverage::Unknown->value;
+    }
+
+    /**
+     * Descritores de documento por cliente — href só com artefato real do CurrentOffice.
+     *
+     * @param  list<int>  $clientIds
+     * @return array<int, FiscalDocumentDescriptorDto>
+     */
+    private function loadDocuments(
+        Office $office,
+        FiscalModuleKey $module,
+        ModulePortfolioFilters $filters,
+        array $clientIds,
+    ): array {
+        if ($clientIds === []) {
+            return [];
+        }
+
+        $surface = $this->surfaces->resolveForModule($module, $filters->submodule);
+        $unavailable = $this->unavailableReasonForSurface($surface);
+
+        if (! $surface->allowsDocument || $unavailable !== null) {
+            $reason = $unavailable ?? DocumentUnavailableReason::NotSupported;
+            $map = [];
+            foreach ($clientIds as $cid) {
+                $map[$cid] = FiscalDocumentDescriptorDto::unavailable($reason, $surface);
+            }
+
+            return $map;
+        }
+
+        $artifactsByClient = $this->latestArtifactsByClient($office, $clientIds, $surface);
+        $map = [];
+        foreach ($clientIds as $cid) {
+            $artifact = $artifactsByClient[$cid] ?? null;
+            if ($artifact === null) {
+                $map[$cid] = FiscalDocumentDescriptorDto::unavailable(
+                    DocumentUnavailableReason::NotCollected,
+                    $surface,
+                );
+
+                continue;
+            }
+
+            $map[$cid] = FiscalDocumentDescriptorDto::fromArtifact($artifact, $surface, $office);
+        }
+
+        return $map;
+    }
+
+    private function unavailableReasonForSurface(MonitoringSurfaceContract $surface): ?DocumentUnavailableReason
+    {
+        if ($surface->resultKind === MonitoringResultKind::Unavailable) {
+            return DocumentUnavailableReason::NotProduction;
+        }
+
+        if (! $surface->allowsDocument
+            || $surface->documentPolicy === MonitoringDocumentPolicy::Never
+        ) {
+            return match ($surface->resultKind) {
+                MonitoringResultKind::Structured => DocumentUnavailableReason::StructuredOnly,
+                MonitoringResultKind::Unavailable => DocumentUnavailableReason::NotProduction,
+                default => DocumentUnavailableReason::NotSupported,
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<int>  $clientIds
+     * @return array<int, FiscalEvidenceArtifact>
+     */
+    private function latestArtifactsByClient(
+        Office $office,
+        array $clientIds,
+        MonitoringSurfaceContract $surface,
+    ): array {
+        $opKeys = $surface->operationKeys;
+
+        $rows = FiscalEvidenceArtifact::query()
+            ->withoutGlobalScopes()
+            ->from('fiscal_evidence_artifacts as fea')
+            ->join('fiscal_monitoring_runs as fmr', 'fmr.id', '=', 'fea.run_id')
+            ->where('fea.office_id', $office->id)
+            ->whereIn('fmr.client_id', $clientIds)
+            ->when(
+                $opKeys !== [],
+                function ($q) use ($opKeys): void {
+                    $q->where(function ($inner) use ($opKeys): void {
+                        $inner->whereIn('fea.operation_key', $opKeys)
+                            ->orWhereIn('fmr.operation_key', $opKeys);
+                    });
+                },
+            )
+            ->orderByDesc('fea.observed_at')
+            ->orderByDesc('fea.id')
+            ->select(['fea.*', 'fmr.client_id as portfolio_client_id'])
+            ->get();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $cid = (int) $row->getAttribute('portfolio_client_id');
+            if ($cid < 1 || isset($map[$cid])) {
+                continue;
+            }
+            if ((int) $row->office_id !== (int) $office->id) {
+                continue;
+            }
+            $map[$cid] = $row;
+        }
+
+        return $map;
     }
 
     /**

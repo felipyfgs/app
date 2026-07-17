@@ -1,15 +1,21 @@
 <script setup lang="ts">
 /**
  * Contadores compactos da carteira fiscal.
- * As tabs substituem os cards e continuam acionando o filtro server-side.
+ * Catálogo: Total sempre; estados com contagem > 0; estado ativo permanece mesmo em zero.
  */
 import type { FiscalKpiKey, FiscalModuleCounters } from '~/types/fiscal-modules'
-import { fiscalKpiSituationFilter, fiscalSituationToKpiKey } from '~/types/fiscal-modules'
+import {
+  FISCAL_COUNTER_KPI_KEYS,
+  fiscalKpiSituationFilter,
+  fiscalSituationToKpiKey,
+  normalizeFiscalModuleCounters
+} from '~/types/fiscal-modules'
+import { fiscalStatusMeta } from '~/utils/fiscal-status'
 
 const props = withDefaults(defineProps<{
   total?: number | null
   totalClients?: number | null
-  counters?: FiscalModuleCounters | null
+  counters?: FiscalModuleCounters | Partial<FiscalModuleCounters> | null
   loading?: boolean
   activeKey?: FiscalKpiKey | null
   activeSituation?: string | null
@@ -40,6 +46,8 @@ const resolvedActiveKey = computed<FiscalKpiKey>(() => {
   return 'total'
 })
 
+const normalizedCounters = computed(() => normalizeFiscalModuleCounters(props.counters))
+
 type CounterTab = {
   label: string
   value: FiscalKpiKey
@@ -47,44 +55,31 @@ type CounterTab = {
 }
 
 const items = computed((): CounterTab[] => {
-  const c = props.counters
-  const loadingPlaceholder = props.loading && !c
-  const num = (n: number | undefined) => (loadingPlaceholder ? '…' : (n ?? 0))
+  const c = normalizedCounters.value
+  const loadingPlaceholder = props.loading && !props.counters
+  const active = resolvedActiveKey.value
 
   const list: CounterTab[] = [
     {
       value: 'total',
       label: 'Total',
       badge: loadingPlaceholder ? '…' : resolvedTotal.value
-    },
-    {
-      value: 'up_to_date',
-      label: 'Em dia',
-      badge: num(c?.up_to_date)
-    },
-    {
-      value: 'processing',
-      label: 'Processando',
-      badge: num(c?.processing)
-    },
-    {
-      value: 'pending',
-      label: 'Pendências',
-      badge: num(c?.pending)
-    },
-    {
-      value: 'attention',
-      label: 'Atenção',
-      badge: num(c?.attention)
     }
   ]
 
-  if (props.showError) {
-    list.push({
-      value: 'error',
-      label: 'Erro',
-      badge: num(c?.error)
-    })
+  for (const key of FISCAL_COUNTER_KPI_KEYS) {
+    if (key === 'error' && !props.showError) continue
+    const count = c[key]
+    // Positivos + ativo em zero (mesmo sem contagem).
+    if (count > 0 || active === key) {
+      const situation = fiscalKpiSituationFilter(key)
+      const meta = fiscalStatusMeta(situation)
+      list.push({
+        value: key,
+        label: meta.label,
+        badge: loadingPlaceholder ? '…' : count
+      })
+    }
   }
 
   return list

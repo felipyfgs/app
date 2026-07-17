@@ -65,18 +65,21 @@ class FiscalSnapshotController extends Controller
 
         try {
             $bytes = $this->evidenceStore->readAuthorized($artifact, (int) $office->id);
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 403);
+        } catch (RuntimeException) {
+            // Não vazar existência, vault_object_id, hash ou path.
+            return response()->json(['message' => 'Evidência não encontrada.'], 404);
         }
 
-        $filename = 'fiscal-evidence-'.$artifact->id.'.bin';
-        $sha = $artifact->content_sha256;
+        $contentType = is_string($artifact->content_type) && $artifact->content_type !== ''
+            ? $artifact->content_type
+            : 'application/octet-stream';
+        $extension = str_contains(strtolower($contentType), 'pdf') ? 'pdf' : 'bin';
+        $filename = 'fiscal-evidence-'.$artifact->id.'.'.$extension;
 
         return response()->streamDownload(function () use ($bytes): void {
             echo $bytes;
         }, $filename, [
-            'Content-Type' => $artifact->content_type,
-            'X-Content-SHA256' => $sha,
+            'Content-Type' => $contentType,
             'Cache-Control' => 'no-store',
         ]);
     }

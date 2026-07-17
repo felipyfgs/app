@@ -5,6 +5,12 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { resolveFiscalEmptyKind } from '../../app/utils/fiscal-status'
+import {
+  hasActiveMonitoringFilters,
+  normalizeMonitoringFilters,
+  resetMonitoringFilters
+} from '../../app/utils/monitoring-filters'
 
 const APP = resolve(__dirname, '../../app')
 const PAGES = join(APP, 'pages/monitoring')
@@ -29,12 +35,54 @@ describe('contrato empty de tabelas de monitoramento', () => {
     expect(src).not.toContain('fiscal-table-skeleton')
     expect(src).not.toContain('v-else-if="showEmpty"')
     expect(src).not.toContain('showTableSkeleton')
+    // Loading real + filtros normalizados (defaults all não contam)
+    expect(src).toContain('hasActiveMonitoringFilters')
+    expect(src).toContain('loading: props.loading')
+  })
+
+  it('defaults all / vazio / null não contam como filtro ativo', () => {
+    expect(hasActiveMonitoringFilters(resetMonitoringFilters())).toBe(false)
+    expect(hasActiveMonitoringFilters(normalizeMonitoringFilters({
+      situation: 'all',
+      deliveryStatus: 'all',
+      coverage: 'all',
+      q: '',
+      clientId: null
+    }))).toBe(false)
+    expect(hasActiveMonitoringFilters({ situation: 'PENDING' })).toBe(true)
+    expect(hasActiveMonitoringFilters({ q: 'acme' })).toBe(true)
+    expect(hasActiveMonitoringFilters({ clientId: 3 })).toBe(true)
+  })
+
+  it('primeira carga exibe loading, não vazio canônico', () => {
+    expect(resolveFiscalEmptyKind({
+      loading: true,
+      hasRows: false,
+      hasPrevious: false
+    })).toBe('loading')
+  })
+
+  it('erro sem dados anteriores é error; vazio filtrado usa filtered', () => {
+    expect(resolveFiscalEmptyKind({
+      error: 'falha',
+      hasRows: false,
+      hasPrevious: false
+    })).toBe('error')
+    expect(resolveFiscalEmptyKind({
+      hasRows: false,
+      filtered: true
+    })).toBe('filtered')
+    // Carteira vazia com defaults → empty canônico (não filtered)
+    expect(resolveFiscalEmptyKind({
+      hasRows: false,
+      filtered: hasActiveMonitoringFilters(resetMonitoringFilters())
+    })).toBe('empty')
   })
 
   it('mantém o cabeçalho visível no scroll do painel', () => {
     const src = readFileSync(join(COMPONENTS, 'ModuleDataTable.vue'), 'utf8')
     expect(src).toContain('sticky="header"')
-    expect(src).toContain("root: 'overflow-visible'")
+    expect(src).toMatch(/root: 'overflow-visible'/)
     expect(src).toMatch(/thead: '[^']*bg-default/)
   })
 

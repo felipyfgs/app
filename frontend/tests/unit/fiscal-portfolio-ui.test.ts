@@ -68,10 +68,12 @@ describe('MonitoringKpiStrip mapping (6.4 / 6.11)', () => {
     expect(onSelect('total')).toEqual(['total', null])
   })
 
-  it('fiscalSituationToKpiKey cobre a faixa acionável', () => {
+  it('fiscalSituationToKpiKey cobre a faixa acionável completa', () => {
     expect(fiscalSituationToKpiKey('UP_TO_DATE')).toBe('up_to_date')
     expect(fiscalSituationToKpiKey('processing')).toBe('processing')
-    expect(fiscalSituationToKpiKey('UNSUPPORTED')).toBe('total')
+    expect(fiscalSituationToKpiKey('UNSUPPORTED')).toBe('unsupported')
+    expect(fiscalSituationToKpiKey('BLOCKED')).toBe('blocked')
+    expect(fiscalSituationToKpiKey('UNKNOWN')).toBe('unknown')
     expect(fiscalSituationToKpiKey(null)).toBe('total')
   })
 
@@ -81,7 +83,11 @@ describe('MonitoringKpiStrip mapping (6.4 / 6.11)', () => {
       processing: 1,
       pending: 3,
       attention: 2,
-      error: 0
+      error: 0,
+      blocked: 0,
+      unknown: 0,
+      unsupported: 0,
+      not_applicable: 0
     }
     // Tabela passa totalClients ?? total e activeKey derivado da situation
     const totalClients = 11
@@ -111,7 +117,11 @@ describe('MonitoringKpiStrip mapping (6.4 / 6.11)', () => {
       processing: 2,
       pending: 4,
       attention: 1,
-      error: 0
+      error: 0,
+      blocked: 0,
+      unknown: 0,
+      unsupported: 0,
+      not_applicable: 0
     }
     const totalClients = 17 // soma da carteira (sem cápsula)
     // ModuleTable passa totalClients ?? total para o strip — lista filtrada não sobrescreve
@@ -128,9 +138,10 @@ describe('MonitoringKpiStrip mapping (6.4 / 6.11)', () => {
     expect(resolveKpiTotal(stripProps)).toBe(17)
   })
 
-  it('chips esperados: Total + contadores (+ Erro)', () => {
+  it('chips esperados: Total + nove contadores canônicos', () => {
     const keys: FiscalKpiKey[] = [
-      'total', 'up_to_date', 'processing', 'pending', 'attention', 'error'
+      'total', 'up_to_date', 'processing', 'pending', 'attention', 'error',
+      'blocked', 'unknown', 'unsupported', 'not_applicable'
     ]
     for (const key of keys) {
       const sit = fiscalKpiSituationFilter(key)
@@ -151,13 +162,66 @@ describe('badges cobertura, origem e status (6.6 / 6.11)', () => {
     expect(coverageMeta('FULL').color).toBe('success')
   })
 
-  it('dataOriginMeta marca DEMO/SIMULATED sem criar banner persistente', () => {
+  it('dataOriginMeta marca DEMO/SIMULATED; ModuleTable exibe banner sintético', () => {
     const demo = dataOriginMeta('DEMO')
     expect(demo.synthetic).toBe(true)
     expect(demo.icon).toMatch(/^i-lucide-/)
 
     const live = dataOriginMeta('LIVE')
     expect(live.synthetic).toBe(false)
+
+    const moduleTable = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleTable.vue'),
+      'utf8'
+    )
+    expect(moduleTable).toContain('data-testid="fiscal-provenance"')
+    expect(moduleTable).toContain('data-testid="fiscal-synthetic-alert"')
+    expect(moduleTable).toContain('sem validade fiscal')
+    expect(moduleTable).toContain('data-testid="fiscal-live-meta"')
+    expect(moduleTable).toContain('fiscalAsOfLabel')
+    expect(moduleTable).toContain('fiscalDataOriginLabel')
+    // lastGoodAt (transporte) não substitui as_of fiscal
+    expect(moduleTable).toContain('lastGoodAt')
+    expect(moduleTable).toContain('asOf')
+    // Superfície UNAVAILABLE (ex. DASN) — banner antes dos KPIs
+    expect(moduleTable).toContain('data-testid="fiscal-surface-unavailable-alert"')
+    expect(moduleTable).toContain('surfaceSummary')
+    expect(moduleTable).toContain('isSurfaceUnavailable')
+    // Fallback textual vive no helper compartilhado (não inventa Date de transporte)
+    const types = readFileSync(
+      resolve(__dirname, '../../app/types/fiscal-modules.ts'),
+      'utf8'
+    )
+    expect(types).toContain('Sem observação oficial')
+    expect(types).toContain('Origem não informada')
+  })
+
+  it('FiscalDocumentAction só renderiza botão com available+href; sem decode/dump', () => {
+    const action = readFileSync(
+      resolve(__dirname, '../../app/components/fiscal/FiscalDocumentAction.vue'),
+      'utf8'
+    )
+    expect(action).toContain('documentActionVisible')
+    expect(action).toContain('data-testid="fiscal-document-action"')
+    expect(action).toContain('data-testid="fiscal-document-unavailable"')
+    // Sem decode/preview de payload (comentário anti-Base64 é ok)
+    expect(action).not.toMatch(/\batob\b|JSON\.stringify/)
+    expect(action).not.toMatch(/btoa\(/)
+    expect(action).toContain(':href="href"')
+  })
+
+  it('UNKNOWN/UNSUPPORTED/BLOCKED/ERROR sem apresentação positiva no catálogo e UI', () => {
+    for (const code of ['UNKNOWN', 'UNSUPPORTED', 'BLOCKED', 'ERROR'] as const) {
+      const meta = fiscalStatusMeta(code)
+      expect(meta.color).not.toBe('success')
+      expect(meta.label).not.toMatch(/em dia|sucesso|concluíd/i)
+    }
+    const moduleTable = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleTable.vue'),
+      'utf8'
+    )
+    // Não há atalho de sucesso genérico amarrado a esses estados
+    expect(moduleTable).not.toMatch(/situation.*success|success.*BLOCKED/i)
   })
 
   it('fiscalStatusMeta distingue situação por label+ícone (badge)', () => {
@@ -396,7 +460,10 @@ describe('ações de carteira no contexto da seleção', () => {
 
     expect(dctfweb).toContain(`:initial-hidden-columns="['evidence', 'darf']"`)
     expect(dctfweb).toMatch(/'icon': 'i-lucide-ellipsis-vertical'/)
-    expect(dctfweb).toMatch(/meta: \{ class: \{ th: 'w-12', td: 'w-12' \} \}/)
+    // Ações: menu compacto + FiscalDocumentAction (quando available)
+    expect(dctfweb).toMatch(/meta: \{ class: \{ th: 'w-\d+', td: 'w-\d+' \} \}/)
+    expect(dctfweb).toContain('FiscalDocumentAction')
+    expect(dctfweb).toContain('documentActionsEnabled')
   })
 
   it('módulos fiscais não injetam mais PortfolioActions no cabeçalho', () => {

@@ -9,6 +9,7 @@ import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
+const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
 const UButton = resolveComponent('UButton')
 const UBadge = resolveComponent('UBadge')
 
@@ -28,6 +29,12 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  dataOrigin,
+  dataOriginLabel,
+  sourceLabel,
+  asOf,
+  surface,
+  allowsDocument,
   sorting,
   setPage,
   refresh,
@@ -306,9 +313,13 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
     header: 'Ações',
     enableHiding: false,
     enableSorting: false,
-    meta: { class: { th: 'w-40', td: 'w-40' } },
+    meta: { class: { th: 'w-52', td: 'w-52' } },
     cell: ({ row }) => {
       const children = [
+        h(FiscalDocumentAction, {
+          document: row.original.document,
+          disabled: !allowsDocument.value
+        }),
         h(UButton, {
           size: 'xs',
           color: 'neutral',
@@ -326,7 +337,7 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
           onClick: () => openProjection(row.original)
         }))
       }
-      return h('div', { class: 'flex justify-end gap-1' }, children)
+      return h('div', { class: 'flex justify-end gap-1 items-center' }, children)
     }
   }
 ]
@@ -363,6 +374,11 @@ onMounted(() => {
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
+    :data-origin="dataOrigin"
+    :data-origin-label="dataOriginLabel"
+    :source-label="sourceLabel"
+    :as-of="asOf"
+    :surface-summary="surface"
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"

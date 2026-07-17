@@ -2,6 +2,7 @@
 
 namespace App\DTO\Fiscal\Module;
 
+use App\DTO\Fiscal\FiscalDocumentDescriptorDto;
 use App\Enums\FiscalDataOrigin;
 use App\Enums\FiscalModuleKey;
 
@@ -31,6 +32,7 @@ final readonly class ModuleClientRowDto
         public ?string $nextAction,
         public array $detail = [],
         public array $links = [],
+        public ?FiscalDocumentDescriptorDto $document = null,
     ) {}
 
     /**
@@ -57,6 +59,7 @@ final readonly class ModuleClientRowDto
             'next_action' => $this->nextAction,
             'detail' => $this->detail,
             'links' => $this->links,
+            'document' => $this->document?->toArray(),
         ];
     }
 }

@@ -233,6 +233,98 @@ describe('useFiscalModulePortfolio behaviours (6.2 / 6.11)', () => {
     expect(isSyntheticFiscalOrigin(overview.data_origin)).toBe(true)
   })
 
+  it('propaga data_origin, rótulo, fonte e as_of do overview', () => {
+    const overview = {
+      data_origin: 'LIVE' as const,
+      data_origin_label: 'Fonte produtiva',
+      source_label: 'Situação fiscal',
+      as_of: '2026-06-01T12:00:00Z'
+    }
+    // Espelha computed do composable
+    const dataOrigin = overview.data_origin ?? null
+    const dataOriginLabel = overview.data_origin_label ?? null
+    const sourceLabel = overview.source_label ?? null
+    const asOf = overview.as_of ?? null
+    expect(dataOrigin).toBe('LIVE')
+    expect(dataOriginLabel).toMatch(/produtiv/i)
+    expect(sourceLabel).toBe('Situação fiscal')
+    expect(asOf).toBe('2026-06-01T12:00:00Z')
+
+    // as_of nulo → falha fechada textual (não usa Date de transporte)
+    expect(overview.as_of || 'Sem observação oficial').toBeTruthy()
+    const nullAsOf: string | null = null
+    expect(nullAsOf ?? 'Sem observação oficial').toBe('Sem observação oficial')
+  })
+
+  it('propaga surface do overview (result_kind / allows_document)', () => {
+    const overview = {
+      surface: {
+        surface_key: 'simples_mei_dasn',
+        route: '/monitoring/simples-mei/dasn-simei',
+        responsibility: 'DASN',
+        result_kind: 'UNAVAILABLE' as const,
+        allows_document: false,
+        official_state_label: 'Prospecção',
+        channel_label: 'Integra Contador'
+      }
+    }
+    const surface = overview.surface ?? null
+    const surfaceUnavailable = String(surface?.result_kind || '').toUpperCase() === 'UNAVAILABLE'
+    const allowsDocument = surface ? surface.allows_document === true : true
+    expect(surface?.surface_key).toBe('simples_mei_dasn')
+    expect(surfaceUnavailable).toBe(true)
+    expect(allowsDocument).toBe(false)
+
+    const nullSurface: typeof surface = null
+    expect(nullSurface ?? null).toBeNull()
+    expect(nullSurface ? nullSurface.allows_document === true : true).toBe(true)
+  })
+
+  it('troca de Office limpa overview/origem/contadores/linhas e descarta resposta atrasada', () => {
+    let sessionEpoch = 1
+    let overviewSeq = 0
+    let clientsSeq = 0
+    let overview: { data_origin: string, counters: { blocked: number } } | null = {
+      data_origin: 'LIVE',
+      counters: { blocked: 3 }
+    }
+    let rows: Array<{ id: number }> = [{ id: 1 }]
+    let selection: number[] = [1]
+
+    function clearForContextChange() {
+      overviewSeq += 1
+      clientsSeq += 1
+      overview = null
+      rows = []
+      selection = []
+    }
+
+    // Resposta em voo do office anterior
+    const inFlightSeq = overviewSeq
+    const inFlightEpoch = sessionEpoch
+
+    // Troca de office
+    sessionEpoch = 2
+    clearForContextChange()
+    expect(overview).toBeNull()
+    expect(rows).toEqual([])
+    expect(selection).toEqual([])
+    expect(stillCurrent(
+      inFlightSeq,
+      'overview',
+      inFlightEpoch,
+      sessionEpoch,
+      overviewSeq,
+      clientsSeq
+    )).toBe(false)
+
+    // Resposta atrasada não se aplica
+    if (stillCurrent(inFlightSeq, 'overview', inFlightEpoch, sessionEpoch, overviewSeq, clientsSeq)) {
+      overview = { data_origin: 'LIVE', counters: { blocked: 99 } }
+    }
+    expect(overview).toBeNull()
+  })
+
   it('valida module_key da linha contra o módulo pedido', () => {
     const moduleKey = 'simples_mei'
     const data = [

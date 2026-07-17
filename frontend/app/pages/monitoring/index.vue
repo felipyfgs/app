@@ -9,7 +9,8 @@ import type { FiscalModuleOverview, FiscalPortfolioModuleKey } from '~/types/fis
 import {
   FISCAL_MODULE_LABELS,
   FISCAL_MODULE_PATHS,
-  FISCAL_PORTFOLIO_MODULE_KEYS
+  FISCAL_PORTFOLIO_MODULE_KEYS,
+  isSyntheticFiscalOrigin
 } from '~/types/fiscal-modules'
 
 const api = useApi()
@@ -29,13 +30,26 @@ const findingsPreview = ref<FiscalFinding[]>([])
 const recentRuns = ref<FiscalMonitoringRun[]>([])
 const moduleOverviews = ref<Array<{ key: FiscalPortfolioModuleKey, overview: FiscalModuleOverview | null, error?: string }>>([])
 
+/** Overviews LIVE (não sintéticos) — indicadores produtivos excluem DEMO/SIMULATED. */
+const productiveModuleOverviews = computed(() =>
+  moduleOverviews.value.filter(m =>
+    m.overview
+    && !isSyntheticFiscalOrigin(m.overview.data_origin)
+  )
+)
+
+const hasSyntheticModules = computed(() =>
+  moduleOverviews.value.some(m => isSyntheticFiscalOrigin(m.overview?.data_origin))
+)
+
 const kpis = computed(() => {
   const loadingPlaceholder = loading.value
   const display = (v: number | null) => {
     if (loadingPlaceholder && v === null) return '…'
     return v ?? '—'
   }
-  const modulesWithError = moduleOverviews.value.filter(
+  // Contagem de módulos com erro só em overviews produtivos.
+  const modulesWithError = productiveModuleOverviews.value.filter(
     m => (m.overview?.counters?.error ?? 0) > 0
   ).length
   return [
@@ -96,6 +110,7 @@ const coverageRows = computed(() =>
       pending: o?.counters?.pending ?? null,
       error: o?.counters?.error ?? null,
       origin: o?.data_origin ?? null,
+      synthetic: isSyntheticFiscalOrigin(o?.data_origin),
       loadError: m.error || null
     }
   })
@@ -293,6 +308,16 @@ onMounted(load)
         </template>
       </UAlert>
 
+      <UAlert
+        v-if="hasSyntheticModules"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-flask-conical"
+        title="Conteúdo sintético — sem validade fiscal (excluído dos KPIs produtivos)"
+        class="mb-4"
+        data-testid="dashboard-synthetic-alert"
+      />
+
       <ShellKpiStrip
         class="mb-6"
         test-id="fiscal-kpis"
@@ -353,6 +378,12 @@ onMounted(load)
                 </p>
               </div>
               <div class="flex flex-wrap items-center gap-2">
+                <FiscalDataOriginBadge
+                  v-if="row.origin"
+                  :origin="row.origin"
+                  :hide-live="false"
+                  data-testid="dashboard-module-origin"
+                />
                 <FiscalCoverageBadge
                   v-if="row.coverage"
                   :coverage="row.coverage"

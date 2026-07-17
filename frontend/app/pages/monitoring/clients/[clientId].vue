@@ -6,10 +6,16 @@
  */
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { Client, FiscalFinding, FiscalMonitoringRun, FiscalPendingItem, FiscalSnapshot } from '~/types/api'
-import type { FiscalRegistrationLink, FiscalTaxProcess } from '~/types/fiscal-modules'
+import type {
+  FiscalDocumentDescriptor,
+  FiscalRegistrationLink,
+  FiscalTaxProcess
+} from '~/types/fiscal-modules'
+import { documentActionVisible } from '~/types/fiscal-modules'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
+const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
 
 definePageMeta({
   alias: ['/monitoring/clients/:clientId/:section']
@@ -206,17 +212,41 @@ const snapshotColumns = [
   {
     id: 'evidence',
     header: 'Evidência',
-    cell: ({ row }: { row: { original: FiscalSnapshot } }) =>
-      row.original.evidence_artifact_id
-        ? h('a', {
+    cell: ({ row }: { row: { original: FiscalSnapshot & { document?: FiscalDocumentDescriptor | null } } }) => {
+      const doc = row.original.document
+      if (documentActionVisible(doc)) {
+        return h(FiscalDocumentAction, { document: doc })
+      }
+      // Legacy: only when server-shaped download URL helper matches backend path.
+      if (row.original.evidence_artifact_id) {
+        return h(FiscalDocumentAction, {
+          document: {
+            available: true,
+            kind: 'PDF',
+            label: 'Ver documento oficial',
+            content_type: 'application/pdf',
+            observed_at: null,
+            source_surface: null,
+            source_label: null,
             href: api.fiscal.evidenceDownloadUrl(row.original.evidence_artifact_id),
-            class: 'text-primary text-sm',
-            target: '_blank',
-            rel: 'noopener'
-          }, 'Download')
-        : '—'
+            unavailable_reason: null
+          }
+        })
+      }
+      return '—'
+    }
   }
 ]
+
+/** Coluna de documento quando o item expõe descritor com href do servidor. */
+function documentColumnFor<T extends { document?: FiscalDocumentDescriptor | null }>() {
+  return {
+    id: 'document',
+    header: 'Documento',
+    cell: ({ row }: { row: { original: T } }) =>
+      h(FiscalDocumentAction, { document: row.original.document ?? null })
+  }
+}
 
 /** Colunas das seções-lista: UTable sempre montada (#empty), padrão ModuleTable/customers. */
 const runColumns = [
@@ -316,7 +346,8 @@ const installmentColumns = [
     header: 'Situação',
     cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
       h(FiscalStatusBadge, { status: String(row.original.situation || row.original.status || '') })
-  }
+  },
+  documentColumnFor<Record<string, unknown> & { document?: FiscalDocumentDescriptor | null }>()
 ]
 
 const declarationColumns = [
@@ -345,7 +376,8 @@ const declarationColumns = [
       h(FiscalStatusBadge, {
         status: String(row.original.delivery_status || row.original.situation || row.original.status || '')
       })
-  }
+  },
+  documentColumnFor<Record<string, unknown> & { document?: FiscalDocumentDescriptor | null }>()
 ]
 
 const guideColumns = [
@@ -374,7 +406,8 @@ const guideColumns = [
     header: 'Pagamento',
     cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
       h(FiscalStatusBadge, { status: String(row.original.payment_status || 'UNKNOWN') })
-  }
+  },
+  documentColumnFor<Record<string, unknown> & { document?: FiscalDocumentDescriptor | null }>()
 ]
 
 const fgtsColumns = [
@@ -1035,7 +1068,10 @@ onMounted(async () => {
                   <dd>{{ sitfis.coverage || '—' }}</dd>
                 </div>
               </dl>
-              <div class="mt-3">
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <FiscalDocumentAction
+                  :document="(sitfis as { document?: FiscalDocumentDescriptor | null }).document ?? null"
+                />
                 <UButton
                   size="sm"
                   color="neutral"
@@ -1083,6 +1119,9 @@ onMounted(async () => {
               variant="subtle"
               data-testid="client-tax-processes-section"
             >
+              <p class="mb-3 text-xs text-muted">
+                Documentos indisponíveis via API produtiva
+              </p>
               <UTable
                 :data="taxProcesses"
                 :columns="taxProcessColumns"

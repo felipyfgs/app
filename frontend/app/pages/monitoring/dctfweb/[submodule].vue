@@ -12,6 +12,7 @@ import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
+const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
 const UButton = resolveComponent('UButton')
 const UDropdownMenu = resolveComponent('UDropdownMenu')
 
@@ -34,6 +35,12 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  dataOrigin,
+  dataOriginLabel,
+  sourceLabel,
+  asOf,
+  surface,
+  allowsDocument,
   sorting,
   setPage,
   refresh,
@@ -44,6 +51,11 @@ const {
   submodule,
   submodulePath: value => monitoringSubmodulePath('dctfweb', value)
 })
+
+/** MIT: never document button even if generic row has a descriptor. */
+const documentActionsEnabled = computed(
+  () => allowsDocument.value && submodule.value !== 'MIT'
+)
 
 const filterConfig: MonitoringFilterConfig = {
   fields: [
@@ -237,23 +249,29 @@ const columns: TableColumn<DctfwebClientRow>[] = [
     id: 'actions',
     enableHiding: false,
     enableSorting: false,
-    meta: { class: { th: 'w-12', td: 'w-12' } },
+    meta: { class: { th: 'w-40', td: 'w-40' } },
     cell: ({ row }) => {
       const name = row.original.name || row.original.display_name || `cliente ${row.original.client_id}`
-      return h('div', { class: 'text-right' }, h(
-        UDropdownMenu,
-        {
-          items: rowActionItems(row.original),
-          content: { align: 'end' }
-        },
-        () => h(UButton, {
-          'icon': 'i-lucide-ellipsis-vertical',
-          'color': 'neutral',
-          'variant': 'ghost',
-          'class': 'ml-auto',
-          'aria-label': `Ações de ${name}`
-        })
-      ))
+      return h('div', { class: 'flex justify-end gap-1 items-center' }, [
+        h(FiscalDocumentAction, {
+          document: row.original.document,
+          disabled: !documentActionsEnabled.value
+        }),
+        h(
+          UDropdownMenu,
+          {
+            items: rowActionItems(row.original),
+            content: { align: 'end' }
+          },
+          () => h(UButton, {
+            'icon': 'i-lucide-ellipsis-vertical',
+            'color': 'neutral',
+            'variant': 'ghost',
+            'class': 'ml-auto',
+            'aria-label': `Ações de ${name}`
+          })
+        )
+      ])
     }
   }
 ]
@@ -278,6 +296,11 @@ const columns: TableColumn<DctfwebClientRow>[] = [
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
+    :data-origin="dataOrigin"
+    :data-origin-label="dataOriginLabel"
+    :source-label="sourceLabel"
+    :as-of="asOf"
+    :surface-summary="surface"
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"

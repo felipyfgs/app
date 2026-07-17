@@ -110,6 +110,10 @@ class ModulePortfolioApiTest extends TestCase
                         'pending',
                         'attention',
                         'error',
+                        'blocked',
+                        'unknown',
+                        'unsupported',
+                        'not_applicable',
                     ],
                     'agenda',
                     'categories',
@@ -119,16 +123,134 @@ class ModulePortfolioApiTest extends TestCase
 
         $counters = $response->json('data.counters');
         $this->assertSame(2, $counters['up_to_date']);
+        $this->assertSame(0, $counters['processing']);
         $this->assertSame(1, $counters['pending']);
         $this->assertSame(1, $counters['attention']);
         $this->assertSame(1, $counters['error']);
+        $this->assertSame(0, $counters['blocked']);
+        $this->assertSame(0, $counters['unknown']);
+        $this->assertSame(0, $counters['unsupported']);
+        $this->assertSame(0, $counters['not_applicable']);
+        $this->assertSame(
+            (int) $response->json('data.total_clients'),
+            array_sum($counters),
+            'Soma dos nove contadores deve igualar total_clients',
+        );
 
-        // Filtro de situação na lista NÃO reduz contadores do overview (mesmo service, situation null no aggregate)
+        // Filtro de situação NÃO distorce overview: total e contadores no escopo sem situation;
+        // somente a lista paginada aplica o eixo.
         $filtered = $this->getJson('/api/v1/fiscal/modules/sitfis/overview?situation=PENDING')
             ->assertOk();
-        // total_clients com situation filter = 1, mas counters continuam no escopo sem situation
-        $this->assertSame(1, $filtered->json('data.total_clients'));
+        $this->assertSame(5, $filtered->json('data.total_clients'));
         $this->assertSame(2, $filtered->json('data.counters.up_to_date'));
+        $this->assertSame(1, $filtered->json('data.counters.pending'));
+
+        $list = $this->getJson('/api/v1/fiscal/modules/sitfis/clients?situation=PENDING')
+            ->assertOk();
+        $this->assertSame(1, $list->json('meta.total'));
+        $this->assertSame('PENDING', $list->json('data.0.situation'));
+    }
+
+    public function test_carteira_integralmente_bloqueada(): void
+    {
+        // Substitui snapshots seed por BLOCKED em todos os 5 clientes
+        foreach ($this->clients as $client) {
+            FiscalSnapshot::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $this->office->id)
+                ->where('client_id', $client->id)
+                ->where('is_current', true)
+                ->update(['situation' => FiscalSituation::Blocked->value]);
+            FiscalCompetence::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $this->office->id)
+                ->where('client_id', $client->id)
+                ->update(['situation' => FiscalSituation::Blocked->value]);
+        }
+
+        $this->actingAsOffice($this->admin);
+
+        $response = $this->getJson('/api/v1/fiscal/modules/sitfis/overview')->assertOk();
+        $counters = $response->json('data.counters');
+
+        $this->assertSame(5, $response->json('data.total_clients'));
+        $this->assertSame(5, $counters['blocked']);
+        $this->assertSame(0, $counters['up_to_date']);
+        $this->assertSame(0, $counters['processing']);
+        $this->assertSame(0, $counters['pending']);
+        $this->assertSame(0, $counters['attention']);
+        $this->assertSame(0, $counters['error']);
+        $this->assertSame(0, $counters['unknown']);
+        $this->assertSame(0, $counters['unsupported']);
+        $this->assertSame(0, $counters['not_applicable']);
+        $this->assertSame(5, array_sum($counters));
+    }
+
+    public function test_nove_estados_coexistem_e_soma_igual_ao_total(): void
+    {
+        // Seed base tem 5; adiciona 4 clientes para cobrir os 9 estados canônicos.
+        $extra = [
+            ['name' => 'Zeta Processando', 'situation' => FiscalSituation::Processing],
+            ['name' => 'Eta Bloqueado', 'situation' => FiscalSituation::Blocked],
+            ['name' => 'Theta Desconhecido', 'situation' => FiscalSituation::Unknown],
+            ['name' => 'Iota Sem Suporte', 'situation' => FiscalSituation::Unsupported],
+            ['name' => 'Kappa N/A', 'situation' => FiscalSituation::NotApplicable],
+        ];
+
+        foreach ($extra as $i => $row) {
+            $client = Client::factory()->forOffice($this->office)->create([
+                'legal_name' => $row['name'],
+            ]);
+            Establishment::factory()->forClient($client)->create();
+            $this->linkClient($this->office, $client, $this->sitfisCategory);
+            FiscalCompetence::query()->create([
+                'office_id' => $this->office->id,
+                'client_id' => $client->id,
+                'fiscal_category_id' => $this->sitfisCategory->id,
+                'period_key' => '2026-06',
+                'period_year' => 2026,
+                'period_month' => 6,
+                'situation' => $row['situation'],
+                'coverage' => FiscalCoverage::Full,
+                'due_at' => now()->addDays(20 + $i),
+            ]);
+            $this->createSnapshot(
+                $this->office,
+                $client,
+                'INTEGRA_SITFIS',
+                'SITFIS',
+                $row['situation'],
+                'nine-'.$i,
+            );
+        }
+
+        $this->actingAsOffice($this->admin);
+
+        $response = $this->getJson('/api/v1/fiscal/modules/sitfis/overview')->assertOk();
+        $counters = $response->json('data.counters');
+        $total = (int) $response->json('data.total_clients');
+
+        // Seed: 2 UP_TO_DATE + 1 PENDING + 1 ATTENTION + 1 ERROR + 5 extras = 10
+        $this->assertSame(10, $total);
+        $this->assertSame(2, $counters['up_to_date']);
+        $this->assertSame(1, $counters['processing']);
+        $this->assertSame(1, $counters['pending']);
+        $this->assertSame(1, $counters['attention']);
+        $this->assertSame(1, $counters['error']);
+        $this->assertSame(1, $counters['blocked']);
+        $this->assertSame(1, $counters['unknown']);
+        $this->assertSame(1, $counters['unsupported']);
+        $this->assertSame(1, $counters['not_applicable']);
+        $this->assertSame($total, array_sum($counters));
+
+        // Cada chave canônica presente exatamente uma vez no contrato
+        foreach ([
+            'up_to_date', 'processing', 'pending', 'attention', 'error',
+            'blocked', 'unknown', 'unsupported', 'not_applicable',
+        ] as $key) {
+            $this->assertArrayHasKey($key, $counters);
+            $this->assertIsInt($counters[$key]);
+        }
     }
 
     public function test_clients_paginacao_contrato_e_cnpj_mascarado(): void

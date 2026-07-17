@@ -170,12 +170,46 @@ export function isFiscalPortfolioModule(value: string): value is FiscalPortfolio
 // Overview
 // ---------------------------------------------------------------------------
 
+/** Contadores da partição completa (9 situações canônicas). Chaves ausentes → 0. */
 export interface FiscalModuleCounters {
   up_to_date: number
   processing: number
   pending: number
   attention: number
   error: number
+  blocked: number
+  unknown: number
+  unsupported: number
+  not_applicable: number
+}
+
+export const EMPTY_FISCAL_MODULE_COUNTERS: Readonly<FiscalModuleCounters> = Object.freeze({
+  up_to_date: 0,
+  processing: 0,
+  pending: 0,
+  attention: 0,
+  error: 0,
+  blocked: 0,
+  unknown: 0,
+  unsupported: 0,
+  not_applicable: 0
+})
+
+/** Normaliza contadores parciais (deploy escalonado / fixtures legados). */
+export function normalizeFiscalModuleCounters(
+  value?: Partial<FiscalModuleCounters> | null
+): FiscalModuleCounters {
+  return {
+    up_to_date: Number(value?.up_to_date) || 0,
+    processing: Number(value?.processing) || 0,
+    pending: Number(value?.pending) || 0,
+    attention: Number(value?.attention) || 0,
+    error: Number(value?.error) || 0,
+    blocked: Number(value?.blocked) || 0,
+    unknown: Number(value?.unknown) || 0,
+    unsupported: Number(value?.unsupported) || 0,
+    not_applicable: Number(value?.not_applicable) || 0
+  }
 }
 
 export interface FiscalModuleAgendaItem {
@@ -194,7 +228,7 @@ export interface FiscalModuleCategorySummary {
   linked_clients: number
 }
 
-/** KPI acionável da faixa (Total + contadores). */
+/** KPI acionável da faixa (Total + nove situações canônicas). */
 export type FiscalKpiKey
   = | 'total'
     | 'up_to_date'
@@ -202,6 +236,23 @@ export type FiscalKpiKey
     | 'pending'
     | 'attention'
     | 'error'
+    | 'blocked'
+    | 'unknown'
+    | 'unsupported'
+    | 'not_applicable'
+
+/** Chaves de contador (sem Total). */
+export const FISCAL_COUNTER_KPI_KEYS = [
+  'up_to_date',
+  'processing',
+  'pending',
+  'attention',
+  'error',
+  'blocked',
+  'unknown',
+  'unsupported',
+  'not_applicable'
+] as const satisfies readonly Exclude<FiscalKpiKey, 'total'>[]
 
 export interface FiscalModuleMetrics {
   total_clients?: number
@@ -209,6 +260,96 @@ export interface FiscalModuleMetrics {
   guide_payment_supported?: boolean
   open_messages?: number
   unconfirmed_payment_guides?: number
+}
+
+/** Motivo público de indisponibilidade de documento (espelho DocumentUnavailableReason). */
+export type FiscalDocumentUnavailableReason
+  = | 'STRUCTURED_ONLY'
+    | 'PROCESSING'
+    | 'NOT_SUPPORTED'
+    | 'NOT_PRODUCTION'
+    | 'NOT_COLLECTED'
+
+/**
+ * Descritor público de documento/evidência tenant-scoped.
+ * href só vem do backend; UI NÃO monta URL por convenção de módulo.
+ */
+export interface FiscalDocumentDescriptor {
+  available: boolean
+  kind: 'PDF' | string | null
+  label: string | null
+  content_type: string | null
+  observed_at: string | null
+  source_surface: string | null
+  source_label: string | null
+  href: string | null
+  unavailable_reason: FiscalDocumentUnavailableReason | string | null
+}
+
+/** Tipo de retorno da superfície (page-payload-matrix / MonitoringResultKind). */
+export type FiscalMonitoringResultKind
+  = | 'STRUCTURED'
+    | 'PDF'
+    | 'ASYNC_PDF'
+    | 'AGGREGATE'
+    | 'UNAVAILABLE'
+
+/**
+ * Resumo público da superfície no overview (`data.surface`).
+ * Sem idSistema/idServico/operation_key.
+ */
+export interface FiscalMonitoringSurfaceSummary {
+  surface_key: string
+  route: string
+  responsibility: string
+  result_kind: FiscalMonitoringResultKind | string
+  allows_document: boolean
+  official_state_label: string
+  channel_label: string
+}
+
+/** true somente com artefato real: available + href não vazio. */
+export function documentActionVisible(
+  doc?: FiscalDocumentDescriptor | null
+): boolean {
+  if (!doc || doc.available !== true) return false
+  const href = typeof doc.href === 'string' ? doc.href.trim() : ''
+  return href.length > 0
+}
+
+/** Rótulo público do motivo de indisponibilidade; null se desconhecido/ausente. */
+export function documentUnavailableLabel(
+  reason?: FiscalDocumentUnavailableReason | string | null
+): string | null {
+  if (reason == null || String(reason).trim() === '') return null
+  switch (String(reason).trim().toUpperCase()) {
+    case 'STRUCTURED_ONLY':
+      return 'Somente dados estruturados'
+    case 'PROCESSING':
+      return 'Processando'
+    case 'NOT_SUPPORTED':
+      return 'Documento não suportado'
+    case 'NOT_PRODUCTION':
+      return 'Operação não produtiva'
+    case 'NOT_COLLECTED':
+      return 'Documento ainda não coletado'
+    default:
+      return null
+  }
+}
+
+export function isSurfaceUnavailable(
+  surface?: FiscalMonitoringSurfaceSummary | null
+): boolean {
+  return String(surface?.result_kind || '').toUpperCase() === 'UNAVAILABLE'
+}
+
+/** Superfície proíbe botão de documento (MIT, mailbox, cadastros, e-Processo…). */
+export function surfaceAllowsDocument(
+  surface?: FiscalMonitoringSurfaceSummary | null
+): boolean {
+  if (!surface) return true
+  return surface.allows_document === true
 }
 
 export interface FiscalModuleOverviewBase<M extends FiscalPortfolioModuleKey = FiscalPortfolioModuleKey> {
@@ -225,6 +366,8 @@ export interface FiscalModuleOverviewBase<M extends FiscalPortfolioModuleKey = F
   agenda?: FiscalModuleAgendaItem[]
   categories?: FiscalModuleCategorySummary[]
   metrics?: FiscalModuleMetrics
+  /** Resumo público da superfície (result_kind, allows_document…). */
+  surface?: FiscalMonitoringSurfaceSummary | null
 }
 
 export type FiscalModuleOverview<M extends FiscalPortfolioModuleKey = FiscalPortfolioModuleKey>
@@ -273,6 +416,11 @@ export interface FiscalClientRowBase<
   block_reason?: string | null
   block_message?: string | null
   links?: Record<string, string | null | undefined>
+  /**
+   * Descritor de documento/evidência (aditivo).
+   * Botão só com documentActionVisible(document).
+   */
+  document?: FiscalDocumentDescriptor | null
   detail: D
 }
 
@@ -458,6 +606,8 @@ export type MonitoringStructuredFilterField
     kind: 'option'
     label: string
     items?: Array<{ label: string, value: string }>
+    /** Default true no adapter (multi situação). */
+    multiple?: boolean
   }
   | {
     key: 'competence'
@@ -474,6 +624,8 @@ export type MonitoringStructuredFilterField
     kind: 'option'
     label: string
     items: Array<{ label: string, value: string }>
+    /** Multi-seleção; coverage costuma ficar single. */
+    multiple?: boolean
   }
 
 /**
@@ -586,6 +738,14 @@ export function fiscalKpiSituationFilter(key: FiscalKpiKey): string | null {
       return 'ATTENTION'
     case 'error':
       return 'ERROR'
+    case 'blocked':
+      return 'BLOCKED'
+    case 'unknown':
+      return 'UNKNOWN'
+    case 'unsupported':
+      return 'UNSUPPORTED'
+    case 'not_applicable':
+      return 'NOT_APPLICABLE'
     default:
       return null
   }
@@ -593,7 +753,7 @@ export function fiscalKpiSituationFilter(key: FiscalKpiKey): string | null {
 
 /**
  * Situação da URL/filtro → chave de KPI acionável.
- * `all` / vazio / códigos fora da faixa de KPI → `total`.
+ * `all` / vazio → `total`. Códigos canônicos mapeiam 1:1.
  */
 export function fiscalSituationToKpiKey(situation?: string | null): FiscalKpiKey {
   const sit = String(situation || '').trim().toUpperCase()
@@ -609,13 +769,21 @@ export function fiscalSituationToKpiKey(situation?: string | null): FiscalKpiKey
       return 'attention'
     case 'ERROR':
       return 'error'
+    case 'BLOCKED':
+      return 'blocked'
+    case 'UNKNOWN':
+      return 'unknown'
+    case 'UNSUPPORTED':
+      return 'unsupported'
+    case 'NOT_APPLICABLE':
+      return 'not_applicable'
     default:
       return 'total'
   }
 }
 
 export function fiscalDataOriginLabel(origin?: string | null): string {
-  const v = String(origin || '').toUpperCase()
+  const v = String(origin || '').trim().toUpperCase()
   switch (v) {
     case 'DEMO':
       return 'Dados demonstrativos'
@@ -623,7 +791,15 @@ export function fiscalDataOriginLabel(origin?: string | null): string {
       return 'Dados simulados'
     case 'LIVE':
       return 'Fonte produtiva'
+    case '':
+      return 'Origem não informada'
     default:
-      return origin || 'Origem desconhecida'
+      return 'Origem não informada'
   }
+}
+
+/** Frescor fiscal (`as_of`); nunca inventa timestamp de transporte. */
+export function fiscalAsOfLabel(asOf?: string | null): string {
+  if (asOf == null || String(asOf).trim() === '') return 'Sem observação oficial'
+  return String(asOf).trim()
 }

@@ -9,6 +9,7 @@ import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
+const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
 const UButton = resolveComponent('UButton')
 
 const {
@@ -25,6 +26,12 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  dataOrigin,
+  dataOriginLabel,
+  sourceLabel,
+  asOf,
+  surface,
+  allowsDocument,
   sorting,
   setPage,
   refresh,
@@ -103,6 +110,7 @@ const detailLoading = ref(false)
 const detailError = ref<string | null>(null)
 const detailOrder = ref<Record<string, unknown> | null>(null)
 const detailParcels = ref<Array<Record<string, unknown>>>([])
+const detailRow = ref<InstallmentsClientRow | null>(null)
 
 function clientHref(id: number) {
   return `/monitoring/clients/${id}`
@@ -133,12 +141,13 @@ async function loadModalities() {
   }
 }
 
-async function openOrder(orderId: number) {
+async function openOrder(orderId: number, row?: InstallmentsClientRow) {
   detailOpen.value = true
   detailLoading.value = true
   detailError.value = null
   detailOrder.value = null
   detailParcels.value = []
+  detailRow.value = row ?? null
   try {
     const [orderRes, parcelsRes] = await Promise.allSettled([
       api.fiscal.installments.order(orderId),
@@ -250,6 +259,10 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
     cell: ({ row }) => {
       const orderId = detailOf(row.original).order_id
       const children = [
+        h(FiscalDocumentAction, {
+          document: row.original.document,
+          disabled: !allowsDocument.value
+        }),
         h(UButton, {
           size: 'xs',
           color: 'neutral',
@@ -264,10 +277,10 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
           color: 'primary',
           variant: 'ghost',
           label: 'Pedido',
-          onClick: () => openOrder(Number(orderId))
+          onClick: () => openOrder(Number(orderId), row.original)
         }))
       }
-      return h('div', { class: 'flex justify-end gap-1' }, children)
+      return h('div', { class: 'flex justify-end gap-1 items-center' }, children)
     }
   }
 ]
@@ -296,6 +309,11 @@ onMounted(() => {
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
+    :data-origin="dataOrigin"
+    :data-origin-label="dataOriginLabel"
+    :source-label="sourceLabel"
+    :as-of="asOf"
+    :surface-summary="surface"
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
@@ -379,6 +397,15 @@ onMounted(() => {
             v-else-if="detailOrder"
             class="flex flex-col gap-4"
           >
+            <div
+              v-if="detailRow?.document"
+              class="flex flex-wrap items-center gap-2"
+            >
+              <FiscalDocumentAction
+                :document="detailRow.document"
+                :disabled="!allowsDocument"
+              />
+            </div>
             <dl class="grid gap-2 text-sm sm:grid-cols-2">
               <div>
                 <dt class="text-muted">

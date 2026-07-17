@@ -49,6 +49,27 @@ export function resetMonitoringFilters(): MonitoringFilterValue {
 }
 
 /**
+ * Detecta filtros realmente ativos sobre defaults normalizados.
+ * `all`, string vazia e `null` NÃO contam como filtro aplicado.
+ */
+export function hasActiveMonitoringFilters(
+  value?: Partial<MonitoringFilterValue> | null
+): boolean {
+  const n = normalizeMonitoringFilters(value)
+  return Boolean(
+    n.q
+    || (n.situation && n.situation !== 'all')
+    || n.competence
+    || n.clientId != null
+    || (n.deliveryStatus && n.deliveryStatus !== 'all')
+    || (n.paymentStatus && n.paymentStatus !== 'all')
+    || (n.status && n.status !== 'all')
+    || (n.coverage && n.coverage !== 'all')
+    || (n.modality && n.modality !== 'all')
+  )
+}
+
+/**
  * Normaliza a config da toolbar para `fields` ordenados.
  * Aceita legado `situation` + `advanced` e converte para o contrato novo.
  */
@@ -93,6 +114,15 @@ export function resolveMonitoringFilterFields(
   return fields
 }
 
+/** Eixos option que aceitam multi-seleção na UI e `IN` na API. */
+const MULTIPLE_OPTION_KEYS = new Set([
+  'situation',
+  'deliveryStatus',
+  'paymentStatus',
+  'status',
+  'modality'
+])
+
 export function monitoringFieldsToDefinitions(
   fields: readonly MonitoringStructuredFilterField[]
 ): DataTableFilterDefinition[] {
@@ -111,7 +141,9 @@ export function monitoringFieldsToDefinitions(
       kind: 'option',
       label: field.label,
       items,
-      emptyValue: 'all'
+      emptyValue: 'all',
+      // coverage permanece single (mutuamente exclusivo); demais options multi.
+      multiple: MULTIPLE_OPTION_KEYS.has(field.key)
     }
   })
 }

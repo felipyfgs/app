@@ -8,6 +8,7 @@ import {
   fiscalStatusIcon,
   fiscalStatusLabel,
   fiscalStatusMeta,
+  isNonPositiveFiscalSituation,
   normalizeFiscalSituation,
   resolveFiscalEmptyKind
 } from '../../app/utils/fiscal-status'
@@ -76,6 +77,21 @@ describe('fiscal-status vocabulary (15.8)', () => {
     expect(coverageMeta('PARTIAL').label).toMatch(/parcial/i)
     expect(dataOriginMeta('DEMO').synthetic).toBe(true)
     expect(resolveFiscalEmptyKind({ situation: 'BLOCKED' })).toBe('blocked')
+  })
+
+  it('dataOriginMeta fail-closed para origem ausente', () => {
+    expect(dataOriginMeta(null).label).toBe('Origem não informada')
+    expect(dataOriginMeta('').label).toBe('Origem não informada')
+    expect(dataOriginMeta(undefined).synthetic).toBe(false)
+    expect(dataOriginMeta('LIVE').synthetic).toBe(false)
+  })
+
+  it('UNKNOWN/UNSUPPORTED/BLOCKED/ERROR nunca usam tom de sucesso', () => {
+    for (const code of ['UNKNOWN', 'UNSUPPORTED', 'BLOCKED', 'ERROR'] as const) {
+      expect(isNonPositiveFiscalSituation(code)).toBe(true)
+      expect(fiscalStatusMeta(code).color).not.toBe('success')
+      expect(fiscalStatusMeta(code).label).not.toMatch(/em dia|regular|sucesso|concluíd/i)
+    }
   })
 
   it('resolveFiscalEmptyKind prioriza loading e erro sem previous (6.9)', () => {

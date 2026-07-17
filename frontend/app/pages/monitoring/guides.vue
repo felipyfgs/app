@@ -427,6 +427,11 @@ onMounted(() => {
     :get-client-id="getGuideClientId"
     :total-clients="overview?.total_clients"
     :counters="overview?.counters"
+    :surface-summary="overview?.surface ?? null"
+    :data-origin="overview?.data_origin"
+    :data-origin-label="overview?.data_origin_label"
+    :source-label="overview?.source_label"
+    :as-of="overview?.as_of"
     empty-title="Nenhuma guia"
     :column-labels="{
       system: 'Sistema / tipo',

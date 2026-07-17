@@ -343,15 +343,28 @@ export function dataOriginMeta(value?: string | null): FiscalOriginMeta {
         synthetic: false
       }
     default:
+      // Fail-closed: origem ausente/desconhecida nunca assume fonte produtiva.
       return {
         code: code || 'UNKNOWN',
-        label: code || 'Origem desconhecida',
-        description: 'Origem do dado não catalogada.',
+        label: 'Origem não informada',
+        description: 'Origem do dado não reconhecida — não assumir fonte produtiva.',
         icon: 'i-lucide-help-circle',
         color: 'neutral',
         synthetic: false
       }
   }
+}
+
+/**
+ * Situações sem evidência positiva ou com falha — nunca usam apresentação de sucesso.
+ * UP_TO_DATE é o único estado canônico com tom success.
+ */
+export function isNonPositiveFiscalSituation(value?: string | null): boolean {
+  const code = String(value || '').trim().toUpperCase()
+  return code === 'UNKNOWN'
+    || code === 'UNSUPPORTED'
+    || code === 'BLOCKED'
+    || code === 'ERROR'
 }
 
 /**

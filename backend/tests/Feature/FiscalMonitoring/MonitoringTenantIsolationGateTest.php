@@ -191,6 +191,8 @@ class MonitoringTenantIsolationGateTest extends TestCase
             '/api/v1/fiscal/simples-mei/catalog',
             '/api/v1/operations/summary',
             '/api/v1/clients',
+            '/api/v1/fiscal/modules/sitfis/overview',
+            '/api/v1/fiscal/modules/sitfis/clients',
         ];
 
         foreach ($fiscalGets as $url) {
@@ -201,6 +203,41 @@ class MonitoringTenantIsolationGateTest extends TestCase
 
         // Platform routes continuam acessíveis
         $this->getJson('/api/v1/platform/tenants')->assertOk();
+    }
+
+    public function test_agregados_do_portfolio_respeitam_current_office_e_ignoram_office_id(): void
+    {
+        $this->actingAs($this->adminA);
+        app(CurrentOffice::class)->clear();
+        app(CurrentOffice::class)->resolve($this->adminA);
+
+        $forged = $this->officeB->id;
+
+        $overview = $this->getJson('/api/v1/fiscal/modules/sitfis/overview?office_id='.$forged)
+            ->assertOk();
+        $json = (string) json_encode($overview->json());
+        $this->assertStringNotContainsString('Cliente B SEGREDO', $json);
+        $this->assertStringNotContainsString('SEGREDO-B', $json);
+
+        // total e contadores só do CurrentOffice A (sem vínculos SITFIS em A neste setup → 0)
+        $total = (int) $overview->json('data.total_clients');
+        $counters = $overview->json('data.counters');
+        $this->assertIsArray($counters);
+        $this->assertSame($total, array_sum($counters));
+        foreach ([
+            'up_to_date', 'processing', 'pending', 'attention', 'error',
+            'blocked', 'unknown', 'unsupported', 'not_applicable',
+        ] as $key) {
+            $this->assertArrayHasKey($key, $counters);
+        }
+
+        $clients = $this->getJson('/api/v1/fiscal/modules/sitfis/clients?office_id='.$forged)
+            ->assertOk();
+        $names = collect($clients->json('data'))->pluck('legal_name')->all();
+        $this->assertNotContains('Cliente B SEGREDO', $names);
+        foreach ($clients->json('data') ?? [] as $row) {
+            $this->assertNotSame($this->clientB->id, $row['client_id']);
+        }
     }
 
     private function seedTenantBOnlyRows(): void

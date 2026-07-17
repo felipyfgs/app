@@ -237,5 +237,13 @@ watch(sessionEpoch, () => {
     <template #nav>
       <MonitoringModuleNav active="tax_processes" />
     </template>
+    <template #utilities>
+      <p
+        class="text-xs text-muted"
+        data-testid="tax-processes-docs-unavailable"
+      >
+        Documentos indisponíveis via API produtiva
+      </p>
+    </template>
   </MonitoringModuleTable>
 </template>

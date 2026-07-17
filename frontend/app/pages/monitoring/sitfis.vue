@@ -13,6 +13,7 @@ import { sortHeader } from '~/utils/table-sort'
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
 const FiscalCoverageBadge = resolveComponent('FiscalCoverageBadge')
+const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
 const UButton = resolveComponent('UButton')
 const UBadge = resolveComponent('UBadge')
 
@@ -34,6 +35,12 @@ const {
   counters,
   totalClients,
   lastValidAt,
+  dataOrigin,
+  dataOriginLabel,
+  sourceLabel,
+  asOf,
+  surface,
+  allowsDocument,
   sorting,
   setPage,
   refresh,
@@ -290,8 +297,12 @@ const columns: TableColumn<SitfisClientRow>[] = [
     header: 'Ações',
     enableHiding: false,
     enableSorting: false,
-    meta: { class: { th: 'w-40', td: 'w-40' } },
-    cell: ({ row }) => h('div', { class: 'flex justify-end gap-1' }, [
+    meta: { class: { th: 'w-56', td: 'w-56' } },
+    cell: ({ row }) => h('div', { class: 'flex justify-end gap-1 items-center' }, [
+      h(FiscalDocumentAction, {
+        document: row.original.document,
+        disabled: !allowsDocument.value
+      }),
       h(UButton, {
         size: 'xs',
         color: 'primary',
@@ -330,6 +341,11 @@ const columns: TableColumn<SitfisClientRow>[] = [
     :total-clients="totalClients"
     :counters="counters"
     :last-good-at="lastValidAt"
+    :data-origin="dataOrigin"
+    :data-origin-label="dataOriginLabel"
+    :source-label="sourceLabel"
+    :as-of="asOf"
+    :surface-summary="surface"
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
@@ -433,6 +449,11 @@ const columns: TableColumn<SitfisClientRow>[] = [
                 icon="i-lucide-triangle-alert"
                 class="w-full"
                 :title="selected.block_message || commercialBlockLabel(selected.block_reason) || 'Bloqueio operacional — revise e-CAC ou franquia'"
+              />
+              <FiscalDocumentAction
+                v-if="selected"
+                :document="selected.document"
+                :disabled="!allowsDocument"
               />
               <UButton
                 v-if="selected"

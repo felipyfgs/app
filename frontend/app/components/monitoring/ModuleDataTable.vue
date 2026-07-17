@@ -9,6 +9,7 @@ import type {
   MonitoringFilterValue
 } from '~/types/fiscal-modules'
 import { resolveFiscalEmptyKind } from '~/utils/fiscal-status'
+import { hasActiveMonitoringFilters } from '~/utils/monitoring-filters'
 import {
   pruneMonitoringSelection,
   selectedMonitoringRows
@@ -173,14 +174,9 @@ const displayColumnItems = computed(() => table.value?.tableApi
     onSelect: (event?: Event) => event?.preventDefault()
   })) || [])
 
-const filtered = computed(() => Object.entries(props.filters).some(([key, value]) => {
-  if (key === 'situation' || key.endsWith('Status') || key === 'status') {
-    return value != null && value !== '' && value !== 'all'
-  }
-  return value != null && String(value).trim() !== ''
-}))
+const filtered = computed(() => hasActiveMonitoringFilters(props.filters))
 const resolvedEmptyKind = computed(() => props.emptyKind || resolveFiscalEmptyKind({
-  loading: false,
+  loading: props.loading,
   error: props.error,
   hasRows: props.rows.length > 0,
   hasPrevious: props.rows.length > 0,
@@ -209,10 +205,10 @@ defineExpose({ clearSelection })
 
     <UTable
       ref="table"
-      sticky="header"
       v-model:column-visibility="columnVisibility"
       v-model:row-selection="rowSelection"
       v-model:sorting="sortingModel"
+      sticky="header"
       :data="rows"
       :columns="tableColumns"
       :loading="loading"
