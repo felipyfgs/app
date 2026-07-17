@@ -49,9 +49,18 @@ CMD ["php-fpm"]
 
 FROM runtime AS prod
 
+ARG RELEASE_SHA=unknown
+ARG BUILD_DATE=
+
+LABEL org.opencontainers.image.revision="${RELEASE_SHA}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.source="https://github.com/local/fiscal-hub" \
+      org.opencontainers.image.title="fiscal-hub-php"
+
 ENV APP_ENV=production \
     APP_DEBUG=false \
-    COMPOSER_ALLOW_SUPERUSER=1
+    COMPOSER_ALLOW_SUPERUSER=1 \
+    RELEASE_SHA=${RELEASE_SHA}
 
 COPY --from=app --chown=www-data:www-data . /var/www/html
 

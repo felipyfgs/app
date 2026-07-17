@@ -94,31 +94,57 @@ jobs:
           done
           for script in \
             docker/frontend/entrypoint.sh docker/ops/verify.sh \
-            docker/ops/secret-scan.sh; do
+            docker/ops/secret-scan.sh docker/ops/prod-readiness.sh \
+            docker/ops/release-manifest.sh docker/ops/host-backup-run.sh; do
             bash -n "$script"
           done
       - name: Validar Docker Compose de desenvolvimento e produção
         run: |
           docker compose config --quiet
-          PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
+          RELEASE_SHA=ci-synthetic RELEASE_TAG=sha-ci-synthetic \
+            PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
             -f compose.prod.yml -p fiscal-hub config --quiet
       - name: Construir imagens de desenvolvimento e conferir extensões críticas
         run: |
           docker compose --profile dev build nginx php frontend-dev
           docker compose run --rm --no-deps --entrypoint php php -r \
             'exit(extension_loaded("curl") && extension_loaded("sodium") ? 0 : 1);'
-      - name: Construir imagens imutáveis de produção
+      - name: Construir imagens imutáveis de produção com SHA
         run: |
-          PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
+          export RELEASE_SHA="${GITHUB_SHA}"
+          export RELEASE_TAG="sha-${RELEASE_SHA:0:12}"
+          export BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          RELEASE_SHA="$RELEASE_SHA" RELEASE_TAG="$RELEASE_TAG" BUILD_DATE="$BUILD_DATE" \
+            PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
             -f compose.prod.yml -p fiscal-hub \
             build acme-init traefik web php
-          PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
+          RELEASE_SHA="$RELEASE_SHA" RELEASE_TAG="$RELEASE_TAG" \
+            PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
             -f compose.prod.yml -p fiscal-hub pull socket-proxy
+          docker tag "fiscal-hub-php:${RELEASE_TAG}" fiscal-hub-php:prod
+          docker tag "fiscal-hub-web:${RELEASE_TAG}" fiscal-hub-web:prod
+          php_rev=$(docker image inspect "fiscal-hub-php:${RELEASE_TAG}" \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
+          web_rev=$(docker image inspect "fiscal-hub-web:${RELEASE_TAG}" \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
+          test "$php_rev" = "$RELEASE_SHA"
+          test "$web_rev" = "$RELEASE_SHA"
       - name: Validar runtimes e restauração isolada
         run: |
           docker run --rm --add-host php:127.0.0.1 fiscal-hub-web:prod nginx -t
           docker run --rm --entrypoint php-fpm fiscal-hub-php:prod -t
           ./docker/ops/restore-smoke.sh
+      - name: Gates fail-closed de readiness e secret-scan
+        run: |
+          set -euo pipefail
+          export RELEASE_SHA="${GITHUB_SHA}"
+          ./docker/ops/test-prod-readiness.sh
+          # manifesto sanitizado
+          MANIFEST_DIR="$(mktemp -d)"
+          RELEASE_SHA="$RELEASE_SHA" RELEASE_TAG="sha-${RELEASE_SHA:0:12}" \
+            MANIFEST_DIR="$MANIFEST_DIR" ./docker/ops/release-manifest.sh
+          # scanner: manifesto não deve conter padrões sensíveis
+          ! grep -Eiq 'password|private_key|BEGIN ' "$MANIFEST_DIR"/*.json
       - name: Validar OpenSpec (main specs + changes com delta)
         run: |
           set -euo pipefail
@@ -138,3 +164,4 @@ jobs:
               fi
             done
           fi
+

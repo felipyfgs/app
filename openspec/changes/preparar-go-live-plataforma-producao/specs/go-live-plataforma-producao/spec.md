@@ -49,7 +49,7 @@ Uma instância com schema ou dados existentes MUST receber backup v3 cifrado e v
 - **THEN** o tráfego MUST permanecer fechado e a imagem anterior MUST NOT ser iniciada automaticamente contra schema incerto
 
 ### Requirement: Backup produtivo é cifrado, externo e restaurável
-Produção MUST executar backup periódico pelo host incluindo PostgreSQL, vault e storage privado em pacote cifrado autenticado por chave separada de `VAULT_MASTER_KEY`. O aceite MUST comprovar pacote recente, verificação, replicação off-site e restore drill real coerentes com RPO/RTO; o restore smoke de CI MUST NOT substituir essa evidência operacional.
+Produção MUST executar backup completo diário pelo host incluindo PostgreSQL, vault e storage privado em pacote cifrado autenticado por chave separada de `VAULT_MASTER_KEY`. A política inicial SHALL usar RPO de 24 horas, RTO de 4 horas, reter sete pacotes locais e trinta referências externas, considerar a cópia off-site manual atrasada após 24 horas e exigir restore drill real trimestral; o restore smoke de CI MUST NOT substituir essa evidência operacional.
 
 #### Scenario: Backup periódico conclui
 - **WHEN** o job host executa com os três componentes disponíveis
@@ -86,7 +86,7 @@ Uma instalação nova MAY habilitar temporariamente o onboarding somente com con
 - **THEN** o postdeploy MUST falhar enquanto flag/token permanecerem configurados ou o onboarding estiver disponível
 
 ### Requirement: Primeiro go-live mantém contenção fiscal
-O aceite inicial MUST exigir flags globais e mutantes desligadas, contexto privilegiado desligado, fake clients desligados, kill switch SERPRO ligado, nenhum driver SERPRO real e canais SEFAZ/autXML desligados. Readiness, deploy, health, smoke HTTP e smoke SMTP MUST NOT chamar NFS-e, SEFAZ ou qualquer rota `/Apoiar`, `/Monitorar`, `/Consultar`, `/Emitir` ou `/Declarar`.
+O aceite inicial MUST exigir flags globais e mutantes desligadas, fake clients desligados, `SERPRO_KILL_SWITCH=true`, nenhum driver SERPRO real e canais SEFAZ/autXML desligados. A seleção administrativa server-side do Proprietário MAY permanecer disponível, mas readiness, deploy, health, smoke HTTP e smoke SMTP MUST NOT chamar NFS-e, SEFAZ ou qualquer rota `/Apoiar`, `/Monitorar`, `/Consultar`, `/Emitir` ou `/Declarar`.
 
 #### Scenario: Configuração contida é publicada
 - **WHEN** a plataforma passa pelo primeiro go-live

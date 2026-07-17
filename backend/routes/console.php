@@ -2,6 +2,9 @@
 
 use Illuminate\Support\Facades\Schedule;
 
+// Heartbeat leve do scheduler (readiness de produção; sem integração externa).
+Schedule::command('ops:scheduler-heartbeat')->everyMinute();
+
 Schedule::command('adn:dispatch-due-syncs')->everyMinute();
 Schedule::command('sefaz:dispatch-due-syncs')->everyMinute();
 Schedule::command('sefaz:dispatch-due-autxml')->everyMinute();

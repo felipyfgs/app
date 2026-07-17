@@ -19,6 +19,16 @@ RUN corepack pnpm run generate
 
 FROM runtime AS prod
 
+ARG RELEASE_SHA=unknown
+ARG BUILD_DATE=
+
+LABEL org.opencontainers.image.revision="${RELEASE_SHA}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.source="https://github.com/local/fiscal-hub" \
+      org.opencontainers.image.title="fiscal-hub-web"
+
+ENV RELEASE_SHA=${RELEASE_SHA}
+
 COPY prod.conf /etc/nginx/conf.d/default.conf
 COPY --from=web-build /app/.output/public /usr/share/nginx/html
 

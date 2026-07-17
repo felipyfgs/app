@@ -61,12 +61,26 @@ evitar mistura entre código e schema incompatíveis.
 
 Backups produtivos usam `make prod-backup` e guardam três componentes separados:
 PostgreSQL, vault e `private_storage`; a chave mestra do vault continua fora do
-backup. `prod-restore` exige `CONFIRM_PROD_RESTORE=SIM`. O gate
-`prod-restore-smoke` prova backup e restauração em projeto/volumes descartáveis.
+backup. A chave do pacote (`BACKUP_PACKAGE_KEY`) fica só no host
+(`/etc/fiscal-hub/backup.env`, modo 600) — ver `docker/ops/backup.env.example` e
+timers em `docker/ops/host-backup.*.example`. `prod-restore` exige
+`CONFIRM_PROD_RESTORE=SIM` e restaura o conjunto completo. Rollback automático de
+schema é proibido. O gate `prod-restore-smoke` prova o código em projeto isolado,
+mas não substitui o restore drill operacional trimestral.
 
-Logs produtivos seguem para `stderr` para coleta/rotação pelo runtime. O mailer
-de produção é SMTP real; `MAIL_MAILER=log` não é aceito porque recuperação de
-senha não pode depender de mensagens gravadas em log.
+Release: imagens `fiscal-hub-php`/`fiscal-hub-web` usam tag `sha-<12>` derivada de
+`RELEASE_SHA`, labels OCI (`revision`, `created`, `source`) e manifesto sanitizado
+via `make prod-release-manifest` (fora do repo). Tags SHA anteriores são
+preservadas.
+
+Gate de go-live: `make prod-readiness PHASE=source|predeploy|postdeploy` (script
+`docker/ops/prod-readiness.sh`). Runbook:
+`docs/ops/runbooks/go-live-plataforma-producao.md`.
+
+Logs produtivos seguem para `stderr` com rotação defensiva `json-file`
+(max-size/max-file no Compose). O mailer de produção é SMTP real;
+`MAIL_MAILER=log` não é aceito. Smoke de e-mail: `php artisan ops:mail-smoke --to=...`
+(ops-gated, nunca no CI automático).
 
 No CI, `pnpm run generate` precede E2E: o Playwright valida o preview do artefato
 estático já gerado, não um servidor Nuxt de desenvolvimento reutilizado.

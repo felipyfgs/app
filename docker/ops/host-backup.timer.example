@@ -1,0 +1,14 @@
+# systemd timer — instalar como root em /etc/systemd/system/fiscal-hub-backup.timer
+# e fiscal-hub-backup.service (ver host-backup.service.example).
+# NÃO coloca Docker socket nem BACKUP_PACKAGE_KEY nos containers da app.
+
+[Unit]
+Description=Timer diário de backup completo Fiscal Hub
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+Unit=fiscal-hub-backup.service
+
+[Install]
+WantedBy=timers.target

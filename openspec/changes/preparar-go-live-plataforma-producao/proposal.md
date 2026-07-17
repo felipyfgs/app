@@ -30,4 +30,4 @@ Nenhuma. O onboarding inicial continua definido pela change ativa `onboarding-in
 - **Configuração:** `.env.prod.example` passa a declarar todos os controles obrigatórios, mantendo `.env.prod`, chaves e contatos reais fora do git.
 - **Operação:** novos runbook e template de evidência em `docs/ops/`, com referências opacas em vez de segredos ou identidades reais.
 - **CI:** testes dos gates fail-closed, sintaxe dos scripts, Compose produtivo, imagens imutáveis e restore smoke.
-- **Dependências:** requer concluir e arquivar `onboarding-inicial-plataforma` e `provisionar-admin-inicial-plataforma` antes do aceite final desta change.
+- **Dependências:** requer concluir e arquivar `tornar-platform-admin-proprietario-unico`, `adaptar-aprovacoes-serpro-proprietario-unico`, `onboarding-inicial-plataforma` e `provisionar-admin-inicial-plataforma` antes do aceite final desta change.

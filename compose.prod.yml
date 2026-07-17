@@ -1,10 +1,13 @@
 x-php: &php
-  image: fiscal-hub-php:prod
+  image: fiscal-hub-php:${RELEASE_TAG:-prod}
   build:
     context: ./docker/php
     target: prod
     additional_contexts:
       app: ./backend
+    args:
+      RELEASE_SHA: ${RELEASE_SHA:-unknown}
+      BUILD_DATE: ${BUILD_DATE:-}
   env_file:
     - path: ${PROD_ENV_FILE:-.env.prod}
       required: true
@@ -12,6 +15,7 @@ x-php: &php
     APP_ENV: production
     APP_DEBUG: "false"
     APP_URL: https://app.inovaicontabil.com.br
+    RELEASE_SHA: ${RELEASE_SHA:-}
     DB_CONNECTION: pgsql
     DB_HOST: postgres
     DB_PORT: 5432
@@ -32,6 +36,11 @@ x-php: &php
     - vault_data:/var/vault
     - private_storage:/var/www/html/storage/app/private
   restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
   networks:
     - app
   security_opt:
@@ -54,6 +63,11 @@ services:
     build:
       context: ./docker/traefik
       target: prod
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     command:
       - --api.dashboard=false
       - --ping=true
@@ -121,12 +135,15 @@ services:
       - socket
 
   web:
-    image: fiscal-hub-web:prod
+    image: fiscal-hub-web:${RELEASE_TAG:-prod}
     build:
       context: ./docker/nginx
       target: prod
       additional_contexts:
         ui: ./frontend
+      args:
+        RELEASE_SHA: ${RELEASE_SHA:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-}
     labels:
       traefik.enable: "true"
       traefik.docker.network: ${EDGE_NETWORK:-fiscal-hub-edge}
@@ -145,6 +162,11 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     security_opt:
       - no-new-privileges:true
     networks:

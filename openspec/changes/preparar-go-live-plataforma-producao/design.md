@@ -70,7 +70,7 @@ Alternativa considerada: subir a imagem antiga automaticamente após falha. Reje
 
 O backup consistente existente em `docker/ops/backup.sh` continuará como mecanismo canônico porque entra em manutenção, pausa consumidores e empacota Postgres, vault e storage privado. Um timer/cron host documentado o executará com o arquivo root-only, fora do scheduler Laravel; assim o container não recebe Docker socket nem chave do pacote.
 
-O aceite exigirá: pacote v3 cifrado recente, verificação de checksums/autenticidade, replicação off-site identificada por referência opaca e restore drill real em ambiente isolado. O smoke destrutivo de CI prova o código, mas não substitui o drill com o artefato e a custódia reais. Retenção local e off-site serão alinhadas ao RPO/RTO registrados.
+O aceite exigirá: pacote v3 cifrado recente, verificação de checksums/autenticidade, replicação off-site manual identificada por referência opaca e restore drill real em ambiente isolado. A política inicial fixa RPO de 24 horas, RTO de 4 horas, backup completo diário, sete pacotes locais e trinta referências externas; a evidência off-site fica atrasada após 24 horas. O restore drill real será trimestral. O smoke destrutivo de CI prova o código, mas não substitui o drill com o artefato e a custódia reais.
 
 Alternativa considerada: habilitar `BACKUP_SCHEDULE_ENABLED` no scheduler da aplicação. Rejeitada para produção porque o job host já coordena containers/maintenance e mantém a chave de pacote fora do runtime.
 
@@ -92,7 +92,7 @@ SMTP terá comando explícito `ops:mail-smoke --to=<destino>` com mensagem sem d
 
 Instalação nova poderá iniciar com `INITIAL_ONBOARDING_ENABLED=true` e token forte somente enquanto a base estiver estruturalmente vazia. O smoke aceitará esse estado apenas com `CONFIRM_INITIAL_ONBOARDING=SIM`. Após criar o primeiro `PLATFORM_ADMIN` e Office, o gate pós-bootstrap exigirá flag false/token ausente e comprovará que o endpoint não está disponível.
 
-O primeiro aceite produtivo exigirá `FEATURES_GLOBAL_ENABLED=false`, mutações false, contexto privilegiado false, fake clients false, kill switch SERPRO ligado, todos os drivers SERPRO não reais e canais SEFAZ/autXML desligados. A readiness da plataforma não promoverá estados de `serpro-go-live-controlado`.
+O primeiro aceite produtivo exigirá `FEATURES_GLOBAL_ENABLED=false`, mutações false, fake clients false, `SERPRO_KILL_SWITCH=true`, todos os drivers SERPRO não reais e canais SEFAZ/autXML desligados. O Proprietário único poderá manter sua seleção administrativa server-side de Office, mas nenhuma operação fiscal externa será elegível. A readiness da plataforma não promoverá estados de `serpro-go-live-controlado`.
 
 ### 9. Observabilidade mínima será fornecedor-neutra e comprovada por evidência
 

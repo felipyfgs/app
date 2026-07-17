@@ -111,3 +111,5 @@ BACKUP_PACKAGE_KEY="$package_key" \
 [ "$(compose run --rm -T --no-deps --entrypoint cat php /var/www/html/storage/app/private/restore-smoke.txt)" = private-before ]
 
 printf '%s\n' 'Smoke destrutivo de backup/restore (v3 cifrado + chave externa) aprovado em projeto isolado.'
+printf '%s\n' 'Nota: este smoke prova o código; não substitui restore drill operacional trimestral.'
+printf '%s\n' 'Rollback automático de schema é proibido — restaure Postgres+vault+private como conjunto.'
