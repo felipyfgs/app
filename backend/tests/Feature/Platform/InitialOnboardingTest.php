@@ -3,6 +3,7 @@
 namespace Tests\Feature\Platform;
 
 use App\Enums\PlatformRole;
+use App\Http\Controllers\Api\V1\Platform\InitialOnboardingController;
 use App\Models\AccountActivation;
 use App\Models\Office;
 use App\Models\OfficeMembership;
@@ -10,6 +11,7 @@ use App\Models\PlatformMembership;
 use App\Models\PlatformSetting;
 use App\Models\User;
 use App\Services\Platform\InitialOnboardingService;
+use App\Services\Platform\PlatformOwnerException;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -123,7 +125,7 @@ class InitialOnboardingTest extends TestCase
         );
 
         $route = app('router')->getRoutes()->getByAction(
-            \App\Http\Controllers\Api\V1\Platform\InitialOnboardingController::class.'@complete'
+            InitialOnboardingController::class.'@complete'
         );
         $this->assertNotNull($route);
         $this->assertContains('api', $route->gatherMiddleware());
@@ -253,7 +255,7 @@ class InitialOnboardingTest extends TestCase
         $this->assertSame(1, PlatformMembership::query()->count());
     }
 
-    public function test_exclusao_do_usuario_nao_reabre_onboarding(): void
+    public function test_exclusao_do_proprietario_bloqueada_e_onboarding_permanece_fechado(): void
     {
         $this->enableOnboarding();
 
@@ -262,11 +264,20 @@ class InitialOnboardingTest extends TestCase
             ->assertCreated();
 
         $user = User::query()->firstOrFail();
-        $user->delete();
+
+        try {
+            $user->delete();
+            $this->fail('Exclusão do Proprietário deveria ser bloqueada.');
+        } catch (PlatformOwnerException $e) {
+            $this->assertSame('platform_owner_cannot_remove', $e->errorCode);
+        }
+
+        $this->assertDatabaseHas('users', ['id' => $user->id]);
+        $this->assertSame(1, PlatformMembership::query()->count());
 
         $settings = PlatformSetting::query()->findOrFail(PlatformSetting::SINGLETON_ID);
         $this->assertNotNull($settings->onboarding_completed_at);
-        $this->assertNull($settings->onboarded_by_user_id);
+        $this->assertSame($user->id, (int) $settings->onboarded_by_user_id);
 
         $this->getJson('/api/v1/onboarding/status')
             ->assertOk()

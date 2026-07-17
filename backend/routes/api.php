@@ -43,9 +43,9 @@ use App\Http\Controllers\Api\V1\OperationsSummaryController;
 use App\Http\Controllers\Api\V1\OutboundCaptureController;
 use App\Http\Controllers\Api\V1\OutboundDeadlineController;
 use App\Http\Controllers\Api\V1\Platform\InitialOnboardingController;
-use App\Http\Controllers\Api\V1\Platform\PlatformAdminUserController;
 use App\Http\Controllers\Api\V1\Platform\PlatformOfficeController;
 use App\Http\Controllers\Api\V1\Platform\PlatformOfficeSelectController;
+use App\Http\Controllers\Api\V1\Platform\PlatformOwnerController;
 use App\Http\Controllers\Api\V1\Platform\SerproContractController;
 use App\Http\Controllers\Api\V1\Platform\SerproPlatformOpsController;
 use App\Http\Controllers\Api\V1\Platform\SerproUsageAdminController;
@@ -127,14 +127,9 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/offices/{office}/first-admin', [PlatformOfficeController::class, 'updateFirstAdmin'])
                 ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
 
-            // Administradores globais
-            Route::get('/admins', [PlatformAdminUserController::class, 'index']);
-            Route::post('/admins', [PlatformAdminUserController::class, 'store'])
-                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
-            Route::get('/admins/{user}', [PlatformAdminUserController::class, 'show']);
-            Route::patch('/admins/{user}', [PlatformAdminUserController::class, 'update'])
-                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
-            Route::post('/admins/{user}/activation/regenerate', [PlatformAdminUserController::class, 'regenerateActivation'])
+            // Proprietário singleton (PLATFORM_ADMIN)
+            Route::get('/owner', [PlatformOwnerController::class, 'show']);
+            Route::patch('/owner', [PlatformOwnerController::class, 'update'])
                 ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
 
             Route::get('/tenants', [TenantAdminController::class, 'index']);

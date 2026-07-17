@@ -3,13 +3,15 @@
 namespace App\Console\Commands;
 
 use App\Enums\OfficeRole;
-use App\Enums\PlatformRole;
 use App\Enums\SubscriptionPlan;
 use App\Enums\SubscriptionStatus;
 use App\Models\Office;
 use App\Models\OfficeSubscription;
 use App\Models\PlatformMembership;
+use App\Models\PlatformSetting;
 use App\Models\User;
+use App\Services\Platform\PlatformOwnerException;
+use App\Services\Platform\PlatformOwnerService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -24,12 +26,15 @@ class BootstrapOfficeCommand extends Command
         {--admin-name= : Nome do administrador}
         {--admin-email= : E-mail do administrador}';
 
-    protected $description = 'Cria o primeiro escritório e conta dual (PLATFORM_ADMIN + Office ADMIN)';
+    protected $description = 'Cria o primeiro escritório e conta dual (Proprietário PLATFORM_ADMIN + Office ADMIN)';
 
-    public function handle(): int
+    public function handle(PlatformOwnerService $owners): int
     {
-        if (Office::query()->exists()) {
-            $this->error('Já existe ao menos um escritório. Bootstrap recusado.');
+        if (Office::query()->exists()
+            || PlatformMembership::query()->exists()
+            || User::query()->exists()
+            || PlatformSetting::query()->exists()) {
+            $this->error('Instalação já possui Office, usuário, proprietário ou onboarding. Bootstrap recusado.');
 
             return self::FAILURE;
         }
@@ -63,57 +68,67 @@ class BootstrapOfficeCommand extends Command
             return self::FAILURE;
         }
 
-        DB::transaction(function () use ($name, $slug, $adminName, $adminEmail, $adminPassword): void {
-            $office = Office::query()->create([
-                'name' => $name,
-                'slug' => $slug,
-                'is_active' => true,
-            ]);
+        try {
+            DB::transaction(function () use ($name, $slug, $adminName, $adminEmail, $adminPassword, $owners): void {
+                if (Office::query()->exists()
+                    || PlatformMembership::query()->exists()
+                    || User::query()->exists()
+                    || PlatformSetting::query()->exists()) {
+                    throw PlatformOwnerException::alreadyExists(
+                        'Instalação já possui Office, usuário, proprietário ou onboarding.',
+                    );
+                }
 
-            $user = User::query()->create([
-                'name' => $adminName,
-                'email' => Str::lower($adminEmail),
-                'password' => Hash::make($adminPassword),
-                'is_active' => true,
-                'selected_office_id' => $office->id,
-            ]);
+                $office = Office::query()->create([
+                    'name' => $name,
+                    'slug' => $slug,
+                    'is_active' => true,
+                ]);
 
-            // Membership real de Office ADMIN
-            $office->users()->attach($user->id, [
-                'role' => OfficeRole::Admin->value,
-                'is_active' => true,
-            ]);
+                $user = User::query()->create([
+                    'name' => $adminName,
+                    'email' => Str::lower($adminEmail),
+                    'password' => Hash::make($adminPassword),
+                    'is_active' => true,
+                    'selected_office_id' => $office->id,
+                ]);
 
-            // Papel global PLATFORM_ADMIN com Office padrão = primeiro Office
-            PlatformMembership::query()->create([
-                'user_id' => $user->id,
-                'role' => PlatformRole::PlatformAdmin->value,
-                'is_active' => true,
-                'default_office_id' => $office->id,
-            ]);
+                // Membership real de Office ADMIN
+                $office->users()->attach($user->id, [
+                    'role' => OfficeRole::Admin->value,
+                    'is_active' => true,
+                ]);
 
-            // Assinatura ACTIVE para o tenant (sem isso, mutações HTTP retornam 403 MISSING).
-            $plan = SubscriptionPlan::Professional;
-            $limits = $plan->defaultLimits();
-            $now = now();
-            OfficeSubscription::query()->create([
-                'office_id' => $office->id,
-                'plan' => $plan,
-                'status' => SubscriptionStatus::Active,
-                'trial_ends_at' => null,
-                'starts_at' => $now,
-                'ends_at' => null,
-                'current_period_starts_at' => $now->copy()->startOfMonth(),
-                'current_period_ends_at' => $now->copy()->endOfMonth(),
-                'monthly_api_quota' => $limits['monthly_api_quota'],
-                'max_clients' => $limits['max_clients'],
-                'max_users' => $limits['max_users'],
-                'limits' => $limits,
-                'notes' => 'Assinatura ACTIVE criada no bootstrap inicial.',
-            ]);
-        });
+                // Proprietário singleton com Office padrão = primeiro Office
+                $owners->createOwner($user, isActive: true, defaultOfficeId: $office->id);
 
-        $this->info('Escritório, conta dual (PLATFORM_ADMIN + Office ADMIN) e assinatura ACTIVE criados.');
+                // Assinatura ACTIVE para o tenant (sem isso, mutações HTTP retornam 403 MISSING).
+                $plan = SubscriptionPlan::Professional;
+                $limits = $plan->defaultLimits();
+                $now = now();
+                OfficeSubscription::query()->create([
+                    'office_id' => $office->id,
+                    'plan' => $plan,
+                    'status' => SubscriptionStatus::Active,
+                    'trial_ends_at' => null,
+                    'starts_at' => $now,
+                    'ends_at' => null,
+                    'current_period_starts_at' => $now->copy()->startOfMonth(),
+                    'current_period_ends_at' => $now->copy()->endOfMonth(),
+                    'monthly_api_quota' => $limits['monthly_api_quota'],
+                    'max_clients' => $limits['max_clients'],
+                    'max_users' => $limits['max_users'],
+                    'limits' => $limits,
+                    'notes' => 'Assinatura ACTIVE criada no bootstrap inicial.',
+                ]);
+            });
+        } catch (PlatformOwnerException $e) {
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $this->info('Escritório, conta dual (Proprietário + Office ADMIN) e assinatura ACTIVE criados.');
 
         return self::SUCCESS;
     }

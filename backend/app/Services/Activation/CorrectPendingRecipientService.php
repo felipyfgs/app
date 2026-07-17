@@ -5,7 +5,6 @@ namespace App\Services\Activation;
 use App\Enums\ActivationMethod;
 use App\Enums\ActivationPurpose;
 use App\Enums\OfficeRole;
-use App\Enums\PlatformRole;
 use App\Models\AccountActivation;
 use App\Models\Office;
 use App\Models\OfficeMembership;
@@ -141,9 +140,9 @@ final class CorrectPendingRecipientService
     }
 
     /**
-     * Corrige PLATFORM_ADMIN pendente.
+     * Correção global pendente foi removida: use recuperação do Proprietário (host).
      *
-     * @return array<string, mixed>
+     * @return never
      */
     public function correctPlatformAdmin(
         User $target,
@@ -153,101 +152,10 @@ final class CorrectPendingRecipientService
         User $actor,
         ?int $defaultOfficeId = null,
     ): array {
-        $issued = $this->credentials->issueSecret($method);
-        $expiresAt = $this->credentials->expiresAtFor();
-        $newEmail = $this->credentials->normalizeEmail($email);
-        $newName = trim($name);
-
-        return DB::transaction(function () use ($target, $newName, $newEmail, $method, $issued, $expiresAt, $actor, $defaultOfficeId) {
-            /** @var User $oldUser */
-            $oldUser = User::query()->whereKey($target->id)->lockForUpdate()->firstOrFail();
-
-            $pm = PlatformMembership::query()
-                ->where('user_id', $oldUser->id)
-                ->where('role', PlatformRole::PlatformAdmin)
-                ->lockForUpdate()
-                ->first();
-
-            if ($pm === null) {
-                throw ActivationException::notFound('Administrador global não encontrado.');
-            }
-
-            $this->assertNeverActivated($oldUser, ActivationPurpose::PlatformAdmin);
-
-            if ($newEmail !== $this->credentials->normalizeEmail($oldUser->email)
-                && User::query()->where('email', $newEmail)->exists()) {
-                throw ActivationException::emailTaken();
-            }
-
-            $resolvedDefault = $defaultOfficeId ?? $pm->default_office_id;
-            if ($resolvedDefault === null) {
-                throw ActivationException::invalid('Office padrão obrigatório.');
-            }
-
-            $this->revokeAllForUserPurpose($oldUser->id, ActivationPurpose::PlatformAdmin, null, $pm->id);
-
-            $oldEmailMasked = AccountActivation::maskEmail($oldUser->email);
-            $oldUserId = $oldUser->id;
-            $oldPmId = $pm->id;
-
-            $pm->delete();
-            $this->deleteExclusiveNeverActivatedUser($oldUser);
-
-            $user = User::query()->create([
-                'name' => $newName,
-                'email' => $newEmail,
-                'password' => $this->credentials->makeSentinelPasswordHash(),
-                'is_active' => false,
-                'password_change_required' => true,
-            ]);
-
-            $newPm = PlatformMembership::query()->create([
-                'user_id' => $user->id,
-                'role' => PlatformRole::PlatformAdmin,
-                'is_active' => false,
-                'default_office_id' => $resolvedDefault,
-            ]);
-
-            $activation = AccountActivation::query()->create([
-                'purpose' => ActivationPurpose::PlatformAdmin,
-                'method' => $method,
-                'user_id' => $user->id,
-                'office_id' => null,
-                'office_membership_id' => null,
-                'platform_membership_id' => $newPm->id,
-                'email_normalized' => $newEmail,
-                'secret_hash' => $issued['hash'],
-                'expires_at' => $expiresAt,
-                'generation' => 1,
-                'created_by_user_id' => $actor->id,
-            ]);
-
-            $this->audit->record(
-                action: 'platform_admin.recipient_corrected',
-                result: 'SUCCESS',
-                subject: $user,
-                context: [
-                    'old_user_id' => $oldUserId,
-                    'old_platform_membership_id' => $oldPmId,
-                    'old_email_masked' => $oldEmailMasked,
-                    'new_user_id' => $user->id,
-                    'new_email_masked' => AccountActivation::maskEmail($newEmail),
-                    'method' => $method->value,
-                    'default_office_id' => $resolvedDefault,
-                ],
-                userId: $actor->id,
-            );
-
-            return $this->secretPayload($activation, $issued, $expiresAt->toIso8601String(), [
-                'admin' => [
-                    'user_id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'is_active' => false,
-                    'default_office_id' => $resolvedDefault,
-                ],
-            ]);
-        });
+        throw ActivationException::forbidden(
+            'Correção de administrador global pendente foi descontinuada. '
+            .'Use GET/PATCH /api/v1/platform/owner ou o comando app:platform-owner:recover.',
+        );
     }
 
     /**

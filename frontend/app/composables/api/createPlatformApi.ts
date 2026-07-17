@@ -1,22 +1,21 @@
 import type {
   ActivationMethod,
-  CreatePlatformAdminBody,
-  CreatePlatformAdminResult,
   CreatePlatformOfficeBody,
   CreatePlatformOfficeResult,
   CredentialDeliveryPayload,
-  PlatformAdminUser,
   PlatformOfficeAdminDetail,
   PlatformOfficeAdminSummary,
   PlatformOfficeSelectResult,
   PlatformOfficesEnvelope,
+  PlatformOwner,
   SerproCatalogEntry,
   SerproContractSanitized,
   SerproGlobalHealth,
   SerproKillSwitchStatus,
   SerproReadinessSnapshot,
   SerproUsageConsolidation,
-  SerproUsageReconciliation
+  SerproUsageReconciliation,
+  UpdatePlatformOwnerBody
 } from '~/types/api'
 import type { ApiClient } from './types'
 
@@ -81,35 +80,15 @@ export function createPlatformApi(client: ApiClient) {
             { method: 'PATCH', body }
           )
       },
-      /** Administradores globais PLATFORM_ADMIN. */
-      admins: {
-        list: () =>
-          client<{ data: PlatformAdminUser[] }>('/api/v1/platform/admins'),
-        show: (userId: number) =>
-          client<{ data: PlatformAdminUser }>(`/api/v1/platform/admins/${userId}`),
-        create: (body: CreatePlatformAdminBody) =>
-          client<{ data: CreatePlatformAdminResult }>('/api/v1/platform/admins', {
-            method: 'POST',
-            body
-          }),
-        update: (
-          userId: number,
-          body: {
-            name: string
-            email: string
-            method: ActivationMethod
-            default_office_id?: number | null
-          }
-        ) =>
-          client<{ data: CredentialDeliveryPayload }>(`/api/v1/platform/admins/${userId}`, {
+      /** Proprietário singleton da instalação (PLATFORM_ADMIN). */
+      owner: {
+        show: () =>
+          client<{ data: PlatformOwner }>('/api/v1/platform/owner'),
+        update: (body: UpdatePlatformOwnerBody) =>
+          client<{ data: PlatformOwner }>('/api/v1/platform/owner', {
             method: 'PATCH',
             body
-          }),
-        regenerateActivation: (userId: number, body: { method: ActivationMethod }) =>
-          client<{ data: CredentialDeliveryPayload }>(
-            `/api/v1/platform/admins/${userId}/activation/regenerate`,
-            { method: 'POST', body }
-          )
+          })
       },
       serpro: {
         contracts: {
@@ -156,8 +135,21 @@ export function createPlatformApi(client: ApiClient) {
         killSwitch: {
           status: () =>
             client<{ data: SerproKillSwitchStatus }>('/api/v1/platform/serpro/kill-switch'),
-          set: (body: { active: boolean, reason: string, solution?: string }) =>
-            client<{ data: SerproKillSwitchStatus }>('/api/v1/platform/serpro/kill-switch', {
+          set: (body: {
+            active: boolean
+            reason: string
+            solution?: string
+            /** OWNER_CONFIRMATION ao desligar */
+            confirmation_phrase?: string
+            change_window_start?: string
+            change_window_end?: string
+          }) =>
+            client<{
+              data: SerproKillSwitchStatus
+              approval?: Record<string, unknown>
+              executed?: boolean
+              message?: string
+            }>('/api/v1/platform/serpro/kill-switch', {
               method: 'POST',
               body
             })
@@ -180,7 +172,17 @@ export function createPlatformApi(client: ApiClient) {
             client<{ data: Record<string, unknown> }>('/api/v1/platform/serpro/rollouts', {
               method: 'POST',
               body
-            })
+            }),
+          approve: (id: number, body: Record<string, unknown>) =>
+            client<{ data: Record<string, unknown>, executed?: boolean }>(
+              `/api/v1/platform/serpro/rollouts/${id}/approve`,
+              { method: 'POST', body }
+            ),
+          reject: (id: number, body: { reason: string }) =>
+            client<{ data: Record<string, unknown> }>(
+              `/api/v1/platform/serpro/rollouts/${id}/reject`,
+              { method: 'POST', body }
+            )
         },
         /**
          * Orçamentos globais (design). Path esperado; degradável se ausente.

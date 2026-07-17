@@ -99,8 +99,27 @@ Um ator autorizado e com senha recente SHALL poder regenerar uma ativação pend
 - **WHEN** o administrador volta ao detalhe depois de fechar a resposta
 - **THEN** a API MUST NOT recuperar o link ou senha anterior e SHALL oferecer apenas regeneração
 
+### Requirement: Cadastro global permanece restrito ao onboarding inicial
+Somente o onboarding de uma instalação estruturalmente vazia SHALL criar a primeira `PlatformMembership` `PLATFORM_ADMIN`. Rotas autenticadas da plataforma MUST NOT oferecer criação, convite, ativação ou regeneração de outro administrador global; o painel SHALL apresentar o Proprietário em uma superfície singular de consulta e atualização da identidade existente.
+
+#### Scenario: Primeiro proprietário conclui onboarding
+- **WHEN** o token inicial válido é consumido em uma base estruturalmente vazia
+- **THEN** o sistema SHALL criar e autenticar o único Proprietário sem depender de convite de outro administrador
+
+#### Scenario: Cliente antigo tenta criar administrador global
+- **WHEN** um cliente chama a antiga operação de criação em `/api/v1/platform/admins`
+- **THEN** a API MUST rejeitar a operação sem criar usuário, `PlatformMembership` ou ativação
+
+#### Scenario: Proprietário abre a administração
+- **WHEN** o Proprietário acessa a opção singular “Proprietário”
+- **THEN** o painel SHALL exibir sua identidade existente sem tabela, botão de novo administrador ou linguagem de equipe global
+
+#### Scenario: Identidade existente é atualizada
+- **WHEN** o Proprietário com senha recente altera dados permitidos ou seu Office padrão pela rota singular
+- **THEN** o sistema SHALL atualizar o mesmo usuário e vínculo sem criar outro `PLATFORM_ADMIN` ou `OfficeMembership`
+
 ### Requirement: Destinatário pendente pode ter o e-mail corrigido
-Enquanto o destinatário nunca tiver sido ativado, o ator autorizado e com senha recente SHALL poder substituir seu nome e e-mail por uma ação distinta da regeneração. A plataforma SHALL corrigir primeiro ADMIN e administrador global; somente OfficeMembership ADMIN real SHALL corrigir membro do próprio Office. O sistema MUST revogar todos os segredos anteriores, registrar auditoria sanitizada, remover a conta e membership pendentes exclusivas e criar nova conta, grants e ativação para o e-mail corrigido. Depois da ativação, essa ação MUST ser negada.
+Enquanto o destinatário nunca tiver sido ativado, o ator autorizado e com senha recente SHALL poder substituir seu nome e e-mail por uma ação distinta da regeneração. A plataforma SHALL corrigir o primeiro ADMIN de um Office; somente OfficeMembership ADMIN real SHALL corrigir membro do próprio Office. O sistema MUST revogar todos os segredos anteriores, registrar auditoria sanitizada, remover a conta e membership pendentes exclusivas e criar nova conta, grants e ativação para o e-mail corrigido. Depois da ativação, essa ação MUST ser negada. A identidade global inicial MUST ser corrigida pelo fluxo singular de recuperação do Proprietário e não por convite pendente.
 
 #### Scenario: E-mail foi digitado incorretamente
 - **WHEN** a plataforma corrige o primeiro ADMIN antes da ativação
@@ -110,24 +129,9 @@ Enquanto o destinatário nunca tiver sido ativado, o ator autorizado e com senha
 - **WHEN** a plataforma tenta usar a correção especial depois da ativação
 - **THEN** a API SHALL negar a ação e a equipe SHALL ser alterada somente pelos fluxos normais do Office
 
-#### Scenario: Administrador global pendente foi digitado incorretamente
-- **WHEN** a plataforma corrige o e-mail antes da ativação
-- **THEN** a conta pendente antiga SHALL ser removida após auditoria sanitizada e o e-mail antigo SHALL deixar de ficar reservado por esse cadastro nunca ativado
-
-### Requirement: Plataforma cria administradores globais sem membership
-Um `PLATFORM_ADMIN` com senha recente SHALL poder criar outro `PLATFORM_ADMIN` com nome, e-mail, Office padrão e método de entrega. O novo usuário e vínculo global SHALL permanecer pendentes até ativação e MUST NOT receber OfficeMembership, aparecer em equipe ou consumir vaga do plano.
-
-#### Scenario: Novo administrador global
-- **WHEN** a criação e ativação são concluídas
-- **THEN** o usuário SHALL acessar o grupo Admin e o Office padrão em contexto global sem integrar a equipe daquele Office
-
-#### Scenario: E-mail já pertence a membro de Office
-- **WHEN** a plataforma tenta criar administrador global reutilizando usuário com OfficeMembership
-- **THEN** a API SHALL rejeitar a operação e MUST NOT converter a conta em dual
-
-#### Scenario: Administrador pendente é localizado
-- **WHEN** a plataforma lista ou abre o detalhe de administradores globais
-- **THEN** usuários pendentes SHALL aparecer com método, status, expiração e Office padrão, mas sem hash ou segredo, permitindo regeneração
+#### Scenario: Correção global usa endpoint legado
+- **WHEN** alguém tenta corrigir um suposto administrador global pendente pelas rotas plurais
+- **THEN** a API MUST rejeitar a ação e orientar a manutenção ou recuperação do Proprietário existente
 
 ### Requirement: Office ADMIN gerencia equipe dentro do limite do plano
 Somente um ator com OfficeMembership ativa `OfficeRole::ADMIN` no `CurrentOffice` SHALL poder listar, criar, alterar papel entre `ADMIN`, `OPERATOR` e `VIEWER`, regenerar ativação, desativar e reativar memberships desse Office. O papel ADMIN efetivo de `PLATFORM_ADMIN` sem membership real MUST NOT autorizar gestão da equipe. Criação, alteração de ADMIN, desativação, reativação e regeneração MUST exigir senha recente. Memberships ativas e pendentes SHALL contar contra `max_users`; desativadas e administradores globais sem membership MUST NOT contar.

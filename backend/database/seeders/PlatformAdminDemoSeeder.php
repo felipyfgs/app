@@ -2,20 +2,22 @@
 
 namespace Database\Seeders;
 
-use App\Enums\PlatformRole;
 use App\Models\AccountActivation;
 use App\Models\Office;
 use App\Models\OfficeMembership;
 use App\Models\PlatformMembership;
 use App\Models\User;
+use App\Services\Platform\PlatformOwnerException;
+use App\Services\Platform\PlatformOwnerService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 use RuntimeException;
 
 /**
- * Fixture local/testing de PLATFORM_ADMIN exclusivamente global.
+ * Fixture local/testing do Proprietário (PLATFORM_ADMIN) exclusivamente global.
  * Não cria OfficeMembership, AccountActivation nem consome seats do plano.
+ * Recusa qualquer vínculo global prévio de outro usuário.
  */
 class PlatformAdminDemoSeeder extends Seeder
 {
@@ -48,21 +50,35 @@ class PlatformAdminDemoSeeder extends Seeder
             );
         }
 
-        DB::transaction(function () use ($office): void {
+        /** @var PlatformOwnerService $owners */
+        $owners = app(PlatformOwnerService::class);
+
+        DB::transaction(function () use ($office, $owners): void {
             $user = User::query()->where('email', self::EMAIL)->first();
 
             if ($user === null) {
-                $this->createFixture($office);
+                $this->assertNoForeignOwner($owners);
+                $this->createFixture($office, $owners);
 
                 return;
             }
 
             $this->assertCompatibleGlobalFixture($user);
-            $this->ensurePlatformMembership($user, $office);
+            $this->ensurePlatformMembership($user, $office, $owners);
         });
     }
 
-    private function createFixture(Office $office): void
+    private function assertNoForeignOwner(PlatformOwnerService $owners): void
+    {
+        $existing = $owners->findMembership();
+        if ($existing !== null) {
+            throw new RuntimeException(
+                'Já existe um Proprietário (PLATFORM_ADMIN). O seed não cria um segundo vínculo global.',
+            );
+        }
+    }
+
+    private function createFixture(Office $office, PlatformOwnerService $owners): void
     {
         $user = new User;
         $user->forceFill([
@@ -76,12 +92,11 @@ class PlatformAdminDemoSeeder extends Seeder
         ]);
         $user->save();
 
-        PlatformMembership::query()->create([
-            'user_id' => $user->id,
-            'role' => PlatformRole::PlatformAdmin,
-            'is_active' => true,
-            'default_office_id' => $office->id,
-        ]);
+        try {
+            $owners->createOwner($user, isActive: true, defaultOfficeId: $office->id);
+        } catch (PlatformOwnerException $e) {
+            throw new RuntimeException($e->getMessage(), 0, $e);
+        }
     }
 
     private function assertCompatibleGlobalFixture(User $user): void
@@ -100,7 +115,7 @@ class PlatformAdminDemoSeeder extends Seeder
 
         $membership = PlatformMembership::query()
             ->where('user_id', $user->id)
-            ->where('role', PlatformRole::PlatformAdmin->value)
+            ->where('role', 'PLATFORM_ADMIN')
             ->first();
 
         if ($membership === null) {
@@ -109,9 +124,20 @@ class PlatformAdminDemoSeeder extends Seeder
             );
         }
 
+        $foreignOwner = PlatformMembership::query()
+            ->where('role', 'PLATFORM_ADMIN')
+            ->where('user_id', '!=', $user->id)
+            ->exists();
+
+        if ($foreignOwner) {
+            throw new RuntimeException(
+                'Há outro PLATFORM_ADMIN além da fixture '.self::EMAIL.'; o seed não concede privilégio adicional.',
+            );
+        }
+
         $otherGrants = PlatformMembership::query()
             ->where('user_id', $user->id)
-            ->where('role', '!=', PlatformRole::PlatformAdmin->value)
+            ->where('role', '!=', 'PLATFORM_ADMIN')
             ->exists();
 
         if ($otherGrants) {
@@ -121,21 +147,27 @@ class PlatformAdminDemoSeeder extends Seeder
         }
     }
 
-    private function ensurePlatformMembership(User $user, Office $office): void
+    private function ensurePlatformMembership(User $user, Office $office, PlatformOwnerService $owners): void
     {
         if ($user->selected_office_id !== null) {
             $user->forceFill(['selected_office_id' => null])->save();
         }
 
-        PlatformMembership::query()->updateOrCreate(
-            [
-                'user_id' => $user->id,
-                'role' => PlatformRole::PlatformAdmin->value,
-            ],
-            [
-                'is_active' => true,
-                'default_office_id' => $office->id,
-            ],
-        );
+        $membership = PlatformMembership::query()
+            ->where('user_id', $user->id)
+            ->where('role', 'PLATFORM_ADMIN')
+            ->first();
+
+        if ($membership === null) {
+            // assertCompatibleGlobalFixture já deveria ter falhado; defesa em profundidade.
+            throw new RuntimeException(
+                'E-mail reservado '.self::EMAIL.' existe sem PlatformMembership PLATFORM_ADMIN compatível; o seed não concede privilégio automaticamente.',
+            );
+        }
+
+        $membership->forceFill([
+            'is_active' => true,
+            'default_office_id' => $office->id,
+        ])->save();
     }
 }

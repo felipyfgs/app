@@ -141,10 +141,10 @@ function platformAdminDestinations(path = ''): NavDestination[] {
         to: '/admin/offices'
       },
       {
-        id: 'platform-admins',
-        label: 'Administradores',
+        id: 'platform-owner',
+        label: 'Proprietário',
         icon: 'i-lucide-shield-user',
-        to: '/admin/admins'
+        to: '/admin/owner'
       },
       {
         id: 'platform-serpro-console',

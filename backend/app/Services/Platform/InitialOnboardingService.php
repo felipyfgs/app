@@ -16,6 +16,7 @@ final class InitialOnboardingService
 {
     public function __construct(
         private readonly AuditLogger $audit,
+        private readonly PlatformOwnerService $owners,
     ) {}
 
     public function available(): bool
@@ -69,12 +70,11 @@ final class InitialOnboardingService
                 ]);
                 $user->save();
 
-                PlatformMembership::query()->create([
-                    'user_id' => $user->id,
-                    'role' => PlatformRole::PlatformAdmin,
-                    'is_active' => true,
-                    'default_office_id' => null,
-                ]);
+                try {
+                    $this->owners->createOwner($user, isActive: true, defaultOfficeId: null);
+                } catch (PlatformOwnerException) {
+                    throw InitialOnboardingException::unavailable();
+                }
 
                 $settings->forceFill([
                     'onboarding_completed_at' => now(),
@@ -89,6 +89,8 @@ final class InitialOnboardingService
             }
 
             throw $e;
+        } catch (PlatformOwnerException) {
+            throw InitialOnboardingException::unavailable();
         }
 
         $this->audit->record(

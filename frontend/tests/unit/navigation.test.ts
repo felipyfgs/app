@@ -59,7 +59,7 @@ describe('navigation', () => {
     expect(actions).toContain('work-queue')
   })
 
-  it('PLATFORM_ADMIN vê hub Plataforma e console SERPRO', () => {
+  it('PLATFORM_ADMIN vê hub Plataforma, Proprietário singular e console SERPRO', () => {
     const plat: MeUser = {
       id: 9,
       name: 'Plat',
@@ -71,9 +71,16 @@ describe('navigation', () => {
       office: null,
       role: null
     }
-    const ids = flattenDestinations(mainDestinations(plat)).map(d => d.id)
+    const tree = mainDestinations(plat)
+    const ids = flattenDestinations(tree).map(d => d.id)
     expect(ids).toContain('admin')
+    expect(ids).toContain('platform-owner')
+    expect(ids).not.toContain('platform-admins')
     expect(ids).toContain('platform-serpro-console')
+
+    const owner = flattenDestinations(tree).find(d => d.id === 'platform-owner')
+    expect(owner?.label).toBe('Proprietário')
+    expect(owner?.to).toBe('/admin/owner')
   })
 
   it('destinos folha do operador batem com o produto (Trabalho, Clientes, Monitoramento, Documentos e Operações)', () => {

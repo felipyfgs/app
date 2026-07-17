@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\OfficeRole;
 use App\Enums\PlatformRole;
+use App\Services\Platform\PlatformOwnerService;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -22,6 +23,13 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable, TwoFactorAuthenticatable;
+
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user): void {
+            app(PlatformOwnerService::class)->assertUserMayBeDeleted($user);
+        });
+    }
 
     protected function casts(): array
     {

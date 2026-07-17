@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PlatformRole;
+use App\Services\Platform\PlatformOwnerService;
 use Database\Factories\PlatformMembershipFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Associação global usuário ↔ papel da plataforma.
  * SEM office_id de membership — escopo global estrutural.
  * default_office_id: Office padrão de contexto (não cria OfficeMembership).
+ * No máximo uma linha PLATFORM_ADMIN (Proprietário) por instalação.
  */
 #[Fillable(['user_id', 'role', 'is_active', 'default_office_id'])]
 class PlatformMembership extends Model
@@ -21,6 +23,13 @@ class PlatformMembership extends Model
     use HasFactory;
 
     protected $table = 'platform_memberships';
+
+    protected static function booted(): void
+    {
+        static::deleting(function (PlatformMembership $membership): void {
+            app(PlatformOwnerService::class)->assertMembershipMayBeDeleted($membership);
+        });
+    }
 
     protected function casts(): array
     {

@@ -2,112 +2,53 @@
 
 namespace Tests\Feature\Activation;
 
-use App\Enums\ActivationMethod;
-use App\Enums\ActivationPurpose;
 use App\Enums\OfficeRole;
-use App\Models\AccountActivation;
 use App\Models\Office;
 use App\Models\OfficeMembership;
+use App\Models\PlatformMembership;
 use App\Models\User;
 use App\Services\Auth\RecentPasswordConfirmationGate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * Cadastro plural de administradores globais foi removido.
+ * Mantém cobertura de isolamento: PLATFORM_ADMIN não conta na equipe do Office.
+ */
 class PlatformAdminOnboardingTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function actor(): User
+    public function test_cliente_legado_nao_cria_segundo_admin_global(): void
     {
         $office = Office::factory()->create();
-
-        return User::factory()->asPlatformAdmin($office->id)->create([
+        $actor = User::factory()->asPlatformAdmin($office->id)->create([
             'password' => bcrypt('admin-secret-12'),
         ]);
-    }
 
-    public function test_cria_platform_admin_sem_membership(): void
-    {
-        $actor = $this->actor();
         $this->actingAs($actor);
         app(RecentPasswordConfirmationGate::class)->markConfirmed($actor);
 
-        $response = $this->actingAs($actor)
+        $this->actingAs($actor)
             ->postJson('/api/v1/platform/admins', [
                 'name' => 'Global Admin',
                 'email' => 'global@platform.example',
-                'method' => ActivationMethod::ManualLink->value,
+                'method' => 'MANUAL_LINK',
             ])
-            ->assertCreated()
-            ->assertHeader('Cache-Control', 'no-store, private');
+            ->assertNotFound();
 
-        $userId = $response->json('data.admin.user_id');
-        $this->assertNotNull($userId);
-        $this->assertSame(0, OfficeMembership::query()->where('user_id', $userId)->count());
-        $this->assertDatabaseHas('platform_memberships', [
-            'user_id' => $userId,
-            'is_active' => false,
-        ]);
-
-        $activation = AccountActivation::query()->where('user_id', $userId)->first();
-        $this->assertSame(ActivationPurpose::PlatformAdmin, $activation?->purpose);
+        $this->assertSame(1, PlatformMembership::query()->count());
+        $this->assertSame(0, User::query()->where('email', 'global@platform.example')->count());
     }
 
-    public function test_email_existente_rejeitado_neutro(): void
+    public function test_listagem_plural_legada_nao_existe(): void
     {
-        $actor = $this->actor();
         $office = Office::factory()->create();
-        User::factory()->forOffice($office, OfficeRole::Operator)->create([
-            'email' => 'existe@office.example',
-        ]);
-
-        $this->actingAs($actor);
-        app(RecentPasswordConfirmationGate::class)->markConfirmed($actor);
-
-        $this->actingAs($actor)
-            ->postJson('/api/v1/platform/admins', [
-                'name' => 'Dup',
-                'email' => 'existe@office.example',
-                'method' => ActivationMethod::ManualLink->value,
-            ])
-            ->assertStatus(422)
-            ->assertJsonPath('code', 'email_unavailable');
-    }
-
-    public function test_listagem_e_regeneracao(): void
-    {
-        $actor = $this->actor();
-        $this->actingAs($actor);
-        app(RecentPasswordConfirmationGate::class)->markConfirmed($actor);
-
-        $create = $this->actingAs($actor)
-            ->postJson('/api/v1/platform/admins', [
-                'name' => 'Pending Admin',
-                'email' => 'pending.admin@platform.example',
-                'method' => ActivationMethod::ManualLink->value,
-            ])
-            ->assertCreated();
-
-        $userId = $create->json('data.admin.user_id');
+        $actor = User::factory()->asPlatformAdmin($office->id)->create();
 
         $this->actingAs($actor)
             ->getJson('/api/v1/platform/admins')
-            ->assertOk()
-            ->assertJsonFragment(['email' => 'pending.admin@platform.example']);
-
-        $detail = $this->actingAs($actor)
-            ->getJson('/api/v1/platform/admins/'.$userId)
-            ->assertOk();
-
-        $this->assertArrayNotHasKey('secret_hash', $detail->json('data.activation') ?? []);
-        $this->assertArrayNotHasKey('activation_url', $detail->json('data'));
-
-        $this->actingAs($actor)
-            ->postJson('/api/v1/platform/admins/'.$userId.'/activation/regenerate', [
-                'method' => ActivationMethod::TemporaryPassword->value,
-            ])
-            ->assertOk()
-            ->assertJsonStructure(['data' => ['temporary_password', 'activation']]);
+            ->assertNotFound();
     }
 
     public function test_platform_admin_nao_conta_em_seats_da_equipe(): void
@@ -122,7 +63,6 @@ class PlatformAdminOnboardingTest extends TestCase
             'password_change_required' => false,
         ]);
 
-        // Ativa membership de plataforma
         $platformOnly->platformMemberships()->update(['is_active' => true]);
 
         $this->assertSame(0, OfficeMembership::query()->where('user_id', $platformOnly->id)->count());

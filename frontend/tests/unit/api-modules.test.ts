@@ -7,11 +7,11 @@ import { createWorkApi } from '../../app/composables/api/createWorkApi'
 
 type Call = { path: string, opts?: Record<string, unknown> }
 
-function mockClient() {
+function mockClient(payload: Record<string, unknown> = { data: [], meta: {} }) {
   const calls: Call[] = []
   const client = vi.fn(async (path: string, opts?: Record<string, unknown>) => {
     calls.push({ path, opts })
-    return { data: [], meta: {} }
+    return payload
   })
   return { client, calls }
 }
@@ -77,13 +77,29 @@ describe('composables/api factories (runtime)', () => {
     expect(calls[2]?.path).toBe('/api/v1/platform/serpro-usage/consolidation')
   })
 
-  it('office.profile e platform.offices usam paths unificados', async () => {
+  it('platform.owner usa recurso singular /api/v1/platform/owner', async () => {
     const { client, calls } = mockClient()
+    const api = createPlatformApi(client as never)
+
+    await api.platform.owner.show()
+    await api.platform.owner.update({ name: 'Proprietário', email: 'owner@example.com' })
+
+    expect(calls[0]?.path).toBe('/api/v1/platform/owner')
+    expect(calls[1]?.path).toBe('/api/v1/platform/owner')
+    expect(calls[1]?.opts?.method).toBe('PATCH')
+    expect(calls[1]?.opts?.body).toEqual({ name: 'Proprietário', email: 'owner@example.com' })
+    expect(api.platform).not.toHaveProperty('admins')
+  })
+
+  it('office.profile e platform.offices usam paths unificados', async () => {
+    const { client, calls } = mockClient({
+      data: { profile: { cnpj: null }, credential: null }
+    })
     const officeApi = createOfficeApi(client as never)
     await officeApi.office.profile.show()
     await officeApi.office.canonicalCredential.show()
-    expect(calls[0]?.path).toBe('/api/v1/office/profile')
-    expect(calls[1]?.path).toBe('/api/v1/office/canonical-credential')
+    expect(calls[0]?.path).toBe('/api/v1/office/settings')
+    expect(calls[1]?.path).toBe('/api/v1/office/settings/credential')
 
     const { client: pClient, calls: pCalls } = mockClient()
     const platformApi = createPlatformApi(pClient as never)

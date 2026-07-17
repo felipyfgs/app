@@ -1830,7 +1830,8 @@ export interface CreatePlatformOfficeResult extends CredentialDeliveryPayload {
   office: PlatformOfficeAdminDetail
 }
 
-export interface PlatformAdminUser {
+/** Proprietário singleton da instalação (PLATFORM_ADMIN). */
+export interface PlatformOwner {
   user_id: number
   name?: string | null
   email?: string | null
@@ -1843,20 +1844,17 @@ export interface PlatformAdminUser {
     name: string
     slug: string
   } | null
-  activation?: ActivationSanitized | null
   created_at?: string | null
 }
 
-export interface CreatePlatformAdminBody {
-  name: string
-  email: string
-  method: ActivationMethod
+export interface UpdatePlatformOwnerBody {
+  name?: string
+  email?: string
   default_office_id?: number | null
 }
 
-export interface CreatePlatformAdminResult extends CredentialDeliveryPayload {
-  admin: PlatformAdminUser
-}
+/** @deprecated Removido — use PlatformOwner. Mantido só se algum tipo residual importar. */
+export type PlatformAdminUser = PlatformOwner
 
 export interface OfficeMember {
   id: number
