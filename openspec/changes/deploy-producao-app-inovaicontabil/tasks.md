@@ -13,7 +13,7 @@
   Depende de: 1.2, 1.3
 - [x] 2.3 Validar pré-condições públicas de DNS, portas 80/443, ACME e ausência de portas dev expostas; executar `make prod-readiness PHASE=predeploy` e registrar evidência.
   Depende de: 1.1, 2.2
-- [ ] 2.4 Construir imagens produtivas com `make prod-build RELEASE_SHA=<sha>` e confirmar labels OCI de PHP/web iguais ao SHA planejado.
+- [x] 2.4 Construir imagens produtivas com `make prod-build RELEASE_SHA=<sha>` e confirmar labels OCI de PHP/web iguais ao SHA planejado.
   Depende de: 1.4, 2.2
 
 ## 3. N2 — Deploy controlado
