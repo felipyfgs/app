@@ -29,7 +29,8 @@ class PlatformAdminDemoSeeder extends Seeder
 
     public const OFFICE_SLUG = 'plataforma';
 
-    public const OFFICE_NAME = 'Plataforma';
+    /** Nome genérico do office plataforma no seed de desenvolvimento (não é piloto real). */
+    public const OFFICE_NAME = 'Plataforma Demo';
 
     public function run(): void
     {
@@ -57,8 +58,20 @@ class PlatformAdminDemoSeeder extends Seeder
             $user = User::query()->where('email', self::EMAIL)->first();
 
             if ($user === null) {
+                // Piloto (LocalSerproSmokeSeeder) pode ter promovido Felipe a titular.
+                if ($owners->exists()) {
+                    return;
+                }
                 $this->assertNoForeignOwner($owners);
                 $this->createFixture($office, $owners);
+
+                return;
+            }
+
+            // E-mail demo existe mas o titular já é outro (ex.: felipe@example.com).
+            $currentOwner = $owners->findMembership();
+            if ($currentOwner !== null && (int) $currentOwner->user_id !== (int) $user->id) {
+                $user->forceFill(['is_active' => false])->save();
 
                 return;
             }
@@ -101,11 +114,8 @@ class PlatformAdminDemoSeeder extends Seeder
 
     private function assertCompatibleGlobalFixture(User $user): void
     {
-        if (OfficeMembership::query()->where('user_id', $user->id)->exists()) {
-            throw new RuntimeException(
-                'E-mail reservado '.self::EMAIL.' já possui OfficeMembership; o seed não promove conta de Office a PLATFORM_ADMIN.',
-            );
-        }
+        // OfficeMembership no office plataforma é permitido (dev dual-account e piloto).
+        // O que bloqueia é AccountActivation pendente ou ausência de PLATFORM_ADMIN.
 
         if (AccountActivation::query()->where('user_id', $user->id)->exists()) {
             throw new RuntimeException(

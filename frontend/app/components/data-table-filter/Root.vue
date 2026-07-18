@@ -161,6 +161,8 @@ const popoverContent = computed(() => ({
         variant="outline"
         icon="i-lucide-funnel-plus"
         :label="addLabel"
+        :aria-label="addLabel"
+        :ui="{ label: 'hidden sm:inline' }"
         data-testid="data-table-filter-add"
       />
       <span
@@ -215,6 +217,8 @@ const popoverContent = computed(() => ({
         variant="outline"
         icon="i-lucide-funnel-plus"
         :label="addLabel"
+        :aria-label="addLabel"
+        :ui="{ label: 'hidden sm:inline' }"
         data-testid="data-table-filter-add"
         @click="openSelector"
       />
@@ -268,6 +272,9 @@ const popoverContent = computed(() => ({
       color="neutral"
       variant="ghost"
       :label="clearLabel"
+      :aria-label="clearLabel"
+      :ui="{ label: 'hidden sm:inline' }"
+      icon="i-lucide-filter-x"
       data-testid="data-table-filter-clear"
       @click="clear"
     />

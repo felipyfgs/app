@@ -29,6 +29,9 @@ enum SecureObjectPurpose: string
     /** Evidência oficial de monitoramento fiscal (resposta/artefato imutável). */
     case FiscalEvidence = 'FISCAL_EVIDENCE';
 
+    /** Identificador DEFIS protegido para consulta específica (nunca público). */
+    case FiscalDefisReference = 'FISCAL_DEFIS_REFERENCE';
+
     /** Corpo de mensagem da Caixa Postal (conteúdo fiscal restrito). */
     case MailboxMessageBody = 'MAILBOX_MESSAGE_BODY';
 
@@ -54,6 +57,7 @@ enum SecureObjectPurpose: string
             self::SerproTermoXml => 'Termo de Autorização XML',
             self::SerproAuthorPfx => 'Certificado A1 do Autor do Pedido',
             self::FiscalEvidence => 'Evidência fiscal de monitoramento',
+            self::FiscalDefisReference => 'Referência protegida de declaração DEFIS',
             self::MailboxMessageBody => 'Corpo de mensagem Caixa Postal',
             self::MailboxAttachment => 'Anexo Caixa Postal',
             self::TaxGuideDocument => 'Documento de guia fiscal',

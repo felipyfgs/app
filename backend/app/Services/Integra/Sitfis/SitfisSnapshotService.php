@@ -50,8 +50,8 @@ final class SitfisSnapshotService
         $system = $this->systemCode();
         $service = $this->serviceCode();
 
-        // Estado atual: apenas proveniência verificável (exclui UNVERIFIED legado e não mistura tenants)
-        $snapshotQuery = FiscalSnapshot::query()
+        // Preferência: snapshot corrente verificável com evidência (TTL / reuso).
+        $verifiedQuery = FiscalSnapshot::query()
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
@@ -61,18 +61,38 @@ final class SitfisSnapshotService
             ->whereNotNull('evidence_artifact_id');
 
         if (Schema::hasColumn('fiscal_snapshots', 'source_provenance')) {
-            $snapshotQuery->where('verification_state', FiscalVerificationState::Verified->value);
+            $verifiedQuery->where('verification_state', FiscalVerificationState::Verified->value);
             if (app()->environment('production')) {
-                $snapshotQuery->where('source_provenance', FiscalSourceProvenance::SerproReal->value);
+                $verifiedQuery->where('source_provenance', FiscalSourceProvenance::SerproReal->value);
             } else {
-                $snapshotQuery->whereIn('source_provenance', [
+                $verifiedQuery->whereIn('source_provenance', [
                     FiscalSourceProvenance::SerproReal->value,
+                    FiscalSourceProvenance::SerproTrial->value,
                     FiscalSourceProvenance::Simulated->value,
                 ]);
             }
         }
 
-        $snapshot = $snapshotQuery->orderByDesc('id')->first();
+        $snapshot = $verifiedQuery->orderByDesc('id')->first();
+        $displayOnly = false;
+
+        // Fallback de exibição: snapshot is_current (ex. ERROR/UNVERIFIED sem evidência)
+        // para a UI não ficar em branco quando a carteira já mostra falha.
+        if ($snapshot === null) {
+            $fallback = FiscalSnapshot::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $office->id)
+                ->where('client_id', $client->id)
+                ->where('system_code', $system)
+                ->where('service_code', $service)
+                ->where('is_current', true)
+                ->orderByDesc('id')
+                ->first();
+            if ($fallback !== null) {
+                $snapshot = $fallback;
+                $displayOnly = true;
+            }
+        }
 
         $now = CarbonImmutable::now();
         $age = null;
@@ -83,8 +103,11 @@ final class SitfisSnapshotService
 
         if ($snapshot !== null && $snapshot->observed_at !== null) {
             $age = (int) max(0, $snapshot->observed_at->diffInSeconds($now));
-            $expiresAt = $snapshot->observed_at->addSeconds($ttl);
-            $within = $age < $ttl;
+            // Fallback de falha não entra no TTL de reuso (sempre permite refresh).
+            if (! $displayOnly) {
+                $expiresAt = $snapshot->observed_at->addSeconds($ttl);
+                $within = $age < $ttl;
+            }
             $normalized = $snapshot->normalized ?? [];
             $disclaimer = isset($normalized['disclaimer']) ? (string) $normalized['disclaimer'] : null;
             $isNeg = (bool) ($normalized['is_negative_certificate'] ?? false);
@@ -114,6 +137,19 @@ final class SitfisSnapshotService
                 ->first();
         }
 
+        $lastFailedRun = null;
+        if ($activeRun === null && ($displayOnly || $snapshot === null)) {
+            $lastFailedRun = FiscalMonitoringRun::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $office->id)
+                ->where('client_id', $client->id)
+                ->where('system_code', $system)
+                ->where('service_code', $service)
+                ->whereIn('status', ['FAILED', 'BLOCKED'])
+                ->orderByDesc('id')
+                ->first();
+        }
+
         return [
             'snapshot' => $snapshot,
             'age_seconds' => $age,
@@ -124,6 +160,8 @@ final class SitfisSnapshotService
             'is_negative_certificate' => $isNeg,
             'disclaimer' => $disclaimer,
             'active_run' => $activeRun?->toPublicArray(),
+            'last_failed_run' => $lastFailedRun?->toPublicArray(),
+            'display_only' => $displayOnly,
         ];
     }
 
@@ -193,9 +231,7 @@ final class SitfisSnapshotService
         );
         $run->forceFill([
             'operation_key' => 'sitfis.emitir_relatorio',
-            'source_provenance' => $driver === SerproCapabilityDriver::Simulated
-                ? FiscalSourceProvenance::Simulated
-                : FiscalSourceProvenance::SerproReal,
+            'source_provenance' => FiscalSourceProvenance::SerproReal,
             // Ainda sem parse/evidência — não rotular VERIFIED no enqueue.
             'verification_state' => FiscalVerificationState::Unverified,
         ])->save();
@@ -232,17 +268,36 @@ final class SitfisSnapshotService
         }
 
         $nextRefreshAt = $view['expires_at'] ?? null;
-        $canRefresh = ! $view['is_within_ttl'] || $view['snapshot'] === null;
+        $displayOnly = (bool) ($view['display_only'] ?? false);
+        $canRefresh = ! $view['is_within_ttl'] || $view['snapshot'] === null || $displayOnly;
         $blockReason = null;
         if ($view['active_run'] !== null) {
             $blockReason = 'RUN_IN_PROGRESS';
             $canRefresh = false;
-        } elseif ($view['is_within_ttl'] && $view['snapshot'] !== null) {
+        } elseif ($view['is_within_ttl'] && $view['snapshot'] !== null && ! $displayOnly) {
             $blockReason = 'WITHIN_TTL';
         }
 
+        $snapshotPublic = $snapshot?->toPublicArray();
+        $situation = is_array($snapshotPublic) ? ($snapshotPublic['situation'] ?? null) : null;
+        $coverage = is_array($snapshotPublic) ? ($snapshotPublic['coverage'] ?? null) : null;
+        $protocol = null;
+        if (is_array($snapshotPublic)) {
+            $normalized = $snapshotPublic['normalized'] ?? [];
+            if (is_array($normalized)) {
+                $protocol = $normalized['protocol'] ?? $normalized['protocol_number'] ?? null;
+            }
+        }
+        $lastFailed = $view['last_failed_run'] ?? null;
+        if ($situation === null && is_array($lastFailed)) {
+            $situation = $lastFailed['situation'] ?? null;
+        }
+
         return [
-            'snapshot' => $snapshot?->toPublicArray(),
+            'snapshot' => $snapshotPublic,
+            'situation' => $situation,
+            'protocol' => $protocol,
+            'coverage' => $coverage,
             'age_seconds' => $view['age_seconds'],
             'observed_at' => $view['observed_at'],
             'expires_at' => $view['expires_at'],
@@ -256,6 +311,10 @@ final class SitfisSnapshotService
             'is_negative_certificate' => false, // hard rule: API nunca afirma certidão
             'disclaimer' => $view['disclaimer'] ?? 'Ausência de pendência reconhecida não equivale a certidão negativa.',
             'active_run' => $view['active_run'],
+            'last_failed_run' => $lastFailed,
+            'display_only' => $displayOnly,
+            'error_code' => is_array($lastFailed) ? ($lastFailed['error_code'] ?? null) : null,
+            'error_message' => is_array($lastFailed) ? ($lastFailed['error_message'] ?? null) : null,
             'cache_key_hint' => FiscalIdempotency::cacheKey(
                 (int) ($snapshot?->office_id ?? 0),
                 'sitfis',

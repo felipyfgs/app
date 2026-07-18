@@ -39,7 +39,9 @@ final class IntegraResponse
 
     public function isProductiveEvidence(): bool
     {
-        return $this->success && ! $this->simulated && $this->sourceProvenance !== 'SIMULATED';
+        return $this->success
+            && ! $this->simulated
+            && ! in_array($this->sourceProvenance, ['SIMULATED', 'SERPRO_TRIAL'], true);
     }
 
     public function isStillProcessing(): bool

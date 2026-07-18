@@ -1,0 +1,20 @@
+{
+  "Apuracoes": [
+    {
+      "periodoApuracao": "202605",
+      "idApuracao": 71001,
+      "situacao": 2,
+      "dataEncerramento": "20260615",
+      "eventoEspecial": false,
+      "valorTotalApurado": 1250.75
+    },
+    {
+      "periodoApuracao": "202604",
+      "idApuracao": 71000,
+      "situacao": 1,
+      "dataEncerramento": null,
+      "eventoEspecial": true,
+      "valorTotalApurado": 0
+    }
+  ]
+}

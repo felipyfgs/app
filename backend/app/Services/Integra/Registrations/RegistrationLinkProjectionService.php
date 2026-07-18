@@ -2,6 +2,7 @@
 
 namespace App\Services\Integra\Registrations;
 
+use App\Contracts\SerproOperationExecutor;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\SerproCapabilityDriver;
 use App\Enums\SerproEnvironment;
@@ -12,7 +13,6 @@ use App\Models\OfficeSerproAuthorization;
 use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Serpro\CapabilityDriverResolver;
 use App\Services\Serpro\SerproContractService;
-use App\Services\Serpro\SerproOperationService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -29,7 +29,7 @@ final class RegistrationLinkProjectionService
     private const MAX_PAGES = 20;
 
     public function __construct(
-        private readonly SerproOperationService $operations,
+        private readonly SerproOperationExecutor $operations,
         private readonly SerproContractService $contracts,
         private readonly CapabilityDriverResolver $drivers,
         private readonly ContributorCnpjResolver $contributors,
@@ -92,7 +92,8 @@ final class RegistrationLinkProjectionService
             $baseIdem = sprintf('reglinks:%d:%d:%s', $office->id, $client->id, now()->format('YmdHi'));
             $rowsByCnpj = [];
             $lastCnpj = null;
-            $simulated = $driver === SerproCapabilityDriver::Simulated;
+            $simulated = false;
+            $sourceProvenance = FiscalSourceProvenance::SerproReal->value;
 
             for ($pageNumber = 1; $pageNumber <= self::MAX_PAGES; $pageNumber++) {
                 $idem = $baseIdem.':page:'.$pageNumber;
@@ -122,6 +123,11 @@ final class RegistrationLinkProjectionService
                 }
 
                 $simulated = $response->simulated;
+                $sourceProvenance = $response->sourceProvenance === FiscalSourceProvenance::SerproTrial->value
+                    ? FiscalSourceProvenance::SerproTrial->value
+                    : ($simulated
+                        ? FiscalSourceProvenance::Simulated->value
+                        : FiscalSourceProvenance::SerproReal->value);
                 try {
                     $page = $this->codec->decode($response->dados);
                 } catch (RuntimeException $exception) {
@@ -168,7 +174,7 @@ final class RegistrationLinkProjectionService
             $rows = array_values($rowsByCnpj);
             $evidence = substr(hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR)), 0, 32);
             $now = now();
-            DB::transaction(function () use ($rows, $office, $client, $contributor, $evidence, $simulated, $now): void {
+            DB::transaction(function () use ($rows, $office, $client, $contributor, $evidence, $simulated, $sourceProvenance, $now): void {
                 foreach ($rows as $row) {
                     FiscalRegistrationLink::query()->updateOrCreate(
                         [
@@ -181,9 +187,7 @@ final class RegistrationLinkProjectionService
                             'status' => (string) ($row['situacaoCadastral'] ?? 'UNKNOWN'),
                             'evidence_version' => $evidence,
                             'operation_key' => self::OPERATION_KEY,
-                            'source_provenance' => $simulated
-                                ? FiscalSourceProvenance::Simulated->value
-                                : FiscalSourceProvenance::SerproReal->value,
+                            'source_provenance' => $sourceProvenance,
                             'is_simulated' => $simulated,
                             'summary_sanitized' => [
                                 'keys' => array_keys($row),

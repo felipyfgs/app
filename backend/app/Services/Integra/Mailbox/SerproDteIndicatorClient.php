@@ -3,22 +3,21 @@
 namespace App\Services\Integra\Mailbox;
 
 use App\Contracts\DteIndicatorClient;
+use App\Contracts\SerproOperationExecutor;
 use App\DTO\Mailbox\DteIndicatorResult;
 use App\Enums\MailboxDteStatus;
 use App\Enums\SerproCapabilityDriver;
 use App\Models\Client;
 use App\Models\Office;
 use App\Services\Serpro\CapabilityDriverResolver;
-use App\Services\Serpro\SerproOperationService;
 
 final class SerproDteIndicatorClient implements DteIndicatorClient
 {
     public const OPERATION_KEY = 'dte.consultar';
 
     public function __construct(
-        private readonly SerproOperationService $operations,
+        private readonly SerproOperationExecutor $operations,
         private readonly CapabilityDriverResolver $drivers,
-        private readonly FakeDteIndicatorClient $fake,
     ) {}
 
     public function getIndicator(array $context = []): DteIndicatorResult
@@ -32,10 +31,6 @@ final class SerproDteIndicatorClient implements DteIndicatorClient
                 errorMessage: 'DTE desabilitado.',
             );
         }
-        if ($driver === SerproCapabilityDriver::Simulated) {
-            return $this->fake->getIndicator($context);
-        }
-
         $officeId = (int) ($context['office_id'] ?? 0);
         $clientId = (int) ($context['client_id'] ?? 0);
         $office = Office::query()->withoutGlobalScopes()->find($officeId);

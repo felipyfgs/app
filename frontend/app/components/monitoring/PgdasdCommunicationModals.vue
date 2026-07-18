@@ -252,8 +252,11 @@ function openPreferences() {
           variant="subtle"
           icon="i-lucide-construction"
           title="Modo template"
-          description="E-mail e WhatsApp ainda não possuem execução nesta capacidade."
-        />
+        >
+          <template #description>
+            E-mail e WhatsApp ainda não possuem execução nesta capacidade.
+          </template>
+        </UAlert>
 
         <UAlert v-if="previewError" color="error" :title="previewError">
           <template #actions>

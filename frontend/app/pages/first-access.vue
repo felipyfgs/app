@@ -22,9 +22,9 @@ const loading = ref(false)
 
 const schema = z.object({
   email: z.email('Informe um e-mail válido'),
-  temporary_password: z.string().min(1, 'Informe a senha provisória'),
-  password: z.string().min(8, 'Mínimo de 8 caracteres'),
-  password_confirmation: z.string().min(1, 'Confirme a senha')
+  temporary_password: z.string('Informe a senha provisória').min(1, 'Informe a senha provisória'),
+  password: z.string('Informe a nova senha').min(8, 'Mínimo de 8 caracteres'),
+  password_confirmation: z.string('Confirme a senha').min(1, 'Confirme a senha')
 }).refine(d => d.password === d.password_confirmation, {
   message: 'As senhas não coincidem',
   path: ['password_confirmation']
@@ -63,12 +63,12 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="space-y-1 text-center lg:text-left lg:hidden">
-      <h1 class="text-xl font-semibold text-highlighted">
+  <div class="w-full min-w-0 space-y-6">
+    <div class="space-y-1 text-center lg:hidden">
+      <h1 class="text-xl font-semibold text-highlighted text-pretty">
         Primeiro acesso
       </h1>
-      <p class="text-sm text-muted">
+      <p class="text-sm text-muted text-pretty">
         Troque a senha provisória
       </p>
     </div>
@@ -168,14 +168,18 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
         />
       </UForm>
 
-      <p class="text-center text-xs text-muted">
-        <NuxtLink
+      <p class="text-center text-xs text-muted text-pretty">
+        <ULink
           to="/login"
-          class="text-primary hover:underline"
+          class="text-primary font-medium"
         >
           Já tem senha? Entrar
-        </NuxtLink>
+        </ULink>
       </p>
     </UPageCard>
+
+    <p class="text-center text-xs text-muted text-pretty">
+      Problemas de acesso? Fale com o administrador do escritório.
+    </p>
   </div>
 </template>

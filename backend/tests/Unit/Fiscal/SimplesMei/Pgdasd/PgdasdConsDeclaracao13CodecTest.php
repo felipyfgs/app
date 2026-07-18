@@ -124,6 +124,24 @@ class PgdasdConsDeclaracao13CodecTest extends TestCase
     }
 
     #[Test]
+    public function accepts_the_production_casing_variant_for_das_issuance_timestamp(): void
+    {
+        $decoded = $this->codec->decodeDados([
+            'periodoApuracao' => 202606,
+            'operacoes' => [[
+                'tipoOperacao' => 'Geração de DAS',
+                'indiceDas' => [
+                    'numeroDas' => '20260600000000002',
+                    'datahoraEmissaoDas' => 20260602090000,
+                ],
+            ]],
+        ]);
+
+        $this->assertFalse($decoded['incomplete']);
+        $this->assertSame('DAS', $decoded['periods'][0]['operations'][0]['kind']);
+    }
+
+    #[Test]
     public function official_identifier_keeps_logical_key_stable_when_timestamp_changes(): void
     {
         $base = [

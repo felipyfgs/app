@@ -2,53 +2,38 @@
 
 namespace App\Policies;
 
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Models\Client;
 use App\Models\User;
-use App\Support\CurrentOffice;
+use App\Policies\Concerns\AuthorizesTenantPermission;
 
 class ClientPolicy
 {
+    use AuthorizesTenantPermission;
+
     public function viewAny(User $user): bool
     {
-        return $this->role($user) !== null;
+        return $this->allows($user, TenantPermission::ClientsView);
     }
 
     public function view(User $user, Client $client): bool
     {
-        return $this->sameOffice($user, $client);
+        return $this->allows($user, TenantPermission::ClientsView, $client);
     }
 
     public function create(User $user): bool
     {
-        $role = $this->role($user);
-
-        return $role?->canManageClients() === true;
+        return $this->allows($user, TenantPermission::ClientsManage);
     }
 
     public function update(User $user, Client $client): bool
     {
-        return $this->sameOffice($user, $client)
-            && $this->role($user)?->canManageClients() === true;
+        return $this->allows($user, TenantPermission::ClientsManage, $client);
     }
 
     public function delete(User $user, Client $client): bool
     {
-        return $this->sameOffice($user, $client)
-            && $this->role($user) === OfficeRole::Admin;
-    }
-
-    private function role(User $user): ?OfficeRole
-    {
-        return app(CurrentOffice::class)->resolve($user)
-            ? app(CurrentOffice::class)->role()
-            : null;
-    }
-
-    private function sameOffice(User $user, Client $client): bool
-    {
-        $officeId = app(CurrentOffice::class)->resolve($user)?->id;
-
-        return $officeId !== null && $officeId === $client->office_id;
+        // Delete permanece baseline admin / credentials-level (legado: Admin only).
+        return $this->allows($user, TenantPermission::CredentialsManage, $client);
     }
 }

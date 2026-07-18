@@ -170,6 +170,7 @@ final class TaxProxyPowerService
 
         $result = $this->procuracoes->lookup(new ProcuracaoLookupRequest(
             officeId: $office->id,
+            clientId: $client->id,
             environment: $environment->value,
             authorIdentity: $auth->author_identity,
             contributorCnpj: $contributor,
@@ -359,20 +360,13 @@ final class TaxProxyPowerService
             return null;
         }
 
-        // Simulado nunca satisfaz uso real
+        // Evidência simulada/local nunca satisfaz chamada ao SERPRO, inclusive
+        // no Trial oficial (que deve usar somente resposta do gateway externo).
         if ($power->provenance === self::PROVENANCE_SIMULATED
             || $power->segregation_class === SerproDataSegregationClass::TrialSimulated->value
             || $power->segregation_class === SerproDataSegregationClass::Fake->value
             || $power->segregation_class === SerproDataSegregationClass::Demo->value) {
-            if ($environment === SerproEnvironment::Production
-                || $environment === SerproEnvironment::Homologation) {
-                return null;
-            }
-            // Trial: ainda exige ACTIVE não-simulado para elegibilidade de chamada "real"
-            // Simulado só conta se config permitir (testes/dev)
-            if (! (bool) config('serpro.proxy_powers.allow_simulated_in_trial', false)) {
-                return null;
-            }
+            return null;
         }
 
         if (! $power->isCurrentlyValid()) {
@@ -384,8 +378,7 @@ final class TaxProxyPowerService
             return null;
         }
 
-        $strict = $environment === SerproEnvironment::Production
-            || $environment === SerproEnvironment::Homologation;
+        $strict = $environment === SerproEnvironment::Production;
 
         if ($requireAccept && ! $power->isAcceptedByAuthorizee()) {
             // Trial: ACTIVE legado (sem accepted_at) permanece usável; PENDING/simulado não.

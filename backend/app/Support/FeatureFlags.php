@@ -58,6 +58,19 @@ final class FeatureFlags
     }
 
     /**
+     * RBAC multi-tenant canônico (TenantPermission / TenantRole).
+     * Default OFF; kill switch global vence. Com OFF, autoridade permanece legada.
+     */
+    public static function isCanonicalMultitenantRbacEnabled(): bool
+    {
+        if (self::isKillSwitchActive()) {
+            return false;
+        }
+
+        return (bool) config('features.canonical_multitenant_rbac.enabled', false);
+    }
+
+    /**
      * Configuração unificada do escritório (perfil + A1 canônico + consentimento).
      * Default OFF; kill switch vence; allowlist vazia exige allow_all_offices.
      */
@@ -175,6 +188,7 @@ final class FeatureFlags
      *     kill_switch: bool,
      *     global_enabled: bool,
      *     platform_privileged_context: bool,
+     *     canonical_multitenant_rbac: bool,
      *     unified_office_config: bool,
      *     mutating: array{enabled: bool, kill_switch: bool},
      *     modules: array<string, array{enabled: bool, mutating_enabled: bool, allow_all_offices: bool, allowlist_count: int}>
@@ -199,6 +213,7 @@ final class FeatureFlags
             'kill_switch' => self::isKillSwitchActive(),
             'global_enabled' => (bool) config('features.global_enabled', false),
             'platform_privileged_context' => self::isPlatformPrivilegedContextEnabled(),
+            'canonical_multitenant_rbac' => self::isCanonicalMultitenantRbacEnabled(),
             'unified_office_config' => self::isUnifiedOfficeConfigEnabled(),
             'mutating' => [
                 'enabled' => (bool) config('features.mutating.enabled', false),

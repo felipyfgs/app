@@ -750,12 +750,13 @@ onBeforeUnmount(() => {
     <div class="flex flex-wrap items-center justify-between gap-1.5">
       <UInput
         v-model="filter"
-        class="max-w-sm"
+        class="w-full min-w-0 max-w-full basis-full sm:basis-auto sm:max-w-sm"
         icon="i-lucide-search"
         placeholder="Filtrar por nome ou CNPJ/CPF..."
+        aria-label="Filtrar por nome ou CNPJ/CPF"
       />
 
-      <div class="flex flex-wrap items-center gap-1.5">
+      <div class="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5 sm:ms-auto">
         <DataTableFilterRoot
           :definitions="clientFilterDefinitions"
           :model-value="chipModels"
@@ -770,6 +771,8 @@ onBeforeUnmount(() => {
           variant="outline"
           icon="i-lucide-save"
           label="Salvar"
+          aria-label="Salvar filtros"
+          :ui="{ label: 'hidden sm:inline' }"
           data-testid="save-filters-button"
           @click="openSave"
         />

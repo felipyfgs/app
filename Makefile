@@ -1,4 +1,4 @@
-.PHONY: help init-env setup up dev down build logs shell-php composer-install migrate horizon-status frontend-prepare-generated frontend-install frontend-generate frontend-dev backup backup-verify restore prod-check prod-config prod-build prod-up prod-down prod-backup prod-backup-verify prod-restore prod-restore-smoke prod-readiness prod-release-manifest
+.PHONY: help init-env setup up dev down build logs shell-php composer-install migrate seed seed-dev seed-pilot horizon-status frontend-prepare-generated frontend-install frontend-generate frontend-dev backup backup-verify restore prod-check prod-config prod-build prod-up prod-down prod-backup prod-backup-verify prod-restore prod-restore-smoke prod-readiness prod-release-manifest
 
 LOCAL_UID := $(shell id -u)
 LOCAL_GID := $(shell id -g)
@@ -21,6 +21,8 @@ help:
 	@echo "  make shell-php          Shell no container PHP"
 	@echo "  make composer-install   Instala dependências do backend"
 	@echo "  make migrate            Roda migrations"
+	@echo "  make seed / seed-dev    Seed de desenvolvimento (exemplos)"
+	@echo "  make seed-pilot         Seed piloto (dados reais de dados/)"
 	@echo "  make frontend-install   Instala deps do frontend"
 	@echo "  make frontend-generate  Gera SPA estática"
 	@echo "  make frontend-dev       Sobe Nuxt dev (perfil dev)"
@@ -79,6 +81,15 @@ composer-install:
 
 migrate:
 	docker compose exec php php artisan migrate
+
+# Seed normal: exemplos sintéticos (DatabaseSeeder). Não usa dados/.
+seed seed-dev:
+	docker compose exec php php artisan db:seed --force
+
+# Seed piloto: Felipe/Gustavo + CNPJs de dados/ (PilotSeeder).
+# Prefira migrate:fresh antes se quiser banco limpo só com piloto.
+seed-pilot:
+	docker compose exec php php artisan db:seed --class=PilotSeeder --force
 
 frontend-prepare-generated:
 	@set -eu; \

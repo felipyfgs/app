@@ -2,6 +2,7 @@
 
 namespace App\Policies\Work;
 
+use App\Enums\TenantPermission;
 use App\Models\OperationalProcess;
 use App\Models\User;
 use App\Policies\Work\Concerns\UsesRealWorkRole;
@@ -12,42 +13,35 @@ class OperationalProcessPolicy
 
     public function viewAny(User $user): bool
     {
-        return $this->effectiveRole()?->canViewWork() === true;
+        return $this->allowsWork($user, TenantPermission::WorkView);
     }
 
     public function view(User $user, OperationalProcess $process): bool
     {
-        return $this->sameOfficeId((int) $process->office_id)
-            && $this->effectiveRole()?->canViewWork() === true;
+        return $this->allowsWork($user, TenantPermission::WorkView, $process);
     }
 
     public function create(User $user): bool
     {
-        return $this->realRole()?->canCreateWorkProcesses() === true;
+        return $this->allowsWork($user, TenantPermission::WorkProcessesCreate);
     }
 
     public function update(User $user, OperationalProcess $process): bool
     {
-        if (! $this->sameOfficeId((int) $process->office_id)) {
-            return false;
-        }
-        $role = $this->realRole();
-        if ($role === null) {
-            return false;
+        if ($this->allowsWork($user, TenantPermission::WorkAdminister, $process)) {
+            return true;
         }
 
-        return $role->canAdministerWork() === true || $role->canCreateWorkProcesses() === true;
+        return $this->allowsWork($user, TenantPermission::WorkProcessesCreate, $process);
     }
 
     public function archive(User $user, OperationalProcess $process): bool
     {
-        return $this->sameOfficeId((int) $process->office_id)
-            && $this->realRole()?->canAdministerWork() === true;
+        return $this->allowsWork($user, TenantPermission::WorkAdminister, $process);
     }
 
     public function comment(User $user, OperationalProcess $process): bool
     {
-        return $this->sameOfficeId((int) $process->office_id)
-            && $this->realRole()?->canExecuteWorkTasks() === true;
+        return $this->allowsWork($user, TenantPermission::WorkTasksExecute, $process);
     }
 }

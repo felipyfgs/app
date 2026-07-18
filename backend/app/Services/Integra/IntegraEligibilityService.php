@@ -74,9 +74,9 @@ final class IntegraEligibilityService
             $codes[] = SerproEligibilityCode::KillSwitch;
         }
 
-        // 0b. Demo office never hits real endpoints
+        // 0b. Office demo nunca atinge o endpoint produtivo.
         if ($this->onboardingGuard->isDemoOffice($office)
-            && in_array($environment, [SerproEnvironment::Production, SerproEnvironment::Homologation], true)
+            && $environment === SerproEnvironment::Production
         ) {
             $codes[] = SerproEligibilityCode::DemoOfficeBlocked;
         }
@@ -198,6 +198,31 @@ final class IntegraEligibilityService
                 ->first();
         }
 
+        // O manifesto oficial é projetado como catálogo canônico de produção.
+        // Trial reutiliza essas coordenadas somente quando não
+        // houver uma entrada específica do ambiente de execução.
+        if ($catalog === null && $environment !== SerproEnvironment::Production) {
+            $catalog = SerproServiceCatalogEntry::query()
+                ->where('environment', SerproEnvironment::Production->value)
+                ->where(function ($q) use ($solutionCode, $serviceCode, $operationCode): void {
+                    $q->where(function ($q2) use ($solutionCode, $serviceCode, $operationCode): void {
+                        $q2->where('solution_code', $solutionCode)
+                            ->where('service_code', $serviceCode)
+                            ->where('operation_code', $operationCode);
+                    })->orWhere(function ($q2) use ($solutionCode, $serviceCode, $operationCode): void {
+                        $q2->where('id_sistema', $solutionCode)
+                            ->where('id_servico', $serviceCode)
+                            ->orWhere(function ($q3) use ($solutionCode, $operationCode): void {
+                                $q3->where('id_sistema', $solutionCode)
+                                    ->where('id_servico', $operationCode);
+                            });
+                    });
+                })
+                ->where('is_enabled', true)
+                ->orderByDesc('catalog_version')
+                ->first();
+        }
+
         if ($catalog === null) {
             $codes[] = SerproEligibilityCode::ServiceNotCataloged;
         } else {
@@ -219,27 +244,38 @@ final class IntegraEligibilityService
                 $operationCode,
             );
 
-            foreach ($requiredPowers as $requiredPower) {
-                $power = $this->proxyPowers->findUsablePower(
-                    officeId: $office->id,
-                    clientId: $client->id,
-                    powerCode: $requiredPower,
-                    authorIdentity: (string) $auth->author_identity,
-                    environment: $environment,
-                    requireD1: $requireD1,
-                    requireFresh: true,
-                    requireAccept: true,
-                );
-                if ($power === null) {
-                    $diag = $this->proxyPowers->diagnoseUnusable(
+            // Lista da matriz/catálogo é ANY-of (alternativas e-CAC), não AND.
+            if ($requiredPowers !== []) {
+                $anyUsable = false;
+                $diagCodes = [];
+                foreach ($requiredPowers as $requiredPower) {
+                    $power = $this->proxyPowers->findUsablePower(
+                        officeId: $office->id,
+                        clientId: $client->id,
+                        powerCode: $requiredPower,
+                        authorIdentity: (string) $auth->author_identity,
+                        environment: $environment,
+                        requireD1: $requireD1,
+                        requireFresh: true,
+                        requireAccept: true,
+                    );
+                    if ($power !== null) {
+                        $anyUsable = true;
+                        break;
+                    }
+                    foreach ($this->proxyPowers->diagnoseUnusable(
                         $office->id,
                         $client->id,
                         $requiredPower,
                         (string) $auth->author_identity,
                         $environment,
                         $requireD1,
-                    );
-                    foreach ($diag as $reason) {
+                    ) as $reason) {
+                        $diagCodes[] = $reason;
+                    }
+                }
+                if (! $anyUsable) {
+                    foreach (array_values(array_unique($diagCodes)) as $reason) {
                         $codes[] = SerproEligibilityCode::tryFrom($reason)
                             ?? SerproEligibilityCode::ProxyPowerMissing;
                     }
@@ -365,7 +401,13 @@ final class IntegraEligibilityService
         }
 
         if ($catalog->required_proxy_power !== null && $catalog->required_proxy_power !== '') {
-            $powers[] = strtoupper((string) $catalog->required_proxy_power);
+            // Catálogo pode listar alternativas no mesmo campo: "00076 00188".
+            foreach (preg_split('/\s+/', trim((string) $catalog->required_proxy_power)) ?: [] as $part) {
+                $part = strtoupper(trim($part));
+                if ($part !== '') {
+                    $powers[] = $part;
+                }
+            }
         }
 
         // Matriz oficial idSistema+idServico

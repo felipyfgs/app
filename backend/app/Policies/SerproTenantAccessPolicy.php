@@ -2,49 +2,30 @@
 
 namespace App\Policies;
 
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Models\User;
-use App\Support\CurrentOffice;
+use App\Policies\Concerns\AuthorizesTenantPermission;
 
 /**
- * Dados fiscais/tenant SERPRO exigem CurrentOffice resolvido (membership ou
- * platform_privileged). PLATFORM_ADMIN sem seleção privilegiada e sem membership
- * não obtém acesso fiscal implícito.
+ * Dados fiscais/tenant SERPRO exigem CurrentOffice resolvido.
+ * PLATFORM_ADMIN sem seleção privilegiada e sem membership não obtém acesso fiscal.
  */
 final class SerproTenantAccessPolicy
 {
-    public function __construct(
-        private readonly CurrentOffice $currentOffice,
-    ) {}
+    use AuthorizesTenantPermission;
 
     public function viewTenantSerpro(User $user): bool
     {
-        if ($this->currentOffice->resolve($user) === null) {
-            return false;
-        }
-
-        $role = $this->currentOffice->role();
-
-        return in_array($role, [OfficeRole::Admin, OfficeRole::Operator, OfficeRole::Viewer], true);
+        return $this->allows($user, TenantPermission::FiscalDocumentsView);
     }
 
     public function mutateTenantSerpro(User $user): bool
     {
-        if ($this->currentOffice->resolve($user) === null) {
-            return false;
-        }
-
-        return $this->currentOffice->role() === OfficeRole::Admin;
+        return $this->allows($user, TenantPermission::FiscalMutationsExecute);
     }
 
     public function operateTenantSerpro(User $user): bool
     {
-        if ($this->currentOffice->resolve($user) === null) {
-            return false;
-        }
-
-        $role = $this->currentOffice->role();
-
-        return in_array($role, [OfficeRole::Admin, OfficeRole::Operator], true);
+        return $this->allows($user, TenantPermission::FiscalSyncTrigger);
     }
 }

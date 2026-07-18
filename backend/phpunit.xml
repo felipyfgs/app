@@ -31,6 +31,12 @@
         <server name="DB_CONNECTION" value="sqlite"/>
         <server name="DB_DATABASE" value=":memory:"/>
         <server name="DB_URL" value=""/>
+        <!-- Fixtures determinísticas: não herdar slugs locais do piloto. -->
+        <server name="FISCAL_DEMO_OFFICE_SLUG" value="contador"/>
+        <server name="FISCAL_DEMO_SENTINEL_SLUG" value="plataforma"/>
+        <server name="WORK_DEMO_OFFICE_SLUG" value="contador"/>
+        <server name="WORK_DEMO_SENTINEL_SLUG" value="plataforma"/>
+        <server name="FISCAL_MONITORING_MUTATING_ENABLED" value="false"/>
         <!-- Suíte legada: fail-closed de tenant é coberto por testes dedicados com flag true -->
         <server name="FISCAL_MODEL_FAIL_CLOSED_SCOPES" value="false"/>
         <server name="MAIL_MAILER" value="array"/>
@@ -73,6 +79,11 @@
         <env name="DB_CONNECTION" value="sqlite" force="true"/>
         <env name="DB_DATABASE" value=":memory:" force="true"/>
         <env name="DB_URL" value="" force="true"/>
+        <env name="FISCAL_DEMO_OFFICE_SLUG" value="contador" force="true"/>
+        <env name="FISCAL_DEMO_SENTINEL_SLUG" value="plataforma" force="true"/>
+        <env name="WORK_DEMO_OFFICE_SLUG" value="contador" force="true"/>
+        <env name="WORK_DEMO_SENTINEL_SLUG" value="plataforma" force="true"/>
+        <env name="FISCAL_MONITORING_MUTATING_ENABLED" value="false" force="true"/>
         <env name="FISCAL_MODEL_FAIL_CLOSED_SCOPES" value="false" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
@@ -122,16 +133,36 @@
         <!-- Ledger SERPRO: shadow on / bloqueio comercial off no CI -->
         <env name="SERPRO_USAGE_SHADOW_MODE" value="true" force="true"/>
         <env name="SERPRO_USAGE_COMMERCIAL_BLOCKING" value="false" force="true"/>
-        <!-- Integra Contador: doubles em testing; .env local de piloto não deve vazar -->
-        <server name="SERPRO_USE_FAKE_CLIENTS" value="true"/>
+        <!-- Integra Contador: fail-closed; .env local de piloto não deve vazar -->
         <server name="SERPRO_DEFAULT_ENVIRONMENT" value="TRIAL"/>
         <server name="SERPRO_SMOKE_ENABLED" value="false"/>
         <server name="SERPRO_KILL_SWITCH" value="false"/>
         <server name="SERPRO_PROD_CHECK_STRICT" value="false"/>
-        <env name="SERPRO_USE_FAKE_CLIENTS" value="true" force="true"/>
+        <server name="SERPRO_CAPABILITY_SITFIS" value="disabled"/>
+        <server name="SERPRO_CAPABILITY_AUTENTICA_PROCURADOR" value="disabled"/>
+        <server name="SERPRO_CAPABILITY_AUTHORIZATION" value="disabled"/>
+        <server name="SERPRO_CAPABILITY_MAILBOX" value="disabled"/>
+        <server name="SERPRO_CAPABILITY_DCTFWEB" value="disabled"/>
+        <server name="SERPRO_CAPABILITY_SIMPLES_MEI" value="disabled"/>
+        <server name="SERPRO_CAPABILITY_INSTALLMENTS" value="disabled"/>
+        <server name="SERPRO_CAPABILITY_GUIDES" value="disabled"/>
+        <server name="SERPRO_CAPABILITY_REGISTRATIONS" value="disabled"/>
+        <server name="SERPRO_CAPABILITY_TAX_PROCESSES" value="disabled"/>
+        <server name="SERPRO_CAPABILITY_DEFAULT" value="disabled"/>
         <env name="SERPRO_DEFAULT_ENVIRONMENT" value="TRIAL" force="true"/>
         <env name="SERPRO_SMOKE_ENABLED" value="false" force="true"/>
         <env name="SERPRO_KILL_SWITCH" value="false" force="true"/>
         <env name="SERPRO_PROD_CHECK_STRICT" value="false" force="true"/>
+        <env name="SERPRO_CAPABILITY_SITFIS" value="disabled" force="true"/>
+        <env name="SERPRO_CAPABILITY_AUTENTICA_PROCURADOR" value="disabled" force="true"/>
+        <env name="SERPRO_CAPABILITY_AUTHORIZATION" value="disabled" force="true"/>
+        <env name="SERPRO_CAPABILITY_MAILBOX" value="disabled" force="true"/>
+        <env name="SERPRO_CAPABILITY_DCTFWEB" value="disabled" force="true"/>
+        <env name="SERPRO_CAPABILITY_SIMPLES_MEI" value="disabled" force="true"/>
+        <env name="SERPRO_CAPABILITY_INSTALLMENTS" value="disabled" force="true"/>
+        <env name="SERPRO_CAPABILITY_GUIDES" value="disabled" force="true"/>
+        <env name="SERPRO_CAPABILITY_REGISTRATIONS" value="disabled" force="true"/>
+        <env name="SERPRO_CAPABILITY_TAX_PROCESSES" value="disabled" force="true"/>
+        <env name="SERPRO_CAPABILITY_DEFAULT" value="disabled" force="true"/>
     </php>
 </phpunit>

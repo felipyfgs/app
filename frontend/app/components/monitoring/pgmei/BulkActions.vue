@@ -128,8 +128,11 @@ async function confirmQuery() {
         variant="subtle"
         icon="i-lucide-triangle-alert"
         title="Uma chamada por cliente selecionado"
-        description="Abrir esta confirmação não consulta a SERPRO. A chamada ocorrerá somente ao confirmar."
-      />
+      >
+        <template #description>
+          Abrir esta confirmação não consulta a SERPRO. A chamada ocorrerá somente ao confirmar.
+        </template>
+      </UAlert>
     </template>
     <template #footer>
       <UButton

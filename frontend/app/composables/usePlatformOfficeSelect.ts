@@ -7,6 +7,7 @@ import type { PlatformOfficeSummary } from '~/types/api'
 import { isPlatformAdmin } from '~/utils/permissions'
 
 export function usePlatformOfficeSelect() {
+  const route = useRoute()
   const api = useApi()
   const toast = useToast()
   const { refreshIdentity } = useSanctumAuth()
@@ -56,9 +57,18 @@ export function usePlatformOfficeSelect() {
     }
   }
 
-  async function selectOffice(officeId: number): Promise<boolean> {
+  function redirectAfterSelection(redirectTo?: string) {
+    if (import.meta.client) {
+      window.location.assign(redirectTo || route.fullPath)
+    }
+  }
+
+  async function selectOffice(officeId: number, redirectTo?: string): Promise<boolean> {
     if (!enabled.value || switching.value) return false
-    if (officeId === currentOfficeId.value && privileged.value) return true
+    if (officeId === currentOfficeId.value && privileged.value) {
+      if (redirectTo) redirectAfterSelection(redirectTo)
+      return true
+    }
 
     switching.value = true
     try {
@@ -71,10 +81,7 @@ export function usePlatformOfficeSelect() {
         description: label || `Escritório #${officeId}`,
         color: 'success'
       })
-      if (import.meta.client) {
-        const path = useRoute().fullPath
-        window.location.assign(path)
-      }
+      redirectAfterSelection(redirectTo)
       return true
     } catch (caught) {
       const code = (caught as { data?: { code?: string } })?.data?.code

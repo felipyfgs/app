@@ -1,5 +1,14 @@
 <?php
 
+$configuredEnvironment = strtoupper((string) env('SERPRO_DEFAULT_ENVIRONMENT', 'TRIAL'));
+if (! in_array($configuredEnvironment, ['TRIAL', 'PRODUCTION'], true)) {
+    throw new InvalidArgumentException(
+        'SERPRO_DEFAULT_ENVIRONMENT deve ser TRIAL ou PRODUCTION; HOMOLOGATION não é um ambiente SERPRO suportado.',
+    );
+}
+
+$defaultEnvironment = $configuredEnvironment;
+
 /**
  * Integra Contador / SERPRO — plano de controle global + transporte.
  * Segredos NUNCA ficam aqui: só no SecureObjectStore + VAULT_MASTER_KEY.
@@ -11,7 +20,7 @@ return [
     | Ambiente padrão do contrato
     |--------------------------------------------------------------------------
     */
-    'default_environment' => env('SERPRO_DEFAULT_ENVIRONMENT', 'TRIAL'),
+    'default_environment' => $defaultEnvironment,
 
     /*
     |--------------------------------------------------------------------------
@@ -48,33 +57,49 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Drivers por capacidade (disabled | simulated | real) — sem fallback
+    | Endpoints oficiais por ambiente
     |--------------------------------------------------------------------------
-    | simulated é rejeitado em APP_ENV=production no preflight.
+    | Trial é o gateway de demonstração publicado no Swagger da SERPRO. O
+    | bearer/jwt nunca são embutidos no código: a operação só pode usá-los
+    | quando forem fornecidos no ambiente. Qualquer ambiente diferente de
+    | Trial e Produção é recusado por não ter endpoint público confirmado.
     */
-    'capabilities' => [
-        // Drivers explícitos por família (disabled|simulated|real). simulated proibido em production.
-        'sitfis' => env('SERPRO_CAPABILITY_SITFIS', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
-        'autentica_procurador' => env('SERPRO_CAPABILITY_AUTENTICA_PROCURADOR', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
-        'authorization' => env('SERPRO_CAPABILITY_AUTHORIZATION', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
-        'mailbox' => env('SERPRO_CAPABILITY_MAILBOX', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
-        'dctfweb' => env('SERPRO_CAPABILITY_DCTFWEB', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
-        'simples_mei' => env('SERPRO_CAPABILITY_SIMPLES_MEI', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
-        'installments' => env('SERPRO_CAPABILITY_INSTALLMENTS', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
-        'guides' => env('SERPRO_CAPABILITY_GUIDES', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
-        'registrations' => env('SERPRO_CAPABILITY_REGISTRATIONS', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
-        'tax_processes' => env('SERPRO_CAPABILITY_TAX_PROCESSES', env('APP_ENV') === 'production' ? 'disabled' : 'simulated'),
-        'default' => env('SERPRO_CAPABILITY_DEFAULT', 'disabled'),
+    'environments' => [
+        'TRIAL' => [
+            'base_url' => env(
+                'SERPRO_TRIAL_INTEGRA_BASE_URL',
+                'https://gateway.apiserpro.serpro.gov.br/integra-contador-trial/v1',
+            ),
+            'bearer_token' => env('SERPRO_TRIAL_BEARER_TOKEN', ''),
+            'jwt_token' => env('SERPRO_TRIAL_JWT_TOKEN', ''),
+        ],
+        'PRODUCTION' => [
+            'base_url' => env(
+                'SERPRO_PRODUCTION_INTEGRA_BASE_URL',
+                env('SERPRO_INTEGRA_BASE_URL', 'https://gateway.apiserpro.serpro.gov.br/integra-contador/v1'),
+            ),
+        ],
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Trial / simulação
+    | Drivers por capacidade — default universal fail-closed
     |--------------------------------------------------------------------------
+    | Apenas disabled e real são valores operacionais. Configuração legada
+    | simulated é rejeitada pelo resolver, sem fallback local.
     */
-    'trial' => [
-        'use_fake_clients' => filter_var(env('SERPRO_USE_FAKE_CLIENTS', true), FILTER_VALIDATE_BOOL),
-        'mark_simulated' => true,
+    'capabilities' => [
+        'sitfis' => env('SERPRO_CAPABILITY_SITFIS', 'disabled'),
+        'autentica_procurador' => env('SERPRO_CAPABILITY_AUTENTICA_PROCURADOR', 'disabled'),
+        'authorization' => env('SERPRO_CAPABILITY_AUTHORIZATION', 'disabled'),
+        'mailbox' => env('SERPRO_CAPABILITY_MAILBOX', 'disabled'),
+        'dctfweb' => env('SERPRO_CAPABILITY_DCTFWEB', 'disabled'),
+        'simples_mei' => env('SERPRO_CAPABILITY_SIMPLES_MEI', 'disabled'),
+        'installments' => env('SERPRO_CAPABILITY_INSTALLMENTS', 'disabled'),
+        'guides' => env('SERPRO_CAPABILITY_GUIDES', 'disabled'),
+        'registrations' => env('SERPRO_CAPABILITY_REGISTRATIONS', 'disabled'),
+        'tax_processes' => env('SERPRO_CAPABILITY_TAX_PROCESSES', 'disabled'),
+        'default' => env('SERPRO_CAPABILITY_DEFAULT', 'disabled'),
     ],
 
     /*
@@ -123,7 +148,6 @@ return [
     */
     'term_representation' => [
         'TRIAL' => env('SERPRO_TERM_REPRESENTATION_TRIAL', 'PENDING_VALIDATION'),
-        'HOMOLOGATION' => env('SERPRO_TERM_REPRESENTATION_HOMOLOGATION', 'PENDING_VALIDATION'),
         'PRODUCTION' => env('SERPRO_TERM_REPRESENTATION_PRODUCTION', 'PENDING_VALIDATION'),
     ],
 
@@ -159,7 +183,7 @@ return [
         /** Janela máxima (horas) entre change_window_start e change_window_end. */
         'max_window_hours' => (int) env('SERPRO_OWNER_CONFIRMATION_MAX_WINDOW_HOURS', 48),
         /**
-         * Se true, CONTRACT_ACTIVATE exige OWNER também em TRIAL/HOMOLOGATION.
+         * Se true, CONTRACT_ACTIVATE exige OWNER também em TRIAL.
          * Default false: somente PRODUCTION (contrato produtivo).
          */
         'require_for_all_environments' => filter_var(
@@ -234,8 +258,17 @@ return [
     ),
     'official_sources_manifest' => env(
         'SERPRO_OFFICIAL_SOURCES_MANIFEST',
-        resource_path('serpro/official-sources.v2026-07-16.json')
+        resource_path('serpro/official-sources.v2026-07-18.json')
     ),
+    'official_source_verification' => [
+        /** Único host documental autorizado; não inclui gateway nem autenticação. */
+        'allowed_hosts' => ['apicenter.estaleiro.serpro.gov.br'],
+        'allowed_path_prefix' => '/documentacao/api-integra-contador/',
+        'expected_source_count' => 8,
+        'timeout_seconds' => 20,
+        'connect_timeout_seconds' => 5,
+        'max_response_bytes' => 5 * 1024 * 1024,
+    ],
 
     /*
     | Endpoint OAuth alternativo (Área do Cliente) — BLOQUEADO até gate externo.
@@ -252,16 +285,11 @@ return [
     */
     'power_matrix_manifest' => env(
         'SERPRO_POWER_MATRIX_MANIFEST',
-        resource_path('serpro/power-matrix.v2026-07-16.json')
+        resource_path('serpro/power-matrix.v2026-07-18.json')
     ),
     'proxy_powers' => [
         /** Idade máxima da evidência de procuração (horas) para elegibilidade. */
         'freshness_max_age_hours' => (int) env('SERPRO_PROXY_FRESHNESS_HOURS', 168),
-        /** Permite poderes simulados no Trial (somente dev/test). Default off. */
-        'allow_simulated_in_trial' => filter_var(
-            env('SERPRO_PROXY_ALLOW_SIMULATED_IN_TRIAL', false),
-            FILTER_VALIDATE_BOOL
-        ),
         /** Free smoke NÃO pode chamar OBTERPROCURACAO41 faturável. */
         'allow_billable_lookup_in_free_smoke' => filter_var(
             env('SERPRO_PROXY_ALLOW_BILLABLE_IN_FREE_SMOKE', false),

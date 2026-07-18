@@ -98,7 +98,12 @@ class TermoDraftAndInvalidationTest extends TestCase
             TermoFixtureFactory::signedTermo('52998224725', '11222333000181')['xml'],
             $admin->id,
         );
-        $auth = $svc->refreshProcuradorToken($office, SerproEnvironment::Trial, $admin->id);
+        // Estado anterior opaco para exercitar apenas a invalidação; esta suíte
+        // não fabrica autenticação externa nem chama o SERPRO.
+        $auth->procurador_token_vault_object_id = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
+        $auth->procurador_token_expires_at = now()->addHour();
+        $auth->status = SerproAuthorizationStatus::TokenActive;
+        $auth->save();
         $this->assertSame(SerproAuthorizationStatus::TokenActive, $auth->status);
 
         TaxProxyPower::query()->create([

@@ -90,6 +90,8 @@ function onOpenChange(open: boolean) {
       variant="outline"
       icon="i-lucide-bookmark"
       label="Filtros salvos"
+      aria-label="Filtros salvos"
+      :ui="{ label: 'hidden sm:inline' }"
       :loading="loading"
       :disabled="disabled"
       data-testid="saved-filters-menu"

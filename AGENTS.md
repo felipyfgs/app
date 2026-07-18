@@ -34,6 +34,8 @@ make up                # stack sem HMR
 make dev               # stack + Nuxt HMR em :3000 (perfil dev)
 make down
 make migrate
+make seed / seed-dev   # exemplos sintéticos (DatabaseSeeder)
+make seed-pilot        # piloto real de dados/ (PilotSeeder) — Felipe/Gustavo
 make shell-php
 make logs
 

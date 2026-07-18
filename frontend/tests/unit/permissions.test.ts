@@ -3,11 +3,17 @@ import {
   canAccessOfficeSettings,
   canAccessPlatformAdmin,
   canAccessPlatformSerproConsole,
+  canAssociateCategories,
   canCreateExport,
+  canExecuteHighRiskMutation,
+  canImportDocuments,
   canManageClients,
   canManageCredentials,
+  canManageOfficeTeam,
+  canTriageMailbox,
   canTriggerSync,
   hasConfirmedAdminAccess,
+  hasOfficeAdminSurface,
   isPlatformAdmin,
   isPlatformPrivilegedContext,
   unwrapMeUser
@@ -106,5 +112,41 @@ describe('permissions', () => {
     const admin = user({ role: 'ADMIN', is_platform_admin: false })
     expect(canAccessPlatformSerproConsole(admin)).toBe(false)
     expect(canAccessPlatformAdmin(admin)).toBe(false)
+  })
+
+  /**
+   * Matriz de caracterização dos helpers legados (W0).
+   * Espelha OfficeRole backend + superfícies de UI; backend permanece autoridade.
+   */
+  it('congela matriz legada de helpers por papel efetivo', () => {
+    const admin = user({ role: 'ADMIN' })
+    const operator = user({ role: 'OPERATOR' })
+    const viewer = user({ role: 'VIEWER' })
+
+    const matrix: Array<{
+      name: string
+      fn: (u?: MeUser | null) => boolean
+      admin: boolean
+      operator: boolean
+      viewer: boolean
+    }> = [
+      { name: 'canManageClients', fn: canManageClients, admin: true, operator: true, viewer: false },
+      { name: 'canManageCredentials', fn: canManageCredentials, admin: true, operator: false, viewer: false },
+      { name: 'canTriggerSync', fn: canTriggerSync, admin: true, operator: true, viewer: false },
+      { name: 'canCreateExport', fn: canCreateExport, admin: true, operator: true, viewer: false },
+      { name: 'canImportDocuments', fn: canImportDocuments, admin: true, operator: true, viewer: false },
+      { name: 'canAssociateCategories', fn: canAssociateCategories, admin: true, operator: true, viewer: false },
+      { name: 'canTriageMailbox', fn: canTriageMailbox, admin: true, operator: true, viewer: false },
+      { name: 'canExecuteHighRiskMutation', fn: canExecuteHighRiskMutation, admin: true, operator: false, viewer: false },
+      { name: 'canManageOfficeTeam', fn: canManageOfficeTeam, admin: true, operator: false, viewer: false },
+      { name: 'hasOfficeAdminSurface', fn: hasOfficeAdminSurface, admin: true, operator: false, viewer: false },
+      { name: 'hasConfirmedAdminAccess', fn: hasConfirmedAdminAccess, admin: true, operator: false, viewer: false }
+    ]
+
+    for (const row of matrix) {
+      expect(row.fn(admin), `ADMIN ${row.name}`).toBe(row.admin)
+      expect(row.fn(operator), `OPERATOR ${row.name}`).toBe(row.operator)
+      expect(row.fn(viewer), `VIEWER ${row.name}`).toBe(row.viewer)
+    }
   })
 })

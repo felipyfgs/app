@@ -19,9 +19,19 @@ class PlatformMembershipFactory extends Factory
         return [
             'user_id' => User::factory(),
             'role' => PlatformRole::PlatformAdmin,
+            'platform_role' => null,
             'is_active' => true,
             'default_office_id' => null,
         ];
+    }
+
+    /** Dual-write canônico preenchido (sem cutover de autoridade). */
+    public function withCanonicalRole(): static
+    {
+        return $this->state(fn () => [
+            'role' => PlatformRole::PlatformAdmin,
+            'platform_role' => PlatformRole::PlatformAdmin->canonicalValue(),
+        ]);
     }
 
     public function inactive(): static

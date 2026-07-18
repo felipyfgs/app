@@ -64,6 +64,21 @@ const sectionLinks = computed<NavigationMenuItem[][]>(() => {
     to: `${base}/sincronizacao`,
     active: path.endsWith('/sincronizacao')
   }, {
+    label: 'CCMEI',
+    icon: 'i-lucide-badge-check',
+    to: `${base}/ccmei`,
+    active: path.endsWith('/ccmei')
+  }, {
+    label: 'Receitas SICALC',
+    icon: 'i-lucide-receipt-text',
+    to: `${base}/sicalc`,
+    active: path.endsWith('/sicalc')
+  }, {
+    label: 'Pagamentos',
+    icon: 'i-lucide-chart-no-axes-column',
+    to: `${base}/pagamentos`,
+    active: path.endsWith('/pagamentos')
+  }, {
     label: 'Captura de saídas',
     icon: 'i-lucide-arrow-up-from-line',
     to: `${base}/saidas`,

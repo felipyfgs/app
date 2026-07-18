@@ -12,7 +12,6 @@ use App\Enums\FiscalRunResult;
 use App\Enums\FiscalSituation;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\FiscalVerificationState;
-use App\Enums\SerproCapabilityDriver;
 use App\Enums\SerproEnvironment;
 use App\Models\SerproContract;
 use App\Services\Integra\IntegraEligibilityService;
@@ -44,9 +43,7 @@ final class SitfisFlowService
             'operation_key' => $request->progress === []
                 ? 'sitfis.solicitar_protocolo'
                 : 'sitfis.emitir_relatorio',
-            'source_provenance' => $driver === SerproCapabilityDriver::Simulated
-                ? FiscalSourceProvenance::Simulated
-                : FiscalSourceProvenance::SerproReal,
+            'source_provenance' => FiscalSourceProvenance::SerproReal,
             // Conteúdo ainda não verificado — promove a VERIFIED só no persist pós-parse.
             'verification_state' => FiscalVerificationState::Unverified,
         ])->save();
@@ -104,6 +101,20 @@ final class SitfisFlowService
             correlation: $correlation,
         );
 
+        // 304/NOT_MODIFIED com body vazio: força 1 retry com idempotency distinct (sem ETag stale).
+        if ($this->isEmptyNotModified($response)) {
+            $response = $this->call(
+                $request,
+                $ids,
+                (string) ($cfg['solicit_operation_key'] ?? 'sitfis.solicitar_protocolo'),
+                (string) ($cfg['solicit_operation'] ?? 'SOLICITARPROTOCOLO91'),
+                businessData: [],
+                dadosMode: 'EMPTY',
+                correlation: $correlation,
+                idempotencySuffix: 'force-'.Str::lower(Str::random(8)),
+            );
+        }
+
         if (! $response->success) {
             if ($this->isGateBlock($response)) {
                 return FiscalAdapterResult::blocked(
@@ -119,8 +130,17 @@ final class SitfisFlowService
             );
         }
 
-        $protocol = $this->extractProtocol($response->body);
+        $protocol = $this->extractProtocolFromResponse($response);
         if ($protocol === null || $protocol === '') {
+            // 304 residual ou payload sem campo oficial
+            if ($this->isEmptyNotModified($response)) {
+                return FiscalAdapterResult::failed(
+                    'Solicitação SITFIS retornou cache vazio (304); tente novamente em instantes.',
+                    'SITFIS_NOT_MODIFIED_EMPTY',
+                    FiscalCoverage::Full,
+                );
+            }
+
             return FiscalAdapterResult::failed(
                 'Solicitação SITFIS sem protocolo correlacionável.',
                 'SITFIS_PROTOCOL_MISSING',
@@ -128,7 +148,7 @@ final class SitfisFlowService
             );
         }
 
-        $minWait = max(1, $response->waitSeconds() ?? (int) $cfg['min_wait_seconds']);
+        $minWait = max(1, $this->resolveMinWaitSeconds($response, $cfg));
         $notBefore = $now->addSeconds($minWait);
         $state = new SitfisProtocolState(
             phase: SitfisProtocolState::PHASE_WAITING_MIN_PERIOD,
@@ -146,7 +166,6 @@ final class SitfisFlowService
             state: $state,
             message: 'Protocolo SITFIS obtido; aguardando prazo mínimo oficial.',
             requeueAfter: $minWait,
-            // Evidência leve da aceitação (não é o relatório final)
             evidenceBytes: null,
         );
     }
@@ -184,14 +203,14 @@ final class SitfisFlowService
         }
 
         $correlation = $state->correlationId ?? $request->run->correlation_id ?? (string) Str::uuid();
-        // Oficial: RELATORIOSITFIS92 em /Emitir com protocolo no JSON de dados; poder 00002
+        // Oficial: RELATORIOSITFIS92 em /Emitir — campo obrigatório protocoloRelatorio (catálogo 9.2).
         $response = $this->call(
             $request,
             $ids,
             (string) ($cfg['emit_operation_key'] ?? 'sitfis.emitir_relatorio'),
             (string) ($cfg['emit_operation'] ?? 'RELATORIOSITFIS92'),
             businessData: [
-                'protocolo' => $state->protocol,
+                'protocoloRelatorio' => $state->protocol,
             ],
             dadosMode: 'JSON_STRING',
             correlation: $correlation,
@@ -219,7 +238,7 @@ final class SitfisFlowService
             // 202 / ainda processando mapeado pelo client
             if (in_array($response->httpStatus, [202, 204], true)
                 || $response->errorCode === 'STILL_PROCESSING'
-                || $this->bodySaysProcessing($response->body)) {
+                || $this->responseSaysProcessing($response)) {
                 return $this->processingResult(
                     state: $stateAfterPoll,
                     message: 'Relatório SITFIS ainda em processamento na fonte.',
@@ -234,7 +253,7 @@ final class SitfisFlowService
             );
         }
 
-        if ($this->bodySaysProcessing($response->body)) {
+        if ($this->responseSaysProcessing($response)) {
             return $this->processingResult(
                 state: $stateAfterPoll,
                 message: 'Relatório SITFIS ainda em processamento na fonte.',
@@ -242,7 +261,7 @@ final class SitfisFlowService
             );
         }
 
-        $reportPayload = $this->extractReportPayload($response->body);
+        $reportPayload = $this->extractReportPayloadFromResponse($response);
         if ($reportPayload === null) {
             // Sucesso HTTP sem corpo de relatório — trata como ainda processando se marcado
             return $this->processingResult(
@@ -283,9 +302,11 @@ final class SitfisFlowService
             situation: $parsed->situation,
             coverage: FiscalCoverage::Full,
             evidenceBytes: $evidenceBytes,
-            evidenceContentType: is_string($reportPayload) && ! $this->isJson($reportPayload)
-                ? 'application/octet-stream'
-                : 'application/json',
+            evidenceContentType: is_string($reportPayload) && str_starts_with($reportPayload, '%PDF')
+                ? 'application/pdf'
+                : (is_string($reportPayload) && ! $this->isJson($reportPayload)
+                    ? 'application/octet-stream'
+                    : 'application/json'),
             sourceVersion: $parsed->parserVersion,
             normalized: $normalized,
             findings: $parsed->findings,
@@ -309,6 +330,7 @@ final class SitfisFlowService
         array $businessData,
         string $dadosMode,
         string $correlation,
+        string $idempotencySuffix = '',
     ): IntegraResponse {
         $cfg = $this->config();
         // Domínio/catálogo financeiro: INTEGRA_SITFIS + códigos de domínio
@@ -349,7 +371,11 @@ final class SitfisFlowService
 
         $this->eligibility->touchRateLimit((int) $request->office->id);
 
-        $idempotencyKey = $request->run->idempotency_key.':'.$operationKey.':'.($request->progressCursor ?? '0');
+        $cursor = $request->progressCursor ?? '0';
+        if ($idempotencySuffix !== '') {
+            $cursor .= ':'.$idempotencySuffix;
+        }
+        $idempotencyKey = $request->run->idempotency_key.':'.$operationKey.':'.$cursor;
         $payload = $dadosMode === 'EMPTY'
             ? ['dados' => '']
             : ['dados' => json_encode($businessData, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)];
@@ -440,17 +466,71 @@ final class SitfisFlowService
         );
     }
 
+    private function extractProtocolFromResponse(IntegraResponse $response): ?string
+    {
+        // Preferir dados parseados do envelope Integra (campo oficial pós-pedidoDados).
+        $dadosNormalized = $this->normalizeDadosPayload($response->dados);
+        if ($dadosNormalized !== null) {
+            $fromDados = $this->extractProtocol($dadosNormalized);
+            if ($fromDados !== null && $fromDados !== '') {
+                return $fromDados;
+            }
+        }
+
+        return $this->extractProtocol($response->body);
+    }
+
     /**
+     * Normaliza `dados` do envelope (objeto, JSON string ou lista com 1 item).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function normalizeDadosPayload(mixed $dados): ?array
+    {
+        if (is_string($dados) && $dados !== '') {
+            $decoded = json_decode($dados, true);
+            $dados = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($dados) || $dados === []) {
+            return null;
+        }
+        // Oficial às vezes devolve lista: [{"pdf":"..."}] ou [{"protocoloRelatorio":"..."}]
+        if (array_is_list($dados)) {
+            foreach ($dados as $item) {
+                if (is_array($item) && $item !== []) {
+                    return $item;
+                }
+            }
+
+            return null;
+        }
+
+        return $dados;
+    }
+
+    /**
+     * Extrai protocolo do payload SITFIS (oficial: protocoloRelatorio).
+     *
      * @param  array<string, mixed>  $body
      */
     private function extractProtocol(array $body): ?string
     {
-        foreach (['protocolo', 'protocol', 'numeroProtocolo', 'protocolNumber'] as $key) {
-            if (! empty($body[$key]) && is_scalar($body[$key])) {
-                return (string) $body[$key];
-            }
+        $keys = [
+            'protocoloRelatorio',
+            'protocolo_relatorio',
+            'protocolo',
+            'protocol',
+            'numeroProtocolo',
+            'protocolNumber',
+            'numero_protocolo',
+        ];
+
+        $scalar = $this->firstScalarProtocol($body, $keys);
+        if ($scalar !== null) {
+            return $scalar;
         }
-        foreach (['dados', 'resultado', 'data'] as $wrap) {
+
+        foreach (['dados', 'resultado', 'data', 'pedidoDados'] as $wrap) {
             if (! isset($body[$wrap])) {
                 continue;
             }
@@ -464,14 +544,103 @@ final class SitfisFlowService
             if (! is_array($inner)) {
                 continue;
             }
-            foreach (['protocolo', 'protocol', 'numeroProtocolo'] as $key) {
-                if (! empty($inner[$key]) && is_scalar($inner[$key])) {
-                    return (string) $inner[$key];
+            $found = $this->firstScalarProtocol($inner, $keys);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<string>  $keys
+     */
+    private function firstScalarProtocol(array $payload, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $payload)) {
+                continue;
+            }
+            $value = $payload[$key];
+            if (is_scalar($value) && trim((string) $value) !== '' && ! is_bool($value)) {
+                // Sanitizers de attempt-store não devem vazar como protocolo.
+                if (is_string($value) && str_contains($value, 'omitted_from_attempt_store')) {
+                    continue;
+                }
+
+                return trim((string) $value);
+            }
+            // Alguns contratos aninham { "numero": "..." } ou similar.
+            if (is_array($value)) {
+                foreach (['numero', 'valor', 'id', 'protocolo', 'protocoloRelatorio'] as $nested) {
+                    if (! empty($value[$nested]) && is_scalar($value[$nested])) {
+                        $s = trim((string) $value[$nested]);
+                        if ($s !== '' && ! str_contains($s, 'omitted_from_attempt_store')) {
+                            return $s;
+                        }
+                    }
                 }
             }
         }
 
         return null;
+    }
+
+    private function isEmptyNotModified(IntegraResponse $response): bool
+    {
+        if ($response->httpStatus === 304 || $response->errorCode === 'NOT_MODIFIED') {
+            return true;
+        }
+        if ($response->businessStatus === 'NOT_MODIFIED') {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $cfg
+     */
+    private function resolveMinWaitSeconds(IntegraResponse $response, array $cfg): int
+    {
+        $fallback = max(1, (int) ($cfg['min_wait_seconds'] ?? 30));
+        $fromResponse = $response->waitSeconds();
+
+        // Oficial SITFIS frequentemente envia tempoEspera em milissegundos (ex.: 4000).
+        $rawTempo = null;
+        if (is_array($response->dados) && isset($response->dados['tempoEspera']) && is_numeric($response->dados['tempoEspera'])) {
+            $rawTempo = (int) $response->dados['tempoEspera'];
+        } elseif (isset($response->body['tempoEspera']) && is_numeric($response->body['tempoEspera'])) {
+            $rawTempo = (int) $response->body['tempoEspera'];
+        } elseif (isset($response->body['dados']) && is_array($response->body['dados'])
+            && isset($response->body['dados']['tempoEspera']) && is_numeric($response->body['dados']['tempoEspera'])) {
+            $rawTempo = (int) $response->body['dados']['tempoEspera'];
+        }
+
+        if ($rawTempo !== null && $rawTempo > 0) {
+            // Heurística: valores grandes sem sufixo EmMs são milissegundos.
+            if ($rawTempo > 180) {
+                return max(1, (int) ceil($rawTempo / 1000));
+            }
+
+            return max(1, $rawTempo);
+        }
+
+        return max(1, $fromResponse ?? $fallback);
+    }
+
+    private function responseSaysProcessing(IntegraResponse $response): bool
+    {
+        if ($response->isStillProcessing()) {
+            return true;
+        }
+        if (is_array($response->dados) && $this->bodySaysProcessing($response->dados)) {
+            return true;
+        }
+
+        return $this->bodySaysProcessing($response->body);
     }
 
     /**
@@ -509,19 +678,61 @@ final class SitfisFlowService
     }
 
     /**
+     * @return array<string, mixed>|string|null
+     */
+    private function extractReportPayloadFromResponse(IntegraResponse $response): array|string|null
+    {
+        $dadosNormalized = $this->normalizeDadosPayload($response->dados);
+        if ($dadosNormalized !== null && ! $this->bodySaysProcessing($dadosNormalized)) {
+            $fromDados = $this->extractReportPayload($dadosNormalized);
+            if ($fromDados !== null) {
+                return $fromDados;
+            }
+            // dados é o relatório em si (pendências / layout)
+            if (isset($dadosNormalized['pendencias']) || isset($dadosNormalized['itens'])
+                || isset($dadosNormalized['layoutVersion']) || isset($dadosNormalized['layout_version'])
+                || isset($dadosNormalized['pdf']) || isset($dadosNormalized['pdfBase64'])) {
+                return $dadosNormalized;
+            }
+        }
+
+        return $this->extractReportPayload($response->body);
+    }
+
+    /**
      * @param  array<string, mixed>  $body
      * @return array<string, mixed>|string|null
      */
     private function extractReportPayload(array $body): array|string|null
     {
-        // Relatório embutido
-        foreach (['relatorio', 'report', 'conteudo', 'pdfBase64', 'arquivo'] as $key) {
+        // Lista oficial: [{"pdf":"..."}]
+        if (array_is_list($body)) {
+            foreach ($body as $item) {
+                if (is_array($item) && $item !== []) {
+                    $nested = $this->extractReportPayload($item);
+                    if ($nested !== null) {
+                        return $nested;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        // Oficial RELATORIOSITFIS92: campo pdf (base64) em status 200.
+        foreach (['pdf', 'relatorio', 'report', 'conteudo', 'pdfBase64', 'arquivo', 'relatorioPdf', 'relatorioBase64'] as $key) {
             if (! array_key_exists($key, $body)) {
                 continue;
             }
             $v = $body[$key];
             if (is_string($v) && $v !== '') {
-                // tenta JSON
+                // PDF base64 ou JSON de relatório
+                if ($key === 'pdf' || $key === 'pdfBase64' || $key === 'relatorioPdf' || $key === 'relatorioBase64') {
+                    $binary = $this->tryDecodeBase64Pdf($v);
+                    if ($binary !== null) {
+                        return $binary;
+                    }
+                }
                 $decoded = json_decode($v, true);
                 if (is_array($decoded)) {
                     return $decoded;
@@ -545,6 +756,10 @@ final class SitfisFlowService
                     if ($this->bodySaysProcessing($decoded)) {
                         return null;
                     }
+                    $fromInner = $this->extractReportPayload($decoded);
+                    if ($fromInner !== null) {
+                        return $fromInner;
+                    }
 
                     return $decoded;
                 }
@@ -555,8 +770,17 @@ final class SitfisFlowService
                 if ($this->bodySaysProcessing($inner)) {
                     return null;
                 }
+                $fromInner = $this->extractReportPayload($inner);
+                if ($fromInner !== null) {
+                    return $fromInner;
+                }
                 // Se for só status, não é relatório
                 if (count($inner) === 1 && isset($inner['status'])) {
+                    return null;
+                }
+                // Protocol-only payload (fase solicit) não é relatório
+                if ($this->extractProtocol($inner) !== null && count($inner) <= 3
+                    && ! isset($inner['pendencias']) && ! isset($inner['relatorio']) && ! isset($inner['pdf'])) {
                     return null;
                 }
 
@@ -571,6 +795,28 @@ final class SitfisFlowService
         }
 
         return null;
+    }
+
+    private function tryDecodeBase64Pdf(string $value): ?string
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return null;
+        }
+        // Já é binário PDF
+        if (str_starts_with($trimmed, '%PDF')) {
+            return $trimmed;
+        }
+        $decoded = base64_decode($trimmed, true);
+        if ($decoded === false || $decoded === '') {
+            return null;
+        }
+        if (str_starts_with($decoded, '%PDF')) {
+            return $decoded;
+        }
+
+        // Base64 válido mas não PDF — devolve bytes para evidência (parser marca layout desconhecido).
+        return $decoded;
     }
 
     private function isJson(string $value): bool

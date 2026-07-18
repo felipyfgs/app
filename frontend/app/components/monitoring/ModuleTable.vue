@@ -52,6 +52,11 @@ const props = withDefaults(defineProps<{
   /** Tabela densa: scroll horizontal sem comprimir as colunas. */
   horizontalScroll?: boolean
   tableClass?: string
+  /**
+   * Cards no mobile (&lt; md). Default true no DataTable.
+   * Passe false para manter tabela + scroll no phone.
+   */
+  mobileCards?: boolean
   totalClients?: number
   counters?: FiscalModuleCounters | null
   lastGoodAt?: string | null
@@ -94,6 +99,7 @@ const props = withDefaults(defineProps<{
   customBulkActions: false,
   horizontalScroll: false,
   tableClass: undefined,
+  mobileCards: true,
   counters: null,
   lastGoodAt: null,
   dataOrigin: null,
@@ -174,6 +180,13 @@ const surfaceUnavailableTitle = computed(() => {
   }
   return 'Operação ainda não produtiva no catálogo SERPRO'
 })
+const currentPageClientIds = computed(() => {
+  if (!props.getClientId) return []
+  return [...new Set(props.rows
+    .map(row => props.getClientId?.(row))
+    .filter((id): id is number => Number.isInteger(id) && Number(id) > 0)
+    .map(Number))]
+})
 
 function onSelectionChange(payload: { rows: T[], clientIds: number[], count: number }) {
   const same = payload.count === selectedCount.value
@@ -214,6 +227,20 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
+
+        <template
+          v-if="moduleKey && getClientId && !surfaceIsUnavailable"
+          #right
+        >
+          <MonitoringPendingSearchButton
+            :module-key="moduleKey"
+            :submodule="submodule"
+            :competence="filters.competence"
+            :current-page-client-ids="currentPageClientIds"
+            :selected-client-ids="selectedClientIds"
+            @submitted="emit('refresh')"
+          />
+        </template>
       </UDashboardNavbar>
 
       <UDashboardToolbar
@@ -230,209 +257,223 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
     </template>
 
     <template #body>
+      <!--
+        Stack vertical fluido (lista customers): gap menor no phone, min-w-0
+        para o scroll horizontal da grade não estourar o painel.
+      -->
       <div
-        v-if="$slots.submodules"
-        class="w-full min-w-0"
-        data-testid="fiscal-submodules"
+        class="flex min-w-0 flex-col gap-3 sm:gap-4"
+        data-testid="fiscal-module-body"
       >
-        <slot name="submodules" />
-      </div>
+        <div
+          v-if="$slots.submodules"
+          class="w-full min-w-0 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]"
+          data-testid="fiscal-submodules"
+        >
+          <slot name="submodules" />
+        </div>
 
-      <!-- Superfície UNAVAILABLE (ex. DASN-SIMEI) — antes dos KPIs; sem dados sintéticos. -->
-      <UAlert
-        v-if="surfaceIsUnavailable"
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-circle-off"
-        :title="surfaceUnavailableTitle"
-        data-testid="fiscal-surface-unavailable-alert"
-      />
-
-      <!-- Proveniência / frescor fiscal — antes dos KPIs; sintético persiste em filtro/paginação. -->
-      <div
-        v-if="counters != null || dataOrigin != null || dataOriginLabel"
-        data-testid="fiscal-provenance"
-        class="flex flex-col gap-2"
-      >
+        <!-- Superfície UNAVAILABLE (ex. DASN-SIMEI) — antes dos KPIs; sem dados sintéticos. -->
         <UAlert
-          v-if="isSyntheticOrigin"
+          v-if="surfaceIsUnavailable"
           color="warning"
           variant="subtle"
-          icon="i-lucide-flask-conical"
-          :title="`Dados demonstrativos — sem validade fiscal (${originLabel})`"
-          data-testid="fiscal-synthetic-alert"
+          icon="i-lucide-circle-off"
+          :title="surfaceUnavailableTitle"
+          data-testid="fiscal-surface-unavailable-alert"
         />
+
+        <!-- Proveniência / frescor fiscal — antes dos KPIs; sintético persiste em filtro/paginação. -->
         <div
-          v-else
-          class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted"
-          data-testid="fiscal-live-meta"
+          v-if="counters != null || dataOrigin != null || dataOriginLabel"
+          data-testid="fiscal-provenance"
+          class="flex min-w-0 flex-col gap-2"
         >
-          <span
-            class="inline-flex items-center gap-1"
-            data-testid="fiscal-origin-label"
+          <UAlert
+            v-if="isSyntheticOrigin"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-flask-conical"
+            :title="`Dados demonstrativos — sem validade fiscal (${originLabel})`"
+            data-testid="fiscal-synthetic-alert"
+          />
+          <div
+            v-else
+            class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted sm:gap-x-3 sm:text-xs"
+            data-testid="fiscal-live-meta"
           >
-            <UIcon
-              :name="originMeta.icon"
-              class="size-3.5 shrink-0"
+            <span
+              class="inline-flex items-center gap-1"
+              data-testid="fiscal-origin-label"
+            >
+              <UIcon
+                :name="originMeta.icon"
+                class="size-3.5 shrink-0"
+              />
+              {{ originLabel }}
+            </span>
+            <span
+              v-if="provenanceSource"
+              class="max-sm:truncate"
+              data-testid="fiscal-source-label"
+            >
+              Fonte: {{ provenanceSource }}
+            </span>
+            <span data-testid="fiscal-as-of">
+              {{ props.asOf ? `Observado: ${asOfFormatted}` : asOfDisplay }}
+            </span>
+          </div>
+        </div>
+
+        <div
+          v-if="showKpis || $slots.kpis"
+          class="min-w-0"
+          data-testid="fiscal-kpi-block"
+        >
+          <slot name="kpis">
+            <MonitoringKpiStrip
+              :total="totalClients ?? total"
+              :total-clients="totalClients ?? total"
+              :counters="counters"
+              :loading="loading || refreshing"
+              :active-key="activeKpi"
+              :active-situation="filters.situation"
+              @select="onKpiSelect"
             />
-            {{ originLabel }}
-          </span>
+          </slot>
+        </div>
+
+        <p
+          v-if="description"
+          class="text-sm text-muted"
+        >
+          {{ description }}
+        </p>
+
+        <div
+          v-if="$slots.utilities"
+          class="flex min-w-0 flex-wrap items-center gap-2"
+          data-testid="fiscal-utilities"
+        >
+          <slot name="utilities" />
           <span
-            v-if="provenanceSource"
-            data-testid="fiscal-source-label"
+            v-if="lastGoodAt && (error || refreshing)"
+            class="text-xs text-muted"
           >
-            Fonte: {{ provenanceSource }}
-          </span>
-          <span data-testid="fiscal-as-of">
-            {{ props.asOf ? `Observado: ${asOfFormatted}` : asOfDisplay }}
+            Última atualização válida: {{ formatDateTime(lastGoodAt) }}
           </span>
         </div>
-      </div>
 
-      <div
-        v-if="showKpis || $slots.kpis"
-        data-testid="fiscal-kpi-block"
-      >
-        <slot name="kpis">
-          <MonitoringKpiStrip
-            :total="totalClients ?? total"
-            :total-clients="totalClients ?? total"
-            :counters="counters"
-            :loading="loading || refreshing"
-            :active-key="activeKpi"
-            :active-situation="filters.situation"
-            @select="onKpiSelect"
-          />
-        </slot>
-      </div>
-
-      <p
-        v-if="description"
-        class="text-sm text-muted"
-      >
-        {{ description }}
-      </p>
-
-      <div
-        v-if="$slots.utilities"
-        class="flex flex-wrap items-center gap-2"
-        data-testid="fiscal-utilities"
-      >
-        <slot name="utilities" />
-        <span
-          v-if="lastGoodAt && (error || refreshing)"
-          class="text-xs text-muted"
+        <UAlert
+          v-if="error"
+          color="error"
+          icon="i-lucide-circle-x"
+          :title="error"
+          data-testid="fiscal-error-alert"
         >
-          Última atualização válida: {{ formatDateTime(lastGoodAt) }}
-        </span>
-      </div>
-
-      <UAlert
-        v-if="error"
-        color="error"
-        icon="i-lucide-circle-x"
-        :title="error"
-        data-testid="fiscal-error-alert"
-      >
-        <template #actions>
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="outline"
-            label="Tentar de novo"
-            @click="emit('refresh')"
-          />
-        </template>
-      </UAlert>
-
-      <!-- customers.vue: toolbar colada à tabela (stack). -->
-      <div
-        class="flex flex-col gap-1.5"
-        data-testid="fiscal-table-stack"
-      >
-        <MonitoringModuleDataTable
-          ref="dataTable"
-          :columns="columns"
-          :rows="rows"
-          :loading="loading || refreshing"
-          :error="error"
-          :page="page"
-          :last-page="lastPage"
-          :total="total"
-          :per-page="perPage"
-          :sorting="sorting"
-          :filters="filters"
-          :selection-scope="selectionScope"
-          :selection-enabled="resolvedSelectionEnabled"
-          :horizontal-scroll="horizontalScroll"
-          :table-class="tableClass"
-          :get-row-id="getRowId"
-          :get-client-id="getClientId"
-          :column-labels="columnLabels"
-          :initial-hidden-columns="initialHiddenColumns"
-          :show-column-visibility="showColumnVisibility"
-          :empty-title="emptyTitle"
-          :empty-description="emptyDescription"
-          :empty-kind="emptyKind"
-          @update:page="emit('update:page', $event)"
-          @update:sorting="emit('update:sorting', $event)"
-          @selection-change="onSelectionChange"
-          @refresh="emit('refresh')"
-        >
-          <template #toolbar="{ displayColumnItems, showColumnVisibility: canDisplayColumns }">
-            <MonitoringModuleToolbar
-              :filters="filters"
-              :filter-config="filterConfig"
-              :loading="loading || refreshing"
-              :show-total="false"
-              :reset-key="sessionEpoch"
-              :surface="resolvedSurface"
-              @quick-filter-change="emit('quick-filter-change', $event)"
-              @apply-filters="emit('apply-filters', $event)"
-              @reset-filters="emit('reset-filters', $event)"
-              @refresh="emit('refresh')"
-            >
-              <template #actions>
-                <slot
-                  v-if="customBulkActions"
-                  name="bulk-actions"
-                  :selected-client-ids="selectedClientIds"
-                  :selected-count="selectedCount"
-                  :clear-selection="clearSelection"
-                />
-                <MonitoringModuleBulkActions
-                  v-else-if="moduleKey"
-                  :module-key="moduleKey"
-                  :selected-client-ids="selectedClientIds"
-                  :selected-count="selectedCount"
-                  :filters="filters"
-                  :submodule="submodule"
-                  @availability-change="bulkAvailable = $event"
-                  @clear="clearSelection"
-                  @refresh="emit('refresh')"
-                />
-              </template>
-              <template #trailing>
-                <UDropdownMenu
-                  v-if="canDisplayColumns"
-                  :items="displayColumnItems"
-                  :content="{ align: 'end' }"
-                >
-                  <UButton
-                    label="Exibir"
-                    color="neutral"
-                    variant="outline"
-                    trailing-icon="i-lucide-settings-2"
-                    data-testid="fiscal-column-visibility"
-                  />
-                </UDropdownMenu>
-              </template>
-            </MonitoringModuleToolbar>
+          <template #actions>
+            <UButton
+              size="xs"
+              color="neutral"
+              variant="outline"
+              label="Tentar de novo"
+              @click="emit('refresh')"
+            />
           </template>
-        </MonitoringModuleDataTable>
-      </div>
+        </UAlert>
 
-      <slot name="detail" />
+        <!-- customers.vue: toolbar colada à tabela (stack). -->
+        <div
+          class="flex min-w-0 flex-col gap-1.5"
+          data-testid="fiscal-table-stack"
+        >
+          <MonitoringModuleDataTable
+            ref="dataTable"
+            :columns="columns"
+            :rows="rows"
+            :loading="loading || refreshing"
+            :error="error"
+            :page="page"
+            :last-page="lastPage"
+            :total="total"
+            :per-page="perPage"
+            :sorting="sorting"
+            :filters="filters"
+            :selection-scope="selectionScope"
+            :selection-enabled="resolvedSelectionEnabled"
+            :horizontal-scroll="horizontalScroll"
+            :table-class="tableClass"
+            :mobile-cards="mobileCards"
+            :get-row-id="getRowId"
+            :get-client-id="getClientId"
+            :column-labels="columnLabels"
+            :initial-hidden-columns="initialHiddenColumns"
+            :show-column-visibility="showColumnVisibility"
+            :empty-title="emptyTitle"
+            :empty-description="emptyDescription"
+            :empty-kind="emptyKind"
+            @update:page="emit('update:page', $event)"
+            @update:sorting="emit('update:sorting', $event)"
+            @selection-change="onSelectionChange"
+            @refresh="emit('refresh')"
+          >
+            <template #toolbar="{ displayColumnItems, showColumnVisibility: canDisplayColumns }">
+              <MonitoringModuleToolbar
+                :filters="filters"
+                :filter-config="filterConfig"
+                :loading="loading || refreshing"
+                :show-total="false"
+                :reset-key="sessionEpoch"
+                :surface="resolvedSurface"
+                @quick-filter-change="emit('quick-filter-change', $event)"
+                @apply-filters="emit('apply-filters', $event)"
+                @reset-filters="emit('reset-filters', $event)"
+                @refresh="emit('refresh')"
+              >
+                <template #actions>
+                  <slot
+                    v-if="customBulkActions"
+                    name="bulk-actions"
+                    :selected-client-ids="selectedClientIds"
+                    :selected-count="selectedCount"
+                    :clear-selection="clearSelection"
+                  />
+                  <MonitoringModuleBulkActions
+                    v-else-if="moduleKey"
+                    :module-key="moduleKey"
+                    :selected-client-ids="selectedClientIds"
+                    :selected-count="selectedCount"
+                    :filters="filters"
+                    :submodule="submodule"
+                    @availability-change="bulkAvailable = $event"
+                    @clear="clearSelection"
+                    @refresh="emit('refresh')"
+                  />
+                </template>
+                <template #trailing>
+                  <UDropdownMenu
+                    v-if="canDisplayColumns"
+                    :items="displayColumnItems"
+                    :content="{ align: 'end' }"
+                  >
+                    <UButton
+                      label="Exibir"
+                      color="neutral"
+                      variant="outline"
+                      trailing-icon="i-lucide-settings-2"
+                      aria-label="Exibir colunas"
+                      :ui="{ label: 'hidden sm:inline' }"
+                      data-testid="fiscal-column-visibility"
+                    />
+                  </UDropdownMenu>
+                </template>
+              </MonitoringModuleToolbar>
+            </template>
+          </MonitoringModuleDataTable>
+        </div>
+
+        <slot name="detail" />
+      </div>
     </template>
   </UDashboardPanel>
 </template>

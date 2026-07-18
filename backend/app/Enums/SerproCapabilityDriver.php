@@ -8,6 +8,5 @@ namespace App\Enums;
 enum SerproCapabilityDriver: string
 {
     case Disabled = 'disabled';
-    case Simulated = 'simulated';
     case Real = 'real';
 }

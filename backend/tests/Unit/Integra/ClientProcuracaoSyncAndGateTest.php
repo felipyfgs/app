@@ -17,6 +17,7 @@ use App\Models\TaxProxyPower;
 use App\Services\Integra\ClientProcuracaoSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
+use Tests\Support\SerproTestDoubleServiceProvider;
 use Tests\TestCase;
 
 class ClientProcuracaoSyncAndGateTest extends TestCase
@@ -92,7 +93,7 @@ class ClientProcuracaoSyncAndGateTest extends TestCase
 
     public function test_official_sync_projects_four_statuses(): void
     {
-        config(['serpro.trial.use_fake_clients' => true]);
+        $this->app->register(SerproTestDoubleServiceProvider::class);
 
         $office = Office::factory()->create();
         $client = Client::factory()->create(['office_id' => $office->id, 'root_cnpj' => '11222333']);
@@ -113,7 +114,7 @@ class ClientProcuracaoSyncAndGateTest extends TestCase
 
         $service = app(ClientProcuracaoSyncService::class);
 
-        // Fake client → simulated powers → Unverified (não Authorized)
+        // Double offline explícito → poderes simulados → nunca evidência produtiva.
         $result = $service->syncOfficial($office, $client, SerproEnvironment::Trial);
         $this->assertContains(
             $result['snapshot']->status,

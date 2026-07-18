@@ -29,6 +29,7 @@ use App\Models\TaxInstallmentParcel;
 use App\Models\TaxObligationProjection;
 use App\Services\Fiscal\Demo\DemoEnvironmentGuard;
 use App\Services\Fiscal\Demo\FiscalDataOriginResolver;
+use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\FiscalMonitoringDemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -97,6 +98,22 @@ class FiscalMonitoringDemoSeederTest extends TestCase
             ->where('office_id', $this->demo->id)->count());
         $this->assertGreaterThan(0, FiscalFinding::query()->withoutGlobalScopes()
             ->where('office_id', $this->demo->id)->count());
+    }
+
+    public function test_database_seeder_cria_o_tenant_fiscal_configurado_antes_das_fixtures(): void
+    {
+        config(['fiscal_demo.office_slug' => 'demo-fixtures']);
+
+        $this->seed(DatabaseSeeder::class);
+
+        $office = Office::query()->where('slug', 'demo-fixtures')->firstOrFail();
+        $marker = app(DemoEnvironmentGuard::class)->fixtureMarker();
+
+        $this->assertTrue($office->is_active);
+        $this->assertTrue(Client::query()->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->where('notes', 'like', '%'.$marker.'%')
+            ->exists());
     }
 
     public function test_idempotencia_mesma_versao(): void

@@ -42,6 +42,9 @@ use Throwable;
  */
 final class SerproOperationService implements SerproOperationExecutor
 {
+    /** Limite da chave única no ledger técnico de uso SERPRO. */
+    private const LEDGER_IDEMPOTENCY_MAX_LENGTH = 120;
+
     public function __construct(
         private readonly OperationCoordinateResolver $coordinates,
         private readonly SerproContractService $contracts,
@@ -145,6 +148,11 @@ final class SerproOperationService implements SerproOperationExecutor
 
         // 6. Feature flags / allowlist — somente egress real (fail-closed)
         $module = $command->module ?? $this->moduleForOperation($operationKey, $coords);
+        // "authorization" é uma classificação de catálogo para fluxos técnicos
+        // (procuração/eventos), não um módulo registrado em FeatureFlags.
+        if ($module === 'authorization') {
+            $module = null;
+        }
         if ($module !== null && $driver->value === 'real') {
             try {
                 if (! FeatureFlags::isModuleEnabled($module, (int) $office->id)) {
@@ -413,15 +421,13 @@ final class SerproOperationService implements SerproOperationExecutor
             correlationId: $correlationId,
             requestTag: $requestTag,
             isMutating: $isMutating,
-            // Coordenadas oficiais (legado no DTO) — Fake/adapters de teste casam solution/service/op.
+            // Coordenadas oficiais preservadas no DTO para o transporte e testes de contrato.
             solutionCode: $idSistema !== '' ? $idSistema : null,
             serviceCode: isset($coords['id_servico']) ? (string) $coords['id_servico'] : null,
             operationCode: isset($coords['id_servico'])
                 ? (string) ($coords['operation_code'] ?? $coords['id_servico'] ?? '')
                 : null,
         );
-
-        $isSimulated = $driver->value === 'simulated';
 
         $reservation = $this->ledger->reserve(new UsageReserveRequest(
             officeId: (int) $office->id,
@@ -433,7 +439,7 @@ final class SerproOperationService implements SerproOperationExecutor
             contributorRef: substr(hash('sha256', $contributor), 0, 16),
             correlationId: $correlationId,
             operationKey: $operationKey,
-            isSimulated: $isSimulated,
+            isSimulated: false,
             functionalRoute: $route instanceof SerproFunctionalRoute
                 ? $route->value
                 : (string) $route,
@@ -673,8 +679,9 @@ final class SerproOperationService implements SerproOperationExecutor
             $logicalKey,
         ]);
 
-        // Cabe em 190 chars (unique column); hash se longo.
-        if (strlen($raw) <= 190) {
+        // O attempt aceita 190, mas o ledger técnico usa varchar(120).
+        // A mesma chave precisa servir aos dois para preservar o replay idempotente.
+        if (strlen($raw) <= self::LEDGER_IDEMPOTENCY_MAX_LENGTH) {
             return $raw;
         }
 
@@ -694,21 +701,48 @@ final class SerproOperationService implements SerproOperationExecutor
     private function moduleForOperation(string $operationKey, array $coords): ?string
     {
         $fromMeta = $coords['monitoring_module'] ?? null;
-        if (is_string($fromMeta) && $fromMeta !== '') {
-            return $fromMeta;
+        if (is_string($fromMeta) && $fromMeta !== '' && $fromMeta !== 'authorization') {
+            return $this->normalizeFeatureModule($fromMeta);
         }
 
         $capability = $this->drivers->capabilityForOperationKey($operationKey);
 
-        return match ($capability) {
+        return $this->normalizeFeatureModule(match ($capability) {
             'sitfis' => 'sitfis',
             'mailbox' => 'mailbox',
             'dctfweb' => 'dctfweb_mit',
             'simples_mei' => 'simples_mei',
             'installments' => 'parcelamentos',
             'guides' => 'guias',
-            'registrations', 'tax_processes' => null, // sem módulo FeatureFlags dedicado
+            // Consulta de procuração / redesim / e-processo: sem módulo FeatureFlags dedicado
+            // (null = não aplicar gate de módulo; capability/auth ainda valem).
+            'registrations', 'tax_processes', 'authorization' => null,
             default => null,
+        });
+    }
+
+    /**
+     * Catálogo usa aliases (dctfweb, installments, guides…) — FeatureFlags usa chaves estáveis.
+     */
+    private function normalizeFeatureModule(?string $module): ?string
+    {
+        if ($module === null || $module === '' || $module === 'authorization' || $module === 'inventory') {
+            return null;
+        }
+
+        return match ($module) {
+            'dctfweb', 'dctfweb_mit', 'mit' => 'dctfweb_mit',
+            'installments', 'parcelamentos', 'parcelamento' => 'parcelamentos',
+            'guides', 'guias', 'sicalc', 'pagtoweb' => 'guias',
+            'simples_mei', 'pgdasd', 'pgmei', 'defis', 'regimeapuracao', 'ccmei' => 'simples_mei',
+            'sitfis' => 'sitfis',
+            'mailbox', 'caixa_postal', 'dte' => 'mailbox',
+            'declaracoes' => 'declaracoes',
+            'fgts' => 'fgts',
+            'mutacoes' => 'mutacoes',
+            // Sem chave em FeatureFlags: não aplicar isModuleEnabled (evita InvalidArgumentException).
+            'tax_processes', 'registrations', 'eprocesso', 'pnr_contador' => null,
+            default => in_array($module, FeatureFlags::MODULES, true) ? $module : null,
         };
     }
 

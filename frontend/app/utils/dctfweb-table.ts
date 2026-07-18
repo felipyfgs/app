@@ -1,4 +1,19 @@
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+import { h } from 'vue'
+/**
+ * Imports estáticos — NÃO usar resolveComponent aqui.
+ * Builders em computed durante o render da UTable perdem o instance da página
+ * e as células ficam vazias. @see table-sort.ts / pgdasd-table.ts
+ */
+import {
+  FiscalClientCell,
+  FiscalStatusBadge,
+  UBadge,
+  UButton,
+  UDropdownMenu,
+  USwitch,
+  UTooltip
+} from '#components'
 import type {
   DctfwebClientRow,
   PgdasdCommunicationPreference
@@ -29,13 +44,6 @@ export function buildDctfwebColumns(options: {
     preference: PgdasdCommunicationPreference
   ) => void
 }): TableColumn<DctfwebClientRow>[] {
-  const UBadge = resolveComponent('UBadge')
-  const UButton = resolveComponent('UButton')
-  const UDropdownMenu = resolveComponent('UDropdownMenu')
-  const USwitch = resolveComponent('USwitch')
-  const UTooltip = resolveComponent('UTooltip')
-  const FiscalClientCell = resolveComponent('FiscalClientCell')
-
   function iconAction(args: {
     label: string
     icon: string
@@ -82,10 +90,7 @@ export function buildDctfwebColumns(options: {
       })
     }
     // Sem mutações fiscais (transmitir / DARF / encerrar).
-    return [items.map(item => ({
-      ...item,
-      // manter aria implícito pelo label
-    })), [{
+    return [items, [{
       label: `Documentos locais de ${name}`,
       icon: 'i-lucide-file-text',
       disabled: !summary?.has_history,
@@ -193,9 +198,9 @@ export function buildDctfwebColumns(options: {
               ? 'Desativar envio automático'
               : 'Ativar envio automático',
             'data-testid': 'dctfweb-send-switch',
-            'onUpdate:modelValue': (value: boolean) => {
+            'onUpdate:modelValue': (value: unknown) => {
               if (!options.canManage) return
-              if (value && !preference) {
+              if (value === true && !preference) {
                 options.onConfigure(row.original)
                 return
               }
@@ -290,10 +295,8 @@ export function buildDctfwebColumns(options: {
  */
 export function buildMitColumns(options: {
   onOpenClient: (row: DctfwebClientRow) => void
+  onListApuracoes: (row: DctfwebClientRow) => void
 }): TableColumn<DctfwebClientRow>[] {
-  const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
-  const FiscalClientCell = resolveComponent('FiscalClientCell')
-
   return [
     {
       id: 'client',
@@ -330,6 +333,22 @@ export function buildMitColumns(options: {
         if (!status) return '—'
         return h(FiscalStatusBadge, { status, showHint: true })
       }
+    },
+    {
+      id: 'lista_apuracoes_317',
+      header: 'Apurações 317',
+      enableSorting: false,
+      meta: { class: { th: 'min-w-36', td: 'min-w-36' } },
+      cell: ({ row }) => h(UButton, {
+        'label': 'Ver locais',
+        'icon': 'i-lucide-list-filter',
+        'size': 'xs',
+        'color': 'neutral',
+        'variant': 'outline',
+        'aria-label': 'Ver apurações MIT 317 locais',
+        'data-testid': 'mit-lista-apuracoes-317',
+        'onClick': () => options.onListApuracoes(row.original)
+      })
     }
   ]
 }

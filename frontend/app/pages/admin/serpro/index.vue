@@ -64,7 +64,7 @@ const ownerConfirmOpen = ref(false)
 const killStateKnown = computed(() => typeof kill.value?.global?.active === 'boolean')
 
 const envItems = [
-  { label: 'Trial', value: 'TRIAL' },
+  { label: 'Demonstração SERPRO', value: 'TRIAL' },
   { label: 'Produção', value: 'PRODUCTION' }
 ]
 
@@ -81,14 +81,6 @@ function deriveReadiness(h: SerproGlobalHealth | null): SerproReadinessSnapshot 
     message: ksActive
       ? `Kill switch ativo (${h.kill_switch?.global?.source || 'runtime'})`
       : 'Kill switch desligado'
-  })
-  gates.push({
-    code: 'FAKE_CLIENTS',
-    scope: 'global',
-    status: h.fake_clients ? 'WARN' : 'PASS',
-    message: h.fake_clients
-      ? 'SERPRO_USE_FAKE_CLIENTS ainda habilitado — bloqueia produção'
-      : 'Clientes fake desligados'
   })
   gates.push({
     code: 'ACTIVE_CONTRACT',
@@ -283,7 +275,6 @@ function readinessLabel(status?: string): string {
 function gateLabel(code: string): string {
   return {
     KILL_SWITCH: 'Kill switch',
-    FAKE_CLIENTS: 'Clientes de teste',
     ACTIVE_CONTRACT: 'Contrato ativo',
     CREDENTIALS_EXPOSED: 'Proteção das credenciais',
     CIRCUIT_BREAKER: 'Circuit breaker',
@@ -416,10 +407,6 @@ onMounted(() => {
               </h2>
             </div>
             <div class="flex flex-wrap items-center justify-end gap-2">
-              <SerproProvenanceBadge
-                v-if="health"
-                :code="health.fake_clients ? 'simulado' : 'real'"
-              />
               <UBadge
                 :color="gateColor(readiness?.overall === 'READY' ? 'PASS' : readiness?.overall === 'BLOCKED' ? 'FAIL' : 'WARN')"
                 variant="subtle"
@@ -659,6 +646,14 @@ onMounted(() => {
           </div>
         </UPageCard>
       </div>
+
+      <UAlert
+        v-if="environment === 'TRIAL'"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-flask-conical"
+        title="Demonstração SERPRO — resultados e checks não constituem evidência fiscal nem confirmação de operação real na SERPRO."
+      />
     </div>
 
     <UsageView v-else-if="activeSection === 'usage'" />

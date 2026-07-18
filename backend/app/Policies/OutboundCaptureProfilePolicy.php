@@ -2,59 +2,48 @@
 
 namespace App\Policies;
 
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Models\OutboundCaptureProfile;
 use App\Models\User;
-use App\Support\CurrentOffice;
+use App\Policies\Concerns\AuthorizesTenantPermission;
 
 class OutboundCaptureProfilePolicy
 {
+    use AuthorizesTenantPermission;
+
     public function viewAny(User $user): bool
     {
-        return $this->role() !== null;
+        return $this->allows($user, TenantPermission::FiscalDocumentsView);
     }
 
     public function view(User $user, OutboundCaptureProfile $profile): bool
     {
-        return $this->sameOffice($user, $profile->office_id);
+        return $this->allows($user, TenantPermission::FiscalDocumentsView, $profile);
     }
 
     public function create(User $user): bool
     {
-        return in_array($this->role(), [OfficeRole::Admin, OfficeRole::Operator], true);
+        return $this->allows($user, TenantPermission::ClientsManage);
     }
 
     public function update(User $user, OutboundCaptureProfile $profile): bool
     {
-        return $this->sameOffice($user, $profile->office_id)
-            && in_array($this->role(), [OfficeRole::Admin, OfficeRole::Operator], true);
+        return $this->allows($user, TenantPermission::ClientsManage, $profile);
     }
 
-    /** Ativação, allowlist, mandato, kill switch, CSC — ADMIN. */
+    /** Ativação, allowlist, mandato, kill switch, CSC. */
     public function administer(User $user, OutboundCaptureProfile $profile): bool
     {
-        return $this->sameOffice($user, $profile->office_id)
-            && $this->role() === OfficeRole::Admin;
+        return $this->allows($user, TenantPermission::CredentialsManage, $profile);
     }
 
     public function triggerReadOnly(User $user, OutboundCaptureProfile $profile): bool
     {
-        return $this->sameOffice($user, $profile->office_id)
-            && in_array($this->role(), [OfficeRole::Admin, OfficeRole::Operator], true);
+        return $this->allows($user, TenantPermission::FiscalSyncTrigger, $profile);
     }
 
     public function uploadPackage(User $user, OutboundCaptureProfile $profile): bool
     {
         return $this->triggerReadOnly($user, $profile);
-    }
-
-    private function role(): ?OfficeRole
-    {
-        return app(CurrentOffice::class)->role();
-    }
-
-    private function sameOffice(User $user, int $officeId): bool
-    {
-        return app(CurrentOffice::class)->resolve($user)?->id === $officeId;
     }
 }

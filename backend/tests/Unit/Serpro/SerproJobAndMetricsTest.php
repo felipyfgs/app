@@ -21,7 +21,7 @@ final class SerproJobAndMetricsTest extends TestCase
     {
         Queue::fake();
         config([
-            'serpro.capabilities.registrations' => 'simulated',
+            'serpro.capabilities.registrations' => 'real',
             'serpro.kill_switch' => false,
             'features.kill_switch' => false,
         ]);

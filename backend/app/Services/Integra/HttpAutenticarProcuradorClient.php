@@ -11,6 +11,7 @@ use App\DTO\Serpro\ProcuradorAuthResult;
 use App\Enums\SecureObjectPurpose;
 use App\Enums\SerproEnvironment;
 use App\Enums\TermoAuthorizationState;
+use App\Models\OfficeSerproAuthorization;
 use App\Services\Serpro\SerproContractService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
@@ -88,7 +89,10 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
 
         $headers = [];
         $cachedEtag = null;
-        if (is_array($cachedMeta) && ! empty($cachedMeta['vault_object_id'])) {
+        if (is_array($cachedMeta)
+            && ! empty($cachedMeta['vault_object_id'])
+            && ! empty($cachedMeta['expires_at'])
+            && CarbonImmutable::parse((string) $cachedMeta['expires_at'])->isFuture()) {
             $material = $this->loadVaultMaterial(
                 (string) $cachedMeta['vault_object_id'],
                 $request,
@@ -99,14 +103,16 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
             if (is_string($cachedEtag) && $cachedEtag !== '') {
                 $headers['If-None-Match'] = $cachedEtag;
             }
+        } elseif (is_array($cachedMeta)) {
+            Cache::forget($cacheKey);
+            $cachedMeta = null;
         }
 
         // Envelope oficial: pedidoDados.dados = JSON string {"xml":"<base64>"}.
         $xmlBase64 = base64_encode($request->termoXml);
-        $dadosJson = json_encode(['xml' => $xmlBase64], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
         // Bloquear se alguém injetou xmlAssinado no business path.
-        if (str_contains($dadosJson, 'xmlAssinado')) {
+        if (str_contains($request->termoXml, 'xmlAssinado')) {
             return new ProcuradorAuthResult(
                 success: false,
                 errorCode: 'LEGACY_ENVELOPE_BLOCKED',
@@ -123,44 +129,74 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
             authorIdentity: $request->authorIdentity,
             contributorCnpj: $request->authorIdentity,
             operationKey: 'autentica_procurador.envio_xml_assinado',
-            businessData: [
-                'dados' => $dadosJson,
-            ],
+            // O transporte central serializa businessData uma única vez em
+            // pedidoDados.dados. Um wrapper "dados" aqui duplicaria o JSON.
+            businessData: ['xml' => $xmlBase64],
             headers: $headers,
+            // A renovação não pode reproduzir uma resposta de autenticação
+            // expirada de dias anteriores. A janela curta preserva retry
+            // idempotente, mas permite pedir um novo token após expiração.
+            idempotencyKey: sprintf(
+                'procurador-auth-v3:%s:%d',
+                $termoHash,
+                intdiv(CarbonImmutable::now('America/Sao_Paulo')->getTimestamp(), 300),
+            ),
             correlationId: $request->correlationId,
         );
 
         $response = $this->operations->executeRequest($integraRequest);
 
         if ($response->httpStatus === 304) {
-            if (! is_array($cachedMeta) || empty($cachedMeta['vault_object_id'])) {
-                return new ProcuradorAuthResult(
-                    success: false,
-                    errorCode: 'CACHE_INCONSISTENT',
-                    errorMessage: '304 sem cache íntegro para o contexto/hash do Termo.',
-                    authorizationState: TermoAuthorizationState::Rejected->value,
-                );
-            }
-            if (($cachedMeta['termo_sha256'] ?? null) !== $termoHash
-                || ($cachedMeta['contract_key'] ?? null) !== $contractKey) {
-                Cache::forget($cacheKey);
-
-                return new ProcuradorAuthResult(
-                    success: false,
-                    errorCode: 'CACHE_CONTEXT_MISMATCH',
-                    errorMessage: '304 com contexto de cache divergente (contrato/Termo).',
-                    authorizationState: TermoAuthorizationState::Rejected->value,
-                );
-            }
-            if (empty($cachedMeta['expires_at'])
+            if (! is_array($cachedMeta)
+                || empty($cachedMeta['vault_object_id'])
+                || ($cachedMeta['termo_sha256'] ?? null) !== $termoHash
+                || ($cachedMeta['contract_key'] ?? null) !== $contractKey
+                || empty($cachedMeta['expires_at'])
                 || ! CarbonImmutable::parse((string) $cachedMeta['expires_at'])->isFuture()) {
                 Cache::forget($cacheKey);
 
+                $recoveredToken = $this->recoverTokenFromAuthorization($request, $termoHash);
+                if ($recoveredToken === null) {
+                    return new ProcuradorAuthResult(
+                        success: false,
+                        errorCode: 'CACHE_INCONSISTENT',
+                        errorMessage: '304 sem token íntegro no cofre para o mesmo Termo.',
+                        authorizationState: TermoAuthorizationState::Rejected->value,
+                    );
+                }
+
+                // 304 confirma que o Termo ainda é aceito, mas não traz uma
+                // expiração útil. Aplicar o mesmo fallback diário usado para
+                // uma resposta sem data de expiração; uma janela de um minuto
+                // vence antes de a consulta fiscal subsequente ser iniciada.
+                $expires = $this->parseExpiry((string) ($response->expiresHeader ?? ''));
+                if ($expires === null || ! $expires->isFuture()) {
+                    $expires = CarbonImmutable::now('America/Sao_Paulo')->addDay()->startOfDay()->utc();
+                }
+                $vaultId = $this->storeTokenMaterial(
+                    $request,
+                    $termoHash,
+                    $contractKey,
+                    $recoveredToken,
+                    $response->etag,
+                );
+                Cache::put($cacheKey, [
+                    'vault_object_id' => $vaultId,
+                    'expires_at' => $expires->toIso8601String(),
+                    'simulated' => false,
+                    'state' => TermoAuthorizationState::SerproAccepted->value,
+                    'termo_sha256' => $termoHash,
+                    'contract_key' => $contractKey,
+                    'has_etag' => $response->etag !== null && $response->etag !== '',
+                ], $expires);
+
                 return new ProcuradorAuthResult(
-                    success: false,
-                    errorCode: 'CACHE_EXPIRED',
-                    errorMessage: '304 com cache expirado.',
-                    authorizationState: TermoAuthorizationState::Rejected->value,
+                    success: true,
+                    token: $recoveredToken,
+                    expiresAt: $expires,
+                    simulated: false,
+                    authorizationState: TermoAuthorizationState::SerproAccepted->value,
+                    etag: $response->etag,
                 );
             }
 
@@ -351,6 +387,67 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
         }
     }
 
+    private function recoverTokenFromAuthorization(ProcuradorAuthRequest $request, string $termoHash): ?string
+    {
+        try {
+            $auth = OfficeSerproAuthorization::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $request->officeId)
+                ->where('environment', strtoupper($request->environment))
+                ->where('author_identity', $request->authorIdentity)
+                ->first();
+
+            if ($auth?->procurador_token_vault_object_id === null
+                || $auth->termo_vault_object_id === null
+                || $auth->termo_sha256 === null) {
+                return null;
+            }
+
+            $termoAad = SecureObjectPurpose::SerproTermoXml->aadBase([
+                'office_id' => $request->officeId,
+                'environment' => $request->environment,
+                'kind' => 'signed',
+                'sha256' => $auth->termo_sha256,
+                'author_identity' => $request->authorIdentity,
+            ]);
+            try {
+                $storedTermo = $this->store->get($auth->termo_vault_object_id, $termoAad);
+            } catch (Throwable) {
+                $storedTermo = $this->store->get(
+                    $auth->termo_vault_object_id,
+                    SecureObjectPurpose::SerproTermoXml->aadBase([
+                        'office_id' => $request->officeId,
+                        'environment' => $request->environment,
+                        'sha256' => $auth->termo_sha256,
+                        'author_identity' => $request->authorIdentity,
+                    ]),
+                );
+            }
+            if (! hash_equals($termoHash, hash('sha256', $storedTermo))) {
+                return null;
+            }
+            unset($storedTermo);
+
+            $aad = SecureObjectPurpose::SerproProcuradorToken->aadBase([
+                'office_id' => $request->officeId,
+                'environment' => $request->environment,
+                'author_identity' => $request->authorIdentity,
+            ]);
+            $data = json_decode(
+                $this->store->get($auth->procurador_token_vault_object_id, $aad),
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            );
+
+            return is_array($data) && is_string($data['token'] ?? null) && $data['token'] !== ''
+                ? $data['token']
+                : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
     private function storeTokenMaterial(
         ProcuradorAuthRequest $request,
         string $termoHash,
@@ -382,17 +479,17 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
     private function resolveExpiry(?string $expiresHeader, array $body, mixed $dados): CarbonImmutable
     {
         if (is_string($expiresHeader) && $expiresHeader !== '') {
-            try {
-                return CarbonImmutable::parse($expiresHeader);
-            } catch (Throwable) {
+            $parsed = $this->parseExpiry($expiresHeader);
+            if ($parsed !== null) {
+                return $parsed;
             }
         }
 
         foreach (['data_hora_expiracao', 'expires_at', 'expiracao'] as $k) {
             if (! empty($body[$k]) && is_scalar($body[$k])) {
-                try {
-                    return CarbonImmutable::parse((string) $body[$k]);
-                } catch (Throwable) {
+                $parsed = $this->parseExpiry((string) $body[$k]);
+                if ($parsed !== null) {
+                    return $parsed;
                 }
             }
         }
@@ -400,9 +497,9 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
         if (is_array($dados)) {
             foreach (['data_hora_expiracao', 'expires_at'] as $k) {
                 if (! empty($dados[$k]) && is_scalar($dados[$k])) {
-                    try {
-                        return CarbonImmutable::parse((string) $dados[$k]);
-                    } catch (Throwable) {
+                    $parsed = $this->parseExpiry((string) $dados[$k]);
+                    if ($parsed !== null) {
+                        return $parsed;
                     }
                 }
             }
@@ -410,15 +507,36 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
         if (is_string($dados) && $dados !== '') {
             $decoded = json_decode($dados, true);
             if (is_array($decoded) && ! empty($decoded['data_hora_expiracao'])) {
-                try {
-                    return CarbonImmutable::parse((string) $decoded['data_hora_expiracao']);
-                } catch (Throwable) {
+                $parsed = $this->parseExpiry((string) $decoded['data_hora_expiracao']);
+                if ($parsed !== null) {
+                    return $parsed;
                 }
             }
         }
 
         // Meia-noite do dia seguinte em Brasília.
-        return CarbonImmutable::now('America/Sao_Paulo')->addDay()->startOfDay();
+        return CarbonImmutable::now('America/Sao_Paulo')->addDay()->startOfDay()->utc();
+    }
+
+    private function parseExpiry(string $value): ?CarbonImmutable
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            // O retorno do Autentica Procurador pode vir sem offset. O serviço
+            // opera em horário de Brasília; assumir UTC tornaria o token válido
+            // expirar três horas antes em ambientes UTC.
+            if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/', $value)) {
+                return CarbonImmutable::parse($value, 'America/Sao_Paulo')->utc();
+            }
+
+            return CarbonImmutable::parse($value)->utc();
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**

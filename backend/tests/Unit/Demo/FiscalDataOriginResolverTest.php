@@ -15,6 +15,11 @@ class FiscalDataOriginResolverTest extends TestCase
 
     public function test_demo_office_em_testing_retorna_demo(): void
     {
+        config([
+            'fiscal_demo.enabled' => true,
+            'fiscal_demo.office_slug' => 'demo',
+        ]);
+
         $office = Office::factory()->create(['slug' => 'demo']);
         $resolver = app(FiscalDataOriginResolver::class);
 

@@ -95,7 +95,6 @@ final class SerproTenantActionableStatusService
             'circuit_breaker' => $global['circuit_breaker'] ?? null,
             'active_contract' => $global['active_contract'] ?? null,
             'smoke_status' => $global['smoke_status'] ?? null,
-            'fake_clients' => (bool) ($global['fake_clients'] ?? false),
         ];
     }
 

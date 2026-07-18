@@ -502,11 +502,9 @@ final class FiscalMonitoringScheduler
             'service_code' => $serviceCode,
             'operation_code' => $operationCode,
             'operation_key' => $sitfisDriver !== null ? 'sitfis.emitir_relatorio' : null,
-            'source_provenance' => match ($sitfisDriver) {
-                SerproCapabilityDriver::Simulated => FiscalSourceProvenance::Simulated,
-                SerproCapabilityDriver::Real => FiscalSourceProvenance::SerproReal,
-                default => null,
-            },
+            'source_provenance' => $sitfisDriver === SerproCapabilityDriver::Real
+                ? FiscalSourceProvenance::SerproReal
+                : null,
             'verification_state' => $sitfisDriver !== null
                 ? FiscalVerificationState::Unverified
                 : null,
@@ -636,11 +634,9 @@ final class FiscalMonitoringScheduler
                 'service_code' => $locked->service_code,
                 'operation_code' => $locked->operation_code,
                 'operation_key' => $sitfisDriver !== null ? 'sitfis.emitir_relatorio' : null,
-                'source_provenance' => match ($sitfisDriver) {
-                    SerproCapabilityDriver::Simulated => FiscalSourceProvenance::Simulated,
-                    SerproCapabilityDriver::Real => FiscalSourceProvenance::SerproReal,
-                    default => null,
-                },
+                'source_provenance' => $sitfisDriver === SerproCapabilityDriver::Real
+                    ? FiscalSourceProvenance::SerproReal
+                    : null,
                 'verification_state' => $sitfisDriver !== null
                     ? FiscalVerificationState::Unverified
                     : null,

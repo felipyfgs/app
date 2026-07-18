@@ -329,9 +329,6 @@ final class ProductionReadinessService
         if ((bool) config('features.mutating.enabled', false)) {
             $issues[] = 'features_mutating_enabled';
         }
-        if ((bool) config('serpro.trial.use_fake_clients', false)) {
-            $issues[] = 'serpro_fake_clients';
-        }
         if (! (bool) config('serpro.kill_switch', false)) {
             $issues[] = 'serpro_kill_switch_off';
         }

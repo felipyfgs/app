@@ -14,6 +14,7 @@ use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\OfficeSubscription;
 use App\Models\SerproContract;
+use App\Models\SerproServiceCatalogEntry;
 use App\Models\TaxProxyPower;
 use App\Models\User;
 use App\Services\Integra\IntegraEligibilityService;
@@ -102,6 +103,74 @@ class IntegraEligibilityServiceTest extends TestCase
             || in_array('PROXY_POWER_STALE', $codes, true),
             json_encode($codes)
         );
+    }
+
+    public function test_poder_alternativo_unico_basta_any_of(): void
+    {
+        config([
+            'features.global_enabled' => true,
+            'features.kill_switch' => false,
+            'features.modules.parcelamentos.enabled' => true,
+            'features.modules.parcelamentos.allow_all_offices' => true,
+            'serpro.kill_switch' => false,
+        ]);
+
+        [$office, $user, $client, $auth] = $this->seedEligibleChain();
+
+        // Só 00076; matriz PARCSN exige 00076|00188 (ANY-of).
+        TaxProxyPower::query()->create([
+            'office_id' => $office->id,
+            'client_id' => $client->id,
+            'office_serpro_authorization_id' => $auth->id,
+            'environment' => SerproEnvironment::Trial->value,
+            'author_identity' => '52998224725',
+            'contributor_cnpj' => '11222333000181',
+            'system_code' => 'PARCSN',
+            'service_code' => 'PEDIDOSPARC163',
+            'power_code' => '00076',
+            'source' => TaxProxyPowerSource::ManualOfficialEvidence,
+            'provenance' => TaxProxyPowerService::PROVENANCE_MANUAL_APPROVED,
+            'segregation_class' => 'PRODUCTION',
+            'status' => TaxProxyPowerStatus::Active,
+            'valid_from' => now()->subDay(),
+            'valid_to' => now()->addYear(),
+            'accepted_at' => now()->subDay(),
+            'freshness_checked_at' => now(),
+            'verified_at' => now(),
+        ]);
+
+        SerproServiceCatalogEntry::query()->create([
+            'environment' => SerproEnvironment::Trial->value,
+            'solution_code' => 'PARCSN',
+            'service_code' => 'PEDIDOSPARC163',
+            'operation_code' => 'PEDIDOSPARC',
+            'label' => 'Consultar pedidos PARCSN',
+            'id_sistema' => 'PARCSN',
+            'id_servico' => 'PEDIDOSPARC163',
+            'is_enabled' => true,
+            'is_mutating' => false,
+            'coverage' => 'FULL',
+            'catalog_version' => 1,
+            'metadata' => ['required_proxy_powers' => ['00076', '00188']],
+            'required_proxy_power' => '00076 00188',
+            'billable_class' => 'CONSULTA',
+            'official_state' => 'PRODUCTION',
+            'platform_support' => 'IMPLEMENTED',
+            'coverage' => 'KNOWN',
+            'effective_from' => now(),
+        ]);
+        $result = app(IntegraEligibilityService::class)->evaluate(
+            $office,
+            $client,
+            'PARCSN',
+            'PEDIDOSPARC163',
+            'PEDIDOSPARC',
+            SerproEnvironment::Trial,
+            $user,
+            'parcelamentos',
+        );
+
+        $this->assertTrue($result->eligible, json_encode($result->toArray()));
     }
 
     public function test_orcamento_alinhado_ao_usage_budget_gate(): void
@@ -231,6 +300,45 @@ class IntegraEligibilityServiceTest extends TestCase
 
         $this->assertFalse($result->eligible);
         $this->assertContains('FREE_SMOKE_BILLABLE_BLOCKED', $result->toArray()['codes']);
+    }
+
+    public function test_trial_usa_catalogo_oficial_de_producao_quando_nao_ha_projecao_do_ambiente(): void
+    {
+        config([
+            'features.global_enabled' => true,
+            'features.kill_switch' => false,
+            'serpro.kill_switch' => false,
+        ]);
+
+        [$office, $user, $client] = $this->seedEligibleChain();
+        SerproServiceCatalogEntry::query()->create([
+            'catalog_version' => 999,
+            'environment' => SerproEnvironment::Production,
+            'operation_key' => 'procuracoes.obter',
+            'solution_code' => 'PROCURACOES',
+            'service_code' => 'PROCURACOES',
+            'operation_code' => 'OBTERPROCURACAO41',
+            'id_sistema' => 'PROCURACOES',
+            'id_servico' => 'OBTERPROCURACAO41',
+            'label' => 'Obter Procuração',
+            'is_mutating' => false,
+            'is_enabled' => true,
+            'billable_class' => 'CONSULTA',
+            'coverage' => 'KNOWN',
+            'effective_from' => now(),
+        ]);
+
+        $result = app(IntegraEligibilityService::class)->evaluate(
+            $office,
+            $client,
+            'PROCURACOES',
+            'OBTERPROCURACAO41',
+            'OBTERPROCURACAO41',
+            SerproEnvironment::Trial,
+            $user,
+        );
+
+        $this->assertTrue($result->eligible, json_encode($result->toArray()));
     }
 
     public function test_demo_office_bloqueia_producao(): void

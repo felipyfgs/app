@@ -331,21 +331,12 @@ final class ModulePortfolioQueryService
         FiscalModuleKey $module,
         ModulePortfolioFilters $filters,
     ): Builder|QueryBuilder {
-        $categoryIds = $this->categoryIdsForModule($module, $filters->submodule);
-
         $q = Client::query()
             ->withoutGlobalScopes()
             ->select('clients.id')
             ->where('clients.office_id', $office->id)
             ->where('clients.is_active', true)
-            ->whereExists(function (QueryBuilder $exists) use ($office, $categoryIds): void {
-                $exists->select(DB::raw('1'))
-                    ->from('office_fiscal_category_links as ofcl')
-                    ->whereColumn('ofcl.client_id', 'clients.id')
-                    ->where('ofcl.office_id', $office->id)
-                    ->where('ofcl.status', FiscalLinkStatus::Active->value)
-                    ->whereIn('ofcl.fiscal_category_id', $categoryIds);
-            });
+            ->whereNull('clients.matrix_client_id');
 
         $clientIds = $filters->clientIdList();
         if ($clientIds !== []) {
@@ -688,6 +679,7 @@ SQL;
         // Complementos por módulo (projeções específicas têm prioridade se existirem)
         $moduleSql = match ($module) {
             FiscalModuleKey::Dctfweb => $this->dctfwebSituationSql($office, $filters),
+            FiscalModuleKey::SimplesMei => $this->simplesMeiSituationSql($office, $filters),
             FiscalModuleKey::Installments => $this->parcelamentosSituationSql($office),
             FiscalModuleKey::Mailbox => $this->mailboxSituationSql($office),
             FiscalModuleKey::Declarations => $this->declaracoesSituationSql($office),
@@ -701,6 +693,54 @@ SQL;
         }
 
         return "COALESCE({$snapshotSql}, 'UNKNOWN')";
+    }
+
+    /**
+     * Situação operacional do Simples/MEI a partir das projeções próprias
+     * (não do snapshot genérico, que costuma cair em BLOCKED/UNKNOWN).
+     * PGDAS-D: tax_obligation_projections.situation (já mapeada no post-consult).
+     * PGMEI: debt_state da projeção anual → FiscalSituation.
+     */
+    private function simplesMeiSituationSql(Office $office, ModulePortfolioFilters $filters): string
+    {
+        $sub = strtoupper((string) ($filters->submodule ?? 'PGDASD'));
+
+        if ($sub === 'PGMEI') {
+            $year = $filters->year;
+            // Ano via PHP: portável em PostgreSQL e SQLite de testes (sem EXTRACT/::int).
+            $resolvedYear = ($year !== null && $year >= 2000)
+                ? (int) $year
+                : (int) now()->year;
+            $yearClause = 'AND pdp.calendar_year = '.$resolvedYear;
+
+            return "(
+                SELECT CASE UPPER(COALESCE(pdp.debt_state, 'UNVERIFIED'))
+                    WHEN 'NO_ACTIVE_DEBT' THEN 'UP_TO_DATE'
+                    WHEN 'HAS_ACTIVE_DEBT' THEN 'PENDING'
+                    ELSE 'UNKNOWN'
+                END
+                FROM pgmei_debt_projections pdp
+                WHERE pdp.office_id = {$office->id}
+                  AND pdp.client_id = clients.id
+                  {$yearClause}
+                ORDER BY pdp.last_valid_query_at DESC NULLS LAST, pdp.id DESC
+                LIMIT 1
+            )";
+        }
+
+        // PGDASD (default): situação canônica gravada na projeção PGDAS-D.
+        return "(
+            SELECT top.situation
+            FROM tax_obligation_projections top
+            INNER JOIN tax_obligation_definitions tod
+              ON tod.id = top.obligation_definition_id
+            WHERE top.office_id = {$office->id}
+              AND top.client_id = clients.id
+              AND tod.code = 'PGDAS_D'
+              AND top.situation IS NOT NULL
+            ORDER BY top.last_valid_query_at DESC NULLS LAST, top.id DESC
+            LIMIT 1
+        )";
     }
 
     private function dctfwebSituationSql(Office $office, ModulePortfolioFilters $filters): string
@@ -1399,6 +1439,7 @@ SQL);
                     'declaration_state_reason' => $pg['declaration_state_reason'] ?? null,
                     'last_valid_query_at' => $pg['last_valid_query_at'] ?? null,
                     'rbt12' => $pg['rbt12'] ?? null,
+                    'documents' => $pg['documents'] ?? [],
                     'communication' => $pg['communication'] ?? null,
                 ];
                 $base['declaration_state'] = $pg['declaration_state'];

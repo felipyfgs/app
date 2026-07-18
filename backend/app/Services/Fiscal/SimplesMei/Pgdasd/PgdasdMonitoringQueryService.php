@@ -77,6 +77,18 @@ final class PgdasdMonitoringQueryService
             ->get()
             ->groupBy('client_id');
 
+        // A carteira é alimentada por metadados já guardados. Não dispara
+        // consulta, job ou qualquer chamada ao Integra Contador.
+        $documents = PgdasdArtifact::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereIn('client_id', $clientIds)
+            ->whereNotNull('fiscal_evidence_artifact_id')
+            ->orderByDesc('observed_at')
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('client_id');
+
         $map = [];
         foreach ($clientIds as $cid) {
             $proj = $projections->get($cid);
@@ -112,6 +124,10 @@ final class PgdasdMonitoringQueryService
                     'transmitted_at' => $lastPublic['transmitted_at'] ?? null,
                 ],
                 'rbt12' => $rbtPublic,
+                'documents' => $documents->get($cid, collect())
+                    ->map(static fn (PgdasdArtifact $artifact): array => $artifact->toTenantDocumentArray())
+                    ->values()
+                    ->all(),
                 'last_productive_consulted_at' => $proj?->last_valid_query_at?->toIso8601String(),
                 'last_valid_query_at' => $proj?->last_valid_query_at?->toIso8601String(),
                 'calendar_verified' => (bool) ($proj?->pgdasd_calendar_verified ?? false),

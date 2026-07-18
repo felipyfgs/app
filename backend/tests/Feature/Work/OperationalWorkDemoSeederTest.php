@@ -16,6 +16,7 @@ use App\Services\Work\Demo\WorkDemoAnchor;
 use App\Services\Work\Demo\WorkDemoEnvironmentGuard;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\OperationalWorkDemoSeeder;
+use Database\Seeders\PlatformAdminDemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -56,11 +57,16 @@ class OperationalWorkDemoSeederTest extends TestCase
 
         $this->seed(DatabaseSeeder::class);
 
-        $office = Office::query()->where('slug', 'demo')->firstOrFail();
-        $this->assertSame('Contador Genérico', $office->name);
+        $office = Office::query()->where('slug', 'contador')->firstOrFail();
+        $this->assertSame(DatabaseSeeder::ACCOUNTANT_OFFICE_NAME, $office->name);
         $this->assertSame(
-            ['Contador Genérico', 'Plataforma'],
-            Office::query()->where('is_active', true)->orderBy('name')->pluck('name')->all(),
+            [DatabaseSeeder::ACCOUNTANT_OFFICE_NAME, PlatformAdminDemoSeeder::OFFICE_NAME],
+            Office::query()
+                ->where('is_active', true)
+                ->whereIn('slug', ['contador', 'plataforma'])
+                ->orderBy('name')
+                ->pluck('name')
+                ->all(),
         );
         $this->assertSame(
             0,
@@ -70,7 +76,7 @@ class OperationalWorkDemoSeederTest extends TestCase
                 ->count(),
         );
         $this->assertSame(
-            'Contador Genérico',
+            DatabaseSeeder::ACCOUNTANT_OFFICE_NAME,
             User::query()->where('email', 'admin@example.com')->value('name'),
         );
         $this->assertGreaterThanOrEqual(4, WorkDepartment::query()->where('office_id', $office->id)->count());
@@ -91,7 +97,7 @@ class OperationalWorkDemoSeederTest extends TestCase
         config(['work_demo.anchor_date' => '2026-06-15']);
         $this->seed(DatabaseSeeder::class);
 
-        $office = Office::query()->where('slug', 'demo')->firstOrFail();
+        $office = Office::query()->where('slug', 'contador')->firstOrFail();
         $before = [
             'processes' => OperationalProcess::query()->where('office_id', $office->id)->count(),
             'tasks' => OperationalTask::query()->where('office_id', $office->id)->count(),
@@ -115,7 +121,7 @@ class OperationalWorkDemoSeederTest extends TestCase
     {
         config(['work_demo.anchor_date' => '2026-06-15']);
         $this->seed(DatabaseSeeder::class);
-        $office = Office::query()->where('slug', 'demo')->firstOrFail();
+        $office = Office::query()->where('slug', 'contador')->firstOrFail();
         $count1 = OperationalProcess::query()->where('office_id', $office->id)->count();
 
         config(['work_demo.anchor_date' => '2026-07-01']);
@@ -135,7 +141,7 @@ class OperationalWorkDemoSeederTest extends TestCase
     {
         config(['work_demo.anchor_date' => '2026-06-15']);
         $this->seed(DatabaseSeeder::class);
-        $office = Office::query()->where('slug', 'demo')->firstOrFail();
+        $office = Office::query()->where('slug', 'contador')->firstOrFail();
         $client = Client::query()->where('office_id', $office->id)->firstOrFail();
 
         $manual = OperationalProcess::query()->create([
@@ -227,7 +233,7 @@ class OperationalWorkDemoSeederTest extends TestCase
         $viewer = User::query()->where('email', 'viewer@example.com')->firstOrFail();
         $this->actingAs($viewer);
         $taskId = OperationalTask::query()
-            ->where('office_id', Office::query()->where('slug', 'demo')->value('id'))
+            ->where('office_id', Office::query()->where('slug', 'contador')->value('id'))
             ->where('status', 'A_FAZER')
             ->value('id');
         $this->assertNotNull($taskId);
@@ -264,7 +270,7 @@ class OperationalWorkDemoSeederTest extends TestCase
 
         // Office demo + memberships mínimas sem massa operacional.
         $this->seed(DatabaseSeeder::class);
-        $office = Office::query()->where('slug', 'demo')->firstOrFail();
+        $office = Office::query()->where('slug', 'contador')->firstOrFail();
 
         OperationalProcess::query()->where('office_id', $office->id)->delete();
         OperationalTask::query()->where('office_id', $office->id)->delete();

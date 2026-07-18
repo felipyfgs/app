@@ -1315,7 +1315,6 @@ export interface SerproPlatformHealth {
   kill_switch?: boolean | SerproKillSwitchStatus
   circuit_open?: boolean
   smoke_status?: string
-  fake_clients?: boolean
   [key: string]: unknown
 }
 
@@ -1474,7 +1473,6 @@ export interface SerproGlobalHealth {
   active_contract?: SerproContractSanitized | null
   contracts?: SerproContractSanitized[]
   smoke_status?: string
-  fake_clients?: boolean
   readiness?: SerproReadinessSnapshot | null
 }
 
@@ -1541,7 +1539,6 @@ export interface SerproUsageReconciliation {
 export interface SerproRolloutState {
   smoke_status?: string
   kill_switch?: SerproKillSwitchStatus
-  fake_clients?: boolean
   free_smoke_ok?: boolean
   canary_enabled?: boolean
   notes?: string | null
@@ -1830,7 +1827,12 @@ export type ActivationMethod = 'MANUAL_LINK' | 'TEMPORARY_PASSWORD'
 export type ActivationPurpose = 'OFFICE_FIRST_ADMIN' | 'OFFICE_MEMBER' | 'PLATFORM_ADMIN'
 export type ActivationPublicStatus = 'pending' | 'consumed' | 'expired' | 'revoked' | string
 export type CredentialDelivery = 'delivered' | 'regeneration_required' | 'not_required' | string
-export type OfficeLifecycleStatus = 'PENDING_ACTIVATION' | 'ACTIVE' | string
+export type OfficeLifecycleStatus
+  = | 'PENDING_ACTIVATION'
+    | 'ACTIVE'
+    | 'SUSPENDED'
+    | 'DEPROVISIONED'
+    | string
 export type SubscriptionPlanCode = 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE'
 export type OfficeMemberStatus = 'active' | 'pending' | 'expired' | 'deactivated' | string
 

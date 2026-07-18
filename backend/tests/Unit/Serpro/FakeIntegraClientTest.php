@@ -2,15 +2,20 @@
 
 namespace Tests\Unit\Serpro;
 
+use App\Contracts\IntegraContadorClient;
 use App\DTO\Serpro\IntegraRequest;
-use App\Services\Integra\FakeIntegraContadorClient;
-use PHPUnit\Framework\TestCase;
+use Tests\Support\Fakes\FakeIntegraContadorClient;
+use Tests\Support\SerproTestDoubleServiceProvider;
+use Tests\TestCase;
 
 class FakeIntegraClientTest extends TestCase
 {
     public function test_resultado_simulado_nao_e_evidencia_produtiva(): void
     {
-        $client = new FakeIntegraContadorClient;
+        $this->app->register(SerproTestDoubleServiceProvider::class);
+
+        $client = app(IntegraContadorClient::class);
+        $this->assertInstanceOf(FakeIntegraContadorClient::class, $client);
         $response = $client->execute(new IntegraRequest(
             officeId: 1,
             clientId: 2,

@@ -21,13 +21,14 @@ use App\Models\MailboxMessage;
 use App\Models\Office;
 use App\Models\User;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
-use App\Services\Integra\Mailbox\FakeCaixaPostalClient;
-use App\Services\Integra\Mailbox\FakeDteIndicatorClient;
 use App\Services\Integra\Mailbox\MailboxEventService;
 use App\Services\Integra\Mailbox\MailboxMessageStore;
 use App\Services\Integra\Mailbox\MailboxStateService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\Fakes\FakeCaixaPostalClient;
+use Tests\Support\Fakes\FakeDteIndicatorClient;
+use Tests\Support\UsesSerproTestDoubles;
 use Tests\TestCase;
 
 /**
@@ -37,6 +38,7 @@ use Tests\TestCase;
 class MailboxMonitoringTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesSerproTestDoubles;
 
     private Office $office;
 

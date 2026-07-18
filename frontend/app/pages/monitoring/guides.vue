@@ -432,6 +432,8 @@ onMounted(() => {
     :data-origin-label="overview?.data_origin_label"
     :source-label="overview?.source_label"
     :as-of="overview?.as_of"
+    :horizontal-scroll="true"
+    table-class="min-w-[1120px]"
     empty-title="Nenhuma guia"
     :column-labels="{
       system: 'Sistema / tipo',

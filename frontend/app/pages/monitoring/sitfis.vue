@@ -349,6 +349,8 @@ const columns: TableColumn<SitfisClientRow>[] = [
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
+    :horizontal-scroll="true"
+    table-class="min-w-[960px]"
     empty-title="Nenhum cliente"
     :column-labels="{
       procuracao: 'Procuração',
@@ -365,15 +367,22 @@ const columns: TableColumn<SitfisClientRow>[] = [
     @reset-filters="resetFilters"
     @refresh="refresh"
   >
-    <template
-      v-if="overviewError"
-      #utilities
-    >
+    <template #utilities>
       <UAlert
+        v-if="overviewError"
         color="warning"
         icon="i-lucide-triangle-alert"
         :title="overviewError"
         class="w-full"
+      />
+      <MonitoringManualConsultCta
+        v-if="selected?.client_id"
+        :client-id="selected.client_id"
+        module-key="sitfis"
+        surface-key="sitfis"
+        preferred-action-id="sitfis:sitfis.solicitar_protocolo"
+        label="Consulta SITFIS"
+        @refresh="refresh"
       />
     </template>
 
@@ -436,6 +445,16 @@ const columns: TableColumn<SitfisClientRow>[] = [
                 :loading="detailRefreshing"
                 data-testid="sitfis-request-refresh"
                 @click="refreshSelected()"
+              />
+              <MonitoringManualConsultCta
+                v-if="selected?.client_id"
+                :client-id="selected.client_id"
+                module-key="sitfis"
+                surface-key="sitfis"
+                preferred-action-id="sitfis:sitfis.solicitar_protocolo"
+                label="Consulta manual"
+                size="xs"
+                @refresh="() => { void openDetail(selected!); void refresh() }"
               />
               <span
                 v-else-if="sitfisMeta?.block_reason === 'WITHIN_TTL' && sitfisMeta?.next_refresh_at"

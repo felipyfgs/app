@@ -17,6 +17,7 @@ use App\Services\Activation\ActivationException;
 use App\Services\Activation\CorrectPendingRecipientService;
 use App\Services\Activation\CreatePendingOfficeService;
 use App\Services\Activation\RegenerateActivationService;
+use App\Services\Fiscal\Demo\DemoEnvironmentGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -30,6 +31,7 @@ class PlatformOfficeController extends Controller
         private readonly CreatePendingOfficeService $createOffice,
         private readonly RegenerateActivationService $regenerate,
         private readonly CorrectPendingRecipientService $correctRecipient,
+        private readonly DemoEnvironmentGuard $demoEnvironment,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -38,9 +40,22 @@ class PlatformOfficeController extends Controller
 
         $query = Office::query()
             ->with(['subscription', 'institutionalProfile'])
+            ->where(fn ($visible) => $visible
+                ->where('is_active', true)
+                ->orWhere('lifecycle_status', OfficeLifecycleStatus::PendingActivation->value))
             ->orderByDesc('id');
 
-        if (is_string($status) && $status !== '') {
+        // O tenant sentinela existe apenas para isolamento das fixtures locais,
+        // não como escritório administrado criado nesta superfície.
+        if ($this->demoEnvironment->isAllowedEnvironment()) {
+            $sentinelSlug = trim($this->demoEnvironment->sentinelOfficeSlug());
+            if ($sentinelSlug !== '') {
+                $query->where('slug', '!=', $sentinelSlug);
+            }
+        }
+
+        // Filtro de ciclo de vida (PENDING_ACTIVATION / ACTIVE). "all" = todos os visíveis.
+        if (is_string($status) && $status !== '' && strtoupper($status) !== 'ALL') {
             $query->where('lifecycle_status', strtoupper($status));
         }
 

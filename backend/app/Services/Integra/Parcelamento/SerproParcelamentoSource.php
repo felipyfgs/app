@@ -2,22 +2,21 @@
 
 namespace App\Services\Integra\Parcelamento;
 
+use App\Contracts\ParcelamentoSource;
+use App\Contracts\SerproOperationExecutor;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Serpro\MutationAuthorization;
 use App\Enums\SerproCapabilityDriver;
 use App\Enums\TaxInstallmentModality;
 use App\Services\Serpro\CapabilityDriverResolver;
-use App\Services\Serpro\SerproOperationService;
 
 /**
- * Fonte de parcelamento dirigida por driver (simulated→fake; real→executor central).
- * Sem fallback silencioso de real para fake em falha.
+ * Fonte de parcelamento dirigida por driver (disabled → fail-closed; real → executor central).
  */
-final class SerproParcelamentoSource
+final class SerproParcelamentoSource implements ParcelamentoSource
 {
     public function __construct(
-        private readonly FakeParcelamentoSource $fake,
-        private readonly SerproOperationService $operations,
+        private readonly SerproOperationExecutor $operations,
         private readonly CapabilityDriverResolver $drivers,
     ) {}
 
@@ -48,10 +47,6 @@ final class SerproParcelamentoSource
                 'body' => [],
             ];
         }
-        if ($driver === SerproCapabilityDriver::Simulated) {
-            return $this->fake->execute($modality, $operation, $payload);
-        }
-
         $system = strtoupper($modality->value);
         $op = strtoupper($operation);
         try {

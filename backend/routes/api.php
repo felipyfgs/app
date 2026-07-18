@@ -14,9 +14,13 @@ use App\Http\Controllers\Api\V1\DocumentImportController;
 use App\Http\Controllers\Api\V1\DteCanaryTenantController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ExportController;
+use App\Http\Controllers\Api\V1\Fiscal\CcmeiMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\DctfwebController;
 use App\Http\Controllers\Api\V1\Fiscal\DctfwebMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\DeclarationHubController;
+use App\Http\Controllers\Api\V1\Fiscal\DefisDeclarationsMonitoringController;
+use App\Http\Controllers\Api\V1\Fiscal\DefisLatestDeclarationMonitoringController;
+use App\Http\Controllers\Api\V1\Fiscal\DefisSpecificDeclarationMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\FgtsEsocialController;
 use App\Http\Controllers\Api\V1\Fiscal\FiscalCategoryController;
 use App\Http\Controllers\Api\V1\Fiscal\FiscalModulePortfolioController;
@@ -24,10 +28,14 @@ use App\Http\Controllers\Api\V1\Fiscal\FiscalMonitoringRunController;
 use App\Http\Controllers\Api\V1\Fiscal\FiscalMutationController;
 use App\Http\Controllers\Api\V1\Fiscal\FiscalSnapshotController;
 use App\Http\Controllers\Api\V1\Fiscal\MailboxMessageController;
+use App\Http\Controllers\Api\V1\Fiscal\ManualConsultController;
 use App\Http\Controllers\Api\V1\Fiscal\MitController;
+use App\Http\Controllers\Api\V1\Fiscal\PagtowebPaymentCountController;
+use App\Http\Controllers\Api\V1\Fiscal\PagtowebPaymentListController;
 use App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\PgmeiMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\RegistrationLinkController;
+use App\Http\Controllers\Api\V1\Fiscal\SicalcRevenueSupportController;
 use App\Http\Controllers\Api\V1\Fiscal\SimplesMeiController;
 use App\Http\Controllers\Api\V1\Fiscal\SitfisSituationController;
 use App\Http\Controllers\Api\V1\Fiscal\TaxGuideController;
@@ -272,7 +280,9 @@ Route::prefix('v1')->group(function (): void {
                 ->middleware('throttle:10,1');
             Route::get('/fiscal/mit/apuracoes', [MitController::class, 'index']);
             Route::get('/fiscal/mit/apuracoes/{apuracao}', [MitController::class, 'show']);
+            Route::get('/fiscal/mit/lista-apuracoes', [MitController::class, 'indexListaApuracoes']);
             Route::post('/fiscal/mit/consult', [MitController::class, 'enqueueConsult']);
+            Route::post('/fiscal/mit/lista-apuracoes', [MitController::class, 'enqueueListaApuracoes']);
             Route::post('/fiscal/mit/encerrar', [MitController::class, 'encerrar'])
                 ->middleware('throttle:10,1');
 
@@ -298,6 +308,11 @@ Route::prefix('v1')->group(function (): void {
             // Situação Fiscal (SITFIS) — snapshot com idade; refresh respeita TTL
             Route::get('/fiscal/sitfis', [SitfisSituationController::class, 'show']);
             Route::post('/fiscal/sitfis/refresh', [SitfisSituationController::class, 'refresh']);
+
+            // Explorador de consultas manuais (somente leitura; GET local; POST confirmado)
+            Route::get('/fiscal/manual-consults', [ManualConsultController::class, 'index']);
+            Route::post('/fiscal/manual-consults', [ManualConsultController::class, 'store'])
+                ->middleware('throttle:30,1');
 
             // Cadastro/Vínculos (PNR Contador) — listagem + detalhe + refresh explícito
             Route::get('/fiscal/registrations', [RegistrationLinkController::class, 'index']);
@@ -345,13 +360,27 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/fiscal/guides/{guide}/payment-confirmations', [TaxGuideController::class, 'confirmPayment']);
             Route::post('/fiscal/guides/{guide}/reconcile', [TaxGuideController::class, 'reconcile']);
 
+            // SICALC 5.2 — metadados de preenchimento de DARF (somente leitura).
+            Route::get('/fiscal/guides/revenue-support/clients/{client}/history', [SicalcRevenueSupportController::class, 'history']);
+            Route::post('/fiscal/guides/revenue-support/clients/{client}/consult', [SicalcRevenueSupportController::class, 'consult']);
+            Route::get('/fiscal/guides/payment-count/clients/{client}/history', [PagtowebPaymentCountController::class, 'history']);
+            Route::post('/fiscal/guides/payment-count/clients/{client}/consult', [PagtowebPaymentCountController::class, 'consult']);
+            Route::get('/fiscal/guides/payments/clients/{client}/history', [PagtowebPaymentListController::class, 'history']);
+            Route::post('/fiscal/guides/payments/clients/{client}/consult', [PagtowebPaymentListController::class, 'consult']);
+
             // Simples Nacional / MEI (tenant-scoped; mutações bloqueadas no piloto)
             Route::get('/fiscal/simples-mei/catalog', [SimplesMeiController::class, 'catalog']);
             Route::get('/fiscal/simples-mei/clients/{client}/regimes', [SimplesMeiController::class, 'regimes']);
             Route::get('/fiscal/simples-mei/clients/{client}/competences', [SimplesMeiController::class, 'competences']);
             Route::get('/fiscal/simples-mei/clients/{client}/snapshots', [SimplesMeiController::class, 'snapshots']);
             Route::get('/fiscal/simples-mei/clients/{client}/guide-stubs', [SimplesMeiController::class, 'guideStubs']);
+            Route::get('/fiscal/simples-mei/clients/{client}/regime-calendar', [SimplesMeiController::class, 'regimeCalendar']);
+            Route::get('/fiscal/simples-mei/clients/{client}/regime-options', [SimplesMeiController::class, 'regimeOptions']);
+            Route::get('/fiscal/simples-mei/clients/{client}/regime-resolutions', [SimplesMeiController::class, 'regimeResolutions']);
             Route::post('/fiscal/simples-mei/consult', [SimplesMeiController::class, 'consult']);
+            Route::post('/fiscal/simples-mei/regime-calendar/consult', [SimplesMeiController::class, 'consultRegimeCalendar']);
+            Route::post('/fiscal/simples-mei/regime-option/consult', [SimplesMeiController::class, 'consultRegimeOption']);
+            Route::post('/fiscal/simples-mei/regime-resolution/consult', [SimplesMeiController::class, 'consultRegimeResolution']);
             Route::post('/fiscal/simples-mei/das', [SimplesMeiController::class, 'generateDas']);
             Route::post('/fiscal/simples-mei/transmit', [SimplesMeiController::class, 'transmit']);
 
@@ -372,6 +401,26 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/fiscal/simples-mei/pgmei/communication-preferences/bulk', [PgmeiMonitoringController::class, 'batchPreferences']);
             Route::get('/fiscal/simples-mei/pgmei/clients/{client}/communication-preview', [PgmeiMonitoringController::class, 'preview']);
             Route::get('/fiscal/simples-mei/pgmei/clients/{client}/communications', [PgmeiMonitoringController::class, 'tracking']);
+
+            // CCMEI — consulta explícita e histórico sanitizado, ambos tenant-scoped.
+            Route::get('/fiscal/simples-mei/ccmei/clients/{client}/history', [CcmeiMonitoringController::class, 'history']);
+            Route::post('/fiscal/simples-mei/ccmei/clients/{client}/consult', [CcmeiMonitoringController::class, 'consult']);
+            Route::get('/fiscal/simples-mei/ccmei/registration-status/clients/{client}/history', [CcmeiMonitoringController::class, 'registrationStatusHistory']);
+            Route::post('/fiscal/simples-mei/ccmei/registration-status/clients/{client}/consult', [CcmeiMonitoringController::class, 'consultRegistrationStatus']);
+
+            // DEFIS 142 — histórico sanitizado e coleta manual confirmada.
+            Route::get('/fiscal/simples-mei/defis/clients/{client}/history', [DefisDeclarationsMonitoringController::class, 'history']);
+            Route::post('/fiscal/simples-mei/defis/clients/{client}/consult', [DefisDeclarationsMonitoringController::class, 'consult']);
+
+            // DEFIS 143 — última declaração/recibo no cofre, com descritores sanitizados.
+            Route::get('/fiscal/simples-mei/defis/latest-declaration/clients/{client}/history', [DefisLatestDeclarationMonitoringController::class, 'history']);
+            Route::post('/fiscal/simples-mei/defis/latest-declaration/clients/{client}/consult', [DefisLatestDeclarationMonitoringController::class, 'consult']);
+            Route::get('/fiscal/simples-mei/defis/latest-declaration/artifacts/{artifact}/download', [DefisLatestDeclarationMonitoringController::class, 'download']);
+
+            // DEFIS 144 — declaração específica/recibo por referência opaca da listagem 142.
+            Route::get('/fiscal/simples-mei/defis/specific-declaration/clients/{client}/history', [DefisSpecificDeclarationMonitoringController::class, 'history']);
+            Route::post('/fiscal/simples-mei/defis/specific-declaration/clients/{client}/consult', [DefisSpecificDeclarationMonitoringController::class, 'consult']);
+            Route::get('/fiscal/simples-mei/defis/specific-declaration/artifacts/{artifact}/download', [DefisSpecificDeclarationMonitoringController::class, 'download']);
 
             // DCTFWeb — histórico local, evidências, comunicação TEMPLATE_ONLY (sem SERPRO implícito)
             Route::get('/fiscal/dctfweb/clients/{client}/history', [DctfwebMonitoringController::class, 'history']);

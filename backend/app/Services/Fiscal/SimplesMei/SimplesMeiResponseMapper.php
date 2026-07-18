@@ -26,6 +26,8 @@ final class SimplesMeiResponseMapper
 {
     public function __construct(
         private readonly PgmeiDividaAtiva24Codec $pgmeiCodec24,
+        private readonly ?RegimeCalendarOptionsCodec $regimeCalendarOptions = null,
+        private readonly ?RegimeResolutionCodec $regimeResolution = null,
     ) {}
 
     public function map(
@@ -41,18 +43,24 @@ final class SimplesMeiResponseMapper
             );
         }
 
-        $body = $response->body;
-        // Preferir response.dados (contrato oficial); fallback body para fixtures legadas
-        $payload = $this->resolvePayload($response);
-        $evidence = json_encode(
-            $this->evidenceSafeBody($body, $payload, $def),
-            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
-        );
-
         try {
+            $body = $response->body;
+            // Preferir response.dados (contrato oficial); CCMEI exige dados
+            // estruturados, sem fallback silencioso para o envelope bruto.
+            $payload = $this->resolvePayload($response, $def);
             [$situation, $normalized, $findings] = $this->parse($def, $payload, $periodKey);
+            $evidence = json_encode(
+                $this->evidenceSafeBody($body, $payload, $def),
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+            );
         } catch (InvalidArgumentException $e) {
-            return FiscalAdapterResult::failed($e->getMessage(), 'DTO_VERSION_UNSUPPORTED', $def->coverage);
+            return FiscalAdapterResult::failed($e->getMessage(), 'INVALID_RESPONSE', $def->coverage);
+        } catch (\JsonException) {
+            return FiscalAdapterResult::failed(
+                'Resposta CCMEI inválida ou ambígua.',
+                'INVALID_RESPONSE',
+                $def->coverage,
+            );
         }
 
         if ($response->simulated) {
@@ -130,14 +138,89 @@ final class SimplesMeiResponseMapper
         }
 
         if ($service === 'DEFIS' && in_array($op, ['MONITOR', 'CONSULTAR'], true)) {
+            if ($op === 'CONSULTAR') {
+                $items = (new DefisDeclarationsCodec)->decode($body);
+
+                return [FiscalSituation::UpToDate, [
+                    'dto' => 'defis_declarations',
+                    'dto_version' => SimplesMeiCatalog::DTO_VERSION,
+                    'declarations' => $items,
+                ], []];
+            }
             $year = strlen($periodKey) >= 4 ? substr($periodKey, 0, 4) : $periodKey;
             $dto = DefisDto::fromIntegraBody($body, $year);
 
             return [$dto->situation, $dto->toNormalized(), $this->findingsFromSituation($dto->situation, 'DEFIS', $dto->status)];
         }
 
+        if ($service === 'DEFIS' && $op === 'CONSULTAR_ULTIMA_DECLARACAO_RECIBO') {
+            $year = (new DefisLatestDeclarationCodec)->assertCalendarYear(
+                preg_match('/^(\d{4})/', $periodKey, $matches) === 1 ? $matches[1] : ($body['ano'] ?? null),
+            );
+            $decoded = (new DefisLatestDeclarationCodec)->decode($body, $year);
+
+            return [FiscalSituation::UpToDate, [
+                'dto' => 'defis_latest_declaration',
+                'dto_version' => SimplesMeiCatalog::DTO_VERSION,
+                'operation_key' => 'defis.consultimadecrec',
+                'calendar_year' => $decoded['calendar_year'],
+                'documents' => array_map(static fn (array $document): array => ['kind' => $document['kind']], $decoded['documents']),
+            ], []];
+        }
+
+        if ($service === 'DEFIS' && $op === 'CONSULTAR_DECLARACAO_RECIBO') {
+            return [FiscalSituation::Unknown, [
+                'dto' => 'defis_specific_declaration',
+                'dto_version' => SimplesMeiCatalog::DTO_VERSION,
+                'operation_key' => 'defis.consdecrec',
+                'documents' => [['kind' => 'RECIBO'], ['kind' => 'DECLARACAO']],
+            ], []];
+        }
+
         if ($service === 'DEFIS' && $op === 'TRANSMITIR') {
             return $this->mutatingDeclarationResult($body, 'DEFIS');
+        }
+
+        if ($service === 'REGIME_APURACAO' && $op === 'CONSULTAR_ANOS_CALENDARIOS') {
+            $items = ($this->regimeCalendarOptions ?? new RegimeCalendarOptionsCodec)->decode($body);
+
+            return [FiscalSituation::UpToDate, [
+                'dto' => 'regime_apuracao_calendars',
+                'dto_version' => SimplesMeiCatalog::DTO_VERSION,
+                'calendar_options' => $items,
+            ], []];
+        }
+
+        if ($service === 'REGIME_APURACAO' && $op === 'CONSULTAR_RESOLUCAO') {
+            $codec = $this->regimeResolution ?? new RegimeResolutionCodec;
+            $year = preg_match('/^(\d{4})/', $periodKey, $matches) === 1
+                ? (int) $matches[1]
+                : (int) now()->format('Y');
+            // Fail-closed: valida Base64 estrito; bytes só no cofre (adapter).
+            $decoded = $codec->decode($body, $year);
+
+            return [FiscalSituation::UpToDate, [
+                'dto' => 'regime_apuracao_resolucao',
+                'dto_version' => SimplesMeiCatalog::DTO_VERSION,
+                'operation_key' => RegimeResolutionCodec::OPERATION_KEY,
+                'calendar_year' => $decoded['calendar_year'],
+                'byte_size' => $decoded['byte_size'],
+                'content_type' => $decoded['content_type'],
+                'resolution' => $codec->publicDescriptorMeta($decoded['byte_size']),
+            ], []];
+        }
+
+        if ($service === 'REGIME_APURACAO' && $op === 'CONSULTAR') {
+            $decoded = (new RegimeOptionCodec)->decode($body, $periodKey);
+
+            return [FiscalSituation::UpToDate, [
+                'dto' => 'regime_apuracao_opcao',
+                'dto_version' => SimplesMeiCatalog::DTO_VERSION,
+                'calendar_options' => [[
+                    'calendar_year' => $decoded['calendar_year'],
+                    'regime_apuracao' => $decoded['regime_apuracao'],
+                ]],
+            ], []];
         }
 
         if ($service === 'REGIME_APURACAO' && in_array($op, ['MONITOR', 'CONSULTAR'], true)) {
@@ -212,6 +295,20 @@ final class SimplesMeiResponseMapper
                 'situation' => FiscalSituation::Attention->value,
                 'creates_pending' => false,
             ]]];
+        }
+
+        if ($service === 'CCMEI' && $op === 'CONSULTAR_SITUACAO_CADASTRAL') {
+            $decoded = (new CcmeiRegistrationStatusCodec)->decode($body);
+
+            return [$decoded['situation'], [
+                'dto' => 'ccmei_registration_status',
+                'dto_version' => SimplesMeiCatalog::DTO_VERSION,
+                'operation_key' => 'ccmei.ccmeisitcadastral',
+                'status' => $decoded['status'],
+                'enquadrado_mei' => $decoded['enquadrado_mei'],
+                'situation' => $decoded['situation']->value,
+                'count' => $decoded['count'],
+            ], $this->findingsFromSituation($decoded['situation'], 'CCMEI', $decoded['status'])];
         }
 
         if ($service === 'CCMEI' && in_array($op, ['MONITOR', 'CONSULTAR'], true)) {
@@ -294,7 +391,7 @@ final class SimplesMeiResponseMapper
     /**
      * @return array<string, mixed>
      */
-    private function resolvePayload(IntegraResponse $response): array
+    private function resolvePayload(IntegraResponse $response, SimplesMeiOperationDef $def): array
     {
         $dados = $response->dados;
         if (is_string($dados) && $dados !== '') {
@@ -319,6 +416,18 @@ final class SimplesMeiResponseMapper
             }
         }
 
+        // O fake contratual usado em CI entrega o corpo já decodificado em
+        // `data`; produção continua exigindo `dados` JSON do envelope SERPRO.
+        if (strtoupper($def->serviceCode) === 'CCMEI'
+            && isset($response->body['data'])
+            && is_array($response->body['data'])) {
+            return ['data' => $response->body['data']];
+        }
+
+        if (strtoupper($def->serviceCode) === 'CCMEI') {
+            throw new InvalidArgumentException('Resposta CCMEI inválida ou ambígua.');
+        }
+
         return $response->body;
     }
 
@@ -331,10 +440,90 @@ final class SimplesMeiResponseMapper
      */
     private function evidenceSafeBody(array $body, array $payload, SimplesMeiOperationDef $def): array
     {
-        if (strtoupper($def->serviceCode) !== 'PGDASD') {
+        $service = strtoupper($def->serviceCode);
+        $op = strtoupper($def->operationCode);
+
+        // 104: nunca embute Base64/texto da resolução na evidência JSON do snapshot.
+        if ($service === 'REGIME_APURACAO' && $op === 'CONSULTAR_RESOLUCAO') {
+            return [
+                'status' => $body['status'] ?? null,
+                'dados' => [
+                    'textoResolucao' => ['sanitized' => true, 'omitted' => true],
+                ],
+                'operation_key' => RegimeResolutionCodec::OPERATION_KEY,
+            ];
+        }
+
+        // 103: a resposta oficial pode conter CNPJ e documentos Base64.
+        // A evidência operacional conserva apenas a opção anual já validada.
+        if ($service === 'REGIME_APURACAO' && $op === 'CONSULTAR') {
+            $option = (new RegimeOptionCodec)->decode($payload, $payload['anoCalendario'] ?? '');
+
+            return [
+                'status' => $body['status'] ?? null,
+                'dados' => [
+                    'anoCalendario' => $option['calendar_year'],
+                    'regimeEscolhido' => $option['regime_apuracao'],
+                ],
+                'operation_key' => RegimeOptionCodec::OPERATION_KEY,
+            ];
+        }
+
+        // 142: o identificador de declaração e a data/hora não são necessários
+        // para o monitor e não podem ser copiados à evidência operacional.
+        if ($service === 'DEFIS' && $op === 'CONSULTAR') {
+            return [
+                'status' => $body['status'] ?? null,
+                'dados' => (new DefisDeclarationsCodec)->decode($payload),
+                'operation_key' => 'defis.consdeclaracao',
+            ];
+        }
+
+        // 143: PDFs e idDefis ficam estritamente fora da evidência JSON; o
+        // adapter valida os bytes e os coloca no cofre antes de publicar descritores.
+        if ($service === 'DEFIS' && $op === 'CONSULTAR_ULTIMA_DECLARACAO_RECIBO') {
+            return [
+                'status' => $body['status'] ?? null,
+                'dados' => ['sanitized' => true, 'omitted' => true, 'document_kinds' => ['RECIBO', 'DECLARACAO']],
+                'operation_key' => 'defis.consultimadecrec',
+            ];
+        }
+
+        if ($service === 'DEFIS' && $op === 'CONSULTAR_DECLARACAO_RECIBO') {
+            return [
+                'status' => $body['status'] ?? null,
+                'dados' => ['sanitized' => true, 'omitted' => true, 'document_kinds' => ['RECIBO', 'DECLARACAO']],
+                'operation_key' => 'defis.consdecrec',
+            ];
+        }
+
+        if ($service === 'CCMEI' && $op === 'CONSULTAR_SITUACAO_CADASTRAL') {
+            $decoded = (new CcmeiRegistrationStatusCodec)->decode($payload);
+
+            return [
+                'status' => $body['status'] ?? null,
+                'dados' => [
+                    'status' => $decoded['status'],
+                    'enquadrado_mei' => $decoded['enquadrado_mei'],
+                    'situation' => $decoded['situation']->value,
+                    'count' => $decoded['count'],
+                ],
+                'operation_key' => 'ccmei.ccmeisitcadastral',
+            ];
+        }
+
+        if ($service === 'CCMEI') {
+            $dto = CcmeiDto::fromIntegraBody($payload);
+
+            return [
+                'status' => $body['status'] ?? null,
+                'dados' => $dto->toNormalized(),
+            ];
+        }
+
+        if ($service !== 'PGDASD') {
             return $body;
         }
-        $op = strtoupper($def->operationCode);
         if (! in_array($op, [
             'CONSULTAR_ULTIMA_DECLARACAO_RECIBO',
             'CONSULTAR_RECIBO',

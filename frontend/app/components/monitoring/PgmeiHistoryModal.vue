@@ -161,8 +161,11 @@ function itemStatus(item: PgmeiDebtItem): string {
             variant="subtle"
             icon="i-lucide-clock-alert"
             title="Consulta com mais de sete dias"
-            description="O aviso de frescor não esconde nem descarta dívidas já encontradas."
-          />
+          >
+            <template #description>
+              O aviso de frescor não esconde nem descarta dívidas já encontradas.
+            </template>
+          </UAlert>
 
           <section>
             <h3 class="mb-2 text-sm font-medium text-highlighted">

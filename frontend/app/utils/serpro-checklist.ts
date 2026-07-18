@@ -125,7 +125,7 @@ function buildStep(
 const STEP_META: Record<SerproChecklistStepId, { label: string, description: string, href: string }> = {
   environment: {
     label: 'Ambiente',
-    description: 'Confirme o ambiente (TRIAL/PRODUCTION) da autorização do escritório.',
+    description: 'Confirme Demonstração SERPRO ou Produção na autorização do escritório.',
     href: '/conta/escritorio'
   },
   author: {

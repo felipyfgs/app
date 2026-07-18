@@ -41,9 +41,13 @@ final class SimplesMeiCatalog
 
             new SimplesMeiOperationDef('INTEGRA_SN', 'DEFIS', 'MONITOR', self::DTO_VERSION, $ro, $full, $sn, ['DEFIS'], 'CONSULTA', true, 'Monitor DEFIS'),
             new SimplesMeiOperationDef('INTEGRA_SN', 'DEFIS', 'CONSULTAR', self::DTO_VERSION, $ro, $full, $sn, ['DEFIS'], 'CONSULTA', false, 'Consultar DEFIS'),
+            new SimplesMeiOperationDef('INTEGRA_SN', 'DEFIS', 'CONSULTAR_ULTIMA_DECLARACAO_RECIBO', self::DTO_VERSION, $ro, $full, $sn, ['DEFIS'], 'CONSULTA', false, 'Consultar última DEFIS e recibo (143)'),
+            new SimplesMeiOperationDef('INTEGRA_SN', 'DEFIS', 'CONSULTAR_DECLARACAO_RECIBO', self::DTO_VERSION, $ro, $full, $sn, ['DEFIS'], 'CONSULTA', false, 'Consultar declaração DEFIS e recibo (144)'),
             new SimplesMeiOperationDef('INTEGRA_SN', 'DEFIS', 'TRANSMITIR', self::DTO_VERSION, $mu, $full, $sn, ['DEFIS'], 'DECLARACAO', false, 'Transmitir DEFIS'),
 
             new SimplesMeiOperationDef('INTEGRA_SN', 'REGIME_APURACAO', 'CONSULTAR', self::DTO_VERSION, $ro, $full, $sn, ['REGIME_APURACAO', 'PGDASD'], 'CONSULTA', false, 'Consultar Regime de Apuração'),
+            new SimplesMeiOperationDef('INTEGRA_SN', 'REGIME_APURACAO', 'CONSULTAR_ANOS_CALENDARIOS', self::DTO_VERSION, $ro, $full, $sn, ['REGIME_APURACAO'], 'CONSULTA', false, 'Consultar anos-calendário do Regime de Apuração (102)'),
+            new SimplesMeiOperationDef('INTEGRA_SN', 'REGIME_APURACAO', 'CONSULTAR_RESOLUCAO', self::DTO_VERSION, $ro, $full, $sn, ['REGIME_APURACAO'], 'CONSULTA', false, 'Consultar resolução do Regime de Caixa (104)'),
 
             // —— MEI (PGMEI, CCMEI, DASN-SIMEI) ——
             new SimplesMeiOperationDef('INTEGRA_MEI', 'PGMEI', 'MONITOR', self::DTO_VERSION, $ro, $full, $mei, ['PGMEI'], 'CONSULTA', true, 'Monitor dívida ativa PGMEI (DIVIDAATIVA24)'),
@@ -52,6 +56,7 @@ final class SimplesMeiCatalog
 
             new SimplesMeiOperationDef('INTEGRA_MEI', 'CCMEI', 'MONITOR', self::DTO_VERSION, $ro, $full, $mei, ['CCMEI'], 'CONSULTA', true, 'Monitor CCMEI'),
             new SimplesMeiOperationDef('INTEGRA_MEI', 'CCMEI', 'CONSULTAR', self::DTO_VERSION, $ro, $full, $mei, ['CCMEI'], 'CONSULTA', false, 'Consultar CCMEI'),
+            new SimplesMeiOperationDef('INTEGRA_MEI', 'CCMEI', 'CONSULTAR_SITUACAO_CADASTRAL', self::DTO_VERSION, $ro, $full, $mei, ['CCMEI'], 'CONSULTA', false, 'Consultar situação cadastral CCMEI (123)'),
 
             new SimplesMeiOperationDef('INTEGRA_MEI', 'DASN_SIMEI', 'CONSULTAR', self::DTO_VERSION, $ro, $full, $mei, ['DASN_SIMEI', 'PGMEI'], 'CONSULTA', false, 'Consultar DASN-SIMEI'),
             new SimplesMeiOperationDef('INTEGRA_MEI', 'DASN_SIMEI', 'TRANSMITIR', self::DTO_VERSION, $mu, $full, $mei, ['DASN_SIMEI'], 'DECLARACAO', false, 'Transmitir DASN-SIMEI'),

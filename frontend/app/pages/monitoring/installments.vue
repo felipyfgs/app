@@ -319,6 +319,8 @@ onMounted(() => {
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
+    :horizontal-scroll="true"
+    table-class="min-w-[960px]"
     empty-title="Nenhum parcelamento"
     :column-labels="{
       modality: 'Modalidade',

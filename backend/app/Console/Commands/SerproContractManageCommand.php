@@ -21,7 +21,7 @@ class SerproContractManageCommand extends Command
     protected $signature = 'serpro:contract
         {action : list|show|register|activate|replace|deactivate|block|health|catalog|kill-on|kill-off}
         {--id= : ID do contrato}
-        {--serpro-env=TRIAL : Ambiente SERPRO TRIAL|HOMOLOGATION|PRODUCTION}
+        {--serpro-env=TRIAL : Ambiente SERPRO TRIAL|PRODUCTION}
         {--pfx= : Caminho do arquivo PFX}
         {--password= : Senha do PFX (prefira prompt interativo)}
         {--consumer-key= : Consumer Key}

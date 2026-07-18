@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Fiscal;
 
+use App\Contracts\SerproOperationExecutor;
 use App\DTO\Serpro\IntegraResponse;
 use App\Enums\AuthorCertificateMode;
 use App\Enums\AuthorIdentityType;
@@ -18,12 +19,14 @@ use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\SerproContract;
 use App\Models\TaxProxyPower;
-use App\Services\Integra\FakeIntegraContadorClient;
 use App\Services\Integra\Registrations\RegistrationLinkProjectionService;
 use App\Services\Integra\TaxProcesses\TaxProcessProjectionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Tests\Support\Fakes\FakeIntegraContadorClient;
+use Tests\Support\FakeSerproOperationExecutor;
+use Tests\Support\SerproTestDoubleServiceProvider;
 use Tests\TestCase;
 
 final class OfficialProjectionServicesTest extends TestCase
@@ -40,10 +43,18 @@ final class OfficialProjectionServicesTest extends TestCase
     {
         parent::setUp();
 
+        $this->app->register(SerproTestDoubleServiceProvider::class);
+        $this->app->instance(
+            SerproOperationExecutor::class,
+            new FakeSerproOperationExecutor($this->app->make(FakeIntegraContadorClient::class)),
+        );
+
         config([
             'serpro.default_environment' => SerproEnvironment::Trial->value,
-            'serpro.capabilities.registrations' => 'simulated',
-            'serpro.capabilities.tax_processes' => 'simulated',
+            // O provider de teste é instalado explicitamente; o runtime só
+            // exercita o ramo real e nunca aceita driver simulated.
+            'serpro.capabilities.registrations' => 'real',
+            'serpro.capabilities.tax_processes' => 'real',
             'serpro_usage.shadow_mode' => true,
             'serpro_usage.commercial_blocking_enabled' => false,
         ]);

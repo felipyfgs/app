@@ -54,6 +54,33 @@ const clientIdNum = computed(() => {
   return Number.isFinite(n) && n > 0 ? n : null
 })
 
+/** Mapeia chaves de UI (dctfweb, guides…) para module_key do inventário SERPRO. */
+const portfolioModuleKey = computed(() => {
+  const key = String(props.moduleKey || '')
+  switch (key) {
+    case 'simples_mei':
+      return 'simples_mei'
+    case 'dctfweb':
+      return 'dctfweb'
+    case 'sitfis':
+      return 'sitfis'
+    case 'mailbox':
+      return 'mailbox'
+    case 'guides':
+      return 'guides'
+    case 'installments':
+      return 'installments'
+    case 'registrations':
+      return 'registrations'
+    case 'tax_processes':
+      return 'tax_processes'
+    case 'declarations':
+      return 'declarations'
+    default:
+      return key || null
+  }
+})
+
 const showAdd = computed(() => props.showAddClient && canManageClients.value)
 const showAssoc = computed(() => props.showAssociate && canAssociateCategories.value)
 const showEnq = computed(() =>
@@ -187,6 +214,14 @@ const mobileItems = computed<DropdownMenuItem[]>(() => {
         :disabled="!clientIdNum || (moduleKey === 'fgts' && !String(competence || '').trim())"
         data-testid="action-enqueue-read"
         @click="onEnqueue"
+      />
+      <MonitoringManualConsultCta
+        v-if="canTriggerSync && clientIdNum"
+        :client-id="clientIdNum"
+        :module-key="portfolioModuleKey"
+        label="Consulta manual"
+        size="sm"
+        @refresh="emit('refreshed')"
       />
       <UButton
         v-if="showExp"

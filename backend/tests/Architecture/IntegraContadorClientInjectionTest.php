@@ -22,8 +22,6 @@ class IntegraContadorClientInjectionTest extends TestCase
         'Contracts/IntegraContadorClient.php',
         'Contracts/SerproOperationExecutor.php',
         'Services/Integra/HttpIntegraContadorClient.php',
-        'Services/Integra/SimulatedIntegraContadorClient.php',
-        'Services/Integra/FakeIntegraContadorClient.php',
         'Services/Integra/CapabilityAwareIntegraContadorClient.php',
         // Executor central (único consumidor de negócio)
         'Services/Serpro/SerproOperationService.php',
@@ -62,7 +60,6 @@ class IntegraContadorClientInjectionTest extends TestCase
                 continue;
             }
 
-            // Infraestrutura de transporte / fakes auxiliares sob Integra/ já coberta pela allowlist.
             // DTOs e enums não devem injetar o client.
             $content = file_get_contents($path);
             if ($content === false) {
@@ -101,7 +98,7 @@ class IntegraContadorClientInjectionTest extends TestCase
             if ($this->isAllowlisted($rel)) {
                 continue;
             }
-            // Implementações de client e fakes já allowlisted
+            // Implementações de client já allowlisted
             $content = file_get_contents($file->getPathname());
             if ($content === false) {
                 continue;

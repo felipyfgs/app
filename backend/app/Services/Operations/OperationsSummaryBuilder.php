@@ -436,7 +436,7 @@ final class OperationsSummaryBuilder
             'cert_expiring_soon' => (bool) ($raw['cert_expiring_soon'] ?? false),
             // Campos proibidos explicitamente omitidos:
             // contractor_cnpj*, fingerprint*, consumer_key*, has_pfx, has_oauth,
-            // contracts[], active_contract, smoke_status, fake_clients,
+            // contracts[], active_contract e smoke_status.
             // global_budget, other tenants
         ];
     }

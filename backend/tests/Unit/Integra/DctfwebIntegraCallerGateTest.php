@@ -14,19 +14,33 @@ use App\Models\OfficeSerproAuthorization;
 use App\Models\SerproContract;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebIntegraCaller;
-use App\Services\Integra\FakeIntegraContadorClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Tests\Support\Fakes\FakeIntegraContadorClient;
+use Tests\Support\SerproTestDoubleServiceProvider;
 use Tests\TestCase;
 
 class DctfwebIntegraCallerGateTest extends TestCase
 {
     use RefreshDatabase;
 
+    private FakeIntegraContadorClient $fake;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Http::preventStrayRequests();
+        $this->app->register(SerproTestDoubleServiceProvider::class);
+        $this->fake = app(FakeIntegraContadorClient::class);
+        $this->fake->reset();
+    }
+
     public function test_rejeita_fallback_autor_placeholder_sem_chamar_client(): void
     {
         config([
             'serpro.default_environment' => 'TRIAL',
-            'serpro.trial.use_fake_clients' => true,
+            'serpro.capabilities.dctfweb' => 'real',
             'features.global_enabled' => true,
             'features.modules.dctfweb_mit.enabled' => true,
             'features.modules.dctfweb_mit.allow_all_offices' => true,
@@ -40,6 +54,7 @@ class DctfwebIntegraCallerGateTest extends TestCase
             'status' => SerproContractStatus::Active,
             'contractor_cnpj' => '11222333000181',
             'health_status' => 'OK',
+            'credentials_exposed' => false,
         ]);
 
         // Placeholder de getOrCreate — deve ser rejeitado (não usar contratante).
@@ -51,9 +66,6 @@ class DctfwebIntegraCallerGateTest extends TestCase
             'author_identity' => '00000000000000',
             'certificate_mode' => 'EXTERNAL_SIGNATURE',
         ]);
-
-        $fake = app(FakeIntegraContadorClient::class);
-        $fake->reset();
 
         $run = FiscalMonitoringRun::query()->create([
             'office_id' => $office->id,
@@ -86,13 +98,15 @@ class DctfwebIntegraCallerGateTest extends TestCase
 
         $this->assertFalse($response->success);
         $this->assertSame('AUTHOR_IDENTITY_MISSING', $response->errorCode);
-        $this->assertSame(0, $fake->calls);
+        $this->assertSame(0, $this->fake->calls);
+        Http::assertNothingSent();
     }
 
     public function test_sem_autorizacao_nao_usa_cnpj_contratante_como_autor(): void
     {
         config([
             'serpro.default_environment' => 'TRIAL',
+            'serpro.capabilities.dctfweb' => 'real',
             'features.global_enabled' => true,
             'features.modules.dctfweb_mit.enabled' => true,
             'features.modules.dctfweb_mit.allow_all_offices' => true,
@@ -106,10 +120,8 @@ class DctfwebIntegraCallerGateTest extends TestCase
             'status' => SerproContractStatus::Active,
             'contractor_cnpj' => '11222333000181',
             'health_status' => 'OK',
+            'credentials_exposed' => false,
         ]);
-
-        $fake = app(FakeIntegraContadorClient::class);
-        $fake->reset();
 
         $run = FiscalMonitoringRun::query()->create([
             'office_id' => $office->id,
@@ -142,6 +154,7 @@ class DctfwebIntegraCallerGateTest extends TestCase
 
         $this->assertFalse($response->success);
         $this->assertSame('AUTHORIZATION_MISSING', $response->errorCode);
-        $this->assertSame(0, $fake->calls);
+        $this->assertSame(0, $this->fake->calls);
+        Http::assertNothingSent();
     }
 }

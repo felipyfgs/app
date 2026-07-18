@@ -19,6 +19,7 @@ use App\Services\Serpro\SerproExternalGateService;
 use App\Services\Serpro\SerproProductionEgressGate;
 use App\Services\Serpro\SerproReadinessService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 class SerproProductionContainmentTest extends TestCase
@@ -85,12 +86,49 @@ class SerproProductionContainmentTest extends TestCase
         $registry = app(SerproDocumentRegistry::class);
         $result = $registry->syncFromManifest();
 
-        $this->assertGreaterThan(0, $result['created']);
+        $this->assertSame(8, $result['created']);
+        $this->assertSame(8, $result['total']);
         $this->assertSame($result['total'], SerproDocumentSnapshot::query()->count());
+        $this->assertDatabaseMissing('serpro_document_snapshots', [
+            'source_key' => 'cnpj_alphanumeric_rfb',
+        ]);
+        $this->assertDatabaseMissing('serpro_document_snapshots', [
+            'source_key' => 'tls_chain_validation',
+        ]);
+        $this->assertDatabaseMissing('serpro_document_snapshots', [
+            'source_key' => 'oauth_portal_curl_divergence',
+        ]);
 
         $again = $registry->syncFromManifest();
         $this->assertSame(0, $again['created']);
-        $this->assertGreaterThan(0, $again['existing']);
+        $this->assertSame(8, $again['existing']);
+    }
+
+    public function test_prod_check_fails_on_invalid_registry_without_partial_snapshot_write(): void
+    {
+        $path = sys_get_temp_dir().'/serpro-sources-'.bin2hex(random_bytes(8)).'.json';
+        $manifest = json_decode(
+            (string) File::get(resource_path('serpro/official-sources.v2026-07-18.json')),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $manifest['sources'][7]['content_sha256'] = str_repeat('ab', 32);
+        File::put($path, json_encode(
+            $manifest,
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+        ));
+
+        try {
+            config(['serpro.official_sources_manifest' => $path]);
+
+            $this->artisan('serpro:prod-check', ['--serpro-env' => 'TRIAL'])
+                ->expectsOutput('FAIL: integridade das fontes oficiais SERPRO não comprovada.')
+                ->assertFailed();
+            $this->assertSame(0, SerproDocumentSnapshot::query()->count());
+        } finally {
+            File::delete($path);
+        }
     }
 
     public function test_external_gates_seed_and_block_production(): void

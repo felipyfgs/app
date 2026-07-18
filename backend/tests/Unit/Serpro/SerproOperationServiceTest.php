@@ -12,12 +12,16 @@ use App\Enums\SerproAttemptState;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproContractStatus;
 use App\Enums\SerproEnvironment;
+use App\Enums\TaxProxyPowerSource;
+use App\Enums\TaxProxyPowerStatus;
 use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
+use App\Models\SerproApiUsageReservation;
 use App\Models\SerproContract;
 use App\Models\SerproOperationAttempt;
+use App\Models\TaxProxyPower;
 use App\Services\Serpro\SerproOperationAttemptStore;
 use App\Services\Serpro\SerproOperationService;
 use App\Services\Serpro\SerproRequestTagGenerator;
@@ -55,11 +59,24 @@ class SerproOperationServiceTest extends TestCase
         $this->assertTrue($auth->allowsMutatingOperation('pagtoweb.pagamentos', false));
     }
 
+    public function test_consulta_de_procuracao_nao_exige_modulo_feature_inexistente(): void
+    {
+        $service = $this->app->make(SerproOperationService::class);
+        $method = new \ReflectionMethod($service, 'moduleForOperation');
+
+        $this->assertNull($method->invoke($service, 'procuracoes.obter', [
+            'monitoring_module' => 'authorization',
+        ]));
+        $this->assertSame('simples_mei', $method->invoke($service, 'pgdasd.consdeclaracao', [
+            'monitoring_module' => 'simples_mei',
+        ]));
+    }
+
     public function test_executor_replay_retorna_resultado_persistido_sem_segundo_http(): void
     {
         config([
-            'serpro.capabilities.sitfis' => 'simulated',
-            'serpro.capabilities.default' => 'simulated',
+            'serpro.capabilities.sitfis' => 'real',
+            'serpro.capabilities.default' => 'real',
             'serpro.default_environment' => 'TRIAL',
             'serpro.kill_switch' => false,
             'features.kill_switch' => false,
@@ -84,8 +101,8 @@ class SerproOperationServiceTest extends TestCase
                     operationKey: $request->operationKey,
                     requestTag: $request->resolvedRequestTag(),
                     correlationId: $request->correlationId,
-                    sourceProvenance: FiscalSourceProvenance::Simulated->value,
-                    simulated: true,
+                    sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+                    simulated: false,
                 );
             }
         };
@@ -123,6 +140,52 @@ class SerproOperationServiceTest extends TestCase
             ->first();
         $this->assertNotNull($attempt);
         $this->assertTrue($attempt->attempt_state->isTerminal());
+    }
+
+    public function test_chave_idempotencia_longa_cabe_no_ledger_tecnico(): void
+    {
+        config([
+            'serpro.capabilities.sitfis' => 'real',
+            'serpro.capabilities.default' => 'real',
+            'serpro.default_environment' => 'TRIAL',
+            'serpro.kill_switch' => false,
+            'features.kill_switch' => false,
+        ]);
+
+        [$office, $client] = $this->seedOfficeClientContract();
+
+        $this->app->instance(IntegraContadorClient::class, new class implements IntegraContadorClient
+        {
+            public function execute(IntegraRequest $request): IntegraResponse
+            {
+                return new IntegraResponse(
+                    success: true,
+                    httpStatus: 200,
+                    body: ['ok' => true],
+                    dados: ['protocolo' => 'P1'],
+                    operationKey: $request->operationKey,
+                    requestTag: $request->resolvedRequestTag(),
+                    correlationId: $request->correlationId,
+                    sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+                    simulated: false,
+                );
+            }
+        });
+        $this->app->forgetInstance(SerproOperationService::class);
+
+        $response = $this->app->make(SerproOperationService::class)->run(new SerproOperationCommand(
+            office: $office,
+            client: $client,
+            operationKey: 'sitfis.solicitar_protocolo',
+            businessData: ['x' => 1],
+            idempotencyKey: str_repeat('chave-logica-longa-', 12),
+            correlationId: 'corr-chave-longa',
+        ));
+
+        $this->assertTrue($response->success, $response->errorCode.' '.$response->errorMessage);
+        $reservation = SerproApiUsageReservation::query()->firstOrFail();
+        $this->assertLessThanOrEqual(120, strlen($reservation->idempotency_key));
+        $this->assertStringStartsWith('ic:', $reservation->idempotency_key);
     }
 
     public function test_concurrent_inflight_bloqueia_segundo_http(): void
@@ -164,11 +227,53 @@ class SerproOperationServiceTest extends TestCase
         $this->assertSame('ATTEMPT_IN_FLIGHT', $begin['response']->errorCode);
     }
 
+    public function test_attempt_store_nao_persiste_token_nem_xml_ecoado(): void
+    {
+        $office = Office::factory()->create();
+        $attempt = SerproOperationAttempt::query()->create([
+            'office_id' => $office->id,
+            'environment' => 'TRIAL',
+            'operation_key' => 'autentica_procurador.envio_xml_assinado',
+            'entity_key' => 'office:'.$office->id,
+            'idempotency_key' => 'attempt-redaction-'.$office->id,
+            'request_tag' => 'ic-redaction-test',
+            'attempt_state' => SerproAttemptState::Dispatched,
+            'reserved_at' => now(),
+            'dispatched_at' => now(),
+        ]);
+
+        (new SerproOperationAttemptStore)->acknowledge($attempt, new IntegraResponse(
+            success: true,
+            httpStatus: 200,
+            body: [
+                'autenticar_procurador_token' => 'token-confidencial-de-teste',
+                'dados' => json_encode([
+                    'xml' => base64_encode('<termo>sensivel</termo>'),
+                    'status' => 'ok',
+                ], JSON_THROW_ON_ERROR),
+            ],
+            dados: ['autenticar_procurador_token' => 'token-confidencial-de-teste'],
+            headers: ['authorization' => 'Bearer token-confidencial-de-teste'],
+        ));
+
+        $stored = $attempt->fresh();
+        $serialized = json_encode([
+            'body' => $stored?->body,
+            'dados' => $stored?->dados,
+            'headers' => $stored?->headers,
+        ], JSON_THROW_ON_ERROR);
+
+        $this->assertStringNotContainsString('token-confidencial-de-teste', $serialized);
+        $this->assertStringNotContainsString('<termo>sensivel</termo>', $serialized);
+        $this->assertSame(true, $stored?->body['autenticar_procurador_token']['sanitized']);
+        $this->assertSame(true, $stored?->body['dados']['xml']['sanitized']);
+    }
+
     public function test_mutante_bloqueado_por_autorizacao_tipada(): void
     {
         config([
-            'serpro.capabilities.guides' => 'simulated',
-            'serpro.capabilities.default' => 'simulated',
+            'serpro.capabilities.guides' => 'real',
+            'serpro.capabilities.default' => 'real',
             'serpro.default_environment' => 'TRIAL',
         ]);
 
@@ -229,7 +334,7 @@ class SerproOperationServiceTest extends TestCase
             'health_status' => 'OK',
         ]);
 
-        OfficeSerproAuthorization::query()->create([
+        $authorization = OfficeSerproAuthorization::query()->create([
             'office_id' => $office->id,
             'environment' => SerproEnvironment::Trial,
             'status' => SerproAuthorizationStatus::TokenActive,
@@ -237,6 +342,26 @@ class SerproOperationServiceTest extends TestCase
             'author_identity' => '11222333000181',
             'certificate_mode' => 'EXTERNAL_SIGNATURE',
             'procurador_token_expires_at' => now()->addDay(),
+        ]);
+
+        TaxProxyPower::query()->create([
+            'office_id' => $office->id,
+            'client_id' => $client->id,
+            'office_serpro_authorization_id' => $authorization->id,
+            'environment' => SerproEnvironment::Trial->value,
+            'author_identity' => '11222333000181',
+            'contributor_cnpj' => '11222333000181',
+            'system_code' => 'SITFIS',
+            'power_code' => '00002',
+            'source' => TaxProxyPowerSource::ManualOfficialEvidence->value,
+            'provenance' => FiscalSourceProvenance::SerproReal->value,
+            'status' => TaxProxyPowerStatus::Active->value,
+            'valid_from' => now()->subDay(),
+            'valid_to' => now()->addDay(),
+            'accepted_at' => now(),
+            'freshness_checked_at' => now(),
+            'verified_at' => now(),
+            'last_check_result' => 'TEST_EVIDENCE',
         ]);
 
         return [$office, $client];

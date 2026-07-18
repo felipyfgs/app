@@ -1,8 +1,12 @@
 <script setup lang="ts">
 /**
  * Contadores compactos da carteira fiscal.
- * Catálogo: Total sempre; estados com contagem > 0; estado ativo permanece mesmo em zero.
+ * Faixa operacional fixa: Total · Em dia · Processando · Pendências · Atenção
+ * (zeros contam). Estados secundários (Bloqueado, Erro, …) só com contagem > 0.
+ *
+ * Mobile: tabs `sm`, scroll horizontal com overscroll touch (sem quebrar a linha).
  */
+import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
 import type { FiscalKpiKey, FiscalModuleCounters } from '~/types/fiscal-modules'
 import {
   FISCAL_COUNTER_KPI_KEYS,
@@ -11,6 +15,24 @@ import {
   normalizeFiscalModuleCounters
 } from '~/types/fiscal-modules'
 import { fiscalStatusMeta } from '~/utils/fiscal-status'
+
+/** Sempre visíveis (como no DCTFWeb de referência), inclusive em zero. */
+const PRIMARY_KPI_KEYS = [
+  'up_to_date',
+  'processing',
+  'pending',
+  'attention'
+] as const satisfies readonly Exclude<FiscalKpiKey, 'total'>[]
+
+const PRIMARY_KPI_SET = new Set<string>(PRIMARY_KPI_KEYS)
+
+/** Rótulos da faixa (Pendências no plural, alinhado à UX de referência). */
+const PRIMARY_KPI_LABELS: Record<(typeof PRIMARY_KPI_KEYS)[number], string> = {
+  up_to_date: 'Em dia',
+  processing: 'Processando',
+  pending: 'Pendências',
+  attention: 'Atenção'
+}
 
 const props = withDefaults(defineProps<{
   total?: number | null
@@ -27,6 +49,10 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   select: [key: FiscalKpiKey, situation: string | null]
 }>()
+
+const breakpoints = useBreakpoints(breakpointsTailwind)
+const isNarrow = breakpoints.smaller('sm')
+const tabSize = computed(() => (isNarrow.value ? 'sm' : 'md'))
 
 const resolvedTotal = computed(() => {
   if (props.total != null && Number.isFinite(Number(props.total))) {
@@ -54,6 +80,14 @@ type CounterTab = {
   badge: number | string
 }
 
+function kpiLabel(key: Exclude<FiscalKpiKey, 'total'>): string {
+  if (key in PRIMARY_KPI_LABELS) {
+    return PRIMARY_KPI_LABELS[key as (typeof PRIMARY_KPI_KEYS)[number]]
+  }
+  const situation = fiscalKpiSituationFilter(key)
+  return fiscalStatusMeta(situation).label
+}
+
 const items = computed((): CounterTab[] => {
   const c = normalizedCounters.value
   const loadingPlaceholder = props.loading && !props.counters
@@ -70,16 +104,15 @@ const items = computed((): CounterTab[] => {
   for (const key of FISCAL_COUNTER_KPI_KEYS) {
     if (key === 'error' && !props.showError) continue
     const count = c[key]
-    // Positivos + ativo em zero (mesmo sem contagem).
-    if (count > 0 || active === key) {
-      const situation = fiscalKpiSituationFilter(key)
-      const meta = fiscalStatusMeta(situation)
-      list.push({
-        value: key,
-        label: meta.label,
-        badge: loadingPlaceholder ? '…' : count
-      })
-    }
+    const isPrimary = PRIMARY_KPI_SET.has(key)
+    // Primários sempre; secundários só com contagem ou se estiverem ativos.
+    if (!isPrimary && count <= 0 && active !== key) continue
+
+    list.push({
+      value: key,
+      label: kpiLabel(key),
+      badge: loadingPlaceholder ? '…' : count
+    })
   }
 
   return list
@@ -96,13 +129,15 @@ function onSelect(key: string | number) {
     data-testid="fiscal-kpi-strip"
     class="flex min-w-0 items-center gap-2"
   >
-    <div class="min-w-0 flex-1 overflow-x-auto">
+    <div
+      class="min-w-0 flex-1 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] touch-pan-x"
+    >
       <UTabs
         :model-value="resolvedActiveKey"
         :items="items"
         :content="false"
         activation-mode="automatic"
-        size="md"
+        :size="tabSize"
         color="primary"
         variant="pill"
         :ui="{

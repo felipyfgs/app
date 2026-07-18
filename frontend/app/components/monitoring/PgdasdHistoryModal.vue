@@ -89,11 +89,16 @@ function latestDeclaration(period: PgdasdHistoryPeriod): PgdasdHistoryDeclaratio
 
 function artifacts(period: PgdasdHistoryPeriod): PgdasdArtifactDescriptor[] {
   const all = [
-    ...(period.artifacts || period.documents || []),
+    ...(period.artifacts || []),
+    ...(period.documents || []),
     ...(period.declarations || []).flatMap(item => item.documents || []),
     ...(period.das || []).flatMap(item => item.documents || [])
   ]
   return [...new Map(all.map(item => [item.id, item])).values()]
+}
+
+function artifactDownloadPath(artifact: PgdasdArtifactDescriptor): string {
+  return artifact.download_path?.trim() || artifactDownloadUrl(artifact.id)
 }
 
 function paymentLabel(value?: boolean | null): string {
@@ -319,7 +324,7 @@ async function requestDocuments(period: PgdasdHistoryPeriod) {
                       variant="outline"
                       icon="i-lucide-download"
                       label="Baixar"
-                      :to="artifactDownloadUrl(artifact.id)"
+                      :to="artifactDownloadPath(artifact)"
                       external
                       target="_blank"
                       rel="noopener noreferrer"

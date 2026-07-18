@@ -12,6 +12,7 @@ use App\Models\MitApuracao;
 use App\Models\Office;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Projeção MIT — estado independente da transmissão DCTFWeb (9.3).
@@ -140,6 +141,47 @@ final class MitApuracaoService
         $mit->forceFill(['metadata' => $meta])->save();
 
         return $mit->fresh();
+    }
+
+    /**
+     * Persiste a lista 317 como projeções MIT locais, sem evidência documental.
+     *
+     * @param  list<array{period_key:string,id_apuracao:int,situacao:int,data_encerramento:?string,evento_especial:bool,valor_total_apurado:float|int}>  $items
+     * @return list<MitApuracao>
+     */
+    public function projectListaApuracoes(Office $office, Client $client, array $items): array
+    {
+        if ((int) $client->office_id !== (int) $office->id) {
+            throw new \InvalidArgumentException('Cliente não pertence ao escritório ativo.');
+        }
+
+        return DB::transaction(function () use ($office, $client, $items): array {
+            $projected = [];
+            foreach ($items as $item) {
+                $periodKey = $this->competences->normalizePeriodKey($item['period_key']);
+                $mit = $this->projectApuracao($office, $client, $periodKey, [
+                    'situacao' => $item['situacao'],
+                    'dataEncerramento' => $item['data_encerramento'],
+                    'valorTotalApurado' => $item['valor_total_apurado'],
+                ]);
+
+                $metadata = is_array($mit->metadata) ? $mit->metadata : [];
+                $metadata['lista_apuracoes_317'] = [
+                    'id_apuracao' => $item['id_apuracao'],
+                    'situacao' => $item['situacao'],
+                    'data_encerramento' => $item['data_encerramento'],
+                    'evento_especial' => $item['evento_especial'],
+                    'valor_total_apurado' => $item['valor_total_apurado'],
+                ];
+                $mit->forceFill([
+                    'metadata' => $metadata,
+                    'observed_at' => CarbonImmutable::now(),
+                ])->save();
+                $projected[] = $mit->fresh();
+            }
+
+            return $projected;
+        });
     }
 
     /**

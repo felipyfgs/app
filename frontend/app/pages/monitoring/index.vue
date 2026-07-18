@@ -326,6 +326,11 @@ onMounted(load)
         :columns="4"
       />
 
+      <MonitoringManualConsultExplorer
+        class="mb-6"
+        data-testid="monitoring-manual-consult-explorer"
+      />
+
       <ShellPanelAccordion
         class="mb-4 lg:mb-6"
         :items="panelItems"

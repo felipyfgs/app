@@ -44,11 +44,20 @@ final class OfficeSerproAuthorizationService
         private readonly PfxReaderInterface $pfxReader,
         private readonly TermoXmlValidator $termoValidator,
         private readonly TermoAutorizacaoGenerator $termoGenerator,
-        private readonly AutenticarProcuradorClient $procuradorClient,
         private readonly SerproContractService $contracts,
         private readonly SerproContractAuthenticator $authenticator,
         private readonly AuditLogger $audit,
     ) {}
+
+    /**
+     * Evita ciclo no bootstrap com o driver real:
+     * SerproOperationService -> IntegraEligibilityService -> esta classe ->
+     * HttpAutenticarProcuradorClient -> SerproOperationService.
+     */
+    private function procuradorClient(): AutenticarProcuradorClient
+    {
+        return app(AutenticarProcuradorClient::class);
+    }
 
     public function getOrCreate(Office $office, SerproEnvironment $environment): OfficeSerproAuthorization
     {
@@ -604,30 +613,23 @@ final class OfficeSerproAuthorizationService
         }
 
         $contract = $this->contracts->activeFor($environment);
-        $allowSimulatedBearer = (bool) config('serpro.trial.use_fake_clients', false);
-        $bearer = null;
-
-        if ($contract !== null && $contract->isUsable()) {
-            try {
-                $token = $this->authenticator->authenticate($contract);
-                $bearer = $token->accessToken;
-            } catch (Throwable $e) {
-                if (! $allowSimulatedBearer) {
-                    throw new RuntimeException(
-                        'Falha ao autenticar contrato SERPRO para token do procurador.',
-                        0,
-                        $e,
-                    );
-                }
-                $bearer = 'SIMULATED';
-            }
-        } elseif ($allowSimulatedBearer) {
-            $bearer = 'SIMULATED';
-        } else {
+        if ($contract === null || ! $contract->isUsable()) {
             throw new RuntimeException('Contrato SERPRO indisponível para autenticar procurador.');
         }
 
-        $result = $this->procuradorClient->authenticate(new ProcuradorAuthRequest(
+        try {
+            $token = $this->authenticator->authenticate($contract);
+            $token->assertComplete();
+            $bearer = $token->accessToken;
+        } catch (Throwable $e) {
+            throw new RuntimeException(
+                'Falha ao autenticar contrato SERPRO para token do procurador.',
+                0,
+                $e,
+            );
+        }
+
+        $result = $this->procuradorClient()->authenticate(new ProcuradorAuthRequest(
             officeId: $office->id,
             environment: $environment->value,
             authorIdentity: $auth->author_identity,
@@ -637,6 +639,10 @@ final class OfficeSerproAuthorizationService
         ));
 
         unset($termoXml, $bearer);
+
+        if ($result->simulated) {
+            throw new RuntimeException('Resposta simulada não é aceita para autenticar procurador.');
+        }
 
         if ($result->requiresNewSignature || (! $result->success && $result->errorCode === 'SIGNATURE_REQUIRED')) {
             return $this->markActionRequired(
@@ -930,7 +936,7 @@ final class OfficeSerproAuthorizationService
     }
 
     /**
-     * Bloqueia Office demo em ambiente real (Production/Homologation).
+     * Bloqueia Office demo no ambiente produtivo.
      */
     public function assertOfficeEligibleForEnvironment(Office $office, SerproEnvironment $environment): void
     {

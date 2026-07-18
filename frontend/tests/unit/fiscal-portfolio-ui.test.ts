@@ -443,7 +443,7 @@ describe('ações de carteira no contexto da seleção', () => {
     expect(portfolio).toContain('clearFiltersForTenantSwitch')
   })
 
-  it('usa uma única fonte de espaçamento e restaura o footer do arquétipo', () => {
+  it('usa uma única fonte de espaçamento e mantém o footer responsivo do arquétipo', () => {
     const moduleTable = readFileSync(
       resolve(__dirname, '../../app/components/monitoring/ModuleTable.vue'),
       'utf8'
@@ -454,8 +454,10 @@ describe('ações de carteira no contexto da seleção', () => {
     )
 
     expect(moduleTable).not.toContain('class="mb-4"')
-    expect(dataTable).toContain('<div class="text-sm text-muted">')
-    expect(dataTable).toContain('<div class="flex items-center gap-1.5">')
+    expect(dataTable).toContain('data-testid="fiscal-pagination"')
+    expect(dataTable).toContain('mt-auto flex flex-col gap-3')
+    expect(dataTable).toContain('text-sm text-muted')
+    expect(dataTable).toContain('flex shrink-0 items-center justify-end gap-1.5')
   })
 
   it('reduz a densidade inicial da DCTFWeb sem remover colunas do menu Exibir', () => {
@@ -463,13 +465,18 @@ describe('ações de carteira no contexto da seleção', () => {
       resolve(__dirname, '../../app/pages/monitoring/dctfweb/index.vue'),
       'utf8'
     )
+    const dctfwebTable = readFileSync(
+      resolve(__dirname, '../../app/utils/dctfweb-table.ts'),
+      'utf8'
+    )
 
     expect(dctfweb).toContain(`:initial-hidden-columns="['evidence', 'darf']"`)
-    expect(dctfweb).toMatch(/'icon': 'i-lucide-ellipsis-vertical'/)
-    // Ações: menu compacto + FiscalDocumentAction (quando available)
-    expect(dctfweb).toMatch(/meta: \{ class: \{ th: 'w-\d+', td: 'w-\d+' \} \}/)
-    expect(dctfweb).toContain('FiscalDocumentAction')
-    expect(dctfweb).toContain('documentActionsEnabled')
+    expect(dctfwebTable).toMatch(/'icon': 'i-lucide-ellipsis-vertical'/)
+    // Ações: menu compacto; documentos ficam no histórico local.
+    expect(dctfwebTable).toMatch(/meta: \{ class: \{ th: 'w-\d+ min-w-\d+', td: 'w-\d+ min-w-\d+' \} \}/)
+    expect(dctfwebTable).toContain('UDropdownMenu')
+    expect(dctfwebTable).toContain('dctfweb-row-actions')
+    expect(dctfwebTable).toContain('dctfweb-history')
   })
 
   it('módulos fiscais não injetam mais PortfolioActions no cabeçalho', () => {

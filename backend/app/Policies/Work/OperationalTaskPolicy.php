@@ -2,6 +2,7 @@
 
 namespace App\Policies\Work;
 
+use App\Enums\TenantPermission;
 use App\Models\OperationalTask;
 use App\Models\User;
 use App\Policies\Work\Concerns\UsesRealWorkRole;
@@ -12,13 +13,12 @@ class OperationalTaskPolicy
 
     public function viewAny(User $user): bool
     {
-        return $this->effectiveRole()?->canViewWork() === true;
+        return $this->allowsWork($user, TenantPermission::WorkView);
     }
 
     public function view(User $user, OperationalTask $task): bool
     {
-        return $this->sameOfficeId((int) $task->office_id)
-            && $this->effectiveRole()?->canViewWork() === true;
+        return $this->allowsWork($user, TenantPermission::WorkView, $task);
     }
 
     public function update(User $user, OperationalTask $task): bool
@@ -27,35 +27,28 @@ class OperationalTaskPolicy
             return false;
         }
 
-        $role = $this->realRole();
-        if ($role === null) {
-            return false;
-        }
-
-        if ($role->canAdministerWork() === true) {
+        if ($this->allowsWork($user, TenantPermission::WorkAdminister, $task)) {
             return true;
         }
 
-        if ($role->canExecuteWorkTasks() !== true) {
+        if (! $this->allowsWork($user, TenantPermission::WorkTasksExecute, $task)) {
             return false;
         }
 
-        $membershipId = $this->currentOffice()->realMembership()?->id;
+        $membershipId = $this->realMembershipId();
 
-        // Executor: responsável ou tarefa livre do próprio departamento
         if ($task->assignee_membership_id !== null) {
             return (int) $task->assignee_membership_id === (int) $membershipId;
         }
 
-        $dept = $this->currentOffice()->realMembership()?->work_department_id;
+        $dept = $this->realWorkDepartmentId();
 
         return $dept !== null && (int) $task->work_department_id === (int) $dept;
     }
 
     public function assign(User $user, OperationalTask $task): bool
     {
-        return $this->sameOfficeId((int) $task->office_id)
-            && $this->realRole()?->canAdministerWork() === true;
+        return $this->allowsWork($user, TenantPermission::WorkAdminister, $task);
     }
 
     public function claim(User $user, OperationalTask $task): bool
@@ -63,13 +56,13 @@ class OperationalTaskPolicy
         if (! $this->sameOfficeId((int) $task->office_id)) {
             return false;
         }
-        if ($this->realRole()?->canExecuteWorkTasks() !== true) {
+        if (! $this->allowsWork($user, TenantPermission::WorkTasksExecute, $task)) {
             return false;
         }
         if ($task->assignee_membership_id !== null) {
             return false;
         }
-        $dept = $this->currentOffice()->realMembership()?->work_department_id;
+        $dept = $this->realWorkDepartmentId();
 
         return $dept !== null && (int) $task->work_department_id === (int) $dept;
     }
@@ -81,8 +74,7 @@ class OperationalTaskPolicy
 
     public function dispense(User $user, OperationalTask $task): bool
     {
-        return $this->sameOfficeId((int) $task->office_id)
-            && $this->realRole()?->canAdministerWork() === true;
+        return $this->allowsWork($user, TenantPermission::WorkAdminister, $task);
     }
 
     public function reopen(User $user, OperationalTask $task): bool
@@ -92,8 +84,7 @@ class OperationalTaskPolicy
 
     public function comment(User $user, OperationalTask $task): bool
     {
-        return $this->sameOfficeId((int) $task->office_id)
-            && $this->realRole()?->canExecuteWorkTasks() === true;
+        return $this->allowsWork($user, TenantPermission::WorkTasksExecute, $task);
     }
 
     public function uploadEvidence(User $user, OperationalTask $task): bool
@@ -103,13 +94,11 @@ class OperationalTaskPolicy
 
     public function downloadEvidence(User $user, OperationalTask $task): bool
     {
-        // Download de evidência: exige membership real (não só leitura privilegiada)
-        return $this->sameOfficeId((int) $task->office_id)
-            && $this->realRole()?->canDownloadWorkEvidence() === true;
+        return $this->allowsWork($user, TenantPermission::WorkEvidenceDownload, $task);
     }
 
     public function bulk(User $user): bool
     {
-        return $this->realRole()?->canAdministerWork() === true;
+        return $this->allowsWork($user, TenantPermission::WorkAdminister);
     }
 }

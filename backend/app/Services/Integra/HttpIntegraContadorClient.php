@@ -21,6 +21,7 @@ use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproHttpTransport;
 use App\Services\Serpro\SerproKillSwitchService;
 use App\Services\Serpro\SerproRateLimiter;
+use App\Services\Serpro\TrialSerproGatewayCredentials;
 use App\Support\LogSanitizer;
 use RuntimeException;
 use Throwable;
@@ -57,6 +58,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         private readonly SecureObjectStore $store,
         private readonly ?OperationCoordinateResolver $coordinates = null,
         private readonly ?SerproRateLimiter $rateLimiter = null,
+        private readonly ?TrialSerproGatewayCredentials $trialCredentials = null,
     ) {}
 
     public function execute(IntegraRequest $request): IntegraResponse
@@ -99,61 +101,91 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         }
 
         $env = SerproEnvironment::from($request->environment);
-        $contract = $this->contracts->activeFor($env);
-        if ($contract === null || ! $contract->isUsable()) {
-            return $this->fail($request, 503, 'CONTRACT_UNAVAILABLE', 'Contrato SERPRO indisponível.');
-        }
-
-        $authMode = (string) ($coords['auth_mode'] ?? 'PROCURATOR_WHEN_REPRESENTING');
-        $proxyRule = (string) ($coords['proxy_rule'] ?? 'NOT_APPLICABLE');
-        $isAutenticaProcurador = $authMode === 'CONTRACT_ONLY'
-            || $operationKey === 'autentica_procurador.envio_xml_assinado';
-
-        if (! $isAutenticaProcurador
-            && $contract->contractor_cnpj !== $request->contractorCnpj
-        ) {
-            return $this->fail($request, 422, 'CONTRACTOR_MISMATCH', 'Identidade contratante diverge do contrato ativo.');
-        }
-
-        // Poder e-CAC antes do transporte, quando exigido
-        $powerCheck = $this->assertProxyPower($request, $coords, $proxyRule);
-        if ($powerCheck !== null) {
-            return $powerCheck;
-        }
-
-        /** @var list<string> $requiredPowers */
-        $requiredPowers = $coords['required_proxy_powers'] ?? [];
-        $needsProcuradorToken = $this->requiresProcuradorToken(
-            $authMode,
-            $proxyRule,
-            $request,
-            $isAutenticaProcurador,
-            $requiredPowers,
-        );
-
-        $procuradorToken = null;
-        if ($needsProcuradorToken) {
-            $procuradorToken = $this->loadProcuradorToken($request, $env);
-            if ($procuradorToken === null) {
+        $trialGateway = null;
+        if ($env === SerproEnvironment::Trial) {
+            try {
+                $trialGateway = ($this->trialCredentials ?? app(TrialSerproGatewayCredentials::class))->resolve();
+            } catch (RuntimeException) {
                 return $this->fail(
                     $request,
-                    422,
-                    'PROCURADOR_TOKEN_MISSING',
-                    'Token do procurador ausente ou expirado para o escritório.',
+                    503,
+                    'TRIAL_CREDENTIALS_MISSING',
+                    'Credenciais Trial SERPRO ausentes ou incompletas.',
                 );
             }
         }
 
-        try {
-            $token = $this->authenticator->authenticate($contract);
-            $token->assertComplete();
-        } catch (Throwable $e) {
-            return $this->fail(
+        $procuradorToken = null;
+        $contractorCnpj = $request->contractorCnpj;
+        $contract = null;
+        if ($trialGateway === null) {
+            $contract = $this->contracts->activeFor($env);
+            if ($contract === null || ! $contract->isUsable()) {
+                return $this->fail($request, 503, 'CONTRACT_UNAVAILABLE', 'Contrato SERPRO indisponível.');
+            }
+            $contractorCnpj = $contract->contractor_cnpj;
+
+            $authMode = (string) ($coords['auth_mode'] ?? 'PROCURATOR_WHEN_REPRESENTING');
+            $proxyRule = (string) ($coords['proxy_rule'] ?? 'NOT_APPLICABLE');
+            $isAutenticaProcurador = $authMode === 'CONTRACT_ONLY'
+                || $operationKey === 'autentica_procurador.envio_xml_assinado';
+
+            if (! $isAutenticaProcurador && $contractorCnpj !== $request->contractorCnpj) {
+                return $this->fail($request, 422, 'CONTRACTOR_MISMATCH', 'Identidade contratante diverge do contrato ativo.');
+            }
+
+            // Poder e-CAC e token local de procurador só existem no fluxo contratual produtivo.
+            $powerCheck = $this->assertProxyPower($request, $coords, $proxyRule);
+            if ($powerCheck !== null) {
+                return $powerCheck;
+            }
+
+            /** @var list<string> $requiredPowers */
+            $requiredPowers = $coords['required_proxy_powers'] ?? [];
+            $needsProcuradorToken = $this->requiresProcuradorToken(
+                $authMode,
+                $proxyRule,
                 $request,
-                503,
-                'CONTRACT_UNHEALTHY',
-                'Falha de autenticação do contrato: '.$e->getMessage(),
+                $isAutenticaProcurador,
+                $requiredPowers,
             );
+            if ($needsProcuradorToken) {
+                $procuradorToken = $this->loadProcuradorToken($request, $env);
+                if ($procuradorToken === null) {
+                    return $this->fail(
+                        $request,
+                        422,
+                        'PROCURADOR_TOKEN_MISSING',
+                        'Token do procurador ausente ou expirado para o escritório.',
+                    );
+                }
+            }
+        }
+
+        $tokenType = 'Bearer';
+        $accessToken = '';
+        $jwtToken = '';
+        if ($trialGateway !== null) {
+            $accessToken = $trialGateway['bearer_token'];
+            $jwtToken = $trialGateway['jwt_token'];
+        } else {
+            try {
+                if ($contract === null) {
+                    throw new RuntimeException('Contrato SERPRO indisponível.');
+                }
+                $token = $this->authenticator->authenticate($contract);
+                $token->assertComplete();
+                $tokenType = $token->tokenType;
+                $accessToken = $token->accessToken;
+                $jwtToken = $token->officialJwt();
+            } catch (Throwable $e) {
+                return $this->fail(
+                    $request,
+                    503,
+                    'CONTRACT_UNHEALTHY',
+                    'Falha de autenticação do contrato: '.$e->getMessage(),
+                );
+            }
         }
 
         $idSistema = (string) $coords['id_sistema'];
@@ -165,7 +197,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
 
         $envelope = [
             'contratante' => [
-                'numero' => $contract->contractor_cnpj,
+                'numero' => $contractorCnpj,
                 'tipo' => 2,
             ],
             'autorPedidoDados' => $request->author->toEnvelope(),
@@ -179,18 +211,16 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         ];
 
         $body = json_encode($envelope, JSON_THROW_ON_ERROR);
-        $baseUrl = rtrim((string) config('serpro.api.base_url'), '/');
+        $baseUrl = $trialGateway['base_url'] ?? rtrim((string) config('serpro.api.base_url'), '/');
         $url = $baseUrl.$routePath;
 
         $attempt = 0;
-        $maxAttempts = 2; // 1 tentativa + 1 renovação OAuth após 401
+        $maxAttempts = $env === SerproEnvironment::Trial ? 1 : 2; // produção: 1 renovação OAuth após 401
         $lastResponse = null;
 
         while ($attempt < $maxAttempts) {
             $attempt++;
-            $jwt = $token->officialJwt();
-            $headers = $this->buildHeaders($token->tokenType, $token->accessToken, $jwt, $requestTag, $procuradorToken, $request->headers);
-            unset($jwt);
+            $headers = $this->buildHeaders($tokenType, $accessToken, $jwtToken, $requestTag, $procuradorToken, $request->headers);
 
             try {
                 $lastResponse = $this->transport->request(
@@ -215,17 +245,21 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                         operationKey: $operationKey,
                         requestTag: $requestTag,
                         functionalRoute: $routeName,
-                        sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+                        simulated: $this->isTrial($env),
+                        sourceProvenance: $this->provenanceFor($env),
                     );
                 }
                 throw new RuntimeException('Falha de transporte Integra Contador.', 0, $e);
             }
 
-            if ($lastResponse['status'] === 401 && $attempt < $maxAttempts) {
+            if ($env !== SerproEnvironment::Trial && $lastResponse['status'] === 401 && $attempt < $maxAttempts) {
                 $this->authenticator->invalidate($contract);
                 try {
                     $token = $this->authenticator->authenticate($contract);
                     $token->assertComplete();
+                    $tokenType = $token->tokenType;
+                    $accessToken = $token->accessToken;
+                    $jwtToken = $token->officialJwt();
                 } catch (Throwable $e) {
                     return $this->fail(
                         $request,
@@ -248,6 +282,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             $requestTag,
             $routeName,
             $solutionForBreaker,
+            $env,
         );
     }
 
@@ -422,7 +457,10 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         string $requestTag,
         string $route,
         string $solutionForBreaker,
+        SerproEnvironment $environment,
     ): IntegraResponse {
+        $simulated = $this->isTrial($environment);
+        $provenance = $this->provenanceFor($environment);
         $status = $response['status'];
         $headers = $response['headers'] ?? [];
         $etag = $this->sanitizeEtag($this->headerValue($headers, 'etag'));
@@ -438,7 +476,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 headers: $this->publicHeaders($headers),
                 errorCode: 'RATE_LIMITED',
                 errorMessage: 'Rate limit SERPRO.',
-                simulated: false,
+                simulated: $simulated,
                 retryAfterSeconds: $response['retry_after'] ?? 60,
                 correlationId: $request->correlationId,
                 latencyMs: $response['latency_ms'],
@@ -447,7 +485,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 operationKey: $operationKey,
                 requestTag: $requestTag,
                 functionalRoute: $route,
-                sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+                sourceProvenance: $provenance,
             );
         }
 
@@ -461,14 +499,14 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 headers: $this->publicHeaders($headers),
                 errorCode: 'UPSTREAM_UNAVAILABLE',
                 errorMessage: 'SERPRO temporariamente indisponível.',
-                simulated: false,
+                simulated: $simulated,
                 retryAfterSeconds: $response['retry_after'] ?? 30,
                 correlationId: $request->correlationId,
                 latencyMs: $response['latency_ms'],
                 operationKey: $operationKey,
                 requestTag: $requestTag,
                 functionalRoute: $route,
-                sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+                sourceProvenance: $provenance,
             );
         }
 
@@ -480,7 +518,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 headers: $this->publicHeaders($headers),
                 errorCode: 'NOT_MODIFIED',
                 errorMessage: 'Conteúdo não modificado (cache/ETag).',
-                simulated: false,
+                simulated: $simulated,
                 correlationId: $request->correlationId,
                 latencyMs: $response['latency_ms'],
                 etag: $etag,
@@ -489,7 +527,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 operationKey: $operationKey,
                 requestTag: $requestTag,
                 functionalRoute: $route,
-                sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+                sourceProvenance: $provenance,
             );
         }
 
@@ -508,7 +546,8 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 operationKey: $operationKey,
                 requestTag: $requestTag,
                 functionalRoute: $route,
-                sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+                simulated: $simulated,
+                sourceProvenance: $provenance,
             );
         }
 
@@ -542,7 +581,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 headers: $this->publicHeaders($headers),
                 errorCode: 'STILL_PROCESSING',
                 errorMessage: 'Operação em processamento na fonte.',
-                simulated: false,
+                simulated: $simulated,
                 retryAfterSeconds: $tempoEspera ?? 30,
                 correlationId: $request->correlationId,
                 latencyMs: $response['latency_ms'],
@@ -554,7 +593,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 operationKey: $operationKey,
                 requestTag: $requestTag,
                 functionalRoute: $route,
-                sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+                sourceProvenance: $provenance,
             );
         }
 
@@ -572,7 +611,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             headers: $this->publicHeaders($headers),
             errorCode: $success ? null : 'REQUEST_FAILED',
             errorMessage: $success ? null : 'Chamada Integra Contador rejeitada.',
-            simulated: false,
+            simulated: $simulated,
             retryAfterSeconds: $tempoEspera,
             correlationId: $request->correlationId,
             latencyMs: $response['latency_ms'],
@@ -584,7 +623,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             operationKey: $operationKey,
             requestTag: $requestTag,
             functionalRoute: $route,
-            sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+            sourceProvenance: $provenance,
         );
     }
 
@@ -753,8 +792,21 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             correlationId: $request->correlationId,
             operationKey: $request->operationKey,
             requestTag: $request->resolvedRequestTag(),
-            sourceProvenance: FiscalSourceProvenance::SerproReal->value,
+            simulated: $this->isTrial(SerproEnvironment::tryFrom($request->environment)),
+            sourceProvenance: $this->provenanceFor(SerproEnvironment::tryFrom($request->environment)),
         );
+    }
+
+    private function isTrial(?SerproEnvironment $environment): bool
+    {
+        return $environment === SerproEnvironment::Trial;
+    }
+
+    private function provenanceFor(?SerproEnvironment $environment): string
+    {
+        return $this->isTrial($environment)
+            ? FiscalSourceProvenance::SerproTrial->value
+            : FiscalSourceProvenance::SerproReal->value;
     }
 
     private function loadProcuradorToken(IntegraRequest $request, SerproEnvironment $env): ?string

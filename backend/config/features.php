@@ -69,6 +69,17 @@ return [
     ],
 
     /**
+     * RBAC multi-tenant canônico (platform_admin / tenant_admin / tenant_user + perfis).
+     * Default OFF: autoridade continua legada (OfficeRole) até cutover por coorte.
+     * Em shadow mode a flag permanece OFF e o resolvedor apenas compara decisões.
+     *
+     * @see openspec/changes/padronizar-autorizacao-multitenant
+     */
+    'canonical_multitenant_rbac' => [
+        'enabled' => filter_var(env('FEATURE_CANONICAL_MULTITENANT_RBAC', false), FILTER_VALIDATE_BOOL),
+    ],
+
+    /**
      * Configuração unificada do escritório (perfil institucional, A1 canônico, consentimento).
      * Default OFF — rollout por coorte via allowlist.
      */

@@ -211,8 +211,11 @@ async function savePreferences() {
             color="info"
             icon="i-lucide-info"
             title="Nenhum envio real será disparado."
-            description="Destinatários mascarados; execução apenas em modo template."
-          />
+          >
+            <template #description>
+              Destinatários mascarados; execução apenas em modo template.
+            </template>
+          </UAlert>
           <div
             v-for="channel in preview.channels || []"
             :key="String(channel.channel)"
@@ -346,8 +349,11 @@ async function savePreferences() {
           <UAlert
             color="info"
             title="Modo template"
-            description="automatic_effective permanece false; nenhum job ou e-mail é criado."
-          />
+          >
+            <template #description>
+              automatic_effective permanece false; nenhum job ou e-mail é criado.
+            </template>
+          </UAlert>
           <UFormField label="E-mail">
             <USwitch v-model="form.email_enabled" />
           </UFormField>

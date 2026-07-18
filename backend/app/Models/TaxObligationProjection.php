@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\DctfwebDeclarationState;
 use App\Enums\FiscalSituation;
+use App\Enums\PgdasdDeclarationState;
 use App\Enums\TaxObligationApplicability;
 use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -70,10 +72,10 @@ class TaxObligationProjection extends Model
             'closed_at' => 'immutable_datetime',
             'last_valid_query_at' => 'immutable_datetime',
             'metadata' => 'array',
-            'pgdasd_declaration_state' => \App\Enums\PgdasdDeclarationState::class,
+            'pgdasd_declaration_state' => PgdasdDeclarationState::class,
             'pgdasd_last_productive_consulted_at' => 'immutable_datetime',
             'pgdasd_calendar_verified' => 'boolean',
-            'dctfweb_declaration_state' => \App\Enums\DctfwebDeclarationState::class,
+            'dctfweb_declaration_state' => DctfwebDeclarationState::class,
             'dctfweb_last_productive_consulted_at' => 'immutable_datetime',
             'dctfweb_calendar_verified' => 'boolean',
         ];

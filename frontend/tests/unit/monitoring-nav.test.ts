@@ -9,14 +9,14 @@ import {
 } from '../../app/utils/monitoring-nav'
 
 describe('MonitoringModuleNav items (6.3)', () => {
-  it('preserva a tipografia padrão do NavigationMenu', () => {
+  it('preserva a navegação compacta e legível em telas estreitas', () => {
     const component = readFileSync(
       resolve(__dirname, '../../app/components/monitoring/MonitoringModuleNav.vue'),
       'utf8'
     )
 
-    expect(component).toContain('link: \'gap-0 px-1.5\'')
-    expect(component).not.toContain('text-xs')
+    expect(component).toContain('link: \'gap-0 px-1.5 sm:px-2\'')
+    expect(component).toContain('linkLabel: \'whitespace-nowrap text-xs sm:text-sm\'')
   })
 
   it('lista todos os destinos do hub fiscal', () => {

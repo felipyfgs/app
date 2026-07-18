@@ -484,6 +484,8 @@ const filterResetKey = computed(() => props.resetKey)
             variant="outline"
             icon="i-lucide-save"
             label="Salvar"
+            aria-label="Salvar filtros"
+            :ui="{ label: 'hidden sm:inline' }"
             data-testid="save-filters-button"
             @click="() => { saveOpen = true }"
           />
@@ -514,6 +516,8 @@ const filterResetKey = computed(() => props.resetKey)
           variant="outline"
           icon="i-lucide-download"
           label="Exportar"
+          aria-label="Exportar"
+          :ui="{ label: 'hidden sm:inline' }"
           data-testid="fiscal-filter-export"
           @click="emit('export')"
         />
@@ -523,7 +527,7 @@ const filterResetKey = computed(() => props.resetKey)
 
         <span
           v-if="showTotal"
-          class="text-right text-xs text-muted tabular-nums"
+          class="hidden text-right text-xs text-muted tabular-nums sm:inline"
         >
           {{ total }} registro(s)
         </span>

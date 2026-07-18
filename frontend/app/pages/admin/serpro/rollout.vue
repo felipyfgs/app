@@ -36,7 +36,6 @@ function deriveFromHealth(h: SerproGlobalHealth): SerproRolloutState {
   return {
     smoke_status: h?.smoke_status || 'PENDING_OPS',
     kill_switch: h?.kill_switch,
-    fake_clients: h?.fake_clients,
     free_smoke_ok: h?.smoke_status === 'FREE_SMOKE_OK',
     notes: null
   }
@@ -160,24 +159,6 @@ onMounted(load)
                 variant="subtle"
               >
                 {{ rollout?.smoke_status || '—' }}
-              </UBadge>
-            </dd>
-          </div>
-          <div>
-            <dt class="text-muted">
-              Fake clients
-            </dt>
-            <dd class="font-medium">
-              <SerproProvenanceBadge
-                v-if="typeof rollout.fake_clients === 'boolean'"
-                :code="rollout.fake_clients ? 'simulado' : 'real'"
-              />
-              <UBadge
-                v-else
-                color="neutral"
-                variant="subtle"
-              >
-                Não informado
               </UBadge>
             </dd>
           </div>

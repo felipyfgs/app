@@ -23,7 +23,7 @@ const environment = ref('TRIAL')
 const supportFilter = ref('all')
 
 const envItems = [
-  { label: 'Trial', value: 'TRIAL' },
+  { label: 'Demonstração SERPRO', value: 'TRIAL' },
   { label: 'Produção', value: 'PRODUCTION' }
 ]
 
@@ -31,8 +31,7 @@ const supportItems = [
   { label: 'Todos', value: 'all' },
   { label: 'Implementado', value: 'IMPLEMENTED' },
   { label: 'Validado em produção', value: 'PRODUCTION_VALIDATED' },
-  { label: 'Inventariado', value: 'INVENTORIED' },
-  { label: 'Simulado', value: 'SIMULATED' }
+  { label: 'Inventariado', value: 'INVENTORIED' }
 ]
 
 const filtered = computed(() => {
@@ -100,7 +99,7 @@ async function load() {
 function supportBadge(code?: string | null) {
   const c = String(code || '').toUpperCase()
   if (c === 'PRODUCTION_VALIDATED' || c === 'IMPLEMENTED') return 'success' as const
-  if (c === 'SIMULATED') return 'warning' as const
+  if (c === 'SIMULATED') return 'neutral' as const
   if (c === 'INVENTORIED') return 'neutral' as const
   return 'neutral' as const
 }
@@ -110,7 +109,7 @@ function supportLabel(code?: string | null) {
     IMPLEMENTED: 'Implementado',
     PRODUCTION_VALIDATED: 'Validado em produção',
     INVENTORIED: 'Inventariado',
-    SIMULATED: 'Simulado',
+    SIMULATED: 'Registro histórico não oficial',
     UNKNOWN: 'Não classificado'
   }
 
@@ -214,14 +213,6 @@ onMounted(load)
             >
               {{ supportLabel(row.original.platform_support) }}
             </UBadge>
-            <SerproProvenanceBadge
-              v-if="String(row.original.platform_support).toUpperCase() === 'SIMULATED'"
-              code="simulado"
-            />
-            <SerproProvenanceBadge
-              v-else-if="['IMPLEMENTED', 'PRODUCTION_VALIDATED'].includes(String(row.original.platform_support).toUpperCase())"
-              code="real"
-            />
           </div>
         </template>
       </UTable>

@@ -26,8 +26,8 @@ const error = ref('')
 const loading = ref(false)
 
 const schema = z.object({
-  password: z.string().min(8, 'Mínimo de 8 caracteres'),
-  password_confirmation: z.string().min(1, 'Confirme a senha')
+  password: z.string('Informe a nova senha').min(8, 'Mínimo de 8 caracteres'),
+  password_confirmation: z.string('Confirme a senha').min(1, 'Confirme a senha')
 }).refine(d => d.password === d.password_confirmation, {
   message: 'As senhas não coincidem',
   path: ['password_confirmation']
@@ -82,12 +82,12 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="space-y-1 text-center lg:text-left lg:hidden">
-      <h1 class="text-xl font-semibold text-highlighted">
+  <div class="w-full min-w-0 space-y-6">
+    <div class="space-y-1 text-center lg:hidden">
+      <h1 class="text-xl font-semibold text-highlighted text-pretty">
         Ativar acesso
       </h1>
-      <p class="text-sm text-muted">
+      <p class="text-sm text-muted text-pretty">
         Defina sua senha permanente
       </p>
     </div>
@@ -121,9 +121,9 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
         <UButton
           to="/login"
           label="Ir para o login"
-          color="neutral"
-          variant="soft"
+          color="primary"
           block
+          size="lg"
           data-testid="activate-invalid-login"
         />
       </template>
@@ -195,5 +195,9 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
         </UForm>
       </template>
     </UPageCard>
+
+    <p class="text-center text-xs text-muted text-pretty">
+      Problemas de acesso? Fale com o administrador do escritório.
+    </p>
   </div>
 </template>

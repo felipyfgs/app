@@ -21,12 +21,13 @@ use App\Models\SerproContract;
 use App\Models\SerproServiceCatalogEntry;
 use App\Models\TaxProxyPower;
 use App\Models\User;
-use App\Services\Fiscal\Mutations\FakeFiscalMutationTransport;
 use App\Services\Fiscal\Mutations\RecentTwoFactorGate;
 use App\Services\Integra\OfficeSerproAuthorizationService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Tests\Support\Fakes\FakeFiscalMutationTransport;
+use Tests\Support\UsesSerproTestDoubles;
 use Tests\TestCase;
 
 /**
@@ -36,6 +37,7 @@ use Tests\TestCase;
 class FiscalMutationOperationsTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesSerproTestDoubles;
 
     private Office $office;
 

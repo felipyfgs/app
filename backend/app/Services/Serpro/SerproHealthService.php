@@ -32,7 +32,6 @@ final class SerproHealthService
             'active_contract' => $active?->toSanitizedArray(),
             'contracts' => $all,
             'smoke_status' => config('serpro.smoke.status', 'PENDING_OPS'),
-            'fake_clients' => (bool) config('serpro.trial.use_fake_clients', true),
         ];
     }
 

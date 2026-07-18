@@ -35,9 +35,11 @@ final class OperationKeyMap
         // MIT
         'INTEGRA_MIT|MIT|CONSULTAR_SITUACAO' => 'mit.situacaoenc',
         'INTEGRA_MIT|MIT|CONSULTAR_APURACAO' => 'mit.consapuracao',
+        'INTEGRA_MIT|MIT|LISTAR_APURACOES' => 'mit.listaapuracoes',
         'INTEGRA_MIT|MIT|ENCERRAR' => 'mit.encapuracao',
         'MIT|MIT|SITUACAOENC' => 'mit.situacaoenc',
         'MIT|MIT|CONSAPURACAO' => 'mit.consapuracao',
+        'MIT|MIT|LISTAAPURACOES317' => 'mit.listaapuracoes',
         'MIT|MIT|ENCAPURACAO' => 'mit.encapuracao',
         'MIT|MIT|LISTAAPURACOES' => 'mit.listaapuracoes',
 
@@ -62,8 +64,15 @@ final class OperationKeyMap
 
         'INTEGRA_SN|DEFIS|MONITOR' => 'defis.consdeclaracao',
         'INTEGRA_SN|DEFIS|CONSULTAR' => 'defis.consdeclaracao',
+        'INTEGRA_SN|DEFIS|CONSULTAR_ULTIMA_DECLARACAO_RECIBO' => 'defis.consultimadecrec',
+        'INTEGRA_SN|DEFIS|CONSULTAR_DECLARACAO_RECIBO' => 'defis.consdecrec',
         'INTEGRA_SN|DEFIS|TRANSMITIR' => 'defis.transdeclaracao',
+        'DEFIS|DEFIS|CONSULTIMADECREC' => 'defis.consultimadecrec',
+        'DEFIS|DEFIS|CONSULTIMADECREC143' => 'defis.consultimadecrec',
+        'DEFIS|DEFIS|CONSDECREC144' => 'defis.consdecrec',
         'INTEGRA_SN|REGIME_APURACAO|CONSULTAR' => 'regimeapuracao.consultaropcaoregime',
+        'INTEGRA_SN|REGIME_APURACAO|CONSULTAR_ANOS_CALENDARIOS' => 'regimeapuracao.consultaranoscalendarios',
+        'INTEGRA_SN|REGIME_APURACAO|CONSULTAR_RESOLUCAO' => 'regimeapuracao.consultarresolucao',
 
         // MEI
         'INTEGRA_MEI|PGMEI|MONITOR' => 'pgmei.dividaativa',
@@ -71,6 +80,7 @@ final class OperationKeyMap
         'INTEGRA_MEI|PGMEI|GERAR_DAS' => 'pgmei.gerardaspdf',
         'INTEGRA_MEI|CCMEI|MONITOR' => 'ccmei.dadosccmei',
         'INTEGRA_MEI|CCMEI|CONSULTAR' => 'ccmei.dadosccmei',
+        'INTEGRA_MEI|CCMEI|CONSULTAR_SITUACAO_CADASTRAL' => 'ccmei.ccmeisitcadastral',
         'INTEGRA_MEI|DASN_SIMEI|CONSULTAR' => 'dasnsimei.consultimadecrec',
         'INTEGRA_MEI|DASN_SIMEI|TRANSMITIR' => 'dasnsimei.transdeclaracao',
 
@@ -91,6 +101,9 @@ final class OperationKeyMap
         // SICALC — contrato legado da central de guias para operação oficial 5.1
         'INTEGRA_PAGAMENTO|SICALC|EMITIR_GUIA' => 'sicalc.consolidargerardarf',
         'SICALC|SICALC|EMITIR_GUIA' => 'sicalc.consolidargerardarf',
+        'SICALC|SICALC|CONSULTAR_APOIO_RECEITAS' => 'sicalc.consultaapoioreceitas',
+        'PAGTOWEB|PAGTOWEB|CONSULTAR_PAGAMENTOS' => 'pagtoweb.pagamentos',
+        'PAGTOWEB|PAGTOWEB|CONTAR_CONSULTA_PAGAMENTOS' => 'pagtoweb.contaconsdocarrpg',
     ];
 
     public static function resolve(

@@ -635,6 +635,10 @@ final class DctfwebPostConsultService
 
     private function provenance(IntegraResponse $response): string
     {
+        if ($response->sourceProvenance === FiscalSourceProvenance::SerproTrial->value) {
+            return FiscalSourceProvenance::SerproTrial->value;
+        }
+
         if ($response->simulated
             || $response->sourceProvenance === FiscalSourceProvenance::Simulated->value) {
             return FiscalSourceProvenance::Simulated->value;

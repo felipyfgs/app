@@ -1,4 +1,20 @@
 import type { TableColumn } from '@nuxt/ui'
+import { h } from 'vue'
+/**
+ * Imports estáticos — NÃO usar resolveComponent aqui.
+ * Builders em computed durante o render da UTable perdem o instance da página
+ * e as células ficam vazias. @see table-sort.ts / pgdasd-table.ts
+ */
+import {
+  FiscalClientCell,
+  MonitoringPgmeiAutomaticSwitch,
+  MonitoringPgmeiBulkAutomaticActions,
+  UBadge,
+  UButton,
+  UDropdownMenu,
+  UIcon,
+  UTooltip
+} from '#components'
 import type {
   PgdasdCommunicationPreference,
   SimplesMeiClientRow
@@ -40,14 +56,8 @@ export function buildPgmeiColumns(options: {
     preference: PgdasdCommunicationPreference
   ) => void
 }): TableColumn<SimplesMeiClientRow>[] {
-  const UBadge = resolveComponent('UBadge')
-  const UButton = resolveComponent('UButton')
-  const UDropdownMenu = resolveComponent('UDropdownMenu')
-  const UIcon = resolveComponent('UIcon')
-  const UTooltip = resolveComponent('UTooltip')
-  const FiscalClientCell = resolveComponent('FiscalClientCell')
-  const AutomaticSwitch = resolveComponent('MonitoringPgmeiAutomaticSwitch')
-  const BulkAutomaticSwitch = resolveComponent('MonitoringPgmeiBulkAutomaticActions')
+  const AutomaticSwitch = MonitoringPgmeiAutomaticSwitch
+  const BulkAutomaticSwitch = MonitoringPgmeiBulkAutomaticActions
 
   function iconAction(args: {
     label: string
@@ -193,8 +203,8 @@ export function buildPgmeiColumns(options: {
             }),
             outdated
               ? h(UIcon, {
-                  name: 'i-lucide-clock-alert',
-                  class: 'size-4 text-warning',
+                  'name': 'i-lucide-clock-alert',
+                  'class': 'size-4 text-warning',
                   'aria-label': 'Consulta desatualizada'
                 })
               : null
@@ -266,7 +276,7 @@ export function buildPgmeiColumns(options: {
             : `Nenhuma consulta produtiva válida para ${options.year}`
         }, {
           default: () => h('span', {
-            class: 'whitespace-nowrap tabular-nums text-sm',
+            'class': 'whitespace-nowrap tabular-nums text-sm',
             'data-testid': 'pgmei-last-query'
           }, formatDate(lastQuery))
         })

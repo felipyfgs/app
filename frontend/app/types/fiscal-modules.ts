@@ -505,6 +505,8 @@ export interface PgdasdClientSummary {
   declaration_reason?: string | null
   last_valid_query_at?: string | null
   rbt12?: PgdasdRbt12Summary | null
+  /** Documentos PGDAS-D já persistidos; nunca contém bytes ou referência ao cofre. */
+  documents?: PgdasdArtifactDescriptor[]
   communication?: PgdasdCommunicationPreference | null
 }
 
@@ -583,6 +585,239 @@ export interface PgmeiHistoryPayload {
   } | null
 }
 
+/** Histórico local sanitizado de CCMEI/DADOSCCMEI122. */
+export interface CcmeiCertificateSummary {
+  status: string
+  situation: string
+  last_valid_query_at?: string | null
+  source_provenance?: 'SERPRO_REAL' | 'SIMULATED' | string | null
+}
+
+export interface CcmeiCertificateObservation {
+  id: number
+  status: string
+  situation: string
+  observed_at?: string | null
+  source_provenance?: 'SERPRO_REAL' | 'SIMULATED' | string | null
+}
+
+export interface CcmeiHistoryPayload {
+  client_id: number
+  current?: CcmeiCertificateSummary | null
+  history?: CcmeiCertificateObservation[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
+/** Histórico local sanitizado da situação cadastral CCMEISITCADASTRAL123. */
+export interface CcmeiRegistrationStatusSummary {
+  status: string
+  enquadrado_mei: boolean
+  situation: string
+  count: number
+  observed_at?: string | null
+  source_provenance?: 'SERPRO_REAL' | 'SIMULATED' | string | null
+}
+
+export interface CcmeiRegistrationStatusHistoryPayload {
+  client_id: number
+  current?: CcmeiRegistrationStatusSummary | null
+  history?: CcmeiRegistrationStatusSummary[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
+/** Metadados sanitizados do apoio de receita SICALC 5.2. */
+export interface SicalcRevenueSupportSummary {
+  revenue_code: string
+  description: string
+  extensions: Array<{
+    obrigatorios: Record<string, boolean>
+    opcionais: Record<string, boolean>
+    informacoes: Record<string, boolean | string>
+  }>
+  extension_count: number
+  observed_at?: string | null
+  source_provenance?: 'SERPRO_REAL' | 'SIMULATED' | string | null
+}
+
+export interface SicalcRevenueSupportHistoryPayload {
+  client_id: number
+  revenue_code?: string | null
+  current?: SicalcRevenueSupportSummary[]
+  history?: SicalcRevenueSupportSummary[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
+/** Agregado sanitizado da consulta PAGTOWEB 7.3; sem documentos individuais. */
+export interface PagtowebPaymentCountSummary {
+  payment_count: number
+  filter_summary: Record<string, unknown>
+  observed_at?: string | null
+  source_provenance?: 'SERPRO_REAL' | 'SIMULATED' | string | null
+}
+
+export interface PagtowebPaymentCountHistoryPayload {
+  client_id: number
+  current?: PagtowebPaymentCountSummary | null
+  history?: PagtowebPaymentCountSummary[]
+  provenance?: { source?: string | null, serpro_called?: boolean } | null
+}
+
+/** Item sanitizado de PAGTOWEB 7.1; o identificador original nunca chega à UI. */
+export interface PagtowebPaymentListItem {
+  document_masked: string
+  document_type?: string | null
+  revenue_code?: string | null
+  revenue_description?: string | null
+  paid_on?: string | null
+  due_on?: string | null
+  total_amount?: string | number | null
+}
+
+export interface PagtowebPaymentListHistoryPayload {
+  client_id: number
+  current?: {
+    filter_summary?: Record<string, unknown>
+    returned_count?: number
+    observed_at?: string | null
+    source_provenance?: 'SERPRO_REAL' | 'SIMULATED' | string | null
+  } | null
+  items: PagtowebPaymentListItem[]
+  meta: { page: number, per_page: number, total: number }
+  provenance?: { source?: string | null, serpro_called?: boolean } | null
+}
+
+/** Histórico local da lista DEFIS retornada pelo serviço SERPRO 142. */
+export interface DefisDeclarationItem {
+  calendar_year: number
+  declaration_type: '1' | '2' | '3' | '4'
+  observed_at?: string | null
+  source_provenance?: 'SERPRO_REAL' | 'SIMULATED' | string | null
+}
+
+export interface DefisDeclarationsHistoryPayload {
+  client_id: number
+  declarations: DefisDeclarationItem[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
+/** Descritor local da DEFIS 143; nunca contém PDF, Base64, hash ou idDefis. */
+export interface DefisLatestDeclarationDocument {
+  id: number
+  calendar_year: number
+  kind: 'RECIBO' | 'DECLARACAO'
+  filename: string
+  content_type: string
+  byte_size?: number | null
+  observed_at?: string | null
+  download_path: string
+}
+
+export interface DefisLatestDeclarationHistoryPayload {
+  client_id: number
+  documents: DefisLatestDeclarationDocument[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
+/** Referência opaca local de uma declaração DEFIS; nunca é o identificador SERPRO. */
+export interface DefisSpecificDeclarationReference {
+  reference_id: number
+  calendar_year: number
+  declaration_type: '1' | '2' | '3' | '4'
+  observed_at?: string | null
+}
+
+/** Descritor local da DEFIS 144; o PDF permanece no cofre. */
+export interface DefisSpecificDeclarationDocument {
+  id: number
+  kind: 'RECIBO' | 'DECLARACAO'
+  filename: string
+  content_type: string
+  byte_size?: number | null
+  observed_at?: string | null
+  download_path: string
+}
+
+export interface DefisSpecificDeclarationHistoryPayload {
+  client_id: number
+  references: DefisSpecificDeclarationReference[]
+  documents: DefisSpecificDeclarationDocument[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
+/** Histórico local da consulta SERPRO 102, sem payload bruto. */
+export interface RegimeCalendarItem {
+  calendar_year: number
+  regime_apuracao: 'COMPETENCIA' | 'CAIXA'
+  observed_at?: string | null
+  source_service?: string | null
+}
+
+export interface RegimeCalendarPayload {
+  data: RegimeCalendarItem[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
+/** Histórico local da opção anual retornada pelo serviço SERPRO 103. */
+export interface RegimeOptionItem {
+  calendar_year: number
+  regime_apuracao: 'COMPETENCIA' | 'CAIXA'
+  observed_at?: string | null
+}
+
+export interface RegimeOptionPayload {
+  data: RegimeOptionItem[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
+/** Resolução 104 já armazenada localmente; nunca contém Base64 ou bytes. */
+export interface RegimeResolutionItem {
+  calendar_year: number
+  observed_at?: string | null
+  content_type?: string | null
+  byte_size?: number | null
+  available: boolean
+  document: {
+    available: boolean
+    kind: 'TEXT'
+    label: string
+    content_type?: string | null
+    observed_at?: string | null
+    href?: string | null
+  }
+}
+
+export interface RegimeResolutionPayload {
+  data: RegimeResolutionItem[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
 export interface PgdasdArtifactDescriptor {
   id: number
   kind?: string | null
@@ -590,6 +825,9 @@ export interface PgdasdArtifactDescriptor {
   content_type?: string | null
   byte_size?: number | null
   observed_at?: string | null
+  /** URL same-origin entregue pela API para o download autenticado. */
+  download_path?: string | null
+  /** Compatibilidade transitória para contratos anteriores. */
   download_href?: string | null
 }
 
@@ -697,6 +935,8 @@ export interface SimplesMeiClientDetail {
   } | null
   rbt12?: PgdasdRbt12Summary | null
   last_productive_consulted_at?: string | null
+  /** Alias transitório dos documentos de detail.pgdasd durante deploy escalonado. */
+  documents?: PgdasdArtifactDescriptor[]
   communication?: PgdasdCommunicationPreference | null
   links?: Record<string, string | null>
 }
@@ -742,10 +982,37 @@ export interface DctfwebEvidenceDescriptor {
   kind?: string | null
   version?: number | null
   is_current?: boolean
+  /** Nome sanitizado calculado no servidor a partir do MIME autorizado. */
+  filename?: string | null
   content_type?: string | null
   byte_size?: number | null
   observed_at?: string | null
   download_path?: string | null
+}
+
+/** Projeção local sanitizada da consulta MIT/LISTAAPURACOES317. */
+export interface MitListaApuracoes317 {
+  id: number
+  client_id: number
+  period_key?: string | null
+  situation?: string | null
+  encerramento_status?: string | null
+  observed_at?: string | null
+  lista_apuracoes_317?: {
+    id_apuracao?: number | null
+    situacao?: number | null
+    data_encerramento?: string | null
+    evento_especial?: boolean | null
+    valor_total_apurado?: number | null
+  } | null
+}
+
+export interface MitListaApuracoes317Payload {
+  data: MitListaApuracoes317[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
 }
 
 export interface DctfwebHistoryPeriod {
@@ -1174,4 +1441,62 @@ export function fiscalDataOriginLabel(origin?: string | null): string {
 export function fiscalAsOfLabel(asOf?: string | null): string {
   if (asOf == null || String(asOf).trim() === '') return 'Sem observação oficial'
   return String(asOf).trim()
+}
+
+/** Elegibilidade pública de consulta manual (espelho backend ManualConsultEligibility). */
+export type ManualConsultEligibility
+  = | 'ready'
+    | 'module_off'
+    | 'capability_off'
+    | 'token_missing'
+    | 'power_missing'
+    | 'adapter_missing'
+    | 'mutating_blocked'
+
+export interface ManualConsultParamField {
+  name: string
+  type: string
+  required: boolean
+  label: string
+  pattern?: string | null
+}
+
+export interface ManualConsultLastResultSummary {
+  status?: string | null
+  observed_at?: string | null
+  run_id?: number | null
+}
+
+export interface ManualConsultAction {
+  action_id: string
+  label: string
+  surface_key: string
+  module_key: string
+  module_route: string
+  eligibility: ManualConsultEligibility | string
+  eligibility_label: string
+  executable: boolean
+  async: boolean
+  params_schema: ManualConsultParamField[]
+  last_result_summary?: ManualConsultLastResultSummary | null
+  operation_hint?: string | null
+}
+
+export interface ManualConsultInventory {
+  actions: ManualConsultAction[]
+  meta: {
+    total: number
+    ready: number
+    client_id?: number | null
+    serpro_called: false
+  }
+}
+
+export interface ManualConsultExecuteResult {
+  action_id: string
+  eligibility: string
+  async: boolean
+  module_route: string
+  result: Record<string, unknown>
+  serpro_call?: string
 }

@@ -100,12 +100,6 @@ final class SerproProductionEgressGate
             $pass('contract_exposed_flag', 'Contrato sem flag de exposição ou inexistente.');
         }
 
-        if ((bool) config('serpro.trial.use_fake_clients', true) && $environment === SerproEnvironment::Production) {
-            $fail('fake_clients', 'SERPRO_USE_FAKE_CLIENTS não pode estar ativo em PRODUCTION.');
-        } else {
-            $pass('fake_clients', 'Configuração de fake clients aceitável para o ambiente.');
-        }
-
         if ($office !== null) {
             $seg = $office->serpro_segregation_class
                 ?? ($this->isDemoOffice($office) ? SerproDataSegregationClass::Demo->value : null);
@@ -169,7 +163,6 @@ final class SerproProductionEgressGate
      *   environment: string,
      *   kill_switch: array{active: bool, source: string|null},
      *   drivers: array<string, string>,
-     *   fake_clients: bool,
      *   exposed_blocking_versions: list<array<string, mixed>>,
      *   external_gates_open: list<array<string, mixed>>,
      *   billable_egress: array{allowed: bool, code: string|null, message: string|null, checks: list<array{id: string, ok: bool, detail: string}>},
@@ -195,11 +188,6 @@ final class SerproProductionEgressGate
         ));
         if ($realDrivers !== [] && ! (bool) config('serpro.allow_real_drivers_in_prod_check', false)) {
             $issues[] = 'Drivers reais habilitados: '.implode(',', $realDrivers).' (default deve ser disabled).';
-        }
-
-        $fake = (bool) config('serpro.trial.use_fake_clients', true);
-        if ($fake && app()->environment('production')) {
-            $issues[] = 'SERPRO_USE_FAKE_CLIENTS=true em production.';
         }
 
         $exposed = $this->exposedCredentialsBlockingEgress($environment);
@@ -242,7 +230,6 @@ final class SerproProductionEgressGate
             'environment' => $environment->value,
             'kill_switch' => $kill['global'],
             'drivers' => $drivers,
-            'fake_clients' => $fake,
             'exposed_blocking_versions' => $exposedSanitized,
             'external_gates_open' => $openGates,
             'billable_egress' => $billable,

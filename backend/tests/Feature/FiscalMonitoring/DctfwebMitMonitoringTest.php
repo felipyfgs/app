@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\FiscalMonitoring;
 
+use App\Contracts\SerproOperationExecutor;
 use App\DTO\Serpro\IntegraResponse;
 use App\Enums\DctfwebArtifactKind;
 use App\Enums\DctfwebTransmissionStatus;
@@ -31,15 +32,20 @@ use App\Models\SerproServiceCatalogEntry;
 use App\Models\TaxProxyPower;
 use App\Models\User;
 use App\Services\Fiscal\Mutations\RecentTwoFactorGate;
+use App\Services\FiscalMonitoring\FiscalAdapterRegistry;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
+use App\Services\Integra\Dctfweb\DctfwebAdapterRegistrar;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebCompetenceResolver;
 use App\Services\Integra\Dctfweb\DctfwebEventIngestionService;
 use App\Services\Integra\Dctfweb\DctfwebMutationGuard;
 use App\Services\Integra\Dctfweb\MitApuracaoService;
-use App\Services\Integra\FakeIntegraContadorClient;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
+use Tests\Support\Fakes\FakeIntegraContadorClient;
+use Tests\Support\FakeSerproOperationExecutor;
+use Tests\Support\UsesSerproTestDoubles;
 use Tests\TestCase;
 
 /**
@@ -48,6 +54,7 @@ use Tests\TestCase;
 class DctfwebMitMonitoringTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesSerproTestDoubles;
 
     private Office $office;
 
@@ -62,6 +69,9 @@ class DctfwebMitMonitoringTest extends TestCase
         parent::setUp();
 
         config([
+            // Cenário histórico inteiramente offline; o double é instalado
+            // explicitamente e nunca constitui evidência de homologação.
+            'serpro.default_environment' => SerproEnvironment::Trial->value,
             'features.global_enabled' => true,
             'features.kill_switch' => false,
             'features.mutating.enabled' => false,
@@ -71,7 +81,8 @@ class DctfwebMitMonitoringTest extends TestCase
             'fiscal_monitoring.enabled' => true,
             'fiscal_monitoring.kill_switch' => false,
             'fiscal_monitoring.mutating_enabled' => false,
-            'serpro.trial.use_fake_clients' => true,
+            // Double offline explícito; o runtime exercitado continua real-only.
+            'serpro.capabilities.dctfweb' => 'real',
         ]);
 
         $this->office = Office::factory()->create();
@@ -92,6 +103,7 @@ class DctfwebMitMonitoringTest extends TestCase
             'status' => SerproContractStatus::Active,
             'contractor_cnpj' => '11222333000181',
             'health_status' => 'OK',
+            'credentials_exposed' => false,
             'activated_at' => now(),
         ]);
 
@@ -133,8 +145,25 @@ class DctfwebMitMonitoringTest extends TestCase
         }
     }
 
+    private function installOfflineReadExecutor(): void
+    {
+        $this->app->instance(
+            SerproOperationExecutor::class,
+            new FakeSerproOperationExecutor($this->fake),
+        );
+
+        // Os adapters são construídos no boot com o executor central. Para os
+        // quatro cenários legados de leitura, recriar somente o registry DCTF
+        // após o override mantém mutações e gates nos demais testes intactos.
+        $registry = new FiscalAdapterRegistry;
+        app(DctfwebAdapterRegistrar::class)->register($registry);
+        $this->app->instance(FiscalAdapterRegistry::class, $registry);
+    }
+
     public function test_evento_duplicado_nao_duplica_run_nem_reconcilia_duas_vezes(): void
     {
+        $this->installOfflineReadExecutor();
+
         $this->fake->queue(
             DctfwebCodes::SYSTEM_DCTFWEB,
             DctfwebCodes::SERVICE_DCTFWEB,
@@ -197,6 +226,8 @@ class DctfwebMitMonitoringTest extends TestCase
 
     public function test_retificacao_cria_nova_versao_sem_sobrescrever_evidencia_anterior(): void
     {
+        $this->installOfflineReadExecutor();
+
         $runs = app(FiscalMonitoringRunService::class);
         $period = '2026-02';
 
@@ -336,8 +367,67 @@ class DctfwebMitMonitoringTest extends TestCase
         $this->assertSame('RECTIFICADORA', $decl->declaration_type);
     }
 
+    public function test_historico_e_download_dctfweb_preservam_mime_e_nome_xml_sanitizados(): void
+    {
+        $this->installOfflineReadExecutor();
+
+        $period = '2026-06';
+        $competence = app(DctfwebCompetenceResolver::class)
+            ->resolve($this->office, $this->client, $period);
+        $this->fake->queue(
+            DctfwebCodes::SYSTEM_DCTFWEB,
+            DctfwebCodes::SERVICE_DCTFWEB,
+            DctfwebCodes::OP_CONSULTAR_XML,
+            FakeIntegraContadorClient::productiveRecibo($period, 'REC-XML', xmlHint: '<dctf>seguro</dctf>'),
+        );
+
+        $run = app(FiscalMonitoringRunService::class)->enqueueManual(
+            $this->office,
+            $this->client,
+            DctfwebCodes::SYSTEM_DCTFWEB,
+            DctfwebCodes::SERVICE_DCTFWEB,
+            DctfwebCodes::OP_CONSULTAR_XML,
+            competence: $competence,
+            correlationId: 'dctfweb-xml-download',
+            dispatch: false,
+        );
+        app(FiscalMonitoringRunService::class)->execute($run->id);
+
+        $version = DctfwebEvidenceVersion::query()->withoutGlobalScopes()
+            ->where('office_id', $this->office->id)
+            ->where('artifact_kind', DctfwebArtifactKind::Xml->value)
+            ->firstOrFail();
+
+        $this->actingAs($this->admin);
+        app(CurrentOffice::class)->resolve($this->admin);
+        $path = '/api/v1/fiscal/dctfweb/clients/'.$this->client->id.'/history';
+        $this->getJson($path)
+            ->assertOk()
+            ->assertJsonPath('data.periods.0.documents.0.content_type', 'application/xml')
+            ->assertJsonPath(
+                'data.periods.0.documents.0.filename',
+                'dctfweb-xml-'.$version->id.'.xml',
+            )
+            ->assertJsonPath(
+                'data.periods.0.documents.0.download_path',
+                '/api/v1/fiscal/dctfweb/clients/'.$this->client->id.'/evidence/'.$version->id.'/download',
+            );
+
+        $download = $this->get(
+            '/api/v1/fiscal/dctfweb/clients/'.$this->client->id.'/evidence/'.$version->id.'/download',
+        );
+        $download->assertOk();
+        $this->assertSame('application/xml', $download->headers->get('Content-Type'));
+        $this->assertStringContainsString(
+            'dctfweb-xml-'.$version->id.'.xml',
+            (string) $download->headers->get('Content-Disposition'),
+        );
+    }
+
     public function test_mit_encerrado_sem_transmissao_dctfweb_mantem_estados_independentes(): void
     {
+        $this->installOfflineReadExecutor();
+
         $period = '2026-03';
         $runs = app(FiscalMonitoringRunService::class);
 
@@ -575,5 +665,137 @@ class DctfwebMitMonitoringTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.period_key', '2026-07')
             ->assertJsonPath('data.0.stages.dctfweb_transmissao', DctfwebTransmissionStatus::Unknown->value);
+    }
+
+    public function test_lista_apuracoes_317_projeta_fixture_offline_sem_artefato_documental(): void
+    {
+        Queue::fake();
+        $this->actingAs($this->admin);
+        app(CurrentOffice::class)->resolve($this->admin);
+
+        $beforeRuns = FiscalMonitoringRun::query()->withoutGlobalScopes()->count();
+        $this->postJson('/api/v1/fiscal/mit/lista-apuracoes', [
+            'client_id' => $this->client->id,
+            'mesApuracao' => 5,
+        ])->assertUnprocessable();
+        $this->assertSame($beforeRuns, FiscalMonitoringRun::query()->withoutGlobalScopes()->count());
+
+        $this->postJson('/api/v1/fiscal/mit/lista-apuracoes', [
+            'client_id' => $this->client->id,
+            'anoApuracao' => 2026,
+            'mesApuracao' => 5,
+            'situacaoApuracao' => 2,
+            'correlation_id' => 'mit-317-fixture',
+        ])->assertCreated()
+            ->assertJsonPath('data.operation_code', DctfwebCodes::OP_MIT_LISTAR_APURACOES)
+            ->assertJsonPath('data.operation_key', DctfwebCodes::OPERATION_KEY_MIT_LISTA_APURACOES)
+            ->assertJsonPath('serpro_call', 'QUEUED');
+
+        $run = FiscalMonitoringRun::query()->withoutGlobalScopes()
+            ->where('correlation_id', 'mit-317-fixture')
+            ->firstOrFail();
+        $this->assertSame([
+            'anoApuracao' => 2026,
+            'mesApuracao' => 5,
+            'situacaoApuracao' => 2,
+        ], $run->progress['mit_lista_apuracoes']);
+
+        $fixture = json_decode(
+            (string) file_get_contents(base_path('tests/fixtures/serpro/mit/listaapuracoes317.json')),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+        $this->fake->queue(
+            DctfwebCodes::SYSTEM_MIT,
+            DctfwebCodes::SERVICE_MIT,
+            DctfwebCodes::OP_MIT_LISTAR_APURACOES,
+            new IntegraResponse(success: true, httpStatus: 200, body: $fixture, simulated: true),
+        );
+
+        $done = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $this->assertSame(FiscalRunStatus::Completed, $done->status);
+        $this->assertSame(1, $this->fake->calls);
+        $this->assertSame('mit.listaapuracoes', $this->fake->history[0]->operationKey);
+        $this->assertSame([
+            'anoApuracao' => 2026,
+            'mesApuracao' => 5,
+            'situacaoApuracao' => 2,
+        ], $this->fake->history[0]->businessData);
+        $this->assertSame(0, FiscalEvidenceArtifact::query()->withoutGlobalScopes()->count());
+
+        $this->getJson('/api/v1/fiscal/mit/lista-apuracoes?client_id='.$this->client->id.'&year=2026')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.period_key', '2026-05')
+            ->assertJsonPath('data.0.lista_apuracoes_317.id_apuracao', 71001)
+            ->assertJsonPath('provenance.serpro_called', false)
+            ->assertJsonMissingPath('data.0.metadata');
+    }
+
+    public function test_lista_apuracoes_317_rejeita_office_id_e_esconde_cliente_de_outro_escritorio(): void
+    {
+        $this->actingAs($this->admin);
+        app(CurrentOffice::class)->resolve($this->admin);
+
+        $this->postJson('/api/v1/fiscal/mit/lista-apuracoes', [
+            'client_id' => $this->client->id,
+            'anoApuracao' => 2026,
+            'office_id' => 999999,
+        ])->assertUnprocessable()
+            ->assertJsonPath('code', 'CLIENT_OFFICE_ID_REJECTED');
+
+        $otherOffice = Office::factory()->create();
+        $otherClient = Client::factory()->forOffice($otherOffice)->create();
+        $otherAdmin = User::factory()->forOffice($otherOffice, OfficeRole::Admin)->withTwoFactorConfirmed()->create();
+        $this->actingAs($otherAdmin);
+        app(CurrentOffice::class)->resolve($otherAdmin);
+
+        $this->getJson('/api/v1/fiscal/mit/lista-apuracoes?client_id='.$this->client->id)
+            ->assertNotFound();
+        $this->postJson('/api/v1/fiscal/mit/lista-apuracoes', [
+            'client_id' => $this->client->id,
+            'anoApuracao' => 2026,
+        ])->assertNotFound();
+        $this->assertNotNull($otherClient);
+    }
+
+    public function test_lista_apuracoes_317_rejeita_resposta_malformada_sem_projetar(): void
+    {
+        $this->fake->queue(
+            DctfwebCodes::SYSTEM_MIT,
+            DctfwebCodes::SERVICE_MIT,
+            DctfwebCodes::OP_MIT_LISTAR_APURACOES,
+            new IntegraResponse(success: true, httpStatus: 200, body: [
+                'Apuracoes' => [[
+                    'periodoApuracao' => '202613',
+                    'idApuracao' => 1,
+                    'situacao' => 1,
+                    'eventoEspecial' => false,
+                    'valorTotalApurado' => 0,
+                ]],
+            ], simulated: true),
+        );
+
+        $run = app(FiscalMonitoringRunService::class)->enqueueManual(
+            $this->office,
+            $this->client,
+            DctfwebCodes::SYSTEM_MIT,
+            DctfwebCodes::SERVICE_MIT,
+            DctfwebCodes::OP_MIT_LISTAR_APURACOES,
+            correlationId: 'mit-317-invalid-response',
+            dispatch: false,
+        );
+        $run->forceFill([
+            'operation_key' => DctfwebCodes::OPERATION_KEY_MIT_LISTA_APURACOES,
+            'progress' => ['mit_lista_apuracoes' => ['anoApuracao' => 2026]],
+        ])->save();
+
+        $done = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $this->assertSame(FiscalRunStatus::Failed, $done->status);
+        $this->assertSame('MIT_LISTA_APURACOES_RESPONSE_INVALID', $done->error_code);
+        $this->assertSame(0, MitApuracao::query()->withoutGlobalScopes()
+            ->where('office_id', $this->office->id)
+            ->count());
+        $this->assertSame(0, FiscalEvidenceArtifact::query()->withoutGlobalScopes()->count());
     }
 }

@@ -80,6 +80,7 @@ const historyOpen = ref(false)
 const previewOpen = ref(false)
 const trackingOpen = ref(false)
 const prefsOpen = ref(false)
+const mitListOpen = ref(false)
 const modalClientId = ref<number | null>(null)
 const modalClientName = ref<string | null>(null)
 const modalCnpjMasked = ref<string | null>(null)
@@ -123,8 +124,14 @@ const dctfwebColumns = computed(() => buildDctfwebColumns({
 }))
 
 const mitColumns = computed(() => buildMitColumns({
-  onOpenClient: row => {
+  onOpenClient: (row) => {
     navigateTo(`/monitoring/clients/${row.client_id}`)
+  },
+  onListApuracoes: (row) => {
+    modalClientId.value = row.client_id
+    modalClientName.value = row.legal_name || row.name || null
+    modalCnpjMasked.value = row.cnpj_masked || null
+    mitListOpen.value = true
   }
 }))
 
@@ -139,6 +146,7 @@ watch(submodule, (next, prev) => {
   previewOpen.value = false
   trackingOpen.value = false
   prefsOpen.value = false
+  mitListOpen.value = false
   modalClientId.value = null
   setPage(1)
   resetFilters()
@@ -174,6 +182,7 @@ watch(submodule, (next, prev) => {
     :get-client-id="row => row.client_id"
     :submodule="submodule"
     :selection-enabled="false"
+    :initial-hidden-columns="['evidence', 'darf']"
     :horizontal-scroll="true"
     table-class="min-w-[1120px]"
     empty-title="Nenhum cliente"
@@ -181,7 +190,8 @@ watch(submodule, (next, prev) => {
       ? {
         period: 'Competência',
         situation: 'Situação',
-        closure: 'Encerramento'
+        closure: 'Encerramento',
+        lista_apuracoes_317: 'Apurações 317'
       }
       : {
         situation: 'Situação',
@@ -201,13 +211,21 @@ watch(submodule, (next, prev) => {
     @refresh="refresh"
   >
     <template #submodules>
-      <UTabs
-        v-model="submodule"
-        :items="tabItems"
-        :content="false"
-        size="sm"
-        data-testid="dctfweb-submodule-tabs"
-      />
+      <div class="flex w-full min-w-0 justify-start overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+        <UTabs
+          v-model="submodule"
+          :items="tabItems"
+          :content="false"
+          size="sm"
+          class="w-max max-w-none"
+          :ui="{
+            root: 'w-max max-w-none',
+            list: 'w-max justify-start',
+            trigger: 'shrink-0'
+          }"
+          data-testid="dctfweb-submodule-tabs"
+        />
+      </div>
     </template>
 
     <template
@@ -241,5 +259,12 @@ watch(submodule, (next, prev) => {
     :can-manage="canManageClients"
     context="DCTFWEB"
     @saved="onModalPreferenceSaved"
+  />
+  <MonitoringMitListaApuracoesModal
+    v-if="isMit"
+    v-model:open="mitListOpen"
+    :client-id="modalClientId"
+    :client-name="modalClientName"
+    :cnpj-masked="modalCnpjMasked"
   />
 </template>

@@ -11,6 +11,7 @@ use App\Services\Integra\Dctfweb\Adapters\DctfwebTransmitirAdapter;
 use App\Services\Integra\Dctfweb\Adapters\DctfwebXmlAdapter;
 use App\Services\Integra\Dctfweb\Adapters\MitApuracaoAdapter;
 use App\Services\Integra\Dctfweb\Adapters\MitEncerrarAdapter;
+use App\Services\Integra\Dctfweb\Adapters\MitListaApuracoesAdapter;
 use App\Services\Integra\Dctfweb\Adapters\MitSituacaoAdapter;
 use Illuminate\Contracts\Container\Container;
 
@@ -32,6 +33,7 @@ final class DctfwebAdapterRegistrar
             DctfwebTransmitirAdapter::class,
             MitSituacaoAdapter::class,
             MitApuracaoAdapter::class,
+            MitListaApuracoesAdapter::class,
             MitEncerrarAdapter::class,
         ];
 

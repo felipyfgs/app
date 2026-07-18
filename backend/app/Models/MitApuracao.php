@@ -63,6 +63,11 @@ class MitApuracao extends Model
      */
     public function toPublicArray(): array
     {
+        $metadata = is_array($this->metadata) ? $this->metadata : [];
+        $listaApuracao = is_array($metadata['lista_apuracoes_317'] ?? null)
+            ? $metadata['lista_apuracoes_317']
+            : null;
+
         return [
             'id' => $this->id,
             'office_id' => $this->office_id,
@@ -77,6 +82,8 @@ class MitApuracao extends Model
             'encerrado_at' => $this->encerrado_at?->toIso8601String(),
             'observed_at' => $this->observed_at?->toIso8601String(),
             'current_snapshot_id' => $this->current_snapshot_id,
+            // Dados normalizados da lista 317; nunca metadata bruta, XML ou cofre.
+            'lista_apuracoes_317' => $listaApuracao,
             /** Painel: etapas correlacionadas porém distintas. */
             'stages' => [
                 'mit_encerramento' => $this->encerramento_status?->value,

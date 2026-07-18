@@ -21,10 +21,6 @@ final class SerproProductionBootGuard
             return $issues;
         }
 
-        if ((bool) config('serpro.trial.use_fake_clients', false)) {
-            $issues[] = 'SERPRO_USE_FAKE_CLIENTS=true é proibido em production.';
-        }
-
         $drivers = config('serpro.capabilities', []);
         if (is_array($drivers)) {
             foreach ($drivers as $name => $driver) {

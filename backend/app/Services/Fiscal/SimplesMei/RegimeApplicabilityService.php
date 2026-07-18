@@ -13,6 +13,8 @@ use App\Models\Client;
 use App\Models\ClientTaxRegimePeriod;
 use App\Models\FiscalCategory;
 use App\Models\FiscalCompetence;
+use App\Models\FiscalEvidenceArtifact;
+use App\Models\FiscalMonitoringRun;
 use App\Models\Office;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -151,6 +153,307 @@ final class RegimeApplicabilityService
     }
 
     /**
+     * Persiste os anos de COMPETENCIA/CAIXA sem confundi-los com o regime
+     * tributário do cliente. A linha continua classificada como Simples
+     * Nacional; o regime de apuração oficial fica nos metadados.
+     *
+     * @param  list<array{calendar_year:int,regime_apuracao:string}>  $options
+     */
+    public function projectCalendarOptions(
+        Office $office,
+        Client $client,
+        array $options,
+        ?int $sourceRunId = null,
+    ): void {
+        foreach ($options as $option) {
+            $year = (int) ($option['calendar_year'] ?? 0);
+            $regimeApuracao = strtoupper((string) ($option['regime_apuracao'] ?? ''));
+            if ($year < 2000 || $year > 2100
+                || ! in_array($regimeApuracao, ['COMPETENCIA', 'CAIXA'], true)) {
+                continue;
+            }
+
+            $from = CarbonImmutable::create($year, 1, 1)->startOfDay();
+            $existing = ClientTaxRegimePeriod::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $office->id)
+                ->where('client_id', $client->id)
+                ->where('regime_code', TaxRegimeCode::SimplesNacional->value)
+                ->whereDate('effective_from', $from->toDateString())
+                ->first();
+
+            $baseMeta = is_array($existing?->metadata) ? $existing->metadata : [];
+            // Preserva resolução 104 se já projetada no mesmo ano.
+            $metadata = array_merge($baseMeta, [
+                'operation_key' => 'regimeapuracao.consultaranoscalendarios',
+                'calendar_year' => $year,
+                'regime_apuracao' => $regimeApuracao,
+            ]);
+
+            $this->upsertPeriod(
+                $office,
+                $client,
+                TaxRegimeCode::SimplesNacional,
+                $from,
+                CarbonImmutable::create($year, 12, 31)->endOfDay(),
+                $sourceRunId,
+                $metadata,
+                $existing?->evidence_artifact_id !== null
+                    ? (int) $existing->evidence_artifact_id
+                    : null,
+            );
+        }
+    }
+
+    /**
+     * Persiste a observação pontual do serviço 103 sem sobrescrever a origem
+     * da listagem ampla do serviço 102. Ambos compartilham a vigência anual,
+     * mas mantêm proveniência distinta nos metadados locais.
+     *
+     * @param  array{calendar_year:int,regime_apuracao:string}  $option
+     */
+    public function projectRegimeOption(
+        Office $office,
+        Client $client,
+        array $option,
+        ?int $sourceRunId = null,
+    ): void {
+        $year = (int) ($option['calendar_year'] ?? 0);
+        $regimeApuracao = strtoupper((string) ($option['regime_apuracao'] ?? ''));
+        if ($year < 2000 || $year > 2100
+            || ! in_array($regimeApuracao, ['COMPETENCIA', 'CAIXA'], true)) {
+            return;
+        }
+
+        $from = CarbonImmutable::create($year, 1, 1)->startOfDay();
+        $existing = ClientTaxRegimePeriod::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->where('client_id', $client->id)
+            ->where('regime_code', TaxRegimeCode::SimplesNacional->value)
+            ->whereDate('effective_from', $from->toDateString())
+            ->first();
+        $metadata = is_array($existing?->metadata) ? $existing->metadata : [];
+        $metadata['regime_option_103'] = [
+            'operation_key' => RegimeOptionCodec::OPERATION_KEY,
+            'calendar_year' => $year,
+            'regime_apuracao' => $regimeApuracao,
+        ];
+
+        $this->upsertPeriod(
+            $office,
+            $client,
+            TaxRegimeCode::SimplesNacional,
+            $from,
+            CarbonImmutable::create($year, 12, 31)->endOfDay(),
+            $sourceRunId,
+            $metadata,
+            $existing?->evidence_artifact_id !== null ? (int) $existing->evidence_artifact_id : null,
+        );
+    }
+
+    /**
+     * @return list<array{calendar_year:int,regime_apuracao:string,observed_at:?string}>
+     */
+    public function listCalendarOptions(Office $office, Client $client): array
+    {
+        return ClientTaxRegimePeriod::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->where('client_id', $client->id)
+            ->where('source_system', 'INTEGRA_SN')
+            ->where('source_service', 'REGIME_APURACAO')
+            ->orderByDesc('effective_from')
+            ->get()
+            ->map(static function (ClientTaxRegimePeriod $period): ?array {
+                $metadata = is_array($period->metadata) ? $period->metadata : [];
+                if (($metadata['operation_key'] ?? null) !== 'regimeapuracao.consultaranoscalendarios') {
+                    return null;
+                }
+                $year = $metadata['calendar_year'] ?? $period->effective_from?->year;
+                $regime = $metadata['regime_apuracao'] ?? null;
+                if (! is_int($year) || ! in_array($regime, ['COMPETENCIA', 'CAIXA'], true)) {
+                    return null;
+                }
+
+                return [
+                    'calendar_year' => $year,
+                    'regime_apuracao' => $regime,
+                    'observed_at' => $period->observed_at?->toIso8601String(),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /** @return list<array{calendar_year:int,regime_apuracao:string,observed_at:?string}> */
+    public function listRegimeOptions(Office $office, Client $client): array
+    {
+        return ClientTaxRegimePeriod::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->where('client_id', $client->id)
+            ->where('source_system', 'INTEGRA_SN')
+            ->where('source_service', 'REGIME_APURACAO')
+            ->orderByDesc('observed_at')
+            ->get()
+            ->map(static function (ClientTaxRegimePeriod $period): ?array {
+                $metadata = is_array($period->metadata) ? $period->metadata : [];
+                $option = $metadata['regime_option_103'] ?? null;
+                if (! is_array($option)
+                    || ($option['operation_key'] ?? null) !== RegimeOptionCodec::OPERATION_KEY) {
+                    return null;
+                }
+                $year = $option['calendar_year'] ?? null;
+                $regime = $option['regime_apuracao'] ?? null;
+                if (! is_int($year) || ! in_array($regime, ['COMPETENCIA', 'CAIXA'], true)) {
+                    return null;
+                }
+
+                return [
+                    'calendar_year' => $year,
+                    'regime_apuracao' => $regime,
+                    'observed_at' => $period->observed_at?->toIso8601String(),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Projeção local da resolução 104: metadados no artefato de evidência.
+     * Não altera regime tributário nem opções de calendário 102.
+     *
+     * @param  array{
+     *   content_type?: string,
+     *   byte_size?: int,
+     *   content_sha256?: string,
+     *   download_path?: string
+     * }  $documentMeta
+     */
+    public function projectResolution(
+        Office $office,
+        Client $client,
+        int $calendarYear,
+        int $evidenceArtifactId,
+        ?int $sourceRunId = null,
+        array $documentMeta = [],
+    ): void {
+        if ($calendarYear < RegimeResolutionCodec::MIN_YEAR
+            || $calendarYear > RegimeResolutionCodec::MAX_YEAR) {
+            return;
+        }
+
+        $artifact = FiscalEvidenceArtifact::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereKey($evidenceArtifactId)
+            ->first();
+        if ($artifact === null) {
+            return;
+        }
+
+        $meta = is_array($artifact->metadata) ? $artifact->metadata : [];
+        $meta['operation_key'] = RegimeResolutionCodec::OPERATION_KEY;
+        $meta['calendar_year'] = $calendarYear;
+        $meta['client_id'] = $client->id;
+        $meta['source_run_id'] = $sourceRunId;
+        $meta['content_type'] = $documentMeta['content_type'] ?? $artifact->content_type;
+        $meta['byte_size'] = $documentMeta['byte_size'] ?? $artifact->byte_size;
+        if (isset($documentMeta['content_sha256'])) {
+            $meta['content_sha256'] = $documentMeta['content_sha256'];
+        }
+        $meta['download_path'] = $documentMeta['download_path']
+            ?? '/api/v1/fiscal/evidence/'.$artifact->id.'/download';
+        $artifact->forceFill(['metadata' => $meta])->saveQuietly();
+    }
+
+    /**
+     * Lista projeções locais de resolução 104 (sem bytes/Base64/vault path).
+     *
+     * @return list<array{
+     *   calendar_year:int,
+     *   observed_at:?string,
+     *   content_type:?string,
+     *   byte_size:?int,
+     *   available:bool,
+     *   document:array{
+     *     available:bool,
+     *     kind:string,
+     *     label:string,
+     *     content_type:?string,
+     *     observed_at:?string,
+     *     href:?string
+     *   }
+     * }>
+     */
+    public function listResolutions(Office $office, Client $client, ?int $year = null): array
+    {
+        $runIds = FiscalMonitoringRun::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->where('client_id', $client->id)
+            ->pluck('id');
+
+        if ($runIds->isEmpty()) {
+            return [];
+        }
+
+        $rows = FiscalEvidenceArtifact::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->where('operation_key', RegimeResolutionCodec::OPERATION_KEY)
+            ->whereIn('run_id', $runIds)
+            ->orderByDesc('observed_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $byYear = [];
+        foreach ($rows as $artifact) {
+            $meta = is_array($artifact->metadata) ? $artifact->metadata : [];
+            $calendarYear = (int) ($meta['calendar_year'] ?? 0);
+            if ($calendarYear < RegimeResolutionCodec::MIN_YEAR
+                || $calendarYear > RegimeResolutionCodec::MAX_YEAR) {
+                continue;
+            }
+            if ($year !== null && $calendarYear !== $year) {
+                continue;
+            }
+            // Mais recente por ano (já ordenado desc).
+            if (isset($byYear[$calendarYear])) {
+                continue;
+            }
+
+            $contentType = is_string($artifact->content_type) && $artifact->content_type !== ''
+                ? $artifact->content_type
+                : (is_string($meta['content_type'] ?? null) ? $meta['content_type'] : 'text/plain; charset=UTF-8');
+            $href = '/api/v1/fiscal/evidence/'.$artifact->id.'/download';
+
+            $byYear[$calendarYear] = [
+                'calendar_year' => $calendarYear,
+                'observed_at' => $artifact->observed_at?->toIso8601String(),
+                'content_type' => $contentType,
+                'byte_size' => (int) ($artifact->byte_size ?? $meta['byte_size'] ?? 0),
+                'available' => true,
+                'document' => [
+                    'available' => true,
+                    'kind' => 'TEXT',
+                    'label' => 'Ver resolução do Regime de Caixa',
+                    'content_type' => $contentType,
+                    'observed_at' => $artifact->observed_at?->toIso8601String(),
+                    'href' => $href,
+                ],
+            ];
+        }
+
+        krsort($byYear);
+
+        return array_values($byYear);
+    }
+
+    /**
      * @param  array<string, mixed>|null  $metadata
      */
     public function projectCompetenceSituation(
@@ -218,6 +521,9 @@ final class RegimeApplicabilityService
             ->get();
     }
 
+    /**
+     * @param  array<string, mixed>|null  $metadata
+     */
     private function upsertPeriod(
         Office $office,
         Client $client,
@@ -225,7 +531,21 @@ final class RegimeApplicabilityService
         CarbonImmutable $from,
         ?CarbonImmutable $to,
         ?int $sourceRunId,
+        ?array $metadata = null,
+        ?int $evidenceArtifactId = null,
     ): ClientTaxRegimePeriod {
+        $payload = [
+            'effective_to' => $to?->toDateString(),
+            'source_system' => 'INTEGRA_SN',
+            'source_service' => 'REGIME_APURACAO',
+            'source_run_id' => $sourceRunId,
+            'observed_at' => CarbonImmutable::now(),
+            'metadata' => $metadata,
+        ];
+        if ($evidenceArtifactId !== null) {
+            $payload['evidence_artifact_id'] = $evidenceArtifactId;
+        }
+
         return ClientTaxRegimePeriod::query()->updateOrCreate(
             [
                 'office_id' => $office->id,
@@ -233,13 +553,7 @@ final class RegimeApplicabilityService
                 'regime_code' => $regime->value,
                 'effective_from' => $from->toDateString(),
             ],
-            [
-                'effective_to' => $to?->toDateString(),
-                'source_system' => 'INTEGRA_SN',
-                'source_service' => 'REGIME_APURACAO',
-                'source_run_id' => $sourceRunId,
-                'observed_at' => CarbonImmutable::now(),
-            ],
+            $payload,
         );
     }
 

@@ -196,14 +196,10 @@ final class SerproOperationAttemptStore
             'source_provenance' => $response->sourceProvenance,
             'business_status' => $response->businessStatus,
             'functional_route' => $response->functionalRoute,
-            'mensagens' => $documental
-                ? $this->sanitizeDocumentalArray($response->mensagens)
-                : $response->mensagens,
+            'mensagens' => $this->sanitizeResponseArray($response->mensagens),
             'dados' => $this->sanitizeAttemptDados($attempt->operation_key, $response->dados),
             'body' => $this->sanitizeAttemptBody($attempt->operation_key, $response->body),
-            'headers' => $documental
-                ? $this->sanitizeDocumentalArray($response->headers)
-                : $response->headers,
+            'headers' => $this->sanitizeResponseArray($response->headers),
             'request_tag' => $response->requestTag ?? $attempt->request_tag,
             'correlation_id' => $response->correlationId ?? $attempt->correlation_id,
             'acknowledged_at' => in_array($state, [
@@ -279,11 +275,11 @@ final class SerproOperationAttemptStore
             }
         }
 
-        if (! $this->isPgdasdDocumentalKey($operationKey)) {
-            return $dados;
-        }
+        $dados = $this->sanitizeResponseArray($dados);
 
-        return $this->stripPdfBase64Fields($dados);
+        return $this->isPgdasdDocumentalKey($operationKey)
+            ? $this->stripPdfBase64Fields($dados)
+            : $dados;
     }
 
     /**
@@ -292,27 +288,11 @@ final class SerproOperationAttemptStore
      */
     private function sanitizeAttemptBody(?string $operationKey, array $body): array
     {
-        if (! $this->isPgdasdDocumentalKey($operationKey)) {
-            return $body;
-        }
+        $body = $this->sanitizeResponseArray($body);
 
-        if (isset($body['dados'])) {
-            if (is_array($body['dados'])) {
-                $body['dados'] = $this->stripPdfBase64Fields($body['dados']);
-            } elseif (is_string($body['dados'])) {
-                $decoded = json_decode($body['dados'], true);
-                if (is_array($decoded)) {
-                    $body['dados'] = $this->stripPdfBase64Fields($decoded);
-                } else {
-                    $body['dados'] = [
-                        'sanitized' => true,
-                        'invalid_document_payload' => true,
-                    ];
-                }
-            }
-        }
-
-        return $this->stripPdfBase64Fields($body);
+        return $this->isPgdasdDocumentalKey($operationKey)
+            ? $this->stripPdfBase64Fields($body)
+            : $body;
     }
 
     private function isPgdasdDocumentalKey(?string $operationKey): bool
@@ -360,16 +340,61 @@ final class SerproOperationAttemptStore
      */
     private function sanitizeDocumentalArray(array $node): array
     {
-        foreach ($node as &$value) {
-            if (is_array($value)) {
-                $value = $this->sanitizeDocumentalArray($value);
-            } elseif (is_string($value)) {
-                $value = $this->sanitizeScalar($value, true, 2000);
+        return $this->stripPdfBase64Fields($this->sanitizeResponseArray($node));
+    }
+
+    /**
+     * Remove segredos e XML/Base64 ecoados antes de qualquer resposta ir para
+     * o attempt store. O material sensível permanece exclusivamente no vault.
+     *
+     * @param  array<string|int, mixed>  $node
+     * @return array<string|int, mixed>
+     */
+    private function sanitizeResponseArray(array $node): array
+    {
+        foreach ($node as $field => &$value) {
+            if ($this->isSensitiveResponseField((string) $field)) {
+                $value = $this->omittedDescriptor();
+
+                continue;
             }
+
+            if (is_array($value)) {
+                $value = $this->sanitizeResponseArray($value);
+
+                continue;
+            }
+
+            if (! is_string($value)) {
+                continue;
+            }
+
+            $decoded = json_decode($value, true);
+            if (is_array($decoded)) {
+                $value = $this->sanitizeResponseArray($decoded);
+
+                continue;
+            }
+
+            $value = $this->sanitizeScalar($value, true, 2000);
         }
         unset($value);
 
         return $node;
+    }
+
+    private function isSensitiveResponseField(string $field): bool
+    {
+        $normalized = strtolower(str_replace(['-', ' '], '_', $field));
+
+        if (in_array($normalized, ['pdf', 'pdfnotificacao', 'pdfdarf', 'xml', 'xmlassinado'], true)) {
+            return true;
+        }
+
+        return (bool) preg_match(
+            '/(?:^|_)(?:token|access_token|refresh_token|jwt_token|authorization|password|secret|pfx)(?:$|_)/',
+            $normalized,
+        );
     }
 
     private function sanitizeScalar(string $value, bool $documental, int $maxLength): mixed

@@ -67,7 +67,11 @@ export const SERPRO_POWER_OPTIONS: SerproSelectOption[] = [
 
 /** Ambientes explícitos. */
 export const SERPRO_ENVIRONMENT_OPTIONS: SerproSelectOption[] = [
-  { label: 'Trial / homologação', value: 'TRIAL' },
+  {
+    label: 'Demonstração SERPRO',
+    value: 'TRIAL',
+    description: 'Não constitui evidência fiscal ou confirmação de operação real.'
+  },
   { label: 'Produção', value: 'PRODUCTION' }
 ]
 

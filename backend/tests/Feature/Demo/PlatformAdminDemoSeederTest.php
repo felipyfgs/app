@@ -179,7 +179,7 @@ class PlatformAdminDemoSeederTest extends TestCase
         $this->assertTrue($fresh->isPlatformAdmin());
     }
 
-    public function test_colisao_com_office_membership_falha_sem_escalada(): void
+    public function test_colisao_com_conta_tenant_sem_grant_global_falha_sem_escalada(): void
     {
         $office = $this->createDemoOffice();
         $existing = User::factory()->forOffice($office, OfficeRole::Operator)->create([
@@ -193,9 +193,10 @@ class PlatformAdminDemoSeederTest extends TestCase
 
         try {
             $this->seedPlatformAdmin();
-            $this->fail('Esperava RuntimeException por colisão com OfficeMembership.');
+            $this->fail('Esperava RuntimeException por conta sem PlatformMembership.');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('OfficeMembership', $e->getMessage());
+            // Não promove e-mail reservado que já é conta tenant a PLATFORM_ADMIN.
+            $this->assertStringContainsString('sem PlatformMembership', $e->getMessage());
         }
 
         $fresh = $existing->fresh();

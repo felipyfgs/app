@@ -40,7 +40,7 @@ const removeAria = computed(() => `Remover filtro ${display.value.fieldLabel}`)
       data-testid="data-table-filter-chip-edit"
       @click="emit('edit')"
     >
-      <span class="inline-flex max-w-72 min-w-0 items-center gap-1.5">
+      <span class="inline-flex max-w-[min(18rem,calc(100vw-5rem))] min-w-0 items-center gap-1.5 sm:max-w-72">
         <UIcon
           :name="kindIcon"
           class="size-3.5 shrink-0 text-muted"

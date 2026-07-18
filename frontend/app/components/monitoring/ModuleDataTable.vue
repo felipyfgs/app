@@ -1,5 +1,17 @@
 <script setup lang="ts" generic="T">
+/**
+ * Grade de carteira fiscal — arquétipo customers.vue do template.
+ *
+ * Desktop (md+): UTable (customers.vue) + columnVisibility «Exibir».
+ * Mobile (&lt; md): lista de cards (ModuleMobileCards) com resumo + collapsible
+ * + ações — sem scroll horizontal nem pin de colunas.
+ *
+ * @see .reference/nuxt-dashboard-template/app/pages/customers.vue
+ * @see components/monitoring/ModuleMobileCards.vue
+ * @see tests/unit/monitoring-mobile-layout.test.ts
+ */
 import type { TableColumn } from '@nuxt/ui'
+import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
 import { upperFirst } from 'scule'
 import type {
   FiscalModuleSortingState
@@ -15,6 +27,10 @@ import {
   selectedMonitoringRows
 } from '~/utils/monitoring-selection'
 
+/** Largura mínima padrão quando a página pede scroll sem `tableClass` explícito. */
+const DEFAULT_SCROLL_MIN_WIDTH = 'min-w-[56rem]'
+
+/** UI canônica do template customers.vue. */
 const TABLE_UI = {
   root: 'overflow-visible',
   base: 'table-fixed border-separate border-spacing-0',
@@ -45,8 +61,17 @@ const props = withDefaults(defineProps<{
   columnLabels?: Record<string, string>
   initialHiddenColumns?: string[]
   showColumnVisibility?: boolean
+  /**
+   * Scroll horizontal na grade desktop (tabela densa).
+   * No mobile os cards substituem a grade — este flag não afeta o phone.
+   */
   horizontalScroll?: boolean
   tableClass?: string
+  /**
+   * Ativa cards no viewport &lt; md (default true).
+   * Passe false para forçar tabela + scroll também no mobile.
+   */
+  mobileCards?: boolean
   emptyTitle?: string
   emptyDescription?: string
   emptyKind?: FiscalTableEmptyKind | null
@@ -61,6 +86,7 @@ const props = withDefaults(defineProps<{
   showColumnVisibility: true,
   horizontalScroll: false,
   tableClass: undefined,
+  mobileCards: true,
   emptyTitle: undefined,
   emptyDescription: undefined,
   emptyKind: null
@@ -82,6 +108,7 @@ const table = useTemplateRef<{ tableApi?: {
   }>
   resetRowSelection: () => void
 } } | null>('table')
+
 const columnVisibility = ref<Record<string, boolean>>(
   Object.fromEntries(props.initialHiddenColumns.map(id => [id, false]))
 )
@@ -125,7 +152,6 @@ let lastSelectionSignature = ''
 watch([selectedRows, selectedClientIds], () => {
   const clientIds = selectedClientIds.value
   const count = selectedCount.value
-  // Evita reemitir o mesmo snapshot (UTable re-render → loop com colunas reativas).
   const signature = `${count}:${clientIds.join(',')}`
   if (signature === lastSelectionSignature) return
   lastSelectionSignature = signature
@@ -200,70 +226,124 @@ const itemsPerPage = computed(() => props.perPage > 0
     ? Math.max(1, Math.ceil(props.total / props.lastPage))
     : 15)
 
+/** Viewport estreito: cards + paginação compacta. Desktop: tabela. */
+const breakpoints = useBreakpoints(breakpointsTailwind)
+const isNarrow = breakpoints.smaller('sm')
+const isCompact = breakpoints.smaller('md')
+const useMobileCards = computed(() => props.mobileCards && isCompact.value)
+const paginationSiblingCount = computed(() => (isNarrow.value ? 0 : 1))
+
+/** «Exibir colunas» só faz sentido com a tabela desktop montada. */
+const canShowColumnVisibility = computed(() =>
+  props.showColumnVisibility && !useMobileCards.value
+)
+
+const resolvedTableClass = computed(() => {
+  const custom = props.tableClass?.trim()
+  if (custom) return custom
+  if (props.horizontalScroll) return DEFAULT_SCROLL_MIN_WIDTH
+  return undefined
+})
+
 defineExpose({ clearSelection })
 </script>
 
 <template>
   <div
-    class="flex flex-col gap-1.5"
-    :class="horizontalScroll ? 'overflow-x-auto' : undefined"
+    class="flex min-w-0 flex-col gap-1.5"
     data-testid="fiscal-data-table"
   >
     <slot
       name="toolbar"
       :display-column-items="displayColumnItems"
-      :show-column-visibility="showColumnVisibility"
+      :show-column-visibility="canShowColumnVisibility"
     />
 
-    <UTable
-      ref="table"
-      v-model:column-visibility="columnVisibility"
-      v-model:row-selection="rowSelection"
-      v-model:sorting="sortingModel"
-      sticky="header"
-      :data="rows"
+    <!-- Mobile: um card por cliente (resumo + collapsible + ações). -->
+    <MonitoringModuleMobileCards
+      v-if="useMobileCards"
+      :rows="rows"
       :columns="tableColumns"
-      :loading="loading"
-      :sorting-options="{ manualSorting: true, enableMultiSort: false }"
       :get-row-id="getRowId"
-      :ui="TABLE_UI"
-      class="shrink-0"
-      :class="tableClass"
-      data-testid="fiscal-table"
+      :get-client-id="getClientId"
+      :selection-enabled="selectionEnabled"
+      :row-selection="rowSelection"
+      :column-labels="labels"
+      :loading="loading"
+      :empty-title="emptyTitle"
+      :empty-description="emptyDescription"
+      :empty-kind="resolvedEmptyKind"
+      :error="error"
+      @update:row-selection="rowSelection = $event"
+      @refresh="emit('refresh')"
+    />
+
+    <!-- Desktop: customers.vue — UTable com scroll horizontal se denso. -->
+    <div
+      v-else
+      class="min-w-0"
+      :class="horizontalScroll
+        ? 'overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]'
+        : undefined"
+      data-testid="fiscal-table-scroll"
     >
-      <template #empty>
-        <MonitoringTableEmptyState
-          :kind="resolvedEmptyKind"
-          :title="emptyTitle"
-          :description="emptyDescription"
-          :error="error"
-          class="py-10"
-          @retry="emit('refresh')"
-        />
-      </template>
-    </UTable>
+      <UTable
+        ref="table"
+        v-model:column-visibility="columnVisibility"
+        v-model:row-selection="rowSelection"
+        v-model:sorting="sortingModel"
+        sticky="header"
+        :data="rows"
+        :columns="tableColumns"
+        :loading="loading"
+        :sorting-options="{ manualSorting: true, enableMultiSort: false }"
+        :get-row-id="getRowId"
+        :ui="TABLE_UI"
+        class="shrink-0"
+        :class="resolvedTableClass"
+        data-testid="fiscal-table"
+      >
+        <template #empty>
+          <MonitoringTableEmptyState
+            :kind="resolvedEmptyKind"
+            :title="emptyTitle"
+            :description="emptyDescription"
+            :error="error"
+            class="py-10"
+            @retry="emit('refresh')"
+          />
+        </template>
+      </UTable>
+    </div>
 
     <div
-      class="mt-auto flex items-center justify-between gap-3 border-t border-default pt-4"
+      class="mt-auto flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
       data-testid="fiscal-pagination"
     >
-      <div class="text-sm text-muted">
+      <div class="min-w-0 text-sm text-muted">
         <template v-if="selectionEnabled">
-          {{ selectedCount }} de {{ rows.length }} selecionado(s)
+          <span class="tabular-nums">{{ selectedCount }}</span>
+          <span class="max-sm:hidden"> de {{ rows.length }}</span>
+          selecionado(s)
           <span class="text-dimmed"> · </span>
         </template>
-        {{ total }} registro(s)
+        <span class="tabular-nums">{{ total }}</span> registro(s)
         <template v-if="lastPage > 1">
-          · página {{ page }} de {{ Math.max(lastPage, 1) }}
+          <span class="max-sm:hidden">
+            · página {{ page }} de {{ Math.max(lastPage, 1) }}
+          </span>
+          <span class="sm:hidden tabular-nums">
+            · {{ page }}/{{ Math.max(lastPage, 1) }}
+          </span>
         </template>
       </div>
-      <div class="flex items-center gap-1.5">
+      <div class="flex shrink-0 items-center justify-end gap-1.5">
         <UPagination
           v-model="pageModel"
           :total="total"
           :items-per-page="itemsPerPage"
-          :sibling-count="1"
-          show-edges
+          :sibling-count="paginationSiblingCount"
+          :show-edges="!isNarrow"
         />
       </div>
     </div>

@@ -105,6 +105,8 @@ letsencrypt/
 **/letsencrypt/
 
 # --- Vault, dados fiscais e certificados (NUNCA versionar) ---
+# Credenciais / PFX / senhas de smoke SERPRO (contador + plataforma)
+dados/
 data/
 vault/
 .vault/
@@ -186,6 +188,9 @@ Thumbs.db
 /pw-*.png
 # PNGs acidentais na raiz (screenshots de sessão / debug visual)
 /*.png
+# Evidências visuais geradas localmente — regeneráveis e não versionadas
+/docs/ui-screenshots/
+/storage/app/serpro-e2e-ui/
 frontend/pw-clients.mjs
 frontend/test-results/
 frontend/playwright-report/

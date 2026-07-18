@@ -33,6 +33,17 @@ class TermoXmlValidatorTest extends TestCase
         $this->assertNotSame(TermoAuthorizationState::SerproAccepted->value, $result->authorizationState);
     }
 
+    public function test_certificado_ecnpj_nao_e_truncado_como_cpf(): void
+    {
+        $author = '11222333000181';
+        $destination = TermoFixtureFactory::defaultDestinationCnpj();
+        $fixture = TermoFixtureFactory::signedTermo($author, $destination);
+
+        $result = $this->validator->validate($fixture['xml'], $author, $destination);
+
+        $this->assertTrue($result->valid, ($result->errorCode ?? '').': '.($result->errorMessage ?? ''));
+    }
+
     public function test_raiz_legada_termo_autorizacao_rejeita(): void
     {
         $xml = TermoFixtureFactory::legacyRootXml();

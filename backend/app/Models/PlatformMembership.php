@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\CompatiblePlatformRoleCast;
 use App\Enums\PlatformRole;
 use App\Services\Platform\PlatformOwnerService;
 use Database\Factories\PlatformMembershipFactory;
@@ -14,9 +15,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Associação global usuário ↔ papel da plataforma.
  * SEM office_id de membership — escopo global estrutural.
  * default_office_id: Office padrão de contexto (não cria OfficeMembership).
- * No máximo uma linha PLATFORM_ADMIN (Proprietário) por instalação.
+ * Durante expand, no máximo uma linha PLATFORM_ADMIN (índice parcial) por instalação.
  */
-#[Fillable(['user_id', 'role', 'is_active', 'default_office_id'])]
+#[Fillable(['user_id', 'role', 'platform_role', 'is_active', 'default_office_id'])]
 class PlatformMembership extends Model
 {
     /** @use HasFactory<PlatformMembershipFactory> */
@@ -34,7 +35,8 @@ class PlatformMembership extends Model
     protected function casts(): array
     {
         return [
-            'role' => PlatformRole::class,
+            'role' => CompatiblePlatformRoleCast::class,
+            'platform_role' => CompatiblePlatformRoleCast::class,
             'is_active' => 'boolean',
             'default_office_id' => 'integer',
         ];
@@ -50,8 +52,25 @@ class PlatformMembership extends Model
         return $this->belongsTo(Office::class, 'default_office_id');
     }
 
+    public function resolvedPlatformRole(): ?PlatformRole
+    {
+        if ($this->platform_role instanceof PlatformRole) {
+            return $this->platform_role;
+        }
+
+        if ($this->role instanceof PlatformRole) {
+            return $this->role;
+        }
+
+        return null;
+    }
+
     public function isPlatformAdmin(): bool
     {
-        return $this->is_active && $this->role === PlatformRole::PlatformAdmin;
+        if (! $this->is_active) {
+            return false;
+        }
+
+        return $this->resolvedPlatformRole() === PlatformRole::PlatformAdmin;
     }
 }

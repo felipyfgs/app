@@ -6,6 +6,7 @@ final class ProcuracaoLookupRequest
 {
     public function __construct(
         public readonly int $officeId,
+        public readonly int $clientId,
         public readonly string $environment,
         public readonly string $authorIdentity,
         public readonly string $contributorCnpj,

@@ -29,6 +29,7 @@ use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use App\Services\Integra\Sitfis\SitfisFlowService;
 use App\Services\Integra\Sitfis\SitfisSnapshotService;
 use App\Services\Integra\Sitfis\SitfisSourceAdapter;
+use App\Services\Integra\TaxProxyPowerService;
 use App\Support\CurrentOffice;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -68,6 +69,10 @@ class SitfisFlowTest extends TestCase
             'fiscal_monitoring.sitfis.max_polls' => 5,
             'fiscal_monitoring.sitfis.snapshot_ttl_seconds' => 3600,
             'serpro.default_environment' => 'TRIAL',
+            // Isola do piloto Docker (SERPRO_CAPABILITY_*=real + egress faturável).
+            'serpro.capabilities.sitfis' => 'real',
+            'serpro.trial.use_fake_clients' => true,
+            'serpro.kill_switch' => false,
         ]);
 
         $this->office = Office::factory()->create();
@@ -87,6 +92,7 @@ class SitfisFlowTest extends TestCase
             'contractor_cnpj' => '11222333000181',
             'contractor_name' => 'Software House Trial',
             'health_status' => 'OK',
+            'credentials_exposed' => false,
             'activated_at' => now(),
         ]);
 
@@ -108,15 +114,21 @@ class SitfisFlowTest extends TestCase
             'office_id' => $this->office->id,
             'client_id' => $this->client->id,
             'office_serpro_authorization_id' => $auth->id,
+            'environment' => SerproEnvironment::Trial->value,
             'author_identity' => '11222333000181',
             'contributor_cnpj' => '11222333000181',
             'system_code' => 'INTEGRA_SITFIS',
             'service_code' => 'SITFIS',
             'power_code' => '00002',
             'source' => TaxProxyPowerSource::ManualOfficialEvidence,
+            'provenance' => TaxProxyPowerService::PROVENANCE_MANUAL_APPROVED,
+            'segregation_class' => 'PRODUCTION',
             'status' => TaxProxyPowerStatus::Active,
             'valid_from' => now()->subDay(),
             'valid_to' => now()->addYear(),
+            'accepted_at' => now()->subDay(),
+            'freshness_checked_at' => now(),
+            'verified_at' => now(),
         ]);
 
         $this->integra = new ProgrammableIntegraContadorClient;
@@ -139,6 +151,40 @@ class SitfisFlowTest extends TestCase
         ));
         $prop->setValue($registry, $filtered);
         $registry->register($this->app->make(SitfisSourceAdapter::class));
+    }
+
+    public function test_solicit_oficial_protocolo_relatorio_e_retry_apos_304(): void
+    {
+        Queue::fake();
+
+        $this->integra->queueSolicitNotModifiedThenOk('PROT-OFFICIAL-1');
+
+        $svc = app(FiscalMonitoringRunService::class);
+        $run = $svc->enqueueManual(
+            $this->office,
+            $this->client,
+            'INTEGRA_SITFIS',
+            'SITFIS',
+            'MONITOR',
+            correlationId: 'sitfis-304-retry',
+            dispatch: false,
+        );
+
+        $done = $svc->execute($run->id);
+
+        $this->assertSame(FiscalRunStatus::Requeued, $done->status);
+        $this->assertSame('PROT-OFFICIAL-1', $done->progress['protocol'] ?? null);
+        $this->assertSame('WAITING_MIN_PERIOD', $done->progress['phase'] ?? null);
+        // 304 + retry success = 2 calls to solicitar_protocolo
+        $this->assertSame(
+            ['sitfis.solicitar_protocolo', 'sitfis.solicitar_protocolo'],
+            $this->integra->operations(),
+        );
+        // tempoEspera 4000ms → ~4s de espera (não 4000s)
+        $notBefore = $done->progress['not_before'] ?? null;
+        $this->assertNotNull($notBefore);
+        $seconds = CarbonImmutable::parse((string) $notBefore)->diffInSeconds(CarbonImmutable::now(), false);
+        $this->assertLessThan(30, abs($seconds));
     }
 
     public function test_fluxo_processando_nao_faz_polling_antes_do_prazo_minimo(): void
@@ -503,6 +549,54 @@ class SitfisFlowTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.is_negative_certificate', false)
             ->assertJsonPath('data.snapshot.situation', FiscalSituation::Unknown->value);
+    }
+
+    public function test_emit_pdf_oficial_preserva_evidencia_application_pdf(): void
+    {
+        Queue::fake();
+
+        // Minimal valid-looking base64 of "%PDF-1.4\n"
+        $pdfB64 = base64_encode("%PDF-1.4\n% oficial sitfis stub\n");
+
+        $this->integra
+            ->queueSolicit('PROT-PDF-1')
+            ->queueReportPdf($pdfB64);
+
+        $svc = app(FiscalMonitoringRunService::class);
+        $run = $svc->enqueueManual(
+            $this->office,
+            $this->client,
+            'INTEGRA_SITFIS',
+            'SITFIS',
+            'MONITOR',
+            correlationId: 'sitfis-pdf-1',
+            dispatch: false,
+        );
+
+        $afterSolicit = $svc->execute($run->id);
+        $child = FiscalMonitoringRun::query()
+            ->withoutGlobalScopes()
+            ->where('parent_run_id', $afterSolicit->id)
+            ->firstOrFail();
+        $progress = $child->progress ?? [];
+        $progress['not_before'] = CarbonImmutable::now()->subMinute()->toIso8601String();
+        $child->forceFill(['progress' => $progress])->save();
+
+        $done = $svc->execute($child->id);
+        $this->assertSame(FiscalRunStatus::Completed, $done->status);
+        $this->assertSame(FiscalSituation::Attention, $done->situation);
+
+        $evidence = FiscalEvidenceArtifact::query()->withoutGlobalScopes()
+            ->where('run_id', $done->id)->first();
+        $this->assertNotNull($evidence);
+        $this->assertSame('application/pdf', $evidence->content_type);
+        $bytes = app(FiscalEvidenceStore::class)->readAuthorized($evidence, (int) $this->office->id);
+        $this->assertStringStartsWith('%PDF', $bytes);
+
+        $request = collect($this->integra->requests)
+            ->first(fn ($r) => $r->operationKey === 'sitfis.emitir_relatorio');
+        $this->assertNotNull($request);
+        $this->assertSame('PROT-PDF-1', $request->businessData['protocoloRelatorio'] ?? null);
     }
 
     public function test_emit_ainda_processando_requeue_respeitoso(): void

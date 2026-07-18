@@ -31,6 +31,8 @@ class SimplesMeiDtoContractTest extends TestCase
         $this->assertContains('INTEGRA_SN/PGDASD/CONSULTAR_DECLARACAO', $keys);
         $this->assertContains('INTEGRA_SN/DEFIS/CONSULTAR', $keys);
         $this->assertContains('INTEGRA_SN/REGIME_APURACAO/CONSULTAR', $keys);
+        $this->assertContains('INTEGRA_SN/REGIME_APURACAO/CONSULTAR_ANOS_CALENDARIOS', $keys);
+        $this->assertContains('INTEGRA_SN/REGIME_APURACAO/CONSULTAR_RESOLUCAO', $keys);
         $this->assertContains('INTEGRA_MEI/PGMEI/CONSULTAR', $keys);
         $this->assertContains('INTEGRA_MEI/CCMEI/CONSULTAR', $keys);
         $this->assertContains('INTEGRA_MEI/DASN_SIMEI/CONSULTAR', $keys);
@@ -116,6 +118,7 @@ class SimplesMeiDtoContractTest extends TestCase
             'data' => ['status' => 'ATIVO', 'certificate_number' => 'C1'],
         ]);
         $this->assertSame(FiscalSituation::UpToDate, $ccmei->situation);
+        $this->assertArrayNotHasKey('raw', $ccmei->toNormalized());
 
         $dasn = DasnSimeiDto::fromIntegraBody([
             'dto_version' => '1',
@@ -123,6 +126,39 @@ class SimplesMeiDtoContractTest extends TestCase
         ]);
         $this->assertSame(FiscalSituation::UpToDate, $dasn->situation);
         $this->assertSame('MEI', $dasn->toNormalized()['regime_family']);
+    }
+
+    public function test_ccmei_descarta_campos_sensiveis_do_retorno_oficial(): void
+    {
+        $dto = CcmeiDto::fromIntegraBody([
+            'situacaoCadastralVigente' => 'ATIVA',
+            'cnpj' => '00000000000000',
+            'empresario' => [
+                'nomeCivil' => 'Pessoa protegida',
+                'cpf' => '00000000000',
+            ],
+            'enderecoComercial' => ['logradouro' => 'Endereço protegido'],
+            'qrcode' => base64_encode('conteudo-protegido'),
+        ]);
+
+        $normalized = $dto->toNormalized();
+
+        $this->assertSame('ATIVA', $normalized['status']);
+        $this->assertSame(FiscalSituation::UpToDate->value, $normalized['situation']);
+        $this->assertStringNotContainsString('00000000000', json_encode($normalized, JSON_THROW_ON_ERROR));
+        $this->assertStringNotContainsString('conteudo-protegido', json_encode($normalized, JSON_THROW_ON_ERROR));
+        $this->assertArrayNotHasKey('raw', $normalized);
+    }
+
+    public function test_ccmei_rejeita_retorno_sem_situacao_confiavel(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Resposta CCMEI inválida ou ambígua.');
+
+        CcmeiDto::fromIntegraBody([
+            'qrcode' => base64_encode('conteudo-protegido'),
+            'empresario' => ['cpf' => '00000000000'],
+        ]);
     }
 
     public function test_das_guide_nunca_infere_pagamento(): void
@@ -184,5 +220,40 @@ class SimplesMeiDtoContractTest extends TestCase
         $this->assertSame(FiscalSituation::Pending, $result->situation);
         $this->assertSame('HAS_ACTIVE_DEBT', $result->normalized['debt_state'] ?? null);
         $this->assertSame(100, $result->normalized['total_cents'] ?? null);
+    }
+
+    public function test_mapper_ccmei_sanitiza_evidencia_oficial_e_falha_sem_dados_decodificaveis(): void
+    {
+        $def = SimplesMeiCatalog::find('INTEGRA_MEI', 'CCMEI', 'CONSULTAR');
+        $mapper = new SimplesMeiResponseMapper(app(PgmeiDividaAtiva24Codec::class));
+        $result = $mapper->map($def, new IntegraResponse(
+            success: true,
+            httpStatus: 200,
+            body: ['status' => 200],
+            dados: json_encode([
+                'situacaoCadastralVigente' => 'ATIVA',
+                'cnpj' => '00000000000000',
+                'empresario' => ['cpf' => '00000000000'],
+                'qrcode' => base64_encode('conteudo-protegido'),
+            ], JSON_THROW_ON_ERROR),
+            simulated: true,
+        ));
+
+        $this->assertSame('SUCCESS', $result->result->value);
+        $this->assertSame(FiscalSituation::UpToDate, $result->situation);
+        $this->assertStringNotContainsString('00000000000', (string) $result->evidenceBytes);
+        $this->assertStringNotContainsString('conteudo-protegido', (string) $result->evidenceBytes);
+        $this->assertStringNotContainsString('qrcode', (string) $result->evidenceBytes);
+
+        $invalid = $mapper->map($def, new IntegraResponse(
+            success: true,
+            httpStatus: 200,
+            body: ['status' => 200, 'dados' => '{invalid-json'],
+            dados: '{invalid-json',
+            simulated: true,
+        ));
+
+        $this->assertSame('FAILED', $invalid->result->value);
+        $this->assertSame('INVALID_RESPONSE', $invalid->errorCode);
     }
 }

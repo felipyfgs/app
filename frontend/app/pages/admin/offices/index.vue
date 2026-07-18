@@ -3,18 +3,20 @@
  * Lista admin de Offices (inclui pendentes).
  * Arquétipo lista: customers.vue / serpro contracts.
  */
-import type { TableColumn } from '@nuxt/ui'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { PlatformOfficeAdminSummary } from '~/types/api'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 import { apiErrorMessage } from '~/utils/api-error'
 
 const api = useApi()
 const { sessionEpoch, canAccessPlatformAdmin } = useDashboard()
+const { selectOffice, switching: switchingOffice } = usePlatformOfficeSelect()
 
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const rows = ref<PlatformOfficeAdminSummary[]>([])
 const q = ref('')
+const actionOfficeId = ref<number | null>(null)
 // Reka/USelect proíbe value "" nos items (reserva para limpar seleção).
 const lifecycleFilter = ref('all')
 
@@ -51,11 +53,65 @@ const columns: TableColumn<PlatformOfficeAdminSummary>[] = [
     header: 'Ativação',
     cell: ({ row }) => {
       const a = row.original.activation
-      if (!a) return '—'
+      if (!a) return row.original.lifecycle_status === 'ACTIVE' ? 'Não se aplica' : '—'
       return `${methodLabel(String(a.method))} · ${a.status}`
+    }
+  },
+  {
+    id: 'actions',
+    header: 'Ações',
+    enableHiding: false,
+    enableSorting: false,
+    meta: {
+      class: {
+        th: 'w-16 text-right',
+        td: 'w-16 text-right'
+      }
     }
   }
 ]
+
+function officeDetailPath(office: PlatformOfficeAdminSummary): string {
+  return `/admin/offices/${office.id}`
+}
+
+async function manageOffice(office: PlatformOfficeAdminSummary) {
+  actionOfficeId.value = office.id
+  try {
+    await selectOffice(office.id, '/settings')
+  } finally {
+    actionOfficeId.value = null
+  }
+}
+
+function rowActions(office: PlatformOfficeAdminSummary): DropdownMenuItem[][] {
+  if (office.lifecycle_status === 'PENDING_ACTIVATION') {
+    return [[{
+      label: 'Gerenciar ativação',
+      icon: 'i-lucide-user-check',
+      to: officeDetailPath(office)
+    }]]
+  }
+
+  const details: DropdownMenuItem = {
+    label: 'Ver detalhes',
+    icon: 'i-lucide-eye',
+    to: officeDetailPath(office)
+  }
+
+  if (office.lifecycle_status !== 'ACTIVE') {
+    return [[details]]
+  }
+
+  return [[{
+    label: 'Gerenciar escritório',
+    icon: 'i-lucide-settings-2',
+    disabled: switchingOffice.value,
+    onSelect: () => {
+      void manageOffice(office)
+    }
+  }], [details]]
+}
 
 function lifecycleLabel(status: string): string {
   if (status === 'PENDING_ACTIVATION') return 'Pendente'
@@ -233,6 +289,26 @@ onMounted(load)
               :color="lifecycleColor(row.original.lifecycle_status)"
               :label="lifecycleLabel(row.original.lifecycle_status)"
             />
+          </template>
+          <template #actions-cell="{ row }">
+            <div class="flex justify-end">
+              <UDropdownMenu
+                :items="rowActions(row.original)"
+                :content="{ align: 'end' }"
+              >
+                <UButton
+                  icon="i-lucide-ellipsis-vertical"
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  square
+                  :loading="switchingOffice && actionOfficeId === row.original.id"
+                  :disabled="switchingOffice && actionOfficeId !== row.original.id"
+                  :aria-label="`Ações de ${row.original.name}`"
+                  data-testid="admin-office-row-actions"
+                />
+              </UDropdownMenu>
+            </div>
           </template>
         </UTable>
       </div>

@@ -36,6 +36,8 @@ final class DctfwebCodes
 
     public const OP_MIT_APURACAO = 'CONSULTAR_APURACAO';
 
+    public const OP_MIT_LISTAR_APURACOES = 'LISTAR_APURACOES';
+
     public const OP_MIT_ENCERRAR = 'ENCERRAR';
 
     public const EVENT_TRANSMISSAO = 'TRANSMISSAO';
@@ -52,6 +54,8 @@ final class DctfwebCodes
     public const CATEGORIA_GERAL_MENSAL = '40';
 
     public const OPERATION_KEY_CONSRECIBO = 'dctfweb.consrecibo';
+
+    public const OPERATION_KEY_MIT_LISTA_APURACOES = 'mit.listaapuracoes';
 
     /** @return list<string> */
     public static function readOnlyOperationsDctfweb(): array

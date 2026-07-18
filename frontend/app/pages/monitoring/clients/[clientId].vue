@@ -87,6 +87,55 @@ const fgtsCompetences = ref<Record<string, unknown>[]>([])
 const registrationLinks = ref<FiscalRegistrationLink[]>([])
 const taxProcesses = ref<FiscalTaxProcess[]>([])
 
+/** publicView SITFIS: campos flat + snapshot aninhado (evita painel em branco). */
+const sitfisSnapshot = computed(() => {
+  const s = sitfis.value?.snapshot
+  return s && typeof s === 'object' ? s as Record<string, unknown> : null
+})
+const sitfisSituation = computed(() => {
+  const flat = sitfis.value?.situation
+  if (flat != null && String(flat) !== '') return String(flat)
+  const nested = sitfisSnapshot.value?.situation
+  return nested != null && String(nested) !== '' ? String(nested) : ''
+})
+const sitfisObserved = computed(() => {
+  const flat = sitfis.value?.observed_at ?? sitfis.value?.as_of
+  if (flat != null && String(flat) !== '') return String(flat)
+  const nested = sitfisSnapshot.value?.observed_at
+  return nested != null ? String(nested) : null
+})
+const sitfisProtocol = computed(() => {
+  const flat = sitfis.value?.protocol ?? sitfis.value?.protocol_number
+  if (flat != null && String(flat) !== '') return String(flat)
+  const norm = sitfisSnapshot.value?.normalized
+  if (norm && typeof norm === 'object') {
+    const n = norm as Record<string, unknown>
+    if (n.protocol != null) return String(n.protocol)
+    if (n.protocol_number != null) return String(n.protocol_number)
+  }
+  return ''
+})
+const sitfisCoverage = computed(() => {
+  const flat = sitfis.value?.coverage
+  if (flat != null && String(flat) !== '') return String(flat)
+  const nested = sitfisSnapshot.value?.coverage
+  return nested != null ? String(nested) : ''
+})
+const sitfisErrorCode = computed(() => {
+  const c = sitfis.value?.error_code
+  return c != null && String(c) !== '' ? String(c) : ''
+})
+const sitfisErrorMessage = computed(() => {
+  const m = sitfis.value?.error_message
+  return m != null && String(m) !== '' ? String(m) : ''
+})
+const sitfisDocument = computed(() => {
+  const fromFlat = (sitfis.value as { document?: FiscalDocumentDescriptor | null } | null)?.document
+  if (fromFlat) return fromFlat
+  const snap = sitfisSnapshot.value as { document?: FiscalDocumentDescriptor | null } | null
+  return snap?.document ?? null
+})
+
 interface SectionState {
   loading: boolean
   error: string | null
@@ -1033,55 +1082,73 @@ onMounted(async () => {
               v-else-if="tab === 'sitfis'"
               title="Situação fiscal (SITFIS)"
               variant="subtle"
+              data-testid="client-sitfis-section"
             >
               <MonitoringTableEmptyState
-                v-if="!sitfis"
+                v-if="!sitfis || (!sitfisSituation && !sitfisErrorCode)"
                 kind="empty"
                 title="Nenhum snapshot SITFIS"
               />
-              <dl
-                v-else
-                class="grid gap-2 text-sm sm:grid-cols-2"
-              >
-                <div>
-                  <dt class="text-muted">
-                    Situação
-                  </dt>
-                  <dd>
-                    <FiscalStatusBadge :status="String(sitfis.situation || '')" />
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-muted">
-                    Observado
-                  </dt>
-                  <dd>{{ formatDateTime(String(sitfis.observed_at || sitfis.as_of || '') || null) }}</dd>
-                </div>
-                <div>
-                  <dt class="text-muted">
-                    Protocolo
-                  </dt>
-                  <dd>{{ sitfis.protocol || sitfis.protocol_number || '—' }}</dd>
-                </div>
-                <div>
-                  <dt class="text-muted">
-                    Cobertura
-                  </dt>
-                  <dd>{{ sitfis.coverage || '—' }}</dd>
-                </div>
-              </dl>
-              <div class="mt-3 flex flex-wrap items-center gap-2">
-                <FiscalDocumentAction
-                  :document="(sitfis as { document?: FiscalDocumentDescriptor | null }).document ?? null"
+              <template v-else>
+                <UAlert
+                  v-if="sitfisErrorCode"
+                  color="error"
+                  variant="subtle"
+                  icon="i-lucide-circle-x"
+                  class="mb-3"
+                  :title="String(sitfisErrorCode)"
+                  :description="sitfisErrorMessage || undefined"
+                  data-testid="client-sitfis-error"
                 />
-                <UButton
-                  size="sm"
-                  color="neutral"
-                  variant="soft"
-                  to="/monitoring/sitfis"
-                  label="Abrir carteira SITFIS"
-                />
-              </div>
+                <dl
+                  class="grid gap-2 text-sm sm:grid-cols-2"
+                  data-testid="client-sitfis-fields"
+                >
+                  <div>
+                    <dt class="text-muted">
+                      Situação
+                    </dt>
+                    <dd>
+                      <FiscalStatusBadge
+                        v-if="sitfisSituation"
+                        :status="sitfisSituation"
+                        show-hint
+                      />
+                      <span v-else class="text-muted">—</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt class="text-muted">
+                      Observado
+                    </dt>
+                    <dd>{{ formatDateTime(sitfisObserved) }}</dd>
+                  </div>
+                  <div>
+                    <dt class="text-muted">
+                      Protocolo
+                    </dt>
+                    <dd>{{ sitfisProtocol || '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt class="text-muted">
+                      Cobertura
+                    </dt>
+                    <dd>{{ sitfisCoverage || '—' }}</dd>
+                  </div>
+                </dl>
+                <div class="mt-3 flex flex-wrap items-center gap-2">
+                  <FiscalDocumentAction
+                    :document="sitfisDocument"
+                  />
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="soft"
+                    to="/monitoring/sitfis"
+                    label="Abrir carteira SITFIS"
+                  />
+                </div>
+              </template>
             </UPageCard>
 
             <UPageCard

@@ -2,6 +2,7 @@
 
 namespace App\Policies\Work;
 
+use App\Enums\TenantPermission;
 use App\Models\ProcessTemplate;
 use App\Models\User;
 use App\Policies\Work\Concerns\UsesRealWorkRole;
@@ -12,30 +13,27 @@ class ProcessTemplatePolicy
 
     public function viewAny(User $user): bool
     {
-        return $this->effectiveRole()?->canViewWork() === true;
+        return $this->allowsWork($user, TenantPermission::WorkView);
     }
 
     public function view(User $user, ProcessTemplate $template): bool
     {
-        return $this->sameOfficeId((int) $template->office_id)
-            && $this->effectiveRole()?->canViewWork() === true;
+        return $this->allowsWork($user, TenantPermission::WorkView, $template);
     }
 
     public function create(User $user): bool
     {
-        return $this->realRole()?->canManageWorkCatalog() === true;
+        return $this->allowsWork($user, TenantPermission::WorkCatalogManage);
     }
 
     public function update(User $user, ProcessTemplate $template): bool
     {
-        return $this->sameOfficeId((int) $template->office_id)
-            && $this->realRole()?->canManageWorkCatalog() === true;
+        return $this->allowsWork($user, TenantPermission::WorkCatalogManage, $template);
     }
 
     public function generate(User $user, ProcessTemplate $template): bool
     {
-        return $this->sameOfficeId((int) $template->office_id)
-            && $template->is_active
-            && $this->realRole()?->canCreateWorkProcesses() === true;
+        return $template->is_active
+            && $this->allowsWork($user, TenantPermission::WorkProcessesCreate, $template);
     }
 }

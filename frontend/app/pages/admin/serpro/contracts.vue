@@ -23,7 +23,7 @@ const rows = ref<SerproContractSanitized[]>([])
 const environment = ref('TRIAL')
 
 const envItems = [
-  { label: 'Trial', value: 'TRIAL' },
+  { label: 'Demonstração SERPRO', value: 'TRIAL' },
   { label: 'Produção', value: 'PRODUCTION' },
   { label: 'Todos', value: 'all' }
 ]
@@ -166,7 +166,7 @@ onMounted(load)
       >
         <template #environment-cell="{ row }">
           <UBadge color="neutral" variant="subtle">
-            {{ row.original.environment === 'PRODUCTION' ? 'Produção' : 'Trial' }}
+            {{ row.original.environment === 'PRODUCTION' ? 'Produção' : 'Demonstração SERPRO' }}
           </UBadge>
         </template>
 

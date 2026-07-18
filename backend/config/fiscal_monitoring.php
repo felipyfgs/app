@@ -86,17 +86,6 @@ return [
     ],
 
     /**
-     * Simples Nacional / MEI — geração assistida de DAS e monitores.
-     */
-    'simples_mei' => [
-        /** Permite stub local de DAS sem chamada externa quando mutações estão OFF. */
-        'das_stub_without_mutating' => filter_var(
-            env('FISCAL_SIMPLES_MEI_DAS_STUB_WITHOUT_MUTATING', true),
-            FILTER_VALIDATE_BOOL
-        ),
-    ],
-
-    /**
      * Integra-SITFIS — fluxo assíncrono solicitação/protocolo/espera/emissão.
      * Polling respeitoso: nunca mais agressivo que poll_interval; espera min_wait antes da 1ª emissão.
      */

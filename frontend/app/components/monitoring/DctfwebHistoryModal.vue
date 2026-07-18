@@ -25,7 +25,6 @@ const emit = defineEmits<{
 }>()
 
 const { fetchHistory, evidenceDownloadUrl } = useDctfwebMonitoring()
-const toast = useToast()
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -75,18 +74,19 @@ watch(
 )
 
 function docsOf(period: DctfwebHistoryPeriod): DctfwebEvidenceDescriptor[] {
-  return period.documents || period.artifacts || []
+  const entries = [
+    ...(period.documents || []),
+    ...(period.artifacts || [])
+  ]
+
+  return [...new Map(entries.map(document => [document.id, document])).values()]
 }
 
-function downloadDoc(doc: DctfwebEvidenceDescriptor) {
-  if (!props.clientId || !doc.id) return
-  const url = evidenceDownloadUrl(props.clientId, doc.id)
-  window.open(url, '_blank', 'noopener,noreferrer')
-  toast.add({
-    title: 'Download iniciado',
-    description: 'Documento lido do cofre com autorização do escritório.',
-    color: 'success'
-  })
+function documentDownloadUrl(doc: DctfwebEvidenceDescriptor): string | undefined {
+  const path = doc.download_path?.trim()
+  if (path) return path
+  if (!props.clientId || !doc.id) return undefined
+  return evidenceDownloadUrl(props.clientId, doc.id)
 }
 </script>
 
@@ -212,9 +212,11 @@ function downloadDoc(doc: DctfwebEvidenceDescriptor) {
                 color="neutral"
                 variant="outline"
                 icon="i-lucide-download"
-                :label="`${doc.kind || 'PDF'}${doc.byte_size ? ` · ${formatBytes(doc.byte_size)}` : ''}`"
+                :label="`${doc.filename || doc.kind || doc.content_type || 'Documento'}${doc.byte_size ? ` · ${formatBytes(doc.byte_size)}` : ''}`"
+                :to="documentDownloadUrl(doc)"
+                target="_blank"
+                external
                 data-testid="dctfweb-download-evidence"
-                @click="downloadDoc(doc)"
               />
             </div>
           </div>

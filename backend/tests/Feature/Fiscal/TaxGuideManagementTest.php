@@ -10,13 +10,14 @@ use App\Models\Office;
 use App\Models\TaxGuide;
 use App\Models\TaxGuideVersion;
 use App\Models\User;
-use App\Services\Fiscal\Guides\FakeGuideEmissionClient;
 use App\Services\Fiscal\Guides\GuideHighRiskGate;
 use App\Services\Fiscal\Guides\GuideIssuanceService;
 use App\Services\Fiscal\Guides\GuidePaymentService;
 use App\Services\Fiscal\Mutations\RecentTwoFactorGate;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\Fakes\FakeGuideEmissionClient;
+use Tests\Support\UsesSerproTestDoubles;
 use Tests\TestCase;
 
 /**
@@ -26,6 +27,7 @@ use Tests\TestCase;
 class TaxGuideManagementTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesSerproTestDoubles;
 
     private Office $office;
 

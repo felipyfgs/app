@@ -15,6 +15,7 @@ use App\Contracts\IntegraContadorClient;
 use App\Contracts\IntegraProcuracoesClient;
 use App\Contracts\MaOutboundXmlRetrievalClient;
 use App\Contracts\OutboundXmlCaptureCapacityPlanner;
+use App\Contracts\ParcelamentoSource;
 use App\Contracts\PfxReaderInterface;
 use App\Contracts\SecureObjectStore;
 use App\Contracts\SefazCteDistDfeClient;
@@ -60,19 +61,31 @@ use App\Policies\Work\ProcessTemplatePolicy;
 use App\Policies\Work\WorkDepartmentPolicy;
 use App\Services\Adn\CurlMtlsTransport;
 use App\Services\Adn\HttpAdnContributorClient;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Certificates\PfxReader;
 use App\Services\Clients\CnpjWsRegistrationLookup;
 use App\Services\Esocial\FakeEsocialEventClient;
 use App\Services\Esocial\FgtsEsocialSourceAdapter;
-use App\Services\Fiscal\Guides\FakeGuideEmissionClient;
+use App\Services\Fiscal\Guides\PagtowebPaymentCountAdapter;
+use App\Services\Fiscal\Guides\PagtowebPaymentListAdapter;
 use App\Services\Fiscal\Guides\SerproGuideEmissionClient;
-use App\Services\Fiscal\Mutations\FakeFiscalMutationTransport;
+use App\Services\Fiscal\Guides\SicalcRevenueSupportAdapter;
 use App\Services\Fiscal\Mutations\IntegraFiscalMutationTransport;
+use App\Services\Fiscal\SimplesMei\CcmeiPostConsultService;
+use App\Services\Fiscal\SimplesMei\CcmeiRegistrationStatusPostConsultService;
 use App\Services\Fiscal\SimplesMei\DasGuideHookService;
+use App\Services\Fiscal\SimplesMei\DefisDeclarationProjector;
+use App\Services\Fiscal\SimplesMei\DefisDeclarationReferenceStore;
+use App\Services\Fiscal\SimplesMei\DefisLatestDeclarationPostConsultService;
+use App\Services\Fiscal\SimplesMei\DefisSpecificDeclarationPostConsultService;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdConsDeclaracao13Codec;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdDocumentCodecs;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPostConsultService;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiDividaAtiva24Codec;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiPostConsultService;
 use App\Services\Fiscal\SimplesMei\RegimeApplicabilityService;
+use App\Services\Fiscal\SimplesMei\RegimeResolutionCodec;
+use App\Services\Fiscal\SimplesMei\RegimeResolutionPostConsultService;
 use App\Services\Fiscal\SimplesMei\SimplesMeiAdapter;
 use App\Services\Fiscal\SimplesMei\SimplesMeiCatalog;
 use App\Services\Fiscal\SimplesMei\SimplesMeiResponseMapper;
@@ -81,27 +94,21 @@ use App\Services\Integra\CapabilityAwareIntegraContadorClient;
 use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Integra\Dctfweb\DctfwebAdapterRegistrar;
 use App\Services\Integra\DisabledAutenticarProcuradorClient;
-use App\Services\Integra\FakeAutenticarProcuradorClient;
-use App\Services\Integra\FakeIntegraContadorClient;
-use App\Services\Integra\FakeIntegraProcuracoesClient;
+use App\Services\Integra\DisabledIntegraProcuracoesClient;
 use App\Services\Integra\HttpAutenticarProcuradorClient;
 use App\Services\Integra\HttpIntegraProcuracoesClient;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\Mailbox\CaixaPostalDetailAdapter;
 use App\Services\Integra\Mailbox\CaixaPostalListAdapter;
 use App\Services\Integra\Mailbox\DteIndicatorAdapter;
-use App\Services\Integra\Mailbox\FakeCaixaPostalClient;
-use App\Services\Integra\Mailbox\FakeDteIndicatorClient;
 use App\Services\Integra\Mailbox\SerproCaixaPostalClient;
 use App\Services\Integra\Mailbox\SerproDteIndicatorClient;
 use App\Services\Integra\OfficeSerproAuthorizationService;
-use App\Services\Integra\Parcelamento\FakeParcelamentoSource;
 use App\Services\Integra\Parcelamento\ParcelamentoEmitDocumentAdapter;
 use App\Services\Integra\Parcelamento\ParcelamentoMutatingAdapter;
 use App\Services\Integra\Parcelamento\ParcelamentoReadAdapter;
 use App\Services\Integra\Parcelamento\SerproParcelamentoSource;
 use App\Services\Integra\Parcelamento\StubTaxGuideEnrollment;
-use App\Services\Integra\SimulatedIntegraContadorClient;
 use App\Services\Integra\Sitfis\SitfisSourceAdapter;
 use App\Services\Outbound\DisabledMaOutboundXmlRetrievalClient;
 use App\Services\Outbound\DisabledSefazOutboundInutilizationClient;
@@ -130,7 +137,6 @@ use App\Services\Serpro\CapabilityDriverResolver;
 use App\Services\Serpro\Catalog\OfficialServiceCatalogImporter;
 use App\Services\Serpro\Catalog\OfficialServiceCatalogManifest;
 use App\Services\Serpro\Catalog\OperationCoordinateResolver;
-use App\Services\Serpro\FakeSerproContractAuthenticator;
 use App\Services\Serpro\HttpSerproContractAuthenticator;
 use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproHttpTransport;
@@ -140,6 +146,7 @@ use App\Services\Vault\EnvelopeCrypto;
 use App\Services\Vault\FilesystemSecureObjectStore;
 use App\Support\CurrentOffice;
 use App\Support\FiscalDataModel\PrivilegedOfficeContext;
+use App\Support\MultitenantRbac\EffectivePermissionsResolver;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Queue\Events\JobFailed;
@@ -154,6 +161,13 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(CurrentOffice::class, fn () => new CurrentOffice);
+        $this->app->scoped(
+            TenantAuthorization::class,
+            fn ($app) => new TenantAuthorization(
+                $app->make(CurrentOffice::class),
+                $app->make(EffectivePermissionsResolver::class),
+            ),
+        );
 
         $this->app->singleton(EnvelopeCrypto::class, function () {
             $masterKey = (string) config('vault.master_key', '');
@@ -278,56 +292,26 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(OfficialServiceCatalogImporter::class);
         $this->app->singleton(OperationCoordinateResolver::class);
         $this->app->singleton(CapabilityDriverResolver::class);
-        $this->app->singleton(SimulatedIntegraContadorClient::class);
-
-        $this->app->bind(SerproContractAuthenticator::class, function ($app) {
-            $useFake = $app->environment('testing')
-                || (bool) config('serpro.trial.use_fake_clients', true);
-
-            return $useFake
-                ? $app->make(FakeSerproContractAuthenticator::class)
-                : $app->make(HttpSerproContractAuthenticator::class);
-        });
-
-        // Fake Integra como singleton para testes enfileirarem respostas
-        $this->app->singleton(FakeIntegraContadorClient::class);
-
-        $this->app->bind(IntegraContadorClient::class, function ($app) {
-            if ($app->environment('testing')) {
-                return $app->make(FakeIntegraContadorClient::class);
-            }
-
-            return $app->make(CapabilityAwareIntegraContadorClient::class);
-        });
+        $this->app->bind(SerproContractAuthenticator::class, HttpSerproContractAuthenticator::class);
+        $this->app->bind(IntegraContadorClient::class, CapabilityAwareIntegraContadorClient::class);
 
         // Único entrypoint produtivo — adapters/jobs injetam isto, não o client HTTP.
         $this->app->singleton(SerproOperationExecutor::class, SerproOperationService::class);
         $this->app->singleton(SerproOperationService::class);
 
         $this->app->bind(AutenticarProcuradorClient::class, function ($app) {
-            $useFake = $app->environment('testing')
-                || (bool) config('serpro.trial.use_fake_clients', true);
-            if ($useFake) {
-                return $app->make(FakeAutenticarProcuradorClient::class);
-            }
-
             $driver = $app->make(CapabilityDriverResolver::class)->forCapability('autentica_procurador');
 
             return match ($driver) {
                 SerproCapabilityDriver::Disabled => $app->make(DisabledAutenticarProcuradorClient::class),
-                SerproCapabilityDriver::Simulated => $app->make(FakeAutenticarProcuradorClient::class),
                 SerproCapabilityDriver::Real => $app->make(HttpAutenticarProcuradorClient::class),
             };
         });
         $this->app->bind(IntegraProcuracoesClient::class, function ($app) {
-            if ($app->environment('testing')) {
-                return $app->make(FakeIntegraProcuracoesClient::class);
-            }
-
             $driver = $app->make(CapabilityDriverResolver::class)->forCapability('authorization');
 
             return match ($driver) {
-                SerproCapabilityDriver::Disabled, SerproCapabilityDriver::Simulated => $app->make(FakeIntegraProcuracoesClient::class),
+                SerproCapabilityDriver::Disabled => $app->make(DisabledIntegraProcuracoesClient::class),
                 SerproCapabilityDriver::Real => $app->make(HttpIntegraProcuracoesClient::class),
             };
         });
@@ -339,49 +323,20 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(FakeEsocialEventClient::class);
         $this->app->bind(EsocialEventClient::class, FakeEsocialEventClient::class);
 
-        // Caixa Postal / DTE — driver por capacidade (fake em testing / simulated)
-        $this->app->singleton(FakeCaixaPostalClient::class);
-        $this->app->singleton(FakeDteIndicatorClient::class);
-        $this->app->bind(CaixaPostalClient::class, function ($app) {
-            if ($app->environment('testing')) {
-                return $app->make(FakeCaixaPostalClient::class);
-            }
+        // Caixa Postal / DTE — o runtime só resolve clientes SERPRO reais.
+        $this->app->bind(CaixaPostalClient::class, SerproCaixaPostalClient::class);
+        $this->app->bind(DteIndicatorClient::class, SerproDteIndicatorClient::class);
 
-            return $app->make(SerproCaixaPostalClient::class);
-        });
-        $this->app->bind(DteIndicatorClient::class, function ($app) {
-            if ($app->environment('testing')) {
-                return $app->make(FakeDteIndicatorClient::class);
-            }
+        // Mutações fiscais — transporte oficial; doubles são registrados apenas em tests/Support.
+        $this->app->bind(FiscalMutationTransport::class, IntegraFiscalMutationTransport::class);
 
-            return $app->make(SerproDteIndicatorClient::class);
-        });
-
-        // Mutações fiscais — fake controlável em testing; Integra em demais ambientes
-        $this->app->singleton(FakeFiscalMutationTransport::class);
-        $this->app->bind(FiscalMutationTransport::class, function ($app) {
-            if ($app->environment('testing')) {
-                return $app->make(FakeFiscalMutationTransport::class);
-            }
-
-            return $app->make(IntegraFiscalMutationTransport::class);
-        });
-
-        // Guias fiscais — fake apenas em testes; demais ambientes falham fechado
-        // no adapter SERPRO quando o driver da capacidade não for explicitamente real.
-        $this->app->singleton(FakeGuideEmissionClient::class);
+        // Guias fiscais — o adapter SERPRO falha fechado quando a capability não for real.
         $this->app->singleton(SerproGuideEmissionClient::class);
-        $this->app->bind(GuideEmissionClient::class, function ($app) {
-            if ($app->environment('testing')) {
-                return $app->make(FakeGuideEmissionClient::class);
-            }
+        $this->app->bind(GuideEmissionClient::class, SerproGuideEmissionClient::class);
 
-            return $app->make(SerproGuideEmissionClient::class);
-        });
-
-        // Parcelamentos SN/MEI — driver por capacidade (fake em simulated/testing)
-        $this->app->singleton(FakeParcelamentoSource::class);
+        // Parcelamentos SN/MEI — disabled falha fechado; sem fallback local.
         $this->app->singleton(SerproParcelamentoSource::class);
+        $this->app->bind(ParcelamentoSource::class, SerproParcelamentoSource::class);
         $this->app->singleton(TaxGuideEnrollment::class, StubTaxGuideEnrollment::class);
         $this->app->singleton(ParcelamentoReadAdapter::class);
         $this->app->singleton(ParcelamentoEmitDocumentAdapter::class);
@@ -454,6 +409,9 @@ class AppServiceProvider extends ServiceProvider
         $registry->register($this->app->make(CaixaPostalListAdapter::class));
         $registry->register($this->app->make(CaixaPostalDetailAdapter::class));
         $registry->register($this->app->make(DteIndicatorAdapter::class));
+        $registry->register($this->app->make(SicalcRevenueSupportAdapter::class));
+        $registry->register($this->app->make(PagtowebPaymentCountAdapter::class));
+        $registry->register($this->app->make(PagtowebPaymentListAdapter::class));
 
         // Integra-SN / Integra-MEI — um adapter por operação do catálogo
         foreach (SimplesMeiCatalog::all() as $def) {
@@ -470,8 +428,16 @@ class AppServiceProvider extends ServiceProvider
                 pgdasdCodec13: $this->app->make(PgdasdConsDeclaracao13Codec::class),
                 pgdasdDocumentCodecs: $this->app->make(PgdasdDocumentCodecs::class),
                 pgdasdPostConsult: $this->app->make(PgdasdPostConsultService::class),
-                pgmeiCodec24: $this->app->make(\App\Services\Fiscal\SimplesMei\Pgmei\PgmeiDividaAtiva24Codec::class),
-                pgmeiPostConsult: $this->app->make(\App\Services\Fiscal\SimplesMei\Pgmei\PgmeiPostConsultService::class),
+                pgmeiCodec24: $this->app->make(PgmeiDividaAtiva24Codec::class),
+                pgmeiPostConsult: $this->app->make(PgmeiPostConsultService::class),
+                ccmeiPostConsult: $this->app->make(CcmeiPostConsultService::class),
+                ccmeiRegistrationStatusPost: $this->app->make(CcmeiRegistrationStatusPostConsultService::class),
+                regimeResolutionCodec: $this->app->make(RegimeResolutionCodec::class),
+                regimeResolutionPost: $this->app->make(RegimeResolutionPostConsultService::class),
+                defisProjector: $this->app->make(DefisDeclarationProjector::class),
+                defisLatestDeclarationPost: $this->app->make(DefisLatestDeclarationPostConsultService::class),
+                defisSpecificDeclarationPost: $this->app->make(DefisSpecificDeclarationPostConsultService::class),
+                defisReferences: $this->app->make(DefisDeclarationReferenceStore::class),
             ));
         }
 

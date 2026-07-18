@@ -109,12 +109,11 @@ class DctfwebMonitoringController extends Controller
             return response()->json(['message' => 'Artefato não encontrado.'], 404);
         }
 
-        $kind = $version->artifact_kind?->value ?? 'recibo';
-        $filename = 'dctfweb-'.strtolower($kind).'-'.$version->id.'.pdf';
+        $document = $this->queries->documentMetadata($version);
 
         return response($bytes, 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Content-Type' => $document['content_type'],
+            'Content-Disposition' => 'attachment; filename="'.$document['filename'].'"',
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, no-store, max-age=0',
             'Pragma' => 'no-cache',

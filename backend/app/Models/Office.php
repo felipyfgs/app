@@ -34,13 +34,34 @@ class Office extends Model
     {
         return $this->belongsToMany(User::class)
             ->using(OfficeMembership::class)
-            ->withPivot(['role', 'is_active', 'work_department_id'])
+            ->withPivot([
+                'role',
+                'tenant_role',
+                'permission_profile_id',
+                'authorization_version',
+                'is_active',
+                'work_department_id',
+            ])
             ->withTimestamps();
     }
 
     public function memberships(): HasMany
     {
         return $this->hasMany(OfficeMembership::class);
+    }
+
+    public function permissionProfiles(): HasMany
+    {
+        return $this->hasMany(TenantPermissionProfile::class);
+    }
+
+    public function isOperational(): bool
+    {
+        $status = $this->lifecycle_status;
+
+        return $status instanceof OfficeLifecycleStatus
+            ? $status->isOperational()
+            : (bool) $this->is_active;
     }
 
     public function subscription(): HasOne

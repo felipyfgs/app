@@ -2,22 +2,24 @@
 
 namespace App\Policies;
 
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Models\SavedListFilter;
 use App\Models\User;
-use App\Support\CurrentOffice;
+use App\Policies\Concerns\AuthorizesTenantPermission;
 
 /**
  * Ownership e share de presets de filtro de lista.
  *
  * - personal: só o autor lista/edita/exclui
- * - office: membership do Office lista; publicar = ADMIN|OPERATOR; excluir office de terceiros = ADMIN
+ * - office: membership do Office lista; publicar = filters.share; excluir office de terceiros = admin baseline
  */
 class SavedListFilterPolicy
 {
+    use AuthorizesTenantPermission;
+
     public function viewAny(User $user): bool
     {
-        return $this->role($user) !== null;
+        return $this->allows($user, TenantPermission::ClientsView);
     }
 
     public function view(User $user, SavedListFilter $filter): bool
@@ -35,15 +37,12 @@ class SavedListFilterPolicy
 
     public function create(User $user): bool
     {
-        return $this->role($user) !== null;
+        return $this->allows($user, TenantPermission::ClientsView);
     }
 
-    /**
-     * Publicar/alterar visibility=office exige ADMIN ou OPERATOR.
-     */
     public function shareOffice(User $user): bool
     {
-        return $this->role($user)?->canShareListFilters() === true;
+        return $this->allows($user, TenantPermission::FiltersShare);
     }
 
     public function update(User $user, SavedListFilter $filter): bool
@@ -56,26 +55,12 @@ class SavedListFilterPolicy
             return true;
         }
 
-        // ADMIN pode gerir presets office de qualquer autor no Office.
-        return $filter->isOfficeShared() && $this->role($user) === OfficeRole::Admin;
+        return $filter->isOfficeShared()
+            && $this->allows($user, TenantPermission::TenantSettingsManage, $filter);
     }
 
     public function delete(User $user, SavedListFilter $filter): bool
     {
         return $this->update($user, $filter);
-    }
-
-    private function role(User $user): ?OfficeRole
-    {
-        return app(CurrentOffice::class)->resolve($user)
-            ? app(CurrentOffice::class)->role()
-            : null;
-    }
-
-    private function sameOffice(User $user, SavedListFilter $filter): bool
-    {
-        $officeId = app(CurrentOffice::class)->resolve($user)?->id;
-
-        return $officeId !== null && (int) $officeId === (int) $filter->office_id;
     }
 }

@@ -30,8 +30,8 @@ class SerproGatewayAuthorDerivationTest extends TestCase
             'serpro.kill_switch' => false,
             'features.kill_switch' => false,
             'features.global_enabled' => true,
-            'serpro.capabilities.default' => 'simulated',
-            'serpro.capabilities.sitfis' => 'simulated',
+            'serpro.capabilities.default' => 'real',
+            'serpro.capabilities.sitfis' => 'real',
         ]);
     }
 

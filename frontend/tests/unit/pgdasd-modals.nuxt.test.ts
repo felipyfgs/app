@@ -55,12 +55,15 @@ const stubs = {
     inheritAttrs: false,
     props: {
       label: { type: String, default: '' },
-      disabled: { type: Boolean, default: false }
+      disabled: { type: Boolean, default: false },
+      to: { type: String, default: '' }
     },
-    setup: (props, { attrs, slots }) => () => h('button', {
-      ...attrs,
-      disabled: props.disabled || undefined
-    }, slots.default?.() || props.label)
+    setup: (props, { attrs, slots }) => () => props.to
+      ? h('a', { ...attrs, href: props.to }, slots.default?.() || props.label)
+      : h('button', {
+          ...attrs,
+          disabled: props.disabled || undefined
+        }, slots.default?.() || props.label)
   }),
   UAlert: defineComponent({
     props: { title: { type: String, default: '' }, description: { type: String, default: '' } },
@@ -143,6 +146,52 @@ describe('modais PGDAS-D sem efeito colateral de leitura', () => {
     expect(collectDocuments).not.toHaveBeenCalled()
     expect(wrapper.get('[data-testid="pgdasd-history-modal"]').text())
       .toContain('Nenhum histórico local')
+  })
+
+  it('lista os cinco documentos locais como downloads pelo download_path da API', async () => {
+    fetchHistory.mockResolvedValueOnce({
+      client: { id: 7, legal_name: 'ACME LTDA' },
+      declaration_state: 'CURRENT',
+      periods: [{
+        period_key: '2026-06',
+        artifacts: [],
+        documents: [
+          { id: 1, kind: 'DECLARACAO', filename: 'declaracao.pdf', download_path: '/api/pgdasd/1' },
+          { id: 2, kind: 'RECIBO', filename: 'recibo.pdf', download_path: '/api/pgdasd/2' },
+          { id: 3, kind: 'NOTIFICACAO_MAED', filename: 'notificacao.pdf', download_path: '/api/pgdasd/3' },
+          { id: 4, kind: 'DARF_MAED', filename: 'darf.pdf', download_path: '/api/pgdasd/4' },
+          { id: 5, kind: 'EXTRATO', filename: 'extrato.pdf', download_path: '/api/pgdasd/5' }
+        ]
+      }]
+    })
+    const wrapper = await mountSuspended(HistoryModal, {
+      props: { open: true, clientId: 7, clientName: 'ACME LTDA' },
+      global: { stubs }
+    })
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('declaracao.pdf'))
+    expect(wrapper.text()).toContain('RECIBO')
+    expect(wrapper.text()).toContain('NOTIFICACAO_MAED')
+    expect(wrapper.text()).toContain('DARF_MAED')
+    expect(wrapper.text()).toContain('EXTRATO')
+    expect(wrapper.findAll('a').map(link => link.attributes('href'))).toEqual([
+      '/api/pgdasd/1',
+      '/api/pgdasd/2',
+      '/api/pgdasd/3',
+      '/api/pgdasd/4',
+      '/api/pgdasd/5'
+    ])
+    expect(collectDocuments).not.toHaveBeenCalled()
+  })
+
+  it('não mostra ação de download quando o histórico não tem artefatos', async () => {
+    const wrapper = await mountSuspended(HistoryModal, {
+      props: { open: true, clientId: 7, clientName: 'ACME LTDA' },
+      global: { stubs }
+    })
+
+    await vi.waitFor(() => expect(fetchHistory).toHaveBeenCalledWith(7))
+    expect(wrapper.findAll('a')).toHaveLength(0)
   })
 
   it('abrir prévia mantém o botão final desabilitado e não salva preferência', async () => {

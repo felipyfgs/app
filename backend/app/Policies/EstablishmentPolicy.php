@@ -2,46 +2,37 @@
 
 namespace App\Policies;
 
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Models\Establishment;
 use App\Models\User;
-use App\Support\CurrentOffice;
+use App\Policies\Concerns\AuthorizesTenantPermission;
 
 class EstablishmentPolicy
 {
+    use AuthorizesTenantPermission;
+
     public function viewAny(User $user): bool
     {
-        return app(CurrentOffice::class)->resolve($user) !== null;
+        return $this->allows($user, TenantPermission::ClientsView);
     }
 
     public function view(User $user, Establishment $establishment): bool
     {
-        return $this->sameOffice($user, $establishment);
+        return $this->allows($user, TenantPermission::ClientsView, $establishment);
     }
 
     public function create(User $user): bool
     {
-        $role = app(CurrentOffice::class)->role();
-
-        return $role?->canManageClients() === true;
+        return $this->allows($user, TenantPermission::ClientsManage);
     }
 
     public function update(User $user, Establishment $establishment): bool
     {
-        return $this->sameOffice($user, $establishment)
-            && app(CurrentOffice::class)->role()?->canManageClients() === true;
+        return $this->allows($user, TenantPermission::ClientsManage, $establishment);
     }
 
     public function delete(User $user, Establishment $establishment): bool
     {
-        return $this->sameOffice($user, $establishment)
-            && app(CurrentOffice::class)->role() === OfficeRole::Admin;
-    }
-
-    private function sameOffice(User $user, Establishment $establishment): bool
-    {
-        $officeId = app(CurrentOffice::class)->resolve($user)?->id;
-
-        return $officeId !== null && $officeId === $establishment->office_id;
+        return $this->allows($user, TenantPermission::CredentialsManage, $establishment);
     }
 }

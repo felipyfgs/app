@@ -187,6 +187,9 @@ class TaxDeclarationMonitoringTest extends TestCase
     public function test_prorrogacao_recalcula_apenas_competencias_abertas_e_preserva_historico(): void
     {
         $pgdas = $this->catalog->findByCode('PGDAS_D');
+        $previousCalendarVersion = (int) TaxDeadlineCalendarVersion::query()
+            ->where('code', 'RFB_NATIONAL')
+            ->max('version');
 
         $open = $this->projections->project(
             $this->office,
@@ -255,7 +258,7 @@ class TaxDeclarationMonitoringTest extends TestCase
         );
 
         $this->assertTrue($result['calendar']->is_current);
-        $this->assertSame(2, $result['calendar']->version);
+        $this->assertSame($previousCalendarVersion + 1, $result['calendar']->version);
         $this->assertGreaterThanOrEqual(1, $result['recalculated']);
 
         $open->refresh();

@@ -2,11 +2,12 @@
 
 namespace App\Services\Integra\Dctfweb;
 
+use App\Contracts\SerproOperationExecutor;
 use App\DTO\Fiscal\FiscalAdapterRequest;
+use App\DTO\Integra\MitListaApuracoesRequest;
 use App\DTO\Serpro\IntegraResponse;
 use App\Enums\SerproEnvironment;
 use App\Services\Serpro\Catalog\OperationKeyMap;
-use App\Services\Serpro\SerproOperationService;
 
 /**
  * Monta chamada DCTF/MIT via executor central.
@@ -16,7 +17,7 @@ use App\Services\Serpro\SerproOperationService;
 final class DctfwebIntegraCaller
 {
     public function __construct(
-        private readonly SerproOperationService $operations,
+        private readonly SerproOperationExecutor $operations,
     ) {}
 
     /**
@@ -58,6 +59,23 @@ final class DctfwebIntegraCaller
         $raw = strtoupper((string) config('serpro.default_environment', 'TRIAL'));
 
         return SerproEnvironment::tryFrom($raw) ?? SerproEnvironment::Trial;
+    }
+
+    /**
+     * Chamada tipada da consulta oficial MIT/LISTAAPURACOES317.
+     * Identidades e coordenadas continuam inteiramente no executor central.
+     */
+    public function callMitListaApuracoes(
+        FiscalAdapterRequest $request,
+        MitListaApuracoesRequest $filters,
+    ): IntegraResponse {
+        return $this->call(
+            request: $request,
+            solutionCode: DctfwebCodes::SYSTEM_MIT,
+            serviceCode: DctfwebCodes::SERVICE_MIT,
+            operationCode: DctfwebCodes::OP_MIT_LISTAR_APURACOES,
+            payload: $filters->toPayload(),
+        );
     }
 
     /**

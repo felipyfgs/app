@@ -3,7 +3,7 @@
 namespace App\Services\Serpro;
 
 use App\Models\SerproDocumentSnapshot;
-use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -11,11 +11,15 @@ use RuntimeException;
  */
 final class SerproDocumentRegistry
 {
+    public function __construct(
+        private readonly SerproOfficialSourceIntegrity $integrity,
+    ) {}
+
     public function manifestPath(): string
     {
         return (string) config(
             'serpro.official_sources_manifest',
-            resource_path('serpro/official-sources.v2026-07-16.json')
+            resource_path('serpro/official-sources.v2026-07-18.json')
         );
     }
 
@@ -33,13 +37,13 @@ final class SerproDocumentRegistry
             throw new RuntimeException('Manifesto de fontes oficiais SERPRO ausente.');
         }
 
-        /** @var array{version?: string, retrieved_on?: string, sources?: list<array<string, mixed>>} $data */
-        $data = json_decode((string) File::get($path), true, 512, JSON_THROW_ON_ERROR);
+        $validated = $this->integrity->loadAndValidate($path);
+        $data = $validated['manifest'];
 
         return [
-            'version' => (string) ($data['version'] ?? 'unknown'),
-            'retrieved_on' => (string) ($data['retrieved_on'] ?? ''),
-            'sources' => is_array($data['sources'] ?? null) ? $data['sources'] : [],
+            'version' => (string) $data['version'],
+            'retrieved_on' => (string) $data['retrieved_on'],
+            'sources' => $data['sources'],
         ];
     }
 
@@ -51,49 +55,53 @@ final class SerproDocumentRegistry
     public function syncFromManifest(): array
     {
         $manifest = $this->loadManifest();
-        $created = 0;
-        $existing = 0;
+        $httpSources = array_values(array_filter(
+            $manifest['sources'],
+            static fn (array $source): bool => ($source['verification_kind'] ?? null) === 'HTTP_CONTENT',
+        ));
 
-        foreach ($manifest['sources'] as $source) {
-            $key = (string) ($source['source_key'] ?? '');
-            $hash = (string) ($source['content_sha256'] ?? '');
-            if ($key === '' || $hash === '') {
-                continue;
-            }
+        return DB::transaction(function () use ($manifest, $httpSources): array {
+            $created = 0;
+            $existing = 0;
 
-            $row = SerproDocumentSnapshot::query()->firstOrCreate(
-                [
-                    'source_key' => $key,
-                    'content_sha256' => $hash,
-                ],
-                [
-                    'title' => (string) ($source['title'] ?? $key),
-                    'url' => isset($source['url']) ? (string) $source['url'] : null,
-                    'document_type' => (string) ($source['document_type'] ?? 'REFERENCE'),
-                    'revision' => isset($source['revision']) ? (string) $source['revision'] : null,
-                    'retrieved_on' => $source['retrieved_on'] ?? $manifest['retrieved_on'] ?: null,
-                    'affected_capabilities' => $source['affected_capabilities'] ?? [],
-                    'segregation_class' => (string) ($source['segregation_class'] ?? 'PRODUCTION'),
-                    'notes' => isset($source['notes']) ? (string) $source['notes'] : null,
-                    'metadata' => [
-                        'manifest_version' => $manifest['version'],
-                        'canonical' => (bool) ($source['canonical'] ?? true),
+            foreach ($httpSources as $source) {
+                $key = (string) $source['source_key'];
+                $hash = (string) $source['content_sha256'];
+                $row = SerproDocumentSnapshot::query()->firstOrCreate(
+                    [
+                        'source_key' => $key,
+                        'content_sha256' => $hash,
                     ],
-                ]
-            );
+                    [
+                        'title' => (string) $source['title'],
+                        'url' => (string) $source['url'],
+                        'document_type' => (string) $source['document_type'],
+                        'revision' => isset($source['revision']) ? (string) $source['revision'] : null,
+                        'retrieved_on' => $source['retrieved_on'],
+                        'affected_capabilities' => $source['affected_capabilities'] ?? [],
+                        'segregation_class' => (string) ($source['segregation_class'] ?? 'PRODUCTION'),
+                        'notes' => isset($source['notes']) ? (string) $source['notes'] : null,
+                        'metadata' => [
+                            'manifest_version' => $manifest['version'],
+                            'canonical' => true,
+                            'verification_kind' => 'HTTP_CONTENT',
+                        ],
+                    ]
+                );
 
-            if ($row->wasRecentlyCreated) {
-                $created++;
-            } else {
-                $existing++;
+                if ($row->wasRecentlyCreated) {
+                    $created++;
+                } else {
+                    $existing++;
+                }
             }
-        }
 
-        return [
-            'created' => $created,
-            'existing' => $existing,
-            'total' => $created + $existing,
-        ];
+            return [
+                'created' => $created,
+                'existing' => $existing,
+                'total' => $created + $existing,
+            ];
+        });
     }
 
     /**

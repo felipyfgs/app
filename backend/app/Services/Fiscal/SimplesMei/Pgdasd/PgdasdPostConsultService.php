@@ -362,8 +362,7 @@ final class PgdasdPostConsultService
         FiscalAdapterRequest $request,
         FiscalAdapterResult $result,
         string $reason,
-    ): array
-    {
+    ): array {
         $this->markExistingExpectedProjectionUnverified($request, $reason);
         $normalized = is_array($result->normalized) ? $result->normalized : [];
         $normalized['pgdasd'] = [

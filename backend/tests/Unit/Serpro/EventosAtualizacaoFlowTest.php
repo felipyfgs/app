@@ -231,7 +231,10 @@ final class EventosAtualizacaoFlowTest extends TestCase
     private function makeFlowWithExecutor(SerproOperationExecutor $executor): EventosAtualizacaoFlowService
     {
         config([
-            'serpro.capabilities.authorization' => 'simulated',
+            // O executor abaixo é um double do transporte; a capability precisa
+            // permanecer `real` para exercitar o fluxo sem reintroduzir driver
+            // simulado no runtime.
+            'serpro.capabilities.authorization' => 'real',
             'serpro.kill_switch' => false,
             'features.kill_switch' => false,
         ]);

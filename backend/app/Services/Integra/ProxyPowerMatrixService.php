@@ -2,8 +2,7 @@
 
 namespace App\Services\Integra;
 
-use Illuminate\Support\Facades\File;
-use RuntimeException;
+use App\Services\Serpro\SerproOfficialSourceIntegrity;
 
 /**
  * Matriz versionada idSistema+idServico → poderes e-CAC.
@@ -17,11 +16,15 @@ final class ProxyPowerMatrixService
 
     private ?array $cached = null;
 
+    public function __construct(
+        private readonly SerproOfficialSourceIntegrity $integrity,
+    ) {}
+
     public function matrixPath(): string
     {
         return (string) config(
             'serpro.power_matrix_manifest',
-            resource_path('serpro/power-matrix.v2026-07-16.json')
+            resource_path('serpro/power-matrix.v2026-07-18.json')
         );
     }
 
@@ -41,13 +44,14 @@ final class ProxyPowerMatrixService
             return $this->cached;
         }
 
-        $path = $this->matrixPath();
-        if (! is_file($path)) {
-            throw new RuntimeException('Matriz de poderes SERPRO ausente: '.$path);
-        }
-
-        /** @var array<string, mixed> $data */
-        $data = json_decode((string) File::get($path), true, 512, JSON_THROW_ON_ERROR);
+        $validated = $this->integrity->loadAndValidate(
+            (string) config(
+                'serpro.official_sources_manifest',
+                resource_path('serpro/official-sources.v2026-07-18.json'),
+            ),
+            matrixPath: $this->matrixPath(),
+        );
+        $data = $validated['matrix'];
 
         $entries = is_array($data['entries'] ?? null) ? $data['entries'] : [];
         $this->cached = [
@@ -79,7 +83,17 @@ final class ProxyPowerMatrixService
      */
     public function evaluateUsability(?string $observedSourceHash = null): array
     {
-        $matrix = $this->load();
+        try {
+            $matrix = $this->load();
+        } catch (\Throwable) {
+            return [
+                'usable' => false,
+                'review_status' => self::REVIEW_REQUIRED,
+                'reason' => 'Integridade da matriz de poderes não comprovada.',
+                'matrix_version' => 'unknown',
+                'source_content_sha256' => '',
+            ];
+        }
         $status = $matrix['review_status'];
         $approvedHash = $matrix['source_content_sha256'];
 
@@ -155,6 +169,51 @@ final class ProxyPowerMatrixService
         }
 
         return [];
+    }
+
+    /**
+     * União dos poderes PRODUCTION da matriz (semântica e-CAC "TODOS").
+     * Usado por OBTERPROCURACAO41 quando sistemas[] contém "TODOS".
+     *
+     * @return list<array{power_code: string, system_code: string, service_code: null}>
+     */
+    public function hubTodosPowerGrants(): array
+    {
+        $matrix = $this->load();
+        /** @var array<string, array{power_code: string, system_code: string, service_code: null}> $byCode */
+        $byCode = [];
+
+        foreach ($matrix['entries'] as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            if (strtoupper((string) ($entry['official_state'] ?? '')) !== 'PRODUCTION') {
+                continue;
+            }
+            $sistema = strtoupper(trim((string) ($entry['id_sistema'] ?? '')));
+            if ($sistema === '') {
+                continue;
+            }
+            $powers = $entry['required_proxy_powers'] ?? [];
+            if (! is_array($powers)) {
+                continue;
+            }
+            foreach ($powers as $raw) {
+                $code = strtoupper(trim((string) $raw));
+                if ($code === '' || isset($byCode[$code])) {
+                    continue;
+                }
+                $byCode[$code] = [
+                    'power_code' => $code,
+                    'system_code' => $sistema,
+                    'service_code' => null,
+                ];
+            }
+        }
+
+        ksort($byCode);
+
+        return array_values($byCode);
     }
 
     /**

@@ -203,7 +203,15 @@ final class PgdasdConsDeclaracao13Codec
         $transmittedRaw = $this->stringOrNull(
             $operation['dataHoraTransmissao'] ?? $declaration['dataHoraTransmissao'] ?? null
         );
-        $issuedRaw = $this->stringOrNull($operation['dataHoraEmissaoDas'] ?? $das['dataHoraEmissaoDas'] ?? null);
+        // O serviço 13 responde em produção com as duas grafias observadas
+        // para este campo. Ambas preservam o mesmo contrato semântico.
+        $issuedRaw = $this->stringOrNull(
+            $operation['dataHoraEmissaoDas']
+                ?? $operation['datahoraEmissaoDas']
+                ?? $das['dataHoraEmissaoDas']
+                ?? $das['datahoraEmissaoDas']
+                ?? null,
+        );
         $transmittedAt = $this->parseSerproDateTime($transmittedRaw);
         $issuedAt = $this->parseSerproDateTime($issuedRaw);
         $complete = $kind === PgdasdOperationKind::Declaration

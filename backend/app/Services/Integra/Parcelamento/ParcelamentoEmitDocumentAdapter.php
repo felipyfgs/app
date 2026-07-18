@@ -3,6 +3,7 @@
 namespace App\Services\Integra\Parcelamento;
 
 use App\Contracts\FiscalSourceAdapter;
+use App\Contracts\ParcelamentoSource;
 use App\Contracts\TaxGuideEnrollment;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
@@ -25,7 +26,7 @@ use Carbon\CarbonImmutable;
 final class ParcelamentoEmitDocumentAdapter implements FiscalSourceAdapter
 {
     public function __construct(
-        private readonly SerproParcelamentoSource $source,
+        private readonly ParcelamentoSource $source,
         private readonly TaxGuideEnrollment $guides,
         private readonly TaxProxyPowerService $proxyPowers,
     ) {}
@@ -214,6 +215,8 @@ final class ParcelamentoEmitDocumentAdapter implements FiscalSourceAdapter
             );
         }
 
+        $isTrial = (bool) ($response['simulated'] ?? false);
+
         $doc = $response['body']['documento'] ?? [];
         $raw = isset($doc['conteudoBase64'])
             ? (base64_decode((string) $doc['conteudoBase64'], true) ?: '')
@@ -295,7 +298,7 @@ final class ParcelamentoEmitDocumentAdapter implements FiscalSourceAdapter
             'modality' => $modality->value,
             'parcel_key' => $parcelKey,
             'payment_status' => $guide->payment_status?->value,
-            'simulated' => true,
+            'simulated' => $isTrial,
         ], JSON_THROW_ON_ERROR);
 
         return new FiscalAdapterResult(
@@ -303,7 +306,7 @@ final class ParcelamentoEmitDocumentAdapter implements FiscalSourceAdapter
             situation: FiscalSituation::UpToDate,
             coverage: FiscalCoverage::Full,
             evidenceBytes: $evidence,
-            sourceVersion: 'parcelamento-emit-fake-1',
+            sourceVersion: $isTrial ? 'parcelamento-serpro-trial' : 'parcelamento-serpro',
             normalized: [
                 'reused' => $enroll['reused'],
                 'guide' => $guide->toPublicArray(),

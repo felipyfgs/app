@@ -192,7 +192,6 @@ final class SerproReadinessService
             'document_fingerprint' => $manifestFingerprint !== null ? substr($manifestFingerprint, 0, 16) : null,
             'kill_switch' => $prod['kill_switch'] ?? null,
             'drivers' => $prod['drivers'] ?? null,
-            'fake_clients' => $prod['fake_clients'] ?? null,
             'billable_egress_allowed' => $prod['billable_egress']['allowed'] ?? false,
             'issues' => $prod['issues'] ?? [],
             'live_evidence' => $liveAny,

@@ -115,20 +115,28 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
     system_code?: string
     service_code?: string
     operation_code?: string
+    /** Lotes exibem um único feedback consolidado no caller. */
+    silent?: boolean
   }): Promise<FiscalMonitoringRun | Record<string, unknown> | null> {
     if (!canTriggerSync.value) {
-      toast.add({ title: 'Sem permissão para enfileirar consultas.', color: 'warning' })
+      if (!input.silent) {
+        toast.add({ title: 'Sem permissão para enfileirar consultas.', color: 'warning' })
+      }
       return null
     }
     if (!input.client_id || input.client_id < 1) {
-      toast.add({ title: 'Informe o cliente para solicitar atualização.', color: 'warning' })
+      if (!input.silent) {
+        toast.add({ title: 'Informe o cliente para solicitar atualização.', color: 'warning' })
+      }
       return null
     }
     if (!moduleSupportsEnqueueRead(module.value)) {
-      toast.add({
-        title: 'Atualização de leitura não disponível neste módulo.',
-        color: 'neutral'
-      })
+      if (!input.silent) {
+        toast.add({
+          title: 'Atualização de leitura não disponível neste módulo.',
+          color: 'neutral'
+        })
+      }
       return null
     }
 
@@ -141,20 +149,24 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
           client_id: input.client_id,
           force: input.force
         })
-        toast.add({
-          title: 'Atualização SITFIS enfileirada',
-          description: 'Resultado reflete o job; em demo a integração externa é bloqueada.',
-          color: 'success'
-        })
+        if (!input.silent) {
+          toast.add({
+            title: 'Atualização SITFIS enfileirada',
+            description: 'Resultado reflete o job; em demo a integração externa é bloqueada.',
+            color: 'success'
+          })
+        }
         return res.data
       }
 
       if (key === 'fgts') {
         if (!input.competence) {
-          toast.add({
-            title: 'Informe a competência (AAAA-MM) para sync eSocial.',
-            color: 'warning'
-          })
+          if (!input.silent) {
+            toast.add({
+              title: 'Informe a competência (AAAA-MM) para sync eSocial.',
+              color: 'warning'
+            })
+          }
           return null
         }
         const res = await api.fiscal.fgts.sync({
@@ -162,10 +174,12 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
           competence_period_key: input.competence,
           dispatch_job: true
         })
-        toast.add({
-          title: 'Sincronização eSocial enfileirada',
-          color: 'success'
-        })
+        if (!input.silent) {
+          toast.add({
+            title: 'Sincronização eSocial enfileirada',
+            color: 'success'
+          })
+        }
         return res.data as Record<string, unknown>
       }
 
@@ -175,10 +189,12 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
       const operation = input.operation_code || defaults?.operation_code || 'MONITOR'
 
       if (!system || !service) {
-        toast.add({
-          title: 'Códigos de serviço indisponíveis para este módulo.',
-          color: 'error'
-        })
+        if (!input.silent) {
+          toast.add({
+            title: 'Códigos de serviço indisponíveis para este módulo.',
+            color: 'error'
+          })
+        }
         return null
       }
 
@@ -189,17 +205,21 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
         operation_code: operation
       })
       lastRun.value = res.data
-      toast.add({
-        title: 'Consulta enfileirada',
-        description: `Run #${res.data.id} · ${res.data.status || 'QUEUED'}`,
-        color: 'success'
-      })
+      if (!input.silent) {
+        toast.add({
+          title: 'Consulta enfileirada',
+          description: `Run #${res.data.id} · ${res.data.status || 'QUEUED'}`,
+          color: 'success'
+        })
+      }
       return res.data
     } catch (caught) {
-      toast.add({
-        title: apiErrorMessage(caught, 'Falha ao enfileirar atualização.'),
-        color: 'error'
-      })
+      if (!input.silent) {
+        toast.add({
+          title: apiErrorMessage(caught, 'Falha ao enfileirar atualização.'),
+          color: 'error'
+        })
+      }
       return null
     } finally {
       enqueueing.value = false

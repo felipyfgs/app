@@ -12,13 +12,12 @@ use InvalidArgumentException;
 
 /**
  * Seleciona o transporte por capacidade, sem fallback entre drivers.
- * operation_key é obrigatório; produção nunca usa simulated.
+ * operation_key é obrigatório; somente disabled ou real são executáveis.
  */
 final class CapabilityAwareIntegraContadorClient implements IntegraContadorClient
 {
     public function __construct(
         private readonly CapabilityDriverResolver $drivers,
-        private readonly SimulatedIntegraContadorClient $simulated,
         private readonly HttpIntegraContadorClient $real,
     ) {}
 
@@ -40,7 +39,6 @@ final class CapabilityAwareIntegraContadorClient implements IntegraContadorClien
                 requestTag: $request->resolvedRequestTag(),
                 sourceProvenance: FiscalSourceProvenance::Unverified->value,
             ),
-            SerproCapabilityDriver::Simulated => $this->simulated->execute($request),
             SerproCapabilityDriver::Real => $this->real->execute($request),
         };
     }

@@ -9,6 +9,7 @@ namespace App\Enums;
 enum FiscalSourceProvenance: string
 {
     case Simulated = 'SIMULATED';
+    case SerproTrial = 'SERPRO_TRIAL';
     case SerproReal = 'SERPRO_REAL';
     case Unverified = 'UNVERIFIED';
 
@@ -16,7 +17,7 @@ enum FiscalSourceProvenance: string
     {
         return match ($this) {
             self::Simulated, self::SerproReal => true,
-            self::Unverified => false,
+            self::SerproTrial, self::Unverified => false,
         };
     }
 

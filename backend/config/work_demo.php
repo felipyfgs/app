@@ -20,8 +20,8 @@ return [
     /** Ambientes permitidos. */
     'allowed_environments' => ['local', 'testing'],
 
-    /** Slug do tenant demo principal (usuários da sessão). */
-    'office_slug' => env('WORK_DEMO_OFFICE_SLUG', 'demo'),
+    /** Slug do tenant contábil principal (usuários da sessão / ex-demo). */
+    'office_slug' => env('WORK_DEMO_OFFICE_SLUG', 'contador'),
 
     /** Office sentinela de isolamento (mesmo CNPJ/rótulo, sem membership demo). */
     'sentinel_office_slug' => env('WORK_DEMO_SENTINEL_SLUG', 'plataforma'),

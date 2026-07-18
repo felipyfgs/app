@@ -2,13 +2,14 @@
 
 namespace App\Policies\Work\Concerns;
 
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
+use App\Models\User;
+use App\Services\Authorization\TenantAuthorization;
 use App\Support\CurrentOffice;
 
 /**
- * Policies Work: leitura usa papel efetivo.
- * Mutação/export: membership real, ou PLATFORM_ADMIN em contexto privilegiado
- * (papel efetivo ADMIN — paridade de superfície tenant).
+ * Policies Work: leitura e mutação via TenantAuthorization.
+ * Assignees/departamento ainda usam membership real (não RBAC).
  */
 trait UsesRealWorkRole
 {
@@ -17,28 +18,14 @@ trait UsesRealWorkRole
         return app(CurrentOffice::class);
     }
 
-    /** Papel efetivo (inclui ADMIN privilegiado) — leitura. */
-    protected function effectiveRole(): ?OfficeRole
+    protected function auth(): TenantAuthorization
     {
-        return $this->currentOffice()->role();
+        return app(TenantAuthorization::class);
     }
 
-    /**
-     * Papel autorizado a mutar Work no office corrente.
-     * Preferência: membership real; fallback: papel efetivo em platform_privileged.
-     */
-    protected function realRole(): ?OfficeRole
+    protected function allowsWork(User $user, TenantPermission $permission, mixed $target = null): bool
     {
-        $real = $this->currentOffice()->realOfficeRole();
-        if ($real !== null) {
-            return $real;
-        }
-
-        if ($this->currentOffice()->isPlatformPrivileged()) {
-            return $this->currentOffice()->role();
-        }
-
-        return null;
+        return $this->auth()->allows($user, $permission, $target);
     }
 
     protected function sameOfficeId(int $modelOfficeId): bool
@@ -46,5 +33,19 @@ trait UsesRealWorkRole
         $officeId = $this->currentOffice()->id();
 
         return $officeId !== null && $officeId === $modelOfficeId;
+    }
+
+    protected function realMembershipId(): ?int
+    {
+        $id = $this->currentOffice()->realMembership()?->id;
+
+        return $id !== null ? (int) $id : null;
+    }
+
+    protected function realWorkDepartmentId(): ?int
+    {
+        $id = $this->currentOffice()->realMembership()?->work_department_id;
+
+        return $id !== null ? (int) $id : null;
     }
 }

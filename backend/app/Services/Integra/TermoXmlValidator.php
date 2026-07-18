@@ -536,11 +536,13 @@ final class TermoXmlValidator
             // SERPRO valida cadeia completa no aceite remoto.
             $certIdentity = null;
             $cn = (string) ($parsed['subject']['CN'] ?? '');
-            if (preg_match('/(\d{11}|\d{14})/', $cn, $m)) {
+            // CNPJ contém os primeiros 11 dígitos que também formariam um CPF.
+            // Priorizar a identificação mais longa evita truncar um e-CNPJ em CPF.
+            if (preg_match('/(\d{14}|\d{11})/', $cn, $m)) {
                 $certIdentity = $m[1];
             }
             $serial = (string) ($parsed['subject']['serialNumber'] ?? '');
-            if ($certIdentity === null && preg_match('/(\d{11}|\d{14})/', $serial, $m2)) {
+            if ($certIdentity === null && preg_match('/(\d{14}|\d{11})/', $serial, $m2)) {
                 $certIdentity = $m2[1];
             }
 

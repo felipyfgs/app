@@ -2,52 +2,26 @@
 
 namespace App\Policies;
 
-use App\Enums\OfficeAccessMode;
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Models\User;
-use App\Support\CurrentOffice;
+use App\Policies\Concerns\AuthorizesTenantPermission;
 
 /**
  * Configuração unificada do escritório (perfil, consentimento, A1 canônico).
- * Mutações: OfficeRole::ADMIN ou PLATFORM_ADMIN em contexto privilegiado.
- * Leitura: qualquer membership ativa do office (ou privilegiado).
+ * Mutações: tenant.settings.manage (admin baseline / privilegiado).
+ * Leitura: tenant.settings.view.
  */
 class OfficeSettingsPolicy
 {
+    use AuthorizesTenantPermission;
+
     public function view(User $user): bool
     {
-        return $this->inOffice($user) !== null || $this->isPrivilegedAdmin($user);
+        return $this->allows($user, TenantPermission::TenantSettingsView);
     }
 
     public function manage(User $user): bool
     {
-        if ($this->isPrivilegedAdmin($user)) {
-            return true;
-        }
-
-        return $this->inOffice($user) === OfficeRole::Admin;
-    }
-
-    private function inOffice(User $user): ?OfficeRole
-    {
-        $current = app(CurrentOffice::class);
-        $office = $current->resolve($user);
-
-        return $office !== null ? $current->role() : null;
-    }
-
-    private function isPrivilegedAdmin(User $user): bool
-    {
-        if (! $user->isPlatformAdmin()) {
-            return false;
-        }
-
-        $current = app(CurrentOffice::class);
-        if ($current->resolve($user) === null) {
-            return false;
-        }
-
-        return $current->accessMode() === OfficeAccessMode::PlatformPrivileged
-            || $current->role() === OfficeRole::Admin;
+        return $this->allows($user, TenantPermission::TenantSettingsManage);
     }
 }

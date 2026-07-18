@@ -2,6 +2,7 @@
 
 namespace App\Services\Integra\TaxProcesses;
 
+use App\Contracts\SerproOperationExecutor;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\SerproCapabilityDriver;
 use App\Enums\SerproEnvironment;
@@ -12,7 +13,6 @@ use App\Models\OfficeSerproAuthorization;
 use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Serpro\CapabilityDriverResolver;
 use App\Services\Serpro\SerproContractService;
-use App\Services\Serpro\SerproOperationService;
 use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
@@ -24,7 +24,7 @@ final class TaxProcessProjectionService
     public const OPERATION_KEY = 'eprocesso.consultar_por_interessado';
 
     public function __construct(
-        private readonly SerproOperationService $operations,
+        private readonly SerproOperationExecutor $operations,
         private readonly SerproContractService $contracts,
         private readonly CapabilityDriverResolver $drivers,
         private readonly ContributorCnpjResolver $contributors,
@@ -133,9 +133,11 @@ final class TaxProcessProjectionService
                         'status' => (string) ($row['situacao'] ?? $row['status'] ?? 'OPEN'),
                         'evidence_version' => $evidence,
                         'operation_key' => self::OPERATION_KEY,
-                        'source_provenance' => $response->simulated
-                            ? FiscalSourceProvenance::Simulated->value
-                            : FiscalSourceProvenance::SerproReal->value,
+                        'source_provenance' => $response->sourceProvenance === FiscalSourceProvenance::SerproTrial->value
+                            ? FiscalSourceProvenance::SerproTrial->value
+                            : ($response->simulated
+                                ? FiscalSourceProvenance::Simulated->value
+                                : FiscalSourceProvenance::SerproReal->value),
                         'is_simulated' => $response->simulated,
                         'summary_sanitized' => [
                             'keys' => array_keys($row),

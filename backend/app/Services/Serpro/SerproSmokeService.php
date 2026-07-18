@@ -352,15 +352,6 @@ final class SerproSmokeService
                 : 'Drivers real ativos: '.implode(',', $realDrivers).' — inesperado em deploy limpo pré-go-live.',
         );
 
-        $fake = (bool) config('serpro.trial.use_fake_clients', true);
-        $add(
-            'fake_clients_policy',
-            true,
-            $fake
-                ? 'Fake clients ON (esperado em TRIAL/contenção).'
-                : 'Fake clients OFF — garantir drivers/orçamento antes de live.',
-        );
-
         $smokeOn = $this->isEnabled();
         $add(
             'smoke_default_off',

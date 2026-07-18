@@ -7,9 +7,13 @@ use App\Contracts\SerproOperationExecutor;
 use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
 use App\DTO\Serpro\ProcuradorAuthRequest;
+use App\Enums\SecureObjectPurpose;
+use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproContractStatus;
 use App\Enums\SerproEnvironment;
 use App\Enums\TermoAuthorizationState;
+use App\Models\Office;
+use App\Models\OfficeSerproAuthorization;
 use App\Models\SerproContract;
 use App\Services\Integra\HttpAutenticarProcuradorClient;
 use App\Services\Serpro\SerproContractService;
@@ -35,14 +39,18 @@ class HttpAutenticarProcuradorClientTest extends TestCase
             ->once()
             ->with(Mockery::on(function (IntegraRequest $req) use (&$captured, $fixture) {
                 $captured = $req;
-                $dados = $req->businessData['dados'] ?? null;
-                $this->assertIsString($dados);
-                $decoded = json_decode((string) $dados, true);
-                $this->assertIsArray($decoded);
-                $this->assertArrayHasKey('xml', $decoded);
-                $this->assertArrayNotHasKey('xmlAssinado', $decoded);
-                $this->assertSame($fixture['xml'], base64_decode((string) $decoded['xml'], true));
+                $this->assertSame(['xml'], array_keys($req->businessData));
+                $this->assertArrayNotHasKey('dados', $req->businessData);
+                $this->assertArrayNotHasKey('xmlAssinado', $req->businessData);
+                $this->assertSame(
+                    $fixture['xml'],
+                    base64_decode((string) $req->businessData['xml'], true),
+                );
                 $this->assertSame('autentica_procurador.envio_xml_assinado', $req->operationKey);
+                $this->assertStringStartsWith(
+                    'procurador-auth-v3:'.hash('sha256', $fixture['xml']).':',
+                    (string) $req->idempotencyKey,
+                );
 
                 return true;
             }))
@@ -112,6 +120,42 @@ class HttpAutenticarProcuradorClientTest extends TestCase
         $this->assertNotSame(TermoAuthorizationState::SerproAccepted->value, $result->authorizationState);
     }
 
+    public function test_expiracao_sem_offset_e_interpretada_em_horario_de_brasilia(): void
+    {
+        $this->seedContract();
+        $fixture = TermoFixtureFactory::signedTermo();
+        Cache::flush();
+        $expiry = CarbonImmutable::now('America/Sao_Paulo')->addMinutes(5)->format('Y-m-d\\TH:i:s');
+
+        $operations = Mockery::mock(SerproOperationExecutor::class);
+        $operations->shouldReceive('executeRequest')->once()->andReturn(new IntegraResponse(
+            success: true,
+            httpStatus: 200,
+            body: [
+                'autenticar_procurador_token' => 'token-de-teste',
+                'data_hora_expiracao' => $expiry,
+            ],
+            simulated: false,
+        ));
+
+        $result = (new HttpAutenticarProcuradorClient(
+            $operations,
+            app(SerproContractService::class),
+            app(SecureObjectStore::class),
+        ))->authenticate(new ProcuradorAuthRequest(
+            officeId: 5,
+            environment: SerproEnvironment::Trial->value,
+            authorIdentity: TermoFixtureFactory::defaultAuthorCpf(),
+            termoXml: $fixture['xml'],
+            contractorBearerToken: 'bearer',
+        ));
+
+        $this->assertTrue($result->success);
+        $this->assertNotNull($result->expiresAt);
+        $this->assertTrue($result->expiresAt->isFuture());
+        $this->assertSame('UTC', $result->expiresAt->getTimezone()->getName());
+    }
+
     public function test_304_sem_cache_integro_falha_fechado(): void
     {
         $this->seedContract();
@@ -142,6 +186,70 @@ class HttpAutenticarProcuradorClientTest extends TestCase
 
         $this->assertFalse($result->success);
         $this->assertSame('CACHE_INCONSISTENT', $result->errorCode);
+    }
+
+    public function test_304_recupera_token_selado_do_mesmo_termo_ate_o_proximo_corte_diario(): void
+    {
+        $this->seedContract();
+        $fixture = TermoFixtureFactory::signedTermo();
+        $office = Office::factory()->create();
+        $author = TermoFixtureFactory::defaultAuthorCpf();
+        $termoHash = hash('sha256', $fixture['xml']);
+        $store = app(SecureObjectStore::class);
+        $termoVaultId = $store->put($fixture['xml'], SecureObjectPurpose::SerproTermoXml->aadBase([
+            'office_id' => $office->id,
+            'environment' => SerproEnvironment::Trial->value,
+            'kind' => 'signed',
+            'sha256' => $termoHash,
+            'author_identity' => $author,
+        ]));
+        $vaultId = $store->put(json_encode([
+            'token' => 'token-selado-de-teste',
+            'expires_at' => now()->subMinute()->toIso8601String(),
+        ], JSON_THROW_ON_ERROR), SecureObjectPurpose::SerproProcuradorToken->aadBase([
+            'office_id' => $office->id,
+            'environment' => SerproEnvironment::Trial->value,
+            'author_identity' => $author,
+        ]));
+        OfficeSerproAuthorization::query()->create([
+            'office_id' => $office->id,
+            'environment' => SerproEnvironment::Trial,
+            'status' => SerproAuthorizationStatus::TermValid,
+            'author_identity_type' => 'CPF',
+            'author_identity' => $author,
+            'termo_vault_object_id' => $termoVaultId,
+            'termo_sha256' => $termoHash,
+            'termo_valid_to' => now()->addYear(),
+            'procurador_token_vault_object_id' => $vaultId,
+            'procurador_token_expires_at' => now()->subMinute(),
+        ]);
+        Cache::flush();
+
+        $operations = Mockery::mock(SerproOperationExecutor::class);
+        $operations->shouldReceive('executeRequest')->once()->andReturn(new IntegraResponse(
+            success: true,
+            httpStatus: 304,
+            body: [],
+            simulated: false,
+        ));
+
+        $result = (new HttpAutenticarProcuradorClient(
+            $operations,
+            app(SerproContractService::class),
+            $store,
+        ))->authenticate(new ProcuradorAuthRequest(
+            officeId: $office->id,
+            environment: SerproEnvironment::Trial->value,
+            authorIdentity: $author,
+            termoXml: $fixture['xml'],
+            contractorBearerToken: 'bearer',
+        ));
+
+        $this->assertTrue($result->success);
+        $this->assertSame('token-selado-de-teste', $result->token);
+        $this->assertNotNull($result->expiresAt);
+        $this->assertTrue($result->expiresAt->isFuture());
+        $this->assertSame('00:00:00', $result->expiresAt->setTimezone('America/Sao_Paulo')->format('H:i:s'));
     }
 
     public function test_token_nao_fica_em_redis_em_claro(): void

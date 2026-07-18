@@ -21,7 +21,7 @@ use Throwable;
 
 /**
  * Assina Termo com A1 gerenciado (consentimento versionado + ADMIN + 2FA na API).
- * Temporários protegidos e limpeza comprovada; não retem PEM em disco.
+ * Assinatura integralmente em memória; não grava PFX/PEM em disco.
  */
 final class SignTermoWithManagedA1Job implements ShouldQueue
 {
@@ -99,20 +99,7 @@ final class SignTermoWithManagedA1Job implements ShouldQueue
             throw new RuntimeException('PFX A1 inválido no vault.');
         }
 
-        $tempDir = null;
-        $tempPfx = null;
         try {
-            // Temporário protegido (0600) apenas se necessário para libs futuras; assinatura em memória.
-            $tempDir = sys_get_temp_dir().'/serpro-termo-'.$this->officeId.'-'.bin2hex(random_bytes(8));
-            if (! mkdir($tempDir, 0700, true) && ! is_dir($tempDir)) {
-                throw new RuntimeException('Falha ao criar diretório temporário protegido.');
-            }
-            $tempPfx = $tempDir.'/author.pfx';
-            if (file_put_contents($tempPfx, $pfxBinary, LOCK_EX) === false) {
-                throw new RuntimeException('Falha ao gravar PFX temporário.');
-            }
-            chmod($tempPfx, 0600);
-
             $signedXml = $signer->signWithPfx($unsignedXml, $pfxBinary, $password);
             unset($pfxBinary, $password, $unsignedXml);
 
@@ -130,22 +117,7 @@ final class SignTermoWithManagedA1Job implements ShouldQueue
             ], $this->actorUserId, $office->id);
             throw $e;
         } finally {
-            unset($pfxBinary, $password);
-            $this->secureCleanup($tempPfx, $tempDir);
-        }
-    }
-
-    private function secureCleanup(?string $tempPfx, ?string $tempDir): void
-    {
-        if (is_string($tempPfx) && is_file($tempPfx)) {
-            $size = filesize($tempPfx) ?: 0;
-            if ($size > 0) {
-                file_put_contents($tempPfx, str_repeat("\0", $size));
-            }
-            @unlink($tempPfx);
-        }
-        if (is_string($tempDir) && is_dir($tempDir)) {
-            @rmdir($tempDir);
+            unset($pfxBinary, $password, $unsignedXml);
         }
     }
 }

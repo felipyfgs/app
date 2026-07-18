@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers\Api\V1\Fiscal;
 
+use App\DTO\Integra\MitListaApuracoesRequest;
 use App\Enums\OfficeRole;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureOfficeContext;
 use App\Models\Client;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebMutationGuard;
 use App\Services\Integra\Dctfweb\MitApuracaoService;
+use App\Services\Integra\Dctfweb\MitListaApuracoesQueryService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,6 +24,7 @@ class MitController extends Controller
         private readonly MitApuracaoService $mit,
         private readonly FiscalMonitoringRunService $runs,
         private readonly DctfwebMutationGuard $mutations,
+        private readonly MitListaApuracoesQueryService $listaApuracoes,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -104,6 +108,90 @@ class MitController extends Controller
     }
 
     /**
+     * Agenda exclusivamente a consulta oficial MIT/LISTAAPURACOES317.
+     * A página sempre lê a projeção local; nenhum GET dispara o SERPRO.
+     */
+    public function enqueueListaApuracoes(Request $request): JsonResponse
+    {
+        $this->assertCanWrite();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
+        $office = $this->currentOffice->office();
+
+        $data = $request->validate([
+            'client_id' => ['required', 'integer'],
+            'anoApuracao' => ['sometimes', 'nullable', 'integer', 'between:2000,2100'],
+            'mesApuracao' => ['sometimes', 'nullable', 'integer', 'between:1,12'],
+            'situacaoApuracao' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:9999'],
+            'correlation_id' => ['sometimes', 'nullable', 'string', 'max:64'],
+        ]);
+
+        try {
+            $filters = MitListaApuracoesRequest::fromArray(array_filter([
+                'anoApuracao' => $data['anoApuracao'] ?? null,
+                'mesApuracao' => $data['mesApuracao'] ?? null,
+                'situacaoApuracao' => $data['situacaoApuracao'] ?? null,
+            ], static fn (?int $value): bool => $value !== null));
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $client = $this->findClient((int) $office->id, (int) $data['client_id']);
+        if ($client === null) {
+            return response()->json(['message' => 'Cliente não encontrado.'], 404);
+        }
+
+        try {
+            $run = $this->listaApuracoes->enqueue(
+                office: $office,
+                client: $client,
+                filters: $filters,
+                actorId: $request->user()?->id,
+                correlationId: $data['correlation_id'] ?? null,
+            );
+        } catch (RuntimeException|\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'data' => $run->toPublicArray(),
+            'serpro_call' => 'QUEUED',
+        ], 201);
+    }
+
+    /** Lista exclusivamente projeções locais produzidas por LISTAAPURACOES317. */
+    public function indexListaApuracoes(Request $request): JsonResponse
+    {
+        $this->assertCanRead();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
+        $office = $this->currentOffice->office();
+        $data = $request->validate([
+            'client_id' => ['required', 'integer'],
+            'year' => ['sometimes', 'nullable', 'integer', 'between:2000,2100'],
+        ]);
+
+        $client = $this->findClient((int) $office->id, (int) $data['client_id']);
+        if ($client === null) {
+            return response()->json(['message' => 'Cliente não encontrado.'], 404);
+        }
+
+        return response()->json([
+            'data' => $this->listaApuracoes->localList(
+                $office,
+                $client,
+                isset($data['year']) ? (int) $data['year'] : null,
+            ),
+            'provenance' => [
+                'source' => 'LOCAL_PROJECTION',
+                'serpro_called' => false,
+            ],
+        ]);
+    }
+
+    /**
      * Encerramento MIT — rejeitado se flags mutantes OFF (9.8).
      */
     public function encerrar(Request $request): JsonResponse
@@ -171,6 +259,50 @@ class MitController extends Controller
         if ($this->currentOffice->role() === null) {
             abort(403, 'Perfil não resolvido.');
         }
+    }
+
+    private function findClient(int $officeId, int $clientId): ?Client
+    {
+        return Client::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $officeId)
+            ->whereKey($clientId)
+            ->first();
+    }
+
+    private function rejectClientOfficeId(Request $request): ?JsonResponse
+    {
+        $suppliedAtTopLevel = $request->attributes->get(
+            EnsureOfficeContext::CLIENT_OFFICE_ID_SUPPLIED,
+        ) === true;
+        $suppliedNested = $this->containsOfficeIdKey($request->query->all())
+            || $this->containsOfficeIdKey($request->request->all())
+            || ($request->isJson() && $request->json() !== null
+                && $this->containsOfficeIdKey($request->json()->all()));
+
+        if (! $suppliedAtTopLevel && ! $suppliedNested) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => 'office_id não é aceito; o escritório é obtido do contexto autenticado.',
+            'code' => 'CLIENT_OFFICE_ID_REJECTED',
+        ], 422);
+    }
+
+    /** @param array<array-key, mixed> $values */
+    private function containsOfficeIdKey(array $values): bool
+    {
+        foreach ($values as $key => $value) {
+            if (is_string($key) && strtolower($key) === 'office_id') {
+                return true;
+            }
+            if (is_array($value) && $this->containsOfficeIdKey($value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function assertCanWrite(): void

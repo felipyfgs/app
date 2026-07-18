@@ -11,6 +11,7 @@ use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutability;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\SerproEnvironment;
+use App\Models\DefisDeclarationReference;
 use App\Models\PgdasdOperation;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdConsDeclaracao13Codec;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdDocumentCodecs;
@@ -22,6 +23,8 @@ use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiYear;
 use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\OfficeSerproAuthorizationService;
+use App\Services\Serpro\CapabilityDriverResolver;
+use App\Services\Serpro\Catalog\OperationCoordinateResolver;
 use App\Services\Serpro\Catalog\OperationKeyMap;
 use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproOperationService;
@@ -49,6 +52,14 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         private readonly PgdasdPostConsultService $pgdasdPostConsult,
         private readonly PgmeiDividaAtiva24Codec $pgmeiCodec24,
         private readonly PgmeiPostConsultService $pgmeiPostConsult,
+        private readonly CcmeiPostConsultService $ccmeiPostConsult,
+        private readonly CcmeiRegistrationStatusPostConsultService $ccmeiRegistrationStatusPost,
+        private readonly RegimeResolutionCodec $regimeResolutionCodec,
+        private readonly RegimeResolutionPostConsultService $regimeResolutionPost,
+        private readonly DefisDeclarationProjector $defisProjector,
+        private readonly DefisLatestDeclarationPostConsultService $defisLatestDeclarationPost,
+        private readonly DefisSpecificDeclarationPostConsultService $defisSpecificDeclarationPost,
+        private readonly DefisDeclarationReferenceStore $defisReferences,
     ) {}
 
     public function systemCode(): string
@@ -68,17 +79,6 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
 
     public function mutability(): FiscalMutability
     {
-        // GERAR_DAS assistido no piloto: expõe READ_ONLY ao núcleo para permitir stub
-        // local sem chamada externa; TRANSMITIR permanece MUTATING e é bloqueado.
-        if (
-            strtoupper($this->definition->operationCode) === 'GERAR_DAS'
-            && (bool) config('fiscal_monitoring.simples_mei.das_stub_without_mutating', true)
-            && ! FeatureFlags::isMutatingEnabled(SimplesMeiCatalog::MODULE)
-            && ! (bool) config('fiscal_monitoring.mutating_enabled', false)
-        ) {
-            return FiscalMutability::ReadOnly;
-        }
-
         return $this->definition->mutability;
     }
 
@@ -116,15 +116,7 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
             $mutatingOk = FeatureFlags::isMutatingEnabled(SimplesMeiCatalog::MODULE, $office->id)
                 && (bool) config('fiscal_monitoring.mutating_enabled', false);
 
-            // GERAR_DAS pode ser liberado via flag guias + simples_mei mutating parcial:
-            // no piloto, só aceita se mutating_enabled; senão bloqueia e audita via result.
             if (! $mutatingOk) {
-                // Para GERAR_DAS assistido, ainda podemos gravar stub sem chamar SERPRO se hook permitir
-                if (strtoupper($def->operationCode) === 'GERAR_DAS'
-                    && (bool) config('fiscal_monitoring.simples_mei.das_stub_without_mutating', true)) {
-                    return $this->dasGuideHook->createStubWithoutExternalCall($request, $def);
-                }
-
                 return FiscalAdapterResult::blocked(
                     'Operação mutante desabilitada no piloto somente leitura.',
                     'MUTATING_DISABLED',
@@ -149,13 +141,39 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         $env = SerproEnvironment::tryFrom((string) config('serpro.default_environment', 'TRIAL'))
             ?? SerproEnvironment::Trial;
 
-        $eligibilityOp = $this->resolveCatalogOperation($def);
+        // A elegibilidade deve usar as coordenadas oficiais resolvidas do
+        // catálogo, e não os aliases internos INTEGRA_SN/PGDASD. Caso
+        // contrário, o poder oficial 00146 é comparado ao alias "PGDASD".
+        try {
+            $operationKey = OperationKeyMap::require(
+                null,
+                $def->systemCode,
+                $def->serviceCode,
+                $this->mapExternalOperation($def),
+            );
+            $coordinates = app(OperationCoordinateResolver::class)->resolveExecutable($operationKey);
+        } catch (\Throwable) {
+            return FiscalAdapterResult::failed(
+                'Falha ao resolver coordenadas oficiais da operação.',
+                'CATALOG_COORDINATES_UNAVAILABLE',
+            );
+        }
+
+        $usesRealDriver = app(CapabilityDriverResolver::class)
+            ->forOperationKey($operationKey)
+            ->value === 'real';
+        $eligibilitySolution = $usesRealDriver ? (string) $coordinates['id_sistema'] : $def->systemCode;
+        $eligibilityService = $usesRealDriver ? (string) $coordinates['id_servico'] : $def->serviceCode;
+        $eligibilityOperation = $usesRealDriver
+            ? (string) $coordinates['id_servico']
+            : $this->resolveCatalogOperation($def);
+
         $elig = $this->eligibility->evaluate(
             $office,
             $client,
-            $def->systemCode,
-            $def->serviceCode,
-            $eligibilityOp,
+            $eligibilitySolution,
+            $eligibilityService,
+            $eligibilityOperation,
             $env,
             null,
             SimplesMeiCatalog::MODULE,
@@ -192,12 +210,6 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         $idempotencyKey = 'sm:'.$request->run->idempotency_key.':'.$def->operationCode;
 
         try {
-            $operationKey = OperationKeyMap::require(
-                null,
-                $def->systemCode,
-                $def->serviceCode,
-                $this->mapExternalOperation($def),
-            );
             $payload = $this->buildPayload($request, $periodKey, $operationKey);
         } catch (InvalidArgumentException $e) {
             return FiscalAdapterResult::failed($e->getMessage(), 'INVALID_PAYLOAD');
@@ -217,6 +229,9 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
                 idempotencyKey: $idempotencyKey,
                 correlationId: $correlationId,
                 mutationAuth: MutationAuthorization::none(),
+                // Operações documentais PGDAS-D precisam associar o retorno
+                // binário à run antes do ACK, para o cofre persistir o PDF.
+                entityKey: 'fiscal-run:'.$request->run->id,
                 module: SimplesMeiCatalog::MODULE,
             );
         } catch (\Throwable) {
@@ -229,6 +244,7 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         $sourceProvenance = match (true) {
             $response->sourceProvenance === FiscalSourceProvenance::SerproReal->value
                 && ! $response->simulated => FiscalSourceProvenance::SerproReal,
+            $response->sourceProvenance === FiscalSourceProvenance::SerproTrial->value => FiscalSourceProvenance::SerproTrial,
             $response->simulated
                 || $response->sourceProvenance === FiscalSourceProvenance::Simulated->value => FiscalSourceProvenance::Simulated,
             default => FiscalSourceProvenance::Unverified,
@@ -252,15 +268,77 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
             $result = $post['result'];
         }
 
+        if ($operationKey === CcmeiPostConsultService::OPERATION_KEY) {
+            $post = $this->ccmeiPostConsult->handle($request, $response, $result, $operationKey);
+            $result = $post['result'];
+        }
+
+        if ($operationKey === CcmeiRegistrationStatusPostConsultService::OPERATION_KEY) {
+            $post = $this->ccmeiRegistrationStatusPost->handle($request, $response, $result, $operationKey);
+            $result = $post['result'];
+        }
+
+        if ($operationKey === 'defis.consdeclaracao'
+            && $result->result->value === 'SUCCESS'
+            && is_array($result->normalized)) {
+            $this->defisProjector->projectFromResponse(
+                $office,
+                $client,
+                $response->dados ?? $response->body,
+                $request->run->id,
+                $sourceProvenance->value,
+            );
+        }
+
+        if ($operationKey === DefisLatestDeclarationPostConsultService::OPERATION_KEY) {
+            $post = $this->defisLatestDeclarationPost->handle($request, $response, $result);
+            $result = $post['result'];
+        }
+
+        if ($operationKey === DefisSpecificDeclarationPostConsultService::OPERATION_KEY) {
+            $post = $this->defisSpecificDeclarationPost->handle($request, $response, $result);
+            $result = $post['result'];
+        }
+
+        // REGIME 104: Base64 fail-closed + cofre + projeção local (sem mutar 102/103)
+        if (strtoupper($def->serviceCode) === 'REGIME_APURACAO'
+            && strtoupper($def->operationCode) === 'CONSULTAR_RESOLUCAO') {
+            $post = $this->regimeResolutionPost->handle($request, $response, $result, $operationKey);
+            $result = $post['result'];
+        }
+
         // Projeções laterais (regime / guia) sem alterar evidência
         if ($result->result->value === 'SUCCESS' && is_array($result->normalized)) {
             if (strtoupper($def->serviceCode) === 'REGIME_APURACAO') {
-                $this->regimeApplicability->projectFromNormalized(
-                    $office,
-                    $client,
-                    $result->normalized,
-                    $request->run->id,
-                );
+                if (strtoupper($def->operationCode) === 'CONSULTAR_ANOS_CALENDARIOS') {
+                    $this->regimeApplicability->projectCalendarOptions(
+                        $office,
+                        $client,
+                        is_array($result->normalized['calendar_options'] ?? null)
+                            ? $result->normalized['calendar_options']
+                            : [],
+                        $request->run->id,
+                    );
+                } elseif (strtoupper($def->operationCode) === 'CONSULTAR') {
+                    $option = $result->normalized['calendar_options'][0] ?? null;
+                    if (is_array($option)) {
+                        $this->regimeApplicability->projectRegimeOption(
+                            $office,
+                            $client,
+                            $option,
+                            $request->run->id,
+                        );
+                    }
+                } elseif (strtoupper($def->operationCode) === 'CONSULTAR_RESOLUCAO') {
+                    // Projeção já feita no post-consult (evidência + descritor).
+                } else {
+                    $this->regimeApplicability->projectFromNormalized(
+                        $office,
+                        $client,
+                        $result->normalized,
+                        $request->run->id,
+                    );
+                }
             }
 
             if (strtoupper($def->operationCode) === 'GERAR_DAS') {
@@ -269,7 +347,12 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
 
             if (in_array(strtoupper($def->serviceCode), ['PGDASD', 'DEFIS', 'PGMEI', 'DASN_SIMEI'], true)
                 && strtoupper($def->operationCode) !== 'TRANSMITIR'
-                && strtoupper($def->operationCode) !== 'GERAR_DAS') {
+                && strtoupper($def->operationCode) !== 'GERAR_DAS'
+                && ! in_array($operationKey, [
+                    'defis.consdeclaracao',
+                    DefisLatestDeclarationPostConsultService::OPERATION_KEY,
+                    DefisSpecificDeclarationPostConsultService::OPERATION_KEY,
+                ], true)) {
                 $this->regimeApplicability->projectCompetenceSituation(
                     $office,
                     $client,
@@ -313,6 +396,38 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
      */
     private function buildPayload(FiscalAdapterRequest $request, string $periodKey, string $operationKey): array
     {
+        if ($operationKey === 'defis.consdecrec') {
+            $referenceId = $request->context['defis_reference_id'] ?? $request->progress['defis_reference_id'] ?? null;
+            if (! is_int($referenceId) && ! (is_string($referenceId) && ctype_digit($referenceId))) {
+                throw new InvalidArgumentException('Referência de declaração DEFIS inválida.');
+            }
+            $reference = DefisDeclarationReference::query()->withoutGlobalScopes()
+                ->where('office_id', $request->office->id)->where('client_id', $request->client->id)->find((int) $referenceId);
+            if ($reference === null) {
+                throw new InvalidArgumentException('Referência de declaração DEFIS indisponível.');
+            }
+
+            return ['idDefis' => $this->defisReferences->read($reference, $request->office)];
+        }
+
+        if ($operationKey === 'regimeapuracao.consultaranoscalendarios') {
+            return [];
+        }
+
+        if ($operationKey === RegimeResolutionCodec::OPERATION_KEY) {
+            return $this->buildRegimeResolutionPayload($request, $periodKey);
+        }
+
+        if ($operationKey === DefisLatestDeclarationPostConsultService::OPERATION_KEY) {
+            $year = $request->context['calendar_year'] ?? $request->progress['calendar_year'] ?? substr($periodKey, 0, 4);
+
+            return ['ano' => (new DefisLatestDeclarationCodec)->assertCalendarYear($year)];
+        }
+
+        if ($operationKey === RegimeOptionCodec::OPERATION_KEY) {
+            return (new RegimeOptionCodec)->buildPayload(substr($periodKey, 0, 4));
+        }
+
         if (str_starts_with($operationKey, 'pgdasd.')) {
             return $this->buildPgdasdPayload($request, $periodKey, $operationKey);
         }
@@ -453,6 +568,34 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         }
 
         return $this->pgdasdDocumentCodecs->buildPayload15($declarationNumber);
+    }
+
+    /**
+     * Payload oficial CONSULTARRESOLUCAO104: exatamente um anoCalendario.
+     *
+     * @return array{anoCalendario: int}
+     */
+    private function buildRegimeResolutionPayload(FiscalAdapterRequest $request, string $periodKey): array
+    {
+        $ctx = $request->context;
+        $progress = $request->progress;
+
+        $raw = $ctx['anoCalendario']
+            ?? $ctx['ano_calendario']
+            ?? $ctx['year']
+            ?? $progress['ano_calendario']
+            ?? $progress['anoCalendario']
+            ?? $progress['year']
+            ?? $progress['period_key']
+            ?? ($periodKey !== '' ? $periodKey : null);
+
+        if ($raw === null || $raw === '') {
+            throw new InvalidArgumentException(
+                'anoCalendario é obrigatório para CONSULTARRESOLUCAO104.'
+            );
+        }
+
+        return $this->regimeResolutionCodec->buildPayload((string) $raw);
     }
 
     /**

@@ -118,6 +118,7 @@ export function pgdasdSummary(row?: SimplesMeiClientRow | null): PgdasdClientSum
     declaration_state: row.detail.declaration_state,
     last_valid_query_at: row.detail.last_productive_consulted_at,
     rbt12: row.detail.rbt12,
+    documents: row.detail.documents,
     communication: row.detail.communication
   }
 }

@@ -179,6 +179,7 @@ final class DctfwebMonitoringQueryService
 
         $evidence = DctfwebEvidenceVersion::query()
             ->withoutGlobalScopes()
+            ->with('artifact:id,content_type,byte_size')
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
             ->whereIn('declaration_id', $declarations->pluck('id')->filter()->all() ?: [0])
@@ -307,6 +308,7 @@ final class DctfwebMonitoringQueryService
     private function evidencePublicArray(DctfwebEvidenceVersion $ev, int $clientId): array
     {
         $meta = is_array($ev->metadata) ? $ev->metadata : [];
+        $document = $this->documentMetadata($ev);
 
         return [
             'id' => $ev->id,
@@ -315,11 +317,41 @@ final class DctfwebMonitoringQueryService
             'is_current' => (bool) $ev->is_current,
             'is_retification' => (bool) $ev->is_retification,
             'declaration_id' => $ev->declaration_id,
-            'content_type' => 'application/pdf',
-            'byte_size' => $meta['byte_size'] ?? null,
+            'filename' => $document['filename'],
+            'content_type' => $document['content_type'],
+            'byte_size' => $ev->artifact?->byte_size ?? $meta['byte_size'] ?? null,
             'observed_at' => $ev->observed_at?->toIso8601String(),
             'download_path' => "/api/v1/fiscal/dctfweb/clients/{$clientId}/evidence/{$ev->id}/download",
             // Sem content_sha256 / path interno em resposta pública.
+        ];
+    }
+
+    /**
+     * Metadados seguros para a resposta pública e o streaming autorizado.
+     * Nunca usa nome fornecido externamente ou caminho do cofre.
+     *
+     * @return array{content_type:string,filename:string}
+     */
+    public function documentMetadata(DctfwebEvidenceVersion $version): array
+    {
+        $version->loadMissing('artifact');
+        $contentType = match (strtolower(trim((string) $version->artifact?->content_type))) {
+            'application/pdf' => 'application/pdf',
+            'application/xml' => 'application/xml',
+            'text/xml' => 'text/xml',
+            default => 'application/octet-stream',
+        };
+        $extension = match ($contentType) {
+            'application/pdf' => 'pdf',
+            'application/xml', 'text/xml' => 'xml',
+            default => 'bin',
+        };
+        $kind = strtolower((string) ($version->artifact_kind?->value ?? 'evidencia'));
+        $kind = preg_replace('/[^a-z0-9]+/', '-', $kind) ?: 'evidencia';
+
+        return [
+            'content_type' => $contentType,
+            'filename' => sprintf('dctfweb-%s-%d.%s', trim($kind, '-'), $version->id, $extension),
         ];
     }
 

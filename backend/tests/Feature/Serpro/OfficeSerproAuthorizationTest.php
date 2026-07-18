@@ -27,7 +27,7 @@ class OfficeSerproAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_onboarding_autor_termo_token_sem_expor_segredos(): void
+    public function test_onboarding_sem_contrato_real_falha_fechado_sem_expor_segredos(): void
     {
         config(['serpro.termo_destination_cnpj' => '11222333000181']);
         config(['serpro.term_representation.TRIAL' => TermRePresentationStrategy::ReuseStoredTerm->value]);
@@ -65,10 +65,13 @@ class OfficeSerproAuthorizationTest extends TestCase
         $refresh = $this->postJson('/api/v1/office/serpro-authorization/refresh-token', [
             'environment' => 'TRIAL',
         ]);
-        $refresh->assertOk();
-        $this->assertSame(SerproAuthorizationStatus::TokenActive->value, $refresh->json('data.status'));
-        $this->assertTrue($refresh->json('data.has_procurador_token'));
-        $this->assertStringNotContainsString('fake-procurador', (string) $refresh->getContent());
+        $refresh->assertStatus(422)
+            ->assertJsonFragment(['message' => 'Contrato SERPRO indisponível para autenticar procurador.']);
+        $this->assertStringNotContainsString('token', strtolower((string) $refresh->getContent()));
+        $this->assertDatabaseMissing('office_serpro_authorizations', [
+            'office_id' => $office->id,
+            'status' => SerproAuthorizationStatus::TokenActive->value,
+        ]);
     }
 
     public function test_termo_signatario_divergente_rejeita(): void
@@ -173,7 +176,9 @@ class OfficeSerproAuthorizationTest extends TestCase
         $this->postJson('/api/v1/office/serpro-authorization/termo', [
             'termo_xml' => $this->validTermoXml('52998224725', '11222333000181'),
         ])->assertCreated();
-        $this->postJson('/api/v1/office/serpro-authorization/refresh-token')->assertOk();
+        $this->postJson('/api/v1/office/serpro-authorization/refresh-token')
+            ->assertStatus(422)
+            ->assertJsonFragment(['message' => 'Contrato SERPRO indisponível para autenticar procurador.']);
 
         // F-3.3: importação/override manual de procuração é proibida na API tenant.
         $this->postJson('/api/v1/office/serpro-authorization/proxy-powers', [
@@ -201,13 +206,16 @@ class OfficeSerproAuthorizationTest extends TestCase
             'power_code' => 'PGDASD',
         ]);
 
-        // Sync oficial (fake transport) + projeção acionável
+        // Capability desligada falha fechada: não fabrica procuração/poder.
         $sync = $this->postJson('/api/v1/office/serpro-authorization/proxy-powers/sync', [
             'client_id' => $clientA->id,
         ]);
-        $sync->assertOk();
-        $this->assertArrayHasKey('procuracao', $sync->json());
-        $this->assertArrayHasKey('status', $sync->json('procuracao'));
+        $sync->assertStatus(422)
+            ->assertJsonFragment(['message' => 'Consulta de procurações SERPRO desabilitada.']);
+        $this->assertDatabaseMissing('tax_proxy_powers', [
+            'office_id' => $officeA->id,
+            'client_id' => $clientA->id,
+        ]);
 
         // Sem contrato ACTIVE a elegibilidade bloqueia
         $elig = $this->postJson('/api/v1/office/serpro-authorization/eligibility', [

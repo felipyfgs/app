@@ -15,14 +15,28 @@ import type {
   FiscalModulePortfolioFilters,
   FiscalPortfolioModuleKey,
   PgmeiHistoryPayload,
+  CcmeiHistoryPayload,
+  CcmeiRegistrationStatusHistoryPayload,
+  SicalcRevenueSupportHistoryPayload,
+  PagtowebPaymentCountHistoryPayload,
+  PagtowebPaymentListHistoryPayload,
+  DefisDeclarationsHistoryPayload,
+  DefisLatestDeclarationHistoryPayload,
+  DefisSpecificDeclarationHistoryPayload,
+  RegimeCalendarPayload,
+  RegimeOptionPayload,
+  RegimeResolutionPayload,
   PgdasdCommunicationPreference,
   PgdasdCommunicationPreview,
   PgdasdCommunicationTracking,
   PgdasdHistoryPayload,
   PgdasdHistoryPeriod,
   DctfwebHistoryPayload,
+  MitListaApuracoes317Payload,
   FiscalRegistrationLink,
-  FiscalTaxProcess
+  FiscalTaxProcess,
+  ManualConsultInventory,
+  ManualConsultExecuteResult
 } from '~/types/fiscal-modules'
 import type { ApiClient, ApiUrl } from './types'
 
@@ -200,6 +214,63 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
             )
         }
       },
+      ccmei: {
+        history: (clientId: number) =>
+          client<{ data: CcmeiHistoryPayload }>(
+            `/api/v1/fiscal/simples-mei/ccmei/clients/${clientId}/history`
+          ),
+        consult: (clientId: number) =>
+          client<{ data: Record<string, unknown> }>(
+            `/api/v1/fiscal/simples-mei/ccmei/clients/${clientId}/consult`,
+            { method: 'POST', body: { confirmed: true } }
+          ),
+        registrationStatus: {
+          history: (clientId: number) =>
+            client<{ data: CcmeiRegistrationStatusHistoryPayload }>(
+              `/api/v1/fiscal/simples-mei/ccmei/registration-status/clients/${clientId}/history`
+            ),
+          consult: (clientId: number) =>
+            client<{ data: Record<string, unknown> }>(
+              `/api/v1/fiscal/simples-mei/ccmei/registration-status/clients/${clientId}/consult`,
+              { method: 'POST', body: { confirmed: true } }
+            )
+        }
+      },
+      sicalcRevenueSupport: {
+        history: (clientId: number, revenueCode?: string) =>
+          client<{ data: SicalcRevenueSupportHistoryPayload }>(
+            `/api/v1/fiscal/guides/revenue-support/clients/${clientId}/history`,
+            { query: revenueCode ? { codigo_receita: revenueCode } : undefined }
+          ),
+        consult: (clientId: number, revenueCode: string) =>
+          client<{ data: Record<string, unknown> }>(
+            `/api/v1/fiscal/guides/revenue-support/clients/${clientId}/consult`,
+            { method: 'POST', body: { confirmed: true, codigo_receita: revenueCode } }
+          )
+      },
+      pagtowebPaymentCount: {
+        history: (clientId: number) =>
+          client<{ data: PagtowebPaymentCountHistoryPayload }>(
+            `/api/v1/fiscal/guides/payment-count/clients/${clientId}/history`
+          ),
+        consult: (clientId: number, filters: Record<string, unknown>) =>
+          client<{ data: Record<string, unknown> }>(
+            `/api/v1/fiscal/guides/payment-count/clients/${clientId}/consult`,
+            { method: 'POST', body: { confirmed: true, filters } }
+          )
+      },
+      pagtowebPaymentList: {
+        history: (clientId: number, params?: { page?: number, per_page?: number }) =>
+          client<{ data: PagtowebPaymentListHistoryPayload }>(
+            `/api/v1/fiscal/guides/payments/clients/${clientId}/history`,
+            { query: params }
+          ),
+        consult: (clientId: number, filters: Record<string, unknown>) =>
+          client<{ data: Record<string, unknown> }>(
+            `/api/v1/fiscal/guides/payments/clients/${clientId}/consult`,
+            { method: 'POST', body: { confirmed: true, filters } }
+          )
+      },
       findings: (params?: {
         page?: number
         per_page?: number
@@ -286,6 +357,12 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           client<{ data: Record<string, unknown> }>(`/api/v1/fiscal/mit/apuracoes/${id}`),
         consult: (body: Record<string, unknown>) =>
           client<{ data: unknown }>('/api/v1/fiscal/mit/consult', { method: 'POST', body }),
+        /** Leitura exclusiva da projeção já persistida por LISTAAPURACOES317. */
+        listaApuracoes: (clientId: number, params?: { year?: number }) =>
+          client<MitListaApuracoes317Payload>(
+            '/api/v1/fiscal/mit/lista-apuracoes',
+            { query: { client_id: clientId, ...params } }
+          ),
         encerrar: (body: Record<string, unknown>) =>
           client<{ data: unknown }>('/api/v1/fiscal/mit/encerrar', { method: 'POST', body })
       },
@@ -441,6 +518,74 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           client<{ data: Array<Record<string, unknown>> }>(
             `/api/v1/fiscal/simples-mei/clients/${clientId}/regimes`
           ),
+        regimeCalendar: {
+          list: (clientId: number) =>
+            client<RegimeCalendarPayload>(
+              `/api/v1/fiscal/simples-mei/clients/${clientId}/regime-calendar`
+            ),
+          consult: (body: { client_id: number, correlation_id?: string }) =>
+            client<{ data: Record<string, unknown>, serpro_call: 'QUEUED' }>(
+              '/api/v1/fiscal/simples-mei/regime-calendar/consult',
+              { method: 'POST', body }
+            )
+        },
+        defis: {
+          history: (clientId: number) =>
+            client<{ data: DefisDeclarationsHistoryPayload }>(
+              `/api/v1/fiscal/simples-mei/defis/clients/${clientId}/history`
+            ),
+          consult: (clientId: number) =>
+            client<{ data: Record<string, unknown> }>(
+              `/api/v1/fiscal/simples-mei/defis/clients/${clientId}/consult`,
+              { method: 'POST', body: { confirmed: true } }
+            )
+        },
+        defisLatestDeclaration: {
+          history: (clientId: number, year?: number) =>
+            client<{ data: DefisLatestDeclarationHistoryPayload }>(
+              `/api/v1/fiscal/simples-mei/defis/latest-declaration/clients/${clientId}/history${year ? `?year=${year}` : ''}`
+            ),
+          consult: (clientId: number, calendarYear: number) =>
+            client<{ data: Record<string, unknown> }>(
+              `/api/v1/fiscal/simples-mei/defis/latest-declaration/clients/${clientId}/consult`,
+              { method: 'POST', body: { confirmed: true, calendar_year: calendarYear } }
+            )
+        },
+        defisSpecificDeclaration: {
+          history: (clientId: number, referenceId?: number) =>
+            client<{ data: DefisSpecificDeclarationHistoryPayload }>(
+              `/api/v1/fiscal/simples-mei/defis/specific-declaration/clients/${clientId}/history`,
+              { query: referenceId ? { reference_id: referenceId } : undefined }
+            ),
+          consult: (clientId: number, referenceId: number) =>
+            client<{ data: Record<string, unknown> }>(
+              `/api/v1/fiscal/simples-mei/defis/specific-declaration/clients/${clientId}/consult`,
+              { method: 'POST', body: { confirmed: true, reference_id: referenceId } }
+            )
+        },
+        regimeOption: {
+          list: (clientId: number) =>
+            client<RegimeOptionPayload>(
+              `/api/v1/fiscal/simples-mei/clients/${clientId}/regime-options`
+            ),
+          consult: (body: { client_id: number, year: number, correlation_id?: string }) =>
+            client<{ data: Record<string, unknown>, serpro_call: 'QUEUED' }>(
+              '/api/v1/fiscal/simples-mei/regime-option/consult',
+              { method: 'POST', body }
+            )
+        },
+        regimeResolution: {
+          list: (clientId: number, year?: number) =>
+            client<RegimeResolutionPayload>(
+              `/api/v1/fiscal/simples-mei/clients/${clientId}/regime-resolutions`,
+              { query: year ? { year } : undefined }
+            ),
+          consult: (body: { client_id: number, year: number, correlation_id?: string }) =>
+            client<{ data: Record<string, unknown>, serpro_call: 'QUEUED' }>(
+              '/api/v1/fiscal/simples-mei/regime-resolution/consult',
+              { method: 'POST', body }
+            )
+        },
         competences: (clientId: number) =>
           client<{ data: Array<Record<string, unknown>> }>(
             `/api/v1/fiscal/simples-mei/clients/${clientId}/competences`
@@ -509,6 +654,30 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           }),
         get: (id: number) =>
           client<{ data: FiscalMutationOperation }>(`/api/v1/fiscal/mutations/${id}`)
+      },
+      /**
+       * Explorador de consultas manuais — GET só lê inventário local (sem SERPRO).
+       * POST exige confirmed:true e despacha adapters existentes.
+       */
+      manualConsults: {
+        inventory: (params?: {
+          client_id?: number
+          surface_key?: string
+          module_key?: string
+        }) =>
+          client<{ data: ManualConsultInventory }>('/api/v1/fiscal/manual-consults', {
+            query: params
+          }),
+        execute: (body: {
+          action_id: string
+          client_id: number
+          confirmed: true
+          params?: Record<string, unknown>
+        }) =>
+          client<{ data: ManualConsultExecuteResult }>('/api/v1/fiscal/manual-consults', {
+            method: 'POST',
+            body
+          })
       }
     }
   }

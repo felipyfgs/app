@@ -43,33 +43,75 @@ final class ProgrammableIntegraContadorClient implements IntegraContadorClient
     public function queueSolicit(string $protocol = 'PROT-SITFIS-1', bool $simulated = false): self
     {
         return $this->push(function (IntegraRequest $req) use ($protocol, $simulated) {
+            // Shape oficial: protocoloRelatorio em dados (+ tempoEspera em ms).
             return new IntegraResponse(
                 success: true,
                 httpStatus: 200,
                 body: [
-                    'protocolo' => $protocol,
-                    'status' => 'ACEITO',
+                    'status' => 200,
+                    'dados' => [
+                        'protocoloRelatorio' => $protocol,
+                        'tempoEspera' => 4000,
+                    ],
                 ],
                 simulated: $simulated,
                 correlationId: $req->correlationId,
                 latencyMs: 1,
+                dados: [
+                    'protocoloRelatorio' => $protocol,
+                    'tempoEspera' => 4000,
+                ],
+                operationKey: $req->operationKey,
             );
         });
+    }
+
+    public function queueSolicitNotModifiedThenOk(string $protocol = 'PROT-SITFIS-304'): self
+    {
+        $this->push(function (IntegraRequest $req) {
+            return new IntegraResponse(
+                success: true,
+                httpStatus: 304,
+                body: [],
+                errorCode: 'NOT_MODIFIED',
+                errorMessage: 'Conteúdo não modificado (cache/ETag).',
+                correlationId: $req->correlationId,
+                latencyMs: 1,
+                businessStatus: 'NOT_MODIFIED',
+                operationKey: $req->operationKey,
+            );
+        });
+
+        return $this->queueSolicit($protocol);
     }
 
     public function queueProcessing(): self
     {
         return $this->push(function (IntegraRequest $req) {
+            $protocol = $this->lastProtocol($req);
+
             return new IntegraResponse(
-                success: true,
-                httpStatus: 200,
+                success: false,
+                httpStatus: 202,
                 body: [
-                    'status' => 'PROCESSANDO',
-                    'protocolo' => $this->lastProtocol($req),
+                    'status' => 202,
+                    'dados' => [
+                        'tempoEspera' => 60000,
+                        'protocoloRelatorio' => $protocol,
+                    ],
                 ],
+                errorCode: 'STILL_PROCESSING',
+                errorMessage: 'Relatório ainda em processamento.',
                 simulated: false,
+                retryAfterSeconds: 60,
                 correlationId: $req->correlationId,
                 latencyMs: 1,
+                businessStatus: 'PROCESSANDO',
+                dados: [
+                    'tempoEspera' => 60000,
+                    'protocoloRelatorio' => $protocol,
+                ],
+                operationKey: $req->operationKey,
             );
         });
     }
@@ -80,17 +122,46 @@ final class ProgrammableIntegraContadorClient implements IntegraContadorClient
     public function queueReport(array $report, bool $simulated = false): self
     {
         return $this->push(function (IntegraRequest $req) use ($report, $simulated) {
+            $protocol = $this->lastProtocol($req);
+
             return new IntegraResponse(
                 success: true,
                 httpStatus: 200,
                 body: [
-                    'status' => 'PRONTO',
-                    'protocolo' => $this->lastProtocol($req),
+                    'status' => 200,
+                    'protocoloRelatorio' => $protocol,
                     'relatorio' => $report,
+                    'dados' => $report,
                 ],
                 simulated: $simulated,
                 correlationId: $req->correlationId,
                 latencyMs: 1,
+                dados: $report,
+                operationKey: $req->operationKey,
+            );
+        });
+    }
+
+    /**
+     * Shape oficial RELATORIOSITFIS92: dados = [{"pdf":"<base64>"}].
+     */
+    public function queueReportPdf(string $base64Pdf = 'JVBERi0xLjQK', bool $simulated = false): self
+    {
+        return $this->push(function (IntegraRequest $req) use ($base64Pdf, $simulated) {
+            $dados = [['pdf' => $base64Pdf]];
+
+            return new IntegraResponse(
+                success: true,
+                httpStatus: 200,
+                body: [
+                    'status' => 200,
+                    'dados' => json_encode($dados, JSON_THROW_ON_ERROR),
+                ],
+                simulated: $simulated,
+                correlationId: $req->correlationId,
+                latencyMs: 1,
+                dados: $dados,
+                operationKey: $req->operationKey,
             );
         });
     }
@@ -137,14 +208,20 @@ final class ProgrammableIntegraContadorClient implements IntegraContadorClient
 
     private function lastProtocol(IntegraRequest $req): string
     {
-        if (! empty($req->businessData['protocolo'])) {
-            return (string) $req->businessData['protocolo'];
+        foreach (['protocoloRelatorio', 'protocolo'] as $key) {
+            if (! empty($req->businessData[$key]) && is_scalar($req->businessData[$key])) {
+                return (string) $req->businessData[$key];
+            }
         }
         $dados = $req->payload['dados'] ?? null;
         if (is_string($dados)) {
             $decoded = json_decode($dados, true);
-            if (is_array($decoded) && isset($decoded['protocolo'])) {
-                return (string) $decoded['protocolo'];
+            if (is_array($decoded)) {
+                foreach (['protocoloRelatorio', 'protocolo'] as $key) {
+                    if (! empty($decoded[$key]) && is_scalar($decoded[$key])) {
+                        return (string) $decoded[$key];
+                    }
+                }
             }
         }
 

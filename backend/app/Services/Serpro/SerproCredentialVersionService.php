@@ -5,6 +5,7 @@ namespace App\Services\Serpro;
 use App\Contracts\SecureObjectStore;
 use App\Domain\Cnpj;
 use App\Enums\SecureObjectPurpose;
+use App\Enums\SerproContractStatus;
 use App\Enums\SerproCredentialVersionStatus;
 use App\Enums\SerproDataSegregationClass;
 use App\Enums\SerproEnvironment;
@@ -385,8 +386,10 @@ final class SerproCredentialVersionService
                 ? SerproContract::query()->find($version->serpro_contract_id)
                 : null);
 
+        // Fluxo versionado (UI Configuração): cadastro de versão não exige contrato prévio.
+        // Cria/reutiliza shell no mesmo ambiente + CNPJ do contratante antes do cutover.
         if ($contract === null) {
-            throw new RuntimeException('Cutover exige contrato vinculado à versão.');
+            $contract = $this->ensureContractShellForVersion($version);
         }
 
         return DB::transaction(function () use (
@@ -525,6 +528,8 @@ final class SerproCredentialVersionService
             ])->save();
 
             $contractLocked->forceFill([
+                'status' => SerproContractStatus::Active,
+                'activated_at' => $contractLocked->activated_at ?? now(),
                 'active_credential_version_id' => $locked->id,
                 'credentials_exposed' => false,
                 'health_status' => 'OK',
@@ -544,6 +549,73 @@ final class SerproCredentialVersionService
 
             return $locked->refresh();
         });
+    }
+
+    /**
+     * Garante um contrato shell no ambiente da versão (fluxo Configuração versionada).
+     * Não grava segredos — o cutover resela PFX/OAuth a partir da versão.
+     */
+    private function ensureContractShellForVersion(SerproCredentialVersion $version): SerproContract
+    {
+        $env = $version->environment instanceof SerproEnvironment
+            ? $version->environment
+            : SerproEnvironment::from((string) $version->environment);
+
+        $cnpj = (string) ($version->contractor_cnpj ?? '');
+        if ($cnpj === '') {
+            throw new RuntimeException(
+                'Cutover exige contrato vinculado à versão (CNPJ do contratante ausente na versão).'
+            );
+        }
+
+        $existing = SerproContract::query()
+            ->where('environment', $env->value)
+            ->where('contractor_cnpj', $cnpj)
+            ->whereIn('status', [
+                SerproContractStatus::Active->value,
+                SerproContractStatus::Pending->value,
+                SerproContractStatus::Inactive->value,
+            ])
+            ->orderByRaw(
+                "CASE status WHEN 'ACTIVE' THEN 0 WHEN 'PENDING' THEN 1 WHEN 'INACTIVE' THEN 2 ELSE 3 END"
+            )
+            ->orderByDesc('id')
+            ->first();
+
+        if ($existing !== null) {
+            if ((int) $version->serpro_contract_id !== (int) $existing->id) {
+                $version->forceFill(['serpro_contract_id' => $existing->id])->save();
+            }
+
+            return $existing;
+        }
+
+        $contract = SerproContract::query()->create([
+            'environment' => $env,
+            'status' => SerproContractStatus::Pending,
+            'contractor_cnpj' => $cnpj,
+            'contractor_name' => $version->subject_name,
+            'subject_name' => $version->subject_name,
+            'fingerprint_sha256' => $version->fingerprint_sha256,
+            'cert_valid_from' => $version->cert_valid_from,
+            'cert_valid_to' => $version->cert_valid_to,
+            'consumer_key_hint' => $version->consumer_key_hint,
+            'health_status' => 'PENDING',
+            'health_message' => 'Contrato criado no fluxo versionado; aguardando cutover.',
+            'notes' => 'Shell auto-criado a partir da credential version #'.$version->id,
+            'segregation_class' => $version->segregation_class
+                ?? SerproDataSegregationClass::HistoricalUnverified,
+        ]);
+
+        $version->forceFill(['serpro_contract_id' => $contract->id])->save();
+
+        $this->audit->record('serpro.contract.shell_from_version', 'SUCCESS', $contract, [
+            'environment' => $env->value,
+            'credential_version_id' => $version->id,
+            'contractor_cnpj' => $cnpj,
+        ], null, null);
+
+        return $contract;
     }
 
     private function assertCanonicalOauthEndpoint(string $tokenUrl): void

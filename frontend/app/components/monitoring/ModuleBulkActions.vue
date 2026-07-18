@@ -155,6 +155,8 @@ const items = computed<DropdownMenuItem[][]>(() => {
         variant="subtle"
         icon="i-lucide-list-checks"
         label="Ações"
+        aria-label="Ações em massa"
+        :ui="{ label: 'hidden sm:inline' }"
         :loading="busy || enqueueing || exporting"
         data-testid="bulk-actions-menu"
       >

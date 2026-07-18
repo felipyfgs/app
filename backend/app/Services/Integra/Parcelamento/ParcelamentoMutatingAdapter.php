@@ -3,6 +3,7 @@
 namespace App\Services\Integra\Parcelamento;
 
 use App\Contracts\FiscalSourceAdapter;
+use App\Contracts\ParcelamentoSource;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
 use App\Enums\FiscalCoverage;
@@ -21,7 +22,7 @@ final class ParcelamentoMutatingAdapter implements FiscalSourceAdapter
     public static int $remoteCalls = 0;
 
     public function __construct(
-        private readonly SerproParcelamentoSource $source,
+        private readonly ParcelamentoSource $source,
     ) {}
 
     public function systemCode(): string

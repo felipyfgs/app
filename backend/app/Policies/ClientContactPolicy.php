@@ -2,51 +2,37 @@
 
 namespace App\Policies;
 
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Models\ClientContact;
 use App\Models\User;
-use App\Support\CurrentOffice;
+use App\Policies\Concerns\AuthorizesTenantPermission;
 
 class ClientContactPolicy
 {
+    use AuthorizesTenantPermission;
+
     public function viewAny(User $user): bool
     {
-        return $this->role($user) !== null;
+        return $this->allows($user, TenantPermission::ClientsView);
     }
 
     public function view(User $user, ClientContact $contact): bool
     {
-        return $this->sameOffice($user, $contact);
+        return $this->allows($user, TenantPermission::ClientsView, $contact);
     }
 
     public function create(User $user): bool
     {
-        return $this->role($user)?->canManageClients() === true;
+        return $this->allows($user, TenantPermission::ClientsManage);
     }
 
     public function update(User $user, ClientContact $contact): bool
     {
-        return $this->sameOffice($user, $contact)
-            && $this->role($user)?->canManageClients() === true;
+        return $this->allows($user, TenantPermission::ClientsManage, $contact);
     }
 
     public function delete(User $user, ClientContact $contact): bool
     {
-        return $this->sameOffice($user, $contact)
-            && $this->role($user)?->canManageClients() === true;
-    }
-
-    private function role(User $user): ?OfficeRole
-    {
-        return app(CurrentOffice::class)->resolve($user)
-            ? app(CurrentOffice::class)->role()
-            : null;
-    }
-
-    private function sameOffice(User $user, ClientContact $contact): bool
-    {
-        $officeId = app(CurrentOffice::class)->resolve($user)?->id;
-
-        return $officeId !== null && $officeId === $contact->office_id;
+        return $this->allows($user, TenantPermission::ClientsManage, $contact);
     }
 }

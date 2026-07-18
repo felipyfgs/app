@@ -70,6 +70,9 @@ class PgdasdArtifact extends Model
             'filename' => $this->filename,
             'content_type' => $this->content_type,
             'observed_at' => $this->observed_at?->toIso8601String(),
+            // Caminho same-origin; os bytes continuam restritos ao endpoint
+            // autenticado e tenant-scoped.
+            'download_path' => '/api/v1/fiscal/simples-mei/pgdasd/artifacts/'.$this->id.'/download',
         ];
     }
 

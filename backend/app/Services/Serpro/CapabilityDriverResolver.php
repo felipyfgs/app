@@ -6,8 +6,8 @@ use App\Enums\SerproCapabilityDriver;
 use RuntimeException;
 
 /**
- * Resolve driver por capacidade (disabled|simulated|real) sem fallback.
- * Preflight de produção rejeita simulated.
+ * Resolve driver por capacidade sem fallback.
+ * O valor legado simulated é recusado explicitamente, sem cliente local.
  */
 final class CapabilityDriverResolver
 {
@@ -64,39 +64,36 @@ final class CapabilityDriverResolver
             'serpro.capabilities.'.$capability,
             config('serpro.capabilities.default', 'disabled'),
         );
-        $driver = SerproCapabilityDriver::tryFrom(strtolower(trim($raw)));
-        if ($driver === null) {
-            throw new RuntimeException("Driver SERPRO inválido para capacidade {$capability}: {$raw}");
+        $normalized = strtolower(trim($raw));
+        if ($normalized === 'simulated') {
+            throw new RuntimeException(
+                "Driver simulated não é executável (capacidade: {$capability}); use disabled ou real."
+            );
         }
 
-        if ($driver === SerproCapabilityDriver::Simulated && $this->isProduction()) {
-            throw new RuntimeException(
-                "Driver simulated proibido em produção (capacidade: {$capability})."
-            );
+        $driver = SerproCapabilityDriver::tryFrom($normalized);
+        if ($driver === null) {
+            throw new RuntimeException("Driver SERPRO inválido para capacidade {$capability}: {$raw}");
         }
 
         return $driver;
     }
 
     /**
-     * Falha no boot se alguma capacidade estiver simulated em production.
+     * Detecta configuração simulated em qualquer ambiente.
      *
      * @return list<string> problemas (vazio = ok)
      */
     public function preflightProduction(): array
     {
-        if (! $this->isProduction()) {
-            return [];
-        }
-
         $problems = [];
         $caps = (array) config('serpro.capabilities', []);
         foreach ($caps as $name => $value) {
             if ($name === 'default') {
                 continue;
             }
-            if (strtolower((string) $value) === SerproCapabilityDriver::Simulated->value) {
-                $problems[] = "serpro.capabilities.{$name}=simulated em production";
+            if (strtolower((string) $value) === 'simulated') {
+                $problems[] = "serpro.capabilities.{$name}=simulated não é executável";
             }
         }
 
@@ -122,10 +119,5 @@ final class CapabilityDriverResolver
             array_values(self::PREFIX_CAPABILITY),
             ['default'],
         )));
-    }
-
-    private function isProduction(): bool
-    {
-        return app()->environment('production');
     }
 }

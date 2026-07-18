@@ -3,6 +3,7 @@
 namespace App\Services\Integra\Parcelamento;
 
 use App\Contracts\FiscalSourceAdapter;
+use App\Contracts\ParcelamentoSource;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
 use App\Enums\FiscalCoverage;
@@ -21,7 +22,7 @@ use App\Support\FeatureFlags;
 final class ParcelamentoReadAdapter implements FiscalSourceAdapter
 {
     public function __construct(
-        private readonly SerproParcelamentoSource $source,
+        private readonly ParcelamentoSource $source,
         private readonly ParcelamentoProjectionService $projection,
         private readonly TaxProxyPowerService $proxyPowers,
     ) {}
@@ -115,6 +116,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
         }
 
         $body = $response['body'];
+        $isTrial = (bool) ($response['simulated'] ?? false);
         $evidence = json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         $sha = hash('sha256', $evidence);
 
@@ -133,7 +135,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
             coverage: FiscalCoverage::Full,
             evidenceBytes: $evidence,
             evidenceContentType: 'application/json',
-            sourceVersion: 'parcelamento-fake-1',
+            sourceVersion: $isTrial ? 'parcelamento-serpro-trial' : 'parcelamento-serpro',
             normalized: [
                 'modality' => $modality->value,
                 'regime' => $modality->regime(),
@@ -144,7 +146,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
                 ),
                 'parcel_count' => count($projected['parcels']),
                 'payment_count' => count($projected['payments']),
-                'simulated' => true,
+                'simulated' => $isTrial,
             ],
             findings: $projected['findings'],
             itemsProcessed: count($projected['orders']) + count($projected['parcels']),
@@ -168,6 +170,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
         }
 
         $pedidos = $pedidosResp['body']['pedidos'] ?? [];
+        $isTrial = (bool) ($pedidosResp['simulated'] ?? false);
         $detalhes = [];
         $pagamentos = [];
         $parcelasMerged = [];
@@ -240,7 +243,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
             coverage: FiscalCoverage::Full,
             evidenceBytes: $evidence,
             evidenceContentType: 'application/json',
-            sourceVersion: 'parcelamento-monitor-fake-1',
+            sourceVersion: $isTrial ? 'parcelamento-serpro-trial' : 'parcelamento-serpro',
             normalized: [
                 'modality' => $modality->value,
                 'regime' => $modality->regime(),
@@ -248,7 +251,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
                 'orders' => array_map(fn ($o) => $o->toPublicArray(), $projected['orders']),
                 'parcel_count' => count($projected['parcels']),
                 'payment_count' => count($projected['payments']),
-                'simulated' => true,
+                'simulated' => $isTrial,
             ],
             findings: $projected['findings'],
             itemsProcessed: count($projected['orders']) + count($projected['parcels']),

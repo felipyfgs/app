@@ -10,6 +10,10 @@ import type {
   SerproExternalGateSanitized,
   SerproPlatformConfiguration
 } from '~/types/api'
+import {
+  defaultChangeWindow,
+  expectedOwnerConfirmationPhrase
+} from '~/utils/serpro-owner-confirmation'
 import CatalogView from './catalog.vue'
 import ContractsView from './contracts.vue'
 
@@ -61,8 +65,13 @@ const passwordModalOpen = ref(false)
 const passwordInput = ref('')
 const pendingAction = ref<null | (() => Promise<void>)>(null)
 
+/** Cutover exige confirmação OWNER (frase + senha) antes do POST /cutover. */
+const cutoverOwnerOpen = ref(false)
+const cutoverTarget = ref<SerproCredentialVersionSanitized | null>(null)
+const cutoverPhrase = expectedOwnerConfirmationPhrase('CREDENTIAL_CUTOVER')
+
 const envItems = [
-  { label: 'Trial', value: 'TRIAL' },
+  { label: 'Demonstração SERPRO', value: 'TRIAL' },
   { label: 'Produção', value: 'PRODUCTION' }
 ]
 
@@ -205,14 +214,31 @@ function submitUpload() {
       body.append('consumer_key', upload.consumer_key)
       body.append('consumer_secret', upload.consumer_secret)
       if (upload.notes) body.append('notes', upload.notes)
-      await api.platform.serpro.credentialVersions.store(body)
+      const created = await api.platform.serpro.credentialVersions.store(body)
       clearUpload()
-      toast.add({ title: 'Versão PENDING cadastrada no vault.', color: 'success' })
+
+      if (environment.value === 'TRIAL') {
+        await activateTrialCredential(created.data)
+        toast.add({ title: 'Credenciais salvas e ativadas na Demonstração SERPRO.', color: 'success' })
+      } else {
+        toast.add({ title: 'Versão PENDING cadastrada no vault.', color: 'success' })
+      }
       await load()
     } catch (caught) {
-      toast.add({ title: apiErrorMessage(caught, 'Falha no upload.'), color: 'error' })
+      toast.add({ title: apiErrorMessage(caught, 'Falha ao salvar e ativar as credenciais.'), color: 'error' })
     }
   })
+}
+
+/** Demonstração: um único submit cadastra, verifica, testa o OAuth e ativa a versão. */
+async function activateTrialCredential(v: SerproCredentialVersionSanitized) {
+  await api.platform.serpro.credentialVersions.verify(v.id)
+  await api.platform.serpro.credentialVersions.testConnection(v.id)
+  await executeCredentialCutover(
+    v,
+    'Ativação simplificada de credencial na Demonstração SERPRO.',
+    cutoverPhrase
+  )
 }
 
 function verifyVersion(v: SerproCredentialVersionSanitized) {
@@ -240,16 +266,83 @@ function testConnection(v: SerproCredentialVersionSanitized) {
 }
 
 function cutover(v: SerproCredentialVersionSanitized) {
-  requestPasswordThen(async () => {
-    try {
-      await api.platform.serpro.credentialVersions.cutover(v.id, {
-        reason: 'Cutover via Configuração SERPRO'
-      })
-      toast.add({ title: `Cutover v${v.version_number} concluído.`, color: 'success' })
-      await load()
-    } catch (caught) {
-      toast.add({ title: apiErrorMessage(caught, 'Cutover bloqueado.'), color: 'error' })
-    }
+  if (!v.has_recent_connection_test) {
+    toast.add({
+      title: 'Execute “Testar OAuth” de novo (evidência expira ~15 min) antes do cutover.',
+      color: 'warning'
+    })
+    return
+  }
+  cutoverTarget.value = v
+  cutoverOwnerOpen.value = true
+}
+
+/**
+ * Fluxo canônico: request rollout CREDENTIAL_CUTOVER → approve OWNER → cutover(approval_id).
+ * Sem contrato prévio o backend cria shell a partir da versão.
+ */
+async function confirmCutover(payload: {
+  reason: string
+  confirmation_phrase: string
+  password: string
+}) {
+  const v = cutoverTarget.value
+  if (!v) return
+
+  acting.value = true
+  try {
+    await executeCredentialCutover(v, payload.reason, payload.confirmation_phrase)
+
+    toast.add({ title: `Cutover v${v.version_number} concluído.`, color: 'success' })
+    cutoverTarget.value = null
+    await load()
+  } catch (caught) {
+    const msg = apiErrorMessage(caught, 'Cutover bloqueado.')
+    toast.add({
+      title: /oauth|evidência|teste/i.test(msg)
+        ? `${msg} — rode “Testar OAuth” e tente de novo.`
+        : msg,
+      color: 'error'
+    })
+  } finally {
+    acting.value = false
+  }
+}
+
+async function executeCredentialCutover(
+  v: SerproCredentialVersionSanitized,
+  reason: string,
+  confirmationPhrase: string
+) {
+  const window = defaultChangeWindow()
+  const env = String(v.environment || environment.value || 'TRIAL').toUpperCase()
+  const requested = await api.platform.serpro.rollouts.request({
+    action: 'CREDENTIAL_CUTOVER',
+    subject_type: 'CREDENTIAL_VERSION',
+    subject_id: v.id,
+    reason,
+    environment: env,
+    change_window_start: window.change_window_start,
+    change_window_end: window.change_window_end
+  })
+
+  const approvalId = Number(
+    (requested.data as { id?: number | string } | undefined)?.id
+  )
+  if (!Number.isFinite(approvalId) || approvalId <= 0) {
+    throw new Error('Aprovação OWNER não retornou id utilizável.')
+  }
+
+  await api.platform.serpro.rollouts.approve(approvalId, {
+    reason,
+    confirmation_phrase: confirmationPhrase,
+    change_window_start: window.change_window_start,
+    change_window_end: window.change_window_end
+  })
+
+  await api.platform.serpro.credentialVersions.cutover(v.id, {
+    approval_id: approvalId,
+    reason
   })
 }
 
@@ -442,7 +535,7 @@ onMounted(() => {
           <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p class="text-sm text-muted">
-                {{ environment === 'PRODUCTION' ? 'Produção' : 'Trial' }}
+                {{ environment === 'PRODUCTION' ? 'Produção' : 'Demonstração SERPRO' }}
               </p>
               <h2 class="mt-1 text-lg font-semibold text-highlighted">
                 Estado da configuração
@@ -453,7 +546,9 @@ onMounted(() => {
               variant="subtle"
               size="lg"
             >
-              {{ summary?.configuration_ready ? 'Pronta para operar' : 'Requer configuração' }}
+              {{ summary?.configuration_ready
+                ? (environment === 'PRODUCTION' ? 'Pronta para operar' : 'Demonstração configurada')
+                : 'Requer configuração' }}
             </UBadge>
           </div>
 
@@ -522,6 +617,14 @@ onMounted(() => {
           </details>
         </UPageCard>
 
+        <UAlert
+          v-if="environment === 'TRIAL'"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-flask-conical"
+          title="Demonstração SERPRO — não confirma transmissão, aceite ou evidência fiscal real pela SERPRO."
+        />
+
         <UPageCard
           title="Credenciais"
           variant="subtle"
@@ -582,8 +685,8 @@ onMounted(() => {
             </UFormField>
           </div>
           <UButton
-            label="Cadastrar nova versão"
-            icon="i-lucide-upload"
+            :label="environment === 'TRIAL' ? 'Salvar e ativar' : 'Cadastrar nova versão'"
+            :icon="environment === 'TRIAL' ? 'i-lucide-circle-check' : 'i-lucide-upload'"
             :loading="acting"
             data-testid="serpro-config-upload"
             @click="submitUpload"
@@ -925,6 +1028,15 @@ onMounted(() => {
           </div>
         </template>
       </UModal>
+
+      <SerproOwnerConfirmModal
+        v-model:open="cutoverOwnerOpen"
+        action="CREDENTIAL_CUTOVER"
+        title="Confirmar cutover da credencial SERPRO"
+        :expected-phrase="cutoverPhrase"
+        data-testid="serpro-config-cutover-owner-modal"
+        @confirm="confirmCutover"
+      />
     </div>
 
     <ContractsView v-else-if="activeSection === 'contracts'" />

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Platform;
 
+use App\Enums\OfficeLifecycleStatus;
 use App\Enums\OfficeRole;
 use App\Enums\SubscriptionStatus;
 use App\Models\Client;
@@ -150,6 +151,65 @@ class PlatformAdminTest extends TestCase
             ->assertJsonPath('data.0.id', $suspended->id);
 
         $this->assertNotSame($active->id, $suspended->id);
+    }
+
+    public function test_lista_admin_de_escritorios_oculta_sentinela_da_plataforma(): void
+    {
+        config()->set('fiscal_demo.sentinel_office_slug', 'plataforma');
+
+        $sentinel = Office::factory()->create([
+            'name' => 'Tenant sentinela da plataforma',
+            'slug' => 'plataforma',
+        ]);
+        $office = Office::factory()->create([
+            'name' => 'Escritório criado',
+            'slug' => 'escritorio-criado',
+        ]);
+        $admin = User::factory()->asPlatformAdmin($office->id)->create();
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/platform/offices/admin')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $office->id)
+            ->assertJsonMissing(['id' => $sentinel->id]);
+    }
+
+    public function test_lista_admin_inclui_pendentes_e_exclui_inativo_legado(): void
+    {
+        $active = Office::factory()->create([
+            'is_active' => true,
+            'lifecycle_status' => OfficeLifecycleStatus::Active,
+        ]);
+        $pending = Office::factory()->create([
+            'is_active' => false,
+            'lifecycle_status' => OfficeLifecycleStatus::PendingActivation,
+        ]);
+        $inactiveLegacy = Office::factory()->create([
+            'is_active' => false,
+            'lifecycle_status' => OfficeLifecycleStatus::Active,
+        ]);
+        $admin = User::factory()->asPlatformAdmin($active->id)->create();
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/platform/offices/admin')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonFragment(['id' => $active->id])
+            ->assertJsonFragment(['id' => $pending->id])
+            ->assertJsonMissing(['id' => $inactiveLegacy->id]);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/platform/offices/admin?lifecycle_status=PENDING_ACTIVATION')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $pending->id);
+
+        $this->actingAs($admin)
+            ->getJson('/api/v1/platform/offices/admin?lifecycle_status=ACTIVE')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $active->id);
     }
 
     public function test_platform_admin_sem_totp_navega_area_plataforma(): void

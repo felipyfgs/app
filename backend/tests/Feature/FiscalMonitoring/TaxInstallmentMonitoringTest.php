@@ -25,13 +25,14 @@ use App\Models\TaxProxyPower;
 use App\Models\User;
 use App\Services\FiscalMonitoring\FiscalAdapterRegistry;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
-use App\Services\Integra\Parcelamento\FakeParcelamentoSource;
 use App\Services\Integra\Parcelamento\ParcelamentoMutatingAdapter;
 use App\Services\Integra\Parcelamento\ParcelamentoServiceCatalog;
 use App\Services\Integra\Parcelamento\StubTaxGuideEnrollment;
 use App\Support\CurrentOffice;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\Fakes\FakeParcelamentoSource;
+use Tests\Support\UsesSerproTestDoubles;
 use Tests\TestCase;
 
 /**
@@ -40,6 +41,7 @@ use Tests\TestCase;
 class TaxInstallmentMonitoringTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesSerproTestDoubles;
 
     private Office $office;
 

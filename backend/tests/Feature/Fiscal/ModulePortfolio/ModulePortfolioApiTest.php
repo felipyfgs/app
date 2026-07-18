@@ -92,7 +92,7 @@ class ModulePortfolioApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.module_key', 'sitfis')
             ->assertJsonPath('data.data_origin', 'LIVE')
-            ->assertJsonPath('data.total_clients', 5)
+            ->assertJsonPath('data.total_clients', 6)
             ->assertJsonStructure([
                 'data' => [
                     'module_key',
@@ -128,7 +128,7 @@ class ModulePortfolioApiTest extends TestCase
         $this->assertSame(1, $counters['attention']);
         $this->assertSame(1, $counters['error']);
         $this->assertSame(0, $counters['blocked']);
-        $this->assertSame(0, $counters['unknown']);
+        $this->assertSame(1, $counters['unknown']);
         $this->assertSame(0, $counters['unsupported']);
         $this->assertSame(0, $counters['not_applicable']);
         $this->assertSame(
@@ -141,7 +141,7 @@ class ModulePortfolioApiTest extends TestCase
         // somente a lista paginada aplica o eixo.
         $filtered = $this->getJson('/api/v1/fiscal/modules/sitfis/overview?situation=PENDING')
             ->assertOk();
-        $this->assertSame(5, $filtered->json('data.total_clients'));
+        $this->assertSame(6, $filtered->json('data.total_clients'));
         $this->assertSame(2, $filtered->json('data.counters.up_to_date'));
         $this->assertSame(1, $filtered->json('data.counters.pending'));
 
@@ -173,22 +173,41 @@ class ModulePortfolioApiTest extends TestCase
         $response = $this->getJson('/api/v1/fiscal/modules/sitfis/overview')->assertOk();
         $counters = $response->json('data.counters');
 
-        $this->assertSame(5, $response->json('data.total_clients'));
+        $this->assertSame(6, $response->json('data.total_clients'));
         $this->assertSame(5, $counters['blocked']);
         $this->assertSame(0, $counters['up_to_date']);
         $this->assertSame(0, $counters['processing']);
         $this->assertSame(0, $counters['pending']);
         $this->assertSame(0, $counters['attention']);
         $this->assertSame(0, $counters['error']);
-        $this->assertSame(0, $counters['unknown']);
+        $this->assertSame(1, $counters['unknown']);
         $this->assertSame(0, $counters['unsupported']);
         $this->assertSame(0, $counters['not_applicable']);
-        $this->assertSame(5, array_sum($counters));
+        $this->assertSame(6, array_sum($counters));
+    }
+
+    public function test_cliente_ativo_sem_vinculo_fiscal_aparece_por_padrao_como_nao_verificado(): void
+    {
+        $this->actingAsOffice($this->admin);
+
+        $response = $this->getJson('/api/v1/fiscal/modules/sitfis/clients?q='.urlencode('Orphan Sem Link'))
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.legal_name', 'Orphan Sem Link')
+            ->assertJsonPath('data.0.situation', FiscalSituation::Unknown->value)
+            ->assertJsonPath('data.0.coverage', FiscalCoverage::Unknown->value);
+
+        $clientId = (int) $response->json('data.0.client_id');
+        $this->assertFalse(OfficeFiscalCategoryLink::query()->withoutGlobalScopes()
+            ->where('office_id', $this->office->id)
+            ->where('client_id', $clientId)
+            ->exists());
     }
 
     public function test_nove_estados_coexistem_e_soma_igual_ao_total(): void
     {
-        // Seed base tem 5; adiciona 4 clientes para cobrir os 9 estados canônicos.
+        // Seed base tem 5 snapshots + 1 cliente ainda não consultado; adiciona os
+        // estados restantes para cobrir os 9 estados canônicos.
         $extra = [
             ['name' => 'Zeta Processando', 'situation' => FiscalSituation::Processing],
             ['name' => 'Eta Bloqueado', 'situation' => FiscalSituation::Blocked],
@@ -230,15 +249,16 @@ class ModulePortfolioApiTest extends TestCase
         $counters = $response->json('data.counters');
         $total = (int) $response->json('data.total_clients');
 
-        // Seed: 2 UP_TO_DATE + 1 PENDING + 1 ATTENTION + 1 ERROR + 5 extras = 10
-        $this->assertSame(10, $total);
+        // Seed: 2 UP_TO_DATE + 1 PENDING + 1 ATTENTION + 1 ERROR + 1 UNKNOWN
+        // (cliente sem vínculo/consulta) + 5 extras = 11.
+        $this->assertSame(11, $total);
         $this->assertSame(2, $counters['up_to_date']);
         $this->assertSame(1, $counters['processing']);
         $this->assertSame(1, $counters['pending']);
         $this->assertSame(1, $counters['attention']);
         $this->assertSame(1, $counters['error']);
         $this->assertSame(1, $counters['blocked']);
-        $this->assertSame(1, $counters['unknown']);
+        $this->assertSame(2, $counters['unknown']);
         $this->assertSame(1, $counters['unsupported']);
         $this->assertSame(1, $counters['not_applicable']);
         $this->assertSame($total, array_sum($counters));
@@ -260,7 +280,7 @@ class ModulePortfolioApiTest extends TestCase
         $page1 = $this->getJson('/api/v1/fiscal/modules/sitfis/clients?per_page=2&page=1&sort=legal_name')
             ->assertOk()
             ->assertJsonPath('meta.per_page', 2)
-            ->assertJsonPath('meta.total', 5)
+            ->assertJsonPath('meta.total', 6)
             ->assertJsonPath('meta.current_page', 1)
             ->assertJsonCount(2, 'data')
             ->assertJsonStructure([
@@ -363,7 +383,7 @@ class ModulePortfolioApiTest extends TestCase
         // Valor inválido é ignorado (sem filtro)
         $this->getJson('/api/v1/fiscal/modules/sitfis/clients?coverage=EVERYTHING')
             ->assertOk()
-            ->assertJsonPath('meta.total', 5);
+            ->assertJsonPath('meta.total', 6);
     }
 
     public function test_modulo_desconhecido_e_desabilitado(): void
@@ -417,7 +437,7 @@ class ModulePortfolioApiTest extends TestCase
             ->assertOk();
         $json = (string) json_encode($overview->json());
         $this->assertStringNotContainsString('SEGREDO OUTRO OFFICE', $json);
-        $this->assertSame(5, $overview->json('data.total_clients'));
+        $this->assertSame(6, $overview->json('data.total_clients'));
 
         $clients = $this->getJson('/api/v1/fiscal/modules/sitfis/clients?office_id='.$forged.'&q='.$sharedRoot)
             ->assertOk();
@@ -531,7 +551,7 @@ class ModulePortfolioApiTest extends TestCase
             $this->clients[] = $client;
         }
 
-        // Cliente no mesmo office SEM vínculo SITFIS — não entra na carteira
+        // Cliente no mesmo office SEM vínculo SITFIS — entra por padrão como UNKNOWN.
         $orphan = Client::factory()->forOffice($this->office)->create(['legal_name' => 'Orphan Sem Link']);
         Establishment::factory()->forClient($orphan)->create();
     }

@@ -54,8 +54,17 @@ class SerproProdCheckCommand extends Command
 
         try {
             $documents->syncFromManifest();
-        } catch (\Throwable $e) {
-            $this->warn('Manifesto de fontes oficiais: '.$e->getMessage());
+        } catch (\Throwable) {
+            if ($this->option('json')) {
+                $this->line(json_encode([
+                    'status' => 'FAIL',
+                    'issue' => 'SERPRO_OFFICIAL_SOURCE_INTEGRITY',
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            } else {
+                $this->error('FAIL: integridade das fontes oficiais SERPRO não comprovada.');
+            }
+
+            return self::FAILURE;
         }
 
         $snapshot = $gate->prodCheckSnapshot($environment);
@@ -82,7 +91,6 @@ class SerproProdCheckCommand extends Command
             }
 
             $this->line('Drivers: '.json_encode($snapshot['drivers'], JSON_UNESCAPED_UNICODE));
-            $this->line('Fake clients: '.($snapshot['fake_clients'] ? 'true' : 'false'));
             $this->line('Kill switch: '.json_encode($snapshot['kill_switch'], JSON_UNESCAPED_UNICODE));
             $this->line('External gates open: '.count($snapshot['external_gates_open']));
         }

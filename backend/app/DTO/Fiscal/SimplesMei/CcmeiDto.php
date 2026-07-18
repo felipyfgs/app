@@ -3,6 +3,7 @@
 namespace App\DTO\Fiscal\SimplesMei;
 
 use App\Enums\FiscalSituation;
+use App\Services\Fiscal\SimplesMei\CcmeiDadosCodec;
 use InvalidArgumentException;
 
 final readonly class CcmeiDto
@@ -15,7 +16,6 @@ final readonly class CcmeiDto
         public ?string $certificateNumber,
         public ?string $issuedAt,
         public FiscalSituation $situation,
-        public array $raw,
     ) {}
 
     /**
@@ -28,29 +28,14 @@ final readonly class CcmeiDto
             throw new InvalidArgumentException("CCMEI DTO versão não suportada: {$version}");
         }
 
-        $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
-        $status = strtoupper((string) ($data['status'] ?? $data['situacao'] ?? 'UNKNOWN'));
-        $cert = isset($data['certificate_number'])
-            ? (string) $data['certificate_number']
-            : (isset($data['numero_certificado']) ? (string) $data['numero_certificado'] : null);
-        $issued = isset($data['issued_at'])
-            ? (string) $data['issued_at']
-            : (isset($data['data_emissao']) ? (string) $data['data_emissao'] : null);
-
-        $situation = match ($status) {
-            'ATIVO', 'VALIDO', 'OK', 'EMITIDO' => FiscalSituation::UpToDate,
-            'INATIVO', 'CANCELADO', 'SUSPENSO' => FiscalSituation::Attention,
-            'INCONCLUSIVO', 'UNKNOWN', '' => FiscalSituation::Unknown,
-            default => FiscalSituation::Unknown,
-        };
+        $decoded = (new CcmeiDadosCodec)->decode($body);
 
         return new self(
             version: self::VERSION,
-            status: $status,
-            certificateNumber: $cert !== '' ? $cert : null,
-            issuedAt: $issued !== '' ? $issued : null,
-            situation: $situation,
-            raw: $data,
+            status: $decoded['status'],
+            certificateNumber: $decoded['certificate_number'],
+            issuedAt: $decoded['issued_at'],
+            situation: $decoded['situation'],
         );
     }
 

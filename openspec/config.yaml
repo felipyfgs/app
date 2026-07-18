@@ -1,13 +1,14 @@
 schema: spec-driven
 
 # Stack/tenancy/segurança: AGENTS.md na raiz.
-# Artefatos: openspec/specs/ e openspec/changes/ (ainda vazios — criar via propose).
-# Idioma: pt-BR obrigatório em todos os artefatos OpenSpec e na comunicação com o usuário.
+# Estado de specs/changes é dinâmico: consultar o CLI antes de criar ou alterar artefatos.
+# C<n>/N<n> são convenções documentais; o OpenSpec 1.6.0 não ordena nem valida esses níveis.
 
 context: |
-  Idioma: português do Brasil (pt-BR) em proposal, design, specs, tasks, archive e
-  qualquer texto de change. Comunicação com o usuário também em pt-BR (ver AGENTS.md).
-  Identificadores de código e nomes de API permanecem como no repositório.
+  Idioma: conteúdo narrativo em português do Brasil (pt-BR) em proposal, design,
+  specs, tasks, archive e comunicação com o usuário (ver AGENTS.md). Preservar em
+  inglês os headings e tokens estruturais exigidos pelo schema OpenSpec, além de
+  identificadores de código, paths e nomes reais de API.
 
   Produto: hub fiscal multi-escritório (NFS-e ADN, SEFAZ, SERPRO Integra, monitoramento).
   Monorepo sem package.json na raiz — orquestração Makefile + Docker Compose.
@@ -17,8 +18,36 @@ context: |
   - openspec/changes/<change>/ — change ativa
   - openspec/changes/archive/YYYY-MM-DD-<change>/ — pós-archive
 
+  Estado OpenSpec: existem specs principais, changes ativas e archive. Antes de propor,
+  aplicar, sincronizar ou arquivar, consultar `openspec list --json`,
+  `openspec list --specs --json` e o status da change; nunca presumir diretórios vazios.
+
   Ciclo: propose → apply → verify → archive → commit no mesmo dia.
-  Change pequena: 1 capability (máx. 2), ≤ ~20 tasks, non-goals explícitos.
+  Unidade de change: um resultado implantável e verificável, slug em kebab-case iniciado
+  por verbo no infinitivo, preferencialmente 1 capability e no máximo 2. Exceção
+  transversal exige justificativa no design; não omitir capabilities modificadas para
+  caber no limite. Mais de 20 tasks, tasks que não cabem em uma sessão focada ou fluxos
+  implantáveis de forma independente indicam que a change deve ser dividida.
+
+  Dependências entre changes — DAG e ondas C<n>:
+  - C0: não depende de nenhuma outra change ativa.
+  - Cn: 1 + o maior nível C das changes ativas das quais depende.
+  - Main specs e changes arquivadas são bases estáveis, não nós do DAG ativo.
+  - Ciclos são proibidos. Changes no mesmo nível só avançam em paralelo quando não há
+    dependência entre elas nem conflito de ownership de capability/contrato.
+  - Toda dependência declara slug exato, capability/contrato consumido, marco necessário
+    (`specs`, `apply`, `verify` ou `archive`) e relação (`coordenada` ou `bloqueante`).
+  - C<n> expressa ordem por dependência, nunca prioridade ou urgência.
+
+  Dependências internas — níveis topológicos N<n> em tasks.md:
+  - N0: tasks sem pré-requisito interno.
+  - Nn: 1 + o maior nível N das tasks das quais dependem.
+  - Tasks do mesmo nível não dependem entre si e devem poder avançar em paralelo; toda
+    dependência aponta apenas para IDs de níveis menores. Ciclos e dependências futuras
+    são proibidos; níveis vazios são omitidos.
+  - Testes e evidências acompanham a implementação no mesmo nível. O último nível contém
+    somente gates integrados e evidências de prontidão; sync/archive/commit acontecem
+    depois do checklist concluído, no fechamento do workflow.
 
   Stack: backend Laravel 13 / PHP 8.4 / Horizon; frontend Nuxt 4 SPA (ssr:false) + Nuxt UI;
   nginx same-origin; make dev para HMR.
@@ -30,17 +59,26 @@ context: |
 
   UI: panel-ui → ui-archetype; template .reference/nuxt-dashboard-template @ 0f30c09.
 
-  Specs principais: nenhuma ainda — criar com as changes.
+  Specs principais incluem `schema-conventions`; consultar o CLI para o inventário atual.
 
 rules:
   proposal:
-    - "Escrever proposal inteiro em português do Brasil (pt-BR) — títulos, Why, What Changes, Capabilities, Impact."
-    - "1 capability principal (máx. 2); non-goals para live SERPRO, jurídico e mutações."
+    - "Escrever o conteúdo em pt-BR, preservando exatamente os headings estruturais do template (`## Why`, `## What Changes`, `## Capabilities`, `## Impact` e subtítulos estruturais)."
+    - "Declarar com fidelidade todas as capabilities novas e modificadas. Preferir 1 e limitar a 2; se a mudança for transversal, dividir ou justificar explicitamente a exceção no design."
+    - "Dentro de `## Impact`, incluir `### Dependências entre changes` com: nível `C<n>`; bases estáveis; `Depende de` (slugs ou `nenhuma`); capability/contrato; marco exigido (`specs`, `apply`, `verify` ou `archive`); relação (`coordenada` ou `bloqueante`); `Desbloqueia`; e condições de paralelismo."
+    - "Calcular `C0` quando não houver upstream ativo e `Cn = 1 + max(C upstream)` nos demais casos; proibir ciclos e não usar o nível como prioridade."
+    - "Manter non-goals explícitos, especialmente para SERPRO live, parecer jurídico, mutações fiscais, outbound e qualquer expansão não necessária ao resultado."
   specs:
-    - "Specs (delta e main) em pt-BR: Purpose, Requirements, Scenarios; identificadores de código em inglês quando forem nomes reais do repo."
-    - "Main specs só com SHALL que o código atende."
+    - "Escrever o conteúdo em pt-BR, mas preservar exatamente os tokens estruturais do schema: usar um dos headings `## ADDED Requirements`, `## MODIFIED Requirements`, `## REMOVED Requirements` ou `## RENAMED Requirements`, além de `### Requirement:`, `#### Scenario:`, `**WHEN**` e `**THEN**`; em main specs, manter `## Purpose` e `## Requirements`."
+    - "Declarar em delta toda capability realmente alterada; não esconder modificação de contrato para evitar dependência entre changes."
+    - "Main specs contêm somente requisitos `SHALL` que o código já atende; ordem C/N e plano de implementação pertencem a proposal/design/tasks, não aos requisitos."
   design:
-    - "Design em pt-BR: decisões, trade-offs e riscos; não copiar o proposal."
+    - "Escrever o conteúdo em pt-BR e preservar os headings estruturais do template; registrar decisões, trade-offs, riscos e non-goals sem copiar o proposal."
+    - "Quando houver dependência entre changes ou três ou mais blocos de execução, incluir `## Mapa de dependências` com DAG, ownership de capabilities, marcos que liberam consumidores, pontos paralelos e ordem de rollout/rollback."
+    - "Para cada upstream ativo, definir compatibilidade do contrato, arquivos compartilhados, gate coordenado ou bloqueante e como evitar editar artefatos pertencentes a outra change ativa."
   tasks:
-    - "Tasks em pt-BR; verificáveis; [x] só com evidência real."
-    - "Task final de archive/sync + commit quando fechar software."
+    - "Escrever tasks em pt-BR e manter cada item rastreável no formato exato `- [ ] X.Y ...`; usar `[x]` somente com implementação e evidência reais."
+    - "Ordenar grupos por nível topológico no formato `## <sequência>. N<n> — <resultado>`: N0 sem dependências; Nn depende somente de IDs em níveis menores; omitir níveis vazios e proibir ciclos ou dependência dentro do mesmo nível."
+    - "Em cada task dependente, registrar uma linha indentada `Depende de: X.Y[, ...]`; para dependência externa, registrar também o slug da change e o marco exigido. Tasks do mesmo nível devem ser independentes e paralelizáveis."
+    - "Cada task deve produzir um resultado verificável e caber em uma sessão focada; incluir teste/evidência junto da implementação, sem compactar múltiplos fluxos para respeitar artificialmente o teto de 20 tasks."
+    - "O último nível registra apenas gates integrados e evidências de prontidão para fechamento. Não criar checkbox autorreferente de sync/archive/commit; executar essas ações depois que o checklist estiver concluído e houver autorização aplicável."

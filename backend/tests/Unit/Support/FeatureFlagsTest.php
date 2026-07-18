@@ -125,8 +125,10 @@ class FeatureFlagsTest extends TestCase
         $this->assertArrayHasKey('kill_switch', $snap);
         $this->assertArrayHasKey('modules', $snap);
         $this->assertArrayHasKey('platform_privileged_context', $snap);
+        $this->assertArrayHasKey('canonical_multitenant_rbac', $snap);
         $this->assertArrayHasKey('unified_office_config', $snap);
         $this->assertFalse($snap['platform_privileged_context']);
+        $this->assertFalse($snap['canonical_multitenant_rbac']);
         $this->assertFalse($snap['unified_office_config']);
         $this->assertCount(count(FeatureFlags::MODULES), $snap['modules']);
         $this->assertArrayNotHasKey('secrets', $snap);
@@ -141,6 +143,20 @@ class FeatureFlagsTest extends TestCase
 
         config(['features.kill_switch' => true]);
         $this->assertFalse(FeatureFlags::isPlatformPrivilegedContextEnabled());
+    }
+
+    public function test_canonical_multitenant_rbac_default_off(): void
+    {
+        $this->assertFalse(FeatureFlags::isCanonicalMultitenantRbacEnabled());
+
+        config([
+            'features.canonical_multitenant_rbac.enabled' => true,
+            'features.kill_switch' => false,
+        ]);
+        $this->assertTrue(FeatureFlags::isCanonicalMultitenantRbacEnabled());
+
+        config(['features.kill_switch' => true]);
+        $this->assertFalse(FeatureFlags::isCanonicalMultitenantRbacEnabled());
     }
 
     public function test_unified_office_config_default_off(): void

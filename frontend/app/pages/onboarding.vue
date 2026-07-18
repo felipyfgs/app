@@ -25,10 +25,10 @@ const error = ref('')
 const loading = ref(false)
 
 const schema = z.object({
-  organization_name: z.string().min(2, 'Informe o nome da organização').max(255),
+  organization_name: z.string('Informe o nome da organização').min(2, 'Informe o nome da organização').max(255),
   email: z.email('Informe um e-mail válido'),
-  password: z.string().min(8, 'Mínimo de 8 caracteres'),
-  password_confirmation: z.string().min(1, 'Confirme a senha')
+  password: z.string('Informe a senha').min(8, 'Mínimo de 8 caracteres'),
+  password_confirmation: z.string('Confirme a senha').min(1, 'Confirme a senha')
 }).refine(d => d.password === d.password_confirmation, {
   message: 'As senhas não coincidem',
   path: ['password_confirmation']
@@ -99,12 +99,12 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="space-y-1 text-center lg:text-left lg:hidden">
-      <h1 class="text-xl font-semibold text-highlighted">
+  <div class="w-full min-w-0 space-y-6">
+    <div class="space-y-1 text-center lg:hidden">
+      <h1 class="text-xl font-semibold text-highlighted text-pretty">
         Configurar plataforma
       </h1>
-      <p class="text-sm text-muted">
+      <p class="text-sm text-muted text-pretty">
         Crie o primeiro administrador global
       </p>
     </div>
@@ -158,8 +158,10 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
         <UAlert
           v-if="error"
           color="error"
+          variant="subtle"
           icon="i-lucide-circle-alert"
           :title="error"
+          :close="{ onClick: () => { error = '' } }"
           data-testid="onboarding-error"
         />
 
@@ -229,9 +231,11 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
 
           <UButton
             type="submit"
-            block
-            :loading="loading"
             label="Concluir e entrar"
+            color="primary"
+            block
+            size="lg"
+            :loading="loading"
             icon="i-lucide-shield-check"
             data-testid="onboarding-submit"
           />

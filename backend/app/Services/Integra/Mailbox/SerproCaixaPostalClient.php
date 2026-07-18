@@ -3,6 +3,7 @@
 namespace App\Services\Integra\Mailbox;
 
 use App\Contracts\CaixaPostalClient;
+use App\Contracts\SerproOperationExecutor;
 use App\DTO\Mailbox\CaixaPostalDetailResult;
 use App\DTO\Mailbox\CaixaPostalListResult;
 use App\Enums\SerproCapabilityDriver;
@@ -10,18 +11,16 @@ use App\Models\Client;
 use App\Models\Office;
 use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Serpro\CapabilityDriverResolver;
-use App\Services\Serpro\SerproOperationService;
 
 /**
  * Fonte Caixa Postal via executor central (operation_key tipado).
- * simulated → fake; disabled → fail-closed; real → SerproOperationService.
+ * disabled → fail-closed; real → executor central.
  */
 final class SerproCaixaPostalClient implements CaixaPostalClient
 {
     public function __construct(
-        private readonly SerproOperationService $operations,
+        private readonly SerproOperationExecutor $operations,
         private readonly CapabilityDriverResolver $drivers,
-        private readonly FakeCaixaPostalClient $fake,
         private readonly ContributorCnpjResolver $contributors,
     ) {}
 
@@ -35,10 +34,6 @@ final class SerproCaixaPostalClient implements CaixaPostalClient
                 errorMessage: 'Caixa Postal desabilitada.',
             );
         }
-        if ($driver === SerproCapabilityDriver::Simulated) {
-            return $this->fake->listMessages($context);
-        }
-
         $resolved = $this->resolveContext($context);
         if ($resolved instanceof CaixaPostalListResult) {
             return $resolved;
@@ -86,10 +81,6 @@ final class SerproCaixaPostalClient implements CaixaPostalClient
                 errorMessage: 'Caixa Postal desabilitada.',
             );
         }
-        if ($driver === SerproCapabilityDriver::Simulated) {
-            return $this->fake->getMessageDetail($externalMessageId, $context);
-        }
-
         $resolved = $this->resolveContext($context);
         if ($resolved instanceof CaixaPostalListResult) {
             return new CaixaPostalDetailResult(

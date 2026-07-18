@@ -227,7 +227,7 @@ return new class extends Migration
             );
 
             return $row !== null;
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return false;
         }
     }

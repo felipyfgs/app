@@ -8,6 +8,7 @@ use App\Enums\AuthorIdentityType;
 use App\Enums\OfficeSerproOnboardingStatus;
 use App\Enums\SecureObjectPurpose;
 use App\Enums\SerproAuthorizationStatus;
+use App\Enums\SerproContractStatus;
 use App\Enums\SerproEnvironment;
 use App\Enums\TermoAuthorizationState;
 use App\Jobs\Serpro\ProcessOfficeSerproOnboardingJob;
@@ -15,15 +16,18 @@ use App\Models\Office;
 use App\Models\OfficeInstitutionalProfile;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\OfficeTechnicalConsent;
+use App\Models\SerproContract;
 use App\Models\User;
 use App\Services\Integra\OfficeSerproOnboardingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Tests\Support\UsesSerproTestDoubles;
 use Tests\TestCase;
 
 class OfficeSerproOnboardingServiceTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesSerproTestDoubles;
 
     public function test_incomplete_when_prerequisites_missing(): void
     {
@@ -40,7 +44,6 @@ class OfficeSerproOnboardingServiceTest extends TestCase
     public function test_enqueues_once_when_ready_and_is_idempotent(): void
     {
         Queue::fake();
-        config(['serpro.trial.use_fake_clients' => true]);
 
         $office = Office::factory()->create(['name' => 'Escritório Teste']);
         $this->seedReadyAuthorization($office);
@@ -61,7 +64,6 @@ class OfficeSerproOnboardingServiceTest extends TestCase
     public function test_process_external_signature_without_termo_is_action_required(): void
     {
         config([
-            'serpro.trial.use_fake_clients' => true,
             'serpro.termo_destination_cnpj' => '11222333000181',
             'serpro.termo_destination_name' => 'CONTRATANTE TESTE',
         ]);
@@ -88,15 +90,15 @@ class OfficeSerproOnboardingServiceTest extends TestCase
         $this->assertNull($processed->technical_code);
     }
 
-    public function test_process_with_signed_termo_uses_fake_apoiar(): void
+    public function test_process_with_signed_termo_rejects_simulated_apoiar(): void
     {
         config([
-            'serpro.trial.use_fake_clients' => true,
             'serpro.termo_destination_cnpj' => '11222333000181',
         ]);
 
         $office = Office::factory()->create(['name' => 'Escritório Apoiar']);
         $auth = $this->seedReadyAuthorization($office);
+        $this->seedActiveContract();
         $service = app(OfficeSerproOnboardingService::class);
 
         $store = app(SecureObjectStore::class);
@@ -118,27 +120,21 @@ class OfficeSerproOnboardingServiceTest extends TestCase
         $auth->save();
 
         $key = 'test-apoiar-'.hash('sha256', (string) $office->id);
-        $processed = $service->process($office, SerproEnvironment::Trial, $key);
-
-        $this->assertContains(
-            $processed->status,
-            [
-                OfficeSerproOnboardingStatus::Authorized,
-                OfficeSerproOnboardingStatus::ActionRequired,
-                OfficeSerproOnboardingStatus::TechnicalError,
-            ],
-        );
-
-        if ($processed->status === OfficeSerproOnboardingStatus::TechnicalError) {
-            $this->assertSame('PLATFORM_UNAVAILABLE', $processed->actionable_code);
-            $this->assertStringNotContainsString('Bearer ', (string) $processed->technical_message);
+        try {
+            $service->process($office, SerproEnvironment::Trial, $key);
+            $this->fail('Resposta simulada não deve autorizar onboarding.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Resposta simulada não é aceita para autenticar procurador.', $exception->getMessage());
         }
+
+        $processed = $service->getOrCreateState($office, SerproEnvironment::Trial)->refresh();
+        $this->assertSame(OfficeSerproOnboardingStatus::TechnicalError, $processed->status);
+        $this->assertSame('PLATFORM_UNAVAILABLE', $processed->actionable_code);
+        $this->assertStringNotContainsString('Bearer ', (string) $processed->technical_message);
     }
 
     public function test_duplicate_process_same_idempotency_does_not_throw(): void
     {
-        config(['serpro.trial.use_fake_clients' => true]);
-
         $office = Office::factory()->create(['name' => 'Dup']);
         $this->seedReadyAuthorization($office);
         $service = app(OfficeSerproOnboardingService::class);
@@ -155,7 +151,6 @@ class OfficeSerproOnboardingServiceTest extends TestCase
     public function test_react_to_profile_change_invalidates_and_reenqueues(): void
     {
         Queue::fake();
-        config(['serpro.trial.use_fake_clients' => true]);
 
         $office = Office::factory()->create(['name' => 'React Office']);
         $this->seedReadyAuthorization($office);
@@ -227,6 +222,19 @@ class OfficeSerproOnboardingServiceTest extends TestCase
             'author_cert_valid_from' => now()->subYear(),
             'author_cert_valid_to' => now()->addYear(),
             'termo_authorization_state' => TermoAuthorizationState::Draft,
+        ]);
+    }
+
+    private function seedActiveContract(): SerproContract
+    {
+        return SerproContract::query()->create([
+            'environment' => SerproEnvironment::Trial,
+            'status' => SerproContractStatus::Active,
+            'contractor_cnpj' => '11222333000181',
+            'contractor_name' => 'Contratante de teste',
+            'pfx_vault_object_id' => '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+            'oauth_vault_object_id' => '01ARZ3NDEKTSV4RRFFQ69G5GAV',
+            'health_status' => 'OK',
         ]);
     }
 }

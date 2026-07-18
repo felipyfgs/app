@@ -1,0 +1,35 @@
+<?php
+
+namespace App\Enums;
+
+/**
+ * Estado de elegibilidade de uma ação de consulta manual (somente-leitura).
+ */
+enum ManualConsultEligibility: string
+{
+    case Ready = 'ready';
+    case ModuleOff = 'module_off';
+    case CapabilityOff = 'capability_off';
+    case TokenMissing = 'token_missing';
+    case PowerMissing = 'power_missing';
+    case AdapterMissing = 'adapter_missing';
+    case MutatingBlocked = 'mutating_blocked';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::Ready => 'Pronta para consultar',
+            self::ModuleOff => 'Módulo desabilitado para o escritório',
+            self::CapabilityOff => 'Capability SERPRO desabilitada',
+            self::TokenMissing => 'Token do procurador ausente ou expirado',
+            self::PowerMissing => 'Poder e-CAC exigido ausente',
+            self::AdapterMissing => 'Adapter de consulta não implementado',
+            self::MutatingBlocked => 'Operação mutante bloqueada neste explorador',
+        };
+    }
+
+    public function isExecutable(): bool
+    {
+        return $this === self::Ready;
+    }
+}

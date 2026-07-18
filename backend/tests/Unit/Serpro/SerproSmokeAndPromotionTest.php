@@ -70,7 +70,23 @@ final class SerproSmokeAndPromotionTest extends TestCase
 
     public function test_smoke_status_and_checklist_offline_no_network(): void
     {
-        config(['serpro.smoke.enabled' => false]);
+        config([
+            'serpro.smoke.enabled' => false,
+            'serpro.trial.use_fake_clients' => true,
+            'serpro.capabilities' => [
+                'sitfis' => 'simulated',
+                'autentica_procurador' => 'simulated',
+                'authorization' => 'simulated',
+                'mailbox' => 'simulated',
+                'dctfweb' => 'simulated',
+                'simples_mei' => 'simulated',
+                'installments' => 'simulated',
+                'guides' => 'simulated',
+                'registrations' => 'simulated',
+                'tax_processes' => 'simulated',
+                'default' => 'disabled',
+            ],
+        ]);
         $smoke = app(SerproSmokeService::class);
 
         $status = $smoke->status(SerproEnvironment::Trial);

@@ -79,6 +79,10 @@ describe('console global SERPRO (superfície)', () => {
     const configPage = readFileSync(resolve(APP, 'pages/admin/serpro/configuration.vue'), 'utf8')
     expect(configPage).toContain('admin-serpro-configuration')
     expect(configPage).toContain('credentialVersions')
+    expect(configPage).toContain('environment === \'TRIAL\' ? \'Salvar e ativar\'')
+    expect(configPage).toContain('activateTrialCredential(created.data)')
+    expect(configPage).toContain('credentialVersions.verify(v.id)')
+    expect(configPage).toContain('credentialVersions.testConnection(v.id)')
     expect(configPage).not.toMatch(/vault_object_id|BEGIN CERTIFICATE/i)
 
     const contracts = readFileSync(resolve(APP, 'pages/admin/serpro/contracts.vue'), 'utf8')

@@ -148,7 +148,17 @@ describe('plataforma /admin e seletor global (6.2)', () => {
     expect(list).toContain('admin-offices-panel')
     expect(list).toContain('admin-offices-toolbar')
     expect(list).toContain('admin-offices-table')
+    expect(list).toContain('id: \'actions\'')
+    expect(list).toContain('admin-office-row-actions')
+    expect(list).toContain('Gerenciar escritório')
+    expect(list).toContain('Gerenciar ativação')
+    expect(list).toContain('selectOffice(office.id, \'/settings\')')
+    expect(list).toContain('Não se aplica')
     expect(list).not.toContain('DashboardContent')
+
+    const officeSelect = readFileSync(resolve(APP, 'composables/usePlatformOfficeSelect.ts'), 'utf8')
+    expect(officeSelect).toContain('redirectAfterSelection')
+    expect(officeSelect).toContain('redirectTo?: string')
 
     const create = readFileSync(resolve(APP, 'pages/admin/offices/new.vue'), 'utf8')
     expect(create).toContain('DashboardContent width="comfortable"')

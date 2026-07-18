@@ -20,8 +20,8 @@ return [
      */
     'enabled' => filter_var(env('FISCAL_DEMO_ENABLED', true), FILTER_VALIDATE_BOOL),
 
-    /** Slug do tenant demo principal (único office populado pela carteira visual). */
-    'office_slug' => env('FISCAL_DEMO_OFFICE_SLUG', 'demo'),
+    /** Slug do tenant contábil principal (canário / ex-demo). */
+    'office_slug' => env('FISCAL_DEMO_OFFICE_SLUG', 'contador'),
 
     /** Office sentinela de isolamento (mesmo CNPJ, nunca na carteira demo). */
     'sentinel_office_slug' => env('FISCAL_DEMO_SENTINEL_SLUG', 'plataforma'),
