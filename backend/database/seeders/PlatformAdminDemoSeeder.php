@@ -34,7 +34,9 @@ class PlatformAdminDemoSeeder extends Seeder
 
     public function run(): void
     {
-        if (! app()->environment(['local', 'testing'])) {
+        $productionAllowed = filter_var(env('PILOT_SEED_ALLOW_PRODUCTION', false), FILTER_VALIDATE_BOOL);
+
+        if (! app()->environment(['local', 'testing']) && ! $productionAllowed) {
             throw new LogicException(
                 'PlatformAdminDemoSeeder só pode ser executado em local/testing.',
             );
