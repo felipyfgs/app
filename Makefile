@@ -179,7 +179,7 @@ prod-check:
 	@# Se a stack prod estiver no ar, executa prod-check de credencial exposta (fail se não RETIRED/COMPROMISED)
 	@if $(PROD_COMPOSE) ps --status running --services 2>/dev/null | grep -qx 'php'; then \
 		echo "==> serpro:prod-check (credenciais expostas / egress faturável)"; \
-		$(PROD_COMPOSE) exec -T php php artisan serpro:prod-check --serpro-env=PRODUCTION || exit 2; \
+		$(PROD_COMPOSE) exec -T php php artisan serpro:prod-check --serpro-env=PRODUCTION --allow-containment || exit 2; \
 	else \
 		echo "Aviso: stack prod php offline — serpro:prod-check de runtime adiado (checks de .env ok)"; \
 	fi
@@ -251,4 +251,3 @@ prod-readiness:
 prod-release-manifest:
 	RELEASE_SHA="$(RELEASE_SHA)" RELEASE_TAG="$(RELEASE_TAG)" PROD_ENV="$(PROD_ENV)" \
 		./docker/ops/release-manifest.sh
-

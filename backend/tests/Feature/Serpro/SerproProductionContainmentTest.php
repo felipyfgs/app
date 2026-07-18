@@ -81,6 +81,22 @@ class SerproProductionContainmentTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_prod_check_allows_explicit_containment_without_exposed_credentials(): void
+    {
+        config([
+            'serpro.kill_switch' => true,
+            'serpro.prod_check_strict' => true,
+        ]);
+
+        $this->artisan('serpro:prod-check', ['--serpro-env' => 'PRODUCTION'])
+            ->assertFailed();
+
+        $this->artisan('serpro:prod-check', [
+            '--serpro-env' => 'PRODUCTION',
+            '--allow-containment' => true,
+        ])->assertSuccessful();
+    }
+
     public function test_document_registry_syncs_official_sources(): void
     {
         $registry = app(SerproDocumentRegistry::class);

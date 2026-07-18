@@ -21,6 +21,7 @@ class SerproProdCheckCommand extends Command
     protected $signature = 'serpro:prod-check
         {--serpro-env= : Ambiente SERPRO (default: config serpro.default_environment)}
         {--mark-exposed : Marca contratos ACTIVE/PENDING legados como credencial exposta}
+        {--allow-containment : Permite contenção fiscal explícita sem liberar egress faturável}
         {--json : Saída JSON sanitizada}';
 
     protected $description = 'Prod-check SERPRO: kill switch, drivers, credenciais expostas e egress faturável';
@@ -95,15 +96,6 @@ class SerproProdCheckCommand extends Command
             $this->line('External gates open: '.count($snapshot['external_gates_open']));
         }
 
-        // Em testing, ausência de versões expostas com issues vazios = success.
-        // Em production (ou --strict implícito via APP_ENV), fail se issues.
-        $strict = app()->environment('production')
-            || (bool) config('serpro.prod_check_strict', false);
-
-        if ($strict && $snapshot['issues'] !== []) {
-            return self::FAILURE;
-        }
-
         // Sempre falha se houver versão exposta bloqueando (objetivo da task 1.1).
         if ($snapshot['exposed_blocking_versions'] !== []) {
             $this->error('FAIL: credencial exposta não RETIRED/COMPROMISED — egress faturável bloqueado.');
@@ -120,6 +112,44 @@ class SerproProdCheckCommand extends Command
             }
         }
 
+        // Em testing, ausência de versões expostas com issues vazios = success.
+        // Em production (ou --strict implícito via APP_ENV), fail se issues, salvo
+        // contenção fiscal explicitamente autorizada pelo caller operacional.
+        $strict = app()->environment('production')
+            || (bool) config('serpro.prod_check_strict', false);
+
+        if ($strict && $snapshot['issues'] !== []) {
+            if ($this->option('allow-containment') && $this->issuesAreContainmentOnly($snapshot['issues'])) {
+                return self::SUCCESS;
+            }
+
+            return self::FAILURE;
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * @param  list<string>  $issues
+     */
+    private function issuesAreContainmentOnly(array $issues): bool
+    {
+        if ($issues === []) {
+            return true;
+        }
+
+        foreach ($issues as $issue) {
+            if (str_starts_with($issue, 'Egress faturável bloqueado: Kill switch global SERPRO ativo.')) {
+                continue;
+            }
+
+            if (str_starts_with($issue, 'Egress faturável bloqueado: Gates documentais abertos:')) {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
     }
 }
