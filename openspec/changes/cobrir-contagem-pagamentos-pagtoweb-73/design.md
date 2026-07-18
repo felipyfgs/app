@@ -60,7 +60,7 @@ codec/adapter/projeções PAGTOWEB 7.3 ──► controller e rotas ──► co
 ```
 
 - Ownership da capability: esta change possui os novos artefatos de contagem e sua documentação; não altera contratos de RBAC ou catálogo compartilhado fora das entradas necessárias.
-- Dependências ativas: `padronizar-autorizacao-multitenant` e `ui-template-fidelity-total` são coordenadas. Esta change consome `CurrentOffice` e o template estáveis, sem editar seus artefatos de planejamento.
+- Dependências ativas: `padronizar-autorizacao-multitenant` é coordenada. Esta change consome `CurrentOffice` e o gate estável de fidelidade ao template, sem editar seus artefatos de planejamento.
 - Marcos consumidores: backend antes do controller; controller antes do composable/painel; todos antes dos gates integrados. Rollout com migrations antes de rotas; rollback desabilita a surface e preserva observações como histórico local.
 
 ## Migration Plan

@@ -63,12 +63,17 @@ O probe SHALL emitir `PASS_REAL_SYNC`, `PASS_REAL_EMPTY`, `PASS_REAL_ASYNC_COMPL
 - **THEN** o probe registra uma classificação `PASS_REAL_*` com timestamp, correlation tag e hash sanitizados
 
 ### Requirement: Claims históricos simulados não representam prontidão
-O ledger, a UI e relatórios MUST reclassificar Fake, Simulated, Trial, `PASS_BUSINESS`, 4xx/5xx, `BLOCKED_HUB` e HTTP 304 sem reuso comprovado como não prontos, preservando a trilha histórica sem promoção a `READY_PRODUCTION`.
+O ledger, a UI e relatórios MUST reclassificar Trial, `PASS_BUSINESS`, 4xx/5xx,
+`BLOCKED_HUB` e HTTP 304 sem reuso comprovado como não prontos. Registros com
+origem explicitamente `SIMULATED` MUST ser removidos junto com suas projeções
+dependentes; registros apenas `UNVERIFIED` continuam em quarentena e sem
+promoção a `READY_PRODUCTION`.
 
 #### Scenario: Linha antiga PASS_BUSINESS
 - **WHEN** a execução não comprova `PRODUCTION_CANARY` e uma classificação `PASS_REAL_*`
 - **THEN** a linha fica `BLOCKED` ou histórica inválida com a pendência explícita
 
-#### Scenario: Campo histórico simulated é lido
+#### Scenario: Registro histórico explicitamente simulated é encontrado
 - **WHEN** um registro legado contém origem simulada
-- **THEN** o sistema o exibe como não elegível e não o reutiliza para autorizar nova operação
+- **THEN** a migração remove o registro e suas projeções dependentes
+- **AND** nenhum dado apenas `UNVERIFIED` é removido por essa regra

@@ -32,3 +32,9 @@
   - Depende de: 4.1, 4.2
 - [x] 5.3 Executar Pint, testes Laravel/Nuxt direcionados, typecheck, geração, artefatos, OpenSpec, `git status` e `git diff`; registrar gates globais externos que impeçam fechamento.
   - Depende de: 5.1, 5.2
+
+## 6. N5 — Atualização manual da lista MIT
+
+- [x] 6.1 Expor na cápsula MIT a atualização explícita de `LISTAAPURACOES317`, com ano obrigatório, mês/situação opcionais e confirmação antes do POST, sem chamada em GET, montagem ou abertura do modal.
+  - Evidência: `MitListaApuracoesModal` usa `enqueueListaApuracoes` somente após confirmação; `dctfweb-mit-modals.nuxt.test.ts` cobre ausência de chamada antes da confirmação e a fila correta. Referência visual/funcional: Manual MIT da Receita Federal, seção 2.3 (consulta por ano, mês e situação).
+  - Depende de: 4.1, 5.2

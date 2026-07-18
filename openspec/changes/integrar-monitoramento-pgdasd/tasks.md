@@ -24,13 +24,16 @@
 - [x] 4.1 Ampliar tipos/composables do frontend para os contratos PGDAS-D e comunicação.
 - [x] 4.2 Reconciliar o renderer PGDAS-D com as nove colunas da referência visual: Situação, Últ. Declaração, Sublimite (RBT12), Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca.
 - [x] 4.3 Reconciliar Ações (prévia + menu), Enviar (switch linha + bulk no cabeçalho), Rastreio compacto, Última Busca e Histórico de Busca com os modais locais, sem consulta nem envio ao visualizar.
+- [x] 4.4 Exigir confirmação explícita na coleta de recibo/declaração PGDAS-D e oferecer a primeira coleta pelo PA esperado quando o histórico local estiver vazio, mantendo tenant, cofre e ausência de egress no GET/modal.
+  Evidências em 18/07/2026: 8 testes PHP/84 assertions para coleta, cofre e codecs; 18 testes Nuxt para a aba/modais; typecheck e fidelity aprovados. Referência pública de fluxo: Manual PGDAS-D, seção 6.9 “Consultar Declarações”.
 
 ## 5. Verificação
 
 - [x] 5.1 Cobrir codecs, histórico, estado, documentos protegidos, RBT12 e idempotência com testes Laravel/fixtures.
 - [x] 5.2 Cobrir tenancy, papéis, lote atômico, concorrência, mascaramento e ausência de jobs/mails/eventos.
 - [x] 5.3 Cobrir a ordem exata das nove colunas, ausência das colunas antigas, tooltips, menus, modais, seleção em massa e permissões com testes unitários Nuxt.
-- [ ] 5.4 Executar Pint, testes Laravel focados, `pnpm run test:gate`, generate, fidelity e validação OpenSpec; registrar qualquer limitação ambiental.
+- [x] 5.4 Executar Pint, testes Laravel focados, `pnpm run test:gate`, generate, fidelity e validação OpenSpec; registrar qualquer limitação ambiental.
+  Evidências em 18/07/2026: Pint aprovou 1.667 arquivos; 49 testes Laravel PGDAS-D (230 assertions) passaram; lint, typecheck, suíte Vitest, generate, fidelity e scan de artefatos do frontend foram executados sem erro após correção de estilo e de matriz; pendente somente o aceite explícito necessário para o fechamento/commit da change.
 
 ## 6. Fechamento
 
