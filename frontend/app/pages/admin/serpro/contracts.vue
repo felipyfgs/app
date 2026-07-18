@@ -6,6 +6,10 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { SerproContractSanitized } from '~/types/api'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import {
+  LIST_FILTER_ACTIONS_ROW,
+  LIST_FILTER_TOOLBAR_STACK
+} from '~/utils/list-filter-layout'
 
 definePageMeta({
   redirect: {
@@ -109,8 +113,11 @@ onMounted(load)
       />
     </UPageCard>
 
-    <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
-      <div class="flex flex-wrap items-end gap-2">
+    <div :class="[LIST_FILTER_TOOLBAR_STACK, 'mb-4']">
+      <p class="text-sm text-muted">
+        {{ rows.length }} {{ rows.length === 1 ? 'contrato' : 'contratos' }}
+      </p>
+      <div :class="[LIST_FILTER_ACTIONS_ROW, 'items-end']">
         <UFormField label="Ambiente">
           <USelect
             v-model="environment"
@@ -129,9 +136,6 @@ onMounted(load)
           @click="load"
         />
       </div>
-      <p class="text-sm text-muted">
-        {{ rows.length }} {{ rows.length === 1 ? 'contrato' : 'contratos' }}
-      </p>
     </div>
 
     <UAlert

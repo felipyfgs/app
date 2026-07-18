@@ -17,10 +17,10 @@ export const LIST_FILTER_SEARCH_INPUT
 
 /**
  * Faixa de chips + ações: scroll horizontal no mobile (não quebra em 3 linhas);
- * no sm+ volta a wrap + alinhamento à direita.
+ * no sm+ volta a wrap + alinhamento à direita (ml-auto só em sm+ para não deslocar no flex-col).
  */
 export const LIST_FILTER_ACTIONS_ROW
-  = `${TOUCH_SCROLL_X} flex w-full items-center gap-1.5 pb-0.5 sm:w-auto sm:shrink-0 sm:flex-wrap sm:justify-end sm:overflow-visible sm:pb-0`
+  = `${TOUCH_SCROLL_X} flex w-full items-center gap-1.5 pb-0.5 sm:ml-auto sm:w-auto sm:shrink-0 sm:flex-wrap sm:justify-end sm:overflow-visible sm:pb-0`
 
 /** Lista de chips DataTableFilter (nowrap + scroll no xs). */
 export const DATA_TABLE_FILTERS_ROW

@@ -64,7 +64,8 @@ const filterConfig = computed<MonitoringFilterConfig>(() => {
   return {
     fields: [
       { key: 'situation', kind: 'option', label: 'Situação' },
-      { key: 'clientId', kind: 'client', label: 'Cliente' }
+      { key: 'clientId', kind: 'client', label: 'Cliente' },
+      { key: 'competence', kind: 'month', label: 'Competência' }
     ]
   }
 })

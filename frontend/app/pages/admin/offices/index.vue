@@ -7,6 +7,11 @@ import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { PlatformOfficeAdminSummary } from '~/types/api'
 import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
 import { apiErrorMessage } from '~/utils/api-error'
+import {
+  LIST_FILTER_ACTIONS_ROW,
+  LIST_FILTER_SEARCH_INPUT,
+  LIST_FILTER_TOOLBAR_STACK
+} from '~/utils/list-filter-layout'
 
 const api = useApi()
 const { sessionEpoch, canAccessPlatformAdmin } = useDashboard()
@@ -197,19 +202,19 @@ onMounted(load)
 
     <template #body>
       <div
-        class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+        :class="LIST_FILTER_TOOLBAR_STACK"
         data-testid="admin-offices-toolbar"
       >
         <UInput
           v-model="q"
           icon="i-lucide-search"
           placeholder="Buscar escritórios…"
-          class="w-full sm:max-w-sm"
+          :class="LIST_FILTER_SEARCH_INPUT"
           aria-label="Buscar escritórios"
           data-testid="admin-offices-search"
         />
 
-        <div class="flex items-center gap-2">
+        <div :class="LIST_FILTER_ACTIONS_ROW">
           <USelect
             v-model="lifecycleFilter"
             :items="filterItems"

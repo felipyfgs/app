@@ -17,8 +17,8 @@ describe('table-icon-slots', () => {
     expect(source).toContain('UDropdownMenu')
   })
 
-  it('builders PGDAS/PGMEI/DCTF usam UI estável fora do barrel #components', () => {
-    for (const file of ['pgdasd-table.ts', 'pgmei-table.ts', 'dctfweb-table.ts', 'table-sort.ts']) {
+  it('builders PGDAS/PGMEI/DCTF/SITFIS usam UI estável fora do barrel #components', () => {
+    for (const file of ['pgdasd-table.ts', 'pgmei-table.ts', 'dctfweb-table.ts', 'sitfis-table.ts', 'table-sort.ts']) {
       const source = readUtil(file)
       expect(source, file).not.toMatch(/UBadge,\s*\n\s*UButton/)
       expect(source, file).toMatch(/@nuxt\/ui\/components\//)

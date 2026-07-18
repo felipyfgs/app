@@ -5,6 +5,10 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { SerproCatalogEntry } from '~/types/api'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import {
+  LIST_FILTER_ACTIONS_ROW,
+  LIST_FILTER_TOOLBAR_STACK
+} from '~/utils/list-filter-layout'
 
 definePageMeta({
   redirect: {
@@ -149,8 +153,23 @@ onMounted(load)
       />
     </UPageCard>
 
-    <div class="flex flex-wrap items-end justify-between gap-3">
-      <div class="flex w-full flex-wrap items-end gap-2 sm:w-auto">
+    <div :class="LIST_FILTER_TOOLBAR_STACK">
+      <div
+        v-if="rows.length"
+        class="flex flex-wrap gap-1.5"
+        aria-label="Resumo da cobertura no ambiente selecionado"
+      >
+        <UBadge
+          v-for="(count, code) in coverageCounts"
+          :key="code"
+          :color="supportBadge(String(code))"
+          variant="subtle"
+        >
+          {{ supportLabel(String(code)) }} · {{ count }}
+        </UBadge>
+      </div>
+
+      <div :class="[LIST_FILTER_ACTIONS_ROW, 'items-end']">
         <UFormField label="Ambiente">
           <USelect
             v-model="environment"
@@ -167,21 +186,6 @@ onMounted(load)
             class="w-full sm:w-52"
           />
         </UFormField>
-      </div>
-
-      <div
-        v-if="rows.length"
-        class="flex flex-wrap gap-1.5"
-        aria-label="Resumo da cobertura no ambiente selecionado"
-      >
-        <UBadge
-          v-for="(count, code) in coverageCounts"
-          :key="code"
-          :color="supportBadge(String(code))"
-          variant="subtle"
-        >
-          {{ supportLabel(String(code)) }} · {{ count }}
-        </UBadge>
       </div>
     </div>
 

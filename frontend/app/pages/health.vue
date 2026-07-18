@@ -4,6 +4,10 @@ import OperationsSectionNav from '~/components/navigation/OperationsSectionNav.v
 import type { InboxItem, InboxItemType, InboxSeverity } from '~/types/api'
 import { resolveInboxItemLink, SERPRO_INBOX_TYPE_FILTERS } from '~/utils/inbox-links'
 import { TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+import {
+  LIST_FILTER_ACTIONS_ROW,
+  LIST_FILTER_TOOLBAR_STACK
+} from '~/utils/list-filter-layout'
 
 const api = useApi()
 const route = useRoute()
@@ -233,12 +237,17 @@ watch([severityFilter, typeFilter], () => {
 
       <UDashboardToolbar data-testid="page-toolbar">
         <div
-          class="flex w-full min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between"
+          :class="LIST_FILTER_TOOLBAR_STACK"
           data-testid="health-filter-toolbar"
         >
-          <div
-            class="flex min-w-0 items-center gap-2 overflow-x-auto overscroll-x-contain touch-pan-x pb-0.5 sm:overflow-visible sm:pb-0"
+          <span
+            v-if="generatedAt"
+            class="shrink-0 text-xs text-muted"
           >
+            Gerado em {{ formatDateTime(generatedAt) }}
+            <template v-if="totalEstimate !== null"> · {{ totalEstimate }} item(ns)</template>
+          </span>
+          <div :class="LIST_FILTER_ACTIONS_ROW">
             <USelect
               v-model="severityFilter"
               :items="severityItems"
@@ -254,13 +263,6 @@ watch([severityFilter, typeFilter], () => {
               aria-label="Filtrar por tipo"
             />
           </div>
-          <span
-            v-if="generatedAt"
-            class="shrink-0 text-xs text-muted"
-          >
-            Gerado em {{ formatDateTime(generatedAt) }}
-            <template v-if="totalEstimate !== null"> · {{ totalEstimate }} item(ns)</template>
-          </span>
         </div>
       </UDashboardToolbar>
     </template>

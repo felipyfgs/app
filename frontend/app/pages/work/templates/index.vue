@@ -8,6 +8,7 @@ import { canManageWorkCatalog } from '~/utils/permissions'
 import { apiErrorMessage } from '~/utils/api-error'
 import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
 import WorkSectionNav from '~/components/navigation/WorkSectionNav.vue'
+import ShellListFilterToolbar from '~/components/shell/ListFilterToolbar.vue'
 
 const api = useApi()
 const toast = useToast()
@@ -236,12 +237,14 @@ onMounted(load)
       </UDashboardToolbar>
 
       <UDashboardToolbar>
-        <UInput
-          v-model="q"
-          icon="i-lucide-search"
-          placeholder="Buscar modelos…"
-          class="w-64"
-          aria-label="Buscar modelos"
+        <ShellListFilterToolbar
+          :q="q"
+          search-placeholder="Buscar modelos…"
+          search-aria-label="Buscar modelos"
+          :loading="loading"
+          test-id-prefix="work-templates-filter"
+          @update:q="q = $event"
+          @refresh="load"
         />
       </UDashboardToolbar>
     </template>

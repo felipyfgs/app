@@ -70,6 +70,23 @@ describe('MonitoringModuleNav items (6.3)', () => {
     expect(dctf).toContain('dctfweb-capsule-control')
   })
 
+  it('expõe os eixos estruturados de Simples/MEI e DCTFWeb', () => {
+    const simples = readFileSync(
+      resolve(__dirname, '../../app/pages/monitoring/simples-mei/index.vue'),
+      'utf8'
+    )
+    const dctf = readFileSync(
+      resolve(__dirname, '../../app/pages/monitoring/dctfweb/index.vue'),
+      'utf8'
+    )
+
+    expect(simples).toContain('key: \'clientId\'')
+    expect(simples).toContain('key: \'competence\'')
+    expect(dctf).toContain('key: \'situation\'')
+    expect(dctf).toContain('key: \'clientId\'')
+    expect(dctf).toContain('key: \'competence\'')
+  })
+
   it('lista todos os destinos do hub fiscal', () => {
     const ids = MONITORING_NAV_ITEMS.map(i => i.id)
     expect(ids).toEqual([

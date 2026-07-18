@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Faixa utilitária de filtros no body — mesmo papel da div de customers.vue:
- * `flex flex-wrap items-center justify-between gap-1.5`
+ * Wrapper neutro para a faixa canônica de filtros no body.
+ * O layout interno vem de `LIST_FILTER_TOOLBAR_STACK`.
  * Sem Teleport / sticky (não existem no template).
  */
 defineOptions({ inheritAttrs: false })
@@ -11,7 +11,7 @@ defineOptions({ inheritAttrs: false })
   <div
     v-bind="$attrs"
     data-dashboard-table-filters
-    class="flex flex-wrap items-center justify-between gap-1.5"
+    class="w-full min-w-0"
   >
     <slot />
   </div>

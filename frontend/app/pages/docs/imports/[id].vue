@@ -7,6 +7,10 @@ import type { TableColumn } from '@nuxt/ui'
 import DocsSectionNav from '~/components/navigation/DocsSectionNav.vue'
 import { documentKindLabelFromModel } from '~/utils/document-kinds'
 import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+import {
+  LIST_FILTER_ACTIONS_ROW,
+  LIST_FILTER_TOOLBAR_STACK
+} from '~/utils/list-filter-layout'
 
 const api = useApi()
 const route = useRoute()
@@ -425,16 +429,19 @@ onBeforeUnmount(() => {
           :title="String(batch.error_message)"
         />
 
-        <div class="flex flex-wrap items-end gap-3">
-          <UFormField label="Filtrar resultado" class="min-w-48">
+        <div
+          :class="LIST_FILTER_TOOLBAR_STACK"
+          data-testid="batch-items-filter-toolbar"
+        >
+          <div :class="LIST_FILTER_ACTIONS_ROW">
             <USelect
               v-model="statusFilter"
               :items="statusFilterItems"
               value-key="value"
-              class="w-full"
+              class="w-48 shrink-0"
               aria-label="Filtrar itens do lote por resultado"
             />
-          </UFormField>
+          </div>
         </div>
 
         <UTable
