@@ -114,10 +114,10 @@ class HttpAutenticarProcuradorClientTest extends TestCase
             contractorBearerToken: 'bearer',
         ));
 
-        $this->assertTrue($result->success);
-        $this->assertTrue($result->simulated);
-        $this->assertSame(TermoAuthorizationState::Simulated->value, $result->authorizationState);
-        $this->assertNotSame(TermoAuthorizationState::SerproAccepted->value, $result->authorizationState);
+        $this->assertFalse($result->success);
+        $this->assertFalse($result->simulated);
+        $this->assertSame('SIMULATED_SOURCE_REJECTED', $result->errorCode);
+        $this->assertSame(TermoAuthorizationState::Rejected->value, $result->authorizationState);
     }
 
     public function test_expiracao_sem_offset_e_interpretada_em_horario_de_brasilia(): void

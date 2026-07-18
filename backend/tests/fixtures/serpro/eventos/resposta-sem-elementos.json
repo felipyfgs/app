@@ -1,0 +1,5 @@
+{
+  "status": 200,
+  "dados": { "elementos": "<matriz-nao-persistida-nem-exposta>" },
+  "expected_public_summary": { "has_dados": true }
+}

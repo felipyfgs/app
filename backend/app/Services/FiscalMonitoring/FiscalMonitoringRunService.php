@@ -150,7 +150,10 @@ final class FiscalMonitoringRunService
     /**
      * Executa a run: revalida elegibilidade, chama adapter, persiste atomicamente.
      */
-    public function execute(int $runId): FiscalMonitoringRun
+    /**
+     * @param  array<string, mixed>  $transientContext
+     */
+    public function execute(int $runId, array $transientContext = []): FiscalMonitoringRun
     {
         $run = FiscalMonitoringRun::query()->withoutGlobalScopes()->find($runId);
         if ($run === null) {
@@ -193,6 +196,13 @@ final class FiscalMonitoringRunService
 
             $slots = $this->scheduler->acquireSlots((int) $office->id, (int) config('fiscal_monitoring.job.lock_ttl_seconds', 360));
             if ($slots === null) {
+                if ($transientContext !== []) {
+                    return $this->markFailed(
+                        $run,
+                        'EPHEMERAL_CONTEXT_RETRY_FORBIDDEN',
+                        'A solicitação manual não pôde ser executada agora; informe o dado novamente.',
+                    );
+                }
                 // Sem slot: requeue leve sem consumir adapter
                 $run->forceFill([
                     'status' => FiscalRunStatus::Queued,
@@ -227,6 +237,7 @@ final class FiscalMonitoringRunService
                     : null,
                 progressCursor: $run->progress_cursor,
                 progress: $run->progress ?? [],
+                context: $transientContext,
             );
 
             $adapter = $this->registry->resolve($request);
@@ -260,6 +271,13 @@ final class FiscalMonitoringRunService
                         );
                     } else {
                         $result = $adapter->execute($request);
+                        if ($transientContext !== [] && $result->shouldRequeue) {
+                            $result = FiscalAdapterResult::failed(
+                                'A solicitação manual não pode ser repetida automaticamente; informe o dado novamente.',
+                                'EPHEMERAL_CONTEXT_RETRY_FORBIDDEN',
+                                $result->coverage,
+                            );
+                        }
                     }
                 }
             }
@@ -322,7 +340,7 @@ final class FiscalMonitoringRunService
                 'status' => $fresh->status->value,
             ]);
 
-            if ($fresh->status === FiscalRunStatus::Requeued) {
+            if ($fresh->status === FiscalRunStatus::Requeued && $transientContext === []) {
                 $delay = $result->requeueAfterSeconds;
                 if ($delay === null || $delay < 0) {
                     $delay = (int) ($fresh->progress['requeue_after_seconds'] ?? 0);
@@ -574,6 +592,20 @@ final class FiscalMonitoringRunService
             situation: FiscalSituation::Blocked,
             coverage: $run->coverage ?? FiscalCoverage::Unknown,
             skipReason: $code,
+            errorCode: $code,
+            errorMessage: $message,
+        );
+
+        return $this->persistence->persist($payload)['run'];
+    }
+
+    private function markFailed(FiscalMonitoringRun $run, string $code, string $message): FiscalMonitoringRun
+    {
+        $payload = new FiscalPersistPayload(
+            run: $run,
+            result: FiscalRunResult::Failed,
+            situation: FiscalSituation::Error,
+            coverage: $run->coverage ?? FiscalCoverage::Unknown,
             errorCode: $code,
             errorMessage: $message,
         );

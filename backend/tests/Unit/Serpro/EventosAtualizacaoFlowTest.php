@@ -3,6 +3,7 @@
 namespace Tests\Unit\Serpro;
 
 use App\Contracts\SerproOperationExecutor;
+use App\DTO\Serpro\EventosBatchContributor;
 use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
 use App\DTO\Serpro\MutationAuthorization;
@@ -69,7 +70,7 @@ final class EventosAtualizacaoFlowTest extends TestCase
             office: $office,
             personType: 'PF',
             evento: 'EVT_TEST',
-            contributorIdentities: ['00000000000'],
+            contributorIdentities: ['52998224725'],
         );
 
         $this->assertInstanceOf(SerproEventosRun::class, $run);
@@ -96,7 +97,7 @@ final class EventosAtualizacaoFlowTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessageMatches('/EVENTOS_TTL_MISSING/');
-        $flow->solicit($office, 'PJ', 'EVT', contributorIdentities: ['11222333000181']);
+        $flow->solicit($office, 'PF', 'EVT', contributorIdentities: ['52998224725']);
     }
 
     public function test_one_shot_obtain_consumes_without_second_call(): void
@@ -115,6 +116,7 @@ final class EventosAtualizacaoFlowTest extends TestCase
             'status' => SerproEventosRun::STATUS_RUNNING,
             'operation_key_obter' => 'eventosatualizacao.obtereventospf',
             'correlation_id' => 'corr-1',
+            'evento' => 'E0301',
         ]);
 
         $calls = 0;
@@ -189,6 +191,157 @@ final class EventosAtualizacaoFlowTest extends TestCase
         $this->assertSame($first->id, $second->id);
         $this->assertTrue($second->one_shot_complete);
         $this->assertSame(1, $calls);
+    }
+
+    public function test_batch_envelope_uses_only_official_type_three_or_four_and_never_business_data(): void
+    {
+        $pf = EventosBatchContributor::forSolicit('PF', ['52998224725']);
+        $pj = EventosBatchContributor::forSolicit('PJ', ['11222333000181']);
+        $obtain = EventosBatchContributor::forObtain('PF');
+
+        $this->assertSame(['numero' => '52998224725', 'tipo' => 3], $pf->toEnvelope());
+        $this->assertSame(['numero' => '11222333000181', 'tipo' => 4], $pj->toEnvelope());
+        $this->assertSame(['numero' => '', 'tipo' => 3], $obtain->toEnvelope());
+
+        $request = new IntegraRequest(
+            officeId: 1,
+            clientId: 1,
+            environment: 'TRIAL',
+            contractorCnpj: '11222333000181',
+            authorIdentity: '52998224725',
+            contributorCnpj: '11222333000181',
+            operationKey: 'eventosatualizacao.soliceventospf',
+            businessData: ['evento' => 'E0301'],
+            eventosBatchContributor: $pf,
+        );
+
+        $this->assertSame($pf->toEnvelope(), $request->contributorEnvelope);
+        $this->assertArrayNotHasKey('contribuintes', $request->businessData);
+    }
+
+    public function test_pj_unreconciled_contract_stops_before_executor(): void
+    {
+        $office = Office::factory()->create();
+        $calls = 0;
+        $executor = new class($calls) implements SerproOperationExecutor
+        {
+            public function __construct(public int &$calls) {}
+
+            public function run(SerproOperationCommand $command): IntegraResponse
+            {
+                $this->calls++;
+                throw new RuntimeException('Executor não deveria ser chamado.');
+            }
+
+            public function execute(Office $office, Client $client, string $operationKey, array $businessData = [], ?string $idempotencyKey = null, ?string $correlationId = null, ?MutationAuthorization $mutationAuth = null, ?string $entityKey = null, ?string $module = null): IntegraResponse
+            {
+                return $this->run(new SerproOperationCommand(office: $office, client: $client, operationKey: $operationKey));
+            }
+
+            public function executeRequest(IntegraRequest $request, ?MutationAuthorization $mutationAuth = null, ?string $module = null): IntegraResponse
+            {
+                return $this->run(new SerproOperationCommand(office: new Office, client: null, operationKey: $request->operationKey));
+            }
+        };
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('EVENTOS_PJ_CONTRACT_UNRECONCILED');
+        try {
+            $this->makeFlowWithExecutor($executor)->solicit($office, 'PJ', 'E0301', contributorIdentities: ['11222333000181']);
+        } finally {
+            $this->assertSame(0, $calls);
+        }
+    }
+
+    public function test_obtain_uses_persisted_protocol_and_event_in_batch_envelope(): void
+    {
+        $office = Office::factory()->create();
+        $run = SerproEventosRun::query()->create([
+            'office_id' => $office->id,
+            'environment' => 'TRIAL',
+            'person_type' => 'PF',
+            'phase' => SerproEventosRun::PHASE_WAITING,
+            'protocol' => 'proto-persistido',
+            'evento' => 'E0301',
+            'not_before_at' => now()->subMinute(),
+            'expires_at' => now()->addHour(),
+            'status' => SerproEventosRun::STATUS_RUNNING,
+            'operation_key_obter' => 'eventosatualizacao.obtereventospf',
+            'correlation_id' => 'corr-evento',
+        ]);
+        $captured = null;
+        $executor = new class($captured) implements SerproOperationExecutor
+        {
+            public function __construct(public ?SerproOperationCommand &$captured) {}
+
+            public function run(SerproOperationCommand $command): IntegraResponse
+            {
+                $this->captured = $command;
+
+                return new IntegraResponse(success: true, httpStatus: 200, body: [], dados: []);
+            }
+
+            public function execute(Office $office, Client $client, string $operationKey, array $businessData = [], ?string $idempotencyKey = null, ?string $correlationId = null, ?MutationAuthorization $mutationAuth = null, ?string $entityKey = null, ?string $module = null): IntegraResponse
+            {
+                return $this->run(new SerproOperationCommand(office: $office, client: $client, operationKey: $operationKey, businessData: $businessData));
+            }
+
+            public function executeRequest(IntegraRequest $request, ?MutationAuthorization $mutationAuth = null, ?string $module = null): IntegraResponse
+            {
+                return $this->run(new SerproOperationCommand(office: new Office, client: null, operationKey: $request->operationKey));
+            }
+        };
+
+        $this->makeFlowWithExecutor($executor)->obtain($run);
+
+        $this->assertSame(['protocolo' => 'proto-persistido', 'evento' => 'E0301'], $captured?->businessData);
+        $this->assertSame(['numero' => '', 'tipo' => 3], $captured?->eventosBatchContributor?->toEnvelope());
+    }
+
+    public function test_obtain_without_persisted_event_fails_before_executor(): void
+    {
+        $office = Office::factory()->create();
+        $run = SerproEventosRun::query()->create([
+            'office_id' => $office->id,
+            'environment' => 'TRIAL',
+            'person_type' => 'PF',
+            'phase' => SerproEventosRun::PHASE_WAITING,
+            'protocol' => 'proto-sem-evento',
+            'not_before_at' => now()->subMinute(),
+            'expires_at' => now()->addHour(),
+            'status' => SerproEventosRun::STATUS_RUNNING,
+            'operation_key_obter' => 'eventosatualizacao.obtereventospf',
+            'correlation_id' => 'corr-sem-evento',
+        ]);
+        $calls = 0;
+        $executor = new class($calls) implements SerproOperationExecutor
+        {
+            public function __construct(public int &$calls) {}
+
+            public function run(SerproOperationCommand $command): IntegraResponse
+            {
+                $this->calls++;
+                throw new RuntimeException('Executor não deveria ser chamado.');
+            }
+
+            public function execute(Office $office, Client $client, string $operationKey, array $businessData = [], ?string $idempotencyKey = null, ?string $correlationId = null, ?MutationAuthorization $mutationAuth = null, ?string $entityKey = null, ?string $module = null): IntegraResponse
+            {
+                return $this->run(new SerproOperationCommand(office: $office, client: $client, operationKey: $operationKey));
+            }
+
+            public function executeRequest(IntegraRequest $request, ?MutationAuthorization $mutationAuth = null, ?string $module = null): IntegraResponse
+            {
+                return $this->run(new SerproOperationCommand(office: new Office, client: null, operationKey: $request->operationKey));
+            }
+        };
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('EVENTOS_EVENT_MISSING');
+        try {
+            $this->makeFlowWithExecutor($executor)->obtain($run);
+        } finally {
+            $this->assertSame(0, $calls);
+        }
     }
 
     private function makeFlow(IntegraResponse $response): EventosAtualizacaoFlowService

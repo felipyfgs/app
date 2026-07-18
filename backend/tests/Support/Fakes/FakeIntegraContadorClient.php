@@ -130,7 +130,7 @@ final class FakeIntegraContadorClient implements IntegraContadorClient
             functionalRoute: $response->functionalRoute,
             sourceProvenance: $response->sourceProvenance
                 ?? ($response->simulated
-                    ? FiscalSourceProvenance::Simulated->value
+                    ? FiscalSourceProvenance::Unverified->value
                     : FiscalSourceProvenance::SerproReal->value),
         );
     }

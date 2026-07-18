@@ -51,17 +51,13 @@ class PagtowebPaymentListMonitoringTest extends TestCase
     }
 
     #[Test]
-    public function it_projects_simulated_payments_with_masked_documents_only(): void
+    public function it_fails_closed_without_creating_payment_projection(): void
     {
         $run = app(PagtowebPaymentListQueryService::class)->enqueueManualConsult($this->office, $this->client, ['intervalo_data_arrecadacao' => ['data_inicial' => '2026-01-01', 'data_final' => '2026-01-31']], null);
         $out = app(FiscalMonitoringRunService::class)->execute($run['id']);
-        $history = app(PagtowebPaymentListQueryService::class)->history($this->office, $this->client);
-
-        $this->assertSame(FiscalRunStatus::Completed, $out->status);
-        $this->assertSame(FiscalRunResult::Success, $out->result);
-        $this->assertSame('SIMULATED', $history['current']['source_provenance']);
-        $this->assertSame('•••••••••••••4567', $history['items'][0]['document_masked']);
-        $this->assertStringNotContainsString('12345678901234567', (string) $out->evidenceArtifacts()->firstOrFail()->payload_json);
+        $this->assertSame(FiscalRunStatus::Failed, $out->status);
+        $this->assertSame(FiscalRunResult::Failed, $out->result);
+        $this->assertDatabaseMissing('pagtoweb_payment_list_projections', ['office_id' => $this->office->id, 'client_id' => $this->client->id]);
     }
 
     #[Test]

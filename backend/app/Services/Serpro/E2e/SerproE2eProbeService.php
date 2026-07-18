@@ -4,8 +4,11 @@ namespace App\Services\Serpro\E2e;
 
 use App\DTO\Serpro\IntegraResponse;
 use App\DTO\Serpro\SerproOperationCommand;
+use App\Enums\SerproEnvironment;
+use App\Enums\SerproReadinessGate;
 use App\Models\Client;
 use App\Models\Office;
+use App\Models\SerproReadinessRun;
 use App\Services\Serpro\Catalog\OfficialServiceCatalogManifest;
 use App\Services\Serpro\SerproOperationService;
 use Illuminate\Support\Str;
@@ -17,6 +20,8 @@ use Throwable;
  */
 final class SerproE2eProbeService
 {
+    private const PRODUCTION_ENDPOINT = 'https://gateway.apiserpro.serpro.gov.br/integra-contador/v1';
+
     public function __construct(
         private readonly SerproOperationService $operations,
         private readonly OfficialServiceCatalogManifest $catalog,
@@ -57,12 +62,16 @@ final class SerproE2eProbeService
         $isMutating = (bool) ($entry['is_mutating'] ?? false);
         $correlationId = (string) Str::uuid();
         $built = $this->payloads->forOperation($operationKey, $client, $ctx);
+        $preflight = $this->canaryPreflight($office, $client, $operationKey, $official);
 
         $attempts = [];
         $response = null;
         $error = null;
 
         try {
+            if (! $preflight['eligible']) {
+                throw new \RuntimeException((string) $preflight['reason']);
+            }
             $response = $this->runOnce(
                 $office,
                 $client,
@@ -88,13 +97,17 @@ final class SerproE2eProbeService
                 $attempts[] = $this->sanitizeResponse($response);
             }
         } catch (Throwable $e) {
-            $error = [
-                'class' => $e::class,
-                'message' => mb_substr($e->getMessage(), 0, 400),
-            ];
+            if (! $preflight['eligible']) {
+                $error = null;
+            } else {
+                $error = [
+                    'class' => $e::class,
+                    'message' => mb_substr($e->getMessage(), 0, 400),
+                ];
+            }
         }
 
-        $classification = $this->classify($response, $error, $isMutating, $official);
+        $classification = $this->classify($response, $error, $isMutating, $official, $preflight);
         $protocol = $this->extractProtocol($response);
 
         $result = [
@@ -110,6 +123,7 @@ final class SerproE2eProbeService
             'correlation_id' => $correlationId,
             'classification' => $classification['status'],
             'classification_reason' => $classification['reason'],
+            'evidence_provenance' => $preflight['eligible'] ? 'PRODUCTION_CANARY' : null,
             'evaluated' => true,
             'simulated' => $response?->simulated ?? null,
             'source_provenance' => $response?->sourceProvenance,
@@ -163,9 +177,13 @@ final class SerproE2eProbeService
         $results = [];
         $summary = [
             'total' => 0,
-            'PASS_BUSINESS' => 0,
-            'PASS_ASYNC' => 0,
+            'PASS_REAL_SYNC' => 0,
+            'PASS_REAL_EMPTY' => 0,
+            'PASS_REAL_ASYNC_COMPLETE' => 0,
+            'PASS_REAL_CACHE' => 0,
+            'INCOMPLETE_ASYNC' => 0,
             'BLOCKED_HUB' => 0,
+            'BLOCKED_EXTERNAL' => 0,
             'FAIL_SERPRO' => 0,
             'ERROR' => 0,
             'SKIPPED_NON_PROD' => 0,
@@ -230,6 +248,7 @@ final class SerproE2eProbeService
                     'http_status' => $r['http_status'],
                     'error_code' => $r['error_code'],
                     'simulated' => $r['simulated'],
+                    'evidence_provenance' => $r['evidence_provenance'],
                     'artifact_path' => $r['artifact_path'] ?? null,
                 ], $results),
                 'generated_at' => now()->toIso8601String(),
@@ -287,8 +306,16 @@ final class SerproE2eProbeService
      * @param  array<string, mixed>|null  $error
      * @return array{status: string, reason: string}
      */
-    private function classify(?IntegraResponse $response, ?array $error, bool $isMutating, string $official): array
-    {
+    private function classify(
+        ?IntegraResponse $response,
+        ?array $error,
+        bool $isMutating,
+        string $official,
+        array $preflight,
+    ): array {
+        if (! ($preflight['eligible'] ?? false)) {
+            return ['status' => 'BLOCKED_EXTERNAL', 'reason' => (string) ($preflight['reason'] ?? 'CANARY_PROVENANCE_MISSING')];
+        }
         if ($error !== null) {
             return ['status' => 'ERROR', 'reason' => 'exception:'.$error['class']];
         }
@@ -337,15 +364,17 @@ final class SerproE2eProbeService
         }
 
         if ($response->isStillProcessing() || in_array($response->httpStatus, [202, 204], true)) {
-            return ['status' => 'PASS_ASYNC', 'reason' => 'still_processing_or_async'];
+            return ['status' => 'INCOMPLETE_ASYNC', 'reason' => 'terminal_async_result_required'];
         }
 
-        if ($response->success && $response->simulated === false) {
-            return ['status' => 'PASS_BUSINESS', 'reason' => 'serpro_real_success'];
+        if ($response->success
+            && ! $response->hasSimulatedSource()
+            && $response->sourceProvenance === 'SERPRO_REAL') {
+            return ['status' => 'PASS_REAL_SYNC', 'reason' => 'production_canary_sync_success'];
         }
 
-        if ($response->success && $response->simulated === true) {
-            return ['status' => 'FAIL_SERPRO', 'reason' => 'unexpected_simulated_on_real_probe'];
+        if ($response->success) {
+            return ['status' => 'FAIL_SERPRO', 'reason' => 'response_not_eligible_for_real_evidence'];
         }
 
         // 4xx/5xx SERPRO ou negócio com código remoto
@@ -356,7 +385,54 @@ final class SerproE2eProbeService
             ];
         }
 
-        return ['status' => 'PASS_BUSINESS', 'reason' => 'success'];
+        return ['status' => 'FAIL_SERPRO', 'reason' => 'unclassified_response'];
+    }
+
+    /**
+     * @return array{eligible: bool, reason: string}
+     */
+    private function canaryPreflight(Office $office, Client $client, string $operationKey, string $official): array
+    {
+        if ($official !== 'PRODUCTION') {
+            return ['eligible' => false, 'reason' => 'OFFICIAL_STATE_NOT_PRODUCTION'];
+        }
+        // Eventos exige envelope de contribuintes por tipo de pessoa. Enquanto
+        // a coordenada PJ não estiver reconciliada e o probe não usar o fluxo
+        // tipado, nunca deixe um canário genérico alcançar o transporte.
+        if (str_starts_with($operationKey, 'eventosatualizacao.')) {
+            return ['eligible' => false, 'reason' => 'EVENTOS_CONTRACT_UNRECONCILED'];
+        }
+        if (strtoupper((string) config('serpro.default_environment')) !== SerproEnvironment::Production->value) {
+            return ['eligible' => false, 'reason' => 'ENVIRONMENT_NOT_PRODUCTION'];
+        }
+
+        $productionUrl = rtrim((string) config('serpro.environments.PRODUCTION.base_url'), '/');
+        $apiUrl = rtrim((string) config('serpro.api.base_url'), '/');
+        if ($productionUrl !== self::PRODUCTION_ENDPOINT || $apiUrl !== self::PRODUCTION_ENDPOINT) {
+            return ['eligible' => false, 'reason' => 'CONTRACTED_ENDPOINT_NOT_CONFIRMED'];
+        }
+
+        $run = SerproReadinessRun::query()
+            ->where('office_id', $office->id)
+            ->where('client_id', $client->id)
+            ->where('operation_key', $operationKey)
+            ->where('environment', SerproEnvironment::Production->value)
+            ->where('highest_gate', SerproReadinessGate::CanaryReady->value)
+            ->where('trigger', 'BILLABLE_CANARY_PROMOTE')
+            ->where('live_evidence', true)
+            ->whereNotNull('serpro_contract_id')
+            ->where('expires_at', '>', now())
+            ->whereHas('evidences', fn ($query) => $query
+                ->where('gate', SerproReadinessGate::CanaryReady->value)
+                ->where('status', 'PASS')
+                ->where('live_evidence', true)
+                ->where('valid_until', '>', now()))
+            ->latest('id')
+            ->first();
+
+        return $run === null
+            ? ['eligible' => false, 'reason' => 'PRODUCTION_CANARY_APPROVAL_MISSING']
+            : ['eligible' => true, 'reason' => 'PRODUCTION_CANARY_VERIFIED'];
     }
 
     /**

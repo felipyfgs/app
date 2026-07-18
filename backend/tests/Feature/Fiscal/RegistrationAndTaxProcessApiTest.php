@@ -189,6 +189,10 @@ final class RegistrationAndTaxProcessApiTest extends TestCase
     public function test_refresh_uses_current_office_and_role_matrix(): void
     {
         Queue::fake();
+        config([
+            'serpro.capabilities.registrations' => 'real',
+            'serpro.capabilities.tax_processes' => 'real',
+        ]);
 
         $this->actingAs($this->admin);
         app(CurrentOffice::class)->clear();

@@ -6,7 +6,6 @@ use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalMutationStatus;
 use App\Enums\FiscalPendingStatus;
 use App\Enums\FiscalRunResult;
-use App\Enums\OfficeRole;
 use App\Enums\TaxGuidePaymentStatus;
 use App\Models\FiscalMonitoringRun;
 use App\Models\FiscalMutationOperation;
@@ -26,7 +25,7 @@ final class FiscalItemsCollector
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    public function collect(int $officeId, ?OfficeRole $role = null): Collection
+    public function collect(int $officeId, InboxCapabilities $role): Collection
     {
         // collect() base: map() em Eloquent\Collection devolve Eloquent\Collection
         // e merge() tentaria getKey() nos arrays de item.

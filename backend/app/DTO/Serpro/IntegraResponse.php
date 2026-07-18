@@ -2,6 +2,8 @@
 
 namespace App\DTO\Serpro;
 
+use App\Enums\FiscalSourceProvenance;
+
 /**
  * Resposta normalizada Integra Contador (HTTP + negócio), sem vazar payload fiscal em logs.
  *
@@ -41,7 +43,35 @@ final class IntegraResponse
     {
         return $this->success
             && ! $this->simulated
-            && ! in_array($this->sourceProvenance, ['SIMULATED', 'SERPRO_TRIAL'], true);
+            && $this->sourceProvenance === FiscalSourceProvenance::SerproReal->value;
+    }
+
+    /**
+     * Marca sintética é sempre entrada inválida no runtime. A string existe
+     * somente para que linhas/respostas legadas possam ser postas em quarentena.
+     */
+    public function hasSimulatedSource(): bool
+    {
+        return $this->simulated || $this->sourceProvenance === 'SIMULATED';
+    }
+
+    /** Retorna uma falha sanitizada, sem payload reaproveitável. */
+    public function rejectSimulatedSource(): self
+    {
+        return new self(
+            success: false,
+            httpStatus: 0,
+            body: [],
+            errorCode: 'SIMULATED_SOURCE_REJECTED',
+            errorMessage: 'Resposta sintética/legada não é aceita pelo runtime SERPRO.',
+            simulated: false,
+            correlationId: $this->correlationId,
+            latencyMs: $this->latencyMs,
+            operationKey: $this->operationKey,
+            requestTag: $this->requestTag,
+            functionalRoute: $this->functionalRoute,
+            sourceProvenance: 'UNVERIFIED',
+        );
     }
 
     public function isStillProcessing(): bool

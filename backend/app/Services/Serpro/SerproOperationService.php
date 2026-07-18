@@ -15,7 +15,7 @@ use App\Enums\SerproUsageResult;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
-use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPreAckDocumentStore;
+use App\Services\Fiscal\Guides\PagtowebEphemeralResponseRedactor;
 use App\Services\Integra\ClientProcuracaoSyncService;
 use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Integra\IntegraEligibilityService;
@@ -62,7 +62,8 @@ final class SerproOperationService implements SerproOperationExecutor
         private readonly OperationCoverageMatrix $coverage,
         private readonly SerproTechnicalParameterGuard $technicalParams,
         private readonly ClientProcuracaoSyncService $procuracaoGate,
-        private readonly PgdasdPreAckDocumentStore $pgdasdPreAckDocuments,
+        private readonly PreAckDocumentCaptureDispatcher $preAckDocuments,
+        private readonly PagtowebEphemeralResponseRedactor $pagtowebResponseRedactor,
     ) {}
 
     /**
@@ -427,6 +428,7 @@ final class SerproOperationService implements SerproOperationExecutor
             operationCode: isset($coords['id_servico'])
                 ? (string) ($coords['operation_code'] ?? $coords['id_servico'] ?? '')
                 : null,
+            eventosBatchContributor: $command->eventosBatchContributor,
         );
 
         $reservation = $this->ledger->reserve(new UsageReserveRequest(
@@ -488,6 +490,13 @@ final class SerproOperationService implements SerproOperationExecutor
             return $uncertain;
         }
 
+        // Nenhuma resposta marcada como sintética pode atravessar a fronteira
+        // operacional, mesmo se vier de dado legado ou de um double instalado
+        // incorretamente. Trial oficial não possui essa marca e continua distinto.
+        if ($response->hasSimulatedSource()) {
+            $response = $response->rejectSimulatedSource();
+        }
+
         $this->ledger->finalize(
             $reservation->reservation,
             $this->ledger->mapIntegraResponse($response),
@@ -521,6 +530,13 @@ final class SerproOperationService implements SerproOperationExecutor
             );
         }
 
+        if ($operationKey === 'pagtoweb.comparrecadacao') {
+            $response = $this->pagtowebResponseRedactor->redact(
+                $response,
+                $command->businessData['numeroDocumento'] ?? null,
+            );
+        }
+
         // Respostas documentais produtivas precisam chegar ao cofre antes do
         // ACK terminal. Assim um crash/replay nunca depende do Base64, que não
         // é persistido no attempt store.
@@ -528,15 +544,14 @@ final class SerproOperationService implements SerproOperationExecutor
             && $driver->value === 'real'
             && $response->success
             && ! $response->simulated
-            && $response->sourceProvenance === FiscalSourceProvenance::SerproReal->value
-            && in_array($operationKey, [
-                'pgdasd.consultimadecrec',
-                'pgdasd.consdecrec',
-                'pgdasd.consextrato',
+            && in_array($response->sourceProvenance, [
+                FiscalSourceProvenance::SerproTrial->value,
+                FiscalSourceProvenance::SerproReal->value,
             ], true)
+            && $this->preAckDocuments->handles($operationKey)
         ) {
             try {
-                $response = $this->pgdasdPreAckDocuments->capture(
+                $response = $this->preAckDocuments->capture(
                     operationKey: $operationKey,
                     entityKey: $entityKey,
                     response: $response,

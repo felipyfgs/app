@@ -57,6 +57,9 @@ final class IntegraRequest
 
     public readonly FiscalIdentity $contributor;
 
+    /** @var null|array{numero: string, tipo: 3|4} */
+    public readonly ?array $contributorEnvelope;
+
     /**
      * @param  array<string, mixed>  $businessData  Dados de negócio (protocolo, filtros…) — não credenciais
      * @param  array<string, string>  $headers  Headers extras não secretos (não sobrescreve oficiais)
@@ -82,6 +85,7 @@ final class IntegraRequest
         ?string $operationCode = null,
         ?FiscalIdentity $author = null,
         ?FiscalIdentity $contributor = null,
+        ?EventosBatchContributor $eventosBatchContributor = null,
     ) {
         $key = trim($operationKey);
         if ($key === '') {
@@ -112,6 +116,7 @@ final class IntegraRequest
         $this->authorIdentity = $this->author->numero;
         $this->contributorCnpj = $this->contributor->numero;
         $this->contractorCnpj = FiscalIdentity::fromNumero($contractorCnpj, AuthorIdentityType::Cnpj)->numero;
+        $this->contributorEnvelope = $eventosBatchContributor?->toEnvelope();
     }
 
     /**

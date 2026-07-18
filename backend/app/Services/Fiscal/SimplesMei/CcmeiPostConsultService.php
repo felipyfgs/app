@@ -5,6 +5,7 @@ namespace App\Services\Fiscal\SimplesMei;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
 use App\DTO\Serpro\IntegraResponse;
+use App\Enums\FiscalSourceProvenance;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -29,6 +30,15 @@ final class CcmeiPostConsultService
         }
 
         $normalized = is_array($result->normalized) ? $result->normalized : [];
+        if ($response->hasSimulatedSource()) {
+            $normalized['ccmei'] = [
+                'operation_key' => self::OPERATION_KEY,
+                'promoted' => false,
+                'reason' => 'SIMULATED_SOURCE_REJECTED',
+            ];
+
+            return ['result' => $this->withNormalized($result, $normalized)];
+        }
         try {
             $projected = $this->projector->project(
                 $request->office,
@@ -38,7 +48,7 @@ final class CcmeiPostConsultService
                     'situation' => (string) ($normalized['situation'] ?? ''),
                 ],
                 $request->run->id,
-                $response->isProductiveEvidence() ? 'SERPRO_REAL' : 'SIMULATED',
+                $this->provenance($response),
             );
             $normalized['ccmei'] = [
                 'operation_key' => self::OPERATION_KEY,
@@ -80,5 +90,14 @@ final class CcmeiPostConsultService
             itemsProcessed: $result->itemsProcessed,
             pagesProcessed: $result->pagesProcessed,
         );
+    }
+
+    private function provenance(IntegraResponse $response): string
+    {
+        return match ($response->sourceProvenance) {
+            FiscalSourceProvenance::SerproReal->value => FiscalSourceProvenance::SerproReal->value,
+            FiscalSourceProvenance::SerproTrial->value => FiscalSourceProvenance::SerproTrial->value,
+            default => FiscalSourceProvenance::Unverified->value,
+        };
     }
 }

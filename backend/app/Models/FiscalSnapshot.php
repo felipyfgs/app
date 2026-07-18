@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\FiscalSourceProvenanceCast;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalSituation;
 use App\Enums\FiscalSourceProvenance;
@@ -47,7 +48,7 @@ class FiscalSnapshot extends Model
         return [
             'situation' => FiscalSituation::class,
             'coverage' => FiscalCoverage::class,
-            'source_provenance' => FiscalSourceProvenance::class,
+            'source_provenance' => FiscalSourceProvenanceCast::class,
             'verification_state' => FiscalVerificationState::class,
             'version' => 'integer',
             'is_current' => 'boolean',

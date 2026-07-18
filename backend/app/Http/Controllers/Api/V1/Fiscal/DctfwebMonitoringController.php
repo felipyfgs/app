@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1\Fiscal;
 
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\EnsureOfficeContext;
 use App\Models\Client;
 use App\Models\DctfwebEvidenceVersion;
+use App\Models\User;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Fiscal\Dctfweb\DctfwebCommunicationService;
 use App\Services\Fiscal\Dctfweb\DctfwebMonitoringQueryService;
 use App\Services\FiscalMonitoring\FiscalEvidenceStore;
@@ -29,6 +31,7 @@ class DctfwebMonitoringController extends Controller
         private readonly DctfwebMonitoringQueryService $queries,
         private readonly DctfwebCommunicationService $communication,
         private readonly FiscalEvidenceStore $evidenceStore,
+        private readonly TenantAuthorization $authorization,
     ) {}
 
     public function history(Request $request, int $client): JsonResponse
@@ -122,16 +125,11 @@ class DctfwebMonitoringController extends Controller
 
     public function updatePreferences(Request $request, int $client): JsonResponse
     {
-        $this->assertCanWrite();
+        $this->assertCanManageCommunications();
         if ($rejection = $this->rejectClientOfficeId($request)) {
             return $rejection;
         }
         $office = $this->currentOffice->office();
-        $role = $this->currentOffice->role();
-        if ($role === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
-
         $model = $this->findClient($office->id, $client);
         if ($model === null) {
             return response()->json([
@@ -157,7 +155,6 @@ class DctfwebMonitoringController extends Controller
                 $office,
                 $model,
                 $user,
-                $role,
                 $data,
             );
         } catch (ConflictHttpException $e) {
@@ -178,16 +175,11 @@ class DctfwebMonitoringController extends Controller
 
     public function batchPreferences(Request $request): JsonResponse
     {
-        $this->assertCanWrite();
+        $this->assertCanManageCommunications();
         if ($rejection = $this->rejectClientOfficeId($request)) {
             return $rejection;
         }
         $office = $this->currentOffice->office();
-        $role = $this->currentOffice->role();
-        if ($role === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
-
         $data = $request->validate([
             'client_ids' => ['required', 'array', 'min:1', 'max:100'],
             'client_ids.*' => ['integer', 'distinct'],
@@ -203,7 +195,6 @@ class DctfwebMonitoringController extends Controller
             $prefs = $this->communication->batchSetAutomatic(
                 $office,
                 $user,
-                $role,
                 $data['client_ids'],
                 (bool) $data['automatic_requested'],
             );
@@ -304,19 +295,19 @@ class DctfwebMonitoringController extends Controller
 
     private function assertCanRead(): void
     {
-        if ($this->currentOffice->role() === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
+        $this->assertPermission(TenantPermission::FiscalMonitoringView);
     }
 
-    private function assertCanWrite(): void
+    private function assertCanManageCommunications(): void
     {
-        $role = $this->currentOffice->role();
-        if ($role === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
-        if (! in_array($role, [OfficeRole::Admin, OfficeRole::Operator], true)) {
-            abort(403, 'Sem permissão de sincronização.');
+        $this->assertPermission(TenantPermission::ClientsManage, 'Sem permissão para alterar comunicação.');
+    }
+
+    private function assertPermission(TenantPermission $permission, string $message = 'Perfil não resolvido.'): void
+    {
+        $actor = request()->user();
+        if (! $actor instanceof User || ! $this->authorization->allows($actor, $permission)) {
+            abort(403, $message);
         }
     }
 }

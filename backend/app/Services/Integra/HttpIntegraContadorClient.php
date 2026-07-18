@@ -201,7 +201,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 'tipo' => 2,
             ],
             'autorPedidoDados' => $request->author->toEnvelope(),
-            'contribuinte' => $request->contributor->toEnvelope(),
+            'contribuinte' => $request->contributorEnvelope ?? $request->contributor->toEnvelope(),
             'pedidoDados' => [
                 'idSistema' => $idSistema,
                 'idServico' => $idServico,
@@ -245,7 +245,8 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                         operationKey: $operationKey,
                         requestTag: $requestTag,
                         functionalRoute: $routeName,
-                        simulated: $this->isTrial($env),
+                        // Trial é gateway externo oficial, não double local.
+                        simulated: false,
                         sourceProvenance: $this->provenanceFor($env),
                     );
                 }
@@ -459,7 +460,8 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         string $solutionForBreaker,
         SerproEnvironment $environment,
     ): IntegraResponse {
-        $simulated = $this->isTrial($environment);
+        // Trial é inelegível para produção pela proveniência, não por ser fake.
+        $simulated = false;
         $provenance = $this->provenanceFor($environment);
         $status = $response['status'];
         $headers = $response['headers'] ?? [];
@@ -792,19 +794,14 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             correlationId: $request->correlationId,
             operationKey: $request->operationKey,
             requestTag: $request->resolvedRequestTag(),
-            simulated: $this->isTrial(SerproEnvironment::tryFrom($request->environment)),
+            simulated: false,
             sourceProvenance: $this->provenanceFor(SerproEnvironment::tryFrom($request->environment)),
         );
     }
 
-    private function isTrial(?SerproEnvironment $environment): bool
-    {
-        return $environment === SerproEnvironment::Trial;
-    }
-
     private function provenanceFor(?SerproEnvironment $environment): string
     {
-        return $this->isTrial($environment)
+        return $environment === SerproEnvironment::Trial
             ? FiscalSourceProvenance::SerproTrial->value
             : FiscalSourceProvenance::SerproReal->value;
     }

@@ -173,7 +173,7 @@ class FiscalMutationOperationsTest extends TestCase
         $this->assertSame(FiscalMutationStatus::Rejected, $op->status);
     }
 
-    public function test_double_click_idempotente_nao_reenvia(): void
+    public function test_double_click_com_resposta_sintetica_nao_reenvia(): void
     {
         $this->actingAsAdminWithTotp();
         $this->transport->mode = 'success';
@@ -187,7 +187,7 @@ class FiscalMutationOperationsTest extends TestCase
 
         $a = $this->postJson('/api/v1/fiscal/mutations', $payload);
         $a->assertCreated();
-        $this->assertSame(FiscalMutationStatus::Confirmed->value, $a->json('data.status'));
+        $this->assertSame(FiscalMutationStatus::UnknownResult->value, $a->json('data.status'));
         $id = $a->json('data.id');
 
         $b = $this->postJson('/api/v1/fiscal/mutations', $payload);
@@ -238,7 +238,7 @@ class FiscalMutationOperationsTest extends TestCase
         $this->assertContains('UNCERTAIN_RESULT_OPEN', $other->json('data.codes'));
     }
 
-    public function test_reconciliacao_confirma_resultado_incerto(): void
+    public function test_reconciliacao_rejeita_resposta_sintetica_e_mantem_resultado_incerto(): void
     {
         $this->actingAsAdminWithTotp();
         $this->transport->mode = 'timeout';
@@ -258,7 +258,7 @@ class FiscalMutationOperationsTest extends TestCase
 
         $recon = $this->postJson("/api/v1/fiscal/mutations/{$id}/reconcile");
         $recon->assertOk();
-        $this->assertSame(FiscalMutationStatus::Confirmed->value, $recon->json('data.status'));
+        $this->assertSame(FiscalMutationStatus::UnknownResult->value, $recon->json('data.status'));
         $this->assertSame(1, $this->transport->reconcileCalls);
         $this->assertSame(1, $this->transport->executeCalls);
     }

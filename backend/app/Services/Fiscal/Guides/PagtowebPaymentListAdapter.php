@@ -73,12 +73,15 @@ final class PagtowebPaymentListAdapter implements FiscalSourceAdapter
             if (! $response->success) {
                 return FiscalAdapterResult::failed($response->errorMessage ?? 'Falha na consulta de pagamentos.', $response->errorCode ?? 'PAGTOWEB_PAYMENT_LIST_FAILED', $this->coverage());
             }
+            if ($response->hasSimulatedSource()) {
+                return FiscalAdapterResult::blocked('Resposta sintética não pode gerar projeção PAGTOWEB.', 'SIMULATED_SOURCE_REJECTED');
+            }
             $items = $this->codec->decodePayments($response->dados ?? $response->body);
             $provenance = $response->isProductiveEvidence()
                 ? FiscalSourceProvenance::SerproReal->value
                 : ($response->sourceProvenance === FiscalSourceProvenance::SerproTrial->value
                     ? FiscalSourceProvenance::SerproTrial->value
-                    : FiscalSourceProvenance::Simulated->value);
+                    : FiscalSourceProvenance::Unverified->value);
             $projected = $this->projector->project($request->office, $request->client, $items, $normalized['filter_summary'], $request->run->id, $provenance);
         } catch (Throwable) {
             Log::warning('pagtoweb.payment_list_failed', ['operation_key' => self::OPERATION_KEY, 'office_id' => $request->office->id, 'client_id' => $request->client->id, 'reason' => 'PAYMENT_LIST_FAILED']);

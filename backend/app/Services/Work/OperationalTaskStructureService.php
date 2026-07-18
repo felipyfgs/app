@@ -2,12 +2,13 @@
 
 namespace App\Services\Work;
 
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Enums\Work\ProcessStatus;
 use App\Enums\Work\TaskStatus;
 use App\Models\OperationalProcess;
 use App\Models\OperationalTask;
 use App\Services\Audit\AuditLogger;
+use App\Services\Authorization\TenantAuthorization;
 use App\Support\CurrentOffice;
 use App\Support\Work\OptimisticLock;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,7 @@ final class OperationalTaskStructureService
         private readonly MembershipResolver $memberships,
         private readonly OperationalTaskTransitionService $transitions,
         private readonly AuditLogger $audit,
+        private readonly TenantAuthorization $authorization,
     ) {}
 
     /**
@@ -140,22 +142,24 @@ final class OperationalTaskStructureService
 
     private function assertCanMutateStructure(OperationalProcess $process, ?string $justification): void
     {
-        $role = $this->currentOffice->role();
+        $actor = $this->currentOffice->actor();
         $started = $process->status !== ProcessStatus::AFazer
             || $process->tasks()->where('status', '!=', TaskStatus::AFazer->value)->exists();
 
         if (! $started) {
-            if ($role?->canCreateWorkProcesses() !== true) {
+            if ($actor === null
+                || ! $this->authorization->allows($actor, TenantPermission::WorkProcessesCreate, $process)) {
                 abort(403);
             }
 
             return;
         }
 
-        // Após início: somente ADMIN com justificativa
-        if ($role !== OfficeRole::Admin) {
+        // Após início: capacidade administrativa específica, com justificativa.
+        if ($actor === null
+            || ! $this->authorization->allows($actor, TenantPermission::WorkAdminister, $process)) {
             throw ValidationException::withMessages([
-                'structure' => ['Após o início do processo, apenas ADMIN pode alterar a estrutura.'],
+                'structure' => ['Após o início do processo, apenas quem administra o Work pode alterar a estrutura.'],
             ]);
         }
 

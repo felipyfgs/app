@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Enums\OfficeAccessMode;
+use App\Enums\OfficeLifecycleStatus;
 use App\Enums\OfficeRole;
 use App\Enums\PlatformRole;
 use App\Models\Office;
@@ -131,7 +132,9 @@ class CurrentOffice
 
         return $user->memberships()
             ->where('is_active', true)
-            ->whereHas('office', fn ($q) => $q->where('is_active', true))
+            ->whereHas('office', fn ($q) => $q
+                ->where('is_active', true)
+                ->where('lifecycle_status', OfficeLifecycleStatus::Active->value))
             ->with('office')
             ->orderBy('id')
             ->first();
@@ -347,6 +350,7 @@ class CurrentOffice
         $office = Office::query()
             ->whereKey($platformOfficeId)
             ->where('is_active', true)
+            ->where('lifecycle_status', OfficeLifecycleStatus::Active->value)
             ->first();
 
         if ($office === null) {
@@ -457,7 +461,9 @@ class CurrentOffice
         return $user->memberships()
             ->where('office_id', $officeId)
             ->where('is_active', true)
-            ->whereHas('office', fn ($q) => $q->where('is_active', true))
+            ->whereHas('office', fn ($q) => $q
+                ->where('is_active', true)
+                ->where('lifecycle_status', OfficeLifecycleStatus::Active->value))
             ->with('office')
             ->first();
     }

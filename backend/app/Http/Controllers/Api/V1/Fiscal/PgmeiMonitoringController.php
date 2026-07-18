@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api\V1\Fiscal;
 
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\EnsureOfficeContext;
 use App\Models\Client;
+use App\Models\User;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiCommunicationService;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiYear;
@@ -23,6 +25,7 @@ class PgmeiMonitoringController extends Controller
         private readonly CurrentOffice $currentOffice,
         private readonly PgmeiMonitoringQueryService $queries,
         private readonly PgmeiCommunicationService $communication,
+        private readonly TenantAuthorization $authorization,
     ) {}
 
     public function history(Request $request, int $client): JsonResponse
@@ -57,7 +60,7 @@ class PgmeiMonitoringController extends Controller
 
     public function consult(Request $request): JsonResponse
     {
-        $this->assertCanWrite();
+        $this->assertCanSync();
         $this->assertModuleEnabled();
         if ($rejection = $this->rejectClientOfficeId($request)) {
             return $rejection;
@@ -95,16 +98,11 @@ class PgmeiMonitoringController extends Controller
 
     public function updatePreferences(Request $request, int $client): JsonResponse
     {
-        $this->assertCanWrite();
+        $this->assertCanManageCommunications();
         if ($rejection = $this->rejectClientOfficeId($request)) {
             return $rejection;
         }
         $office = $this->currentOffice->office();
-        $role = $this->currentOffice->role();
-        if ($role === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
-
         $model = $this->findClient($office->id, $client);
         if ($model === null) {
             return response()->json([
@@ -130,7 +128,6 @@ class PgmeiMonitoringController extends Controller
                 $office,
                 $model,
                 $user,
-                $role,
                 $data,
             );
         } catch (ConflictHttpException $e) {
@@ -151,16 +148,11 @@ class PgmeiMonitoringController extends Controller
 
     public function batchPreferences(Request $request): JsonResponse
     {
-        $this->assertCanWrite();
+        $this->assertCanManageCommunications();
         if ($rejection = $this->rejectClientOfficeId($request)) {
             return $rejection;
         }
         $office = $this->currentOffice->office();
-        $role = $this->currentOffice->role();
-        if ($role === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
-
         $data = $request->validate([
             'client_ids' => ['required', 'array', 'min:1', 'max:100'],
             'client_ids.*' => ['integer', 'distinct'],
@@ -176,7 +168,6 @@ class PgmeiMonitoringController extends Controller
             $prefs = $this->communication->batchSetAutomatic(
                 $office,
                 $user,
-                $role,
                 $data['client_ids'],
                 (bool) $data['automatic_requested'],
             );
@@ -279,19 +270,24 @@ class PgmeiMonitoringController extends Controller
 
     private function assertCanRead(): void
     {
-        if ($this->currentOffice->role() === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
+        $this->assertPermission(TenantPermission::FiscalMonitoringView);
     }
 
-    private function assertCanWrite(): void
+    private function assertCanSync(): void
     {
-        $role = $this->currentOffice->role();
-        if ($role === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
-        if (! in_array($role, [OfficeRole::Admin, OfficeRole::Operator], true)) {
-            abort(403, 'Sem permissão de sincronização.');
+        $this->assertPermission(TenantPermission::FiscalSyncTrigger, 'Sem permissão de sincronização.');
+    }
+
+    private function assertCanManageCommunications(): void
+    {
+        $this->assertPermission(TenantPermission::ClientsManage, 'Sem permissão para alterar comunicação.');
+    }
+
+    private function assertPermission(TenantPermission $permission, string $message = 'Perfil não resolvido.'): void
+    {
+        $actor = request()->user();
+        if (! $actor instanceof User || ! $this->authorization->allows($actor, $permission)) {
+            abort(403, $message);
         }
     }
 

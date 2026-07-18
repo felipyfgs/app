@@ -2,10 +2,11 @@
 
 namespace App\Models;
 
-use App\Enums\FiscalSourceProvenance;
+use App\Casts\FiscalSourceProvenanceCast;
 use App\Enums\FiscalVerificationState;
 use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
@@ -41,7 +42,7 @@ class FiscalEvidenceArtifact extends Model
     {
         return [
             'byte_size' => 'integer',
-            'source_provenance' => FiscalSourceProvenance::class,
+            'source_provenance' => FiscalSourceProvenanceCast::class,
             'verification_state' => FiscalVerificationState::class,
             'observed_at' => 'immutable_datetime',
             'retention_until' => 'immutable_datetime',
@@ -70,6 +71,15 @@ class FiscalEvidenceArtifact extends Model
             }
 
             return true;
+        });
+    }
+
+    /** @param Builder<self> $query */
+    public function scopeOperationallyEligible(Builder $query): void
+    {
+        $query->where(function (Builder $verification): void {
+            $verification->whereNull('verification_state')
+                ->orWhere('verification_state', '!=', FiscalVerificationState::Rejected->value);
         });
     }
 

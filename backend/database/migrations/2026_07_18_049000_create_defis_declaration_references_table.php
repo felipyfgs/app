@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->foreignId('client_id')->constrained()->cascadeOnDelete();
-            $table->string('vault_object_id', 191);
+            $table->string('vault_object_id', 26);
             $table->timestampTz('observed_at');
             $table->foreignId('source_run_id')->nullable()->constrained('fiscal_monitoring_runs')->nullOnDelete();
             $table->string('source_provenance', 32);

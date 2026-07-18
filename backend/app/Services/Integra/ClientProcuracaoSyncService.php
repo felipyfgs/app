@@ -137,6 +137,7 @@ final class ClientProcuracaoSyncService
         SerproEnvironment $environment,
         ?int $actorUserId = null,
         ?string $correlationId = null,
+        bool $automatic = false,
     ): void {
         SyncClientProcuracaoJob::dispatch(
             officeId: (int) $office->id,
@@ -144,6 +145,7 @@ final class ClientProcuracaoSyncService
             environment: $environment->value,
             actorUserId: $actorUserId,
             correlationId: $correlationId,
+            automatic: $automatic,
         );
     }
 

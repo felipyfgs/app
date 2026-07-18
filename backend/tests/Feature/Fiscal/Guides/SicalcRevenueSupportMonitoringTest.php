@@ -62,21 +62,18 @@ class SicalcRevenueSupportMonitoringTest extends TestCase
     }
 
     #[Test]
-    public function it_projects_simulated_sicalc_support_without_fiscal_identifiers(): void
+    public function it_fails_closed_without_creating_sicalc_projection(): void
     {
         $run = app(SicalcRevenueSupportQueryService::class)->enqueueManualConsult($this->office, $this->client, '1082', null);
         $out = app(FiscalMonitoringRunService::class)->execute($run['id']);
 
-        $this->assertSame(FiscalRunStatus::Completed, $out->status);
-        $this->assertSame(FiscalRunResult::Success, $out->result);
-        $this->assertDatabaseHas('sicalc_revenue_support_projections', [
+        $this->assertSame(FiscalRunStatus::Failed, $out->status);
+        $this->assertSame(FiscalRunResult::Failed, $out->result);
+        $this->assertDatabaseMissing('sicalc_revenue_support_projections', [
             'office_id' => $this->office->id,
             'client_id' => $this->client->id,
             'revenue_code' => '1082',
         ]);
-        $evidence = $out->evidenceArtifacts()->firstOrFail();
-        $this->assertStringNotContainsString('11222333000181', (string) $evidence->payload_json);
-        $this->assertStringNotContainsString('cnpj', strtolower((string) $evidence->payload_json));
     }
 
     #[Test]

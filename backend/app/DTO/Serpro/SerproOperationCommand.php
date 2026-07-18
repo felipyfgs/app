@@ -33,6 +33,7 @@ final class SerproOperationCommand
         public readonly ?string $module = null,
         public readonly ?string $contributorIdentityOverride = null,
         public readonly ?string $authorIdentityOverride = null,
+        public readonly ?EventosBatchContributor $eventosBatchContributor = null,
     ) {}
 
     public function mutationAuthOrNone(): MutationAuthorization

@@ -42,13 +42,17 @@ class TaxGuideController extends Controller
         $clientId = $request->query('client_id');
         $paymentStatus = $request->query('payment_status');
 
+        // LFU-07: `sort_direction` e `direction` são aliases equivalentes.
+        $direction = $request->query('sort_direction', $request->query('direction', ''));
+        $direction = is_string($direction) ? strtolower($direction) : '';
+
         $page = $this->queries->paginate(
             $office,
             $perPage,
             is_numeric($clientId) ? (int) $clientId : null,
             is_string($paymentStatus) ? $paymentStatus : null,
             $request->string('sort')->toString(),
-            $request->string('direction')->lower()->toString(),
+            $direction,
         );
         $page->getCollection()->transform(fn ($g) => $g->toPublicArray());
 

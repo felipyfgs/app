@@ -67,7 +67,7 @@ class TermoGeneratorAndEnvelopeTest extends TestCase
             TermoAuthorizationState::SerproAccepted->value,
         );
         $this->assertFalse(TermoAuthorizationState::LocalValidated->isRemoteAccepted());
-        $this->assertFalse(TermoAuthorizationState::Simulated->isRemoteAccepted());
+        $this->assertFalse(TermoAuthorizationState::Rejected->isRemoteAccepted());
         $this->assertTrue(TermoAuthorizationState::SerproAccepted->isRemoteAccepted());
     }
 

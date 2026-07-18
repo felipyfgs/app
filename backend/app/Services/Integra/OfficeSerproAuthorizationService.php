@@ -694,15 +694,13 @@ final class OfficeSerproAuthorizationService
             $auth->procurador_etag = $etag;
         }
 
-        $resolvedState = $result->authorizationState
-            ?? ($result->simulated
-                ? TermoAuthorizationState::Simulated->value
-                : TermoAuthorizationState::SerproAccepted->value);
+        if ($result->simulated) {
+            throw new RuntimeException('Resposta sintética não pode criar token do procurador.');
+        }
+
+        $resolvedState = $result->authorizationState ?? TermoAuthorizationState::SerproAccepted->value;
 
         // Fail-closed: simulated nunca vira SERPRO_ACCEPTED.
-        if ($result->simulated && $resolvedState === TermoAuthorizationState::SerproAccepted->value) {
-            $resolvedState = TermoAuthorizationState::Simulated->value;
-        }
         if (! $result->simulated && $resolvedState === TermoAuthorizationState::SerproAccepted->value) {
             // ok
         } elseif (! $result->simulated && $resolvedState !== TermoAuthorizationState::SerproAccepted->value) {
@@ -713,7 +711,7 @@ final class OfficeSerproAuthorizationService
         }
 
         $auth->termo_authorization_state = TermoAuthorizationState::tryFrom($resolvedState)
-            ?? ($result->simulated ? TermoAuthorizationState::Simulated : TermoAuthorizationState::SerproAccepted);
+            ?? TermoAuthorizationState::Rejected;
         $auth->last_token_refresh_at = now();
         $auth->status = SerproAuthorizationStatus::TokenActive;
         $auth->action_required_reason = null;
@@ -738,8 +736,6 @@ final class OfficeSerproAuthorizationService
             if (! $result->simulated && $auth->termo_authorization_state === TermoAuthorizationState::SerproAccepted) {
                 $termVersion->status = TermoAuthorizationState::SerproAccepted->value;
                 $termVersion->serpro_accepted_at = now();
-            } elseif ($result->simulated) {
-                $termVersion->status = TermoAuthorizationState::Simulated->value;
             }
             $termVersion->save();
         }
@@ -807,8 +803,7 @@ final class OfficeSerproAuthorizationService
             }
         } else {
             // Termo novo: volta para estado local sem token.
-            if ($auth->termo_authorization_state === TermoAuthorizationState::SerproAccepted
-                || $auth->termo_authorization_state === TermoAuthorizationState::Simulated) {
+            if ($auth->termo_authorization_state === TermoAuthorizationState::SerproAccepted) {
                 $auth->termo_authorization_state = TermoAuthorizationState::LocalValidated;
             }
             if ($auth->status === SerproAuthorizationStatus::TokenActive) {

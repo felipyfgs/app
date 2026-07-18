@@ -80,13 +80,16 @@ final class PagtowebPaymentCountAdapter implements FiscalSourceAdapter
         if (! $response->success) {
             return FiscalAdapterResult::failed($response->errorMessage ?? 'Falha na contagem de pagamentos.', $response->errorCode ?? 'PAGTOWEB_PAYMENT_COUNT_FAILED', $this->coverage());
         }
+        if ($response->hasSimulatedSource()) {
+            return FiscalAdapterResult::blocked('Resposta sintética não pode gerar projeção PAGTOWEB.', 'SIMULATED_SOURCE_REJECTED');
+        }
         try {
             $summary = [...$this->codec->decodeCount($response->dados ?? $response->body), 'filter_summary' => $normalized['filter_summary']];
             $provenance = $response->isProductiveEvidence()
                 ? FiscalSourceProvenance::SerproReal->value
                 : ($response->sourceProvenance === FiscalSourceProvenance::SerproTrial->value
                     ? FiscalSourceProvenance::SerproTrial->value
-                    : FiscalSourceProvenance::Simulated->value);
+                    : FiscalSourceProvenance::Unverified->value);
             $projected = $this->projector->project($request->office, $request->client, $summary, $request->run->id, $provenance);
         } catch (Throwable) {
             Log::warning('pagtoweb.payment_count_projection_failed', ['operation_key' => self::OPERATION_KEY, 'office_id' => $request->office->id, 'client_id' => $request->client->id, 'reason' => 'PROJECTION_FAILED']);

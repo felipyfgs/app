@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Services\Authorization\TenantAuthorization;
+use App\Services\Operations\Inbox\InboxCapabilities;
 use App\Services\Operations\OperationsInboxBuilder;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
@@ -13,6 +17,7 @@ class OperationsInboxController extends Controller
     public function __invoke(
         Request $request,
         CurrentOffice $currentOffice,
+        TenantAuthorization $authorization,
         OperationsInboxBuilder $inbox,
     ): JsonResponse {
         // office_id do cliente é ignorado; sempre o escritório da sessão.
@@ -37,7 +42,7 @@ class OperationsInboxController extends Controller
 
         $payload = $inbox->build(
             officeId: $officeId,
-            role: $currentOffice->role(),
+            capabilities: $this->capabilities($request, $authorization),
             severity: $severity,
             type: $type,
             limit: $limit,
@@ -45,5 +50,18 @@ class OperationsInboxController extends Controller
         );
 
         return response()->json($payload);
+    }
+
+    private function capabilities(Request $request, TenantAuthorization $authorization): InboxCapabilities
+    {
+        $actor = $request->user();
+        if (! $actor instanceof User) {
+            return new InboxCapabilities;
+        }
+
+        return new InboxCapabilities(
+            canTriggerSync: $authorization->allows($actor, TenantPermission::FiscalSyncTrigger),
+            canManageClients: $authorization->allows($actor, TenantPermission::ClientsManage),
+        );
     }
 }

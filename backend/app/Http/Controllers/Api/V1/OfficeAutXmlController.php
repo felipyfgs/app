@@ -4,13 +4,16 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\CaptureChannel;
 use App\Enums\OfficeAutXmlEnrollmentStatus;
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\OfficeAutXmlEnrollment;
 use App\Models\OfficeDistributionCursor;
 use App\Models\OfficeDistributionRun;
+use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Certificates\OfficeFiscalIdentityService;
 use App\Services\Sefaz\AutXmlCircuitBreaker;
 use App\Support\CurrentOffice;
@@ -23,6 +26,8 @@ use Illuminate\Http\Request;
  */
 class OfficeAutXmlController extends Controller
 {
+    public function __construct(private readonly TenantAuthorization $authorization) {}
+
     public function overview(
         Request $request,
         CurrentOffice $office,
@@ -365,16 +370,18 @@ class OfficeAutXmlController extends Controller
 
     private function authorizeView(CurrentOffice $office): void
     {
-        if ($office->role() === null) {
+        $actor = request()->user();
+        if (! $actor instanceof User
+            || ! $this->authorization->allows($actor, TenantPermission::FiscalMonitoringView)) {
             abort(403);
         }
     }
 
     private function authorizeManage(CurrentOffice $office): void
     {
-        $role = $office->role();
-        // Spec: OPERATOR e ADMIN no checklist de onboarding
-        if ($role === null || ! $role->canManageClients()) {
+        $actor = request()->user();
+        if (! $actor instanceof User
+            || ! $this->authorization->allows($actor, TenantPermission::ClientsManage)) {
             abort(403, 'Ação não autorizada para o perfil atual.');
         }
     }

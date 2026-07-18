@@ -68,7 +68,6 @@ final class SitfisSnapshotService
                 $verifiedQuery->whereIn('source_provenance', [
                     FiscalSourceProvenance::SerproReal->value,
                     FiscalSourceProvenance::SerproTrial->value,
-                    FiscalSourceProvenance::Simulated->value,
                 ]);
             }
         }

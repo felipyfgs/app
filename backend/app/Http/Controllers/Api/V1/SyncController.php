@@ -3,15 +3,17 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\SyncCursorStatus;
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
 use App\Models\Establishment;
 use App\Models\SyncCursor;
 use App\Models\SyncRun;
+use App\Models\User;
 use App\Services\Adn\SyncDispatchService;
 use App\Services\Audit\AuditLogger;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Clients\CaptureEligibilityService;
 use App\Services\Sefaz\ChannelSyncCursorService;
-use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -38,22 +40,23 @@ class SyncController extends Controller
 
     public function trigger(
         Request $request,
-        CurrentOffice $currentOffice,
+        TenantAuthorization $authorization,
         SyncDispatchService $dispatcher,
         ChannelSyncCursorService $channelCursors,
         AuditLogger $audit,
         CaptureEligibilityService $eligibility,
     ): JsonResponse {
-        $role = $currentOffice->role();
-        if ($role === null || ! $role->canTriggerSync()) {
-            abort(403);
-        }
-
         $data = $request->validate([
             'establishment_id' => ['required', 'integer'],
         ]);
 
         $establishment = Establishment::query()->with('client')->findOrFail($data['establishment_id']);
+        $actor = $request->user();
+        if (! $actor instanceof User
+            || ! $authorization->allows($actor, TenantPermission::FiscalSyncTrigger, $establishment)) {
+            abort(403);
+        }
+
         $env = (string) config('adn.environment', 'restricted_production');
 
         $cursor = SyncCursor::query()->firstOrCreate(

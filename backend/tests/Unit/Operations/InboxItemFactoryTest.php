@@ -2,8 +2,8 @@
 
 namespace Tests\Unit\Operations;
 
-use App\Enums\OfficeRole;
 use App\Services\Clients\CaptureEligibilityService;
+use App\Services\Operations\Inbox\InboxCapabilities;
 use App\Services\Operations\Inbox\InboxItemFactory;
 use Tests\TestCase;
 
@@ -36,7 +36,7 @@ class InboxItemFactoryTest extends TestCase
             10,
             20,
             '2026-07-14T12:00:00+00:00',
-            OfficeRole::Operator,
+            new InboxCapabilities(canTriggerSync: true),
             null,
             null,
         );
@@ -48,7 +48,7 @@ class InboxItemFactoryTest extends TestCase
             10,
             20,
             '2026-07-15T12:00:00+00:00',
-            OfficeRole::Admin,
+            new InboxCapabilities(canTriggerSync: true, canManageClients: true),
             null,
             null,
         );

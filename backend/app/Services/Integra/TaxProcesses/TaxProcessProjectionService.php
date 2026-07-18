@@ -105,6 +105,16 @@ final class TaxProcessProjectionService
                 ];
             }
 
+            if ($response->hasSimulatedSource()) {
+                return [
+                    'success' => false,
+                    'count' => 0,
+                    'simulated' => false,
+                    'error_code' => 'SIMULATED_SOURCE_REJECTED',
+                    'error_message' => 'Resposta sintética não pode gerar projeção de processos.',
+                ];
+            }
+
             try {
                 $rows = $this->codec->decode($response->dados);
             } catch (RuntimeException $exception) {
@@ -135,10 +145,8 @@ final class TaxProcessProjectionService
                         'operation_key' => self::OPERATION_KEY,
                         'source_provenance' => $response->sourceProvenance === FiscalSourceProvenance::SerproTrial->value
                             ? FiscalSourceProvenance::SerproTrial->value
-                            : ($response->simulated
-                                ? FiscalSourceProvenance::Simulated->value
-                                : FiscalSourceProvenance::SerproReal->value),
-                        'is_simulated' => $response->simulated,
+                            : FiscalSourceProvenance::SerproReal->value,
+                        'is_simulated' => false,
                         'summary_sanitized' => [
                             'keys' => array_keys($row),
                             'has_number' => true,

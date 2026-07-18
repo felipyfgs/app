@@ -74,7 +74,7 @@ class SerproEligibilityProxyTest extends TestCase
         );
     }
 
-    public function test_simulated_sync_never_activates_and_full_sync_closes_missing(): void
+    public function test_simulated_sync_is_rejected_and_real_full_sync_closes_missing(): void
     {
         [$office, $client, $auth] = $this->seedOfficeClientAuth();
 
@@ -123,13 +123,14 @@ class SerproEligibilityProxyTest extends TestCase
         });
 
         $svc = app(TaxProxyPowerService::class);
-        $saved = $svc->syncFromApi($office, $client, $auth, SerproEnvironment::Trial);
+        try {
+            $svc->syncFromApi($office, $client, $auth, SerproEnvironment::Trial);
+            $this->fail('A resposta sintética deveria ser rejeitada antes de persistir poderes.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Resposta sintética não pode criar ou atualizar poderes.', $exception->getMessage());
+        }
 
-        $this->assertCount(1, $saved);
-        $this->assertSame(TaxProxyPowerStatus::Pending, $saved[0]->status);
-        $this->assertSame(TaxProxyPowerService::PROVENANCE_SIMULATED, $saved[0]->provenance);
-
-        // Full sync simulado NÃO fecha ausentes
+        $this->assertDatabaseMissing('tax_proxy_powers', ['power_code' => 'NEWPOWER']);
         $old = TaxProxyPower::query()->where('power_code', 'OLDPOWER')->first();
         $this->assertSame(TaxProxyPowerStatus::Active, $old->status);
 

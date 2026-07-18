@@ -5,7 +5,7 @@ namespace App\Services\Fiscal\SimplesMei\Pgdasd;
 use App\Enums\CommunicationChannel;
 use App\Enums\CommunicationDispatchStatus;
 use App\Enums\CommunicationExecutionMode;
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Models\Client;
 use App\Models\ClientCommunicationDispatch;
 use App\Models\ClientCommunicationPreference;
@@ -14,6 +14,7 @@ use App\Models\Office;
 use App\Models\PgdasdArtifact;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Fiscal\Dctfweb\DctfwebPeriod;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
@@ -36,6 +37,7 @@ final class PgdasdCommunicationService
 
     public function __construct(
         private readonly AuditLogger $audit,
+        private readonly TenantAuthorization $authorization,
         private readonly string $submoduleKey = self::SUBMODULE,
         private readonly string $auditPrefix = 'pgdasd.communication',
         private readonly string $moduleKey = self::MODULE,
@@ -152,11 +154,10 @@ final class PgdasdCommunicationService
         Office $office,
         Client $client,
         User $actor,
-        OfficeRole $role,
         array $input,
     ): ClientCommunicationPreference {
-        $this->assertCanWrite($role);
         $this->assertClient($office, $client);
+        $this->assertCanWrite($actor, $client);
 
         $expectedVersion = (int) $input['lock_version'];
         $automatic = (bool) $input['automatic_requested'];
@@ -262,11 +263,10 @@ final class PgdasdCommunicationService
     public function batchSetAutomatic(
         Office $office,
         User $actor,
-        OfficeRole $role,
         array $clientIds,
         bool $automaticRequested,
     ): array {
-        $this->assertCanWrite($role);
+        $this->assertCanWrite($actor);
 
         $clientIds = array_values(array_unique(array_map('intval', $clientIds)));
         if ($clientIds === [] || count($clientIds) > self::BATCH_LIMIT) {
@@ -712,9 +712,9 @@ final class PgdasdCommunicationService
             ?? CommunicationDispatchStatus::NoHistory;
     }
 
-    private function assertCanWrite(OfficeRole $role): void
+    private function assertCanWrite(User $actor, ?Client $client = null): void
     {
-        if (! $role->canManageClients()) {
+        if (! $this->authorization->allows($actor, TenantPermission::ClientsManage, $client)) {
             throw new HttpException(403, 'Perfil sem permissão para alterar comunicação.');
         }
     }

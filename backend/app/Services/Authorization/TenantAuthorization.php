@@ -102,6 +102,10 @@ final class TenantAuthorization
             return false;
         }
 
+        if (! $office->lifecycle_status?->isOperational()) {
+            return false;
+        }
+
         if ($target !== null && ! $this->belongsToCurrentOffice($target, (int) $office->id)) {
             return false;
         }

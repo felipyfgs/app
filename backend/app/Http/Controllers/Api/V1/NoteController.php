@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Contracts\SecureObjectStore;
 use App\Enums\DocumentArtifactQuality;
 use App\Enums\NfeManifestationType;
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
 use App\Models\CteDocument;
 use App\Models\DfeDocument;
@@ -12,7 +13,9 @@ use App\Models\DocumentAcquisition;
 use App\Models\NfeDocument;
 use App\Models\NfseEvent;
 use App\Models\NfseNote;
+use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Documents\DocumentCatalogService;
 use App\Services\Sefaz\NfeManifestationService;
 use App\Services\Sefaz\NfeXmlUnlockService;
@@ -180,12 +183,15 @@ class NoteController extends Controller
      */
     public function unlockXml(
         string $accessKey,
+        Request $request,
         CurrentOffice $currentOffice,
+        TenantAuthorization $authorization,
         NfeXmlUnlockService $unlock,
         AuditLogger $audit,
     ): JsonResponse {
-        $role = $currentOffice->role();
-        if ($role === null || ! $role->canManifestNfe()) {
+        $actor = $request->user();
+        if (! $actor instanceof User
+            || ! $authorization->allows($actor, TenantPermission::FiscalNfeManifest)) {
             return response()->json(['message' => 'Ação não autorizada para o perfil atual.'], 403);
         }
 
@@ -220,11 +226,13 @@ class NoteController extends Controller
         string $accessKey,
         Request $request,
         CurrentOffice $currentOffice,
+        TenantAuthorization $authorization,
         NfeManifestationService $manifestation,
         AuditLogger $audit,
     ): JsonResponse {
-        $role = $currentOffice->role();
-        if ($role === null || ! $role->canManifestNfe()) {
+        $actor = $request->user();
+        if (! $actor instanceof User
+            || ! $authorization->allows($actor, TenantPermission::FiscalNfeManifest)) {
             return response()->json(['message' => 'Ação não autorizada para o perfil atual.'], 403);
         }
 

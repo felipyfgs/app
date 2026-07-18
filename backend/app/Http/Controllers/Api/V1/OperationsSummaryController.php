@@ -17,7 +17,7 @@ class OperationsSummaryController extends Controller
         abort_if($officeId === null, 403);
 
         return response()->json([
-            'data' => $summary->build($officeId, $currentOffice->role()),
+            'data' => $summary->build($officeId),
         ]);
     }
 }

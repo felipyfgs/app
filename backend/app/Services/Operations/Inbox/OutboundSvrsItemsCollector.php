@@ -3,7 +3,6 @@
 namespace App\Services\Operations\Inbox;
 
 use App\Enums\DocumentAcquisitionSource;
-use App\Enums\OfficeRole;
 use App\Enums\OutboundNumberStatus;
 use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\OutboundRetrievalStatus;
@@ -29,7 +28,7 @@ final class OutboundSvrsItemsCollector
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    public function collect(int $officeId, ?OfficeRole $role): Collection
+    public function collect(int $officeId, InboxCapabilities $role): Collection
     {
         return $this->outboundMaItems($officeId, $role)
             ->merge($this->svrsNfceItems($officeId, $role))
@@ -41,7 +40,7 @@ final class OutboundSvrsItemsCollector
      *
      * @return Collection<int, array<string, mixed>>
      */
-    private function outboundMaItems(int $officeId, ?OfficeRole $role): Collection
+    private function outboundMaItems(int $officeId, InboxCapabilities $role): Collection
     {
         $items = collect();
 
@@ -251,7 +250,7 @@ final class OutboundSvrsItemsCollector
      *
      * @return Collection<int, array<string, mixed>>
      */
-    private function svrsNfceItems(int $officeId, ?OfficeRole $role): Collection
+    private function svrsNfceItems(int $officeId, InboxCapabilities $role): Collection
     {
         $items = collect();
 

@@ -3,7 +3,6 @@
 namespace App\Services\Operations\Inbox;
 
 use App\Enums\CaptureChannel;
-use App\Enums\OfficeRole;
 use App\Enums\SyncCursorStatus;
 use App\Models\ChannelSyncCursor;
 use App\Models\SyncCursor;
@@ -22,20 +21,20 @@ final class CursorSyncItemsCollector
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    public function collect(int $officeId, ?OfficeRole $role): Collection
+    public function collect(int $officeId, InboxCapabilities $capabilities): Collection
     {
         // collect() base: Eloquent\Collection::merge() tenta getKey() em arrays de item.
         return collect()
-            ->merge($this->cursorItems($officeId, $role))
-            ->merge($this->channelCursorItems($officeId, $role))
-            ->merge($this->syncFailedItems($officeId, $role))
+            ->merge($this->cursorItems($officeId, $capabilities))
+            ->merge($this->channelCursorItems($officeId, $capabilities))
+            ->merge($this->syncFailedItems($officeId, $capabilities))
             ->values();
     }
 
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    private function cursorItems(int $officeId, ?OfficeRole $role): Collection
+    private function cursorItems(int $officeId, InboxCapabilities $capabilities): Collection
     {
         $cursors = SyncCursor::query()
             ->where('office_id', $officeId)
@@ -44,7 +43,7 @@ final class CursorSyncItemsCollector
             ->orderBy('id')
             ->get();
 
-        return collect($cursors->map(function (SyncCursor $cursor) use ($role) {
+        return collect($cursors->map(function (SyncCursor $cursor) use ($capabilities) {
             $establishment = $cursor->establishment;
             $client = $establishment?->client;
             if ($establishment === null || $client === null) {
@@ -84,7 +83,7 @@ final class CursorSyncItemsCollector
                 clientId: $client->id,
                 establishmentId: $establishment->id,
                 occurredAt: $cursor->updated_at?->toIso8601String() ?? now()->toIso8601String(),
-                role: $role,
+                role: $capabilities,
                 establishment: $establishment,
                 cursor: $cursor,
             );
@@ -96,7 +95,7 @@ final class CursorSyncItemsCollector
      *
      * @return Collection<int, array<string, mixed>>
      */
-    private function channelCursorItems(int $officeId, ?OfficeRole $role): Collection
+    private function channelCursorItems(int $officeId, InboxCapabilities $capabilities): Collection
     {
         $cursors = ChannelSyncCursor::query()
             ->where('office_id', $officeId)
@@ -105,7 +104,7 @@ final class CursorSyncItemsCollector
             ->orderBy('id')
             ->get();
 
-        return collect($cursors->map(function (ChannelSyncCursor $cursor) use ($role) {
+        return collect($cursors->map(function (ChannelSyncCursor $cursor) use ($capabilities) {
             $establishment = $cursor->establishment;
             $client = $establishment?->client;
             if ($establishment === null || $client === null) {
@@ -151,7 +150,7 @@ final class CursorSyncItemsCollector
                 clientId: $client->id,
                 establishmentId: $establishment->id,
                 occurredAt: $cursor->updated_at?->toIso8601String() ?? now()->toIso8601String(),
-                role: $role,
+                role: $capabilities,
                 establishment: $establishment,
                 cursor: null,
             );
@@ -165,7 +164,7 @@ final class CursorSyncItemsCollector
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    private function syncFailedItems(int $officeId, ?OfficeRole $role): Collection
+    private function syncFailedItems(int $officeId, InboxCapabilities $capabilities): Collection
     {
         $since = now()->subDay();
 
@@ -207,7 +206,7 @@ final class CursorSyncItemsCollector
                 occurredAt: $run->finished_at?->toIso8601String()
                     ?? $run->created_at?->toIso8601String()
                     ?? now()->toIso8601String(),
-                role: $role,
+                role: $capabilities,
                 establishment: $establishment,
                 cursor: $cursor,
             ));

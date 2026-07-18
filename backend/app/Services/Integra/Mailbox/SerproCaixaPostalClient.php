@@ -53,6 +53,9 @@ final class SerproCaixaPostalClient implements CaixaPostalClient
             correlationId: isset($context['correlation_id']) ? (string) $context['correlation_id'] : null,
             module: 'mailbox',
         );
+        if ($response->hasSimulatedSource()) {
+            $response = $response->rejectSimulatedSource();
+        }
 
         if (! $response->success) {
             return new CaixaPostalListResult(
@@ -100,6 +103,9 @@ final class SerproCaixaPostalClient implements CaixaPostalClient
             correlationId: isset($context['correlation_id']) ? (string) $context['correlation_id'] : null,
             module: 'mailbox',
         );
+        if ($response->hasSimulatedSource()) {
+            $response = $response->rejectSimulatedSource();
+        }
 
         if (! $response->success) {
             return new CaixaPostalDetailResult(

@@ -45,7 +45,6 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         private readonly SerproContractService $contracts,
         private readonly OfficeSerproAuthorizationService $authorizations,
         private readonly RegimeApplicabilityService $regimeApplicability,
-        private readonly DasGuideHookService $dasGuideHook,
         private readonly ContributorCnpjResolver $contributors,
         private readonly PgdasdConsDeclaracao13Codec $pgdasdCodec13,
         private readonly PgdasdDocumentCodecs $pgdasdDocumentCodecs,
@@ -245,8 +244,6 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
             $response->sourceProvenance === FiscalSourceProvenance::SerproReal->value
                 && ! $response->simulated => FiscalSourceProvenance::SerproReal,
             $response->sourceProvenance === FiscalSourceProvenance::SerproTrial->value => FiscalSourceProvenance::SerproTrial,
-            $response->simulated
-                || $response->sourceProvenance === FiscalSourceProvenance::Simulated->value => FiscalSourceProvenance::Simulated,
             default => FiscalSourceProvenance::Unverified,
         };
         $request->run->forceFill(['source_provenance' => $sourceProvenance])->save();
@@ -339,10 +336,6 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
                         $request->run->id,
                     );
                 }
-            }
-
-            if (strtoupper($def->operationCode) === 'GERAR_DAS') {
-                $this->dasGuideHook->persistFromAdapterResult($request, $def, $result);
             }
 
             if (in_array(strtoupper($def->serviceCode), ['PGDASD', 'DEFIS', 'PGMEI', 'DASN_SIMEI'], true)

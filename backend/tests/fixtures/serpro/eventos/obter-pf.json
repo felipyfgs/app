@@ -1,0 +1,5 @@
+{
+  "person_type": "PF",
+  "contribuinte": { "numero": "", "tipo": 3 },
+  "dados": { "protocolo": "<protocolo-sanitizado>", "evento": "E0301" }
+}

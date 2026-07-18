@@ -30,10 +30,12 @@ use App\Http\Controllers\Api\V1\Fiscal\FiscalSnapshotController;
 use App\Http\Controllers\Api\V1\Fiscal\MailboxMessageController;
 use App\Http\Controllers\Api\V1\Fiscal\ManualConsultController;
 use App\Http\Controllers\Api\V1\Fiscal\MitController;
+use App\Http\Controllers\Api\V1\Fiscal\PagtowebArrecadacaoReceiptController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebPaymentCountController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebPaymentListController;
 use App\Http\Controllers\Api\V1\Fiscal\PgdasdMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\PgmeiMonitoringController;
+use App\Http\Controllers\Api\V1\Fiscal\PnrRenunciationController;
 use App\Http\Controllers\Api\V1\Fiscal\RegistrationLinkController;
 use App\Http\Controllers\Api\V1\Fiscal\SicalcRevenueSupportController;
 use App\Http\Controllers\Api\V1\Fiscal\SimplesMeiController;
@@ -320,6 +322,15 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/fiscal/clients/{clientId}/registrations/refresh', [RegistrationLinkController::class, 'refresh'])
                 ->middleware('throttle:20,1');
 
+            // PNR Contador — leituras de renúncia explicitamente acionadas pelo usuário.
+            Route::get('/fiscal/clients/{clientId}/pnr-renunciations', [PnrRenunciationController::class, 'index']);
+            Route::post('/fiscal/clients/{clientId}/pnr-renunciations/history', [PnrRenunciationController::class, 'history'])
+                ->middleware('throttle:10,1');
+            Route::post('/fiscal/clients/{clientId}/pnr-renunciations/status', [PnrRenunciationController::class, 'status'])
+                ->middleware('throttle:10,1');
+            Route::post('/fiscal/clients/{clientId}/pnr-renunciations/receipt', [PnrRenunciationController::class, 'receipt'])
+                ->middleware('throttle:10,1');
+
             // Processos fiscais (e-Processo)
             Route::get('/fiscal/tax-processes', [TaxProcessController::class, 'index']);
             Route::get('/fiscal/clients/{clientId}/tax-processes', [TaxProcessController::class, 'showForClient']);
@@ -367,13 +378,15 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/fiscal/guides/payment-count/clients/{client}/consult', [PagtowebPaymentCountController::class, 'consult']);
             Route::get('/fiscal/guides/payments/clients/{client}/history', [PagtowebPaymentListController::class, 'history']);
             Route::post('/fiscal/guides/payments/clients/{client}/consult', [PagtowebPaymentListController::class, 'consult']);
+            Route::get('/fiscal/guides/receipts/clients/{client}/history', [PagtowebArrecadacaoReceiptController::class, 'history']);
+            Route::post('/fiscal/guides/receipts/clients/{client}/request', [PagtowebArrecadacaoReceiptController::class, 'request'])->middleware('throttle:10,1');
+            Route::get('/fiscal/guides/receipts/clients/{client}/{receipt}/download', [PagtowebArrecadacaoReceiptController::class, 'download']);
 
             // Simples Nacional / MEI (tenant-scoped; mutações bloqueadas no piloto)
             Route::get('/fiscal/simples-mei/catalog', [SimplesMeiController::class, 'catalog']);
             Route::get('/fiscal/simples-mei/clients/{client}/regimes', [SimplesMeiController::class, 'regimes']);
             Route::get('/fiscal/simples-mei/clients/{client}/competences', [SimplesMeiController::class, 'competences']);
             Route::get('/fiscal/simples-mei/clients/{client}/snapshots', [SimplesMeiController::class, 'snapshots']);
-            Route::get('/fiscal/simples-mei/clients/{client}/guide-stubs', [SimplesMeiController::class, 'guideStubs']);
             Route::get('/fiscal/simples-mei/clients/{client}/regime-calendar', [SimplesMeiController::class, 'regimeCalendar']);
             Route::get('/fiscal/simples-mei/clients/{client}/regime-options', [SimplesMeiController::class, 'regimeOptions']);
             Route::get('/fiscal/simples-mei/clients/{client}/regime-resolutions', [SimplesMeiController::class, 'regimeResolutions']);
@@ -405,6 +418,9 @@ Route::prefix('v1')->group(function (): void {
             // CCMEI — consulta explícita e histórico sanitizado, ambos tenant-scoped.
             Route::get('/fiscal/simples-mei/ccmei/clients/{client}/history', [CcmeiMonitoringController::class, 'history']);
             Route::post('/fiscal/simples-mei/ccmei/clients/{client}/consult', [CcmeiMonitoringController::class, 'consult']);
+            Route::get('/fiscal/simples-mei/ccmei/clients/{client}/issued-certificates', [CcmeiMonitoringController::class, 'issuedCertificates']);
+            Route::post('/fiscal/simples-mei/ccmei/clients/{client}/issued-certificates', [CcmeiMonitoringController::class, 'issueCertificate'])->middleware('throttle:10,1');
+            Route::get('/fiscal/simples-mei/ccmei/clients/{client}/issued-certificates/{certificate}/download', [CcmeiMonitoringController::class, 'downloadIssuedCertificate']);
             Route::get('/fiscal/simples-mei/ccmei/registration-status/clients/{client}/history', [CcmeiMonitoringController::class, 'registrationStatusHistory']);
             Route::post('/fiscal/simples-mei/ccmei/registration-status/clients/{client}/consult', [CcmeiMonitoringController::class, 'consultRegistrationStatus']);
 

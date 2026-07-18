@@ -2,9 +2,6 @@
 
 namespace Tests\Feature\Serpro;
 
-use App\Contracts\IntegraContadorClient;
-use App\DTO\Serpro\IntegraRequest;
-use App\DTO\Serpro\IntegraResponse;
 use App\Enums\OfficeRole;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproContractStatus;
@@ -24,14 +21,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Prova que o probe e2e aciona o executor shipped (não reimplementa HTTP).
- * Usa client programável in-process; o runner real do piloto usa SERPRO live.
+ * O PHPUnit nunca pode forjar uma evidência de canário real.
  */
 class SerproE2eProbeServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_probe_sitfis_solicitar_grava_artifact_e_classifica_sucesso(): void
+    public function test_probe_trial_in_process_is_blocked_before_calling_the_executor(): void
     {
         config([
             'features.global_enabled' => true,
@@ -39,7 +35,6 @@ class SerproE2eProbeServiceTest extends TestCase
             'features.modules.sitfis.enabled' => true,
             'features.modules.sitfis.allow_all_offices' => true,
             'serpro.capabilities.sitfis' => 'real',
-            'serpro.trial.use_fake_clients' => true,
             'serpro.default_environment' => 'TRIAL',
             'serpro.kill_switch' => false,
         ]);
@@ -99,41 +94,40 @@ class SerproE2eProbeServiceTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->app->instance(IntegraContadorClient::class, new class implements IntegraContadorClient
-        {
-            public function execute(IntegraRequest $request): IntegraResponse
-            {
-                return new IntegraResponse(
-                    success: true,
-                    httpStatus: 200,
-                    body: [
-                        'status' => 200,
-                        'dados' => [
-                            'protocoloRelatorio' => 'PROT-E2E-1',
-                            'tempoEspera' => 4000,
-                        ],
-                    ],
-                    simulated: false,
-                    correlationId: $request->correlationId,
-                    dados: [
-                        'protocoloRelatorio' => 'PROT-E2E-1',
-                        'tempoEspera' => 4000,
-                    ],
-                    operationKey: $request->operationKey,
-                    sourceProvenance: 'SERPRO_REAL',
-                );
-            }
-        });
-
         $dir = sys_get_temp_dir().'/serpro-e2e-probe-test-'.uniqid();
         $probe = app(SerproE2eProbeService::class);
         $result = $probe->probe($office, $client, 'sitfis.solicitar_protocolo', [], $dir);
 
         $this->assertTrue($result['evaluated']);
         $this->assertSame('sitfis.solicitar_protocolo', $result['operation_key']);
-        $this->assertSame('PASS_BUSINESS', $result['classification']);
-        $this->assertSame('PROT-E2E-1', $result['protocol_extracted']);
+        $this->assertSame('BLOCKED_EXTERNAL', $result['classification']);
+        $this->assertSame('ENVIRONMENT_NOT_PRODUCTION', $result['classification_reason']);
+        $this->assertNull($result['protocol_extracted']);
         $this->assertFileExists($result['artifact_path']);
-        $this->assertFalse($result['simulated']);
+        $this->assertNull($result['simulated']);
+    }
+
+    public function test_eventos_probe_is_blocked_before_payload_reaches_transport(): void
+    {
+        $office = Office::factory()->create();
+        $client = Client::factory()->forOffice($office)->create();
+        Establishment::factory()->create([
+            'office_id' => $office->id,
+            'client_id' => $client->id,
+            'cnpj' => '11222333000181',
+            'is_matrix' => true,
+            'is_active' => true,
+        ]);
+
+        $result = app(SerproE2eProbeService::class)->probe(
+            $office,
+            $client,
+            'eventosatualizacao.soliceventospj',
+        );
+
+        $this->assertSame('BLOCKED_EXTERNAL', $result['classification']);
+        $this->assertSame('EVENTOS_CONTRACT_UNRECONCILED', $result['classification_reason']);
+        $this->assertNull($result['http_status']);
+        $this->assertNull($result['simulated']);
     }
 }

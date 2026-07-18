@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
+use App\Casts\FiscalSourceProvenanceCast;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutability;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
-use App\Enums\FiscalSourceProvenance;
 use App\Enums\FiscalTrigger;
 use App\Enums\FiscalVerificationState;
 use App\Models\Concerns\BelongsToOffice;
@@ -67,7 +67,7 @@ class FiscalMonitoringRun extends Model
             'situation' => FiscalSituation::class,
             'coverage' => FiscalCoverage::class,
             'mutability' => FiscalMutability::class,
-            'source_provenance' => FiscalSourceProvenance::class,
+            'source_provenance' => FiscalSourceProvenanceCast::class,
             'verification_state' => FiscalVerificationState::class,
             'attempt' => 'integer',
             'progress' => 'array',

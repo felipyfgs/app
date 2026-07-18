@@ -14,6 +14,7 @@ use App\Services\Audit\AuditLogger;
 use App\Services\Clients\CaptureEligibilityService;
 use App\Services\Clients\ClientRootConflictException;
 use App\Services\Clients\CreateClientWithEstablishment;
+use App\Services\Integra\ClientProcuracaoValidityResolver;
 use App\Support\CurrentOffice;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
@@ -25,7 +26,7 @@ use InvalidArgumentException;
 
 class ClientController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, ClientProcuracaoValidityResolver $procuracoes): JsonResponse
     {
         $this->authorize('viewAny', Client::class);
 
@@ -139,13 +140,20 @@ class ClientController extends Controller
             'created_at' => 'created_at',
             default => 'legal_name',
         };
-        $direction = $request->string('direction')->lower()->toString() === 'desc' ? 'desc' : 'asc';
+        // LFU-07: aceita `sort_direction` ou `direction`.
+        $directionRaw = $request->query('sort_direction', $request->query('direction', 'asc'));
+        $direction = is_string($directionRaw) && strtolower($directionRaw) === 'desc' ? 'desc' : 'asc';
 
         $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
         $paginator = (clone $base)
             ->withCount('establishments')
             ->with([
                 'credential',
+                'procuracaoSync',
+                'procuracaoSnapshots' => fn ($q) => $q->where(
+                    'environment',
+                    (string) config('serpro.default_environment', 'TRIAL'),
+                ),
                 // Estabelecimentos + cursores para resumo de captura/sync sem N+1.
                 'establishments' => fn ($q) => $q->orderBy('id')->with('syncCursors'),
             ])
@@ -153,8 +161,8 @@ class ClientController extends Controller
             ->orderBy('id')
             ->paginate($perPage);
 
-        $items = collect($paginator->items())->map(function (Client $client) {
-            $payload = $this->serializeClient($client);
+        $items = collect($paginator->items())->map(function (Client $client) use ($procuracoes) {
+            $payload = $this->serializeClient($client, $procuracoes);
             $primary = $client->establishments->first();
             $payload['cnpj'] = $primary?->cnpj;
             $payload['trade_name'] = $primary?->trade_name;
@@ -300,12 +308,20 @@ class ClientController extends Controller
         ], 201);
     }
 
-    public function show(Client $client, CaptureEligibilityService $eligibility): JsonResponse
-    {
+    public function show(
+        Client $client,
+        CaptureEligibilityService $eligibility,
+        ClientProcuracaoValidityResolver $procuracoes,
+    ): JsonResponse {
         $this->authorize('view', $client);
 
         $client->load([
             'credential',
+            'procuracaoSync',
+            'procuracaoSnapshots' => fn ($q) => $q->where(
+                'environment',
+                (string) config('serpro.default_environment', 'TRIAL'),
+            ),
             'establishments' => fn ($q) => $q->orderBy('cnpj'),
             'contacts' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('name'),
             'customFields' => fn ($q) => $q->orderBy('id'),
@@ -322,7 +338,7 @@ class ClientController extends Controller
             return $payload;
         });
 
-        $data = $this->serializeClient($client);
+        $data = $this->serializeClient($client, $procuracoes);
         $primary = $client->establishments->firstWhere('is_matrix', true)
             ?? $client->establishments->first();
         $data['cnpj'] = $primary?->cnpj;
@@ -389,9 +405,11 @@ class ClientController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function serializeClient(Client $client): array
-    {
-        return [
+    private function serializeClient(
+        Client $client,
+        ?ClientProcuracaoValidityResolver $procuracoes = null,
+    ): array {
+        $payload = [
             'id' => $client->id,
             'office_id' => $client->office_id,
             'legal_name' => $client->legal_name,
@@ -413,6 +431,18 @@ class ClientController extends Controller
             'created_at' => $client->created_at?->toIso8601String(),
             'updated_at' => $client->updated_at?->toIso8601String(),
         ];
+
+        if ($procuracoes !== null) {
+            $projection = $procuracoes->resolve(
+                $client->relationLoaded('procuracaoSync') ? $client->procuracaoSync : null,
+                $client->relationLoaded('procuracaoSnapshots') ? $client->procuracaoSnapshots->first() : null,
+            );
+            $payload['procuracao_status'] = $projection['status'];
+            $payload['procuracao_valid_to'] = $projection['valid_to'];
+            $payload['procuracao_checked_at'] = $projection['checked_at'];
+        }
+
+        return $payload;
     }
 
     /**

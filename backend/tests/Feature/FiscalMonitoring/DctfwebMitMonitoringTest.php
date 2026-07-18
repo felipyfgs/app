@@ -709,7 +709,7 @@ class DctfwebMitMonitoringTest extends TestCase
             DctfwebCodes::SYSTEM_MIT,
             DctfwebCodes::SERVICE_MIT,
             DctfwebCodes::OP_MIT_LISTAR_APURACOES,
-            new IntegraResponse(success: true, httpStatus: 200, body: $fixture, simulated: true),
+            new IntegraResponse(success: true, httpStatus: 200, body: $fixture, simulated: false, sourceProvenance: 'SERPRO_TRIAL'),
         );
 
         $done = app(FiscalMonitoringRunService::class)->execute($run->id);
@@ -773,7 +773,7 @@ class DctfwebMitMonitoringTest extends TestCase
                     'eventoEspecial' => false,
                     'valorTotalApurado' => 0,
                 ]],
-            ], simulated: true),
+            ], simulated: false, sourceProvenance: 'SERPRO_TRIAL'),
         );
 
         $run = app(FiscalMonitoringRunService::class)->enqueueManual(

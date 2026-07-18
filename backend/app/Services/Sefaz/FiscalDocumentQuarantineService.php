@@ -2,11 +2,12 @@
 
 namespace App\Services\Sefaz;
 
-use App\Enums\OfficeRole;
 use App\Enums\QuarantineReason;
 use App\Enums\QuarantineResolutionStatus;
+use App\Enums\TenantPermission;
 use App\Models\FiscalDocumentQuarantine;
 use App\Models\User;
+use App\Services\Authorization\TenantAuthorization;
 use App\Support\CurrentOffice;
 use RuntimeException;
 
@@ -15,6 +16,8 @@ use RuntimeException;
  */
 final class FiscalDocumentQuarantineService
 {
+    public function __construct(private readonly TenantAuthorization $authorization) {}
+
     /**
      * @return list<FiscalDocumentQuarantine>
      */
@@ -36,7 +39,6 @@ final class FiscalDocumentQuarantineService
     public function resolve(
         FiscalDocumentQuarantine $item,
         User $actor,
-        OfficeRole $role,
         string $resolutionStatus,
         ?string $code = null,
         ?string $notes = null,
@@ -65,8 +67,7 @@ final class FiscalDocumentQuarantineService
             );
         }
 
-        // Mutações de resolução: OPERATOR+ ; 2FA de ADMIN já é middleware de grupo.
-        if (! $role->canManageClients()) {
+        if (! $this->authorization->allows($actor, TenantPermission::ClientsManage, $item)) {
             throw new RuntimeException('Perfil sem permissão para resolver quarentena.');
         }
 

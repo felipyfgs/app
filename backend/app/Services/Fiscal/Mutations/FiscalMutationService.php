@@ -388,6 +388,18 @@ final class FiscalMutationService
             return $operation;
         }
 
+        if ($response->hasSimulatedSource()) {
+            return $this->stateMachine->transition(
+                operation: $operation,
+                to: FiscalMutationStatus::UnknownResult,
+                event: 'reconcile_source_rejected',
+                context: ['reason' => 'SIMULATED_SOURCE_REJECTED'],
+                attributes: ['result_code' => 'SIMULATED_SOURCE_REJECTED', 'result_message' => 'Resposta sintética descartada.'],
+                actorUserId: $user->id,
+                result: 'UNKNOWN',
+            );
+        }
+
         $bodyStatus = strtoupper((string) ($response->body['status'] ?? ''));
         $attrs = [
             'reconcile_count' => $operation->reconcile_count + 1,
@@ -490,6 +502,18 @@ final class FiscalMutationService
                     'denial_code' => null,
                     'denial_message' => null,
                 ],
+                actorUserId: $user->id,
+                result: 'UNKNOWN',
+            );
+        }
+
+        if ($response->hasSimulatedSource()) {
+            return $this->stateMachine->transition(
+                operation: $operation,
+                to: FiscalMutationStatus::UnknownResult,
+                event: 'source_rejected',
+                context: ['reason' => 'SIMULATED_SOURCE_REJECTED'],
+                attributes: ['result_code' => 'SIMULATED_SOURCE_REJECTED', 'result_message' => 'Resposta sintética descartada.'],
                 actorUserId: $user->id,
                 result: 'UNKNOWN',
             );

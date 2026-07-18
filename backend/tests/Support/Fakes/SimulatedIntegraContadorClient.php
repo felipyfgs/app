@@ -5,7 +5,6 @@ namespace Tests\Support\Fakes;
 use App\Contracts\IntegraContadorClient;
 use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
-use App\Enums\FiscalSourceProvenance;
 use App\Services\Serpro\Catalog\OperationCoordinateResolver;
 use Illuminate\Support\Str;
 
@@ -74,7 +73,7 @@ final class SimulatedIntegraContadorClient implements IntegraContadorClient
             operationKey: $operationKey,
             requestTag: $tag,
             functionalRoute: $route,
-            sourceProvenance: FiscalSourceProvenance::Simulated->value,
+            sourceProvenance: 'SIMULATED',
         );
     }
 
@@ -99,7 +98,7 @@ final class SimulatedIntegraContadorClient implements IntegraContadorClient
             operationKey: $operationKey,
             requestTag: $tag,
             functionalRoute: $route,
-            sourceProvenance: FiscalSourceProvenance::Simulated->value,
+            sourceProvenance: 'SIMULATED',
         );
     }
 
@@ -122,7 +121,7 @@ final class SimulatedIntegraContadorClient implements IntegraContadorClient
             operationKey: $operationKey,
             requestTag: $tag,
             functionalRoute: $route,
-            sourceProvenance: FiscalSourceProvenance::Simulated->value,
+            sourceProvenance: 'SIMULATED',
         );
     }
 
@@ -144,7 +143,7 @@ final class SimulatedIntegraContadorClient implements IntegraContadorClient
             operationKey: $operationKey,
             requestTag: $tag,
             functionalRoute: $route,
-            sourceProvenance: FiscalSourceProvenance::Simulated->value,
+            sourceProvenance: 'SIMULATED',
         );
     }
 
@@ -165,7 +164,7 @@ final class SimulatedIntegraContadorClient implements IntegraContadorClient
             operationKey: $operationKey,
             requestTag: $tag,
             functionalRoute: $route,
-            sourceProvenance: FiscalSourceProvenance::Simulated->value,
+            sourceProvenance: 'SIMULATED',
         );
     }
 
@@ -186,7 +185,7 @@ final class SimulatedIntegraContadorClient implements IntegraContadorClient
             operationKey: $operationKey,
             requestTag: $tag,
             functionalRoute: $route,
-            sourceProvenance: FiscalSourceProvenance::Simulated->value,
+            sourceProvenance: 'SIMULATED',
         );
     }
 

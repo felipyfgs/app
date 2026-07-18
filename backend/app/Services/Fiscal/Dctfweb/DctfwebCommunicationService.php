@@ -2,12 +2,12 @@
 
 namespace App\Services\Fiscal\Dctfweb;
 
-use App\Enums\OfficeRole;
 use App\Models\Client;
 use App\Models\ClientCommunicationPreference;
 use App\Models\Office;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdCommunicationService;
 
 /**
@@ -24,10 +24,11 @@ final class DctfwebCommunicationService
 
     private readonly PgdasdCommunicationService $inner;
 
-    public function __construct(AuditLogger $audit)
+    public function __construct(AuditLogger $audit, TenantAuthorization $authorization)
     {
         $this->inner = new PgdasdCommunicationService(
             $audit,
+            $authorization,
             self::SUBMODULE,
             'dctfweb.communication',
             self::MODULE,
@@ -63,10 +64,9 @@ final class DctfwebCommunicationService
         Office $office,
         Client $client,
         User $actor,
-        OfficeRole $role,
         array $input,
     ): ClientCommunicationPreference {
-        return $this->inner->updatePreferences($office, $client, $actor, $role, $input);
+        return $this->inner->updatePreferences($office, $client, $actor, $input);
     }
 
     /**
@@ -76,11 +76,10 @@ final class DctfwebCommunicationService
     public function batchSetAutomatic(
         Office $office,
         User $actor,
-        OfficeRole $role,
         array $clientIds,
         bool $automaticRequested,
     ): array {
-        return $this->inner->batchSetAutomatic($office, $actor, $role, $clientIds, $automaticRequested);
+        return $this->inner->batchSetAutomatic($office, $actor, $clientIds, $automaticRequested);
     }
 
     /**

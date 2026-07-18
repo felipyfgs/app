@@ -93,7 +93,7 @@ final class PlatformOfficeSelectService
             ->where('is_active', true)
             ->first();
 
-        if ($office === null) {
+        if ($office === null || ! $office->lifecycle_status?->isSelectable()) {
             $this->auditDenied($user, $targetOfficeId, 'office_not_found_or_inactive');
 
             abort(404, 'Escritório não encontrado.');
@@ -219,6 +219,10 @@ final class PlatformOfficeSelectService
             ? $o->lifecycle_status->value
             : (string) ($o->getAttribute('lifecycle_status') ?? 'ACTIVE');
 
+        $lifecycleStatus = $o->lifecycle_status instanceof OfficeLifecycleStatus
+            ? $o->lifecycle_status
+            : OfficeLifecycleStatus::tryFrom($o->getAttribute('lifecycle_status') ?? 'ACTIVE');
+
         $status = match (true) {
             $lifecycle === 'PENDING_ACTIVATION' => 'pending_activation',
             $active => 'active',
@@ -232,8 +236,7 @@ final class PlatformOfficeSelectService
             'is_active' => $active,
             'status' => $status,
             'lifecycle_status' => $lifecycle,
-            // Pendentes não são selecionáveis como contexto tenant operacional
-            'selectable' => $active && $lifecycle !== 'PENDING_ACTIVATION',
+            'selectable' => $active && $lifecycleStatus instanceof OfficeLifecycleStatus && $lifecycleStatus->isSelectable(),
         ];
     }
 

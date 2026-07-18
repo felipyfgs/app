@@ -36,6 +36,16 @@ class SyncFgtsEsocialCompetenceJob implements ShouldQueue
 
     public function handle(FgtsEsocialMonitoringService $monitoring): void
     {
+        if (! $monitoring->isSourceAvailable()) {
+            Log::info('fgts_esocial.job_skipped_source_unavailable', [
+                'office_id' => $this->officeId,
+                'client_id' => $this->clientId,
+                'reason' => 'ESOCIAL_SOURCE_UNAVAILABLE',
+            ]);
+
+            return;
+        }
+
         if ((bool) config('fgts_esocial.kill_switch', false)) {
             Log::info('fgts_esocial.job_skipped_kill_switch', [
                 'office_id' => $this->officeId,

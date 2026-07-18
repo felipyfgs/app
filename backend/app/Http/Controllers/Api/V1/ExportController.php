@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\FiscalModuleKey;
 use App\Enums\FiscalSituation;
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
 use App\Jobs\BuildExportZipJob;
 use App\Models\Export;
+use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Authorization\TenantAuthorization;
 use App\Support\CurrentOffice;
 use App\Support\FeatureFlags;
 use Illuminate\Http\JsonResponse;
@@ -18,6 +21,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ExportController extends Controller
 {
+    public function __construct(private readonly TenantAuthorization $authorization) {}
+
     public function index(Request $request, CurrentOffice $currentOffice): JsonResponse
     {
         $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
@@ -51,7 +56,8 @@ class ExportController extends Controller
 
     public function store(Request $request, CurrentOffice $currentOffice, AuditLogger $audit): JsonResponse
     {
-        if (! $currentOffice->role()?->canExport()) {
+        $actor = $request->user();
+        if (! $actor instanceof User || ! $this->authorization->allows($actor, TenantPermission::ExportsCreate)) {
             abort(403);
         }
 

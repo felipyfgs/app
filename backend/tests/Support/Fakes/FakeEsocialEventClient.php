@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Esocial;
+namespace Tests\Support\Fakes;
 
 use App\Contracts\EsocialEventClient;
 use App\DTO\Esocial\EsocialEventDto;
@@ -10,8 +10,10 @@ use App\Enums\EsocialEventCode;
 use Carbon\CarbonImmutable;
 
 /**
- * Client controlável para trial/CI — sem HTTP, sem portal, sem scraping.
- * Cenários padrão e eventos enfileirados por teste via {@see seed()}.
+ * Double programável, exclusivo da suíte offline de eSocial.
+ *
+ * Não é carregado pelo autoload de produção e só pode ser resolvido após o
+ * registro explícito de EsocialTestDoubleServiceProvider pelo teste.
  */
 final class FakeEsocialEventClient implements EsocialEventClient
 {
@@ -34,7 +36,7 @@ final class FakeEsocialEventClient implements EsocialEventClient
 
         if ($this->sourceUnsupported) {
             return EsocialFetchResult::unsupported(
-                'Nenhuma API M2M eSocial configurada para este ambiente (fake).'
+                'Nenhuma API M2M eSocial configurada para este double offline.'
             );
         }
 

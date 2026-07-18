@@ -8,7 +8,6 @@ enum DctfwebConsultOutcome: string
     case Found = 'FOUND';
     case NotFound = 'NOT_FOUND';
     case Failed = 'FAILED';
-    case Simulated = 'SIMULATED';
     case InvalidDocument = 'INVALID_DOCUMENT';
     case Incomplete = 'INCOMPLETE';
 }

@@ -108,11 +108,14 @@ final class SicalcRevenueSupportAdapter implements FiscalSourceAdapter
             if ($summary['revenue_code'] !== $code) {
                 throw new InvalidArgumentException('Resposta SICALC não corresponde ao código solicitado.');
             }
+            if ($response->hasSimulatedSource()) {
+                return FiscalAdapterResult::blocked('Resposta sintética não pode gerar projeção SICALC.', 'SIMULATED_SOURCE_REJECTED');
+            }
             $provenance = $response->isProductiveEvidence()
                 ? FiscalSourceProvenance::SerproReal->value
                 : ($response->sourceProvenance === FiscalSourceProvenance::SerproTrial->value
                     ? FiscalSourceProvenance::SerproTrial->value
-                    : FiscalSourceProvenance::Simulated->value);
+                    : FiscalSourceProvenance::Unverified->value);
             $projected = $this->projector->project(
                 $request->office, $request->client, $summary, $request->run->id, $provenance,
             );

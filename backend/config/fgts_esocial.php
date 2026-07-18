@@ -8,6 +8,12 @@
  * Scraping / Gov.br / CAPTCHA / cookie NÃO são fallback.
  */
 return [
+    /**
+     * Não há provider M2M oficial habilitado. Este valor não é configurável por
+     * ambiente: qualquer integração futura precisa de change, contrato e bind próprios.
+     */
+    'runtime_client' => 'disabled',
+
     /** Kill switch exclusivo do módulo (além de features.modules.fgts). */
     'kill_switch' => filter_var(env('FGTS_ESOCIAL_KILL_SWITCH', false), FILTER_VALIDATE_BOOL),
 
@@ -20,7 +26,7 @@ return [
     'evidence' => [
         'content_type' => 'application/json',
         'source' => 'esocial',
-        'source_version' => env('FGTS_ESOCIAL_SOURCE_VERSION', 'fake-1'),
+        'source_version' => env('FGTS_ESOCIAL_SOURCE_VERSION', 'unverified-1'),
     ],
 
     /**

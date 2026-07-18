@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
 use App\Models\DocumentImportBatch;
 use App\Models\DocumentImportBatchItem;
+use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Import\DocumentImportBatchService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
@@ -17,14 +20,16 @@ use Throwable;
 
 class DocumentImportBatchController extends Controller
 {
+    public function __construct(private readonly TenantAuthorization $authorization) {}
+
     public function store(
         Request $request,
         CurrentOffice $currentOffice,
         DocumentImportBatchService $batches,
         AuditLogger $audit,
     ): JsonResponse {
-        $role = $currentOffice->role();
-        if ($role === null || ! $role->canImportDocuments()) {
+        $actor = $request->user();
+        if (! $actor instanceof User || ! $this->authorization->allows($actor, TenantPermission::DocumentsImport)) {
             return response()->json(['message' => 'Ação não autorizada para o perfil atual.'], 403);
         }
 
@@ -131,14 +136,15 @@ class DocumentImportBatchController extends Controller
     }
 
     public function retryItem(
+        Request $request,
         string $batch,
         int $item,
         CurrentOffice $currentOffice,
         DocumentImportBatchService $batches,
         AuditLogger $audit,
     ): JsonResponse {
-        $role = $currentOffice->role();
-        if ($role === null || ! $role->canImportDocuments()) {
+        $actor = $request->user();
+        if (! $actor instanceof User || ! $this->authorization->allows($actor, TenantPermission::DocumentsImport)) {
             return response()->json(['message' => 'Ação não autorizada para o perfil atual.'], 403);
         }
 

@@ -327,6 +327,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Renovação automática de evidência de procurações
+    |--------------------------------------------------------------------------
+    |
+    | Fail-closed: o scheduler só despacha consultas quando todas as travas
+    | operacionais forem configuradas de forma explícita. Não habilitar isso
+    | ativa TRIAL ou PRODUÇÃO por si só.
+    |
+    */
+    'procuracoes_scheduler' => [
+        'enabled' => env('SERPRO_PROCURACOES_SCHEDULER_ENABLED', false),
+        'environment' => env('SERPRO_PROCURACOES_SCHEDULER_ENVIRONMENT', 'TRIAL'),
+        'office_allowlist' => array_values(array_filter(array_map(
+            'intval',
+            explode(',', (string) env('SERPRO_PROCURACOES_SCHEDULER_OFFICE_ALLOWLIST', '')),
+        ))),
+        'max_age_hours' => max(1, (int) env('SERPRO_PROCURACOES_SCHEDULER_MAX_AGE_HOURS', 168)),
+        'batch_size' => max(1, min(100, (int) env('SERPRO_PROCURACOES_SCHEDULER_BATCH_SIZE', 20))),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Jobs assíncronos SERPRO/fiscal (retry, backoff, flags)
     |--------------------------------------------------------------------------
     */
@@ -340,6 +361,7 @@ return [
             'RefreshTaxProcessesJob' => 'tax_processes',
             'SignTermoWithManagedA1Job' => 'autentica_procurador',
             'PollEventosAtualizacaoJob' => 'authorization',
+            'SyncClientProcuracaoJob' => 'authorization',
         ],
     ],
 

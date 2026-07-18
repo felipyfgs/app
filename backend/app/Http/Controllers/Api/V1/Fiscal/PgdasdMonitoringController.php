@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1\Fiscal;
 
-use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\EnsureOfficeContext;
 use App\Models\Client;
 use App\Models\PgdasdArtifact;
+use App\Models\User;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdCommunicationService;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdMonitoringQueryService;
 use App\Services\FiscalMonitoring\FiscalEvidenceStore;
@@ -26,6 +28,7 @@ class PgdasdMonitoringController extends Controller
         private readonly PgdasdMonitoringQueryService $queries,
         private readonly PgdasdCommunicationService $communication,
         private readonly FiscalEvidenceStore $evidenceStore,
+        private readonly TenantAuthorization $authorization,
     ) {}
 
     public function history(Request $request, int $client): JsonResponse
@@ -60,7 +63,7 @@ class PgdasdMonitoringController extends Controller
 
     public function collectDocuments(Request $request, int $client): JsonResponse
     {
-        $this->assertCanWrite();
+        $this->assertCanSync();
         if ($rejection = $this->rejectClientOfficeId($request)) {
             return $rejection;
         }
@@ -74,6 +77,7 @@ class PgdasdMonitoringController extends Controller
         $data = $request->validate([
             'period_key' => ['required', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/'],
             'declaration_number' => ['sometimes', 'nullable', 'string', 'max:17'],
+            'confirmed' => ['required', 'accepted'],
         ]);
 
         $declarationNumber = trim((string) ($data['declaration_number'] ?? ''));
@@ -203,16 +207,11 @@ class PgdasdMonitoringController extends Controller
     public function updatePreferences(Request $request, int $client): JsonResponse
     {
         // Papel antes da validação — VIEWER deve receber 403, não 422 de campos.
-        $this->assertCanWrite();
+        $this->assertCanManageCommunications();
         if ($rejection = $this->rejectClientOfficeId($request)) {
             return $rejection;
         }
         $office = $this->currentOffice->office();
-        $role = $this->currentOffice->role();
-        if ($role === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
-
         $model = $this->findClient($office->id, $client);
         if ($model === null) {
             return response()->json([
@@ -238,7 +237,6 @@ class PgdasdMonitoringController extends Controller
                 $office,
                 $model,
                 $user,
-                $role,
                 $data,
             );
         } catch (ConflictHttpException $e) {
@@ -259,16 +257,11 @@ class PgdasdMonitoringController extends Controller
 
     public function batchPreferences(Request $request): JsonResponse
     {
-        $this->assertCanWrite();
+        $this->assertCanManageCommunications();
         if ($rejection = $this->rejectClientOfficeId($request)) {
             return $rejection;
         }
         $office = $this->currentOffice->office();
-        $role = $this->currentOffice->role();
-        if ($role === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
-
         $data = $request->validate([
             'client_ids' => ['required', 'array', 'min:1', 'max:100'],
             'client_ids.*' => ['integer', 'distinct'],
@@ -284,7 +277,6 @@ class PgdasdMonitoringController extends Controller
             $prefs = $this->communication->batchSetAutomatic(
                 $office,
                 $user,
-                $role,
                 $data['client_ids'],
                 (bool) $data['automatic_requested'],
             );
@@ -385,19 +377,24 @@ class PgdasdMonitoringController extends Controller
 
     private function assertCanRead(): void
     {
-        if ($this->currentOffice->role() === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
+        $this->assertPermission(TenantPermission::FiscalMonitoringView);
     }
 
-    private function assertCanWrite(): void
+    private function assertCanSync(): void
     {
-        $role = $this->currentOffice->role();
-        if ($role === null) {
-            abort(403, 'Perfil não resolvido.');
-        }
-        if (! in_array($role, [OfficeRole::Admin, OfficeRole::Operator], true)) {
-            abort(403, 'Sem permissão de sincronização.');
+        $this->assertPermission(TenantPermission::FiscalSyncTrigger, 'Sem permissão de sincronização.');
+    }
+
+    private function assertCanManageCommunications(): void
+    {
+        $this->assertPermission(TenantPermission::ClientsManage, 'Sem permissão para alterar comunicação.');
+    }
+
+    private function assertPermission(TenantPermission $permission, string $message = 'Perfil não resolvido.'): void
+    {
+        $actor = request()->user();
+        if (! $actor instanceof User || ! $this->authorization->allows($actor, $permission)) {
+            abort(403, $message);
         }
     }
 

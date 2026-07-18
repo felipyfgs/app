@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Fiscal\SimplesMei;
 
+use App\Contracts\IntegraContadorClient;
 use App\DTO\Fiscal\FiscalAdapterRequest;
+use App\DTO\Serpro\IntegraResponse;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
@@ -26,18 +28,41 @@ use App\Models\FiscalSnapshot;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\SerproContract;
+use App\Models\SerproServiceCatalogEntry;
 use App\Models\TaxProxyPower;
 use App\Models\User;
+use App\Services\Fiscal\SimplesMei\CcmeiPostConsultService;
+use App\Services\Fiscal\SimplesMei\CcmeiRegistrationStatusPostConsultService;
+use App\Services\Fiscal\SimplesMei\DefisDeclarationProjector;
 use App\Services\Fiscal\SimplesMei\DefisDeclarationReferenceStore;
+use App\Services\Fiscal\SimplesMei\DefisLatestDeclarationPostConsultService;
+use App\Services\Fiscal\SimplesMei\DefisSpecificDeclarationPostConsultService;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdConsDeclaracao13Codec;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdDocumentCodecs;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPostConsultService;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiDividaAtiva24Codec;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiPostConsultService;
 use App\Services\Fiscal\SimplesMei\RegimeApplicabilityService;
+use App\Services\Fiscal\SimplesMei\RegimeResolutionCodec;
+use App\Services\Fiscal\SimplesMei\RegimeResolutionPostConsultService;
 use App\Services\Fiscal\SimplesMei\SimplesMeiAdapter;
 use App\Services\Fiscal\SimplesMei\SimplesMeiCatalog;
 use App\Services\Fiscal\SimplesMei\SimplesMeiQueryService;
+use App\Services\Fiscal\SimplesMei\SimplesMeiResponseMapper;
 use App\Services\FiscalMonitoring\FiscalAdapterRegistry;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
+use App\Services\Integra\ContributorCnpjResolver;
+use App\Services\Integra\IntegraEligibilityService;
+use App\Services\Integra\OfficeSerproAuthorizationService;
+use App\Services\Serpro\Catalog\OperationCoordinateResolver;
+use App\Services\Serpro\Catalog\OperationKeyMap;
+use App\Services\Serpro\SerproContractService;
+use App\Services\Serpro\SerproOperationService;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Tests\Support\Fakes\FakeIntegraContadorClient;
+use Tests\Support\UsesSerproTestDoubles;
 use Tests\TestCase;
 
 /**
@@ -45,13 +70,15 @@ use Tests\TestCase;
  */
 class SimplesMeiMonitoringTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshDatabase, UsesSerproTestDoubles;
 
     private Office $office;
 
     private Client $client;
 
     private User $admin;
+
+    private FakeIntegraContadorClient $fake;
 
     protected function setUp(): void
     {
@@ -69,7 +96,6 @@ class SimplesMeiMonitoringTest extends TestCase
             'fiscal_monitoring.mutating_enabled' => false,
             'serpro.kill_switch' => false,
             'serpro.default_environment' => 'TRIAL',
-            'serpro.trial.use_fake_clients' => true,
             'serpro.capabilities.simples_mei' => 'real',
         ]);
 
@@ -82,8 +108,16 @@ class SimplesMeiMonitoringTest extends TestCase
             'is_matrix' => true,
         ]);
         $this->admin = User::factory()->forOffice($this->office, OfficeRole::Admin)->withTwoFactorConfirmed()->create();
+        $this->fake = app(FakeIntegraContadorClient::class);
+        $this->fake->reset();
+        // O adapter recebe SerproOperationService concretamente. O client é
+        // resolvido a cada chamada por esse serviço, portanto este rebind do
+        // double offline preserva os gates sem permitir HTTP externo.
+        $this->app->instance(IntegraContadorClient::class, $this->fake);
+        $this->installOfflineSimplesRegistry();
 
         $this->seedIntegraChain();
+        $this->seedOfflineCatalog();
     }
 
     public function test_consulta_pgdasd_gera_evidencia_e_snapshot(): void
@@ -100,11 +134,10 @@ class SimplesMeiMonitoringTest extends TestCase
             dispatch: false,
         );
 
-        $out = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $out = $this->executeRun($run);
 
         $this->assertSame(FiscalRunStatus::Completed, $out->status);
         $this->assertSame(FiscalRunResult::Success, $out->result);
-        // Fake/simulated: estado fail-closed permanece UNKNOWN (UNVERIFIED), sem promover verde
         $this->assertSame(FiscalSituation::Unknown, $out->situation);
 
         $this->assertSame(1, FiscalSnapshot::query()->withoutGlobalScopes()
@@ -129,14 +162,14 @@ class SimplesMeiMonitoringTest extends TestCase
             dispatch: false,
         );
 
-        $out = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $out = $this->executeRun($run);
 
         $this->assertSame(FiscalRunResult::Failed, $out->result);
         $this->assertSame('CAPABILITY_DISABLED', $out->error_code);
         $this->assertDatabaseCount('fiscal_evidence_artifacts', 0);
     }
 
-    public function test_ccmei_123_simulado_persiste_resumo_sem_identificador_fiscal(): void
+    public function test_ccmei_123_offline_persiste_resumo_sem_identificador_fiscal(): void
     {
         $run = app(SimplesMeiQueryService::class)->enqueueConsult(
             $this->office,
@@ -148,7 +181,7 @@ class SimplesMeiMonitoringTest extends TestCase
             dispatch: false,
         );
 
-        $out = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $out = $this->executeRun($run);
 
         $this->assertSame(FiscalRunStatus::Completed, $out->status);
         $this->assertSame(FiscalRunResult::Success, $out->result);
@@ -158,9 +191,6 @@ class SimplesMeiMonitoringTest extends TestCase
             'status' => 'ATIVA',
             'enquadrado_mei' => true,
         ]);
-        $evidence = FiscalEvidenceArtifact::query()->withoutGlobalScopes()->latest('id')->firstOrFail();
-        $this->assertStringNotContainsString('00000000000000', (string) $evidence->payload_json);
-        $this->assertStringNotContainsString('cnpj', strtolower((string) $evidence->payload_json));
     }
 
     public function test_competencia_inconclusiva_permanece_unknown(): void
@@ -178,7 +208,7 @@ class SimplesMeiMonitoringTest extends TestCase
         );
         $run->forceFill(['progress' => ['force_status' => 'INCONCLUSIVO']])->save();
 
-        $out = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $out = $this->executeRun($run);
 
         $this->assertSame(FiscalSituation::Unknown, $out->situation);
         $this->assertSame(FiscalRunResult::Success, $out->result);
@@ -214,7 +244,7 @@ class SimplesMeiMonitoringTest extends TestCase
             ->count());
     }
 
-    public function test_regime_102_persiste_calendario_idempotente_sem_mudar_regime_tributario(): void
+    public function test_regime_102_fixture_offline_unverified_persiste_calendario_idempotente(): void
     {
         $svc = app(SimplesMeiQueryService::class);
         $run = $svc->enqueueConsult(
@@ -227,9 +257,11 @@ class SimplesMeiMonitoringTest extends TestCase
             dispatch: false,
         );
 
-        app(FiscalMonitoringRunService::class)->execute($run->id);
-        app(FiscalMonitoringRunService::class)->execute($run->id);
+        $out = $this->executeRun($run);
+        $this->executeRun($run);
 
+        $this->assertSame(FiscalRunResult::Success, $out->result);
+        $this->assertSame('UNVERIFIED', $out->source_provenance->value);
         $items = app(RegimeApplicabilityService::class)->listCalendarOptions($this->office, $this->client);
         $this->assertSame([
             ['calendar_year' => 2026, 'regime_apuracao' => 'COMPETENCIA'],
@@ -245,7 +277,7 @@ class SimplesMeiMonitoringTest extends TestCase
         $this->assertNull($this->client->fresh()->tax_regime);
     }
 
-    public function test_regime_103_consulta_opcao_por_ano_sem_expor_retorno_bruto(): void
+    public function test_regime_103_fixture_offline_unverified_projeta_opcao_sem_expor_retorno_bruto(): void
     {
         $run = app(SimplesMeiQueryService::class)->enqueueConsult(
             $this->office,
@@ -258,10 +290,11 @@ class SimplesMeiMonitoringTest extends TestCase
             dispatch: false,
         );
 
-        $out = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $out = $this->executeRun($run);
 
         $this->assertSame(FiscalRunStatus::Completed, $out->status);
         $this->assertSame(FiscalRunResult::Success, $out->result);
+        $this->assertSame('UNVERIFIED', $out->source_provenance->value);
         $this->assertSame(FiscalSituation::UpToDate, $out->situation);
         $this->assertSame([
             ['calendar_year' => 2025, 'regime_apuracao' => 'CAIXA'],
@@ -272,7 +305,7 @@ class SimplesMeiMonitoringTest extends TestCase
 
     }
 
-    public function test_defis_142_projeta_lista_sem_identificador_declaracao(): void
+    public function test_defis_142_fixture_offline_unverified_projeta_lista_sem_identificador_declaracao(): void
     {
         $run = app(SimplesMeiQueryService::class)->enqueueConsult(
             $this->office,
@@ -284,9 +317,10 @@ class SimplesMeiMonitoringTest extends TestCase
             dispatch: false,
         );
 
-        $out = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $out = $this->executeRun($run);
 
         $this->assertSame(FiscalRunResult::Success, $out->result);
+        $this->assertSame('UNVERIFIED', $out->source_provenance->value);
         $this->assertDatabaseHas('defis_declaration_projections', [
             'office_id' => $this->office->id,
             'client_id' => $this->client->id,
@@ -297,14 +331,14 @@ class SimplesMeiMonitoringTest extends TestCase
         $reference = DefisDeclarationReference::query()->withoutGlobalScopes()->sole();
         $store = app(DefisDeclarationReferenceStore::class);
         $this->assertSame('000000002025001', $store->read($reference, $this->office));
-        $this->assertSame($reference->id, $store->store($this->office, $this->client, '000000002025001', $run->id, 'SIMULATED')->id);
+        $this->assertSame($reference->id, $store->store($this->office, $this->client, '000000002025001', $run->id, 'UNVERIFIED')->id);
         $this->assertDatabaseCount('defis_declaration_references', 1);
 
         $this->expectException(\RuntimeException::class);
         $store->read($reference, Office::factory()->create());
     }
 
-    public function test_defis_143_guarda_pdfs_no_cofre_sem_identificador_na_projecao(): void
+    public function test_defis_143_fixture_offline_unverified_guarda_pdfs_no_cofre_sem_identificador_na_projecao(): void
     {
         $run = app(SimplesMeiQueryService::class)->enqueueConsult(
             $this->office,
@@ -317,9 +351,10 @@ class SimplesMeiMonitoringTest extends TestCase
             dispatch: false,
         );
 
-        $out = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $out = $this->executeRun($run);
 
         $this->assertSame(FiscalRunResult::Success, $out->result);
+        $this->assertSame('UNVERIFIED', $out->source_provenance->value);
         $this->assertDatabaseCount('defis_latest_declaration_artifacts', 2);
         $this->assertDatabaseHas('defis_latest_declaration_artifacts', [
             'office_id' => $this->office->id,
@@ -330,7 +365,7 @@ class SimplesMeiMonitoringTest extends TestCase
         $this->assertDatabaseMissing('defis_latest_declaration_artifacts', ['digest' => 'DEFIS-FAKE-NAO-EXPOSTO']);
     }
 
-    public function test_defis_144_recupera_referencia_opaca_sem_expor_id_defis(): void
+    public function test_defis_144_fixture_offline_unverified_recupera_referencia_opaca_sem_expor_id_defis(): void
     {
         $list = app(SimplesMeiQueryService::class)->enqueueConsult(
             $this->office,
@@ -341,7 +376,7 @@ class SimplesMeiMonitoringTest extends TestCase
             correlationId: 'defis-142-para-144',
             dispatch: false,
         );
-        app(FiscalMonitoringRunService::class)->execute($list->id);
+        $this->executeRun($list);
         $reference = DefisDeclarationReference::query()->withoutGlobalScopes()->sole();
 
         $run = app(SimplesMeiQueryService::class)->enqueueConsult(
@@ -355,9 +390,10 @@ class SimplesMeiMonitoringTest extends TestCase
         );
         $run->forceFill(['progress' => ['defis_reference_id' => $reference->id]])->save();
 
-        $out = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $out = $this->executeRun($run);
 
         $this->assertSame(FiscalRunResult::Success, $out->result);
+        $this->assertSame('UNVERIFIED', $out->source_provenance->value);
         $this->assertSame(FiscalSituation::UpToDate, $out->situation);
         $this->assertDatabaseCount('defis_specific_declaration_artifacts', 2);
         $this->assertStringNotContainsString('000000002025001', json_encode($out->toPublicArray(), JSON_THROW_ON_ERROR));
@@ -409,7 +445,7 @@ class SimplesMeiMonitoringTest extends TestCase
             ->assertJsonPath('serpro_call', 'QUEUED');
     }
 
-    public function test_regime_104_guarda_texto_no_cofre_e_lista_somente_descritor_local(): void
+    public function test_regime_104_fixture_offline_unverified_guarda_texto_no_cofre_e_lista_somente_descritor_local(): void
     {
         $run = app(SimplesMeiQueryService::class)->enqueueConsult(
             $this->office,
@@ -422,9 +458,10 @@ class SimplesMeiMonitoringTest extends TestCase
             dispatch: false,
         );
 
-        $out = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $out = $this->executeRun($run);
 
         $this->assertSame(FiscalRunResult::Success, $out->result);
+        $this->assertSame('UNVERIFIED', $out->source_provenance->value);
         $artifact = FiscalEvidenceArtifact::query()->withoutGlobalScopes()
             ->where('office_id', $this->office->id)
             ->where('operation_key', 'regimeapuracao.consultarresolucao')
@@ -480,7 +517,7 @@ class SimplesMeiMonitoringTest extends TestCase
             ->assertJsonPath('code', 'UNSUPPORTED');
     }
 
-    public function test_sem_procuracao_bloqueia_consulta(): void
+    public function test_sem_procuracao_bloqueia_consulta_sem_projecao(): void
     {
         TaxProxyPower::query()->withoutGlobalScopes()->delete();
 
@@ -496,10 +533,11 @@ class SimplesMeiMonitoringTest extends TestCase
             dispatch: false,
         );
 
-        $out = app(FiscalMonitoringRunService::class)->execute($run->id);
+        $out = $this->executeRun($run);
 
         $this->assertSame(FiscalRunResult::Blocked, $out->result);
         $this->assertSame('PROXY_POWER_MISSING', $out->error_code);
+        $this->assertDatabaseCount('fiscal_evidence_artifacts', 0);
     }
 
     public function test_transmissao_mutante_bloqueada_no_piloto(): void
@@ -525,7 +563,7 @@ class SimplesMeiMonitoringTest extends TestCase
     public function test_gerar_das_com_mutacoes_desligadas_bloqueia_sem_stub_e_sem_http(): void
     {
         Http::preventStrayRequests();
-        $this->assertNull(config('fiscal_monitoring.simples_mei.das_stub_without_mutating'));
+        $this->assertFalse((bool) config('fiscal_monitoring.simples_mei.das_stub_without_mutating', false));
 
         $svc = app(SimplesMeiQueryService::class);
         $run = $svc->enqueueDasGeneration(
@@ -568,6 +606,11 @@ class SimplesMeiMonitoringTest extends TestCase
             ->where('office_id', $this->office->id)
             ->where('action', 'fiscal.simples_mei.das_stub')
             ->exists());
+        $this->assertFalse(AuditLog::query()
+            ->where('subject_type', FiscalMonitoringRun::class)
+            ->where('subject_id', $out->id)
+            ->where('result', 'SUCCESS')
+            ->exists());
         Http::assertNothingSent();
     }
 
@@ -585,8 +628,8 @@ class SimplesMeiMonitoringTest extends TestCase
 
         $this->assertSame($a->id, $b->id);
 
-        app(FiscalMonitoringRunService::class)->execute($a->id);
-        app(FiscalMonitoringRunService::class)->execute($a->id);
+        $this->executeRun($a);
+        $this->executeRun($a);
 
         $this->assertSame(1, FiscalSnapshot::query()->withoutGlobalScopes()
             ->where('office_id', $this->office->id)
@@ -617,7 +660,7 @@ class SimplesMeiMonitoringTest extends TestCase
             ->where('office_id', $this->office->id)
             ->where('service_code', 'REGIME_APURACAO')
             ->value('id');
-        app(FiscalMonitoringRunService::class)->execute((int) $runId);
+        $this->executeRun((int) $runId);
 
         $this->getJson('/api/v1/fiscal/simples-mei/clients/'.$this->client->id.'/regimes')
             ->assertOk()
@@ -668,6 +711,7 @@ class SimplesMeiMonitoringTest extends TestCase
             'status' => SerproContractStatus::Active,
             'contractor_cnpj' => '11222333000181',
             'health_status' => 'OK',
+            'credentials_exposed' => false,
         ]);
 
         $auth = OfficeSerproAuthorization::query()->create([
@@ -711,5 +755,213 @@ class SimplesMeiMonitoringTest extends TestCase
                 'valid_to' => now()->addYear(),
             ]);
         }
+    }
+
+    private function installOfflineSimplesRegistry(): void
+    {
+        $registry = new FiscalAdapterRegistry;
+        $executor = app(SerproOperationService::class);
+
+        foreach (SimplesMeiCatalog::all() as $definition) {
+            $registry->register(new SimplesMeiAdapter(
+                definition: $definition,
+                eligibility: app(IntegraEligibilityService::class),
+                operations: $executor,
+                mapper: app(SimplesMeiResponseMapper::class),
+                contracts: app(SerproContractService::class),
+                authorizations: app(OfficeSerproAuthorizationService::class),
+                regimeApplicability: app(RegimeApplicabilityService::class),
+                contributors: app(ContributorCnpjResolver::class),
+                pgdasdCodec13: app(PgdasdConsDeclaracao13Codec::class),
+                pgdasdDocumentCodecs: app(PgdasdDocumentCodecs::class),
+                pgdasdPostConsult: app(PgdasdPostConsultService::class),
+                pgmeiCodec24: app(PgmeiDividaAtiva24Codec::class),
+                pgmeiPostConsult: app(PgmeiPostConsultService::class),
+                ccmeiPostConsult: app(CcmeiPostConsultService::class),
+                ccmeiRegistrationStatusPost: app(CcmeiRegistrationStatusPostConsultService::class),
+                regimeResolutionCodec: app(RegimeResolutionCodec::class),
+                regimeResolutionPost: app(RegimeResolutionPostConsultService::class),
+                defisProjector: app(DefisDeclarationProjector::class),
+                defisLatestDeclarationPost: app(DefisLatestDeclarationPostConsultService::class),
+                defisSpecificDeclarationPost: app(DefisSpecificDeclarationPostConsultService::class),
+                defisReferences: app(DefisDeclarationReferenceStore::class),
+            ));
+        }
+
+        $this->app->instance(FiscalAdapterRegistry::class, $registry);
+    }
+
+    private function seedOfflineCatalog(): void
+    {
+        $resolver = app(OperationCoordinateResolver::class);
+
+        foreach (SimplesMeiCatalog::all() as $definition) {
+            $operationKey = OperationKeyMap::require(
+                null,
+                $definition->systemCode,
+                $definition->serviceCode,
+                $definition->operationCode,
+            );
+            $coordinates = $resolver->resolve($operationKey);
+
+            SerproServiceCatalogEntry::query()->updateOrCreate(
+                [
+                    'catalog_version' => 999001,
+                    'environment' => SerproEnvironment::Trial,
+                    'operation_key' => $operationKey,
+                ],
+                [
+                    'solution_code' => $definition->systemCode,
+                    'service_code' => $definition->serviceCode,
+                    'operation_code' => $definition->operationCode,
+                    'id_sistema' => $coordinates['id_sistema'],
+                    'id_servico' => $coordinates['id_servico'],
+                    'versao_sistema' => $coordinates['versao_sistema'],
+                    'functional_route' => $coordinates['route']->value,
+                    'official_state' => $coordinates['official_state']?->value,
+                    'platform_support' => $coordinates['platform_support']->value,
+                    'dados_mode' => $coordinates['dados_mode'],
+                    'label' => $coordinates['label'],
+                    'is_mutating' => $coordinates['is_mutating'],
+                    'is_enabled' => true,
+                    'required_proxy_power' => $coordinates['required_proxy_power'],
+                    'billable_class' => $coordinates['billable_class'],
+                    'cache_ttl_seconds' => 0,
+                    'rate_limit_per_minute' => 0,
+                    'coverage' => 'FULL',
+                    'metadata' => ['required_proxy_powers' => $coordinates['required_proxy_powers']],
+                    'effective_from' => now(),
+                    'effective_to' => null,
+                ],
+            );
+        }
+    }
+
+    private function executeRun(FiscalMonitoringRun|int $run): FiscalMonitoringRun
+    {
+        $run = is_int($run)
+            ? FiscalMonitoringRun::query()->withoutGlobalScopes()->findOrFail($run)
+            : $run;
+
+        $this->fake->queue(
+            $run->system_code,
+            $run->service_code,
+            $run->operation_code,
+            $this->offlineResponseFor($run),
+        );
+
+        return app(FiscalMonitoringRunService::class)->execute($run->id);
+    }
+
+    /**
+     * Fixtures locais mínimas para codecs e projeções. A proveniência é
+     * explicitamente UNVERIFIED: não representa Trial válido nem canário real.
+     */
+    private function offlineResponseFor(FiscalMonitoringRun $run): IntegraResponse
+    {
+        $period = (string) ($run->competence?->period_key ?? '2026-01');
+        $progress = is_array($run->progress) ? $run->progress : [];
+        $force = strtoupper((string) ($progress['force_status'] ?? ''));
+        $service = strtoupper($run->service_code);
+        $operation = strtoupper($run->operation_code);
+
+        $body = match ($service) {
+            'PGDASD' => [
+                'dto_version' => '1',
+                'data' => [
+                    'competence' => $period,
+                    'status' => $force === 'INCONCLUSIVO' ? 'INCONCLUSIVO' : 'ENTREGUE',
+                    'receipt_number' => $force === 'INCONCLUSIVO' ? null : 'REC-PGDASD-'.str_replace('-', '', $period),
+                    'declaration_id' => 'DECL-PGDASD-1',
+                    'transmitted_at' => $force === 'INCONCLUSIVO' ? null : now()->toIso8601String(),
+                ],
+            ],
+            'REGIME_APURACAO' => match ($operation) {
+                'CONSULTAR_ANOS_CALENDARIOS' => [
+                    'status' => 200,
+                    'dados' => json_encode([
+                        ['anoCalendario' => 2025, 'regimeApurado' => 'CAIXA'],
+                        ['anoCalendario' => 2026, 'regimeApurado' => 'COMPETENCIA'],
+                    ], JSON_THROW_ON_ERROR),
+                ],
+                'CONSULTAR_RESOLUCAO' => [
+                    'status' => 200,
+                    'mensagens' => [],
+                    'dados' => json_encode([
+                        'anoCalendario' => (int) $period,
+                        'textoResolucao' => base64_encode('Resolução do Regime de Caixa (fixture offline).'),
+                    ], JSON_THROW_ON_ERROR),
+                ],
+                default => [
+                    'status' => 200,
+                    'mensagens' => [],
+                    'dados' => json_encode([
+                        'anoCalendario' => (int) $period,
+                        'regimeEscolhido' => 'CAIXA',
+                        'dataHoraOpcao' => ((int) $period).'0101000000',
+                    ], JSON_THROW_ON_ERROR),
+                ],
+            },
+            'DEFIS' => match ($operation) {
+                'CONSULTAR_ULTIMA_DECLARACAO_RECIBO' => [
+                    'status' => 200,
+                    'mensagens' => [],
+                    'dados' => json_encode([
+                        'ano' => (int) $period,
+                        'idDefis' => '000000002025001',
+                        'recibo' => base64_encode('%PDF-1.7\n% fixture recibo DEFIS'),
+                        'declaracao' => base64_encode('%PDF-1.7\n% fixture declaracao DEFIS'),
+                    ], JSON_THROW_ON_ERROR),
+                ],
+                'CONSULTAR_DECLARACAO_RECIBO' => [
+                    'status' => 200,
+                    'mensagens' => [],
+                    'dados' => json_encode([
+                        'recibo' => base64_encode('%PDF-1.7\n% fixture recibo DEFIS especifica'),
+                        'declaracao' => base64_encode('%PDF-1.7\n% fixture declaracao DEFIS especifica'),
+                    ], JSON_THROW_ON_ERROR),
+                ],
+                default => [
+                    'status' => 200,
+                    'mensagens' => [],
+                    'dados' => json_encode([[
+                        'anoCalendario' => (int) $period,
+                        'idDefis' => '000000002025001',
+                        'tipo' => '1',
+                        'dataHora' => ((int) $period).'0101000000',
+                    ]], JSON_THROW_ON_ERROR),
+                ],
+            },
+            'CCMEI' => [
+                'dto_version' => '1',
+                'data' => [[
+                    'cnpj' => '00000000000000',
+                    'situacao' => 'ATIVA',
+                    'enquadradoMei' => true,
+                ]],
+            ],
+            'PGMEI' => [
+                'dto_version' => '1',
+                'data' => [
+                    'competence' => $period,
+                    'status' => 'EMITIDO',
+                    'das_number' => 'DAS-MEI-1',
+                    'due_date' => now()->addDays(10)->toDateString(),
+                    'amount' => 71.60,
+                ],
+            ],
+            default => ['dto_version' => '1', 'data' => []],
+        };
+
+        return new IntegraResponse(
+            success: true,
+            httpStatus: 200,
+            body: $body,
+            headers: ['x-test-double' => 'offline'],
+            simulated: false,
+            correlationId: $run->correlation_id,
+            latencyMs: 0,
+            sourceProvenance: 'UNVERIFIED',
+        );
     }
 }

@@ -78,14 +78,14 @@ final class DctfwebPostConsultService
                 declarationForExpectedPa: null,
                 lastProductiveConsultedAt: null,
                 projection: $this->findProjection($request, $periodKey),
-                simulated: true,
+                simulated: false,
             );
             $this->recordObservation(
                 request: $request,
                 periodKey: $periodKey,
                 pa: $pa,
                 category: $category,
-                outcome: DctfwebConsultOutcome::Simulated,
+                outcome: DctfwebConsultOutcome::Failed,
                 productive: false,
                 documentStored: false,
                 state: $statePack['state'],
@@ -100,7 +100,7 @@ final class DctfwebPostConsultService
                 'declaration_state' => $statePack['state']->value,
                 'declaration_state_reason' => $statePack['reason'],
                 'productive' => false,
-                'simulated' => true,
+                'source_rejected' => $response->hasSimulatedSource(),
             ], FiscalSituation::Unknown);
         }
 
@@ -639,9 +639,8 @@ final class DctfwebPostConsultService
             return FiscalSourceProvenance::SerproTrial->value;
         }
 
-        if ($response->simulated
-            || $response->sourceProvenance === FiscalSourceProvenance::Simulated->value) {
-            return FiscalSourceProvenance::Simulated->value;
+        if ($response->hasSimulatedSource()) {
+            return FiscalSourceProvenance::Unverified->value;
         }
 
         if ($response->sourceProvenance === FiscalSourceProvenance::SerproReal->value) {

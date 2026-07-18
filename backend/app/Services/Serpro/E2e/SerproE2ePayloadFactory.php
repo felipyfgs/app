@@ -112,6 +112,12 @@ final class SerproE2ePayloadFactory
             $operationKey === 'pnr_contador.consultar_vinculos' => [
                 'size' => 10,
             ],
+            $operationKey === 'pnr_contador.consultar_renuncias' => array_filter([
+                'dtInicio' => $ctx['context']['dtInicio'] ?? null,
+                'dtFim' => $ctx['context']['dtFim'] ?? null,
+                'page' => $ctx['context']['page'] ?? 0,
+                'pageSize' => $ctx['context']['pageSize'] ?? 10,
+            ], static fn (mixed $value): bool => $value !== null && $value !== ''),
             $operationKey === 'pnr_contador.situacao_renuncia' => [
                 'idSolicitacao' => (string) ($ctx['context']['idSolicitacao'] ?? '0'),
             ],

@@ -46,7 +46,7 @@ class DctfwebPostConsultServiceTest extends TestCase
 
         $observations = DctfwebConsultObservation::query()->orderBy('id')->get();
         $this->assertCount(3, $observations);
-        $this->assertSame(FiscalSourceProvenance::Simulated->value, $observations[0]->provenance);
+        $this->assertSame(FiscalSourceProvenance::Unverified->value, $observations[0]->provenance);
         $this->assertSame(FiscalSourceProvenance::Unverified->value, $observations[1]->provenance);
         $this->assertSame(FiscalSourceProvenance::Unverified->value, $observations[2]->provenance);
         $this->assertTrue($observations->every(fn ($o) => $o->productive === false));

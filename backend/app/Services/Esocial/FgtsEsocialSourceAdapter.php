@@ -62,6 +62,13 @@ final class FgtsEsocialSourceAdapter implements FiscalSourceAdapter
 
     public function execute(FiscalAdapterRequest $request): FiscalAdapterResult
     {
+        if (! $this->monitoring->isSourceAvailable()) {
+            return FiscalAdapterResult::blocked(
+                $this->monitoring->sourceUnavailableMessage(),
+                'ESOCIAL_SOURCE_UNAVAILABLE',
+            );
+        }
+
         if ((bool) config('fgts_esocial.kill_switch', false)) {
             return FiscalAdapterResult::blocked('FGTS/eSocial kill switch ativo.', 'FGTS_KILL_SWITCH');
         }
@@ -150,7 +157,7 @@ final class FgtsEsocialSourceAdapter implements FiscalSourceAdapter
             coverage: FiscalCoverage::Partial,
             evidenceBytes: $bytes,
             evidenceContentType: 'application/json',
-            sourceVersion: (string) config('fgts_esocial.evidence.source_version', 'fake-1'),
+            sourceVersion: (string) config('fgts_esocial.evidence.source_version', 'unverified-1'),
             normalized: $projection->normalized,
             findings: $projection->findings,
             itemsProcessed: max(1, count($out['evidences'])),

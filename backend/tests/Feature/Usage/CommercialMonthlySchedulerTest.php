@@ -48,6 +48,7 @@ class CommercialMonthlySchedulerTest extends TestCase
             'fiscal_monitoring.scheduler.commercial_monthly_enabled' => true,
             'fiscal_monitoring.commercial.enabled' => true,
             'fiscal_monitoring.scheduler.max_dispatch_per_tick' => 50,
+            'serpro.capabilities.sitfis' => 'real',
         ]);
 
         $this->office = Office::factory()->create([

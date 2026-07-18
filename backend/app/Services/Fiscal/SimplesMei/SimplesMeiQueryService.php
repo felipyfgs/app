@@ -6,7 +6,6 @@ use App\Enums\FiscalCoverage;
 use App\Enums\FiscalSituation;
 use App\Models\Client;
 use App\Models\FiscalCompetence;
-use App\Models\FiscalGuideStub;
 use App\Models\FiscalMonitoringRun;
 use App\Models\FiscalSnapshot;
 use App\Models\Office;
@@ -180,18 +179,5 @@ final class SimplesMeiQueryService
         }
 
         return $q->paginate($perPage);
-    }
-
-    /**
-     * @return Collection<int, FiscalGuideStub>
-     */
-    public function listGuideStubs(Office $office, Client $client): Collection
-    {
-        return FiscalGuideStub::query()
-            ->withoutGlobalScopes()
-            ->where('office_id', $office->id)
-            ->where('client_id', $client->id)
-            ->orderByDesc('id')
-            ->get();
     }
 }

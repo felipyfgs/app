@@ -77,6 +77,7 @@ final class EsocialEvidencePersistence
         }
 
         $sha = $event->contentSha256();
+        $isSynthetic = $this->isSyntheticEvent($event);
 
         $existing = EsocialEventEvidence::query()
             ->withoutGlobalScopes()
@@ -88,6 +89,14 @@ final class EsocialEvidencePersistence
             ->first();
 
         if ($existing !== null) {
+            if ($isSynthetic && ! $existing->is_quarantined) {
+                $existing->forceFill([
+                    'is_quarantined' => true,
+                    'quarantine_reason' => 'SYNTHETIC_ESOCIAL_TEST_DOUBLE',
+                    'quarantined_at' => CarbonImmutable::now(),
+                ])->save();
+            }
+
             return $existing;
         }
 
@@ -99,6 +108,7 @@ final class EsocialEvidencePersistence
             $establishment,
             $sharedFiscalArtifact,
             $sha,
+            $isSynthetic,
         ) {
             $aad = SecureObjectPurpose::FiscalEvidence->aadBase([
                 'office_id' => (int) $office->id,
@@ -108,7 +118,7 @@ final class EsocialEvidencePersistence
             $objectId = $this->vault->put($event->payloadBytes, $aad);
 
             $artifactId = $sharedFiscalArtifact?->id;
-            if ($artifactId === null && $run !== null) {
+            if (! $isSynthetic && $artifactId === null && $run !== null) {
                 // Artefato fiscal opcional por evento (quando run disponível)
                 try {
                     $artifact = $this->fiscalEvidenceStore->store(
@@ -117,7 +127,7 @@ final class EsocialEvidencePersistence
                         contentType: (string) config('fgts_esocial.evidence.content_type', 'application/json'),
                         source: (string) config('fgts_esocial.evidence.source', 'esocial'),
                         sourceVersion: $event->eventVersion
-                            ?? (string) config('fgts_esocial.evidence.source_version', 'fake-1'),
+                            ?? (string) config('fgts_esocial.evidence.source_version', 'unverified-1'),
                         observedAt: $event->observedAt ?? CarbonImmutable::now(),
                     );
                     $artifactId = $artifact->id;
@@ -153,12 +163,20 @@ final class EsocialEvidencePersistence
                 'byte_size' => strlen($event->payloadBytes),
                 'source' => (string) config('fgts_esocial.evidence.source', 'esocial'),
                 'source_version' => $event->eventVersion
-                    ?? (string) config('fgts_esocial.evidence.source_version', 'fake-1'),
+                    ?? (string) config('fgts_esocial.evidence.source_version', 'unverified-1'),
                 'occurred_at' => $event->occurredAt,
                 'observed_at' => $event->observedAt ?? CarbonImmutable::now(),
                 'metadata' => $event->metadata,
+                'is_quarantined' => $isSynthetic,
+                'quarantine_reason' => $isSynthetic ? 'SYNTHETIC_ESOCIAL_TEST_DOUBLE' : null,
+                'quarantined_at' => $isSynthetic ? CarbonImmutable::now() : null,
             ]);
         });
+    }
+
+    public function isSyntheticEvent(EsocialEventDto $event): bool
+    {
+        return ($event->metadata['simulated'] ?? false) === true;
     }
 
     /**
@@ -172,6 +190,7 @@ final class EsocialEvidencePersistence
     ): array {
         $q = EsocialEventEvidence::query()
             ->withoutGlobalScopes()
+            ->operationallyEligible()
             ->where('office_id', $office->id)
             ->where('client_id', $client->id)
             ->where('competence_period_key', $competencePeriodKey)

@@ -152,6 +152,18 @@ class Client extends Model
         return $this->hasMany(ClientCredential::class);
     }
 
+    /** Projeção canônica da sincronização oficial de procuração. */
+    public function procuracaoSync(): HasOne
+    {
+        return $this->hasOne(ClientProcuracaoSync::class);
+    }
+
+    /** Snapshots por ambiente, usados apenas como compatibilidade de leitura. */
+    public function procuracaoSnapshots(): HasMany
+    {
+        return $this->hasMany(ClientProcuracaoSnapshot::class);
+    }
+
     /**
      * Nome preferencial para UI (nome interno ou razão social).
      */

@@ -7,7 +7,6 @@ use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutationStatus;
 use App\Enums\FiscalPendingStatus;
 use App\Enums\FiscalSituation;
-use App\Enums\OfficeRole;
 use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproEnvironment;
@@ -56,9 +55,9 @@ final class OperationsSummaryBuilder
     /**
      * @return array<string, mixed>
      */
-    public function build(int $officeId, ?OfficeRole $role = null): array
+    public function build(int $officeId): array
     {
-        $counts = $this->inbox->counts($officeId, $role);
+        $counts = $this->inbox->counts($officeId);
         $backup = InstanceBackupRun::statusSummary();
         $env = SerproEnvironment::tryFrom((string) config('serpro.default_environment', 'TRIAL'))
             ?? SerproEnvironment::Trial;

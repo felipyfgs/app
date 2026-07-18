@@ -96,6 +96,9 @@ final class OperationKeyMap
 
         // Cadastro / e-Processo
         'PNRCONTADOR|PNRCONTADOR|VINCULOS' => 'pnr_contador.consultar_vinculos',
+        'PNRCONTADOR|PNRCONTADOR|CONSRENUNCIA263' => 'pnr_contador.consultar_renuncias',
+        'PNRCONTADOR|PNRCONTADOR|COMPRENUNCIA264' => 'pnr_contador.emitir_comprovante',
+        'PNRCONTADOR|PNRCONTADOR|SITSOLICRENUNCIA265' => 'pnr_contador.situacao_renuncia',
         'EPROCESSO|EPROCESSO|CONSULTAR' => 'eprocesso.consultar_por_interessado',
 
         // SICALC — contrato legado da central de guias para operação oficial 5.1

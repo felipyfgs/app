@@ -95,6 +95,9 @@ final class HttpIntegraProcuracoesClient implements IntegraProcuracoesClient
             authorIdentityOverride: $request->authorIdentity,
             contributorIdentityOverride: $request->contributorCnpj,
         ));
+        if ($response->hasSimulatedSource()) {
+            $response = $response->rejectSimulatedSource();
+        }
 
         if (! $response->success) {
             return new ProcuracaoLookupResult(

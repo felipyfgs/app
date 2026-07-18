@@ -218,6 +218,33 @@ class FiscalMonitoringCoreTest extends TestCase
         $this->assertSame(2, $child->attempt);
     }
 
+    public function test_contexto_efemero_nunca_cria_continuacao_nem_persiste_o_valor(): void
+    {
+        $adapter = FakeFiscalSourceAdapter::requeueAfterPages();
+        app(FiscalAdapterRegistry::class)->register($adapter);
+        $service = app(FiscalMonitoringRunService::class);
+        $run = $service->enqueueManual(
+            $this->office,
+            $this->client,
+            'INTEGRA_TEST',
+            'TEST_SVC',
+            correlationId: 'ephemeral-context-no-retry',
+            dispatch: false,
+        );
+
+        $done = $service->execute($run->id, ['numeroDocumento' => '12345678901234567']);
+
+        $this->assertSame(FiscalRunStatus::Failed, $done->status);
+        $this->assertSame('EPHEMERAL_CONTEXT_RETRY_FORBIDDEN', $done->error_code);
+        $this->assertSame(0, FiscalMonitoringRun::query()->withoutGlobalScopes()->where('parent_run_id', $done->id)->count());
+        $serialized = json_encode([
+            'progress' => $done->progress,
+            'correlation_id' => $done->correlation_id,
+            'error_message' => $done->error_message,
+        ], JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('12345678901234567', $serialized);
+    }
+
     public function test_evidencia_persiste_antes_de_projecao_e_falha_parcial_segura(): void
     {
         $adapter = FakeFiscalSourceAdapter::withPendingFinding();

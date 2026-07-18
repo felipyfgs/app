@@ -130,6 +130,10 @@ final class SitfisFlowService
             );
         }
 
+        if ($response->hasSimulatedSource()) {
+            return FiscalAdapterResult::blocked('Resposta sintética não pode iniciar protocolo SITFIS.', 'SIMULATED_SOURCE_REJECTED');
+        }
+
         $protocol = $this->extractProtocolFromResponse($response);
         if ($protocol === null || $protocol === '') {
             // 304 residual ou payload sem campo oficial
@@ -215,6 +219,10 @@ final class SitfisFlowService
             dadosMode: 'JSON_STRING',
             correlation: $correlation,
         );
+
+        if ($response->hasSimulatedSource()) {
+            return FiscalAdapterResult::blocked('Resposta sintética não pode avançar protocolo SITFIS.', 'SIMULATED_SOURCE_REJECTED');
+        }
 
         $pollCount = $state->pollCount + 1;
         $pollInterval = max($pollInterval, $response->waitSeconds() ?? 0);

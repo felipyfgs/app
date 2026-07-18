@@ -122,12 +122,20 @@ final class RegistrationLinkProjectionService
                     ];
                 }
 
-                $simulated = $response->simulated;
+                if ($response->hasSimulatedSource()) {
+                    return [
+                        'success' => false,
+                        'count' => 0,
+                        'simulated' => false,
+                        'error_code' => 'SIMULATED_SOURCE_REJECTED',
+                        'error_message' => 'Resposta sintética não pode gerar projeção de vínculos.',
+                    ];
+                }
+
+                $simulated = false;
                 $sourceProvenance = $response->sourceProvenance === FiscalSourceProvenance::SerproTrial->value
                     ? FiscalSourceProvenance::SerproTrial->value
-                    : ($simulated
-                        ? FiscalSourceProvenance::Simulated->value
-                        : FiscalSourceProvenance::SerproReal->value);
+                    : FiscalSourceProvenance::SerproReal->value;
                 try {
                     $page = $this->codec->decode($response->dados);
                 } catch (RuntimeException $exception) {

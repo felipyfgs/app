@@ -12,7 +12,6 @@ enum TermoAuthorizationState: string
     case Signed = 'SIGNED';
     case LocalValidated = 'LOCAL_VALIDATED';
     case SerproAccepted = 'SERPRO_ACCEPTED';
-    case Simulated = 'SIMULATED';
     case Rejected = 'REJECTED';
     case Pending = 'PENDING';
     case Expired = 'EXPIRED';

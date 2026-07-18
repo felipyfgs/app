@@ -2,7 +2,6 @@
 
 namespace App\Services\Operations\Inbox;
 
-use App\Enums\OfficeRole;
 use App\Enums\QuarantineReason;
 use App\Enums\QuarantineResolutionStatus;
 use App\Models\FiscalDocumentQuarantine;
@@ -20,7 +19,7 @@ final class QuarantineItemsCollector
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    public function collect(int $officeId, ?OfficeRole $role): Collection
+    public function collect(int $officeId, InboxCapabilities $capabilities): Collection
     {
         $rows = FiscalDocumentQuarantine::query()
             ->where('office_id', $officeId)
@@ -29,7 +28,7 @@ final class QuarantineItemsCollector
             ->limit(40)
             ->get();
 
-        return collect($rows->map(function (FiscalDocumentQuarantine $q) use ($role) {
+        return collect($rows->map(function (FiscalDocumentQuarantine $q) use ($capabilities) {
             $type = match ($q->reason) {
                 QuarantineReason::UnmatchedIssuer, QuarantineReason::EnrollmentMissing => 'quarantine_unmatched_issuer',
                 QuarantineReason::AutXmlTagMissing, QuarantineReason::AutXmlTagDivergent => 'quarantine_autxml_tag',
@@ -47,7 +46,7 @@ final class QuarantineItemsCollector
             $actions = [
                 ['type' => 'open', 'label' => 'Revisar'],
             ];
-            if ($role !== null && $role->canManageClients()) {
+            if ($capabilities->canManageClients) {
                 $actions[] = [
                     'type' => 'resolve_quarantine',
                     'label' => 'Resolver',

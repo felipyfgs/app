@@ -3,6 +3,7 @@
 namespace Tests\Unit\Serpro;
 
 use App\Contracts\IntegraContadorClient;
+use App\Contracts\SecureObjectStore;
 use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
 use App\DTO\Serpro\MutationAuthorization;
@@ -16,6 +17,7 @@ use App\Enums\TaxProxyPowerSource;
 use App\Enums\TaxProxyPowerStatus;
 use App\Models\Client;
 use App\Models\Establishment;
+use App\Models\FiscalMonitoringRun;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\SerproApiUsageReservation;
@@ -227,6 +229,51 @@ class SerproOperationServiceTest extends TestCase
         $this->assertSame('ATTEMPT_IN_FLIGHT', $begin['response']->errorCode);
     }
 
+    public function test_replay_de_attempt_simulado_rejeita_payload_sintetico(): void
+    {
+        $office = Office::factory()->create();
+        $client = Client::factory()->create(['office_id' => $office->id]);
+        $key = 'ic|TRIAL|'.$office->id.'|sitfis.solicitar_protocolo|client:'.$client->id.'|sim-legacy';
+
+        SerproOperationAttempt::query()->create([
+            'office_id' => $office->id,
+            'environment' => 'TRIAL',
+            'operation_key' => 'sitfis.solicitar_protocolo',
+            'entity_key' => 'client:'.$client->id,
+            'idempotency_key' => $key,
+            'request_tag' => 'ic-sim-legacy',
+            'correlation_id' => 'c-sim',
+            'attempt_state' => SerproAttemptState::Acknowledged,
+            'client_id' => $client->id,
+            'success' => true,
+            'http_status' => 200,
+            'body' => ['protocolo' => 'SINTETICO'],
+            'dados' => ['protocolo' => 'SINTETICO'],
+            'source_provenance' => 'SIMULATED',
+            'reserved_at' => now(),
+            'dispatched_at' => now(),
+            'acknowledged_at' => now(),
+        ]);
+
+        $begin = (new SerproOperationAttemptStore)->beginOrReplay(
+            officeId: (int) $office->id,
+            environment: 'TRIAL',
+            operationKey: 'sitfis.solicitar_protocolo',
+            entityKey: 'client:'.$client->id,
+            idempotencyKey: $key,
+            requestTag: 'ic-sim-legacy-2',
+            correlationId: 'c-sim-2',
+            clientId: (int) $client->id,
+        );
+
+        $this->assertSame('replay', $begin['action']);
+        $this->assertNotNull($begin['response']);
+        $this->assertFalse($begin['response']->success);
+        $this->assertSame('SIMULATED_SOURCE_REJECTED', $begin['response']->errorCode);
+        $this->assertSame([], $begin['response']->body);
+        $this->assertNull($begin['response']->dados);
+    }
+
     public function test_attempt_store_nao_persiste_token_nem_xml_ecoado(): void
     {
         $office = Office::factory()->create();
@@ -267,6 +314,143 @@ class SerproOperationServiceTest extends TestCase
         $this->assertStringNotContainsString('<termo>sensivel</termo>', $serialized);
         $this->assertSame(true, $stored?->body['autenticar_procurador_token']['sanitized']);
         $this->assertSame(true, $stored?->body['dados']['xml']['sanitized']);
+    }
+
+    public function test_attempt_store_omite_pdf_base64_pagtoweb_72(): void
+    {
+        $office = Office::factory()->create();
+        $attempt = SerproOperationAttempt::query()->create([
+            'office_id' => $office->id,
+            'environment' => 'TRIAL',
+            'operation_key' => 'pagtoweb.comparrecadacao',
+            'entity_key' => 'fiscal-run:1',
+            'idempotency_key' => 'pagtoweb-attempt-redaction-'.$office->id,
+            'request_tag' => 'ic-pagtoweb-redaction',
+            'attempt_state' => SerproAttemptState::Dispatched,
+            'reserved_at' => now(),
+            'dispatched_at' => now(),
+        ]);
+        $pdf = base64_encode('%PDF-1.4 recibo sensível');
+
+        (new SerproOperationAttemptStore)->acknowledge($attempt, new IntegraResponse(
+            success: true,
+            httpStatus: 200,
+            body: ['dados' => $pdf],
+            dados: $pdf,
+        ));
+
+        $stored = $attempt->fresh();
+        $serialized = json_encode(['body' => $stored?->body, 'dados' => $stored?->dados], JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString($pdf, $serialized);
+        $this->assertStringNotContainsString('JVBER', $serialized);
+        $this->assertSame(true, $stored?->body['dados']['sanitized']);
+        $this->assertSame(true, $stored?->dados['sanitized']);
+    }
+
+    public function test_pagtoweb_72_captures_before_ack_and_replays_without_second_http(): void
+    {
+        config([
+            'serpro.capabilities.guides' => 'real',
+            'serpro.capabilities.default' => 'real',
+            'serpro.default_environment' => 'TRIAL',
+            'serpro.kill_switch' => false,
+            'features.global_enabled' => true,
+            'features.kill_switch' => false,
+            'features.modules.guias.enabled' => true,
+            'features.modules.guias.allow_all_offices' => true,
+        ]);
+        [$office, $client] = $this->seedOfficeClientContract();
+        $authorization = OfficeSerproAuthorization::query()->where('office_id', $office->id)->firstOrFail();
+        TaxProxyPower::query()->create([
+            'office_id' => $office->id,
+            'client_id' => $client->id,
+            'office_serpro_authorization_id' => $authorization->id,
+            'environment' => SerproEnvironment::Trial->value,
+            'author_identity' => '11222333000181',
+            'contributor_cnpj' => '11222333000181',
+            'system_code' => 'PAGTOWEB',
+            'service_code' => 'COMPARRECADACAO72',
+            'power_code' => '00004',
+            'source' => TaxProxyPowerSource::ManualOfficialEvidence->value,
+            'provenance' => FiscalSourceProvenance::SerproReal->value,
+            'status' => TaxProxyPowerStatus::Active->value,
+            'valid_from' => now()->subDay(),
+            'valid_to' => now()->addDay(),
+            'accepted_at' => now(),
+            'freshness_checked_at' => now(),
+            'verified_at' => now(),
+            'last_check_result' => 'TEST_EVIDENCE',
+        ]);
+        $run = FiscalMonitoringRun::query()->create([
+            'office_id' => $office->id,
+            'client_id' => $client->id,
+            'system_code' => 'PAGTOWEB',
+            'service_code' => 'COMPARRECADACAO72',
+            'operation_code' => 'EMITIR_COMPROVANTE_ARRECADACAO',
+            'operation_key' => 'pagtoweb.comparrecadacao',
+            'source_provenance' => FiscalSourceProvenance::SerproTrial->value,
+            'trigger' => 'MANUAL',
+            'idempotency_key' => 'pagtoweb-central-'.$client->id,
+            'status' => 'QUEUED',
+            'situation' => 'UNKNOWN',
+            'coverage' => 'FULL',
+            'mutability' => 'READ_ONLY',
+        ]);
+        $pdf = base64_encode('%PDF-1.4 comprovante central');
+        $calls = 0;
+        $this->app->instance(SecureObjectStore::class, new class implements SecureObjectStore
+        {
+            public function put(string $contents, array $aad = []): string
+            {
+                return '01JPAGTOWEBCENTRAL000001';
+            }
+
+            public function get(string $objectId, array $aad = []): string
+            {
+                return '';
+            }
+
+            public function delete(string $objectId): void {}
+
+            public function exists(string $objectId): bool
+            {
+                return false;
+            }
+        });
+        $this->app->instance(IntegraContadorClient::class, new class($calls, $pdf) implements IntegraContadorClient
+        {
+            public function __construct(private int &$calls, private readonly string $pdf) {}
+
+            public function execute(IntegraRequest $request): IntegraResponse
+            {
+                $this->calls++;
+
+                return new IntegraResponse(
+                    success: true,
+                    httpStatus: 200,
+                    body: ['dados' => $this->pdf],
+                    dados: $this->pdf,
+                    sourceProvenance: FiscalSourceProvenance::SerproTrial->value,
+                    operationKey: $request->operationKey,
+                    requestTag: $request->resolvedRequestTag(),
+                    correlationId: $request->correlationId,
+                );
+            }
+        });
+        $this->app->forgetInstance(SerproOperationService::class);
+
+        $service = $this->app->make(SerproOperationService::class);
+        $first = $service->execute($office, $client, 'pagtoweb.comparrecadacao', ['numeroDocumento' => '12345678901234567'], 'pagtoweb-central', 'corr-pagtoweb-central', null, 'fiscal-run:'.$run->id, 'guias');
+        $second = $service->execute($office, $client, 'pagtoweb.comparrecadacao', ['numeroDocumento' => '12345678901234567'], 'pagtoweb-central', 'corr-pagtoweb-central', null, 'fiscal-run:'.$run->id, 'guias');
+
+        $this->assertTrue($first->success, $first->errorCode.' '.$first->errorMessage);
+        $this->assertSame($first->dados['receipt_id'], $second->dados['receipt_id']);
+        $this->assertSame(1, $calls);
+        $attempt = SerproOperationAttempt::query()->where('operation_key', 'pagtoweb.comparrecadacao')->firstOrFail();
+        $serialized = json_encode(['body' => $attempt->body, 'dados' => $attempt->dados], JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('JVBER', $serialized);
+        $this->assertStringNotContainsString('12345678901234567', $serialized);
+        $this->assertDatabaseHas('pagtoweb_arrecadacao_receipts', ['office_id' => $office->id, 'client_id' => $client->id]);
     }
 
     public function test_mutante_bloqueado_por_autorizacao_tipada(): void
@@ -332,6 +516,7 @@ class SerproOperationServiceTest extends TestCase
             'status' => SerproContractStatus::Active,
             'contractor_cnpj' => '11222333000181',
             'health_status' => 'OK',
+            'credentials_exposed' => false,
         ]);
 
         $authorization = OfficeSerproAuthorization::query()->create([

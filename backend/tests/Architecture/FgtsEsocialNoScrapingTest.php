@@ -146,6 +146,27 @@ class FgtsEsocialNoScrapingTest extends TestCase
         $this->assertSame([], $hits, 'Código não deve afirmar débito FGTS Digital: '.implode(', ', $hits));
     }
 
+    public function test_runtime_nao_contem_double_esocial(): void
+    {
+        $appRoot = dirname(__DIR__, 2).'/app';
+        $hits = [];
+
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($appRoot));
+        foreach ($iterator as $file) {
+            if (! $file->isFile() || $file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $content = file_get_contents($file->getPathname());
+            if ($content !== false && str_contains($content, 'FakeEsocialEventClient')) {
+                $hits[] = substr($file->getPathname(), strlen($appRoot) + 1);
+            }
+        }
+
+        $this->assertFileDoesNotExist($appRoot.'/Services/Esocial/FakeEsocialEventClient.php');
+        $this->assertSame([], $hits, 'Runtime não pode importar nem resolver o double eSocial: '.implode(', ', $hits));
+    }
+
     /**
      * @return array<string, string> rel path => content
      */

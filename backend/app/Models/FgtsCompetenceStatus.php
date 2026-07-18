@@ -7,6 +7,7 @@ use App\Enums\FiscalCoverage;
 use App\Enums\FiscalSituation;
 use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -34,6 +35,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'last_synced_at',
     'limitations',
     'metadata',
+    'is_quarantined',
+    'quarantine_reason',
+    'quarantined_at',
 ])]
 class FgtsCompetenceStatus extends Model
 {
@@ -56,7 +60,15 @@ class FgtsCompetenceStatus extends Model
             'last_synced_at' => 'immutable_datetime',
             'limitations' => 'array',
             'metadata' => 'array',
+            'is_quarantined' => 'boolean',
+            'quarantined_at' => 'immutable_datetime',
         ];
+    }
+
+    /** @param Builder<self> $query */
+    public function scopeOperationallyEligible(Builder $query): void
+    {
+        $query->where('is_quarantined', false);
     }
 
     public function client(): BelongsTo
@@ -114,6 +126,8 @@ class FgtsCompetenceStatus extends Model
             'declares_fgts_digital_debt' => false,
             'run_id' => $this->run_id,
             'snapshot_id' => $this->snapshot_id,
+            'is_quarantined' => $this->is_quarantined,
+            'quarantine_reason' => $this->quarantine_reason,
         ];
     }
 }

@@ -6,6 +6,7 @@ use App\Enums\SerproEnvironment;
 use App\Models\Client;
 use App\Models\Office;
 use App\Services\Audit\AuditLogger;
+use App\Services\Integra\ClientProcuracaoAutoSyncPolicy;
 use App\Services\Integra\ClientProcuracaoSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -32,6 +33,7 @@ final class SyncClientProcuracaoJob implements ShouldBeUnique, ShouldQueue
         public readonly string $environment,
         public readonly ?int $actorUserId = null,
         public readonly ?string $correlationId = null,
+        public readonly bool $automatic = false,
     ) {
         $this->onQueue((string) config('serpro.queues.fiscal', 'fiscal'));
     }
@@ -44,6 +46,7 @@ final class SyncClientProcuracaoJob implements ShouldBeUnique, ShouldQueue
     public function handle(
         ClientProcuracaoSyncService $sync,
         AuditLogger $audit,
+        ClientProcuracaoAutoSyncPolicy $automaticPolicy,
     ): void {
         $office = Office::query()->findOrFail($this->officeId);
         $client = Client::query()
@@ -52,12 +55,27 @@ final class SyncClientProcuracaoJob implements ShouldBeUnique, ShouldQueue
             ->firstOrFail();
         $env = SerproEnvironment::from(strtoupper($this->environment));
 
+        if ($this->automatic) {
+            $decision = $automaticPolicy->check($office, $env);
+            if (! $decision['allowed']) {
+                $audit->record('serpro.procuracao.job', 'BLOCKED', null, [
+                    'environment' => $env->value,
+                    'client_id' => $this->clientId,
+                    'automatic' => true,
+                    'block_code' => $decision['code'],
+                ], $this->actorUserId, $office->id);
+
+                return;
+            }
+        }
+
         try {
             $result = $sync->syncOfficial($office, $client, $env, $this->actorUserId);
             $audit->record('serpro.procuracao.job', 'SUCCESS', $result['snapshot'], [
                 'environment' => $env->value,
                 'status' => $result['snapshot']->status->value,
                 'client_id' => $this->clientId,
+                'automatic' => $this->automatic,
             ], $this->actorUserId, $office->id);
         } catch (Throwable $e) {
             $audit->record('serpro.procuracao.job', 'FAILED', null, [

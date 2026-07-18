@@ -55,6 +55,9 @@ final class SerproDteIndicatorClient implements DteIndicatorClient
             correlationId: isset($context['correlation_id']) ? (string) $context['correlation_id'] : null,
             module: 'mailbox',
         );
+        if ($response->hasSimulatedSource()) {
+            $response = $response->rejectSimulatedSource();
+        }
 
         if (! $response->success) {
             return new DteIndicatorResult(

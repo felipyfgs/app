@@ -4,7 +4,6 @@ namespace App\Services\Operations\Inbox;
 
 use App\Enums\CaptureChannel;
 use App\Enums\CredentialStatus;
-use App\Enums\OfficeRole;
 use App\Enums\QuarantineReason;
 use App\Enums\QuarantineResolutionStatus;
 use App\Enums\SyncCursorStatus;
@@ -27,7 +26,7 @@ final class CteItemsCollector
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    public function collect(int $officeId, ?OfficeRole $role): Collection
+    public function collect(int $officeId, InboxCapabilities $capabilities): Collection
     {
         $items = collect();
         $threshold = (int) config('sefaz.decode_failure_threshold', 5);
@@ -47,8 +46,7 @@ final class CteItemsCollector
             $quiet = $cursor->next_sync_at?->isFuture() ?? false;
             $blocked = $cursor->status === SyncCursorStatus::Blocked;
             $retryAllowed = ! $blocked && ! $quiet
-                && $role !== null
-                && $role->canTriggerSync();
+                && $capabilities->canTriggerSync;
 
             if ($cursor->last_cstat === '656' || ($blocked && $cursor->last_cstat === '656')) {
                 $items->push($this->items->cteItem(
@@ -59,7 +57,7 @@ final class CteItemsCollector
                     clientId: $client?->id,
                     establishmentId: $est?->id,
                     occurredAt: $cursor->updated_at?->toIso8601String() ?? now()->toIso8601String(),
-                    role: $role,
+                    role: $capabilities,
                     retryAllowed: false,
                     cursorId: $cursor->id,
                 ));
@@ -74,7 +72,7 @@ final class CteItemsCollector
                     clientId: $client?->id,
                     establishmentId: $est?->id,
                     occurredAt: $cursor->updated_at?->toIso8601String() ?? now()->toIso8601String(),
-                    role: $role,
+                    role: $capabilities,
                     retryAllowed: false,
                     cursorId: $cursor->id,
                 ));
@@ -89,7 +87,7 @@ final class CteItemsCollector
                     clientId: $client?->id,
                     establishmentId: $est?->id,
                     occurredAt: $cursor->updated_at?->toIso8601String() ?? now()->toIso8601String(),
-                    role: $role,
+                    role: $capabilities,
                     retryAllowed: $retryAllowed,
                     cursorId: $cursor->id,
                 ));
@@ -114,7 +112,7 @@ final class CteItemsCollector
                     clientId: (int) $clientId,
                     establishmentId: null,
                     occurredAt: now()->toIso8601String(),
-                    role: $role,
+                    role: $capabilities,
                     retryAllowed: false,
                     cursorId: null,
                 ));
@@ -138,7 +136,7 @@ final class CteItemsCollector
                     clientId: null,
                     establishmentId: null,
                     occurredAt: $oc->updated_at?->toIso8601String() ?? now()->toIso8601String(),
-                    role: $role,
+                    role: $capabilities,
                     retryAllowed: false,
                     cursorId: $oc->id,
                 ));
@@ -153,7 +151,7 @@ final class CteItemsCollector
                     clientId: null,
                     establishmentId: null,
                     occurredAt: $heartbeat->toIso8601String(),
-                    role: $role,
+                    role: $capabilities,
                     retryAllowed: ! ($oc->status === SyncCursorStatus::Blocked)
                         && ! ($oc->next_sync_at?->isFuture() ?? false),
                     cursorId: $oc->id,
@@ -168,7 +166,7 @@ final class CteItemsCollector
                     clientId: null,
                     establishmentId: null,
                     occurredAt: $oc->updated_at?->toIso8601String() ?? now()->toIso8601String(),
-                    role: $role,
+                    role: $capabilities,
                     retryAllowed: false,
                     cursorId: $oc->id,
                 ));
@@ -221,7 +219,7 @@ final class CteItemsCollector
                 clientId: null,
                 establishmentId: null,
                 occurredAt: $q->created_at?->toIso8601String() ?? now()->toIso8601String(),
-                role: $role,
+                role: $capabilities,
                 retryAllowed: false,
                 cursorId: null,
                 quarantineId: $q->id,

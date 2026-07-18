@@ -50,4 +50,16 @@ final class BillabilityClassificationTest extends TestCase
         );
         $this->assertFalse($response->isProductiveEvidence());
     }
+
+    public function test_unverified_response_is_not_productive_evidence(): void
+    {
+        $response = new IntegraResponse(
+            success: true,
+            httpStatus: 200,
+            body: ['ok' => true],
+            sourceProvenance: 'UNVERIFIED',
+        );
+
+        $this->assertFalse($response->isProductiveEvidence());
+    }
 }

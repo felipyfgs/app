@@ -114,20 +114,19 @@ class ClientProcuracaoSyncAndGateTest extends TestCase
 
         $service = app(ClientProcuracaoSyncService::class);
 
-        // Double offline explícito → poderes simulados → nunca evidência produtiva.
-        $result = $service->syncOfficial($office, $client, SerproEnvironment::Trial);
-        $this->assertContains(
-            $result['snapshot']->status,
-            [
-                ClientProcuracaoSyncStatus::Unverified,
-                ClientProcuracaoSyncStatus::Missing,
-                ClientProcuracaoSyncStatus::Authorized,
-            ],
-        );
-        $this->assertNotNull($result['snapshot']->last_verified_at);
+        // Double offline explícito não pode criar poderes nem alegar sync oficial.
+        try {
+            $service->syncOfficial($office, $client, SerproEnvironment::Trial);
+            $this->fail('O double sintético não pode concluir sync oficial.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('Resposta sintética', $e->getMessage());
+        }
+
+        // O restante da projeção testa estados persistidos por fonte externa,
+        // sem promover o double local a evidência oficial.
+        $snap = $service->getOrCreateSnapshot($office, $client, SerproEnvironment::Trial);
 
         // Force Expired projection
-        $snap = $result['snapshot'];
         $power = TaxProxyPower::query()->create([
             'office_id' => $office->id,
             'client_id' => $client->id,

@@ -86,6 +86,18 @@ final class SerproE2eProbeCommand extends Command
             }
         }
 
+        $passed = $batch['summary']['total'] > 0
+            && array_sum(array_map(
+                fn (string $status): int => $batch['summary'][$status] ?? 0,
+                ['PASS_REAL_SYNC', 'PASS_REAL_EMPTY', 'PASS_REAL_ASYNC_COMPLETE', 'PASS_REAL_CACHE'],
+            )) === $batch['summary']['total'];
+
+        if (! $passed) {
+            $this->error('Probe incompleto: toda operação alvo exige PASS_REAL_* com PRODUCTION_CANARY.');
+
+            return self::FAILURE;
+        }
+
         return self::SUCCESS;
     }
 }

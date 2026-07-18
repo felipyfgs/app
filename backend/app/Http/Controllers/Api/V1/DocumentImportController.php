@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\DocumentImportBatchItem;
+use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Import\DocumentImportBatchService;
 use App\Services\Import\OutboundXmlIngestionService;
 use App\Support\CurrentOffice;
@@ -21,6 +24,8 @@ use Throwable;
  */
 class DocumentImportController extends Controller
 {
+    public function __construct(private readonly TenantAuthorization $authorization) {}
+
     public function store(
         Request $request,
         CurrentOffice $currentOffice,
@@ -28,8 +33,8 @@ class DocumentImportController extends Controller
         DocumentImportBatchService $batches,
         AuditLogger $audit,
     ): JsonResponse {
-        $role = $currentOffice->role();
-        if ($role === null || ! $role->canImportDocuments()) {
+        $actor = $request->user();
+        if (! $actor instanceof User || ! $this->authorization->allows($actor, TenantPermission::DocumentsImport)) {
             return response()->json(['message' => 'Ação não autorizada para o perfil atual.'], 403);
         }
 

@@ -80,13 +80,17 @@ abstract class AbstractDctfwebAdapter implements FiscalSourceAdapter
      */
     protected function callUpstream(FiscalAdapterRequest $request, array $payload = []): IntegraResponse
     {
-        return $this->caller->call(
+        $response = $this->caller->call(
             request: $request,
             solutionCode: $this->systemCode(),
             serviceCode: $this->serviceCode(),
             operationCode: $this->operationCode(),
             payload: $payload,
         );
+
+        return $response->hasSimulatedSource()
+            ? $response->rejectSimulatedSource()
+            : $response;
     }
 
     protected function failedFromResponse(IntegraResponse $response): FiscalAdapterResult

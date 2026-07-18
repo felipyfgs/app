@@ -181,8 +181,12 @@ final class SerproOperationAttemptStore
             return;
         }
 
+        if ($response->hasSimulatedSource()) {
+            $response = $response->rejectSimulatedSource();
+        }
+
         $now = now();
-        $documental = $this->isPgdasdDocumentalKey($attempt->operation_key);
+        $documental = $this->isDocumentalOperationKey($attempt->operation_key);
         $attempt->forceFill([
             'attempt_state' => $state,
             'success' => $response->success,
@@ -213,14 +217,14 @@ final class SerproOperationAttemptStore
 
     public function toResponse(SerproOperationAttempt $attempt): IntegraResponse
     {
-        return new IntegraResponse(
+        $response = new IntegraResponse(
             success: (bool) $attempt->success,
             httpStatus: (int) ($attempt->http_status ?? 0),
             body: is_array($attempt->body) ? $attempt->body : [],
             headers: is_array($attempt->headers) ? $attempt->headers : [],
             errorCode: $attempt->error_code,
             errorMessage: $attempt->error_message,
-            simulated: (bool) $attempt->simulated,
+            simulated: false,
             correlationId: $attempt->correlation_id,
             latencyMs: $attempt->latency_ms,
             businessStatus: $attempt->business_status,
@@ -229,9 +233,16 @@ final class SerproOperationAttemptStore
             operationKey: $attempt->operation_key,
             requestTag: $attempt->request_tag,
             functionalRoute: $attempt->functional_route,
-            sourceProvenance: $attempt->source_provenance
-                ?? FiscalSourceProvenance::Unverified->value,
+            sourceProvenance: $attempt->source_provenance ?? FiscalSourceProvenance::Unverified->value,
         );
+
+        // Replay idempotente também deve falhar fechado: attempts legados
+        // com SIMULATED não podem reaparecer como evidência produtiva.
+        if ($response->hasSimulatedSource()) {
+            return $response->rejectSimulatedSource();
+        }
+
+        return $response;
     }
 
     private function blocked(
@@ -262,6 +273,10 @@ final class SerproOperationAttemptStore
      */
     private function sanitizeAttemptDados(?string $operationKey, mixed $dados): ?array
     {
+        if ($this->isPagtowebArrecadacaoReceiptKey($operationKey)) {
+            return $this->sanitizePagtowebReceiptDescriptor($dados);
+        }
+
         if (! is_array($dados)) {
             if (is_string($dados) && $dados !== '') {
                 $decoded = json_decode($dados, true);
@@ -277,7 +292,7 @@ final class SerproOperationAttemptStore
 
         $dados = $this->sanitizeResponseArray($dados);
 
-        return $this->isPgdasdDocumentalKey($operationKey)
+        return $this->isDocumentalOperationKey($operationKey)
             ? $this->stripPdfBase64Fields($dados)
             : $dados;
     }
@@ -290,18 +305,55 @@ final class SerproOperationAttemptStore
     {
         $body = $this->sanitizeResponseArray($body);
 
-        return $this->isPgdasdDocumentalKey($operationKey)
+        if ($this->isPagtowebArrecadacaoReceiptKey($operationKey)) {
+            $body['dados'] = $this->sanitizePagtowebReceiptDescriptor($body['dados'] ?? null);
+
+            return $this->stripPdfBase64Fields($body);
+        }
+
+        return $this->isDocumentalOperationKey($operationKey)
             ? $this->stripPdfBase64Fields($body)
             : $body;
     }
 
-    private function isPgdasdDocumentalKey(?string $operationKey): bool
+    private function isDocumentalOperationKey(?string $operationKey): bool
     {
         return in_array($operationKey, [
             'pgdasd.consultimadecrec',
             'pgdasd.consdecrec',
             'pgdasd.consextrato',
+            'pagtoweb.comparrecadacao',
         ], true);
+    }
+
+    private function isPagtowebArrecadacaoReceiptKey(?string $operationKey): bool
+    {
+        return $operationKey === 'pagtoweb.comparrecadacao';
+    }
+
+    /**
+     * Preserva somente o descritor público já produzido pela captura pré-ACK.
+     * Qualquer resposta bruta (inclusive Base64) vira marcador não reutilizável.
+     *
+     * @return array<string, mixed>
+     */
+    private function sanitizePagtowebReceiptDescriptor(mixed $dados): array
+    {
+        if (! is_array($dados) || ! isset($dados['receipt_id']) || ! is_int($dados['receipt_id']) || $dados['receipt_id'] < 1) {
+            return $this->omittedDescriptor();
+        }
+
+        $allowed = ['receipt_id', 'available', 'id', 'mime_type', 'byte_size', 'source_provenance', 'observed_at'];
+        $descriptor = [];
+        foreach ($allowed as $key) {
+            if (array_key_exists($key, $dados) && (is_scalar($dados[$key]) || $dados[$key] === null)) {
+                $descriptor[$key] = is_string($dados[$key])
+                    ? $this->sanitizeScalar($dados[$key], false, 200)
+                    : $dados[$key];
+            }
+        }
+
+        return $descriptor['receipt_id'] ?? null ? $descriptor : $this->omittedDescriptor();
     }
 
     /**

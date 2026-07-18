@@ -34,7 +34,9 @@ final class CompatiblePlatformRoleCast implements CastsAttributes
             : PlatformRole::tryFromStorage((string) $value);
 
         if ($role === null) {
-            return null;
+            throw new \InvalidArgumentException(
+                "Papel de plataforma inválido para '{$key}': ".var_export($value, true)
+            );
         }
 
         if ($key === 'platform_role') {

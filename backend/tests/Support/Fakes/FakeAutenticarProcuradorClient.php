@@ -21,7 +21,7 @@ final class FakeAutenticarProcuradorClient implements AutenticarProcuradorClient
             expiresAt: $expires,
             simulated: true,
             // Fake/simulado NUNCA produz SERPRO_ACCEPTED.
-            authorizationState: TermoAuthorizationState::Simulated->value,
+            authorizationState: TermoAuthorizationState::Rejected->value,
         );
     }
 }

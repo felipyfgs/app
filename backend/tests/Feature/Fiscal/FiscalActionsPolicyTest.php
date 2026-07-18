@@ -186,7 +186,8 @@ class FiscalActionsPolicyTest extends TestCase
             'create_run' => false,
         ]);
         $this->assertNotSame(403, $fgts->status());
-        $this->assertContains($fgts->status(), [200, 202, 422]);
+        $fgts->assertStatus(503)
+            ->assertJsonPath('code', 'ESOCIAL_SOURCE_UNAVAILABLE');
     }
 
     public function test_operator_triagem_mailbox_new_in_review_resolved_e_rejeita_invalido(): void

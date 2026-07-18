@@ -6,6 +6,7 @@ use App\Enums\FiscalGuideEmissionStatus;
 use App\Enums\FiscalGuidePaymentStatus;
 use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -29,6 +30,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'payment_status',
     'is_external_call',
     'metadata',
+    'is_quarantined',
+    'quarantine_reason',
+    'quarantined_at',
 ])]
 class FiscalGuideStub extends Model
 {
@@ -43,7 +47,15 @@ class FiscalGuideStub extends Model
             'payment_status' => FiscalGuidePaymentStatus::class,
             'is_external_call' => 'boolean',
             'metadata' => 'array',
+            'is_quarantined' => 'boolean',
+            'quarantined_at' => 'immutable_datetime',
         ];
+    }
+
+    /** @param Builder<self> $query */
+    public function scopeOperationallyEligible(Builder $query): void
+    {
+        $query->where('is_quarantined', false);
     }
 
     public function client(): BelongsTo
@@ -77,6 +89,8 @@ class FiscalGuideStub extends Model
             'emission_status' => $this->emission_status?->value,
             'payment_status' => $this->payment_status?->value,
             'is_external_call' => $this->is_external_call,
+            'is_quarantined' => $this->is_quarantined,
+            'quarantine_reason' => $this->quarantine_reason,
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

@@ -35,6 +35,20 @@ final class FgtsEsocialMonitoringService
     ) {}
 
     /**
+     * Indica se o container recebeu uma fonte M2M explicitamente instalada.
+     * O binding padrão é Disabled em todos os ambientes, inclusive testing.
+     */
+    public function isSourceAvailable(): bool
+    {
+        return ! $this->client instanceof DisabledEsocialEventClient;
+    }
+
+    public function sourceUnavailableMessage(): string
+    {
+        return DisabledEsocialEventClient::UNAVAILABLE_MESSAGE;
+    }
+
+    /**
      * Metadados de cobertura/limitações (texto de produto, não só tooltip).
      *
      * @return array<string, mixed>
@@ -86,6 +100,10 @@ final class FgtsEsocialMonitoringService
         $this->assertTenant($office, $client, $establishment);
         $this->assertCompetenceKey($competencePeriodKey);
 
+        if (! $this->isSourceAvailable()) {
+            throw new RuntimeException($this->sourceUnavailableMessage());
+        }
+
         if ((bool) config('fgts_esocial.kill_switch', false)) {
             throw new RuntimeException('Módulo FGTS/eSocial desabilitado (kill switch).');
         }
@@ -104,6 +122,14 @@ final class FgtsEsocialMonitoringService
             throw new RuntimeException(
                 $fetch->errorMessage ?? 'Falha ao consultar eventos eSocial.',
             );
+        }
+
+        $hasSyntheticInput = false;
+        foreach ($fetch->events as $event) {
+            if ($this->evidencePersistence->isSyntheticEvent($event)) {
+                $hasSyntheticInput = true;
+                break;
+            }
         }
 
         $evidences = [];
@@ -125,15 +151,19 @@ final class FgtsEsocialMonitoringService
             $establishment?->id,
         );
 
+        // Doubles sintéticos continuam úteis para exercitar o projetor offline,
+        // mas nunca entram na leitura operacional nem promovem competência fiscal.
+        $projectionEvidences = $hasSyntheticInput ? $evidences : $all;
+
         $projection = $this->projector->project(
             competencePeriodKey: $competencePeriodKey,
-            evidences: $all,
+            evidences: $projectionEvidences,
             now: $now,
             establishmentId: $establishment?->id,
             sourceUnsupported: $fetch->sourceUnsupported,
         );
 
-        $extra = $this->divergenceAnalyzer->analyze($all, $competencePeriodKey);
+        $extra = $this->divergenceAnalyzer->analyze($projectionEvidences, $competencePeriodKey);
         if ($extra !== []) {
             $projection = $this->projector->withExtraFindings($projection, $extra);
         }
@@ -143,10 +173,11 @@ final class FgtsEsocialMonitoringService
             $client,
             $competencePeriodKey,
             $projection,
-            $all,
+            $projectionEvidences,
             $establishment,
             $run,
             $now,
+            $hasSyntheticInput,
         );
 
         return [
@@ -168,6 +199,7 @@ final class FgtsEsocialMonitoringService
     ): LengthAwarePaginator {
         $q = FgtsCompetenceStatus::query()
             ->withoutGlobalScopes()
+            ->operationallyEligible()
             ->where('office_id', $office->id)
             ->orderByDesc('competence_period_key')
             ->orderByDesc('id');
@@ -186,6 +218,7 @@ final class FgtsEsocialMonitoringService
     {
         return FgtsCompetenceStatus::query()
             ->withoutGlobalScopes()
+            ->operationallyEligible()
             ->where('office_id', $office->id)
             ->whereKey($id)
             ->first();
@@ -203,6 +236,7 @@ final class FgtsEsocialMonitoringService
     ): LengthAwarePaginator {
         $q = EsocialEventEvidence::query()
             ->withoutGlobalScopes()
+            ->operationallyEligible()
             ->where('office_id', $office->id)
             ->orderByDesc('id');
 
@@ -231,6 +265,7 @@ final class FgtsEsocialMonitoringService
         ?Establishment $establishment,
         ?FiscalMonitoringRun $run,
         CarbonImmutable $now,
+        bool $isQuarantined = false,
     ): FgtsCompetenceStatus {
         $closureObserved = null;
         $totalizerObserved = null;
@@ -262,7 +297,9 @@ final class FgtsEsocialMonitoringService
             $totalizerDueBy = $closureObserved->addHours($windowHours);
         }
 
-        $competence = $this->ensureFiscalCompetence($office, $client, $competencePeriodKey, $projection);
+        $competence = $isQuarantined
+            ? null
+            : $this->ensureFiscalCompetence($office, $client, $competencePeriodKey, $projection);
 
         $attrs = [
             'fiscal_competence_id' => $competence?->id,
@@ -285,6 +322,9 @@ final class FgtsEsocialMonitoringService
                     $projection->findings,
                 ),
             ],
+            'is_quarantined' => $isQuarantined,
+            'quarantine_reason' => $isQuarantined ? 'SYNTHETIC_ESOCIAL_TEST_DOUBLE' : null,
+            'quarantined_at' => $isQuarantined ? $now : null,
         ];
 
         return DB::transaction(function () use ($office, $client, $establishment, $competencePeriodKey, $attrs) {

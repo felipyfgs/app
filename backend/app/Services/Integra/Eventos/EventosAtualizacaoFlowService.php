@@ -3,6 +3,7 @@
 namespace App\Services\Integra\Eventos;
 
 use App\Contracts\SerproOperationExecutor;
+use App\DTO\Serpro\EventosBatchContributor;
 use App\DTO\Serpro\IntegraResponse;
 use App\DTO\Serpro\SerproOperationCommand;
 use App\Enums\SerproCapabilityDriver;
@@ -64,8 +65,16 @@ final class EventosAtualizacaoFlowService
             throw new RuntimeException('CAPABILITY_DISABLED: authorization/eventos desabilitado.');
         }
 
-        $contributorsCount = $contributorIdentities !== null ? count($contributorIdentities) : 0;
-        $this->limits->assertBatchSize(max(1, $contributorsCount));
+        $batch = EventosBatchContributor::forSolicit($personType, $contributorIdentities ?? []);
+        $contributorsCount = count($batch->numbers);
+        $this->limits->assertBatchSize($contributorsCount);
+
+        // A própria referência oficial PJ lista nomes divergentes para este campo.
+        // Sem uma fonte reconciliada versionada, não há egress, inclusive Trial.
+        if ($personType === 'PJ') {
+            throw new RuntimeException('EVENTOS_PJ_CONTRACT_UNRECONCILED: campo oficial PJ ainda divergente.');
+        }
+
         $this->limits->attemptDaily((int) $office->id, $personType);
 
         $environment ??= SerproEnvironment::tryFrom(strtoupper((string) config('serpro.default_environment', 'TRIAL')))
@@ -80,10 +89,6 @@ final class EventosAtualizacaoFlowService
             : (string) config('serpro.eventos.obter_pj_operation_key');
 
         $businessData = ['evento' => $evento];
-        if ($contributorIdentities !== null && $contributorIdentities !== []) {
-            // Campo genérico de lote — codec oficial no executor; sem logar identidades.
-            $businessData['contribuintes'] = $contributorIdentities;
-        }
 
         $response = $this->operations->run(new SerproOperationCommand(
             office: $office,
@@ -93,7 +98,18 @@ final class EventosAtualizacaoFlowService
             idempotencyKey: sprintf('eventos:solicit:%d:%s:%s', $office->id, $personType, $correlationId),
             correlationId: $correlationId,
             module: 'authorization',
+            eventosBatchContributor: $batch,
         ));
+
+        if ($response->hasSimulatedSource()) {
+            return $this->persistFailedSolicit(
+                $office, $client, $environment, $personType, $evento, $correlationId,
+                $solicitKey, $obterKey, max(1, $contributorsCount),
+                'SIMULATED_SOURCE_REJECTED',
+                'Resposta sintética não pode iniciar fluxo de eventos.',
+                false,
+            );
+        }
 
         if ($response->httpStatus === 429 || $response->errorCode === 'RATE_LIMIT_LOCAL') {
             $until = $this->limits->markRemote429(
@@ -199,6 +215,9 @@ final class EventosAtualizacaoFlowService
         if ($run->protocol === null || $run->protocol === '') {
             throw new RuntimeException('EVENTOS_PROTOCOL_MISSING');
         }
+        if ($run->evento === null || trim($run->evento) === '') {
+            throw new RuntimeException('EVENTOS_EVENT_MISSING');
+        }
 
         $now = CarbonImmutable::now();
         if ($run->expires_at !== null && $now->greaterThan($run->expires_at)) {
@@ -247,10 +266,11 @@ final class EventosAtualizacaoFlowService
             office: $office,
             client: $client,
             operationKey: (string) $run->operation_key_obter,
-            businessData: ['protocolo' => $run->protocol],
+            businessData: ['protocolo' => $run->protocol, 'evento' => $run->evento],
             idempotencyKey: sprintf('eventos:obter:%d:%s', $run->office_id, $run->protocol),
             correlationId: $run->correlation_id,
             module: 'authorization',
+            eventosBatchContributor: EventosBatchContributor::forObtain((string) $run->person_type),
         ));
 
         if ($response->httpStatus === 429) {

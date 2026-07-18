@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
+use App\Casts\TermoAuthorizationStateCast;
 use App\Enums\AuthorCertificateMode;
 use App\Enums\AuthorIdentityType;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproEnvironment;
-use App\Enums\TermoAuthorizationState;
 use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -68,7 +68,7 @@ class OfficeSerproAuthorization extends Model
             'termo_valid_from' => 'immutable_datetime',
             'termo_valid_to' => 'immutable_datetime',
             'termo_uploaded_at' => 'immutable_datetime',
-            'termo_authorization_state' => TermoAuthorizationState::class,
+            'termo_authorization_state' => TermoAuthorizationStateCast::class,
             'procurador_token_expires_at' => 'immutable_datetime',
             'last_token_refresh_at' => 'immutable_datetime',
             'last_validated_at' => 'immutable_datetime',

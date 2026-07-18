@@ -8,12 +8,14 @@ use App\Http\Middleware\EnsureOfficeContext;
 use App\Models\Client;
 use App\Models\User;
 use App\Services\Authorization\TenantAuthorization;
+use App\Services\Fiscal\SimplesMei\CcmeiCertificateIssuanceService;
 use App\Services\Fiscal\SimplesMei\CcmeiMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\CcmeiRegistrationStatusQueryService;
 use App\Support\CurrentOffice;
 use App\Support\FeatureFlags;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -23,8 +25,70 @@ class CcmeiMonitoringController extends Controller
         private readonly CurrentOffice $currentOffice,
         private readonly CcmeiMonitoringQueryService $queries,
         private readonly CcmeiRegistrationStatusQueryService $registrationStatusQueries,
+        private readonly CcmeiCertificateIssuanceService $issuance,
         private readonly TenantAuthorization $authorization,
     ) {}
+
+    public function issuedCertificates(Request $request, int $client): JsonResponse
+    {
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
+        $model = $this->findClient($this->currentOffice->office()->id, $client);
+        if ($model === null) {
+            return $this->clientNotFound();
+        }
+        $this->assertCanRead($request, $model);
+
+        return response()->json(['data' => $this->issuance->history($this->currentOffice->office(), $model)]);
+    }
+
+    public function issueCertificate(Request $request, int $client): JsonResponse
+    {
+        $this->assertModuleEnabled();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
+        $request->validate(['confirmed' => ['required', 'accepted']]);
+        $model = $this->findClient($this->currentOffice->office()->id, $client);
+        if ($model === null) {
+            return $this->clientNotFound();
+        }
+        $this->assertCanWrite($request, $model);
+        $result = $this->issuance->issue($this->currentOffice->office(), $model, bin2hex(random_bytes(8)));
+
+        return response()->json(['data' => $result], ($result['success'] ?? false) ? 202 : 422);
+    }
+
+    public function downloadIssuedCertificate(Request $request, int $client, int $certificate): Response|JsonResponse
+    {
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
+        $office = $this->currentOffice->office();
+        $model = $this->findClient($office->id, $client);
+        if ($model === null) {
+            return $this->clientNotFound();
+        }
+        $this->assertCanRead($request, $model);
+        $item = $this->issuance->findForDownload($office, $model, $certificate);
+        if ($item === null) {
+            return response()->json(['message' => 'Certificado não encontrado.'], 404);
+        }
+        try {
+            $contents = $this->issuance->read($item);
+        } catch (\Throwable) {
+            return response()->json(['message' => 'Certificado não encontrado.'], 404);
+        }
+
+        return response($contents, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="ccmei-certificado-'.$item->id.'.pdf"',
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'Pragma' => 'no-cache',
+        ]);
+    }
 
     public function history(Request $request, int $client): JsonResponse
     {

@@ -2,11 +2,11 @@
 
 namespace App\Services\Operations;
 
-use App\Enums\OfficeRole;
 use App\Services\Operations\Inbox\CredentialBackupItemsCollector;
 use App\Services\Operations\Inbox\CteItemsCollector;
 use App\Services\Operations\Inbox\CursorSyncItemsCollector;
 use App\Services\Operations\Inbox\FiscalItemsCollector;
+use App\Services\Operations\Inbox\InboxCapabilities;
 use App\Services\Operations\Inbox\InboxItemFactory;
 use App\Services\Operations\Inbox\MailboxItemsCollector;
 use App\Services\Operations\Inbox\OutboundSvrsItemsCollector;
@@ -124,13 +124,13 @@ final class OperationsInboxBuilder
      */
     public function build(
         int $officeId,
-        ?OfficeRole $role,
+        ?InboxCapabilities $capabilities = null,
         ?string $severity = null,
         ?string $type = null,
         int $limit = 50,
         ?string $cursor = null,
     ): array {
-        $items = $this->collectAll($officeId, $role);
+        $items = $this->collectAll($officeId, $capabilities ?? new InboxCapabilities);
 
         if ($severity !== null && $severity !== '' && in_array($severity, self::SEVERITIES, true)) {
             $items = $items->filter(fn (array $item) => $item['severity'] === $severity)->values();
@@ -184,9 +184,9 @@ final class OperationsInboxBuilder
      *
      * @return array{inbox_critical: int, inbox_high: int, inbox_total: int}
      */
-    public function counts(int $officeId, ?OfficeRole $role = null): array
+    public function counts(int $officeId, ?InboxCapabilities $capabilities = null): array
     {
-        $items = $this->collectAll($officeId, $role);
+        $items = $this->collectAll($officeId, $capabilities ?? new InboxCapabilities);
 
         return [
             'inbox_critical' => $items->where('severity', 'critical')->count(),
@@ -198,18 +198,18 @@ final class OperationsInboxBuilder
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    private function collectAll(int $officeId, ?OfficeRole $role): Collection
+    private function collectAll(int $officeId, InboxCapabilities $capabilities): Collection
     {
         // Ordem de merge alinhada ao monólito (sort em build() é a fonte de verdade da página).
         return collect()
-            ->merge($this->cursorSync->collect($officeId, $role))
-            ->merge($this->cte->collect($officeId, $role))
-            ->merge($this->credentialBackup->collect($officeId, $role))
-            ->merge($this->outboundSvrs->collect($officeId, $role))
-            ->merge($this->quarantine->collect($officeId, $role))
-            ->merge($this->mailbox->collect($officeId, $role))
-            ->merge($this->serproProxyUsage->collect($officeId, $role))
-            ->merge($this->fiscal->collect($officeId, $role))
+            ->merge($this->cursorSync->collect($officeId, $capabilities))
+            ->merge($this->cte->collect($officeId, $capabilities))
+            ->merge($this->credentialBackup->collect($officeId, $capabilities))
+            ->merge($this->outboundSvrs->collect($officeId, $capabilities))
+            ->merge($this->quarantine->collect($officeId, $capabilities))
+            ->merge($this->mailbox->collect($officeId, $capabilities))
+            ->merge($this->serproProxyUsage->collect($officeId, $capabilities))
+            ->merge($this->fiscal->collect($officeId, $capabilities))
             ->values();
     }
 }

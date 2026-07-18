@@ -2,7 +2,6 @@
 
 namespace App\Services\Operations\Inbox;
 
-use App\Enums\OfficeRole;
 use App\Models\MailboxAlert;
 use Illuminate\Support\Collection;
 
@@ -18,7 +17,7 @@ final class MailboxItemsCollector
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    public function collect(int $officeId, ?OfficeRole $role = null): Collection
+    public function collect(int $officeId, InboxCapabilities $role): Collection
     {
         $rows = MailboxAlert::query()
             ->withoutGlobalScopes()

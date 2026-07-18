@@ -449,7 +449,7 @@ class HttpIntegraContadorClientProcuradorTest extends TestCase
         ));
 
         $this->assertSame('TRIAL_CREDENTIALS_MISSING', $response->errorCode);
-        $this->assertTrue($response->simulated);
+        $this->assertFalse($response->simulated);
         $this->assertSame(FiscalSourceProvenance::SerproTrial->value, $response->sourceProvenance);
     }
 

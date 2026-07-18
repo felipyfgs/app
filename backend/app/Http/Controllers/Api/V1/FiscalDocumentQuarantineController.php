@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
 use App\Models\FiscalDocumentQuarantine;
+use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Sefaz\FiscalDocumentQuarantineService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
@@ -40,11 +43,13 @@ class FiscalDocumentQuarantineController extends Controller
         Request $request,
         int $quarantine,
         CurrentOffice $currentOffice,
+        TenantAuthorization $authorization,
         FiscalDocumentQuarantineService $quarantines,
         AuditLogger $audit,
     ): JsonResponse {
-        $role = $currentOffice->role();
-        if ($role === null || ! $role->canManageClients()) {
+        $actor = $request->user();
+        if (! $actor instanceof User
+            || ! $authorization->allows($actor, TenantPermission::ClientsManage)) {
             return response()->json(['message' => 'Ação não autorizada para o perfil atual.'], 403);
         }
 
@@ -66,8 +71,7 @@ class FiscalDocumentQuarantineController extends Controller
         try {
             $updated = $quarantines->resolve(
                 item: $model,
-                actor: $request->user(),
-                role: $role,
+                actor: $actor,
                 resolutionStatus: $data['resolution_status'],
                 code: $data['resolution_code'] ?? null,
                 notes: $data['resolution_notes'] ?? null,

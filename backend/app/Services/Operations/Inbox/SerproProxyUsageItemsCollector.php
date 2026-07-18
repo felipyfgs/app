@@ -2,7 +2,6 @@
 
 namespace App\Services\Operations\Inbox;
 
-use App\Enums\OfficeRole;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproEnvironment;
 use App\Enums\TaxProxyPowerStatus;
@@ -28,7 +27,7 @@ final class SerproProxyUsageItemsCollector
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    public function collect(int $officeId, ?OfficeRole $role = null): Collection
+    public function collect(int $officeId, InboxCapabilities $role): Collection
     {
         return $this->serproAuthItems($officeId)
             ->merge($this->proxyPowerItems($officeId))

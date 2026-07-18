@@ -7,7 +7,6 @@ use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
 use App\DTO\Serpro\MutationAuthorization;
 use App\DTO\Serpro\SerproOperationCommand;
-use App\Enums\FiscalSourceProvenance;
 use App\Models\Client;
 use App\Models\Office;
 use Tests\Support\Fakes\FakeIntegraContadorClient;
@@ -84,7 +83,7 @@ final class FakeSerproOperationExecutor implements SerproOperationExecutor
                 correlationId: $request->correlationId,
                 operationKey: $request->operationKey,
                 requestTag: $request->resolvedRequestTag(),
-                sourceProvenance: FiscalSourceProvenance::Simulated->value,
+                sourceProvenance: 'SIMULATED',
             );
         }
 

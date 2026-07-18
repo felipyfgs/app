@@ -2,7 +2,6 @@
 
 namespace App\Services\Operations\Inbox;
 
-use App\Enums\OfficeRole;
 use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\SyncCursor;
@@ -93,7 +92,7 @@ final class InboxItemFactory
         ?int $clientId,
         ?int $establishmentId,
         string $occurredAt,
-        ?OfficeRole $role,
+        ?InboxCapabilities $role,
         ?Establishment $establishment,
         ?SyncCursor $cursor,
     ): array {
@@ -122,8 +121,7 @@ final class InboxItemFactory
         ];
 
         if (
-            $role !== null
-            && $role->canTriggerSync()
+            $this->canTriggerSync($role)
             && $establishment !== null
             && in_array($type, ['cursor_error', 'sync_failed_recent'], true)
         ) {
@@ -164,7 +162,7 @@ final class InboxItemFactory
         ?int $clientId,
         ?int $establishmentId,
         string $occurredAt,
-        ?OfficeRole $role,
+        InboxCapabilities|OfficeRole|null $role,
         bool $retryAllowed,
         ?int $cursorId,
         ?int $quarantineId = null,
@@ -180,7 +178,7 @@ final class InboxItemFactory
         $id = substr(hash('sha256', $subject), 0, 32);
 
         $actions = [['type' => 'open', 'label' => 'Abrir']];
-        if ($retryAllowed && $cursorId !== null && $role !== null && $role->canTriggerSync()) {
+        if ($retryAllowed && $cursorId !== null && $this->canTriggerSync($role)) {
             $actions[] = [
                 'type' => 'repair_known_nsu',
                 'label' => 'Reparo NSU conhecido',
@@ -188,7 +186,7 @@ final class InboxItemFactory
                 'requires_known_nsu' => true,
             ];
         }
-        if ($quarantineId !== null && $role !== null && $role->canManageClients()) {
+        if ($quarantineId !== null && $this->canManageClients($role)) {
             $actions[] = [
                 'type' => 'resolve_quarantine',
                 'label' => 'Resolver',
@@ -222,6 +220,16 @@ final class InboxItemFactory
         $name = $client->display_name ?: $client->legal_name;
 
         return (string) $name;
+    }
+
+    private function canTriggerSync(?InboxCapabilities $role): bool
+    {
+        return $role?->canTriggerSync === true;
+    }
+
+    private function canManageClients(?InboxCapabilities $role): bool
+    {
+        return $role?->canManageClients === true;
     }
 
     public function sanitizeText(?string $text): ?string

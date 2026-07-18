@@ -123,6 +123,10 @@ class FgtsEsocialController extends Controller
         $this->assertCanWrite();
         $office = $this->currentOffice->office();
 
+        if (! $this->monitoring->isSourceAvailable()) {
+            return $this->sourceUnavailableResponse();
+        }
+
         if ((bool) config('fgts_esocial.kill_switch', false)) {
             return response()->json(['message' => 'Módulo FGTS/eSocial desabilitado (kill switch).'], 423);
         }
@@ -247,6 +251,10 @@ class FgtsEsocialController extends Controller
         $this->assertCanWrite();
         $office = $this->currentOffice->office();
 
+        if (! $this->monitoring->isSourceAvailable()) {
+            return $this->sourceUnavailableResponse();
+        }
+
         if ((bool) config('fgts_esocial.kill_switch', false)) {
             return response()->json(['message' => 'Módulo FGTS/eSocial desabilitado (kill switch).'], 423);
         }
@@ -293,6 +301,13 @@ class FgtsEsocialController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        if ($out['status']->is_quarantined) {
+            return response()->json([
+                'message' => 'A sincronização produziu dados sintéticos em quarentena, indisponíveis para uso fiscal.',
+                'code' => 'SYNTHETIC_FISCAL_DATA_QUARANTINED',
+            ], 409);
+        }
+
         return response()->json([
             'data' => [
                 'status' => $out['status']->toPublicArray(),
@@ -312,6 +327,14 @@ class FgtsEsocialController extends Controller
         if ($this->currentOffice->role() === null) {
             abort(403, 'Perfil não resolvido.');
         }
+    }
+
+    private function sourceUnavailableResponse(): JsonResponse
+    {
+        return response()->json([
+            'message' => $this->monitoring->sourceUnavailableMessage(),
+            'code' => 'ESOCIAL_SOURCE_UNAVAILABLE',
+        ], 503);
     }
 
     private function assertCanWrite(): void

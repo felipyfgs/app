@@ -51,14 +51,13 @@ class PagtowebPaymentCountMonitoringTest extends TestCase
     }
 
     #[Test]
-    public function it_projects_a_simulated_count_without_persisting_fiscal_identifiers(): void
+    public function it_fails_closed_without_creating_a_count_projection(): void
     {
         $run = app(PagtowebPaymentCountQueryService::class)->enqueueManualConsult($this->office, $this->client, ['intervalo_data_arrecadacao' => ['data_inicial' => '2026-01-01', 'data_final' => '2026-01-31']], null);
         $out = app(FiscalMonitoringRunService::class)->execute($run['id']);
-        $this->assertSame(FiscalRunStatus::Completed, $out->status);
-        $this->assertSame(FiscalRunResult::Success, $out->result);
-        $this->assertDatabaseHas('pagtoweb_payment_count_projections', ['office_id' => $this->office->id, 'client_id' => $this->client->id, 'payment_count' => 1]);
-        $this->assertStringNotContainsString('11222333000181', (string) $out->evidenceArtifacts()->firstOrFail()->payload_json);
+        $this->assertSame(FiscalRunStatus::Failed, $out->status);
+        $this->assertSame(FiscalRunResult::Failed, $out->result);
+        $this->assertDatabaseMissing('pagtoweb_payment_count_projections', ['office_id' => $this->office->id, 'client_id' => $this->client->id]);
     }
 
     #[Test]

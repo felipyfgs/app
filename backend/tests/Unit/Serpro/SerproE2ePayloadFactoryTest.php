@@ -78,4 +78,35 @@ class SerproE2ePayloadFactoryTest extends TestCase
 
         $this->assertSame('2026', $built['business_data']['anoCalendario'] ?? null);
     }
+
+    public function test_pnr_consultar_renuncias_usa_periodo_e_paginacao_documentados(): void
+    {
+        $office = Office::factory()->create();
+        $client = Client::factory()->forOffice($office)->create();
+        Establishment::factory()->create([
+            'office_id' => $office->id,
+            'client_id' => $client->id,
+            'cnpj' => '30288513000100',
+            'is_matrix' => true,
+            'is_active' => true,
+        ]);
+
+        $built = app(SerproE2ePayloadFactory::class)->forOperation(
+            'pnr_contador.consultar_renuncias',
+            $client,
+            ['context' => [
+                'dtInicio' => '2026-01-01',
+                'dtFim' => '2026-01-31',
+                'page' => 0,
+                'pageSize' => 25,
+            ]],
+        );
+
+        $this->assertSame([
+            'dtInicio' => '2026-01-01',
+            'dtFim' => '2026-01-31',
+            'page' => 0,
+            'pageSize' => 25,
+        ], $built['business_data']);
+    }
 }

@@ -64,8 +64,9 @@ use App\Services\Adn\HttpAdnContributorClient;
 use App\Services\Authorization\TenantAuthorization;
 use App\Services\Certificates\PfxReader;
 use App\Services\Clients\CnpjWsRegistrationLookup;
-use App\Services\Esocial\FakeEsocialEventClient;
+use App\Services\Esocial\DisabledEsocialEventClient;
 use App\Services\Esocial\FgtsEsocialSourceAdapter;
+use App\Services\Fiscal\Guides\PagtowebArrecadacaoReceiptAdapter;
 use App\Services\Fiscal\Guides\PagtowebPaymentCountAdapter;
 use App\Services\Fiscal\Guides\PagtowebPaymentListAdapter;
 use App\Services\Fiscal\Guides\SerproGuideEmissionClient;
@@ -73,7 +74,6 @@ use App\Services\Fiscal\Guides\SicalcRevenueSupportAdapter;
 use App\Services\Fiscal\Mutations\IntegraFiscalMutationTransport;
 use App\Services\Fiscal\SimplesMei\CcmeiPostConsultService;
 use App\Services\Fiscal\SimplesMei\CcmeiRegistrationStatusPostConsultService;
-use App\Services\Fiscal\SimplesMei\DasGuideHookService;
 use App\Services\Fiscal\SimplesMei\DefisDeclarationProjector;
 use App\Services\Fiscal\SimplesMei\DefisDeclarationReferenceStore;
 use App\Services\Fiscal\SimplesMei\DefisLatestDeclarationPostConsultService;
@@ -319,9 +319,10 @@ class AppServiceProvider extends ServiceProvider
         // Núcleo fiscal — registry de adapters (módulos filhos registram em boot de seus providers)
         $this->app->singleton(FiscalAdapterRegistry::class);
 
-        // FGTS / eSocial — fake em testing e por padrão (sem HTTP/portal); M2M real futuro via bind
-        $this->app->singleton(FakeEsocialEventClient::class);
-        $this->app->bind(EsocialEventClient::class, FakeEsocialEventClient::class);
+        // FGTS / eSocial — universalmente fail-closed até existir provider M2M oficial aprovado.
+        // Dublês só podem ser instalados explicitamente pela suíte de testes.
+        $this->app->singleton(DisabledEsocialEventClient::class);
+        $this->app->bind(EsocialEventClient::class, DisabledEsocialEventClient::class);
 
         // Caixa Postal / DTE — o runtime só resolve clientes SERPRO reais.
         $this->app->bind(CaixaPostalClient::class, SerproCaixaPostalClient::class);
@@ -412,6 +413,7 @@ class AppServiceProvider extends ServiceProvider
         $registry->register($this->app->make(SicalcRevenueSupportAdapter::class));
         $registry->register($this->app->make(PagtowebPaymentCountAdapter::class));
         $registry->register($this->app->make(PagtowebPaymentListAdapter::class));
+        $registry->register($this->app->make(PagtowebArrecadacaoReceiptAdapter::class));
 
         // Integra-SN / Integra-MEI — um adapter por operação do catálogo
         foreach (SimplesMeiCatalog::all() as $def) {
@@ -423,7 +425,6 @@ class AppServiceProvider extends ServiceProvider
                 contracts: $this->app->make(SerproContractService::class),
                 authorizations: $this->app->make(OfficeSerproAuthorizationService::class),
                 regimeApplicability: $this->app->make(RegimeApplicabilityService::class),
-                dasGuideHook: $this->app->make(DasGuideHookService::class),
                 contributors: $this->app->make(ContributorCnpjResolver::class),
                 pgdasdCodec13: $this->app->make(PgdasdConsDeclaracao13Codec::class),
                 pgdasdDocumentCodecs: $this->app->make(PgdasdDocumentCodecs::class),

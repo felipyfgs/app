@@ -89,6 +89,9 @@ final class SerproParcelamentoSource implements ParcelamentoSource
             mutationAuth: MutationAuthorization::none(),
             module: 'parcelamentos',
         );
+        if ($response->hasSimulatedSource()) {
+            $response = $response->rejectSimulatedSource();
+        }
 
         // Mutantes: executor bloqueia via MutationAuthorization; reforçar se catálogo não marcar is_mutating
         if ($isMutating && $response->errorCode === null && $response->success) {

@@ -389,6 +389,14 @@ class TaxGuideManagementTest extends TestCase
             [$guides[2]->id, $guides[1]->id, $guides[0]->id],
             collect($desc)->pluck('id')->all(),
         );
+
+        $aliasAsc = $this->getJson('/api/v1/fiscal/guides?per_page=10&sort=amount&sort_direction=asc')
+            ->assertOk()
+            ->json('data');
+        $this->assertSame(
+            [$guides[0]->id, $guides[1]->id, $guides[2]->id],
+            collect($aliasAsc)->pluck('id')->all(),
+        );
     }
 
     public function test_payment_service_nao_infere_por_download(): void

@@ -70,10 +70,10 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
                 $contractKey,
             );
             if ($material !== null && ! empty($material['token'])) {
-                $state = (string) ($cachedMeta['state'] ?? TermoAuthorizationState::Simulated->value);
+                $state = (string) ($cachedMeta['state'] ?? TermoAuthorizationState::Rejected->value);
                 // Nunca promover simulado a SERPRO_ACCEPTED via cache.
                 if (($cachedMeta['simulated'] ?? false) && $state === TermoAuthorizationState::SerproAccepted->value) {
-                    $state = TermoAuthorizationState::Simulated->value;
+                    $state = TermoAuthorizationState::Rejected->value;
                 }
 
                 return new ProcuradorAuthResult(
@@ -217,9 +217,9 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
                 );
             }
 
-            $state = (string) ($cachedMeta['state'] ?? TermoAuthorizationState::Simulated->value);
+            $state = (string) ($cachedMeta['state'] ?? TermoAuthorizationState::Rejected->value);
             if (($cachedMeta['simulated'] ?? false) === true) {
-                $state = TermoAuthorizationState::Simulated->value;
+                $state = TermoAuthorizationState::Rejected->value;
             } elseif (($cachedMeta['simulated'] ?? false) === false && ! $response->simulated) {
                 // 304 real reutiliza aceite anterior somente se não era simulado.
                 $state = TermoAuthorizationState::SerproAccepted->value;
@@ -247,6 +247,15 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
             );
         }
 
+        if ($response->hasSimulatedSource()) {
+            return new ProcuradorAuthResult(
+                success: false,
+                errorCode: 'SIMULATED_SOURCE_REJECTED',
+                errorMessage: 'Resposta sintética não pode criar token do procurador.',
+                authorizationState: TermoAuthorizationState::Rejected->value,
+            );
+        }
+
         $token = $this->extractToken($response->body, $response->dados);
         if ($token === null || $token === '') {
             return new ProcuradorAuthResult(
@@ -261,9 +270,7 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
         $expires = $this->resolveExpiry($response->expiresHeader, $response->body, $response->dados);
 
         // SERPRO_ACCEPTED somente resposta real (não simulated/fake/fixture).
-        $state = $response->simulated
-            ? TermoAuthorizationState::Simulated->value
-            : TermoAuthorizationState::SerproAccepted->value;
+        $state = TermoAuthorizationState::SerproAccepted->value;
 
         $vaultId = $this->storeTokenMaterial($request, $termoHash, $contractKey, $token, $response->etag);
         $previousVault = is_array($cachedMeta) ? ($cachedMeta['vault_object_id'] ?? null) : null;

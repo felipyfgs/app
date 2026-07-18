@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers\Api\V1\Fiscal;
 
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\Integra\Mailbox\MailboxAccessService;
 use App\Services\Integra\Mailbox\MailboxQueryService;
 use App\Services\Integra\Mailbox\MailboxTriageService;
 use App\Support\CurrentOffice;
+use App\Support\FeatureFlags;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -20,6 +24,7 @@ class MailboxMessageController extends Controller
         private readonly MailboxQueryService $queries,
         private readonly MailboxAccessService $access,
         private readonly MailboxTriageService $triage,
+        private readonly TenantAuthorization $authorization,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -193,18 +198,31 @@ class MailboxMessageController extends Controller
 
     private function assertCanRead(): void
     {
-        if ($this->currentOffice->role() === null) {
-            abort(403, 'Perfil não resolvido.');
+        $actor = request()->user();
+        if (! $actor instanceof User
+            || ! $this->authorization->allows($actor, TenantPermission::OperationsView)) {
+            abort(403, 'Sem permissão para consultar a Caixa Postal.');
+        }
+
+        $office = $this->currentOffice->office();
+        if ($office === null || ! FeatureFlags::isModuleEnabled('mailbox', (int) $office->id)) {
+            abort(403, 'Módulo Caixa Postal não disponível.');
         }
     }
 
     private function assertCanWriteTriage(): void
     {
-        $role = $this->currentOffice->role();
-        if ($role === null) {
-            abort(403, 'Perfil não resolvido.');
+        $this->assertCanRead();
+
+        $actor = request()->user();
+        if (! $actor instanceof User
+            || ! $this->authorization->allows($actor, TenantPermission::OperationsTriage)) {
+            abort(403, 'Sem permissão para realizar a triagem operacional.');
         }
-        // VIEWER pode triar leitura operacional (não é mutação fiscal remota)
-        // Qualquer papel do tenant com acesso à Caixa Postal.
+
+        $office = $this->currentOffice->office();
+        if ($office === null || ! FeatureFlags::isMutatingEnabled('mailbox', (int) $office->id)) {
+            abort(403, 'Mutação de triagem não habilitada.');
+        }
     }
 }

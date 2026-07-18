@@ -309,7 +309,6 @@ final class OfficeSerproOnboardingService
 
             $termoAccepted = in_array($auth->termo_authorization_state, [
                 TermoAuthorizationState::SerproAccepted,
-                TermoAuthorizationState::Simulated,
                 TermoAuthorizationState::LocalValidated,
             ], true);
 

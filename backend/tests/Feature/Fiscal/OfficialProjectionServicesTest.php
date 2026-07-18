@@ -6,6 +6,7 @@ use App\Contracts\SerproOperationExecutor;
 use App\DTO\Serpro\IntegraResponse;
 use App\Enums\AuthorCertificateMode;
 use App\Enums\AuthorIdentityType;
+use App\Enums\FiscalSourceProvenance;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproContractStatus;
 use App\Enums\SerproEnvironment;
@@ -193,7 +194,8 @@ final class OfficialProjectionServicesTest extends TestCase
             success: true,
             httpStatus: 200,
             body: [],
-            simulated: true,
+            simulated: false,
+            sourceProvenance: FiscalSourceProvenance::SerproTrial->value,
             dados: $dados,
         );
     }

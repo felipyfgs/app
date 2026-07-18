@@ -68,6 +68,41 @@ class CaptureEligibilityTest extends TestCase
             ->assertJsonFragment(['client_inactive']);
     }
 
+    public function test_disparo_manual_exige_permissao_semantica_de_sincronizacao(): void
+    {
+        [$office, $user] = $this->officeUser(OfficeRole::Viewer);
+        $this->actingAs($user);
+        app(CurrentOffice::class)->resolve($user);
+
+        $client = Client::factory()->forOffice($office)->create(['is_active' => true]);
+        $establishment = Establishment::factory()->forClient($client)->create([
+            'capture_enabled' => true,
+            'is_active' => true,
+        ]);
+
+        $this->postJson('/api/v1/sync-runs', ['establishment_id' => $establishment->id])
+            ->assertForbidden();
+    }
+
+    public function test_disparo_manual_nao_resolve_estabelecimento_de_outro_escritorio(): void
+    {
+        [$officeA, $user] = $this->officeUser(OfficeRole::Operator);
+        $officeB = Office::factory()->create();
+        $clientB = Client::factory()->forOffice($officeB)->create(['is_active' => true]);
+        $establishmentB = Establishment::factory()->forClient($clientB)->create([
+            'capture_enabled' => true,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user);
+        app(CurrentOffice::class)->resolve($user);
+
+        $this->postJson('/api/v1/sync-runs', ['establishment_id' => $establishmentB->id])
+            ->assertNotFound();
+
+        $this->assertSame($officeA->id, app(CurrentOffice::class)->id());
+    }
+
     public function test_habilitar_captura_com_situacao_nao_ativa_exige_motivo(): void
     {
         [$office, $user] = $this->officeUser(OfficeRole::Operator);

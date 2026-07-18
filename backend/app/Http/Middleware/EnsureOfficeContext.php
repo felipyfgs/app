@@ -44,19 +44,52 @@ class EnsureOfficeContext
 
     private function stripClientOfficeId(Request $request): void
     {
-        $supplied = $request->request->has('office_id')
-            || $request->query->has('office_id')
-            || ($request->isJson() && $request->json() !== null && $request->json()->has('office_id'));
-        if ($supplied) {
+        $marker = false;
+
+        $requestPayload = $request->request->all();
+        $marker = $this->stripNestedOfficeId($requestPayload) || $marker;
+        $request->request->replace($requestPayload);
+
+        $queryPayload = $request->query->all();
+        $marker = $this->stripNestedOfficeId($queryPayload) || $marker;
+        $request->query->replace($queryPayload);
+
+        if ($request->isJson() && $request->json() !== null) {
+            $jsonPayload = $request->json()->all();
+            $marker = $this->stripNestedOfficeId($jsonPayload) || $marker;
+            $request->json()->replace($jsonPayload);
+        }
+
+        if ($marker) {
             // Endpoints novos que exigem rejeição explícita podem consultar o marker
             // sem jamais ler/confiar no valor fornecido pelo cliente.
             $request->attributes->set(self::CLIENT_OFFICE_ID_SUPPLIED, true);
         }
+    }
 
-        $request->request->remove('office_id');
-        $request->query->remove('office_id');
-        if ($request->isJson() && $request->json() !== null) {
-            $request->json()->remove('office_id');
+    /**
+     * Remove office_id recursivamente de arrays aninhados (payloads JSON complexos).
+     * Retorna true se encontrou algum office_id.
+     *
+     * @param  array<string, mixed>  $array
+     */
+    private function stripNestedOfficeId(array &$array): bool
+    {
+        $found = false;
+        foreach ($array as $key => &$value) {
+            if ($key === 'office_id') {
+                unset($array[$key]);
+                $found = true;
+
+                continue;
+            }
+
+            if (is_array($value)) {
+                $found = $this->stripNestedOfficeId($value) || $found;
+            }
         }
+        unset($value);
+
+        return $found;
     }
 }

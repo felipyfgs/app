@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\EsocialEventCode;
 use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -32,6 +33,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'occurred_at',
     'observed_at',
     'metadata',
+    'is_quarantined',
+    'quarantine_reason',
+    'quarantined_at',
 ])]
 class EsocialEventEvidence extends Model
 {
@@ -47,7 +51,15 @@ class EsocialEventEvidence extends Model
             'occurred_at' => 'immutable_datetime',
             'observed_at' => 'immutable_datetime',
             'metadata' => 'array',
+            'is_quarantined' => 'boolean',
+            'quarantined_at' => 'immutable_datetime',
         ];
+    }
+
+    /** @param Builder<self> $query */
+    public function scopeOperationallyEligible(Builder $query): void
+    {
+        $query->where('is_quarantined', false);
     }
 
     public function client(): BelongsTo
@@ -95,6 +107,8 @@ class EsocialEventEvidence extends Model
             'observed_at' => $this->observed_at?->toIso8601String(),
             'is_totalizer' => $this->event_code?->isTotalizer() ?? false,
             'is_closure' => $this->event_code?->isClosure() ?? false,
+            'is_quarantined' => $this->is_quarantined,
+            'quarantine_reason' => $this->quarantine_reason,
         ];
     }
 }

@@ -102,22 +102,6 @@ class SimplesMeiController extends Controller
         return response()->json($page);
     }
 
-    public function guideStubs(int $client): JsonResponse
-    {
-        $this->assertCanRead();
-        $office = $this->currentOffice->office();
-        $model = $this->findClient($office->id, $client);
-        if ($model === null) {
-            return response()->json(['message' => 'Cliente não encontrado.'], 404);
-        }
-
-        $items = $this->queries->listGuideStubs($office, $model);
-
-        return response()->json([
-            'data' => $items->map->toPublicArray()->values(),
-        ]);
-    }
-
     /**
      * Agenda apenas CONSULTARANOSCALENDARIOS102; GET continua sempre local.
      */

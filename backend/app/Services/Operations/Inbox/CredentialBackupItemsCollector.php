@@ -3,7 +3,6 @@
 namespace App\Services\Operations\Inbox;
 
 use App\Enums\CredentialStatus;
-use App\Enums\OfficeRole;
 use App\Models\ClientCredential;
 use App\Models\InstanceBackupRun;
 use Carbon\CarbonImmutable;
@@ -21,7 +20,7 @@ final class CredentialBackupItemsCollector
     /**
      * @return Collection<int, array<string, mixed>>
      */
-    public function collect(int $officeId, ?OfficeRole $role): Collection
+    public function collect(int $officeId, InboxCapabilities $role): Collection
     {
         return $this->credentialItems($officeId)
             ->merge($this->backupItems())

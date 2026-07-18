@@ -893,6 +893,7 @@ SQL;
         return "(
             SELECT fcs.situation FROM fgts_competence_statuses fcs
             WHERE fcs.office_id = {$office->id} AND fcs.client_id = clients.id
+              AND fcs.is_quarantined = false
             ORDER BY fcs.last_synced_at DESC, fcs.id DESC LIMIT 1
         )";
     }
@@ -1213,6 +1214,10 @@ SQL);
             ->withoutGlobalScopes()
             ->from('fiscal_evidence_artifacts as fea')
             ->join('fiscal_monitoring_runs as fmr', 'fmr.id', '=', 'fea.run_id')
+            ->where(function ($query): void {
+                $query->whereNull('fea.verification_state')
+                    ->orWhere('fea.verification_state', '!=', 'REJECTED');
+            })
             ->where('fea.office_id', $office->id)
             ->whereIn('fmr.client_id', $clientIds)
             ->when(
@@ -1426,7 +1431,6 @@ SQL);
                     'regimes' => "/api/v1/fiscal/simples-mei/clients/{$cid}/regimes",
                     'competences' => "/api/v1/fiscal/simples-mei/clients/{$cid}/competences",
                     'snapshots' => "/api/v1/fiscal/simples-mei/clients/{$cid}/snapshots",
-                    'guide_stubs' => "/api/v1/fiscal/simples-mei/clients/{$cid}/guide-stubs",
                 ],
             ];
 
@@ -1837,6 +1841,7 @@ SQL);
     {
         $rows = FgtsCompetenceStatus::query()
             ->withoutGlobalScopes()
+            ->operationallyEligible()
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
             ->orderByDesc('last_synced_at')

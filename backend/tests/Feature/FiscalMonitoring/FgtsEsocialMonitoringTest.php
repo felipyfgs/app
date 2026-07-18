@@ -16,7 +16,6 @@ use App\Models\FgtsCompetenceStatus;
 use App\Models\FiscalSnapshot;
 use App\Models\Office;
 use App\Models\User;
-use App\Services\Esocial\FakeEsocialEventClient;
 use App\Services\Esocial\FgtsEsocialDivergenceAnalyzer;
 use App\Services\Esocial\FgtsEsocialMonitoringService;
 use App\Services\Esocial\FgtsIndependentStateProjector;
@@ -24,6 +23,8 @@ use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use App\Support\CurrentOffice;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\EsocialTestDoubleServiceProvider;
+use Tests\Support\Fakes\FakeEsocialEventClient;
 use Tests\TestCase;
 
 class FgtsEsocialMonitoringTest extends TestCase
@@ -56,7 +57,10 @@ class FgtsEsocialMonitoringTest extends TestCase
         $this->office = Office::factory()->create();
         $this->client = Client::factory()->forOffice($this->office)->create();
         $this->admin = User::factory()->forOffice($this->office, OfficeRole::Admin)->withTwoFactorConfirmed()->create();
-        $this->fakeClient = app(FakeEsocialEventClient::class);
+        // O container de aplicação continua Disabled em testing. Esta suíte
+        // instala o provider de double de modo explícito e apenas offline.
+        $this->app->register(EsocialTestDoubleServiceProvider::class);
+        $this->fakeClient = $this->app->make(FakeEsocialEventClient::class);
         $this->fakeClient->clear();
     }
 
@@ -90,11 +94,15 @@ class FgtsEsocialMonitoringTest extends TestCase
         $this->assertSame($competence, $ev->competence_period_key);
         $this->assertNotEmpty($ev->content_sha256);
         $this->assertNotEmpty($ev->vault_object_id);
+        $this->assertTrue($ev->is_quarantined);
+        $this->assertSame('SYNTHETIC_ESOCIAL_TEST_DOUBLE', $ev->quarantine_reason);
+        $this->assertNull($ev->fiscal_evidence_artifact_id);
 
         $status = $out['status'];
         $this->assertSame(FgtsIndependentState::Present, $status->totalization_status);
         $this->assertSame(FgtsIndependentState::Unsupported, $status->guide_status);
         $this->assertNotEmpty($status->limitations);
+        $this->assertTrue($status->is_quarantined);
     }
 
     public function test_fechamento_sem_guia_mantem_guia_e_pagamento_unsupported(): void
@@ -264,7 +272,7 @@ class FgtsEsocialMonitoringTest extends TestCase
         $this->assertNotSame($statusA->id, $statusB->id);
     }
 
-    public function test_adapter_fiscal_run_persiste_snapshot_parcial(): void
+    public function test_adapter_fiscal_run_permanece_bloqueada_mesmo_com_double_offline_da_suite(): void
     {
         $competence = '2026-06';
         $this->fakeClient->seed(FakeEsocialEventClient::sampleTotalizer($competence));
@@ -286,18 +294,16 @@ class FgtsEsocialMonitoringTest extends TestCase
 
         $done = $svc->execute($run->id);
 
-        $this->assertSame(FiscalRunStatus::Completed, $done->status);
-        $this->assertSame(FiscalCoverage::Partial, $done->coverage);
-        $this->assertNotSame(FiscalSituation::UpToDate, $done->situation);
+        $this->assertSame(FiscalRunStatus::Blocked, $done->status);
+        $this->assertSame('ESOCIAL_SOURCE_UNAVAILABLE', $done->error_code);
 
         $snapshot = FiscalSnapshot::query()->withoutGlobalScopes()
             ->where('run_id', $done->id)->first();
         $this->assertNotNull($snapshot);
-        $this->assertSame(FiscalCoverage::Partial, $snapshot->coverage);
-        $this->assertArrayHasKey('limitations', $snapshot->normalized ?? []);
-        $this->assertFalse($snapshot->normalized['declares_fgts_digital_debt'] ?? true);
+        $this->assertSame(FiscalSituation::Blocked, $snapshot->situation);
+        $this->assertNull($snapshot->evidence_artifact_id);
 
-        $this->assertGreaterThanOrEqual(1, EsocialEventEvidence::query()->withoutGlobalScopes()
+        $this->assertSame(0, EsocialEventEvidence::query()->withoutGlobalScopes()
             ->where('office_id', $this->office->id)->count());
     }
 
@@ -320,19 +326,16 @@ class FgtsEsocialMonitoringTest extends TestCase
             'client_id' => $this->client->id,
             'competence_period_key' => $competence,
         ])
-            ->assertOk()
-            ->assertJsonPath('data.status.totalization_status', 'PRESENT')
-            ->assertJsonPath('data.status.guide_status', 'UNSUPPORTED')
-            ->assertJsonPath('data.status.payment_status', 'UNSUPPORTED')
-            ->assertJsonPath('data.status.declares_fgts_digital_debt', false)
-            ->assertJsonPath('data.coverage.coverage', 'PARTIAL');
+            ->assertConflict()
+            ->assertJsonPath('code', 'SYNTHETIC_FISCAL_DATA_QUARANTINED');
 
         $this->getJson('/api/v1/fiscal/fgts/competences?client_id='.$this->client->id)
             ->assertOk()
-            ->assertJsonPath('data.0.competence_period_key', $competence);
+            ->assertJsonCount(0, 'data');
 
         $this->getJson('/api/v1/fiscal/fgts/events?client_id='.$this->client->id)
             ->assertOk()
+            ->assertJsonCount(0, 'data')
             ->assertJsonPath('coverage.declares_fgts_digital_debt', false);
 
         // Isolamento: outro office não vê

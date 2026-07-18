@@ -18,7 +18,8 @@ use RuntimeException;
 
 final class TaxProxyPowerService
 {
-    public const PROVENANCE_SIMULATED = 'SIMULATED';
+    /** Valor histórico apenas; nunca é emitido por sync novo. */
+    private const LEGACY_PROVENANCE_SIMULATED = 'SIMULATED';
 
     public const PROVENANCE_API_VERIFIED = 'API_VERIFIED';
 
@@ -181,6 +182,9 @@ final class TaxProxyPowerService
         if (! $result->success) {
             throw new RuntimeException($result->errorMessage ?? 'Falha ao consultar procurações.');
         }
+        if ($result->simulated) {
+            throw new RuntimeException('Resposta sintética não pode criar ou atualizar poderes.');
+        }
 
         $isFullSync = $powerCode === null || $powerCode === '';
         $seenCodes = [];
@@ -209,13 +213,7 @@ final class TaxProxyPowerService
                 }
             }
 
-            if ($result->simulated) {
-                $status = TaxProxyPowerStatus::Pending;
-                $provenance = self::PROVENANCE_SIMULATED;
-                $segregation = SerproDataSegregationClass::TrialSimulated->value;
-                $lastCheck = 'SIMULATED_PENDING_VERIFICATION';
-                $acceptedAt = null;
-            } elseif ($needsAccept) {
+            if ($needsAccept) {
                 $status = TaxProxyPowerStatus::Pending;
                 $provenance = self::PROVENANCE_API_VERIFIED;
                 $segregation = SerproDataSegregationClass::Production->value;
@@ -362,7 +360,7 @@ final class TaxProxyPowerService
 
         // Evidência simulada/local nunca satisfaz chamada ao SERPRO, inclusive
         // no Trial oficial (que deve usar somente resposta do gateway externo).
-        if ($power->provenance === self::PROVENANCE_SIMULATED
+        if ($power->provenance === self::LEGACY_PROVENANCE_SIMULATED
             || $power->segregation_class === SerproDataSegregationClass::TrialSimulated->value
             || $power->segregation_class === SerproDataSegregationClass::Fake->value
             || $power->segregation_class === SerproDataSegregationClass::Demo->value) {
@@ -386,7 +384,7 @@ final class TaxProxyPowerService
                 return null;
             }
             if (in_array($power->provenance, [
-                self::PROVENANCE_SIMULATED,
+                self::LEGACY_PROVENANCE_SIMULATED,
                 self::PROVENANCE_MANUAL_PENDING,
             ], true)) {
                 return null;
@@ -442,7 +440,7 @@ final class TaxProxyPowerService
                 if (($power->metadata['accept_status'] ?? null) === 'PENDING_ACCEPT'
                     || $power->last_check_result === 'PENDING_ACCEPT') {
                     $reasons[] = 'PROXY_POWER_NOT_ACCEPTED';
-                } elseif ($power->provenance === self::PROVENANCE_SIMULATED
+                } elseif ($power->provenance === self::LEGACY_PROVENANCE_SIMULATED
                     || $power->provenance === self::PROVENANCE_MANUAL_PENDING) {
                     $reasons[] = 'PROXY_POWER_MISSING';
                 } else {
