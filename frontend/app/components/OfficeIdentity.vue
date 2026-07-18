@@ -36,6 +36,9 @@ const officeSlug = computed(() => me.value?.current_office?.slug || me.value?.of
 const officeId = computed(() => me.value?.current_office?.id ?? me.value?.office?.id ?? null)
 const isPlatform = computed(() => isPlatformAdmin(me.value))
 const identityIcon = computed(() => privileged.value ? 'i-lucide-shield' : 'i-lucide-building-2')
+const useGlobalPlatformSelector = computed(() =>
+  isPlatform.value && (privileged.value || me.value?.has_real_membership !== true)
+)
 
 /** Texto completo para tooltip quando a sidebar está recolhida. */
 const displayLabel = computed(() => {
@@ -65,8 +68,8 @@ interface OfficeSelectorOption {
 }
 
 const selectorOptions = computed<OfficeSelectorOption[]>(() => {
-  // PLATFORM_ADMIN: seletor global (somente selectable=true).
-  if (isPlatform.value) {
+  // PLATFORM_ADMIN sem membership real: seletor global, quando habilitado no backend.
+  if (useGlobalPlatformSelector.value) {
     return platformOffices.value
       .filter(o => o.selectable !== false && o.is_active !== false)
       .map(o => ({
@@ -127,7 +130,7 @@ function handleOfficeSelection(value: unknown) {
   const targetOfficeId = Number(value)
   if (!Number.isInteger(targetOfficeId) || targetOfficeId <= 0 || targetOfficeId === officeId.value) return
 
-  if (isPlatform.value) {
+  if (useGlobalPlatformSelector.value) {
     void selectOffice(targetOfficeId)
   } else {
     void switchTo(targetOfficeId)
@@ -135,7 +138,7 @@ function handleOfficeSelection(value: unknown) {
 }
 
 onMounted(() => {
-  if (isPlatform.value) {
+  if (useGlobalPlatformSelector.value) {
     void loadOffices()
   } else {
     void loadMemberships()
@@ -143,14 +146,14 @@ onMounted(() => {
 })
 
 watch(officeId, () => {
-  if (isPlatform.value) {
+  if (useGlobalPlatformSelector.value) {
     void loadOffices()
   } else {
     void loadMemberships()
   }
 })
 
-watch(isPlatform, (v) => {
+watch(useGlobalPlatformSelector, (v) => {
   if (v) void loadOffices()
   else void loadMemberships()
 })
@@ -187,11 +190,11 @@ watch(isPlatform, (v) => {
       itemDescription: 'whitespace-normal break-words leading-4',
       trailingIcon: 'text-dimmed'
     }"
-    :aria-label="isPlatform && !privileged ? `Seletor global de escritórios. ${officeLabel}` : accessibleLabel"
+    :aria-label="useGlobalPlatformSelector && !privileged ? `Seletor global de escritórios. ${officeLabel}` : accessibleLabel"
     aria-haspopup="listbox"
     :title="collapsed ? displayLabel : undefined"
     data-testid="office-identity"
-    :data-office-id="isPlatform ? 'platform-global' : 'session'"
+    :data-office-id="useGlobalPlatformSelector ? 'platform-global' : 'session'"
     :data-office-name="officeLabel"
     :data-privileged="privileged ? 'true' : 'false'"
     :data-platform-seal="privileged ? 'true' : 'false'"

@@ -31,7 +31,7 @@ use RuntimeException;
  * - Carteira contador: só AUTO CENTER (`dados/contador/cliene`)
  *
  * Logins (senha `password`):
- * - felipe@example.com → plataforma + aba Admin/SERPRO
+ * - felipe@example.com → plataforma + aba Admin/SERPRO + membership piloto no contador
  * - gustavo@example.com → contador (tenant_admin)
  *
  * Idempotente. Só local/testing, salvo go-live piloto com `PILOT_SEED_ALLOW_PRODUCTION=true`.
@@ -133,6 +133,8 @@ class LocalSerproSmokeSeeder extends Seeder
 
         // Felipe = Proprietário (PLATFORM_ADMIN) para ver aba Admin / SERPRO.
         $this->ensureFelipeIsPlatformOwner($felipe, $plataforma);
+        // Piloto sem privilégio global: Felipe também troca para o contador via membership real.
+        $this->grantPilotContadorAccess($felipe, $contador);
     }
 
     /**
@@ -338,5 +340,22 @@ class LocalSerproSmokeSeeder extends Seeder
         $currentOffice = app(CurrentOffice::class);
         $currentOffice->forgetPlatformSelection($felipe);
         $currentOffice->rememberPlatformSelection($felipe, (int) $plataforma->id);
+    }
+
+    private function grantPilotContadorAccess(User $felipe, Office $contador): void
+    {
+        OfficeMembership::query()->updateOrCreate(
+            [
+                'office_id' => $contador->id,
+                'user_id' => $felipe->id,
+            ],
+            [
+                'role' => OfficeRole::Admin,
+                'tenant_role' => TenantRole::TenantAdmin->value,
+                'permission_profile_id' => null,
+                'is_active' => true,
+                'authorization_version' => 1,
+            ],
+        );
     }
 }

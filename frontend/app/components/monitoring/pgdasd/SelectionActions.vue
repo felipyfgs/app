@@ -60,6 +60,10 @@ function openBatchConfirm(kind: PgdasdBatchConsultKind, clientIds: number[]) {
   confirmOpen.value = true
 }
 
+function cancelBatchConfirm() {
+  confirmOpen.value = false
+}
+
 const handlersWithBatch = computed<PgdasdActionHandlers>(() => ({
   ...props.handlers,
   onBatchConsult: openBatchConfirm
@@ -179,7 +183,7 @@ async function confirmBatch() {
           variant="ghost"
           label="Cancelar"
           :disabled="busy"
-          @click="confirmOpen = false"
+          @click="cancelBatchConfirm"
         />
         <UButton
           color="primary"

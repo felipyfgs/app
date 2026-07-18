@@ -52,6 +52,7 @@ export function buildPgdasdColumns(options: {
   onHistory: (row: SimplesMeiClientRow) => void
   onPreview: (row: SimplesMeiClientRow) => void
   onTracking: (row: SimplesMeiClientRow) => void
+  onConfigure: (row: SimplesMeiClientRow) => void
   onPreferenceSaved: (
     row: SimplesMeiClientRow,
     preference: PgdasdCommunicationPreference
@@ -123,9 +124,9 @@ export function buildPgdasdColumns(options: {
             icon: 'i-lucide-download',
             to: document.download_path
               ? resolveApiUrl(
-                document.download_path,
-                String(useRuntimeConfig().public.apiBase || '')
-              )
+                  document.download_path,
+                  String(useRuntimeConfig().public.apiBase || '')
+                )
               : undefined,
             external: true,
             target: '_blank'
@@ -249,7 +250,7 @@ export function buildPgdasdColumns(options: {
       enableSorting: false,
       meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
       cell: ({ row }) => h('div', {
-        class: 'inline-flex h-8 w-10 shrink-0 items-center justify-center',
+        'class': 'inline-flex h-8 w-10 shrink-0 items-center justify-center',
         'data-testid': 'pgdasd-send-slot'
       }, [
         h(AutomaticSwitch, {

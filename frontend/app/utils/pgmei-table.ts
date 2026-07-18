@@ -179,7 +179,7 @@ export function buildPgmeiColumns(options: {
       enableSorting: false,
       meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
       cell: ({ row }) => h('div', {
-        class: 'inline-flex h-8 w-10 shrink-0 items-center justify-center',
+        'class': 'inline-flex h-8 w-10 shrink-0 items-center justify-center',
         'data-testid': 'pgmei-send-slot'
       }, [
         h(AutomaticSwitch, {

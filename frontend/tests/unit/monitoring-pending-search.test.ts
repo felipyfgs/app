@@ -19,8 +19,8 @@ describe('busca manual de pendências no monitoramento', () => {
   it('confirma a chamada faturável e consolida o lote sem toasts por cliente', () => {
     const source = readApp('components/monitoring/PendingSearchButton.vue')
 
-    expect(source).toContain("isDctfweb.value ? 'Consulta manual' : 'Buscar pendências'")
-    expect(source).toContain("'Confirmar consulta manual DCTFWeb'")
+    expect(source).toContain('isDctfweb.value ? \'Consulta manual\' : \'Buscar pendências\'')
+    expect(source).toContain('\'Confirmar consulta manual DCTFWeb\'')
     expect(source).toContain('pode consumir a franquia da integração')
     expect(source).toContain('.slice(0, 100)')
     expect(source).toContain('silent: true')
@@ -41,8 +41,8 @@ describe('busca manual de pendências no monitoramento', () => {
   it('usa o endpoint dedicado da DCTFWeb na consulta manual', () => {
     const source = readApp('composables/useMonitoringActions.ts')
 
-    expect(source).toContain("if (key === 'dctfweb')")
+    expect(source).toContain('if (key === \'dctfweb\')')
     expect(source).toContain('api.fiscal.dctfweb.consult')
-    expect(source).toContain("operation_code: input.operation_code || 'CONSULTAR_RECIBO'")
+    expect(source).toContain('operation_code: input.operation_code || \'CONSULTAR_RECIBO\'')
   })
 })

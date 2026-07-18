@@ -241,12 +241,6 @@ function openRegimeHistory(row: SimplesMeiClientRow) {
   regimeHistoryOpen.value = true
 }
 
-function openRegimeConsultConfirm(row: SimplesMeiClientRow) {
-  regimeClientId.value = row.client_id
-  regimeClientName.value = row.legal_name || row.name || `Cliente #${row.client_id}`
-  regimeConsultOpen.value = true
-}
-
 function openRegimeResolutionHistory(row: SimplesMeiClientRow) {
   regimeClientId.value = row.client_id
   regimeClientName.value = row.legal_name || row.name || `Cliente #${row.client_id}`
@@ -259,40 +253,16 @@ function openRegimeOptionHistory(row: SimplesMeiClientRow) {
   regimeOptionHistoryOpen.value = true
 }
 
-function openRegimeOptionConsultConfirm(row: SimplesMeiClientRow) {
-  regimeClientId.value = row.client_id
-  regimeClientName.value = row.legal_name || row.name || `Cliente #${row.client_id}`
-  regimeOptionConsultOpen.value = true
-}
-
-function openRegimeResolutionConsultConfirm(row: SimplesMeiClientRow) {
-  regimeClientId.value = row.client_id
-  regimeClientName.value = row.legal_name || row.name || `Cliente #${row.client_id}`
-  regimeResolutionConsultOpen.value = true
-}
-
 function openDefisHistory(row: SimplesMeiClientRow) {
   defisClientId.value = row.client_id
   defisClientName.value = row.legal_name || row.name || `Cliente #${row.client_id}`
   defisHistoryOpen.value = true
 }
 
-function openDefisConsultConfirm(row: SimplesMeiClientRow) {
-  defisClientId.value = row.client_id
-  defisClientName.value = row.legal_name || row.name || `Cliente #${row.client_id}`
-  defisConsultOpen.value = true
-}
-
 function openDefisLatestHistory(row: SimplesMeiClientRow) {
   defisClientId.value = row.client_id
   defisClientName.value = row.legal_name || row.name || `Cliente #${row.client_id}`
   defisLatestHistoryOpen.value = true
-}
-
-function openDefisLatestConsultConfirm(row: SimplesMeiClientRow) {
-  defisClientId.value = row.client_id
-  defisClientName.value = row.legal_name || row.name || `Cliente #${row.client_id}`
-  defisLatestConsultOpen.value = true
 }
 
 function openDefisSpecificHistory(row: SimplesMeiClientRow) {
@@ -474,6 +444,7 @@ const pgdasdColumns = computed(() => buildPgdasdColumns({
   onHistory: openPgdasdHistory,
   onPreview: row => openFor(row, 'preview'),
   onTracking: row => openFor(row, 'tracking'),
+  onConfigure: row => openFor(row, 'prefs'),
   onPreferenceSaved
 }))
 

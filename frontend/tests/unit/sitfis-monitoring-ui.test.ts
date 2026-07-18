@@ -49,7 +49,7 @@ describe('renderer SITFIS', () => {
   it('página oculta secundárias por padrão e usa o builder', () => {
     const page = readPage('sitfis.vue')
     expect(page).toContain('buildSitfisColumns')
-    expect(page).toContain(":initial-hidden-columns=\"['procuracao', 'franchise', 'age', 'observed']\"")
+    expect(page).toContain(':initial-hidden-columns="[\'procuracao\', \'franchise\', \'age\', \'observed\']"')
     expect(page).toContain('min-w-[720px]')
     expect(page).toContain('MonitoringModuleTable')
   })
