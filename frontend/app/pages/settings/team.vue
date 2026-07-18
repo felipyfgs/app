@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Equipe do escritório.
+ * Equipe do escritório — Filter Lite (busca ± select de papel; sem chips).
  * Arquétipo: .reference/nuxt-dashboard-template/app/pages/settings/members.vue
  */
 import type { ActivationMethod, CredentialDeliveryPayload, OfficeMember, OfficeRole } from '~/types/api'

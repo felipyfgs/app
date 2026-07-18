@@ -10,6 +10,7 @@ import type {
   MonitoringFilterValue
 } from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
+import { tableCellBadgeProps } from '~/utils/table-ui'
 
 const UButton = resolveComponent('UButton')
 const UBadge = resolveComponent('UBadge')
@@ -144,11 +145,12 @@ const columns: TableColumn<FiscalTaxProcess>[] = [
     accessorKey: 'status',
     header: 'Status',
     enableSorting: false,
-    cell: ({ row }) => h(UBadge, {
-      color: row.original.status === 'OPEN' ? 'warning' : 'neutral',
-      variant: 'subtle',
-      label: row.original.status
-    })
+    cell: ({ row }) => h('div', { class: 'block w-full min-w-0' }, [
+      h(UBadge, tableCellBadgeProps({
+        color: row.original.status === 'OPEN' ? 'warning' : 'neutral',
+        label: row.original.status
+      }))
+    ])
   },
   {
     id: 'source',

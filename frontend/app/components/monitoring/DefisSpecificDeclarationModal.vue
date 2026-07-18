@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { DefisSpecificDeclarationHistoryPayload } from '~/types/fiscal-modules'
+import { resolveApiUrl } from '~/utils/api-url'
 
 const props = defineProps<{ open: boolean, clientId: number | null, clientName?: string | null }>()
 const emit = defineEmits<{ 'update:open': [value: boolean], 'consult': [referenceId: number] }>()
 const { fetchHistory } = useDefisSpecificDeclarationMonitoring()
+const apiBase = useRuntimeConfig().public.apiBase as string
 const loading = ref(false)
 const error = ref<string | null>(null)
 const history = ref<DefisSpecificDeclarationHistoryPayload | null>(null)
@@ -16,6 +18,10 @@ function typeLabel(value: string): string {
 
 function kindLabel(kind: string): string {
   return kind === 'RECIBO' ? 'Recibo de entrega' : 'Declaração'
+}
+
+function documentDownloadHref(path?: string | null): string {
+  return resolveApiUrl(path || '', apiBase)
 }
 
 async function load(referenceId?: number) {
@@ -126,7 +132,7 @@ watch(() => [props.open, props.clientId] as const, ([open]) => {
                 </p>
               </div>
               <UButton
-                :to="item.download_path"
+                :to="documentDownloadHref(item.download_path)"
                 external
                 target="_blank"
                 icon="i-lucide-download"

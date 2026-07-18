@@ -143,6 +143,11 @@ export function canViewWork(user?: MeUser | null): boolean {
   return !!user?.role || isPlatformPrivilegedContext(user)
 }
 
+/** Acesso de leitura à área Fiscal (Monitoramento). */
+export function canViewFiscal(user?: MeUser | null): boolean {
+  return !!user?.role || isPlatformPrivilegedContext(user)
+}
+
 export function canManageWorkCatalog(user?: MeUser | null): boolean {
   return hasOfficeAdminSurface(user)
 }

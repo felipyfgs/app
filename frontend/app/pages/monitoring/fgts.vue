@@ -197,37 +197,25 @@ const columns: TableColumn<FgtsClientRow>[] = [
     id: 'closure',
     header: 'Fechamento',
     enableSorting: false,
-    cell: ({ row }) => h(FiscalStatusBadge, {
-      status: String(detailOf(row.original).closure_status || row.original.situation || 'UNKNOWN'),
-      showHint: true
-    })
+    cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(detailOf(row.original).closure_status || row.original.situation || 'UNKNOWN') })
   },
   {
     id: 'totalization',
     header: 'Totalização',
     enableSorting: false,
-    cell: ({ row }) => h(FiscalStatusBadge, {
-      status: String(detailOf(row.original).totalization_status || 'UNKNOWN'),
-      showHint: true
-    })
+    cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(detailOf(row.original).totalization_status || 'UNKNOWN') })
   },
   {
     id: 'guide',
     header: 'Guia FGTS Digital',
     enableSorting: false,
-    cell: ({ row }) => h(FiscalStatusBadge, {
-      status: String(detailOf(row.original).guide_status || 'UNSUPPORTED'),
-      showHint: true
-    })
+    cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(detailOf(row.original).guide_status || 'UNSUPPORTED') })
   },
   {
     id: 'payment',
     header: 'Pagamento',
     enableSorting: false,
-    cell: ({ row }) => h(FiscalStatusBadge, {
-      status: String(detailOf(row.original).payment_status || 'UNSUPPORTED'),
-      showHint: true
-    })
+    cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(detailOf(row.original).payment_status || 'UNSUPPORTED') })
   },
   {
     id: 'synced',

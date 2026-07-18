@@ -37,12 +37,15 @@ describe('contadores do monitoramento', () => {
   )
 
   it('usa tabs compactas em vez de cards', () => {
-    expect(source).toContain('<UTabs')
-    expect(source).toContain(':content="false"')
-    expect(source).toContain('variant="pill"')
+    expect(source).toContain('ShellScrollableTabs')
     expect(source).not.toContain('<UPageCard')
     expect(source).not.toContain('<ShellKpiStrip')
     expect(source).not.toMatch(/Atualizando/)
+    const scrollTabs = readFileSync(
+      resolve(__dirname, '../../app/components/shell/ScrollableTabs.vue'),
+      'utf8'
+    )
+    expect(scrollTabs).toContain('variant: \'pill\'')
   })
 
   it('fixa a faixa operacional Total + Em dia + Processando + Pendências + Atenção', () => {

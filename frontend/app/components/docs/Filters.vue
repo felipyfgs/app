@@ -1,14 +1,15 @@
 <script setup lang="ts">
 /**
- * Toolbar de filtros no padrão customers.vue:
- * UInput max-w-sm à esquerda + ações à direita.
- * Presets nomeados: surface docs.catalog.
+ * Toolbar de documentos no padrão ouro (chips live, sem “Aplicar”).
+ * Surface: docs.catalog
  */
 import type { Client, Establishment } from '~/types/api'
+import type { DataTableFilterDefinition, DataTableFilterModel } from '~/types/data-table-filter'
+import type { SavedListFilterPayload } from '~/types/saved-list-filters'
 import { documentKindFilterItems } from '~/utils/document-kinds'
 import {
   FILTER_ALL,
-  selectAllItem,
+  emptyDocsFilters,
   type NotesFilterState,
   type NotesViewMode
 } from '~/utils/notes-filters'
@@ -17,12 +18,10 @@ import {
   docsPayloadToFilters,
   hasActiveDocsFiltersForSave
 } from '~/utils/saved-list-filters'
-import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
-import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
-import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
+import { createFilterModel, findDefinition } from '~/utils/data-table-filters'
+import ShellListFilterToolbar from '~/components/shell/ListFilterToolbar.vue'
 
 const filters = defineModel<NotesFilterState>('filters', { required: true })
-/** Filtro operacional da lista de clientes (Documentos → Por cliente). */
 const operationalFilter = defineModel<string>('operationalFilter', { default: 'total' })
 
 const props = defineProps<{
@@ -33,7 +32,6 @@ const props = defineProps<{
   selectedCount?: number
   canExport?: boolean
   exporting?: boolean
-  /** sessionEpoch — limpa cache de presets na troca de Office. */
   resetKey?: string | number | null
 }>()
 
@@ -46,378 +44,342 @@ const emit = defineEmits<{
 
 const { sessionEpoch } = useDashboard()
 
-const {
-  canSavePreset,
-  canShare: canShareFilters,
-  presets,
-  presetsLoading,
-  saveOpen,
-  manageOpen,
-  saveLoading,
-  saveError,
-  manageError,
-  actingId,
-  onSavedMenuOpen,
-  applyPreset,
-  onSaveConfirm,
-  onRename,
-  onToggleShare,
-  onDeletePreset,
-  openManage,
-  openSave
-} = useSavedListPresets({
-  surface: 'docs.catalog',
-  resetKey: () => props.resetKey ?? sessionEpoch.value,
-  getPayload: () => docsFiltersToPayload(filters.value),
-  canSave: () => hasActiveDocsFiltersForSave(filters.value),
-  onApply: (payload) => {
-    const next = docsPayloadToFilters(payload)
-    Object.assign(filters.value, next)
-    // Cliente inválido no Office: limpa estabelecimento se sem client.
-    if (!next.client_id || next.client_id === FILTER_ALL) {
-      filters.value.establishment_id = FILTER_ALL
-    }
-    emit('clientChange')
-    emit('apply')
-  }
-})
-
-/** Só recortes de captura — certificado/cadastro ficam em /clients. */
-const clientOperationalItems = [
-  { label: 'Todos', value: 'total' },
-  { label: 'Captura com problema', value: 'capture_problem' }
-]
-
-const open = ref(false)
-
-const clientItems = computed(() => [
-  selectAllItem('Todos os clientes'),
-  ...props.clients.map(client => ({
-    label: client.display_name || client.legal_name || client.name,
-    value: String(client.id)
-  }))
-])
-
-const establishmentItems = computed(() => [
-  selectAllItem('Todos os est.'),
-  ...props.establishments.map(establishment => ({
-    label: establishment.trade_name
-      ? `${establishment.trade_name} · ${establishment.cnpj}`
-      : establishment.cnpj,
-    value: String(establishment.id)
-  }))
-])
-
-const kindItems = documentKindFilterItems('Todos os tipos')
-
-/** Grupos operacionais — API expande CANCELLED/AUTHORIZED/UNKNOWN. */
-const statusItems = [
-  selectAllItem('Situação'),
-  { label: 'Autorizada', value: 'AUTHORIZED' },
-  { label: 'Cancelada', value: 'CANCELLED' },
-  { label: 'Em revisão', value: 'UNKNOWN' }
-]
-
-const roleItems = [
-  selectAllItem('Todos os papéis'),
-  { label: 'Emitente', value: 'ISSUER' },
-  { label: 'Tomador', value: 'TAKER' },
-  { label: 'Intermediário', value: 'INTERMEDIARY' },
-  { label: 'Remetente', value: 'SENDER' },
-  { label: 'Destinatário', value: 'RECIPIENT' },
-  { label: 'Expedidor', value: 'EXPEDITOR' },
-  { label: 'Recebedor', value: 'RECEIVER' }
-]
-
-const directionItems = [
-  selectAllItem('Todas as direções'),
-  { label: 'Entrada', value: 'IN' },
-  { label: 'Saída', value: 'OUT' }
-]
-
-const qualityItems = [
-  selectAllItem('Todas as qualidades'),
-  { label: 'Original', value: 'ORIGINAL' },
-  { label: 'Original via autXML', value: 'AUTXML_ORIGINAL' },
-  { label: 'Oficial redigido', value: 'AUTXML_REDACTED' }
-]
-
-const acquisitionSourceItems = [
-  selectAllItem('Todas as origens'),
-  { label: 'DistDFe CT-e do cliente', value: 'CTE_DIST_NSU' },
-  { label: 'DistDFe autXML do escritório', value: 'CTE_AUTXML_DIST_NSU' },
-  { label: 'Entrega autenticada do emissor', value: 'EMITTER_PUSH' },
-  { label: 'Importação XML', value: 'MANUAL_XML' },
-  { label: 'Importação ZIP', value: 'MANUAL_ZIP' }
-]
-
-/** Valores alinhados a App\Enums\CteCoverageStatus. */
-const coverageItems = [
-  selectAllItem('Todas as coberturas'),
-  { label: 'Capturado (original)', value: 'CAPTURED_ORIGINAL' },
-  { label: 'Capturado (autXML redigido)', value: 'CAPTURED_AUTXML_REDACTED' },
-  { label: 'Pendente de importação', value: 'PENDING_IMPORT' },
-  { label: 'Lacuna histórica', value: 'HISTORICAL_GAP' },
-  { label: 'Bloqueado', value: 'BLOCKED' },
-  { label: 'Sem atividade observada', value: 'NO_ACTIVITY' }
-]
-
-const hasClient = computed(() => filters.value.client_id !== FILTER_ALL && !!filters.value.client_id)
-
 const searchPlaceholder = computed(() =>
   props.view === 'client'
     ? 'Filtrar por nome ou CNPJ/CPF…'
     : 'Buscar número, emitente, destinatário, CNPJ ou chave…'
 )
 
-const activeCount = computed(() => {
-  let n = 0
-  const f = filters.value
-  if (f.q) n++
+const clientItems = computed(() =>
+  props.clients.map(client => ({
+    label: client.display_name || client.legal_name || client.name,
+    value: String(client.id)
+  }))
+)
+
+const establishmentItems = computed(() =>
+  props.establishments.map(establishment => ({
+    label: establishment.trade_name
+      ? `${establishment.trade_name} · ${establishment.cnpj}`
+      : establishment.cnpj,
+    value: String(establishment.id)
+  }))
+)
+
+const kindItems = documentKindFilterItems('Todos os tipos').filter(i => i.value !== FILTER_ALL)
+
+const catalogDefinitions = computed((): DataTableFilterDefinition[] => {
   if (props.view === 'client') {
-    if (operationalFilter.value && operationalFilter.value !== 'total') n++
-    return n
+    return [
+      {
+        key: 'operational',
+        kind: 'option',
+        label: 'Captura',
+        emptyValue: 'total',
+        items: [
+          { label: 'Captura com problema', value: 'capture_problem' }
+        ]
+      }
+    ]
   }
-  if (f.kind && f.kind !== FILTER_ALL) n++
-  if (f.direction && f.direction !== FILTER_ALL) n++
-  if (f.fiscal_role && f.fiscal_role !== FILTER_ALL) n++
-  if (f.acquisition_source && f.acquisition_source !== FILTER_ALL) n++
-  if (f.artifact_quality && f.artifact_quality !== FILTER_ALL) n++
-  if (f.coverage_status && f.coverage_status !== FILTER_ALL) n++
-  if (f.client_id && f.client_id !== FILTER_ALL) n++
-  if (f.establishment_id && f.establishment_id !== FILTER_ALL) n++
-  if (f.status && f.status !== FILTER_ALL) n++
-  if (f.issuer_cnpj) n++
-  if (f.taker_cnpj) n++
-  if (f.competence) n++
-  if (f.issued_from || f.issued_to) n++
-  return n
+
+  const defs: DataTableFilterDefinition[] = [
+    {
+      key: 'kind',
+      kind: 'option',
+      label: 'Tipo',
+      emptyValue: FILTER_ALL,
+      items: kindItems
+    },
+    {
+      key: 'client_id',
+      kind: 'option',
+      label: 'Cliente',
+      emptyValue: FILTER_ALL,
+      items: clientItems.value
+    },
+    {
+      key: 'status',
+      kind: 'option',
+      label: 'Situação',
+      emptyValue: FILTER_ALL,
+      items: [
+        { label: 'Autorizada', value: 'AUTHORIZED' },
+        { label: 'Cancelada', value: 'CANCELLED' },
+        { label: 'Em revisão', value: 'UNKNOWN' }
+      ]
+    },
+    {
+      key: 'direction',
+      kind: 'option',
+      label: 'Direção',
+      emptyValue: FILTER_ALL,
+      items: [
+        { label: 'Entrada', value: 'IN' },
+        { label: 'Saída', value: 'OUT' }
+      ]
+    },
+    {
+      key: 'fiscal_role',
+      kind: 'option',
+      label: 'Papel fiscal',
+      emptyValue: FILTER_ALL,
+      items: [
+        { label: 'Emitente', value: 'ISSUER' },
+        { label: 'Tomador', value: 'TAKER' },
+        { label: 'Intermediário', value: 'INTERMEDIARY' },
+        { label: 'Remetente', value: 'SENDER' },
+        { label: 'Destinatário', value: 'RECIPIENT' },
+        { label: 'Expedidor', value: 'EXPEDITOR' },
+        { label: 'Recebedor', value: 'RECEIVER' }
+      ]
+    },
+    {
+      key: 'competence',
+      kind: 'month',
+      label: 'Competência',
+      emptyValue: ''
+    },
+    {
+      key: 'issued',
+      kind: 'date_range',
+      label: 'Emissão',
+      emptyValue: ''
+    }
+  ]
+
+  if (filters.value.client_id && filters.value.client_id !== FILTER_ALL) {
+    defs.splice(2, 0, {
+      key: 'establishment_id',
+      kind: 'option',
+      label: 'Estabelecimento',
+      emptyValue: FILTER_ALL,
+      items: establishmentItems.value
+    })
+  }
+
+  if (filters.value.kind === 'CTE' || filters.value.kind === FILTER_ALL) {
+    defs.push(
+      {
+        key: 'acquisition_source',
+        kind: 'option',
+        label: 'Origem CT-e',
+        emptyValue: FILTER_ALL,
+        items: [
+          { label: 'DistDFe CT-e do cliente', value: 'CTE_DIST_NSU' },
+          { label: 'DistDFe autXML do escritório', value: 'CTE_AUTXML_DIST_NSU' },
+          { label: 'Entrega autenticada do emissor', value: 'EMITTER_PUSH' },
+          { label: 'Importação XML', value: 'MANUAL_XML' },
+          { label: 'Importação ZIP', value: 'MANUAL_ZIP' }
+        ]
+      },
+      {
+        key: 'artifact_quality',
+        kind: 'option',
+        label: 'Qualidade CT-e',
+        emptyValue: FILTER_ALL,
+        items: [
+          { label: 'Original', value: 'ORIGINAL' },
+          { label: 'Original via autXML', value: 'AUTXML_ORIGINAL' },
+          { label: 'Oficial redigido', value: 'AUTXML_REDACTED' }
+        ]
+      },
+      {
+        key: 'coverage_status',
+        kind: 'option',
+        label: 'Cobertura CT-e',
+        emptyValue: FILTER_ALL,
+        items: [
+          { label: 'Capturado (original)', value: 'CAPTURED_ORIGINAL' },
+          { label: 'Capturado (autXML redigido)', value: 'CAPTURED_AUTXML_REDACTED' },
+          { label: 'Pendente de importação', value: 'PENDING_IMPORT' },
+          { label: 'Lacuna histórica', value: 'HISTORICAL_GAP' },
+          { label: 'Bloqueado', value: 'BLOCKED' },
+          { label: 'Sem atividade observada', value: 'NO_ACTIVITY' }
+        ]
+      }
+    )
+  }
+
+  return defs
 })
+
+function modelsFromState(): DataTableFilterModel[] {
+  const models: DataTableFilterModel[] = []
+  const defs = catalogDefinitions.value
+
+  if (props.view === 'client') {
+    const def = findDefinition(defs, 'operational')
+    if (def) {
+      const model = createFilterModel(def, operationalFilter.value)
+      if (model) models.push(model)
+    }
+    return models
+  }
+
+  const f = filters.value
+  const optionKeys = [
+    'kind',
+    'client_id',
+    'establishment_id',
+    'status',
+    'direction',
+    'fiscal_role',
+    'acquisition_source',
+    'artifact_quality',
+    'coverage_status'
+  ] as const
+
+  for (const key of optionKeys) {
+    const def = findDefinition(defs, key)
+    if (!def) continue
+    const value = f[key]
+    if (!value || value === FILTER_ALL) continue
+    const model = createFilterModel(def, value)
+    if (model) models.push(model)
+  }
+
+  if (f.competence) {
+    const def = findDefinition(defs, 'competence')
+    if (def) {
+      const model = createFilterModel(def, f.competence)
+      if (model) models.push(model)
+    }
+  }
+
+  if (f.issued_from || f.issued_to) {
+    const def = findDefinition(defs, 'issued')
+    if (def) {
+      const range = `${f.issued_from || ''}..${f.issued_to || ''}`
+      const model = createFilterModel(def, range)
+      if (model) models.push(model)
+    }
+  }
+
+  return models
+}
+
+const chipModels = ref<DataTableFilterModel[]>(modelsFromState())
+
+watch(
+  () => [filters.value, operationalFilter.value, props.view, props.clients, props.establishments] as const,
+  () => {
+    chipModels.value = modelsFromState()
+  },
+  { deep: true }
+)
+
+function onModelsUpdate(models: DataTableFilterModel[]) {
+  chipModels.value = models
+
+  if (props.view === 'client') {
+    const op = models.find(m => m.key === 'operational')
+    operationalFilter.value = op ? String(op.value) : 'total'
+    emit('apply')
+    return
+  }
+
+  const next = emptyDocsFilters()
+  next.q = filters.value.q
+  next.issuer_cnpj = filters.value.issuer_cnpj
+  next.taker_cnpj = filters.value.taker_cnpj
+  next.missing_party_name = filters.value.missing_party_name
+
+  const assignableKeys = new Set<keyof NotesFilterState>([
+    'kind',
+    'client_id',
+    'establishment_id',
+    'status',
+    'direction',
+    'fiscal_role',
+    'acquisition_source',
+    'artifact_quality',
+    'coverage_status',
+    'competence'
+  ])
+
+  for (const model of models) {
+    if (model.key === 'issued' && typeof model.value === 'string') {
+      const [from, to] = model.value.split('..')
+      next.issued_from = from?.trim() || ''
+      next.issued_to = to?.trim() || ''
+      continue
+    }
+    if (assignableKeys.has(model.key as keyof NotesFilterState)) {
+      next[model.key as keyof NotesFilterState] = String(model.value)
+    }
+  }
+
+  const clientChanged = next.client_id !== filters.value.client_id
+  Object.assign(filters.value, next)
+  if (!next.client_id || next.client_id === FILTER_ALL) {
+    filters.value.establishment_id = FILTER_ALL
+  }
+  if (clientChanged) emit('clientChange')
+  emit('apply')
+}
+
+function onClear() {
+  if (props.view === 'client') {
+    operationalFilter.value = 'total'
+    filters.value.q = ''
+  } else {
+    Object.assign(filters.value, emptyDocsFilters())
+  }
+  chipModels.value = []
+  emit('reset')
+}
+
+function onQUpdate(value: string) {
+  filters.value.q = value
+  emit('apply')
+}
+
+function onApplyPreset(payload: SavedListFilterPayload) {
+  const next = docsPayloadToFilters(payload)
+  Object.assign(filters.value, next)
+  if (!next.client_id || next.client_id === FILTER_ALL) {
+    filters.value.establishment_id = FILTER_ALL
+  }
+  chipModels.value = modelsFromState()
+  emit('clientChange')
+  emit('apply')
+}
 </script>
 
 <template>
-  <div class="flex w-full flex-col gap-3">
-    <!-- Toolbar customers.vue: busca esquerda · ações direita -->
-    <div class="flex flex-wrap items-center justify-between gap-1.5">
-      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-        <UInput
-          v-model="filters.q"
-          class="max-w-sm"
-          icon="i-lucide-search"
-          :placeholder="searchPlaceholder"
-          :aria-label="view === 'client' ? 'Filtrar clientes por nome ou CNPJ/CPF' : 'Buscar no catálogo de documentos'"
-          @keydown.enter.prevent="emit('apply')"
-        />
-        <USelect
-          v-if="view === 'client'"
-          v-model="operationalFilter"
-          :items="clientOperationalItems"
-          value-key="value"
-          class="min-w-44"
-          aria-label="Filtro operacional de captura e certificado"
-          @update:model-value="emit('apply')"
-        />
-      </div>
-
-      <div class="flex flex-wrap items-center gap-1.5">
-        <UButton
-          v-if="canExport && selectedCount"
-          color="primary"
-          variant="subtle"
-          icon="i-lucide-package"
-          label="Exportar seleção"
-          :loading="exporting"
-          @click="emit('exportSelection')"
-        >
-          <template #trailing>
-            <UKbd>{{ selectedCount }}</UKbd>
-          </template>
-        </UButton>
-
-        <UButton
-          v-if="view !== 'client'"
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-list-filter"
-          :label="activeCount ? `Filtros (${activeCount})` : 'Filtros'"
-          @click="() => { open = !open }"
-        />
-        <UButton
-          v-if="canSavePreset"
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-save"
-          label="Salvar"
-          data-testid="save-filters-button"
-          @click="openSave"
-        />
-        <DataTableFilterSavedFiltersMenu
-          :items="presets"
-          :loading="presetsLoading"
-          @apply="applyPreset"
-          @manage="openManage"
-          @open="onSavedMenuOpen"
-        />
-        <UButton
-          color="primary"
-          variant="soft"
-          label="Aplicar"
-          @click="emit('apply')"
-        />
-        <UButton
-          v-if="view === 'client' && (filters.q || operationalFilter !== 'total')"
-          color="neutral"
-          variant="ghost"
-          label="Limpar"
-          @click="emit('reset')"
-        />
-      </div>
-    </div>
-
-    <DataTableFilterSaveFilterModal
-      v-model:open="saveOpen"
-      :can-share="canShareFilters"
-      :loading="saveLoading"
-      :error="saveError"
-      @confirm="onSaveConfirm"
-    />
-    <DataTableFilterManageSavedFiltersModal
-      v-model:open="manageOpen"
-      :items="presets"
-      :can-share="canShareFilters"
-      :loading="presetsLoading"
-      :acting-id="actingId"
-      :error="manageError"
-      @rename="onRename"
-      @toggle-share="onToggleShare"
-      @delete="onDeletePreset"
-    />
-
-    <form
-      v-show="open && view !== 'client'"
-      class="grid gap-2 rounded-lg border border-default bg-elevated/25 p-3 sm:grid-cols-2 lg:grid-cols-3"
-      @submit.prevent="emit('apply')"
-    >
-      <UFormField label="Tipo">
-        <USelect
-          v-model="filters.kind"
-          :items="kindItems"
-          class="w-full"
-          aria-label="Filtrar por tipo de documento"
-        />
-      </UFormField>
-      <UFormField label="Cliente">
-        <USelect
-          v-model="filters.client_id"
-          :items="clientItems"
-          :loading="loadingFilters"
-          class="w-full"
-          aria-label="Filtrar por cliente"
-          @update:model-value="emit('clientChange')"
-        />
-      </UFormField>
-      <UFormField label="Estabelecimento">
-        <USelect
-          v-model="filters.establishment_id"
-          :items="establishmentItems"
-          :disabled="!hasClient"
-          class="w-full"
-          aria-label="Filtrar por estabelecimento"
-        />
-      </UFormField>
-      <UFormField label="Situação">
-        <USelect v-model="filters.status" :items="statusItems" class="w-full" />
-      </UFormField>
-      <UFormField label="Papel fiscal">
-        <USelect v-model="filters.fiscal_role" :items="roleItems" class="w-full" />
-      </UFormField>
-      <UFormField label="Direção">
-        <USelect v-model="filters.direction" :items="directionItems" class="w-full" />
-      </UFormField>
-      <UFormField
-        v-if="filters.kind === 'CTE' || filters.kind === FILTER_ALL"
-        label="Origem CT-e"
+  <ShellListFilterToolbar
+    :q="filters.q"
+    :search-placeholder="searchPlaceholder"
+    :search-aria-label="view === 'client' ? 'Filtrar clientes por nome ou CNPJ/CPF' : 'Buscar no catálogo de documentos'"
+    :definitions="catalogDefinitions"
+    :models="chipModels"
+    :loading="loadingFilters"
+    :reset-key="resetKey ?? sessionEpoch"
+    :surface="view === 'client' ? null : 'docs.catalog'"
+    :get-payload="() => docsFiltersToPayload(filters)"
+    :can-save="() => hasActiveDocsFiltersForSave(filters)"
+    test-id-prefix="docs-filter"
+    @update:q="onQUpdate"
+    @update:models="onModelsUpdate"
+    @clear="onClear"
+    @refresh="emit('apply')"
+    @apply-preset="onApplyPreset"
+  >
+    <template #actions>
+      <UButton
+        v-if="canExport && selectedCount"
+        color="primary"
+        variant="subtle"
+        icon="i-lucide-package"
+        label="Exportar seleção"
+        :loading="exporting"
+        @click="emit('exportSelection')"
       >
-        <USelect
-          v-model="filters.acquisition_source"
-          :items="acquisitionSourceItems"
-          class="w-full"
-          aria-label="Filtrar por origem de aquisição do CT-e"
-        />
-      </UFormField>
-      <UFormField
-        v-if="filters.kind === 'CTE' || filters.kind === FILTER_ALL"
-        label="Qualidade CT-e"
-      >
-        <USelect
-          v-model="filters.artifact_quality"
-          :items="qualityItems"
-          class="w-full"
-          aria-label="Filtrar por qualidade do artefato CT-e"
-        />
-      </UFormField>
-      <UFormField
-        v-if="filters.kind === 'CTE' || filters.kind === FILTER_ALL"
-        label="Cobertura CT-e"
-      >
-        <USelect
-          v-model="filters.coverage_status"
-          :items="coverageItems"
-          class="w-full"
-          aria-label="Filtrar por cobertura CT-e"
-        />
-      </UFormField>
-      <UFormField
-        label="CNPJ emitente / prestador"
-        hint="NF-e/NFC-e: emit · NFS-e: prestador"
-      >
-        <UInput
-          v-model="filters.issuer_cnpj"
-          class="w-full font-mono"
-          placeholder="Somente dígitos ou formatado"
-          aria-label="Filtrar por CNPJ do emitente ou prestador"
-        />
-      </UFormField>
-      <UFormField
-        label="CNPJ destinatário / tomador"
-        hint="NF-e/NFC-e: dest · NFS-e: tomador (toma)"
-      >
-        <UInput
-          v-model="filters.taker_cnpj"
-          class="w-full font-mono"
-          placeholder="Somente dígitos ou formatado"
-          aria-label="Filtrar por CNPJ do destinatário ou tomador"
-        />
-      </UFormField>
-      <UFormField label="Competência">
-        <UInput v-model="filters.competence" class="w-full" placeholder="AAAA-MM" />
-      </UFormField>
-      <UFormField label="Emissão de">
-        <UInput
-          v-model="filters.issued_from"
-          type="date"
-          class="w-full"
-          aria-label="Data de emissão inicial"
-        />
-      </UFormField>
-      <UFormField label="Emissão até">
-        <UInput
-          v-model="filters.issued_to"
-          type="date"
-          class="w-full"
-          aria-label="Data de emissão final"
-        />
-      </UFormField>
-      <div class="flex items-end gap-2 sm:col-span-2 lg:col-span-3">
-        <UButton type="submit" color="primary" label="Aplicar filtros" />
-        <UButton
-          type="button"
-          color="neutral"
-          variant="ghost"
-          label="Limpar"
-          @click="emit('reset')"
-        />
-      </div>
-    </form>
-  </div>
+        <template #trailing>
+          <UKbd>{{ selectedCount }}</UKbd>
+        </template>
+      </UButton>
+    </template>
+  </ShellListFilterToolbar>
 </template>

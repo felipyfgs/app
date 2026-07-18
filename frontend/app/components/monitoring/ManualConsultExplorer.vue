@@ -41,7 +41,8 @@ const toast = useToast()
 const clientId = ref<number | undefined>(props.initialClientId && props.initialClientId > 0
   ? props.initialClientId
   : undefined)
-const moduleFilter = ref(props.moduleKey || '')
+const ALL_MODULES_VALUE = '__all__'
+const moduleFilter = ref(props.moduleKey || ALL_MODULES_VALUE)
 const clientOptions = ref<Array<{ label: string, value: number }>>([])
 const loadingClients = ref(false)
 
@@ -54,7 +55,8 @@ function closeConfirm() {
 }
 
 const moduleOptions = [
-  { label: 'Todos os módulos', value: '' },
+  // O Select do Reka UI reserva `''` para limpar o valor; itens nunca podem usá-lo.
+  { label: 'Todos os módulos', value: ALL_MODULES_VALUE },
   { label: 'Simples / MEI', value: 'simples_mei' },
   { label: 'DCTFWeb / MIT', value: 'dctfweb' },
   { label: 'SITFIS', value: 'sitfis' },
@@ -67,7 +69,7 @@ const moduleOptions = [
 
 const filteredActions = computed(() => {
   let list = actions.value
-  if (moduleFilter.value) {
+  if (moduleFilter.value !== ALL_MODULES_VALUE) {
     list = list.filter(a => a.module_key === moduleFilter.value)
   }
   return list
@@ -97,7 +99,7 @@ async function refresh() {
   await loadInventory({
     client_id: clientId.value ?? undefined,
     surface_key: props.surfaceKey || undefined,
-    module_key: moduleFilter.value || undefined
+    module_key: moduleFilter.value === ALL_MODULES_VALUE ? undefined : moduleFilter.value
   })
 }
 
@@ -199,6 +201,7 @@ onMounted(async () => {
 
 <template>
   <UCard
+    class="shrink-0"
     data-testid="manual-consult-explorer"
     :ui="{ body: props.compact ? 'p-3 sm:p-4' : 'p-4 sm:p-6' }"
   >

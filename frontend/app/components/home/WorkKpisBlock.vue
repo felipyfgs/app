@@ -217,7 +217,7 @@ const lastUpdated = computed(() => {
     >
       <template
         v-if="departmentRows.length"
-        #departments
+        #departments-body
       >
         <ul class="grid gap-2 sm:grid-cols-2">
           <li
@@ -264,7 +264,7 @@ const lastUpdated = computed(() => {
 
       <template
         v-if="data?.top_risks?.length"
-        #risks
+        #risks-body
       >
         <ul class="space-y-1 text-sm">
           <li

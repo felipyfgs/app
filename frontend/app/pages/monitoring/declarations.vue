@@ -6,6 +6,7 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { DeclarationsClientDetail, DeclarationsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
+import { tableCellBadgeProps } from '~/utils/table-ui'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
@@ -237,7 +238,12 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
       const proj = projectionOf(row.original)
       const code = proj?.applicability != null ? String(proj.applicability) : null
       if (!code) return '—'
-      return h(UBadge, { color: 'neutral', variant: 'subtle', size: 'sm' }, () => applicabilityLabel(code))
+      return h('div', { class: 'block w-full min-w-0' }, [
+        h(UBadge, tableCellBadgeProps({
+          color: 'neutral',
+          label: applicabilityLabel(code)
+        }))
+      ])
     }
   },
   {
@@ -273,7 +279,7 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
         || projectionOf(row.original)?.delivery_status
         || '—'
       )
-      return status === '—' ? '—' : h(FiscalStatusBadge, { status, showHint: true })
+      return status === '—' ? '—' : h(FiscalStatusBadge, { fill: true, status })
     }
   },
   {
@@ -287,7 +293,12 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
       }
       const label = evidenceLabel(proj)
       if (label === 'Com evidência' || label.endsWith('evidência(s)')) {
-        return h(UBadge, { color: 'success', variant: 'subtle', size: 'sm' }, () => label)
+        return h('div', { class: 'block w-full min-w-0' }, [
+          h(UBadge, tableCellBadgeProps({
+            color: 'success',
+            label
+          }))
+        ])
       }
       return label
     }
@@ -301,12 +312,10 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
   {
     id: 'situation',
     header: ({ column }) => sortHeader('Situação', column),
-    cell: ({ row }) => h(FiscalStatusBadge, {
-      status: String(
-        detailOf(row.original).next_situation
-        || row.original.situation
-      )
-    })
+    cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(
+      detailOf(row.original).next_situation
+      || row.original.situation
+    ) })
   },
   {
     id: 'actions',

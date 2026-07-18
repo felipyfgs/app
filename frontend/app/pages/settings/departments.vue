@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Departamentos do escritório (catálogo operacional Work).
+ * Departamentos do escritório (catálogo operacional Work) — Filter Lite (só busca).
  * Arquétipo settings/lista: .reference/.../settings/members.vue
  * Conteúdo aninhado no shell de pages/settings.vue (toolbar + NuxtPage).
  */

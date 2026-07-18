@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+
 const props = defineProps<{
   period?: string | null
   state?: string | null
@@ -13,15 +15,19 @@ const tooltip = computed(() => [
 </script>
 
 <template>
-  <UTooltip :text="tooltip">
-    <UBadge
-      :label="period || '—'"
-      :icon="meta.icon"
-      :color="meta.color"
-      variant="subtle"
-      class="min-w-24 justify-center tabular-nums"
-      :aria-label="`${period || 'Período não informado'}: ${meta.label}`"
-      data-testid="pgdasd-declaration-indicator"
-    />
+  <UTooltip :text="tooltip" :content="{ side: 'top' }">
+    <div class="block w-full min-w-0">
+      <UBadge
+        :label="period || '—'"
+        :icon="meta.icon"
+        :color="meta.color"
+        size="md"
+        variant="subtle"
+        :class="TABLE_CELL_BADGE_CLASS"
+        :ui="TABLE_CELL_BADGE_UI"
+        :aria-label="`${period || 'Período não informado'}: ${meta.label}`"
+        data-testid="pgdasd-declaration-indicator"
+      />
+    </div>
   </UTooltip>
 </template>

@@ -4,7 +4,8 @@
  * Arquétipo: customers.vue (lista + tabela) — adaptado a batches.
  */
 import type { TableColumn, TableRow } from '@nuxt/ui'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import DocsSectionNav from '~/components/navigation/DocsSectionNav.vue'
+import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
 
 const api = useApi()
 const router = useRouter()
@@ -129,6 +130,10 @@ onMounted(() => {
           />
         </template>
       </UDashboardNavbar>
+
+      <UDashboardToolbar data-testid="docs-section-tabs">
+        <DocsSectionNav />
+      </UDashboardToolbar>
     </template>
 
     <template #body>
@@ -156,8 +161,17 @@ onMounted(() => {
           </span>
         </template>
         <template #status-cell="{ row }">
-          <div class="flex flex-wrap items-center gap-1">
-            <UBadge :color="statusColor(String(row.original.status))" variant="subtle">
+          <div
+            class="flex w-full min-w-0 items-center gap-1"
+            :class="row.original.upload_complete && !row.original.processing_complete ? '' : undefined"
+          >
+            <UBadge
+              :color="statusColor(String(row.original.status))"
+              variant="subtle"
+              size="md"
+              :class="TABLE_CELL_BADGE_CLASS"
+              :ui="TABLE_CELL_BADGE_UI"
+            >
               {{ statusLabel(String(row.original.status)) }}
             </UBadge>
             <UBadge
@@ -165,6 +179,7 @@ onMounted(() => {
               color="info"
               variant="outline"
               size="sm"
+              class="shrink-0"
             >
               Processando
             </UBadge>

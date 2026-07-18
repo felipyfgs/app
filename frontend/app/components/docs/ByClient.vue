@@ -10,7 +10,13 @@ import type { Client } from '~/types/api'
 import { upperFirst } from 'scule'
 import { laravelPageBatch, usePagedTable } from '~/composables/usePagedTable'
 import { sortHeader } from '~/utils/table-sort'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+import {
+  COMPACT_BUTTON_LABEL_UI,
+  LIST_FILTER_ACTIONS_ROW,
+  LIST_FILTER_SEARCH_INPUT,
+  LIST_FILTER_TOOLBAR_STACK
+} from '~/utils/list-filter-layout'
 
 const search = defineModel<string>('search', { default: '' })
 const operationalFilter = defineModel<string>('operationalFilter', { default: 'total' })
@@ -217,23 +223,23 @@ defineExpose({ reload })
   <!-- Padrão ouro clients/index.vue: busca esq · filtros/Exibir/refresh dir -->
   <div class="flex min-h-0 w-full flex-col gap-4 sm:gap-5" data-testid="notes-by-client">
     <ShellStickyTableFilters>
-      <div class="flex flex-wrap items-center justify-between gap-1.5">
+      <div :class="LIST_FILTER_TOOLBAR_STACK">
         <UInput
           v-model="search"
-          class="max-w-sm"
+          :class="LIST_FILTER_SEARCH_INPUT"
           icon="i-lucide-search"
           placeholder="Filtrar por nome ou CNPJ/CPF..."
           aria-label="Filtrar clientes por nome ou CNPJ/CPF"
           @keydown.enter.prevent="onSearchEnter"
         />
 
-        <div class="flex flex-wrap items-center gap-1.5">
+        <div :class="LIST_FILTER_ACTIONS_ROW">
           <USelect
             v-model="operationalFilter"
             :items="operationalItems"
             value-key="value"
             :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
-            class="min-w-40"
+            class="min-w-36 shrink-0 sm:min-w-40"
             aria-label="Filtro de captura"
             @update:model-value="onOperationalChange"
           />
@@ -263,10 +269,12 @@ defineExpose({ reload })
             :content="{ align: 'end' }"
           >
             <UButton
-              label="Exibir"
+              label="Colunas"
               color="neutral"
               variant="outline"
               trailing-icon="i-lucide-settings-2"
+              aria-label="Exibir colunas"
+              :ui="COMPACT_BUTTON_LABEL_UI"
             />
           </UDropdownMenu>
           <UButton
@@ -351,8 +359,8 @@ defineExpose({ reload })
           :color="info.color"
           variant="soft"
           size="md"
-          class="h-8 font-normal"
-          :ui="{ base: 'h-8 rounded-md' }"
+          :class="TABLE_CELL_BADGE_CLASS"
+          :ui="TABLE_CELL_BADGE_UI"
         >
           {{ info.chipLabel }}
         </UBadge>
@@ -365,8 +373,8 @@ defineExpose({ reload })
           :color="info.color"
           variant="soft"
           size="md"
-          class="h-8 font-normal"
-          :ui="{ base: 'h-8 rounded-md' }"
+          :class="TABLE_CELL_BADGE_CLASS"
+          :ui="TABLE_CELL_BADGE_UI"
           :title="info.title || info.chipLabel"
         >
           {{ info.chipLabel }}

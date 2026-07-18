@@ -216,6 +216,7 @@ const columns: TableColumn<SitfisClientRow>[] = [
     id: 'client',
     header: ({ column }) => sortHeader('Cliente', column),
     enableHiding: false,
+    meta: { class: { th: 'min-w-44 w-[22%]', td: 'min-w-44 w-[22%]' } },
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
@@ -227,21 +228,25 @@ const columns: TableColumn<SitfisClientRow>[] = [
   {
     id: 'situation',
     header: ({ column }) => sortHeader('Situação', column),
-    cell: ({ row }) => h(FiscalStatusBadge, { status: row.original.situation, showHint: true })
+    meta: { class: { th: 'w-36 min-w-32', td: 'w-36 min-w-32' } },
+    cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: row.original.situation })
   },
   {
     id: 'procuracao',
     header: 'Procuração',
     enableSorting: false,
+    meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
     cell: ({ row }) => h(ClientProcuracaoBadge, {
       status: row.original.procuracao_status,
-      showHint: false
+      showHint: false,
+      compact: true
     })
   },
   {
     id: 'franchise',
     header: 'Franquia / agenda',
     enableSorting: false,
+    meta: { class: { th: 'w-40 min-w-36', td: 'w-40 min-w-36' } },
     cell: ({ row }) => h(CommercialMetaCell, {
       remaining: row.original.commercial_quota?.remaining,
       limit: row.original.commercial_quota?.limit,
@@ -257,15 +262,16 @@ const columns: TableColumn<SitfisClientRow>[] = [
     id: 'age',
     header: 'Idade / TTL',
     enableSorting: false,
+    meta: { class: { th: 'w-24 min-w-20', td: 'w-24 min-w-20' } },
     cell: ({ row }) => {
       const d = detailOf(row.original)
       const age = ageLabel(d.age_seconds)
       const ttl = d.ttl_seconds != null ? ageLabel(d.ttl_seconds) : '—'
-      return h('span', { class: 'inline-flex items-center gap-1.5 text-sm' }, [
+      return h('span', { class: 'inline-flex items-center gap-1 text-xs tabular-nums' }, [
         age,
         h('span', { class: 'text-muted' }, `/ ${ttl}`),
         d.is_expired === true
-          ? h(UBadge, { color: 'warning', variant: 'subtle', size: 'sm' }, () => 'Expirado')
+          ? h(UBadge, { color: 'warning', variant: 'subtle', size: 'xs' }, () => 'Expirado')
           : null
       ])
     }
@@ -274,31 +280,37 @@ const columns: TableColumn<SitfisClientRow>[] = [
     id: 'findings',
     header: 'Achados',
     enableSorting: false,
+    meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
     cell: ({ row }) => {
       const d = detailOf(row.original)
-      return `${d.findings_count ?? 0} finding(s) · ${d.pending_count ?? 0} pend.`
+      return h('span', {
+        class: 'text-xs tabular-nums whitespace-nowrap',
+        title: `${d.findings_count ?? 0} achados · ${d.pending_count ?? 0} pendências`
+      }, `${d.findings_count ?? 0} · ${d.pending_count ?? 0} pend.`)
     }
   },
   {
     id: 'coverage',
     header: 'Cobertura',
     enableSorting: false,
-    cell: ({ row }) => h(FiscalCoverageBadge, { coverage: row.original.coverage })
+    meta: { class: { th: 'w-32 min-w-28', td: 'w-32 min-w-28' } },
+    cell: ({ row }) => h(FiscalCoverageBadge, { fill: true, coverage: row.original.coverage })
   },
   {
     id: 'observed',
     header: ({ column }) => sortHeader('Observado', column),
-    cell: ({ row }) => formatDateTime(
+    meta: { class: { th: 'w-32 min-w-28', td: 'w-32 min-w-28' } },
+    cell: ({ row }) => h('span', { class: 'text-xs tabular-nums whitespace-nowrap' }, formatDateTime(
       String(detailOf(row.original).observed_at || row.original.last_snapshot_at || row.original.last_consulted_at || '') || null
-    )
+    ))
   },
   {
     id: 'actions',
     header: 'Ações',
     enableHiding: false,
     enableSorting: false,
-    meta: { class: { th: 'w-56', td: 'w-56' } },
-    cell: ({ row }) => h('div', { class: 'flex justify-end gap-1 items-center' }, [
+    meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
+    cell: ({ row }) => h('div', { class: 'flex justify-end gap-0.5 items-center' }, [
       h(FiscalDocumentAction, {
         document: row.original.document,
         disabled: !allowsDocument.value
@@ -309,13 +321,6 @@ const columns: TableColumn<SitfisClientRow>[] = [
         variant: 'ghost',
         label: 'Achados',
         onClick: () => openDetail(row.original)
-      }),
-      h(UButton, {
-        size: 'xs',
-        color: 'neutral',
-        variant: 'ghost',
-        label: 'Cliente',
-        to: clientHref(row.original.client_id)
       })
     ])
   }
@@ -350,7 +355,7 @@ const columns: TableColumn<SitfisClientRow>[] = [
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
     :horizontal-scroll="true"
-    table-class="min-w-[960px]"
+    table-class="min-w-[880px]"
     empty-title="Nenhum cliente"
     :column-labels="{
       procuracao: 'Procuração',

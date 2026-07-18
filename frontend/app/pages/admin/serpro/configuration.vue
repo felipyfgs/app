@@ -14,6 +14,7 @@ import {
   defaultChangeWindow,
   expectedOwnerConfirmationPhrase
 } from '~/utils/serpro-owner-confirmation'
+import ShellScrollableTabs from '~/components/shell/ScrollableTabs.vue'
 import CatalogView from './catalog.vue'
 import ContractsView from './contracts.vue'
 
@@ -452,15 +453,13 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-6" data-testid="admin-serpro-integration">
-    <UTabs
+    <ShellScrollableTabs
       :model-value="activeSection"
       :items="integrationSections"
-      :content="false"
       color="neutral"
-      variant="pill"
       class="w-full"
       aria-label="Seções da integração SERPRO"
-      data-testid="admin-serpro-integration-sections"
+      test-id="admin-serpro-integration-sections"
       @update:model-value="selectSection"
     />
 

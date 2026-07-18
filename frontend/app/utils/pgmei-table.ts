@@ -8,13 +8,12 @@ import { h } from 'vue'
 import {
   FiscalClientCell,
   MonitoringPgmeiAutomaticSwitch,
-  MonitoringPgmeiBulkAutomaticActions,
-  UBadge,
-  UButton,
-  UDropdownMenu,
-  UIcon,
-  UTooltip
+  MonitoringPgmeiBulkAutomaticActions
 } from '#components'
+import UBadge from '@nuxt/ui/components/Badge.vue'
+import UButton from '@nuxt/ui/components/Button.vue'
+import UIcon from '@nuxt/ui/components/Icon.vue'
+import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type {
   PgdasdCommunicationPreference,
   SimplesMeiClientRow
@@ -28,13 +27,15 @@ import {
   pgmeiFreshnessState,
   pgmeiSummary
 } from '~/utils/pgmei'
+import { tableIconButton, tableIconGroup } from '~/utils/table-icon-slots'
+import { tableCellBadgeProps } from '~/utils/table-ui'
 import { sortHeader } from '~/utils/table-sort'
 
 /**
- * Renderer PGMEI — sete colunas de negócio na ordem da referência visual:
- * Situação · Ações · Enviar · Cliente · Rastreio de envio · Última Busca ·
+ * Renderer PGMEI — sete colunas de negócio (densidade compacta):
+ * Cliente · Situação · Ações · Enviar · Rastreio de envio · Última Busca ·
  * Histórico de Busca. Sem colunas mensais do PGDAS-D.
- * Seleção é acrescentada pelo shell autorizado antes de Situação.
+ * Seleção é acrescentada pelo shell autorizado antes de Cliente.
  */
 export function buildPgmeiColumns(options: {
   year: number
@@ -59,72 +60,17 @@ export function buildPgmeiColumns(options: {
   const AutomaticSwitch = MonitoringPgmeiAutomaticSwitch
   const BulkAutomaticSwitch = MonitoringPgmeiBulkAutomaticActions
 
-  function iconAction(args: {
-    label: string
-    icon: string
-    color?: 'neutral' | 'primary' | 'success' | 'warning' | 'error' | 'info'
-    testId: string
-    onClick: () => void
-  }) {
-    return h(UTooltip, { text: args.label }, {
-      default: () => h(UButton, {
-        'size': 'sm',
-        'color': args.color || 'neutral',
-        'variant': 'ghost',
-        'icon': args.icon,
-        'aria-label': args.label,
-        'data-testid': args.testId,
-        'onClick': args.onClick
-      })
-    })
-  }
-
   function rowActions(row: SimplesMeiClientRow) {
-    return h('div', { class: 'flex items-center gap-0.5' }, [
-      iconAction({
+    // Menu completo fica na toolbar (bulk/seleção); linha só mantém prévia.
+    return tableIconGroup([
+      tableIconButton({
         label: 'Abrir prévia de envio',
         icon: 'i-lucide-send',
         color: 'primary',
         testId: 'pgmei-send-preview',
         onClick: () => options.onPreview(row)
-      }),
-      h(UDropdownMenu, {
-        items: [
-          [
-            {
-              label: 'Configurar comunicação',
-              icon: 'i-lucide-settings-2',
-              disabled: !options.canManage,
-              onSelect: () => options.onConfigure(row)
-            },
-            {
-              label: 'Consultar dívida ativa',
-              icon: 'i-lucide-refresh-cw',
-              description: 'Abre a confirmação; nenhuma consulta ocorre pelo menu.',
-              disabled: !options.canQueryDebt,
-              onSelect: () => options.onConsult(row)
-            }
-          ],
-          [
-            {
-              label: 'Abrir cliente',
-              icon: 'i-lucide-user-round',
-              to: `/monitoring/clients/${row.client_id}`
-            }
-          ]
-        ],
-        content: { align: 'end' }
-      }, {
-        default: () => h(UButton, {
-          'size': 'sm',
-          'color': 'neutral',
-          'variant': 'ghost',
-          'icon': 'i-lucide-ellipsis',
-          'aria-label': 'Mais ações PGMEI',
-          'data-testid': 'pgmei-actions-menu'
-        })
       })
-    ])
+    ], 'pgmei-actions-group')
   }
 
   function trackingCell(row: SimplesMeiClientRow) {
@@ -134,54 +80,52 @@ export function buildPgmeiColumns(options: {
       ? row.document?.href?.trim() || null
       : null
 
-    return h('div', { class: 'flex items-center gap-0.5' }, [
-      iconAction({
+    return tableIconGroup([
+      tableIconButton({
         label: `Status do envio: ${meta.label}`,
         icon: meta.icon,
         color: meta.color,
         testId: 'pgmei-tracking-status',
         onClick: () => options.onTracking(row)
       }),
-      artifactHref
-        ? h(UTooltip, { text: row.document?.label || 'Baixar anexo local' }, {
-            default: () => h(UButton, {
-              'size': 'sm',
-              'color': 'primary',
-              'variant': 'ghost',
-              'icon': 'i-lucide-download',
-              'href': artifactHref,
-              'target': '_blank',
-              'rel': 'noopener',
-              'aria-label': row.document?.label || 'Baixar anexo local',
-              'data-testid': 'pgmei-tracking-attachment'
-            })
-          })
-        : h(UTooltip, { text: 'Nenhum anexo local disponível' }, {
-            default: () => h(UButton, {
-              'size': 'sm',
-              'color': 'neutral',
-              'variant': 'ghost',
-              'icon': 'i-lucide-download',
-              'disabled': true,
-              'aria-label': 'Nenhum anexo local disponível',
-              'data-testid': 'pgmei-tracking-attachment'
-            })
-          }),
-      iconAction({
+      tableIconButton({
+        label: artifactHref
+          ? (row.document?.label || 'Baixar anexo local')
+          : 'Nenhum anexo local disponível',
+        icon: 'i-lucide-download',
+        color: artifactHref ? 'primary' : 'neutral',
+        testId: 'pgmei-tracking-attachment',
+        href: artifactHref,
+        disabled: !artifactHref
+      }),
+      tableIconButton({
         label: 'Abrir rastreio de envio',
         icon: 'i-lucide-search',
         testId: 'pgmei-tracking',
         onClick: () => options.onTracking(row)
       })
-    ])
+    ], 'pgmei-tracking-group')
   }
 
   return [
     {
+      id: 'client',
+      header: ({ column }) => sortHeader('Cliente', column),
+      enableHiding: false,
+      meta: { class: { th: 'min-w-48 w-[26%]', td: 'min-w-48 w-[26%]' } },
+      cell: ({ row }) => h(FiscalClientCell, {
+        clientId: row.original.client_id,
+        name: row.original.legal_name,
+        legalName: row.original.legal_name,
+        cnpjMasked: row.original.cnpj_masked,
+        to: `/monitoring/clients/${row.original.client_id}`
+      })
+    },
+    {
       id: 'situation',
       header: 'Situação',
       enableSorting: false,
-      meta: { class: { th: 'min-w-48', td: 'min-w-48' } },
+      meta: { class: { th: 'w-36 min-w-28', td: 'w-36 min-w-28' } },
       cell: ({ row }) => {
         const summary = pgmeiSummary(row.original, options.year)
         const debt = pgmeiDebtMeta(summary?.debt_state)
@@ -189,22 +133,21 @@ export function buildPgmeiColumns(options: {
           && Boolean(summary?.last_valid_query_at)
           && pgmeiFreshnessState(summary?.freshness_state) === 'OUTDATED'
         return h(UTooltip, { text: pgmeiDebtTooltip(summary, options.year) }, {
-          default: () => h('span', {
-            'class': 'inline-flex items-center gap-1.5',
+          default: () => h('div', {
+            'class': 'flex w-full min-w-0 items-center gap-1',
             'aria-label': `Situação PGMEI: ${debt.label}`
           }, [
-            h(UBadge, {
+            h(UBadge, tableCellBadgeProps({
               'label': debt.label,
               'color': debt.color,
               'icon': debt.icon,
-              'variant': 'subtle',
-              'class': 'min-w-24 justify-center',
+              'class': 'min-w-0 flex-1',
               'data-testid': 'pgmei-situation'
-            }),
+            })),
             outdated
               ? h(UIcon, {
                   'name': 'i-lucide-clock-alert',
-                  'class': 'size-4 text-warning',
+                  'class': 'size-3.5 shrink-0 text-warning',
                   'aria-label': 'Consulta desatualizada'
                 })
               : null
@@ -216,12 +159,12 @@ export function buildPgmeiColumns(options: {
       id: 'actions',
       header: 'Ações',
       enableSorting: false,
-      meta: { class: { th: 'w-24 min-w-24', td: 'w-24 min-w-24' } },
+      meta: { class: { th: 'w-20 min-w-20', td: 'w-20 min-w-20' } },
       cell: ({ row }) => rowActions(row.original)
     },
     {
       id: 'send',
-      header: () => h('div', { class: 'flex items-center gap-2' }, [
+      header: () => h('div', { class: 'flex items-center gap-1' }, [
         h('span', 'Enviar'),
         options.canManage
           ? h(BulkAutomaticSwitch, {
@@ -234,40 +177,32 @@ export function buildPgmeiColumns(options: {
           : null
       ]),
       enableSorting: false,
-      meta: { class: { th: 'w-28 min-w-28', td: 'w-28 min-w-28' } },
-      cell: ({ row }) => h(AutomaticSwitch, {
-        clientId: row.original.client_id,
-        preference: pgmeiSummary(row.original, options.year)?.communication,
-        canManage: options.canManage,
-        onConfigure: () => options.onConfigure(row.original),
-        onSaved: (preference: PgdasdCommunicationPreference) =>
-          options.onPreferenceSaved(row.original, preference)
-      })
-    },
-    {
-      id: 'client',
-      header: ({ column }) => sortHeader('Cliente', column),
-      enableHiding: false,
-      meta: { class: { th: 'min-w-64', td: 'min-w-64' } },
-      cell: ({ row }) => h(FiscalClientCell, {
-        clientId: row.original.client_id,
-        name: row.original.legal_name,
-        legalName: row.original.legal_name,
-        cnpjMasked: row.original.cnpj_masked,
-        to: `/monitoring/clients/${row.original.client_id}`
-      })
+      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
+      cell: ({ row }) => h('div', {
+        class: 'inline-flex h-8 w-10 shrink-0 items-center justify-center',
+        'data-testid': 'pgmei-send-slot'
+      }, [
+        h(AutomaticSwitch, {
+          clientId: row.original.client_id,
+          preference: pgmeiSummary(row.original, options.year)?.communication,
+          canManage: options.canManage,
+          onConfigure: () => options.onConfigure(row.original),
+          onSaved: (preference: PgdasdCommunicationPreference) =>
+            options.onPreferenceSaved(row.original, preference)
+        })
+      ])
     },
     {
       id: 'tracking',
       header: 'Rastreio de envio',
       enableSorting: false,
-      meta: { class: { th: 'min-w-36', td: 'min-w-36' } },
+      meta: { class: { th: 'w-28 min-w-28', td: 'w-28 min-w-28' } },
       cell: ({ row }) => trackingCell(row.original)
     },
     {
       id: 'consulted',
       header: ({ column }) => sortHeader('Última Busca', column),
-      meta: { class: { th: 'min-w-32', td: 'min-w-32' } },
+      meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
       cell: ({ row }) => {
         const lastQuery = pgmeiSummary(row.original, options.year)?.last_valid_query_at
         return h(UTooltip, {
@@ -276,7 +211,7 @@ export function buildPgmeiColumns(options: {
             : `Nenhuma consulta produtiva válida para ${options.year}`
         }, {
           default: () => h('span', {
-            'class': 'whitespace-nowrap tabular-nums text-sm',
+            'class': 'whitespace-nowrap tabular-nums text-xs',
             'data-testid': 'pgmei-last-query'
           }, formatDate(lastQuery))
         })
@@ -285,19 +220,16 @@ export function buildPgmeiColumns(options: {
     {
       id: 'history',
       header: 'Histórico de Busca',
-      enableHiding: false,
       enableSorting: false,
-      meta: { class: { th: 'min-w-40', td: 'min-w-40' } },
+      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
       cell: ({ row }) => h(UTooltip, {
         text: `Ver histórico fiscal PGMEI de ${options.year}`
       }, {
         default: () => h(UButton, {
-          'size': 'sm',
+          'size': 'xs',
           'color': 'neutral',
-          'variant': 'outline',
+          'variant': 'ghost',
           'icon': 'i-lucide-search',
-          'block': true,
-          'class': 'w-full justify-center',
           'aria-label': `Ver histórico fiscal PGMEI de ${options.year}`,
           'data-testid': 'pgmei-history',
           'onClick': () => options.onHistory(row.original)

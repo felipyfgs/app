@@ -294,8 +294,8 @@ export interface Client {
   capture_summary?: ClientCaptureSummary | null
   sync_summary?: ClientSyncSummary | null
   /**
-   * Estado oficial de procuração e-CAC (sincronizado; sem override manual).
-   * authorized | missing | expired | unverified
+   * Estado sanitizado de procuração e-CAC; expiring é calculado localmente
+   * da validade oficial, sem iniciar nova sincronização.
    */
   procuracao_status?: ClientProcuracaoStatus | null
   procuracao_checked_at?: string | null
@@ -305,7 +305,7 @@ export interface Client {
 }
 
 /** Estado sincronizado da procuração do cliente (evidência oficial). */
-export type ClientProcuracaoStatus = 'authorized' | 'missing' | 'expired' | 'unverified'
+export type ClientProcuracaoStatus = 'authorized' | 'expiring' | 'missing' | 'expired' | 'unverified'
 
 export interface CnpjLookupClient {
   root_cnpj: string

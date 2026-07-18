@@ -26,20 +26,13 @@ import {
   pruneMonitoringSelection,
   selectedMonitoringRows
 } from '~/utils/monitoring-selection'
+import { MONITORING_COMPACT_TABLE_UI } from '~/utils/table-ui'
 
 /** Largura mínima padrão quando a página pede scroll sem `tableClass` explícito. */
 const DEFAULT_SCROLL_MIN_WIDTH = 'min-w-[56rem]'
 
-/** UI canônica do template customers.vue. */
-const TABLE_UI = {
-  root: 'overflow-visible',
-  base: 'table-fixed border-separate border-spacing-0',
-  thead: 'bg-default [&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-  tbody: '[&>tr]:last:[&>td]:border-b-0',
-  th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-  td: 'border-b border-default',
-  separator: 'h-0'
-} as const
+/** Preset canônico — ver `table-ui.ts` (contrato xs/ghost nas células). */
+const TABLE_UI = MONITORING_COMPACT_TABLE_UI
 
 const UCheckbox = resolveComponent('UCheckbox')
 

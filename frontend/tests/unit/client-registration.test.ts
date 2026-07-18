@@ -13,6 +13,7 @@ const APP_ROOT = resolve(__dirname, '../../app')
 
 describe('cadastro ampliado no frontend', () => {
   const detail = readFileSync(resolve(APP_ROOT, 'pages/clients/[id].vue'), 'utf8')
+  const detailNav = readFileSync(resolve(APP_ROOT, 'utils/client-detail-navigation.ts'), 'utf8')
   const form = readFileSync(resolve(APP_ROOT, 'components/clients/ClientForm.vue'), 'utf8')
   const formModal = readFileSync(resolve(APP_ROOT, 'components/clients/ClientFormModal.vue'), 'utf8')
   const clientsIndex = readFileSync(resolve(APP_ROOT, 'pages/clients/index.vue'), 'utf8')
@@ -21,9 +22,11 @@ describe('cadastro ampliado no frontend', () => {
 
   it('detalhe usa rotas aninhadas Settings (não query section)', () => {
     expect(detail).toContain('<NuxtPage')
-    expect(detail).toContain('label: \'Cadastro\'')
-    expect(detail).toContain('/cadastro')
-    expect(detail).toContain('exact: true')
+    expect(detail).toContain('clientDetailNav')
+    expect(detail).toContain('SectionNavigation')
+    expect(detailNav).toContain('label: \'Cadastro\'')
+    expect(detailNav).toContain('/cadastro')
+    expect(detailNav).toContain('exact: true')
     expect(detail).not.toMatch(/query:\s*\{\s*section:/)
     expect(detail).not.toMatch(/query:\s*\{\s*edit:/)
     expect(detail).toContain('ClientsClientDetailHeader')
@@ -45,8 +48,8 @@ describe('cadastro ampliado no frontend', () => {
   })
 
   it('detalhe lista estabelecimentos como vínculos matriz→filial', () => {
-    expect(detail).toContain(`label: 'Estabelecimentos'`)
-    expect(detail).toContain(`label: 'Certificado A1'`)
+    expect(detailNav).toContain(`label: 'Estabelecimentos'`)
+    expect(detailNav).toContain(`label: 'Certificado A1'`)
     expect(detail).toContain('ClientsClientDetailHeader')
     expect(existsSync(resolve(APP_ROOT, 'components/clients/ClientBranchesPanel.vue'))).toBe(true)
   })
@@ -65,9 +68,10 @@ describe('cadastro ampliado no frontend', () => {
     expect(formModal).toContain('data-testid="client-form-modal"')
     expect(clientsIndex).toContain('ClientsClientFormModal')
     expect(clientsIndex).not.toContain('/clients/new')
-    expect(clientsIndex).not.toContain('route.query')
-    expect(clientsIndex).not.toContain('router.replace')
-    expect(clientsIndex).toContain('operational_filter: kpiFilter.value')
+    expect(clientsIndex).toContain('syncClientsUrl')
+    expect(clientsIndex).toContain('ShellKpiStrip')
+    expect(clientsIndex).toContain('ShellListFilterToolbar')
+    expect(clientsIndex).toContain('operational_filter: kpiFilter')
     // Aba Cadastro embute o formulário bloqueado até Editar
     expect(registration).toContain('ClientsClientForm')
     expect(registration).toContain(':locked="!editing"')

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
  * Corpo do editor de filtro (option / month / client / text / boolean / date / date_range).
- * Contêiner (popover/drawer) fica no Root; handlers e markup são compartilhados.
+ * Contêiner (popover/modal) fica no Root; handlers e markup são compartilhados.
  */
+import FilterDateInput from '~/components/data-table-filter/FilterDateInput.vue'
 import type { DataTableFilterDefinition } from '~/types/data-table-filter'
 import {
   decodeClientIds,
@@ -355,13 +356,11 @@ function onClientSelectMany(clients: Array<{
       :error="monthError"
       class="min-w-0"
     >
-      <UInput
+      <FilterDateInput
         :model-value="String(modelValue ?? '')"
-        type="month"
-        placeholder="AAAA-MM"
-        class="w-full min-w-0"
+        mode="month"
         :aria-label="definition.label"
-        data-testid="data-table-filter-month"
+        test-id="data-table-filter-month"
         @update:model-value="onMonth($event)"
       />
     </UFormField>
@@ -454,51 +453,30 @@ function onClientSelectMany(clients: Array<{
       :error="dateError"
       class="min-w-0"
     >
-      <UInput
+      <FilterDateInput
         :model-value="String(modelValue ?? '')"
-        type="date"
-        placeholder="AAAA-MM-DD"
-        class="w-full min-w-0"
+        mode="date"
         :aria-label="definition.label"
-        data-testid="data-table-filter-date"
+        test-id="data-table-filter-date"
         @update:model-value="onDate($event)"
       />
     </UFormField>
 
-    <div
+    <UFormField
       v-else-if="definition.kind === 'date_range'"
-      class="flex min-w-0 flex-col gap-2"
+      :error="dateRangeError"
+      class="min-w-0"
     >
-      <UFormField
-        label="De"
-        :error="dateRangeError"
-        class="min-w-0"
-      >
-        <UInput
-          :model-value="String(modelValue ?? '')"
-          type="date"
-          placeholder="AAAA-MM-DD"
-          class="w-full min-w-0"
-          :aria-label="`${definition.label} (início)`"
-          data-testid="data-table-filter-date-from"
-          @update:model-value="onDateFrom($event)"
-        />
-      </UFormField>
-      <UFormField
-        label="Até"
-        class="min-w-0"
-      >
-        <UInput
-          :model-value="String(valueTo ?? '')"
-          type="date"
-          placeholder="AAAA-MM-DD"
-          class="w-full min-w-0"
-          :aria-label="`${definition.label} (fim)`"
-          data-testid="data-table-filter-date-to"
-          @update:model-value="onDateTo($event)"
-        />
-      </UFormField>
-    </div>
+      <FilterDateInput
+        :model-value="String(modelValue ?? '')"
+        :value-to="String(valueTo ?? '')"
+        mode="date_range"
+        :aria-label="definition.label"
+        test-id="data-table-filter-date-range"
+        @update:model-value="onDateFrom($event)"
+        @update:value-to="onDateTo($event)"
+      />
+    </UFormField>
 
     <div class="flex flex-wrap items-center justify-between gap-2 border-t border-default pt-3">
       <UButton

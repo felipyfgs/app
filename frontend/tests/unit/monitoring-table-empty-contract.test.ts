@@ -81,9 +81,13 @@ describe('contrato empty de tabelas de monitoramento', () => {
 
   it('mantém o cabeçalho visível no scroll do painel', () => {
     const src = readFileSync(join(COMPONENTS, 'ModuleDataTable.vue'), 'utf8')
+    const tableUi = readFileSync(join(APP, 'utils/table-ui.ts'), 'utf8')
     expect(src).toContain('sticky="header"')
-    expect(src).toMatch(/root: 'overflow-visible'/)
-    expect(src).toMatch(/thead: '[^']*bg-default/)
+    expect(src).toContain('MONITORING_COMPACT_TABLE_UI')
+    expect(tableUi).toMatch(/root:\s*'overflow-visible'/)
+    expect(tableUi).toContain('bg-default')
+    expect(tableUi).toContain('TABLE_CELL_BADGE_UI')
+    expect(tableUi).toContain('tableCellBadgeProps')
   })
 
   it('ModuleTable: KPIs → stack → toolbar colada à data table (customers.vue)', () => {
@@ -122,13 +126,28 @@ describe('contrato empty de tabelas de monitoramento', () => {
   it('parcelamentos: modalidades do catálogo como cápsulas em largura total', () => {
     const src = readFileSync(join(PAGES, 'installments.vue'), 'utf8')
     expect(src).toContain('installments-modality-tabs')
-    expect(src).toContain('variant="pill"')
+    expect(src).toContain('ShellScrollableTabs')
     expect(src).toContain('PARCSN')
     expect(src).toContain('PARCMEI')
     expect(src).toContain('RELPMEI')
     expect(src).toContain('selectedModality')
     // Não mais badges soltos no card de catálogo
     expect(src).not.toContain('Modalidades do catálogo')
+  })
+
+  it('parcelamentos: detalhe usa somente projeção local e expõe resumo, parcelas e vazio', () => {
+    const src = readFileSync(join(PAGES, 'installments.vue'), 'utf8')
+    expect(src).toContain('api.fiscal.installments.order(orderId)')
+    expect(src).toContain('api.fiscal.installments.parcels({ order_id: orderId, per_page: 50 })')
+    expect(src).toContain('abrir o detalhe nunca dispara uma consulta SERPRO')
+    expect(src).toContain('installments-order-summary')
+    expect(src).toContain('installments-order-parcels')
+    expect(src).toContain('installments-order-parcels-empty')
+    expect(src).toContain('Guia disponível')
+    expect(src).toContain('label: \'Ver no pedido\'')
+    expect(src).not.toContain('/monitoring/clients/')
+    expect(src).not.toContain('office_id')
+    expect(src).not.toContain('source_service')
   })
 
   it('detalhe do cliente: seções-lista usam UTable + #empty (não v-else que some a tabela)', () => {
@@ -148,6 +167,15 @@ describe('contrato empty de tabelas de monitoramento', () => {
     expect(mailbox).toContain('MonitoringMailboxList')
     expect(mailbox).not.toContain('v-if="!loadError || rows.length"')
     expect(mailbox).toContain('mailbox-pagination')
+
+    // Chrome Fiscal (tabs) acima do split; filtros só no painel da lista.
+    const navIdx = mailbox.indexOf('<MonitoringModuleNav')
+    const listPanelIdx = mailbox.indexOf('id="mailbox-list"')
+    const filterStripIdx = mailbox.indexOf('data-testid="mailbox-filter-strip"')
+    expect(navIdx).toBeGreaterThan(-1)
+    expect(listPanelIdx).toBeGreaterThan(navIdx)
+    expect(filterStripIdx).toBeGreaterThan(listPanelIdx)
+    expect(mailbox.slice(filterStripIdx).indexOf('<MonitoringModuleNav')).toBe(-1)
 
     const list = readFileSync(join(COMPONENTS, 'MailboxList.vue'), 'utf8')
     expect(list).toContain('MonitoringTableEmptyState')

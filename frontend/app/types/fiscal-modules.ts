@@ -109,6 +109,18 @@ export interface FiscalTaxProcess {
   observed_at?: string | null
 }
 
+export interface FiscalPnrRenunciation {
+  id: number
+  client_id: number
+  renunciation_id: number
+  status: string
+  source_provenance?: string | null
+  occurred_at?: string | null
+  observed_at?: string | null
+  refreshed_at?: string | null
+  receipt?: { mime_type?: string | null, byte_size?: number | null, observed_at?: string | null } | null
+}
+
 /** Situação fiscal — espelho de App\Enums\FiscalSituation. */
 export type FiscalSituationCode
   = | 'UP_TO_DATE'
@@ -605,6 +617,42 @@ export interface CcmeiHistoryPayload {
   client_id: number
   current?: CcmeiCertificateSummary | null
   history?: CcmeiCertificateObservation[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
+/** Descritor sanitizado de certificado emitido por CCMEI121. */
+export interface CcmeiIssuedCertificate {
+  id: number
+  mime_type: 'application/pdf' | string
+  byte_size: number
+  source_provenance?: 'SERPRO_TRIAL' | 'SERPRO_REAL' | string | null
+  observed_at?: string | null
+}
+
+export interface CcmeiIssuedCertificateHistoryPayload {
+  client_id: number
+  certificates?: CcmeiIssuedCertificate[]
+  provenance?: {
+    source?: string | null
+    serpro_called?: boolean
+  } | null
+}
+
+/** Descritor sanitizado de comprovante PAGTOWEB 7.2. */
+export interface PagtowebArrecadacaoReceipt {
+  id: number
+  mime_type: 'application/pdf' | string
+  byte_size: number
+  source_provenance?: 'SERPRO_TRIAL' | 'SERPRO_REAL' | string | null
+  observed_at?: string | null
+}
+
+export interface PagtowebArrecadacaoReceiptHistoryPayload {
+  client_id: number
+  items?: PagtowebArrecadacaoReceipt[]
   provenance?: {
     source?: string | null
     serpro_called?: boolean

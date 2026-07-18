@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Lista de campos ainda inativos para adicionar filtro.
- * Usado dentro de UCommandPalette (desktop) ou lista simples no drawer.
+ * Usado dentro do popover (desktop) ou modal fullscreen (mobile).
  */
 import type { DataTableFilterDefinition } from '~/types/data-table-filter'
 import type { CommandPaletteGroup, CommandPaletteItem } from '@nuxt/ui'
@@ -37,7 +37,7 @@ function onSelect(item: CommandPaletteItem | CommandPaletteItem[] | undefined | 
   <UCommandPalette
     :groups="groups"
     placeholder="Buscar campo…"
-    class="min-w-0 w-full max-h-72"
+    class="min-w-0 w-full max-h-[min(24rem,calc(100dvh-8rem))]"
     :ui="{
       root: 'min-w-0',
       input: 'border-b border-default'

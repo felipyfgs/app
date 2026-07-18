@@ -4,6 +4,7 @@ import type {
   FiscalPortfolioModuleKey,
   MonitoringFilterValue
 } from '~/types/fiscal-modules'
+import { COMPACT_BUTTON_LABEL_UI } from '~/utils/list-filter-layout'
 
 const props = withDefaults(defineProps<{
   moduleKey: FiscalPortfolioModuleKey
@@ -156,7 +157,7 @@ const items = computed<DropdownMenuItem[][]>(() => {
         icon="i-lucide-list-checks"
         label="Ações"
         aria-label="Ações em massa"
-        :ui="{ label: 'hidden sm:inline' }"
+        :ui="COMPACT_BUTTON_LABEL_UI"
         :loading="busy || enqueueing || exporting"
         data-testid="bulk-actions-menu"
       >

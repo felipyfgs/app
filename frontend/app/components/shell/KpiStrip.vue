@@ -82,7 +82,7 @@ function isClickable(item: DashboardKpiItem) {
 <template>
   <div
     :data-testid="testId"
-    class="w-full min-w-0"
+    class="w-full min-w-0 shrink-0"
   >
     <div
       v-if="legend || loading"

@@ -14,6 +14,8 @@ import {
   taskStatusLabel,
   workRiskLabel
 } from '~/utils/work-labels'
+import WorkSectionNav from '~/components/navigation/WorkSectionNav.vue'
+import ShellScrollableTabs from '~/components/shell/ScrollableTabs.vue'
 import { useWorkCalendarRange } from '~/composables/useWorkCalendarRange'
 
 interface DayAgg {
@@ -55,7 +57,7 @@ const viewItems = [
 
 const selectedView = computed({
   get: () => view.value,
-  set: (v: string) => { void setView(v as 'month' | 'week' | 'day') }
+  set: (v: string | number) => { void setView(String(v) as 'month' | 'week' | 'day') }
 })
 
 const dayMap = computed(() => {
@@ -193,6 +195,10 @@ watch(sessionEpoch, () => {
         </template>
       </UDashboardNavbar>
 
+      <UDashboardToolbar data-testid="work-section-tabs">
+        <WorkSectionNav />
+      </UDashboardToolbar>
+
       <UDashboardToolbar>
         <div class="flex w-full flex-wrap items-center gap-1">
           <UButton
@@ -219,12 +225,13 @@ watch(sessionEpoch, () => {
           <span class="ms-2 hidden text-sm font-medium sm:inline" aria-live="polite">
             {{ label }}
           </span>
-          <UTabs
+          <ShellScrollableTabs
             v-model="selectedView"
             :items="viewItems"
-            :content="false"
             size="xs"
-            class="sm:ms-2"
+            class="min-w-0 max-w-full sm:ms-2 sm:max-w-none"
+            aria-label="Visualização do calendário"
+            test-id="work-calendar-view-tabs"
           />
           <UButton
             class="ms-auto lg:hidden"
@@ -389,15 +396,16 @@ watch(sessionEpoch, () => {
     <template #body>
       <div class="flex flex-col gap-4 p-3">
         <UCalendar v-model="calendarModel" class="w-full" />
-        <UTabs
+        <ShellScrollableTabs
           v-model="railTab"
           :items="[
             { label: 'Tarefas', value: 'tarefas' },
             { label: 'Atrasadas', value: 'atrasadas' },
             { label: 'Concluídas', value: 'concluidas' }
           ]"
-          :content="false"
           size="xs"
+          aria-label="Filtro do dia selecionado"
+          test-id="work-calendar-rail-tabs"
         />
         <div v-if="dayLoading" class="space-y-2">
           <USkeleton v-for="i in 4" :key="i" class="h-10 w-full" />

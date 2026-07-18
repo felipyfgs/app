@@ -240,7 +240,7 @@ const columns: TableColumn<Record<string, unknown>>[] = [
     cell: ({ row }) => {
       const status = emissionOf(row.original)
       return status
-        ? h(FiscalStatusBadge, { status })
+        ? h(FiscalStatusBadge, { fill: true, status })
         : '—'
     }
   },
@@ -248,9 +248,7 @@ const columns: TableColumn<Record<string, unknown>>[] = [
     id: 'payment',
     header: 'Pagamento',
     enableSorting: false,
-    cell: ({ row }) => h(FiscalStatusBadge, {
-      status: String(row.original.payment_status || 'UNKNOWN')
-    })
+    cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(row.original.payment_status || 'UNKNOWN') })
   },
   {
     id: 'validity',

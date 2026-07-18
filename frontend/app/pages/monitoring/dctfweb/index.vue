@@ -14,7 +14,7 @@ import { DCTFWEB_TABS } from '~/types/fiscal-modules'
 import { buildDctfwebColumns, buildMitColumns } from '~/utils/dctfweb-table'
 import { dctfwebSummary, isDctfwebCapsule, isMitCapsule } from '~/utils/dctfweb'
 
-const { canManageClients } = useDashboard()
+const { canManageClients, canTriggerSync } = useDashboard()
 
 // Tab local (DCTFWEB default). URL permanece /monitoring/dctfweb.
 const submodule = ref(normalizeMonitoringSubmodule('dctfweb', undefined))
@@ -181,7 +181,7 @@ watch(submodule, (next, prev) => {
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
     :submodule="submodule"
-    :selection-enabled="false"
+    :selection-enabled="canManageClients"
     :initial-hidden-columns="['evidence', 'darf']"
     :horizontal-scroll="true"
     table-class="min-w-[1120px]"
@@ -211,19 +211,23 @@ watch(submodule, (next, prev) => {
     @refresh="refresh"
   >
     <template #submodules>
-      <div class="flex w-full min-w-0 justify-start overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-        <UTabs
+      <!-- Controle segmentado local; não compete com as tabs de rota acima. -->
+      <div
+        class="flex min-w-0 flex-col gap-2"
+        data-testid="dctfweb-capsule-control"
+      >
+        <p class="text-xs font-medium text-muted">
+          Declaração
+        </p>
+        <ShellScrollableTabs
           v-model="submodule"
           :items="tabItems"
-          :content="false"
           size="sm"
-          class="w-max max-w-none"
-          :ui="{
-            root: 'w-max max-w-none',
-            list: 'w-max justify-start',
-            trigger: 'shrink-0'
-          }"
-          data-testid="dctfweb-submodule-tabs"
+          color="primary"
+          variant="pill"
+          class="w-full min-w-0"
+          aria-label="Declaração: DCTFWeb ou MIT"
+          test-id="dctfweb-submodule-tabs"
         />
       </div>
     </template>
@@ -266,5 +270,6 @@ watch(submodule, (next, prev) => {
     :client-id="modalClientId"
     :client-name="modalClientName"
     :cnpj-masked="modalCnpjMasked"
+    :can-consult="canTriggerSync"
   />
 </template>

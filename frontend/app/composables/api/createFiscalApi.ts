@@ -16,6 +16,9 @@ import type {
   FiscalPortfolioModuleKey,
   PgmeiHistoryPayload,
   CcmeiHistoryPayload,
+  CcmeiIssuedCertificate,
+  CcmeiIssuedCertificateHistoryPayload,
+  PagtowebArrecadacaoReceiptHistoryPayload,
   CcmeiRegistrationStatusHistoryPayload,
   SicalcRevenueSupportHistoryPayload,
   PagtowebPaymentCountHistoryPayload,
@@ -36,7 +39,8 @@ import type {
   FiscalRegistrationLink,
   FiscalTaxProcess,
   ManualConsultInventory,
-  ManualConsultExecuteResult
+  ManualConsultExecuteResult,
+  FiscalPnrRenunciation
 } from '~/types/fiscal-modules'
 import type { ApiClient, ApiUrl } from './types'
 
@@ -131,7 +135,7 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           ),
         collectDocuments: (
           clientId: number,
-          body: { period_key: string, declaration_number?: string | null }
+          body: { period_key: string, declaration_number?: string | null, confirmed: true }
         ) =>
           client<{ data: Record<string, unknown> }>(
             `/api/v1/fiscal/simples-mei/pgdasd/clients/${clientId}/documents`,
@@ -224,6 +228,19 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
             `/api/v1/fiscal/simples-mei/ccmei/clients/${clientId}/consult`,
             { method: 'POST', body: { confirmed: true } }
           ),
+        issuedCertificates: {
+          history: (clientId: number) =>
+            client<{ data: CcmeiIssuedCertificateHistoryPayload }>(
+              `/api/v1/fiscal/simples-mei/ccmei/clients/${clientId}/issued-certificates`
+            ),
+          issue: (clientId: number) =>
+            client<{ data: { success: boolean, certificate?: CcmeiIssuedCertificate, error_code?: string, error_message?: string } }>(
+              `/api/v1/fiscal/simples-mei/ccmei/clients/${clientId}/issued-certificates`,
+              { method: 'POST', body: { confirmed: true } }
+            ),
+          downloadPath: (clientId: number, certificateId: number) =>
+            `/api/v1/fiscal/simples-mei/ccmei/clients/${clientId}/issued-certificates/${certificateId}/download`
+        },
         registrationStatus: {
           history: (clientId: number) =>
             client<{ data: CcmeiRegistrationStatusHistoryPayload }>(
@@ -270,6 +287,19 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
             `/api/v1/fiscal/guides/payments/clients/${clientId}/consult`,
             { method: 'POST', body: { confirmed: true, filters } }
           )
+      },
+      pagtowebArrecadacaoReceipt: {
+        history: (clientId: number) =>
+          client<{ data: PagtowebArrecadacaoReceiptHistoryPayload }>(
+            `/api/v1/fiscal/guides/receipts/clients/${clientId}/history`
+          ),
+        request: (clientId: number, numeroDocumento: string) =>
+          client<{ data: Record<string, unknown> }>(
+            `/api/v1/fiscal/guides/receipts/clients/${clientId}/request`,
+            { method: 'POST', body: { confirmed: true, numeroDocumento } }
+          ),
+        downloadPath: (clientId: number, receiptId: number) =>
+          `/api/v1/fiscal/guides/receipts/clients/${clientId}/${receiptId}/download`
       },
       findings: (params?: {
         page?: number
@@ -363,6 +393,16 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
             '/api/v1/fiscal/mit/lista-apuracoes',
             { query: { client_id: clientId, ...params } }
           ),
+        enqueueListaApuracoes: (body: {
+          client_id: number
+          anoApuracao: number
+          mesApuracao?: number
+          situacaoApuracao?: number
+        }) =>
+          client<{ data: { id?: number }, serpro_call?: 'QUEUED' }>(
+            '/api/v1/fiscal/mit/lista-apuracoes',
+            { method: 'POST', body }
+          ),
         encerrar: (body: Record<string, unknown>) =>
           client<{ data: unknown }>('/api/v1/fiscal/mit/encerrar', { method: 'POST', body })
       },
@@ -412,6 +452,12 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
             `/api/v1/fiscal/clients/${clientId}/registrations/refresh`,
             { method: 'POST' }
           )
+      },
+      pnrRenunciations: {
+        forClient: (clientId: number) => client<{ data: { client_id: number, renunciations: FiscalPnrRenunciation[] } }>(`/api/v1/fiscal/clients/${clientId}/pnr-renunciations`),
+        history: (clientId: number, body: { dt_inicio?: string, dt_fim?: string, page?: number, page_size?: number }) => client<{ data: { success: boolean, count?: number, error_code?: string, error_message?: string } }>(`/api/v1/fiscal/clients/${clientId}/pnr-renunciations/history`, { method: 'POST', body }),
+        status: (clientId: number, id_solicitacao: string) => client<{ data: { success: boolean, renunciation_id?: number | null, error_code?: string, error_message?: string } }>(`/api/v1/fiscal/clients/${clientId}/pnr-renunciations/status`, { method: 'POST', body: { id_solicitacao } }),
+        receipt: (clientId: number, renunciation_id: number) => client<{ data: { success: boolean, renunciation_id?: number, error_code?: string, error_message?: string } }>(`/api/v1/fiscal/clients/${clientId}/pnr-renunciations/receipt`, { method: 'POST', body: { renunciation_id } })
       },
       taxProcesses: {
         list: (params?: { page?: number, per_page?: number, client_id?: number, status?: string }) =>
@@ -594,10 +640,6 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           client<{ data: Array<Record<string, unknown>>, meta?: PageMeta }>(
             `/api/v1/fiscal/simples-mei/clients/${clientId}/snapshots`,
             { query: params }
-          ),
-        guideStubs: (clientId: number) =>
-          client<{ data: Array<Record<string, unknown>> }>(
-            `/api/v1/fiscal/simples-mei/clients/${clientId}/guide-stubs`
           ),
         consult: (body: Record<string, unknown>) =>
           client<{ data: unknown }>('/api/v1/fiscal/simples-mei/consult', { method: 'POST', body })

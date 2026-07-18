@@ -9,20 +9,24 @@ const evidenceDownloadUrl = vi.fn((clientId: number, evidenceId: number) =>
   `/api/v1/fiscal/dctfweb/clients/${clientId}/evidence/${evidenceId}/download`
 )
 const fetchLocalList = vi.fn()
+const enqueueList = vi.fn()
+const toastAdd = vi.fn()
 
 vi.mock('../../app/composables/useDctfwebMonitoring', () => ({
   useDctfwebMonitoring: () => ({ fetchHistory, evidenceDownloadUrl })
 }))
 
 vi.mock('../../app/composables/useMitListaApuracoes', () => ({
-  useMitListaApuracoes: () => ({ fetchLocalList })
+  useMitListaApuracoes: () => ({ fetchLocalList, enqueueList })
 }))
+
+vi.stubGlobal('useToast', () => ({ add: toastAdd }))
 
 const stubs = {
   UModal: defineComponent({
     props: { open: Boolean },
     setup: (props, { slots }) => () => props.open
-      ? h('div', { 'data-stub': 'modal' }, slots.content?.())
+      ? h('div', { 'data-stub': 'modal' }, [slots.content?.(), slots.body?.(), slots.footer?.()])
       : null
   }),
   UCard: defineComponent({
@@ -43,6 +47,16 @@ const stubs = {
     props: { label: { type: String, default: '' } },
     setup: props => () => h('span', props.label)
   }),
+  UFormField: defineComponent({ setup: (_props, { slots }) => () => h('label', slots.default?.()) }),
+  UInput: defineComponent({
+    props: { modelValue: { type: String, default: '' } },
+    emits: ['update:modelValue'],
+    setup: (props, { emit, attrs }) => () => h('input', {
+      ...attrs,
+      value: props.modelValue,
+      onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).value)
+    })
+  }),
   UIcon: true
 }
 
@@ -57,6 +71,7 @@ beforeEach(() => {
     data: [],
     provenance: { source: 'LOCAL_PROJECTION', serpro_called: false }
   })
+  enqueueList.mockResolvedValue({ data: { id: 99 }, serpro_call: 'QUEUED' })
 })
 
 describe('histórico DCTFWeb local', () => {
@@ -103,6 +118,8 @@ describe('histórico DCTFWeb local', () => {
       '/api/local/recibo-10',
       '/api/local/xml-11'
     ])
+    expect(wrapper.text()).toContain('Origem: Projeção local')
+    expect(wrapper.text()).not.toContain('serpro_called')
     expect(evidenceDownloadUrl).not.toHaveBeenCalled()
   })
 
@@ -153,7 +170,8 @@ describe('lista MIT 317 local', () => {
     expect(wrapper.findAll('[data-testid="mit-lista-apuracoes-item"]')).toHaveLength(2)
     expect(wrapper.text()).toContain('06/2026')
     expect(wrapper.text()).toContain('R$ 1.250,50')
-    expect(wrapper.text()).toContain('serpro_called: false')
+    expect(wrapper.text()).toContain('Origem: Projeção local')
+    expect(wrapper.text()).not.toContain('serpro_called')
   })
 
   it('não lê nada enquanto o modal MIT estiver fechado e apresenta vazio local ao abrir', async () => {
@@ -167,5 +185,21 @@ describe('lista MIT 317 local', () => {
     await vi.waitFor(() => expect(fetchLocalList).toHaveBeenCalledWith(7))
     expect(wrapper.get('[data-testid="mit-lista-apuracoes-empty"]').text())
       .toContain('Nenhuma apuração MIT 317 local')
+  })
+
+  it('só agenda a atualização MIT após confirmação explícita', async () => {
+    const wrapper = await mountSuspended(MitListaApuracoesModal, {
+      props: { open: true, clientId: 7, canConsult: true },
+      global: { stubs }
+    })
+
+    await vi.waitFor(() => expect(fetchLocalList).toHaveBeenCalledWith(7))
+    await wrapper.findAll('button').find(button => button.text() === 'Atualizar apurações')?.trigger('click')
+    expect(enqueueList).not.toHaveBeenCalled()
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Consulta manual'))
+    await wrapper.findAll('button').find(button => button.text() === 'Confirmar atualização')?.trigger('click')
+    await vi.waitFor(() => expect(enqueueList).toHaveBeenCalledWith(7, { year: new Date().getFullYear() }))
+    expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({ title: 'Atualização das apurações solicitada.' }))
   })
 })

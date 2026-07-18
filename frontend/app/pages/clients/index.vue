@@ -1,17 +1,13 @@
 <script setup lang="ts">
 /**
- * Lista admin de clientes — cópia do arquétipo customers.vue do template.
- * Fonte: .reference/nuxt-dashboard-template/app/pages/customers.vue
- * + https://dashboard-template.nuxt.dev/customers
- *
- * Busca, filtros, ordenação e paginação são server-side, com estado local como
- * no template. A URL canônica permanece `/clients`.
+ * Lista admin de clientes — padrão ouro (KPI strip + chips + URL sync).
+ * Fonte visual: .reference/nuxt-dashboard-template/app/pages/customers.vue
  */
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { Client, ClientListStats } from '~/types/api'
 import { upperFirst } from 'scule'
 import { sortHeader } from '~/utils/table-sort'
-import { DENSE_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import { DENSE_DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
 import type { DataTableFilterDefinition, DataTableFilterModel } from '~/types/data-table-filter'
 import { createFilterModel, findDefinition } from '~/utils/data-table-filters'
 import {
@@ -19,19 +15,27 @@ import {
   clientsPayloadToFilters,
   hasActiveClientsFiltersForSave
 } from '~/utils/saved-list-filters'
-import DataTableFilterRoot from '~/components/data-table-filter/Root.vue'
-import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
-import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
-import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
+import type { DashboardKpiItem } from '~/utils/kpi-ui'
+import {
+  CLIENTS_LIST_QUERY_SCHEMA,
+  serializeListFilterQuery,
+  useListFilterQuery
+} from '~/composables/useListFilterQuery'
+import ShellKpiStrip from '~/components/shell/KpiStrip.vue'
+import ShellListFilterToolbar from '~/components/shell/ListFilterToolbar.vue'
+import { COMPACT_BUTTON_LABEL_UI } from '~/utils/list-filter-layout'
+import type { SavedListFilterPayload } from '~/types/saved-list-filters'
 
-/** Mantém o preset customers.vue e reduz apenas o padding das células em xs. */
+/** Preset denso + padding horizontal apertado em xs. */
 const clientsTableUi = {
   ...DENSE_DASHBOARD_TABLE_UI,
-  th: `${DENSE_DASHBOARD_TABLE_UI.th} px-1 sm:px-4`,
-  td: `${DENSE_DASHBOARD_TABLE_UI.td} px-1 sm:px-4`
+  th: `${DENSE_DASHBOARD_TABLE_UI.th} px-1.5 sm:px-3`,
+  td: `${DENSE_DASHBOARD_TABLE_UI.td} px-1.5 sm:px-3`
 }
 
 const api = useApi()
+const route = useRoute()
+const router = useRouter()
 const {
   canManageClients,
   canManageCredentials,
@@ -40,6 +44,7 @@ const {
   sessionEpoch
 } = useDashboard()
 const toast = useToast()
+const clientsListQuery = useListFilterQuery(CLIENTS_LIST_QUERY_SCHEMA)
 
 const table = useTemplateRef('table')
 
@@ -148,62 +153,58 @@ const CLIENT_KPI_KEYS = new Set<string>([
   'expiring'
 ])
 
+function hydrateClientsFromQuery() {
+  const state = clientsListQuery.read()
+  search.value = String(state.q ?? '')
+  statusFilter.value = String(state.status ?? 'all')
+  const op = String(state.operational_filter ?? 'total')
+  kpiFilter.value = (CLIENT_KPI_KEYS.has(op) ? op : 'total') as KpiFilter
+  page.value = Math.max(1, Number(state.page) || 1)
+  perPage.value = Math.max(1, Number(state.per_page) || 20)
+  const sortId = String(state.sort ?? 'legal_name')
+  const desc = String(state.sort_direction ?? 'asc') === 'desc'
+  sorting.value = [{ id: sortId, desc }]
+  syncClientChips()
+}
+
+async function syncClientsUrl() {
+  const sort = sorting.value[0]
+  const query = serializeListFilterQuery({
+    q: search.value,
+    status: statusFilter.value,
+    operational_filter: kpiFilter.value,
+    page: page.value,
+    per_page: perPage.value,
+    sort: sort?.id === 'cnpj' || sort?.id === 'is_active' ? sort.id : 'legal_name',
+    sort_direction: sort?.desc ? 'desc' : 'asc'
+  }, CLIENTS_LIST_QUERY_SCHEMA)
+  await router.replace({ path: route.path, query })
+}
+
+hydrateClientsFromQuery()
+
 /** Evita double-fetch quando preset hidrata vários refs de uma vez. */
 let applyingClientsPreset = false
 
-const {
-  canSavePreset,
-  canShare: canShareFilters,
-  presets,
-  presetsLoading,
-  saveOpen,
-  manageOpen,
-  saveLoading,
-  saveError,
-  manageError,
-  actingId,
-  clearPresetCache,
-  onSavedMenuOpen,
-  applyPreset,
-  onSaveConfirm,
-  onRename,
-  onToggleShare,
-  onDeletePreset,
-  openManage,
-  openSave
-} = useSavedListPresets({
-  surface: 'clients.index',
-  resetKey: sessionEpoch,
-  getPayload: () => clientsFiltersToPayload({
-    q: search.value,
-    status: statusFilter.value,
-    operational_filter: kpiFilter.value
-  }),
-  canSave: () => hasActiveClientsFiltersForSave({
-    q: search.value,
-    status: statusFilter.value,
-    operational_filter: kpiFilter.value
-  }),
-  onApply: (payload) => {
-    const next = clientsPayloadToFilters(payload)
-    applyingClientsPreset = true
-    if (searchTimer) {
-      clearTimeout(searchTimer)
-      searchTimer = null
-    }
-    search.value = next.q
-    statusFilter.value = next.status
-    kpiFilter.value = (CLIENT_KPI_KEYS.has(next.operational_filter)
-      ? next.operational_filter
-      : 'total') as KpiFilter
-    page.value = 1
-    syncClientChips()
-    void nextTick(() => {
-      applyingClientsPreset = false
-      void load()
-    })
+function applyClientsPresetPayload(payload: SavedListFilterPayload) {
+  const next = clientsPayloadToFilters(payload)
+  applyingClientsPreset = true
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
   }
-})
+  search.value = next.q
+  statusFilter.value = next.status
+  kpiFilter.value = (CLIENT_KPI_KEYS.has(next.operational_filter)
+    ? next.operational_filter
+    : 'total') as KpiFilter
+  page.value = 1
+  syncClientChips()
+  void nextTick(() => {
+    applyingClientsPreset = false
+    void load()
+  })
+}
 
 function applyKpiFilter(key: KpiFilter) {
   // segundo clique no mesmo card limpa (volta ao total)
@@ -218,32 +219,43 @@ function applyKpiFilter(key: KpiFilter) {
  * total · com A1 · sem A1 · a vencer
  * Captura/sync ficam em Documentos e no detalhe do cliente.
  */
-const kpiCards = computed(() => [
+const kpiItems = computed((): DashboardKpiItem[] => [
   {
-    key: 'total' as const,
+    key: 'total',
     title: 'Total',
-    value: stats.value.total,
-    icon: 'i-lucide-users'
+    value: loading.value && !clients.value.length ? '…' : stats.value.total,
+    icon: 'i-lucide-users',
+    ariaLabel: 'Filtrar lista: Total'
   },
   {
-    key: 'with_credential' as const,
+    key: 'with_credential',
     title: 'Com A1',
-    value: stats.value.with_credential ?? Math.max(0, stats.value.total - stats.value.without_credential),
-    icon: 'i-lucide-badge-check'
+    value: loading.value && !clients.value.length
+      ? '…'
+      : (stats.value.with_credential ?? Math.max(0, stats.value.total - stats.value.without_credential)),
+    icon: 'i-lucide-badge-check',
+    ariaLabel: 'Filtrar lista: Com A1'
   },
   {
-    key: 'without_credential' as const,
+    key: 'without_credential',
     title: 'Sem A1',
-    value: stats.value.without_credential,
-    icon: 'i-lucide-shield-off'
+    value: loading.value && !clients.value.length ? '…' : stats.value.without_credential,
+    icon: 'i-lucide-shield-off',
+    ariaLabel: 'Filtrar lista: Sem A1'
   },
   {
-    key: 'expiring' as const,
+    key: 'expiring',
     title: 'A vencer (30d)',
-    value: stats.value.credential_expiring_30d,
-    icon: 'i-lucide-badge-alert'
+    value: loading.value && !clients.value.length ? '…' : stats.value.credential_expiring_30d,
+    icon: 'i-lucide-badge-alert',
+    ariaLabel: 'Filtrar lista: A vencer (30d)'
   }
 ])
+
+function onKpiSelect(key: string) {
+  if (!CLIENT_KPI_KEYS.has(key)) return
+  applyKpiFilter(key as KpiFilter)
+}
 
 /**
  * Cadastro de clientes — colunas P0:
@@ -576,6 +588,7 @@ async function load() {
   loading.value = true
   loadError.value = null
   try {
+    await syncClientsUrl()
     const sort = sorting.value[0]
     const sortId = sort?.id === 'cnpj' || sort?.id === 'is_active'
       ? sort.id
@@ -621,7 +634,6 @@ function resetTenantScopedList() {
   detailOpen.value = false
   detailClientId.value = null
   loadError.value = null
-  clearPresetCache()
   void load()
 }
 
@@ -702,87 +714,43 @@ onBeforeUnmount(() => {
     — mesmo padrão de settings.vue do template.
   -->
   <div class="flex w-full flex-col gap-4 sm:gap-5">
-    <!--
-          Cópia do HomeStats do template
-          (.reference/.../home/HomeStats.vue + frontend HomeStats.vue):
-          UPageGrid lg:gap-px, cards colados, leading circular, title uppercase.
-          Clique filtra a tabela (em vez de `to` do demo).
-        -->
-    <UPageGrid
-      data-testid="clients-stats"
-      class="grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-4 lg:gap-px"
+    <ShellKpiStrip
+      :items="kpiItems"
+      :loading="loading && !clients.length"
+      :active-key="kpiFilter"
+      interactive
+      test-id="clients-stats"
+      :columns="4"
+      @select="onKpiSelect"
+    />
+
+    <ShellListFilterToolbar
+      :q="search"
+      search-placeholder="Filtrar por nome ou CNPJ/CPF..."
+      search-aria-label="Filtrar por nome ou CNPJ/CPF"
+      :definitions="clientFilterDefinitions"
+      :models="chipModels"
+      :loading="loading"
+      :reset-key="sessionEpoch"
+      surface="clients.index"
+      :get-payload="() => clientsFiltersToPayload({
+        q: search,
+        status: statusFilter,
+        operational_filter: kpiFilter
+      })"
+      :can-save="() => hasActiveClientsFiltersForSave({
+        q: search,
+        status: statusFilter,
+        operational_filter: kpiFilter
+      })"
+      test-id-prefix="clients-filter"
+      @update:q="(value) => { filter = value }"
+      @update:models="onStructuredFilters"
+      @clear="onClearStructuredFilters"
+      @refresh="load"
+      @apply-preset="applyClientsPresetPayload"
     >
-      <UPageCard
-        v-for="kpi in kpiCards"
-        :key="kpi.key"
-        :icon="kpi.icon"
-        :title="kpi.title"
-        variant="subtle"
-        :highlight="kpiFilter === kpi.key"
-        highlight-color="primary"
-        :ui="{
-          container: 'gap-y-1.5',
-          wrapper: 'items-start',
-          leading: 'p-2.5 rounded-full bg-primary/10 ring ring-inset ring-primary/25 flex-col',
-          title: 'font-normal text-muted text-xs uppercase'
-        }"
-        class="lg:rounded-none first:rounded-l-lg last:rounded-r-lg hover:z-1 cursor-pointer"
-        :aria-pressed="kpiFilter === kpi.key"
-        :aria-label="`Filtrar lista: ${kpi.title}`"
-        role="button"
-        tabindex="0"
-        @click="applyKpiFilter(kpi.key)"
-        @keydown.enter.prevent="applyKpiFilter(kpi.key)"
-        @keydown.space.prevent="applyKpiFilter(kpi.key)"
-      >
-        <div class="flex items-center gap-2">
-          <span class="text-2xl font-semibold text-highlighted">
-            {{ loading && !clients.length ? '…' : kpi.value }}
-          </span>
-        </div>
-      </UPageCard>
-    </UPageGrid>
-
-    <!--
-          Toolbar copiada do template customers.vue:
-          UInput max-w-sm + filtros/ações à direita.
-        -->
-    <div class="flex flex-wrap items-center justify-between gap-1.5">
-      <UInput
-        v-model="filter"
-        class="w-full min-w-0 max-w-full basis-full sm:basis-auto sm:max-w-sm"
-        icon="i-lucide-search"
-        placeholder="Filtrar por nome ou CNPJ/CPF..."
-        aria-label="Filtrar por nome ou CNPJ/CPF"
-      />
-
-      <div class="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5 sm:ms-auto">
-        <DataTableFilterRoot
-          :definitions="clientFilterDefinitions"
-          :model-value="chipModels"
-          :reset-key="sessionEpoch"
-          data-testid="clients-structured-filters"
-          @update:model-value="onStructuredFilters"
-          @clear="onClearStructuredFilters"
-        />
-        <UButton
-          v-if="canSavePreset"
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-save"
-          label="Salvar"
-          aria-label="Salvar filtros"
-          :ui="{ label: 'hidden sm:inline' }"
-          data-testid="save-filters-button"
-          @click="openSave"
-        />
-        <DataTableFilterSavedFiltersMenu
-          :items="presets"
-          :loading="presetsLoading"
-          @apply="applyPreset"
-          @manage="openManage"
-          @open="onSavedMenuOpen"
-        />
+      <template #trailing>
         <UDropdownMenu
           :items="
             table?.tableApi
@@ -809,42 +777,16 @@ onBeforeUnmount(() => {
           :content="{ align: 'end' }"
         >
           <UButton
-            label="Exibir"
+            label="Colunas"
             color="neutral"
             variant="outline"
             trailing-icon="i-lucide-settings-2"
+            aria-label="Exibir colunas"
+            :ui="COMPACT_BUTTON_LABEL_UI"
           />
         </UDropdownMenu>
-        <UButton
-          icon="i-lucide-refresh-cw"
-          color="neutral"
-          variant="ghost"
-          square
-          aria-label="Atualizar lista"
-          :loading="loading"
-          @click="load"
-        />
-      </div>
-    </div>
-
-    <DataTableFilterSaveFilterModal
-      v-model:open="saveOpen"
-      :can-share="canShareFilters"
-      :loading="saveLoading"
-      :error="saveError"
-      @confirm="onSaveConfirm"
-    />
-    <DataTableFilterManageSavedFiltersModal
-      v-model:open="manageOpen"
-      :items="presets"
-      :can-share="canShareFilters"
-      :loading="presetsLoading"
-      :acting-id="actingId"
-      :error="manageError"
-      @rename="onRename"
-      @toggle-share="onToggleShare"
-      @delete="onDeletePreset"
-    />
+      </template>
+    </ShellListFilterToolbar>
 
     <UAlert
       v-if="loadError"
@@ -918,11 +860,8 @@ onBeforeUnmount(() => {
             :color="info.color"
             variant="soft"
             size="md"
-            class="h-8 min-w-0 tabular-nums font-normal"
-            :ui="{
-              base: 'h-8 w-full min-w-0 justify-center rounded-md',
-              label: 'truncate text-center'
-            }"
+            :class="TABLE_CELL_BADGE_CLASS"
+            :ui="TABLE_CELL_BADGE_UI"
             :title="info.chipLabel"
           >
             {{ info.chipLabel }}
@@ -959,7 +898,8 @@ onBeforeUnmount(() => {
       <template #procuracao-cell="{ row }">
         <ClientsClientProcuracaoBadge
           :status="row.original.procuracao_status"
-          :checked-at="row.original.procuracao_checked_at"
+          :valid-to="row.original.procuracao_valid_to"
+          compact
         />
       </template>
 
@@ -968,8 +908,8 @@ onBeforeUnmount(() => {
           :color="row.original.is_active ? 'success' : 'neutral'"
           variant="soft"
           size="md"
-          class="h-8 font-normal"
-          :ui="{ base: 'h-8 rounded-md' }"
+          :class="TABLE_CELL_BADGE_CLASS"
+          :ui="TABLE_CELL_BADGE_UI"
         >
           {{ row.original.is_active ? 'Ativo' : 'Inativo' }}
         </UBadge>

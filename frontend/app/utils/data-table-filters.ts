@@ -419,11 +419,9 @@ export function formatChipDisplay(
   model: DataTableFilterModel
 ): { fieldLabel: string, operatorLabel: string, valueLabel: string } {
   let valueLabel: string
-  let multiTokenCount = 0
 
   if (definition.kind === 'option') {
     const tokens = optionTokensForDisplay(definition, model)
-    multiTokenCount = tokens.length
     if (isMultiOptionDisplay(definition, model) && tokens.length > 0) {
       // Sempre re-deriva do valor (não confia em label longo/cru).
       const labels = tokens.map(token => optionLabel(definition.items, token))
@@ -434,7 +432,6 @@ export function formatChipDisplay(
     }
   } else if (definition.kind === 'client' && definition.multiple) {
     const ids = decodeClientIds(model.value)
-    multiTokenCount = ids.length
     if (model.label?.trim() && !model.label.includes(',')) {
       // label de um nome único
       valueLabel = model.label.trim()
@@ -465,21 +462,18 @@ export function formatChipDisplay(
     valueLabel = String(model.value)
   }
 
-  let operatorLabel = 'é'
+  // Operadores curtos no chip (toolbar densa).
+  let operatorLabel = ':'
   if (model.operator === 'contains' || (definition.kind === 'text' && definition.operator === 'contains')) {
-    operatorLabel = 'contém'
+    operatorLabel = '~'
   } else if (model.operator === 'between' || definition.kind === 'date_range') {
-    operatorLabel = 'entre'
+    operatorLabel = '–'
   } else if (
     model.operator === 'in'
     || (definition.kind === 'option' && definition.multiple)
     || (definition.kind === 'client' && definition.multiple)
   ) {
-    const n = multiTokenCount
-      || (definition.kind === 'client'
-        ? decodeClientIds(model.value).length
-        : decodeOptionValues(model.value).length)
-    operatorLabel = n > 1 ? 'é um de' : 'é'
+    operatorLabel = ':'
   }
 
   return {

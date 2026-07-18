@@ -1,15 +1,23 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { MeUser } from '~/types/api'
-import { accountNavigationItems } from '~/utils/account-navigation'
+import { accountNavigationItems, accountNavigationTree } from '~/utils/account-navigation'
 import { lacksOfficeContext } from '~/utils/auth-redirect'
-import { MONITORING_NAV_ITEMS } from '~/utils/monitoring-nav'
+import { DOCS_NAV_ITEMS, OPERATIONS_NAV_ITEMS } from '~/utils/docs-operations-navigation'
+import { FISCAL_NAV_ITEMS } from '~/utils/fiscal-navigation'
+import {
+  flattenNavLeaves,
+  groupEntryTo,
+  isNavTabGroup,
+  pathMatchesLeaf,
+  type NavLeafDestination
+} from '~/utils/navigation-hierarchy'
 import {
   canAccessPlatformAdmin,
   canCreateExport,
   canManageClients,
-  canManageWorkCatalog,
   canViewWork
 } from '~/utils/permissions'
+import { workNavigationItems } from '~/utils/work-navigation'
 
 export interface NavDestination {
   id: string
@@ -34,26 +42,42 @@ export interface QuickAction {
   to?: string
 }
 
-/**
- * Destinos principais do painel, no mesmo “ritmo” do template:
- * Home / Customers / Inbox + grupo colapsável (Settings) + secundários em outro menu.
- */
-/** Destinos do grupo Monitoramento fiscal (15.4). */
+function leafToDestination(leaf: NavLeafDestination, path: string): NavDestination {
+  return {
+    id: leaf.id,
+    label: leaf.label,
+    icon: leaf.icon || 'i-lucide-circle',
+    to: leaf.to,
+    exact: leaf.exact,
+    active: path ? pathMatchesLeaf(path, leaf) : undefined
+  }
+}
+
+/** Destinos do grupo Fiscal (grupos canônicos → entrada do grupo). */
 export function monitoringDestinations(path = ''): NavDestination[] {
   const monitoringOpen = !path || path === '/monitoring' || path.startsWith('/monitoring/')
   return [{
     id: 'monitoring',
-    label: 'Monitoramento',
+    label: 'Fiscal',
     icon: 'i-lucide-radar',
     type: 'trigger',
     defaultOpen: monitoringOpen,
-    children: MONITORING_NAV_ITEMS.map(item => ({
-      id: item.id,
-      label: item.sidebarLabel,
-      icon: item.icon,
-      to: item.to,
-      exact: item.exact
-    }))
+    children: FISCAL_NAV_ITEMS.filter(isNavTabGroup).map((group) => {
+      const active = path
+        ? group.children.some(child =>
+            pathMatchesLeaf(path, child)
+            // Detalhe de cliente fiscal destaca o grupo Visão geral (Dashboard).
+            || (child.to === '/monitoring' && path.startsWith('/monitoring/clients'))
+          )
+        : false
+      return {
+        id: group.id,
+        label: group.label,
+        icon: group.icon || 'i-lucide-circle',
+        to: groupEntryTo(group),
+        active: path ? active : undefined
+      }
+    })
   }]
 }
 
@@ -92,24 +116,17 @@ export function mainDestinations(
     return platformAdminDestinations(path)
   }
 
-  // Mantém o grupo expandido quando a rota atual está dentro do módulo.
   const clientsOpen = !path || path === '/clients' || path.startsWith('/clients/')
-  const docsCatalog = path === '/docs/catalog'
-  const docsDetail = path.startsWith('/docs/')
-    && !path.startsWith('/docs/imports')
-    && !docsCatalog
-  const docsOpen = !path || path === '/docs' || docsCatalog || docsDetail
-  const operationsOpen = !path
+  const docsOpen = !path
+    || path === '/docs'
+    || path.startsWith('/docs/')
     || path.startsWith('/exports')
+  const operationsOpen = !path
     || path.startsWith('/closing')
     || path.startsWith('/syncs')
     || path.startsWith('/health')
-    || path.startsWith('/docs/imports')
-
-  const isDocsDocumentView = docsCatalog || docsDetail
-  const isDocsClientView = path === '/docs'
-
   const workOpen = !path || path === '/work' || path.startsWith('/work/')
+  const accountOpen = path === '/conta' || path.startsWith('/conta/')
 
   const items: NavDestination[] = [
     {
@@ -128,35 +145,7 @@ export function mainDestinations(
       icon: 'i-lucide-list-todo',
       type: 'trigger',
       defaultOpen: workOpen,
-      children: [
-        {
-          id: 'work-queue',
-          label: 'Minha fila',
-          icon: 'i-lucide-inbox',
-          to: '/work',
-          exact: true
-        },
-        {
-          id: 'work-processes',
-          label: 'Processos',
-          icon: 'i-lucide-folder-kanban',
-          to: '/work/processes'
-        },
-        {
-          id: 'work-calendar',
-          label: 'Calendário',
-          icon: 'i-lucide-calendar-days',
-          to: '/work/calendar'
-        },
-        ...(canManageWorkCatalog(user)
-          ? [{
-            id: 'work-templates',
-            label: 'Modelos',
-            icon: 'i-lucide-layout-template',
-            to: '/work/templates'
-          } satisfies NavDestination]
-          : [])
-      ]
+      children: flattenNavLeaves(workNavigationItems(user)).map(leaf => leafToDestination(leaf, path))
     })
   }
 
@@ -190,23 +179,7 @@ export function mainDestinations(
       icon: 'i-lucide-file-stack',
       type: 'trigger',
       defaultOpen: docsOpen,
-      children: [
-        {
-          id: 'docs-by-client',
-          label: 'Por cliente',
-          icon: 'i-lucide-building-2',
-          to: '/docs',
-          exact: true,
-          active: isDocsClientView
-        },
-        {
-          id: 'docs-catalog',
-          label: 'Catálogo',
-          icon: 'i-lucide-file-stack',
-          to: '/docs/catalog',
-          active: isDocsDocumentView
-        }
-      ]
+      children: flattenNavLeaves(DOCS_NAV_ITEMS).map(leaf => leafToDestination(leaf, path))
     },
     {
       id: 'operations',
@@ -214,55 +187,24 @@ export function mainDestinations(
       icon: 'i-lucide-settings',
       type: 'trigger',
       defaultOpen: operationsOpen,
-      children: [
-        {
-          id: 'health',
-          label: 'Saúde',
-          icon: 'i-lucide-heart-pulse',
-          to: '/health'
-        },
-        {
-          id: 'exports',
-          label: 'Exportações',
-          icon: 'i-lucide-package',
-          to: '/exports'
-        },
-        {
-          id: 'closing',
-          label: 'Fechamento',
-          icon: 'i-lucide-calendar-clock',
-          to: '/closing'
-        },
-        {
-          id: 'syncs',
-          label: 'Sincronizações',
-          icon: 'i-lucide-refresh-cw',
-          to: '/syncs'
-        },
-        {
-          id: 'imports',
-          label: 'Importações',
-          icon: 'i-lucide-upload',
-          to: '/docs/imports'
-        }
-      ]
+      children: flattenNavLeaves(OPERATIONS_NAV_ITEMS).map(leaf => leafToDestination(leaf, path))
     }
   )
 
-  // Conta pessoal + configuração compartilhada do escritório.
-  const accountItems = accountNavigationItems(user)
-  if (accountItems.length) {
+  const accountTree = accountNavigationTree(user)
+  if (accountTree.length) {
+    // Sidebar: folhas canônicas (busca/atalhos indexam o mesmo flatten).
+    const accountLeaves = accountNavigationItems(user)
     items.push({
       id: 'settings',
-      label: 'Configurações',
+      label: 'Conta',
       icon: 'i-lucide-sliders-horizontal',
       type: 'trigger',
-      defaultOpen: path === '/conta' || path.startsWith('/conta/'),
-      children: accountItems
+      defaultOpen: accountOpen,
+      children: accountLeaves
     })
   }
 
-  // `/admin/*` reservado à plataforma — grupo Admin só para PLATFORM_ADMIN.
   if (canAccessPlatformAdmin(user)) {
     items.push(...platformAdminDestinations(path))
   }
@@ -338,7 +280,37 @@ export function flattenDestinations(destinations: NavDestination[]): NavDestinat
   return out
 }
 
-const SIDEBAR_MANAGEMENT_IDS = new Set(['clients', 'settings', 'platform-admin'])
+/**
+ * Destinos folha para busca global / atalhos.
+ * Expande grupos fiscais para todos os módulos (não só as 5 entradas da sidebar).
+ */
+export function searchableDestinations(
+  user?: MeUser | null,
+  options?: { path?: string }
+): NavDestination[] {
+  const path = options?.path || ''
+  const tree = mainDestinations(user, options)
+  const out: NavDestination[] = []
+
+  for (const item of tree) {
+    if (item.id === 'monitoring') {
+      out.push(
+        ...flattenNavLeaves(FISCAL_NAV_ITEMS).map(leaf => leafToDestination(leaf, path))
+      )
+      continue
+    }
+    if (item.children?.length) {
+      out.push(...flattenDestinations(item.children))
+    } else {
+      out.push(item)
+    }
+  }
+
+  return out
+}
+
+/** Conta e Admin permanecem no grupo de gestão; Clientes é operacional. */
+const SIDEBAR_MANAGEMENT_IDS = new Set(['settings', 'platform-admin'])
 
 /**
  * Separa navegação operacional e gestão usando os grupos nativos do

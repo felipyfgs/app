@@ -35,12 +35,12 @@ describe('renderer PGDAS-D', () => {
     )
     const ids = [...source.matchAll(/id: '([^']+)'/g)].map(match => match[1])
     expect(ids).toEqual([
+      'client',
       'situation',
       'last_declaration',
       'rbt12',
       'actions',
       'send',
-      'client',
       'tracking',
       'consulted',
       'history'
@@ -60,6 +60,14 @@ describe('renderer PGDAS-D', () => {
     expect(source).toContain('cnpjMasked: row.original.cnpj_masked')
     expect(source).toContain('BulkAutomaticSwitch')
     expect(source).toContain('declaration_state_reason || summary?.declaration_reason')
+    // Contrato: badges fill + ícones em slots; menu fiscal na toolbar (não no ⋯)
+    expect(source).toContain('tableCellBadgeProps')
+    expect(source).toContain('tableIconGroup')
+    expect(source).toContain('tableIconButton')
+    expect(source).toContain('pgdasd-actions-group')
+    expect(source).toContain('pgdasd-tracking-group')
+    expect(source).not.toContain('pgdasd-actions-menu')
+    expect(source).not.toContain('\'class\': \'min-w-20 justify-center\'')
   })
 
   it('mapeia estado por semântica, ícone, texto e cor sem promover desconhecido', () => {
@@ -193,6 +201,16 @@ describe('modais e integração da página', () => {
     expect(page).toContain('buildPgdasdColumns')
     expect(page).toContain('buildPgmeiColumns')
     expect(page).toContain('selectedClientIds')
+    expect(page).toContain('min-w-[1100px]')
+    expect(page).toContain(':initial-hidden-columns="[\'consulted\', \'history\']"')
+    // Ações fiscais na toolbar ao selecionar (não no ⋯ da linha).
+    expect(page).toContain('MonitoringPgdasdSelectionActions')
+    expect(page).toContain('MonitoringPgmeiBulkActions')
+    expect(page).toContain('pgdasdActionHandlers')
+    expect(readFileSync(resolve(app, 'utils/pgdasd-action-items.ts'), 'utf8')).toContain('REGIMEAPURACAO')
+    expect(readFileSync(resolve(app, 'utils/pgdasd-action-items.ts'), 'utf8')).toContain('DEFIS')
+    expect(readFileSync(resolve(app, 'utils/pgdasd-action-items.ts'), 'utf8')).toContain('onBatchConsult')
+    expect(readFileSync(resolve(app, 'components/monitoring/pgdasd/SelectionActions.vue'), 'utf8')).toContain('pgdasd-batch-consult-confirm')
     // Tabs de KPI (Total / Em dia / Pendências / …) como no DCTFWeb.
     expect(page).toContain(':counters="counters"')
     expect(page).not.toContain(':show-kpis="false"')

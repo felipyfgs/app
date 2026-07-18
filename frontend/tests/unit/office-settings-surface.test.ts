@@ -226,9 +226,23 @@ describe('procuração e franquia na UI', () => {
 
   it('SITFIS expõe franquia, procuração e modal de refresh', () => {
     const sitfis = readFileSync(resolve(APP, 'pages/monitoring/sitfis.vue'), 'utf8')
+    const commercial = readFileSync(
+      resolve(APP, 'components/monitoring/CommercialMetaCell.vue'),
+      'utf8'
+    )
     expect(sitfis).toContain('CommercialMetaCell')
+    expect(sitfis).toContain('min-w-[880px]')
+    expect(sitfis).toContain('w-28 min-w-24')
+    expect(sitfis).toContain('0} · ${d.pending_count ?? 0} pend.')
+    expect(sitfis).not.toContain('finding(s)')
+    expect(sitfis).not.toContain('w-56')
     expect(sitfis).toContain('ClientProcuracaoBadge')
     expect(sitfis).toContain('MonitoringRecentRefreshConfirmModal')
     expect(sitfis).toContain('recentConfirmOpen')
+    // Franquia/agenda densa: Saldo·Snapshot + Próxima (badge inline removido; hint via tooltip)
+    expect(commercial).toContain('leading-tight')
+    expect(commercial).toContain('·')
+    expect(commercial).toContain('UTooltip')
+    expect(commercial).not.toContain('<UBadge')
   })
 })

@@ -23,10 +23,10 @@ describe('operations inbox surface', () => {
     expect(types).toContain('inbox_total')
   })
 
-  it('lista /health mantém filtros locais e empty state positivo', () => {
+  it('lista /health mantém filtros e empty state positivo (URL sync)', () => {
     expect(health).toContain('const severityFilter = ref')
     expect(health).toContain('const typeFilter = ref')
-    expect(health).not.toContain('router.replace({ query:')
+    expect(health).toContain('syncHealthUrl')
     expect(health).toContain('Nenhum problema operacional')
     expect(health).not.toMatch(/selecionar todos|bulk select|label="Restaurar"/i)
     expect(health).toMatch(/Não há restore|Restore de backup fora do painel/)

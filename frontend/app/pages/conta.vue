@@ -3,10 +3,12 @@
  * Shell unificado de perfil pessoal e configurações do escritório.
  * Arquétipo: `.reference/nuxt-dashboard-template/app/pages/settings.vue`.
  */
-import { accountNavigationItems } from '~/utils/account-navigation'
+import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
+import { accountNavigationTree } from '~/utils/account-navigation'
 
+const route = useRoute()
 const { me } = useDashboard()
-const links = computed(() => [accountNavigationItems(me.value)])
+const links = computed(() => accountNavigationTree(me.value))
 </script>
 
 <template>
@@ -23,10 +25,12 @@ const links = computed(() => [accountNavigationItems(me.value)])
       </UDashboardNavbar>
 
       <UDashboardToolbar data-testid="account-section-tabs">
-        <UNavigationMenu
+        <SectionNavigation
           :items="links"
-          highlight
-          class="-mx-1 flex-1"
+          :path="route.fullPath"
+          aria-label="Navegação da conta"
+          subtabs-aria-label="Seções da conta"
+          test-id="account-section-navigation"
         />
       </UDashboardToolbar>
     </template>

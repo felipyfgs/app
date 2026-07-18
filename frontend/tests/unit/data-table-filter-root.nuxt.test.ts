@@ -70,11 +70,11 @@ const uiStubs = {
       ])
     }
   }),
-  UDrawer: defineComponent({
-    props: { open: Boolean },
+  UModal: defineComponent({
+    props: { open: Boolean, fullscreen: Boolean },
     setup(props, { slots }) {
-      return () => h('div', { 'data-stub': 'drawer' }, [
-        props.open ? h('div', slots.content?.()) : null
+      return () => h('div', { 'data-stub': 'modal' }, [
+        props.open ? h('div', slots.body?.() || slots.content?.()) : null
       ])
     }
   }),
@@ -102,6 +102,26 @@ const uiStubs = {
   }),
   FiscalClientPicker: defineComponent({
     setup: () => () => h('div')
+  }),
+  FilterDateInput: defineComponent({
+    inheritAttrs: false,
+    props: {
+      modelValue: { type: String, default: '' },
+      valueTo: { type: String, default: '' },
+      mode: { type: String, default: 'date' },
+      testId: { type: String, default: 'data-table-filter-date' },
+      ariaLabel: { type: String, default: '' }
+    },
+    emits: ['update:modelValue', 'update:valueTo'],
+    setup(props, { emit }) {
+      return () => h('input', {
+        'data-testid': props.testId,
+        'aria-label': props.ariaLabel,
+        'data-mode': props.mode,
+        'value': props.modelValue,
+        'onInput': (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).value)
+      })
+    }
   })
 }
 

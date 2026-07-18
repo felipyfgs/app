@@ -100,7 +100,7 @@ describe('data-table-filters', () => {
       label: 'Acme, Beta'
     })
     const display = formatChipDisplay(definitions[2]!, model!)
-    expect(display.operatorLabel).toBe('é um de')
+    expect(display.operatorLabel).toBe(':')
     expect(filterKindIcon(definitions[2]!)).toBe('i-lucide-users')
   })
 
@@ -119,7 +119,7 @@ describe('data-table-filters', () => {
     expect(canConfirmDraftValue(definitions[0], '')).toBe(false)
 
     const display = formatChipDisplay(definitions[0]!, model!)
-    expect(display.operatorLabel).toBe('é um de')
+    expect(display.operatorLabel).toBe(':')
     expect(display.valueLabel).toContain('Pendente')
   })
 
@@ -209,7 +209,7 @@ describe('data-table-filters', () => {
     }
     const twoDisplay = formatChipDisplay(definitions[0]!, two)
     expect(twoDisplay.valueLabel).toBe('Atenção, Pendente')
-    expect(twoDisplay.operatorLabel).toBe('é um de')
+    expect(twoDisplay.operatorLabel).toBe(':')
     expect(twoDisplay.fieldLabel).toBe('Situação')
 
     const many: DataTableFilterModel = {
@@ -220,7 +220,7 @@ describe('data-table-filters', () => {
     }
     const manyDisplay = formatChipDisplay(definitions[0]!, many)
     expect(manyDisplay.valueLabel).toBe('Atenção, Bloqueado +2')
-    expect(manyDisplay.operatorLabel).toBe('é um de')
+    expect(manyDisplay.operatorLabel).toBe(':')
     expect(formatOptionChipValueLabel(['A', 'B', 'C', 'D'], 2)).toBe('A, B +2')
     expect(sanitizeMultipleOptionValues(definitions[0]!, 'PENDING,HACK,all')).toEqual(['PENDING'])
   })

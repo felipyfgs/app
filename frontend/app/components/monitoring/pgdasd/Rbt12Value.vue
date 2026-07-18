@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PgdasdRbt12Summary } from '~/types/fiscal-modules'
+import { TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
 
 const props = defineProps<{
   rbt12?: PgdasdRbt12Summary | null
@@ -19,17 +20,18 @@ const value = computed(() => available.value
 
 <template>
   <UTooltip :text="pgdasdRbt12Tooltip(rbt12)">
-    <span
-      class="inline-flex min-w-24 items-center gap-1 tabular-nums"
-      :class="available ? 'font-medium text-highlighted' : 'text-muted'"
-      :aria-label="available ? `RBT12 ${value}` : 'RBT12 indisponível'"
-      data-testid="pgdasd-rbt12-value"
-    >
-      <UIcon
-        :name="available ? 'i-lucide-chart-no-axes-column-increasing' : 'i-lucide-circle-help'"
-        class="size-4 shrink-0"
+    <div class="block w-full min-w-0">
+      <UBadge
+        :label="value"
+        :icon="available ? 'i-lucide-chart-no-axes-column-increasing' : 'i-lucide-circle-help'"
+        :color="available ? 'success' : 'neutral'"
+        :variant="available ? 'outline' : 'subtle'"
+        size="md"
+        :class="TABLE_CELL_BADGE_CLASS"
+        :ui="TABLE_CELL_BADGE_UI"
+        :aria-label="available ? `RBT12 ${value}` : 'RBT12 indisponível'"
+        data-testid="pgdasd-rbt12-value"
       />
-      {{ value }}
-    </span>
+    </div>
   </UTooltip>
 </template>

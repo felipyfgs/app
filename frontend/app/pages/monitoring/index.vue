@@ -264,10 +264,15 @@ onMounted(load)
         </template>
       </UDashboardNavbar>
 
-      <UDashboardToolbar data-testid="page-toolbar">
-        <template #left>
-          <MonitoringModuleNav active="dashboard" />
-        </template>
+      <UDashboardToolbar
+        data-testid="page-toolbar"
+        :ui="{
+          root: 'flex-col items-stretch gap-0 overflow-visible min-h-0',
+          left: 'min-w-0 w-full flex-1',
+          right: 'hidden'
+        }"
+      >
+        <MonitoringModuleNav />
       </UDashboardToolbar>
     </template>
 
@@ -338,7 +343,7 @@ onMounted(load)
         :default-value="['coverage']"
         test-id="monitoring-panels"
       >
-        <template #coverage>
+        <template #coverage-body>
           <div
             v-if="loading && !coverageRows.length"
             class="py-4 text-center text-sm text-muted"
@@ -405,7 +410,7 @@ onMounted(load)
           </ul>
         </template>
 
-        <template #attention>
+        <template #attention-body>
           <!-- Casca de lista sempre presente (padrão ModuleTable empty interno) -->
           <div
             v-if="loading && !attentionItems.length"
@@ -445,7 +450,7 @@ onMounted(load)
           </ul>
         </template>
 
-        <template #runs>
+        <template #runs-body>
           <div
             v-if="loading && !recentRuns.length"
             class="py-4 text-center text-sm text-muted"

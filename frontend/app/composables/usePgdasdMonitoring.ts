@@ -59,7 +59,7 @@ export function usePgdasdMonitoring() {
 
   async function collectDocuments(
     clientId: number,
-    body: { period_key: string, declaration_number?: string | null }
+    body: { period_key: string, declaration_number?: string | null, confirmed: true }
   ) {
     return fiscal.pgdasd.collectDocuments(clientId, body)
   }

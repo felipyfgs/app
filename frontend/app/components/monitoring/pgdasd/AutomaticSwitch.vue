@@ -61,33 +61,54 @@ async function update(automaticRequested: boolean) {
 </script>
 
 <template>
-  <UTooltip
-    v-if="needsConfigure && canManage"
-    text="Configure canal e contato elegível para o envio automático"
-  >
-    <UButton
-      size="sm"
-      color="neutral"
-      variant="ghost"
-      icon="i-lucide-user-round-plus"
-      aria-label="Configurar comunicação de envio"
-      data-testid="pgdasd-automatic-configure"
-      @click="emit('configure')"
-    />
-  </UTooltip>
-  <UTooltip
-    v-else
-    :text="canManage
-      ? 'Registra a intenção de envio automático. Nenhum envio será executado nesta etapa.'
-      : 'Somente ADMIN ou OPERATOR pode alterar esta preferência.'"
-  >
-    <USwitch
-      :model-value="preference?.automatic_requested === true"
-      :loading="saving"
-      :disabled="!canManage || saving"
-      :aria-label="preference?.automatic_requested ? 'Desativar envio automático' : 'Ativar envio automático'"
-      data-testid="pgdasd-automatic-switch"
-      @update:model-value="update"
-    />
-  </UTooltip>
+  <!-- Slot fixo: botão ou switch ocupam o mesmo lugar entre linhas. -->
+  <div class="inline-flex size-8 items-center justify-center">
+    <UTooltip
+      v-if="needsConfigure && canManage"
+      text="Configure canal e contato elegível para o envio automático"
+    >
+      <UButton
+        size="xs"
+        color="neutral"
+        variant="ghost"
+        square
+        class="size-8"
+        icon="i-lucide-user-round-plus"
+        aria-label="Configurar comunicação de envio"
+        data-testid="pgdasd-automatic-configure"
+        @click="emit('configure')"
+      />
+    </UTooltip>
+    <UTooltip
+      v-else-if="needsConfigure"
+      text="Somente ADMIN ou OPERATOR pode configurar o envio automático."
+    >
+      <UButton
+        size="xs"
+        color="neutral"
+        variant="ghost"
+        square
+        class="size-8"
+        icon="i-lucide-user-round-plus"
+        disabled
+        aria-label="Envio automático não configurado"
+        data-testid="pgdasd-automatic-configure"
+      />
+    </UTooltip>
+    <UTooltip
+      v-else
+      :text="canManage
+        ? 'Registra a intenção de envio automático. Nenhum envio será executado nesta etapa.'
+        : 'Somente ADMIN ou OPERATOR pode alterar esta preferência.'"
+    >
+      <USwitch
+        :model-value="preference?.automatic_requested === true"
+        :loading="saving"
+        :disabled="!canManage || saving"
+        :aria-label="preference?.automatic_requested ? 'Desativar envio automático' : 'Ativar envio automático'"
+        data-testid="pgdasd-automatic-switch"
+        @update:model-value="update"
+      />
+    </UTooltip>
+  </div>
 </template>

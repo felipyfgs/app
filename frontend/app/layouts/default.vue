@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 import {
-  flattenDestinations,
   mainDestinations,
   quickActions,
+  searchableDestinations,
   secondaryDestinations,
   sidebarDestinationGroups,
   toNavigationItems
@@ -70,9 +70,9 @@ watch(
 
 const groups = computed(() => {
   const destinations = [
-    ...flattenDestinations(mainDestinations(me.value, {
+    ...searchableDestinations(me.value, {
       path: route.path
-    })),
+    }),
     ...secondaryDestinations()
   ]
 

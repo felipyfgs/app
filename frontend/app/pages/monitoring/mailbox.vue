@@ -1,11 +1,12 @@
 <script setup lang="ts">
 /**
  * Caixa Postal — mestre–detalhe (arquétipo Inbox).
- * Lista + NuxtPage (detalhe canônico em /monitoring/mailbox/[id]).
+ * Chrome Fiscal (navbar + MonitoringModuleNav) em largura total;
+ * lista + NuxtPage (detalhe em /monitoring/mailbox/[id]) abaixo das tabs.
  * Desktop: painéis adjacentes; mobile: detalhe em USlideover.
  *
  * Filtros: triage (status) + client via ModuleToolbar + surface monitoring.mailbox
- * (presets salvos). API mailbox não aplica `q` — busca desligada.
+ * (presets salvos) no painel da lista. API mailbox não aplica `q` — busca desligada.
  */
 import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
 import type { MailboxListItem } from '~/components/monitoring/MailboxList.vue'
@@ -184,134 +185,154 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="flex min-h-0 w-full flex-1">
-    <UDashboardPanel
-      id="mailbox-list"
-      resizable
-      :default-size="30"
-      :min-size="22"
-      :max-size="40"
+  <div class="flex min-h-0 w-full flex-1 flex-col">
+    <!-- Chrome Fiscal em largura total — acima do mestre–detalhe -->
+    <UDashboardNavbar
+      title="Caixas Postais"
+      data-testid="page-navbar"
+      class="shrink-0"
     >
-      <template #header>
-        <UDashboardNavbar
-          title="Caixas Postais"
-          data-testid="page-navbar"
-        >
-          <template #leading>
-            <UDashboardSidebarCollapse />
-          </template>
-          <template #trailing>
-            <UBadge
-              :label="String(total)"
-              variant="subtle"
-            />
-          </template>
-        </UDashboardNavbar>
-
-        <UDashboardToolbar data-testid="page-toolbar">
-          <template #left>
-            <div
-              class="flex min-w-0 flex-1 flex-col gap-2"
-              data-testid="mailbox-filter-strip"
-            >
-              <MonitoringModuleNav active="mailbox" />
-              <!--
-                Faixa compacta de filtros + presets (surface monitoring.mailbox).
-                Sem reescrever a lista mestre–detalhe em ModuleTable.
-              -->
-              <div data-testid="mailbox-triage-filter">
-                <MonitoringModuleToolbar
-                  surface="monitoring.mailbox"
-                  :filters="filters"
-                  :filter-config="filterConfig"
-                  :loading="loading"
-                  :total="total"
-                  :show-total="false"
-                  :reset-key="sessionEpoch"
-                  @apply-filters="applyModuleFilters"
-                  @reset-filters="resetModuleFilters"
-                  @refresh="load"
-                />
-              </div>
-            </div>
-          </template>
-        </UDashboardToolbar>
+      <template #leading>
+        <UDashboardSidebarCollapse />
       </template>
-
-      <template #body>
-        <UAlert
-          v-if="loadError"
-          color="error"
-          icon="i-lucide-circle-x"
-          :title="loadError"
-          class="mb-3"
-        >
-          <template #actions>
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="outline"
-              label="Tentar de novo"
-              @click="load"
-            />
-          </template>
-        </UAlert>
-
-        <!-- Lista sempre montada (casca + empty interno); erro em alerta acima -->
-        <MonitoringMailboxList
-          ref="listRef"
-          :messages="rows"
-          :selected-id="selectedId"
-          :loading="loading"
-          @select="selectMessage"
+      <template #trailing>
+        <UBadge
+          :label="String(total)"
+          variant="subtle"
         />
-
-        <div
-          class="mt-3 flex items-center justify-between border-t border-default pt-3"
-          data-testid="mailbox-pagination"
-        >
-          <span class="text-xs text-muted">
-            {{ total }} mensagem(ns)
-            <template v-if="lastPage > 1">
-              · pág. {{ page }}/{{ lastPage }}
-            </template>
-          </span>
-          <UPagination
-            v-if="lastPage > 1"
-            v-model="page"
-            :total="total"
-            :items-per-page="perPage"
-            size="sm"
-          />
-        </div>
       </template>
-    </UDashboardPanel>
+    </UDashboardNavbar>
 
-    <!-- Desktop: detalhe adjacente via NuxtPage -->
-    <div class="hidden min-w-0 flex-1 lg:flex">
-      <NuxtPage
-        @close="closeDetail"
-        @triaged="onTriaged"
-      />
-    </div>
+    <UDashboardToolbar
+      data-testid="page-toolbar"
+      class="shrink-0"
+      :ui="{
+        root: 'flex-col items-stretch gap-0 overflow-visible min-h-0',
+        left: 'min-w-0 w-full flex-1',
+        right: 'hidden'
+      }"
+    >
+      <MonitoringModuleNav />
+    </UDashboardToolbar>
 
-    <!-- Mobile: slideover com detalhe -->
-    <ClientOnly>
-      <USlideover
-        v-if="isMobile"
-        v-model:open="mobileOpen"
-        :ui="{ content: 'max-w-full' }"
+    <!-- Inbox abaixo das tabs -->
+    <div class="flex min-h-0 w-full flex-1">
+      <UDashboardPanel
+        id="mailbox-list"
+        resizable
+        :default-size="30"
+        :min-size="22"
+        :max-size="40"
+        class="min-h-0"
       >
-        <template #content>
-          <MonitoringMailboxMail
-            v-if="selectedId"
-            :message-id="selectedId"
-            show-close
-            @close="closeDetail"
-            @triaged="onTriaged"
-          />
+        <template #header>
+          <!--
+            Faixa compacta de filtros + presets (surface monitoring.mailbox).
+            Sem reescrever a lista mestre–detalhe em ModuleTable.
+          -->
+          <UDashboardToolbar>
+            <template #left>
+              <div
+                class="flex min-w-0 flex-1 flex-col gap-2"
+                data-testid="mailbox-filter-strip"
+              >
+                <div data-testid="mailbox-triage-filter">
+                  <MonitoringModuleToolbar
+                    surface="monitoring.mailbox"
+                    :filters="filters"
+                    :filter-config="filterConfig"
+                    :loading="loading"
+                    :total="total"
+                    :show-total="false"
+                    :reset-key="sessionEpoch"
+                    @apply-filters="applyModuleFilters"
+                    @reset-filters="resetModuleFilters"
+                    @refresh="load"
+                  />
+                </div>
+              </div>
+            </template>
+          </UDashboardToolbar>
         </template>
-      </USlideover>
-    </ClientOnly>
+
+        <template #body>
+          <UAlert
+            v-if="loadError"
+            color="error"
+            icon="i-lucide-circle-x"
+            :title="loadError"
+            class="mb-3"
+          >
+            <template #actions>
+              <UButton
+                size="xs"
+                color="neutral"
+                variant="outline"
+                label="Tentar de novo"
+                @click="load"
+              />
+            </template>
+          </UAlert>
+
+          <!-- Lista sempre montada (casca + empty interno); erro em alerta acima -->
+          <MonitoringMailboxList
+            ref="listRef"
+            :messages="rows"
+            :selected-id="selectedId"
+            :loading="loading"
+            @select="selectMessage"
+          />
+
+          <div
+            class="mt-3 flex items-center justify-between border-t border-default pt-3"
+            data-testid="mailbox-pagination"
+          >
+            <span class="text-xs text-muted">
+              {{ total }} mensagem(ns)
+              <template v-if="lastPage > 1">
+                · pág. {{ page }}/{{ lastPage }}
+              </template>
+            </span>
+            <UPagination
+              v-if="lastPage > 1"
+              v-model="page"
+              :total="total"
+              :items-per-page="perPage"
+              size="sm"
+            />
+          </div>
+        </template>
+      </UDashboardPanel>
+
+      <!-- Desktop: detalhe adjacente via NuxtPage -->
+      <div
+        v-if="!isMobile"
+        class="hidden min-h-0 min-w-0 flex-1 lg:flex"
+      >
+        <NuxtPage
+          @close="closeDetail"
+          @triaged="onTriaged"
+        />
+      </div>
+
+      <!-- Mobile: slideover com detalhe -->
+      <ClientOnly>
+        <USlideover
+          v-if="isMobile"
+          v-model:open="mobileOpen"
+          :ui="{ content: 'max-w-full' }"
+        >
+          <template #content>
+            <MonitoringMailboxMail
+              v-if="selectedId"
+              :message-id="selectedId"
+              show-close
+              @close="closeDetail"
+              @triaged="onTriaged"
+            />
+          </template>
+        </USlideover>
+      </ClientOnly>
+    </div>
   </div>
 </template>

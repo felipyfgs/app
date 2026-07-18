@@ -42,7 +42,7 @@ const href = computed(() => {
 
 <template>
   <div
-    class="flex min-w-0 flex-col gap-0.5"
+    class="flex min-w-0 flex-col gap-0 leading-tight"
     data-testid="fiscal-client-cell"
   >
     <NuxtLink

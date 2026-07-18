@@ -61,10 +61,10 @@ describe('pgmei monitoring UI', () => {
     )
     const ids = [...source.matchAll(/id: '([^']+)'/g)].map(match => match[1])
     expect(ids).toEqual([
+      'client',
       'situation',
       'actions',
       'send',
-      'client',
       'tracking',
       'consulted',
       'history'
@@ -80,6 +80,13 @@ describe('pgmei monitoring UI', () => {
     expect(source).toContain('sortHeader(\'Última Busca\'')
     expect(source).toContain('header: \'Histórico de Busca\'')
     expect(source).toContain('BulkAutomaticSwitch')
+    expect(source).toContain('tableCellBadgeProps')
+    expect(source).toContain('tableIconGroup')
+    expect(source).toContain('tableIconButton')
+    expect(source).toContain('pgmei-actions-group')
+    expect(source).toContain('pgmei-tracking-group')
+    expect(source).not.toContain('pgmei-actions-menu')
+    expect(source).not.toContain('\'class\': \'min-w-20 justify-center\'')
   })
 
   it('página canônica usa duas cápsulas sem seletor de ano na UI', () => {

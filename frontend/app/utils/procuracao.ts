@@ -12,6 +12,7 @@ export function normalizeProcuracaoStatus(
   if (!status) return null
   const s = String(status).toLowerCase()
   if (s === 'authorized' || s === 'autorizada') return 'authorized'
+  if (s === 'expiring' || s === 'a_vencer') return 'expiring'
   if (s === 'missing' || s === 'sem_procuracao' || s === 'absent') return 'missing'
   if (s === 'expired' || s === 'vencida') return 'expired'
   if (s === 'unverified' || s === 'nao_verificada' || s === 'não_verificada') return 'unverified'
@@ -21,7 +22,9 @@ export function normalizeProcuracaoStatus(
 export function procuracaoLabel(status?: string | null): string {
   switch (normalizeProcuracaoStatus(status)) {
     case 'authorized':
-      return 'Autorizada'
+      return 'Ativa'
+    case 'expiring':
+      return 'A vencer'
     case 'missing':
       return 'Sem procuração'
     case 'expired':
@@ -37,6 +40,8 @@ export function procuracaoTone(status?: string | null): ProcuracaoTone {
   switch (normalizeProcuracaoStatus(status)) {
     case 'authorized':
       return 'success'
+    case 'expiring':
+      return 'warning'
     case 'missing':
       return 'warning'
     case 'expired':
@@ -53,6 +58,8 @@ export function procuracaoActionHint(status?: string | null): string | null {
   switch (normalizeProcuracaoStatus(status)) {
     case 'missing':
       return 'Regularize a procuração no e-CAC para liberar operações que exigem poder.'
+    case 'expiring':
+      return 'Renove a procuração no e-CAC antes do vencimento para não interromper consultas.'
     case 'expired':
       return 'Renove a procuração no e-CAC; a vigência expirou.'
     case 'unverified':
@@ -60,4 +67,36 @@ export function procuracaoActionHint(status?: string | null): string | null {
     default:
       return null
   }
+}
+
+/** Texto de validade da projeção oficial, sem consultar ou inferir dados externos. */
+export function procuracaoValidityLabel(status?: string | null, validTo?: string | null): string | null {
+  if (!validTo) return null
+  const parsed = new Date(validTo)
+  if (Number.isNaN(parsed.getTime())) return null
+  const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(parsed)
+
+  switch (normalizeProcuracaoStatus(status)) {
+    case 'expired':
+      return `Venceu ${date}`
+    case 'authorized':
+    case 'expiring':
+      return `Vence ${date}`
+    default:
+      return null
+  }
+}
+
+/** Rótulo único para tabelas compactas, equivalente ao resumo de certificado. */
+export function procuracaoChipLabel(status?: string | null, validTo?: string | null): string {
+  const validity = procuracaoValidityLabel(status, validTo)
+  if (validity) {
+    const normalized = normalizeProcuracaoStatus(status)
+    if (normalized === 'authorized') return validity.replace('Vence ', 'Válida até ')
+    if (normalized === 'expiring') return validity.replace('Vence ', 'A vencer ')
+    if (normalized === 'expired') return validity.replace('Venceu ', 'Vencida ')
+    return validity
+  }
+
+  return procuracaoLabel(status)
 }

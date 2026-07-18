@@ -5,6 +5,8 @@
  */
 import * as z from 'zod'
 import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
+import DocsSectionNav from '~/components/navigation/DocsSectionNav.vue'
+import NavbarMoreActions from '~/components/navigation/NavbarMoreActions.vue'
 import type { ExportFilters, ExportJob } from '~/types/api'
 
 const api = useApi()
@@ -472,17 +474,6 @@ onBeforeUnmount(pause)
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
-          <UTooltip text="Atualizar lista">
-            <UButton
-              icon="i-lucide-refresh-cw"
-              color="neutral"
-              variant="ghost"
-              square
-              aria-label="Atualizar lista de exportações"
-              :loading="loading"
-              @click="load()"
-            />
-          </UTooltip>
           <UButton
             v-if="canCreateExport"
             icon="i-lucide-plus"
@@ -498,8 +489,20 @@ onBeforeUnmount(pause)
             aria-label="Pedir ZIP"
             @click="openCreate"
           />
+          <NavbarMoreActions
+            :items="[{
+              id: 'exports-refresh',
+              label: 'Atualizar lista',
+              icon: 'i-lucide-refresh-cw',
+              onSelect: () => { void load() }
+            }]"
+          />
         </template>
       </UDashboardNavbar>
+
+      <UDashboardToolbar data-testid="docs-section-tabs">
+        <DocsSectionNav />
+      </UDashboardToolbar>
     </template>
 
     <template #body>
@@ -523,8 +526,8 @@ onBeforeUnmount(pause)
           base: 'table-fixed border-separate border-spacing-0',
           thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
           tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'border-b border-default',
+          th: 'px-3 py-1.5 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
+          td: 'px-3 py-1 border-b border-default',
           separator: 'h-0'
         }"
       >
@@ -540,8 +543,9 @@ onBeforeUnmount(pause)
         </template>
 
         <template #status-cell="{ row }">
-          <div class="space-y-1 max-w-xs">
+          <div class="max-w-xs w-full min-w-0 space-y-1">
             <ShellStatusBadge
+              fill
               :status="effectiveStatus(row.original)"
               :label="statusLabel(effectiveStatus(row.original))"
             />

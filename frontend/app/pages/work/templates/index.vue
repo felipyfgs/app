@@ -6,7 +6,8 @@ import type { TableColumn } from '@nuxt/ui'
 import type { GenerationBatch, ProcessTemplate, ProcessTemplateTask } from '~/types/work'
 import { canManageWorkCatalog } from '~/utils/permissions'
 import { apiErrorMessage } from '~/utils/api-error'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+import WorkSectionNav from '~/components/navigation/WorkSectionNav.vue'
 
 const api = useApi()
 const toast = useToast()
@@ -230,6 +231,10 @@ onMounted(load)
         </template>
       </UDashboardNavbar>
 
+      <UDashboardToolbar data-testid="work-section-tabs">
+        <WorkSectionNav />
+      </UDashboardToolbar>
+
       <UDashboardToolbar>
         <UInput
           v-model="q"
@@ -259,10 +264,12 @@ onMounted(load)
         <UTable :data="items" :columns="columns" :ui="DASHBOARD_TABLE_UI">
           <template #is_active-cell="{ row }">
             <UBadge
-              size="sm"
+              size="md"
               variant="subtle"
               :color="row.original.is_active ? 'success' : 'neutral'"
               :label="row.original.is_active ? 'Ativo' : 'Inativo'"
+              :class="TABLE_CELL_BADGE_CLASS"
+              :ui="TABLE_CELL_BADGE_UI"
             />
           </template>
           <template #tasks-cell="{ row }">

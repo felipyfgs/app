@@ -92,7 +92,8 @@ function getRowId(row: SimplesMeiClientRow) {
 }
 
 const tabItems = SIMPLES_MEI_TABS.map((t: { label: string, badge: string, value: string }) => ({
-  label: `${t.label} · ${t.badge}`,
+  label: t.label,
+  badge: t.badge,
   value: t.value
 }))
 
@@ -203,6 +204,10 @@ function openFor(row: SimplesMeiClientRow, kind: 'history' | 'preview' | 'tracki
   previewOpen.value = kind === 'preview'
   trackingOpen.value = kind === 'tracking'
   prefsOpen.value = kind === 'prefs'
+}
+
+function openPgdasdHistory(row: SimplesMeiClientRow) {
+  void navigateTo(`/monitoring/clients/${row.client_id}/pgdasd`)
 }
 
 function onPreferenceSaved(
@@ -444,29 +449,31 @@ const bulkHandlers = {
 }
 
 // Colunas só reagem a permissões/cápsula — não à seleção.
+const pgdasdActionHandlers = computed(() => ({
+  canManage: canManageClients.value,
+  canQueryRegime: canTriggerSync.value,
+  canQueryRegimeOption: canTriggerSync.value,
+  canQueryRegimeResolution: canTriggerSync.value,
+  canQueryDefis: canTriggerSync.value,
+  canQueryDefisLatest: canTriggerSync.value,
+  onConfigure: (row: SimplesMeiClientRow) => openFor(row, 'prefs'),
+  onRegimeHistory: openRegimeHistory,
+  onRegimeOptionHistory: openRegimeOptionHistory,
+  onRegimeResolutionHistory: openRegimeResolutionHistory,
+  onDefisHistory: openDefisHistory,
+  onDefisLatestHistory: openDefisLatestHistory,
+  onDefisSpecificHistory: openDefisSpecificHistory,
+  onPreview: (row: SimplesMeiClientRow) => openFor(row, 'preview'),
+  onTracking: (row: SimplesMeiClientRow) => openFor(row, 'tracking'),
+  onHistory: openPgdasdHistory
+}))
+
 const pgdasdColumns = computed(() => buildPgdasdColumns({
   canManage: canManageClients.value,
   ...bulkHandlers,
-  onHistory: row => openFor(row, 'history'),
-  onRegimeHistory: openRegimeHistory,
-  onRegimeConsult: openRegimeConsultConfirm,
-  canQueryRegime: canTriggerSync.value,
-  onRegimeOptionHistory: openRegimeOptionHistory,
-  onRegimeOptionConsult: openRegimeOptionConsultConfirm,
-  canQueryRegimeOption: canTriggerSync.value,
-  onRegimeResolutionHistory: openRegimeResolutionHistory,
-  onRegimeResolutionConsult: openRegimeResolutionConsultConfirm,
-  canQueryRegimeResolution: canTriggerSync.value,
-  onDefisHistory: openDefisHistory,
-  onDefisConsult: openDefisConsultConfirm,
-  canQueryDefis: canTriggerSync.value,
-  onDefisLatestHistory: openDefisLatestHistory,
-  onDefisLatestConsult: openDefisLatestConsultConfirm,
-  canQueryDefisLatest: canTriggerSync.value,
-  onDefisSpecificHistory: openDefisSpecificHistory,
+  onHistory: openPgdasdHistory,
   onPreview: row => openFor(row, 'preview'),
   onTracking: row => openFor(row, 'tracking'),
-  onConfigure: row => openFor(row, 'prefs'),
   onPreferenceSaved
 }))
 
@@ -579,7 +586,8 @@ watch(submodule, (next, prev) => {
     :selection-enabled="(isPgdasd || isPgmei) ? canManageClients : undefined"
     :custom-bulk-actions="true"
     :horizontal-scroll="true"
-    table-class="min-w-[1280px]"
+    table-class="min-w-[1100px]"
+    :initial-hidden-columns="['consulted', 'history']"
     empty-title="Nenhum cliente"
     :column-labels="columnLabels"
     @update:page="setPage"
@@ -591,25 +599,47 @@ watch(submodule, (next, prev) => {
     @selection-change="onSelectionChange"
   >
     <template #submodules>
-      <div class="flex w-full min-w-0 justify-start overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-        <UTabs
+      <!-- Controle segmentado local; não compete com as tabs de rota acima. -->
+      <div
+        class="flex min-w-0 flex-col gap-2"
+        data-testid="simples-mei-capsule-control"
+      >
+        <p class="text-xs font-medium text-muted">
+          Regime
+        </p>
+        <ShellScrollableTabs
           v-model="submodule"
           :items="tabItems"
-          :content="false"
           size="sm"
-          class="w-max max-w-none"
-          :ui="{
-            root: 'w-max max-w-none',
-            list: 'w-max justify-start',
-            trigger: 'shrink-0'
-          }"
-          data-testid="simples-mei-submodule-tabs"
+          color="primary"
+          variant="pill"
+          class="w-full min-w-0"
+          aria-label="Regime: Simples Nacional ou MEI"
+          test-id="simples-mei-submodule-tabs"
         />
       </div>
     </template>
 
-    <!-- Bulk automático fica no cabeçalho da coluna Enviar (referência visual). -->
-    <template #bulk-actions />
+    <!-- Ações do cliente selecionado na toolbar (junto ao filtro); automático no header Enviar. -->
+    <template #bulk-actions="{ selectedClientIds: ids, selectedCount: count, clearSelection: clear }">
+      <MonitoringPgdasdSelectionActions
+        v-if="isPgdasd"
+        :selected-client-ids="ids"
+        :selected-count="count"
+        :rows="rows"
+        :handlers="pgdasdActionHandlers"
+        @clear="clear"
+        @refresh="refresh"
+      />
+      <MonitoringPgmeiBulkActions
+        v-else-if="isPgmei"
+        :selected-client-ids="ids"
+        :selected-count="count"
+        :year="pgmeiYear"
+        @clear="clear"
+        @refresh="refresh"
+      />
+    </template>
 
     <template
       v-if="overviewError"
@@ -634,14 +664,6 @@ watch(submodule, (next, prev) => {
     </template>
   </MonitoringModuleTable>
 
-  <MonitoringPgdasdHistoryModal
-    v-if="isPgdasd"
-    v-model:open="historyOpen"
-    :client-id="modalClientId"
-    :client-name="modalClientName"
-    :cnpj-masked="modalCnpjMasked"
-    :can-collect-documents="canTriggerSync"
-  />
   <MonitoringPgdasdCommunicationModals
     v-if="isPgdasd"
     v-model:preview-open="previewOpen"

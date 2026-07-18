@@ -6,7 +6,8 @@
  *
  * Detalhe /clients/:id tem painel próprio e não usa este chrome.
  */
-import type { NavigationMenuItem } from '@nuxt/ui'
+import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
+import type { NavLayerItem } from '~/utils/navigation-hierarchy'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,16 +19,21 @@ const isCatalog = computed(() => {
   return path === '/clients' || path === '/clients/dashboard'
 })
 
-const links = [[{
-  label: 'Lista',
-  icon: 'i-lucide-list',
-  to: '/clients',
-  exact: true
-}, {
-  label: 'Dashboard',
-  icon: 'i-lucide-layout-dashboard',
-  to: '/clients/dashboard'
-}]] satisfies NavigationMenuItem[][]
+const links: NavLayerItem[] = [
+  {
+    id: 'clients-list',
+    label: 'Lista',
+    icon: 'i-lucide-list',
+    to: '/clients',
+    exact: true
+  },
+  {
+    id: 'clients-dashboard',
+    label: 'Dashboard',
+    icon: 'i-lucide-layout-dashboard',
+    to: '/clients/dashboard'
+  }
+]
 
 /**
  * Compatibilidade de entrada: remove queries antigas do catálogo e mantém a
@@ -67,8 +73,12 @@ watch(
       </UDashboardNavbar>
 
       <UDashboardToolbar data-testid="clients-section-tabs">
-        <!-- NOTE: The `-mx-1` class is used to align with the `DashboardSidebarCollapse` button here. -->
-        <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
+        <SectionNavigation
+          :items="links"
+          :path="route.fullPath"
+          aria-label="Navegação de clientes"
+          test-id="clients-section-navigation"
+        />
       </UDashboardToolbar>
     </template>
 

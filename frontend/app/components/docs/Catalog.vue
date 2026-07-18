@@ -461,8 +461,9 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
       </template>
 
       <template #status-cell="{ row }">
-        <div class="min-w-0">
+        <div class="min-w-0 w-full">
           <ShellStatusBadge
+            fill
             :status="row.original.status"
             :label="documentSituationLabel(row.original)"
           />

@@ -1,5 +1,5 @@
+import UButton from '@nuxt/ui/components/Button.vue'
 import { h } from 'vue'
-import { UButton } from '#components'
 
 /**
  * Header ordenável canônico para colunas de UTable (TanStack).

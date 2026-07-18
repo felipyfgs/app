@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui'
+import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
 import type { Client, ClientCredential, Establishment } from '~/types/api'
+import type { NavLeafDestination } from '~/utils/navigation-hierarchy'
+import { clientModalNav } from '~/utils/client-detail-navigation'
 
 type Section = 'resumo' | 'cadastro' | 'estabelecimentos' | 'certificado' | 'sincronizacao'
 
@@ -44,29 +46,22 @@ const description = computed(() => {
   return `CNPJ ${cnpj}`
 })
 
-/**
- * Mesmo padrão do template Settings (`UDashboardToolbar` + `UNavigationMenu` highlight).
- * Sem rotas: onSelect troca a seção local do modal.
- * Sem aba Estabelecimentos: 1 cliente = 1 CNPJ.
- */
-const sectionLinks = computed<NavigationMenuItem[]>(() => {
-  const items: Array<{ key: Section, label: string, icon: string }> = [
-    { key: 'resumo', label: 'Resumo', icon: 'i-lucide-layout-dashboard' },
-    { key: 'cadastro', label: 'Cadastro', icon: 'i-lucide-clipboard-list' },
-    { key: 'estabelecimentos', label: 'Estabelecimentos', icon: 'i-lucide-map-pin-house' },
-    { key: 'certificado', label: 'Certificado A1', icon: 'i-lucide-badge-check' },
-    { key: 'sincronizacao', label: 'Sincronização', icon: 'i-lucide-refresh-cw' }
-  ]
+const sectionLinks = computed(() => clientModalNav())
+const syntheticPath = computed(() =>
+  section.value === 'resumo' ? '/clients/0' : `/clients/0/${section.value}`
+)
+const sectionByLeafId: Record<string, Section> = {
+  'client-resumo': 'resumo',
+  'client-cadastro': 'cadastro',
+  'client-estabelecimentos': 'estabelecimentos',
+  'client-certificado': 'certificado',
+  'client-sincronizacao': 'sincronizacao'
+}
 
-  return items.map(item => ({
-    label: item.label,
-    icon: item.icon,
-    active: section.value === item.key,
-    onSelect: () => {
-      section.value = item.key
-    }
-  }))
-})
+function onSectionNavigate(leaf: NavLeafDestination) {
+  const next = sectionByLeafId[leaf.id]
+  if (next) goSection(next)
+}
 
 async function load() {
   if (!props.clientId) {
@@ -200,10 +195,14 @@ watch(open, (value) => {
     <template #body>
       <!-- Equivalente ao UDashboardToolbar do settings.vue do template -->
       <div class="shrink-0 border-b border-default px-2 sm:px-3">
-        <UNavigationMenu
+        <SectionNavigation
           :items="sectionLinks"
-          highlight
-          class="-mx-1 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          :path="syntheticPath"
+          :navigate-with-router="false"
+          aria-label="Navegação do modal de cliente"
+          subtabs-aria-label="Seções do modal de cliente"
+          test-id="client-modal-section-navigation"
+          @navigate="onSectionNavigate"
         />
       </div>
 

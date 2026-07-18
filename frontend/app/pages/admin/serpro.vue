@@ -5,24 +5,11 @@
  * Fonte: .reference/nuxt-dashboard-template/app/pages/settings.vue
  * Largura: comfortable (max-w-5xl, centralizado) — mesma linha de /conta e do shell settings oficial.
  */
-import type { NavigationMenuItem } from '@nuxt/ui'
+import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
+import { SERPRO_NAV_ITEMS } from '~/utils/serpro-navigation'
 
+const route = useRoute()
 const { canAccessPlatformSerpro } = useDashboard()
-
-const links = [[{
-  label: 'Operação',
-  icon: 'i-lucide-gauge',
-  to: '/admin/serpro',
-  exact: true
-}, {
-  label: 'Integração',
-  icon: 'i-lucide-settings-2',
-  to: '/admin/serpro/configuration'
-}, {
-  label: 'Canário DTE',
-  icon: 'i-lucide-flask-conical',
-  to: '/admin/serpro/dte-canary'
-}]] satisfies NavigationMenuItem[][]
 </script>
 
 <template>
@@ -42,10 +29,12 @@ const links = [[{
       </UDashboardNavbar>
 
       <UDashboardToolbar data-testid="admin-serpro-tabs">
-        <UNavigationMenu
-          :items="links"
-          highlight
-          class="-mx-1 flex-1"
+        <SectionNavigation
+          :items="SERPRO_NAV_ITEMS"
+          :path="route.fullPath"
+          aria-label="Navegação SERPRO"
+          subtabs-aria-label="Seções SERPRO"
+          test-id="admin-serpro-section-navigation"
         />
       </UDashboardToolbar>
     </template>

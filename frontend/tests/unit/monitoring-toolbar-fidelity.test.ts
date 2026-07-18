@@ -16,6 +16,10 @@ describe('fidelidade toolbar ↔ customers.vue', () => {
       resolve(__dirname, '../../app/components/monitoring/ModuleToolbar.vue'),
       'utf8'
     )
+    const shell = readFileSync(
+      resolve(__dirname, '../../app/components/shell/ListFilterToolbar.vue'),
+      'utf8'
+    )
 
     // customers.vue: stack com toolbar + tabela
     expect(moduleTable.indexOf('data-testid="fiscal-table-stack"'))
@@ -23,23 +27,28 @@ describe('fidelidade toolbar ↔ customers.vue', () => {
     expect(dataTable.indexOf('name="toolbar"'))
       .toBeLessThan(dataTable.indexOf('data-testid="fiscal-table"'))
 
-    // bulk → filtros (direita) → salvar/presets → refresh → trailing (Exibir)
-    expect(toolbar.indexOf('<slot name="actions"'))
-      .toBeLessThan(toolbar.indexOf('data-testid="fiscal-structured-filters"'))
-    expect(toolbar.indexOf('data-testid="fiscal-structured-filters"'))
-      .toBeLessThan(toolbar.indexOf('data-testid="save-filters-button"'))
-    expect(toolbar.indexOf('data-testid="saved-filters-menu"'))
-      .toBeLessThan(toolbar.indexOf('data-testid="fiscal-filter-refresh"'))
-    expect(toolbar.indexOf('data-testid="fiscal-filter-refresh"'))
-      .toBeLessThan(toolbar.indexOf('<slot name="trailing"'))
+    // Adapter monitoring → shell canônico
+    expect(toolbar).toContain('ShellListFilterToolbar')
+    expect(toolbar).toContain('test-id-prefix="fiscal-filter"')
     expect(toolbar).toContain('surface')
-    expect(toolbar).toContain('applyPreset')
+    expect(toolbar).toContain('onApplyPreset')
+
+    // bulk → filtros (direita) → salvar/presets → refresh → trailing (Exibir)
+    expect(shell.indexOf('<slot name="actions"'))
+      .toBeLessThan(shell.indexOf('`${prefix}-structured`'))
+    expect(shell.indexOf('save-filters-button'))
+      .toBeLessThan(shell.indexOf('`${prefix}-refresh`'))
+    expect(shell.indexOf('`${prefix}-refresh`'))
+      .toBeLessThan(shell.indexOf('<slot name="trailing"'))
 
     // busca à esquerda, filtros no bloco da direita
-    expect(toolbar.indexOf('data-testid="fiscal-filter-q"'))
-      .toBeLessThan(toolbar.indexOf('data-testid="fiscal-structured-filters"'))
-    expect(toolbar).toContain('sm:max-w-2xl')
-    expect(toolbar).toContain('DataTableFilterRoot')
+    expect(shell.indexOf('`${prefix}-q`'))
+      .toBeLessThan(shell.indexOf('`${prefix}-structured`'))
+    expect(shell).toContain('LIST_FILTER_SEARCH_INPUT')
+    expect(shell).toContain('LIST_FILTER_TOOLBAR_STACK')
+    expect(shell).toContain('LIST_FILTER_ACTIONS_ROW')
+    expect(shell).not.toContain('basis-full')
+    expect(shell).toContain('DataTableFilterRoot')
 
     const filterRoot = readFileSync(
       resolve(__dirname, '../../app/components/data-table-filter/Root.vue'),

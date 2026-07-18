@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { FiscalPortfolioModuleKey } from '~/types/fiscal-modules'
+import { COMPACT_BUTTON_LABEL_UI } from '~/utils/list-filter-layout'
 
 const props = withDefaults(defineProps<{
   moduleKey: FiscalPortfolioModuleKey
@@ -124,7 +125,7 @@ async function submitSearch() {
     icon="i-lucide-scan-search"
     label="Buscar pendências"
     aria-label="Buscar pendências"
-    :ui="{ label: 'hidden sm:inline' }"
+    :ui="COMPACT_BUTTON_LABEL_UI"
     :loading="searching"
     data-testid="monitoring-pending-search"
     @click="openConfirmation"

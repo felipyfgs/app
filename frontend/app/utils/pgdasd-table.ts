@@ -11,17 +11,17 @@ import {
   MonitoringPgdasdAutomaticSwitch,
   MonitoringPgdasdBulkAutomaticActions,
   MonitoringPgdasdDeclarationIndicator,
-  MonitoringPgdasdRbt12Value,
-  UBadge,
-  UButton,
-  UDropdownMenu,
-  UTooltip
+  MonitoringPgdasdRbt12Value
 } from '#components'
+import UBadge from '@nuxt/ui/components/Badge.vue'
+import UButton from '@nuxt/ui/components/Button.vue'
+import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type {
   PgdasdCommunicationPreference,
   SimplesMeiClientRow
 } from '~/types/fiscal-modules'
 import { documentActionVisible } from '~/types/fiscal-modules'
+import { resolveApiUrl } from '~/utils/api-url'
 import { formatDate, formatDateTime } from '~/utils/format'
 import {
   pgdasdDeclarationMeta,
@@ -29,13 +29,17 @@ import {
   pgdasdSummary,
   pgdasdTrackingMeta
 } from '~/utils/pgdasd'
+import { tableIconButton, tableIconGroup, tableIconMenu } from '~/utils/table-icon-slots'
 import { sortHeader } from '~/utils/table-sort'
+import { tableCellBadgeProps } from '~/utils/table-ui'
+
+/** Handlers fiscais ficam na toolbar (SelectionActions); a linha só mantém atalho de prévia. */
 
 /**
- * Renderer PGDAS-D — nove colunas de negócio na ordem da referência visual:
- * Situação · Últ. Declaração · Sublimite (RBT12) · Ações · Enviar · Cliente ·
+ * Renderer PGDAS-D — nove colunas de negócio (densidade compacta):
+ * Cliente · Situação · Últ. Declaração · Sublimite (RBT12) · Ações · Enviar ·
  * Rastreio de envio · Última Busca · Histórico de Busca.
- * Seleção é acrescentada pelo shell autorizado antes de Situação.
+ * Seleção é acrescentada pelo shell autorizado antes de Cliente.
  */
 export function buildPgdasdColumns(options: {
   canManage: boolean
@@ -46,25 +50,8 @@ export function buildPgdasdColumns(options: {
   onBulkClear: () => void
   onBulkRefresh: () => void
   onHistory: (row: SimplesMeiClientRow) => void
-  onRegimeHistory: (row: SimplesMeiClientRow) => void
-  onRegimeConsult: (row: SimplesMeiClientRow) => void
-  canQueryRegime: boolean
-  onRegimeOptionHistory: (row: SimplesMeiClientRow) => void
-  onRegimeOptionConsult: (row: SimplesMeiClientRow) => void
-  canQueryRegimeOption: boolean
-  onRegimeResolutionHistory: (row: SimplesMeiClientRow) => void
-  onRegimeResolutionConsult: (row: SimplesMeiClientRow) => void
-  canQueryRegimeResolution: boolean
-  onDefisHistory: (row: SimplesMeiClientRow) => void
-  onDefisConsult: (row: SimplesMeiClientRow) => void
-  canQueryDefis: boolean
-  onDefisLatestHistory: (row: SimplesMeiClientRow) => void
-  onDefisLatestConsult: (row: SimplesMeiClientRow) => void
-  canQueryDefisLatest: boolean
-  onDefisSpecificHistory: (row: SimplesMeiClientRow) => void
   onPreview: (row: SimplesMeiClientRow) => void
   onTracking: (row: SimplesMeiClientRow) => void
-  onConfigure: (row: SimplesMeiClientRow) => void
   onPreferenceSaved: (
     row: SimplesMeiClientRow,
     preference: PgdasdCommunicationPreference
@@ -74,26 +61,6 @@ export function buildPgdasdColumns(options: {
   const Rbt12Value = MonitoringPgdasdRbt12Value
   const AutomaticSwitch = MonitoringPgdasdAutomaticSwitch
   const BulkAutomaticSwitch = MonitoringPgdasdBulkAutomaticActions
-
-  function iconAction(args: {
-    label: string
-    icon: string
-    color?: 'neutral' | 'primary' | 'success' | 'warning' | 'error' | 'info'
-    testId: string
-    onClick: () => void
-  }) {
-    return h(UTooltip, { text: args.label }, {
-      default: () => h(UButton, {
-        'size': 'sm',
-        'color': args.color || 'neutral',
-        'variant': 'ghost',
-        'icon': args.icon,
-        'aria-label': args.label,
-        'data-testid': args.testId,
-        'onClick': args.onClick
-      })
-    })
-  }
 
   function situationTooltip(row: SimplesMeiClientRow): string {
     const summary = pgdasdSummary(row)
@@ -112,104 +79,16 @@ export function buildPgdasdColumns(options: {
   }
 
   function rowActions(row: SimplesMeiClientRow) {
-    return h('div', { class: 'flex items-center gap-0.5' }, [
-      iconAction({
+    // Menu completo (regimes/DEFIS) vive na toolbar ao selecionar a linha.
+    return tableIconGroup([
+      tableIconButton({
         label: 'Abrir prévia de envio',
         icon: 'i-lucide-send',
         color: 'primary',
         testId: 'pgdasd-send-preview',
         onClick: () => options.onPreview(row)
-      }),
-      h(UDropdownMenu, {
-        items: [
-          [
-            {
-              label: 'Configurar comunicação',
-              icon: 'i-lucide-settings-2',
-              disabled: !options.canManage,
-              onSelect: () => options.onConfigure(row)
-            }
-          ],
-          [
-            {
-              label: 'Histórico de regimes',
-              icon: 'i-lucide-calendar-range',
-              onSelect: () => options.onRegimeHistory(row)
-            },
-            {
-              label: 'Atualizar regimes',
-              icon: 'i-lucide-refresh-cw',
-              disabled: !options.canQueryRegime,
-              onSelect: () => options.onRegimeConsult(row)
-            },
-            {
-              label: 'Opção anual de regime',
-              icon: 'i-lucide-calendar-check-2',
-              onSelect: () => options.onRegimeOptionHistory(row)
-            },
-            {
-              label: 'Atualizar opção anual (ano atual)',
-              icon: 'i-lucide-calendar-sync',
-              disabled: !options.canQueryRegimeOption,
-              onSelect: () => options.onRegimeOptionConsult(row)
-            },
-            {
-              label: 'Resoluções do Regime de Caixa',
-              icon: 'i-lucide-file-text',
-              onSelect: () => options.onRegimeResolutionHistory(row)
-            },
-            {
-              label: 'Atualizar resolução (ano atual)',
-              icon: 'i-lucide-file-down',
-              disabled: !options.canQueryRegimeResolution,
-              onSelect: () => options.onRegimeResolutionConsult(row)
-            },
-            {
-              label: 'Declarações DEFIS',
-              icon: 'i-lucide-files',
-              onSelect: () => options.onDefisHistory(row)
-            },
-            {
-              label: 'Atualizar declarações DEFIS',
-              icon: 'i-lucide-refresh-cw',
-              disabled: !options.canQueryDefis,
-              onSelect: () => options.onDefisConsult(row)
-            },
-            {
-              label: 'Última DEFIS e recibo',
-              icon: 'i-lucide-file-check-2',
-              onSelect: () => options.onDefisLatestHistory(row)
-            },
-            {
-              label: 'Atualizar última DEFIS (ano atual)',
-              icon: 'i-lucide-file-down',
-              disabled: !options.canQueryDefisLatest,
-              onSelect: () => options.onDefisLatestConsult(row)
-            },
-            {
-              label: 'Declaração DEFIS e recibo',
-              icon: 'i-lucide-files',
-              onSelect: () => options.onDefisSpecificHistory(row)
-            },
-            {
-              label: 'Abrir cliente',
-              icon: 'i-lucide-user-round',
-              to: `/monitoring/clients/${row.client_id}`
-            }
-          ]
-        ],
-        content: { align: 'end' }
-      }, {
-        default: () => h(UButton, {
-          'size': 'sm',
-          'color': 'neutral',
-          'variant': 'ghost',
-          'icon': 'i-lucide-ellipsis',
-          'aria-label': 'Mais ações PGDAS-D',
-          'data-testid': 'pgdasd-actions-menu'
-        })
       })
-    ])
+    ], 'pgdasd-actions-group')
   }
 
   function trackingCell(row: SimplesMeiClientRow) {
@@ -233,88 +112,86 @@ export function buildPgdasdColumns(options: {
       }
     }
 
-    return h('div', { class: 'flex items-center gap-0.5' }, [
-      iconAction({
+    const artifactsSlot = documents.length
+      ? tableIconMenu({
+          label: `${documents.length} documento(s) PGDAS-D disponível(is)`,
+          icon: 'i-lucide-files',
+          color: 'primary',
+          testId: 'pgdasd-artifacts-menu',
+          items: [documents.map(document => ({
+            label: documentLabel(document.kind),
+            icon: 'i-lucide-download',
+            to: document.download_path
+              ? resolveApiUrl(
+                document.download_path,
+                String(useRuntimeConfig().public.apiBase || '')
+              )
+              : undefined,
+            external: true,
+            target: '_blank'
+          }))] as DropdownMenuItem[][]
+        })
+      : tableIconButton({
+          label: artifactHref
+            ? (row.document?.label || 'Baixar anexo local')
+            : 'Nenhum anexo local disponível',
+          icon: 'i-lucide-download',
+          color: artifactHref ? 'primary' : 'neutral',
+          testId: 'pgdasd-tracking-attachment',
+          href: artifactHref,
+          disabled: !artifactHref
+        })
+
+    return tableIconGroup([
+      tableIconButton({
         label: `Status do envio: ${meta.label}`,
         icon: meta.icon,
         color: meta.color,
         testId: 'pgdasd-tracking-status',
         onClick: () => options.onTracking(row)
       }),
-      documents.length
-        ? h(UDropdownMenu, {
-            items: [documents.map(document => ({
-              label: documentLabel(document.kind),
-              icon: 'i-lucide-download',
-              to: document.download_path || undefined,
-              external: true,
-              target: '_blank'
-            }))] as DropdownMenuItem[][],
-            content: { align: 'start' }
-          }, {
-            default: () => h(UButton, {
-              'size': 'sm',
-              'color': 'primary',
-              'variant': 'ghost',
-              'icon': 'i-lucide-files',
-              'label': `${documents.length} documento${documents.length === 1 ? '' : 's'}`,
-              'aria-label': `${documents.length} documento(s) PGDAS-D disponível(is) para download`,
-              'data-testid': 'pgdasd-artifacts-menu'
-            })
-          })
-        : artifactHref
-          ? h(UTooltip, { text: row.document?.label || 'Baixar anexo local' }, {
-              default: () => h(UButton, {
-                'size': 'sm',
-                'color': 'primary',
-                'variant': 'ghost',
-                'icon': 'i-lucide-download',
-                'href': artifactHref,
-                'target': '_blank',
-                'rel': 'noopener',
-                'aria-label': row.document?.label || 'Baixar anexo local',
-                'data-testid': 'pgdasd-tracking-attachment'
-              })
-            })
-          : h(UTooltip, { text: 'Nenhum anexo local disponível' }, {
-              default: () => h(UButton, {
-                'size': 'sm',
-                'color': 'neutral',
-                'variant': 'ghost',
-                'icon': 'i-lucide-download',
-                'disabled': true,
-                'aria-label': 'Nenhum anexo local disponível',
-                'data-testid': 'pgdasd-tracking-attachment'
-              })
-            }),
-      iconAction({
+      artifactsSlot,
+      tableIconButton({
         label: 'Abrir rastreio de envio',
         icon: 'i-lucide-search',
         testId: 'pgdasd-tracking',
         onClick: () => options.onTracking(row)
       })
-    ])
+    ], 'pgdasd-tracking-group')
   }
 
   return [
     {
+      id: 'client',
+      header: ({ column }) => sortHeader('Cliente', column),
+      enableHiding: false,
+      meta: { class: { th: 'min-w-48 w-[22%]', td: 'min-w-48 w-[22%]' } },
+      cell: ({ row }) => h(FiscalClientCell, {
+        clientId: row.original.client_id,
+        name: row.original.legal_name,
+        legalName: row.original.legal_name,
+        cnpjMasked: row.original.cnpj_masked,
+        to: `/monitoring/clients/${row.original.client_id}`
+      })
+    },
+    {
       id: 'situation',
       header: 'Situação',
       enableSorting: false,
-      meta: { class: { th: 'min-w-36', td: 'min-w-36' } },
+      meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
       cell: ({ row }) => {
         const summary = pgdasdSummary(row.original)
         const meta = pgdasdDeclarationMeta(summary?.declaration_state)
         return h(UTooltip, { text: situationTooltip(row.original) }, {
-          default: () => h(UBadge, {
-            'label': meta.label,
-            'color': meta.color,
-            'icon': meta.icon,
-            'variant': 'subtle',
-            'class': 'min-w-24 justify-center',
-            'aria-label': `Situação PGDAS-D: ${meta.label}`,
-            'data-testid': 'pgdasd-situation'
-          })
+          default: () => h('div', { class: 'block w-full min-w-0' }, [
+            h(UBadge, tableCellBadgeProps({
+              'label': meta.label,
+              'color': meta.color,
+              'icon': meta.icon,
+              'aria-label': `Situação PGDAS-D: ${meta.label}`,
+              'data-testid': 'pgdasd-situation'
+            }))
+          ])
         })
       }
     },
@@ -322,7 +199,7 @@ export function buildPgdasdColumns(options: {
       id: 'last_declaration',
       header: 'Últ. Declaração',
       enableSorting: false,
-      meta: { class: { th: 'min-w-28', td: 'min-w-28' } },
+      meta: { class: { th: 'w-24 min-w-20', td: 'w-24 min-w-20' } },
       cell: ({ row }) => {
         const summary = pgdasdSummary(row.original)
         return h(DeclarationIndicator, {
@@ -343,7 +220,7 @@ export function buildPgdasdColumns(options: {
         ])
       }),
       enableSorting: false,
-      meta: { class: { th: 'min-w-36', td: 'min-w-36' } },
+      meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
       cell: ({ row }) => h(Rbt12Value, {
         rbt12: pgdasdSummary(row.original)?.rbt12
       })
@@ -352,12 +229,12 @@ export function buildPgdasdColumns(options: {
       id: 'actions',
       header: 'Ações',
       enableSorting: false,
-      meta: { class: { th: 'w-24 min-w-24', td: 'w-24 min-w-24' } },
+      meta: { class: { th: 'w-20 min-w-20', td: 'w-20 min-w-20' } },
       cell: ({ row }) => rowActions(row.original)
     },
     {
       id: 'send',
-      header: () => h('div', { class: 'flex items-center gap-2' }, [
+      header: () => h('div', { class: 'flex items-center gap-1' }, [
         h('span', 'Enviar'),
         options.canManage
           ? h(BulkAutomaticSwitch, {
@@ -370,40 +247,32 @@ export function buildPgdasdColumns(options: {
           : null
       ]),
       enableSorting: false,
-      meta: { class: { th: 'w-28 min-w-28', td: 'w-28 min-w-28' } },
-      cell: ({ row }) => h(AutomaticSwitch, {
-        clientId: row.original.client_id,
-        preference: pgdasdSummary(row.original)?.communication,
-        canManage: options.canManage,
-        onConfigure: () => options.onConfigure(row.original),
-        onSaved: (preference: PgdasdCommunicationPreference) =>
-          options.onPreferenceSaved(row.original, preference)
-      })
-    },
-    {
-      id: 'client',
-      header: ({ column }) => sortHeader('Cliente', column),
-      enableHiding: false,
-      meta: { class: { th: 'min-w-64', td: 'min-w-64' } },
-      cell: ({ row }) => h(FiscalClientCell, {
-        clientId: row.original.client_id,
-        name: row.original.legal_name,
-        legalName: row.original.legal_name,
-        cnpjMasked: row.original.cnpj_masked,
-        to: `/monitoring/clients/${row.original.client_id}`
-      })
+      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
+      cell: ({ row }) => h('div', {
+        class: 'inline-flex h-8 w-10 shrink-0 items-center justify-center',
+        'data-testid': 'pgdasd-send-slot'
+      }, [
+        h(AutomaticSwitch, {
+          clientId: row.original.client_id,
+          preference: pgdasdSummary(row.original)?.communication,
+          canManage: options.canManage,
+          onConfigure: () => options.onConfigure(row.original),
+          onSaved: (preference: PgdasdCommunicationPreference) =>
+            options.onPreferenceSaved(row.original, preference)
+        })
+      ])
     },
     {
       id: 'tracking',
       header: 'Rastreio de envio',
       enableSorting: false,
-      meta: { class: { th: 'min-w-36', td: 'min-w-36' } },
+      meta: { class: { th: 'w-28 min-w-28', td: 'w-28 min-w-28' } },
       cell: ({ row }) => trackingCell(row.original)
     },
     {
       id: 'consulted',
       header: ({ column }) => sortHeader('Última Busca', column),
-      meta: { class: { th: 'min-w-32', td: 'min-w-32' } },
+      meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
       cell: ({ row }) => {
         const lastQuery = pgdasdSummary(row.original)?.last_valid_query_at
         return h(UTooltip, {
@@ -412,7 +281,7 @@ export function buildPgdasdColumns(options: {
             : 'Nenhuma consulta produtiva válida'
         }, {
           default: () => h('span', {
-            'class': 'whitespace-nowrap tabular-nums text-sm',
+            'class': 'whitespace-nowrap tabular-nums text-xs',
             'data-testid': 'pgdasd-last-query'
           }, formatDate(lastQuery))
         })
@@ -421,19 +290,16 @@ export function buildPgdasdColumns(options: {
     {
       id: 'history',
       header: 'Histórico de Busca',
-      enableHiding: false,
       enableSorting: false,
-      meta: { class: { th: 'min-w-40', td: 'min-w-40' } },
+      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
       cell: ({ row }) => h(UTooltip, {
         text: 'Ver histórico fiscal PGDAS-D'
       }, {
         default: () => h(UButton, {
-          'size': 'sm',
+          'size': 'xs',
           'color': 'neutral',
-          'variant': 'outline',
+          'variant': 'ghost',
           'icon': 'i-lucide-search',
-          'block': true,
-          'class': 'w-full justify-center',
           'aria-label': 'Ver histórico fiscal PGDAS-D',
           'data-testid': 'pgdasd-history',
           'onClick': () => options.onHistory(row.original)

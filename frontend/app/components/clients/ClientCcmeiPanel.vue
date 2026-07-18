@@ -120,7 +120,7 @@ watch(() => props.clientId, () => void load(), { immediate: true })
               <UBadge
                 v-if="current.source_provenance === 'SIMULATED'"
                 color="warning"
-                label="Simulada"
+                label="Histórico não verificável"
                 variant="outline"
               />
             </div>

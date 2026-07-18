@@ -7,13 +7,13 @@ import { h } from 'vue'
  */
 import {
   FiscalClientCell,
-  FiscalStatusBadge,
-  UBadge,
-  UButton,
-  UDropdownMenu,
-  USwitch,
-  UTooltip
+  FiscalStatusBadge
 } from '#components'
+import UBadge from '@nuxt/ui/components/Badge.vue'
+import UButton from '@nuxt/ui/components/Button.vue'
+import UDropdownMenu from '@nuxt/ui/components/DropdownMenu.vue'
+import USwitch from '@nuxt/ui/components/Switch.vue'
+import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type {
   DctfwebClientRow,
   PgdasdCommunicationPreference
@@ -26,6 +26,7 @@ import {
   formatDctfwebDate
 } from '~/utils/dctfweb'
 import { sortHeader } from '~/utils/table-sort'
+import { tableCellBadgeProps } from '~/utils/table-ui'
 
 /**
  * Renderer exclusivo da cápsula DCTFWeb.
@@ -54,7 +55,7 @@ export function buildDctfwebColumns(options: {
   }) {
     return h(UTooltip, { text: args.label }, {
       default: () => h(UButton, {
-        'size': 'sm',
+        'size': 'xs',
         'color': args.color || 'neutral',
         'variant': 'ghost',
         'icon': args.icon,
@@ -108,24 +109,24 @@ export function buildDctfwebColumns(options: {
         const summary = dctfwebSummary(row.original)
         const state = summary?.declaration_state
         if (!state) {
-          return h(UBadge, {
-            'label': '–',
-            'color': 'neutral',
-            'variant': 'subtle',
-            'class': 'rounded-sm',
-            'data-testid': 'dctfweb-situation-empty'
-          })
+          return h('div', { class: 'block w-full min-w-0' }, [
+            h(UBadge, tableCellBadgeProps({
+              'label': '–',
+              'color': 'neutral',
+              'data-testid': 'dctfweb-situation-empty'
+            }))
+          ])
         }
         const meta = dctfwebDeclarationMeta(state)
         return h(UTooltip, { text: meta.description }, {
-          default: () => h(UBadge, {
-            'label': meta.label,
-            'color': meta.color,
-            'variant': 'subtle',
-            'icon': meta.icon,
-            'class': 'rounded-sm',
-            'data-testid': 'dctfweb-situation'
-          })
+          default: () => h('div', { class: 'block w-full min-w-0' }, [
+            h(UBadge, tableCellBadgeProps({
+              'label': meta.label,
+              'color': meta.color,
+              'icon': meta.icon,
+              'data-testid': 'dctfweb-situation'
+            }))
+          ])
         })
       }
     },
@@ -138,21 +139,21 @@ export function buildDctfwebColumns(options: {
         const summary = dctfwebSummary(row.original)
         const label = dctfwebLastDeclarationLabel(summary)
         if (label === '—') {
-          return h(UBadge, {
-            'label': '–',
-            'color': 'neutral',
-            'variant': 'subtle',
-            'class': 'rounded-sm',
-            'data-testid': 'dctfweb-last-declaration-empty'
-          })
+          return h('div', { class: 'block w-full min-w-0' }, [
+            h(UBadge, tableCellBadgeProps({
+              'label': '–',
+              'color': 'neutral',
+              'data-testid': 'dctfweb-last-declaration-empty'
+            }))
+          ])
         }
-        return h(UBadge, {
-          'label': label,
-          'color': 'primary',
-          'variant': 'subtle',
-          'class': 'rounded-sm tabular-nums',
-          'data-testid': 'dctfweb-last-declaration'
-        })
+        return h('div', { class: 'block w-full min-w-0' }, [
+          h(UBadge, tableCellBadgeProps({
+            'label': label,
+            'color': 'primary',
+            'data-testid': 'dctfweb-last-declaration'
+          }))
+        ])
       }
     },
     {
@@ -320,9 +321,7 @@ export function buildMitColumns(options: {
     {
       id: 'situation',
       header: 'Situação',
-      cell: ({ row }) => h(FiscalStatusBadge, {
-        status: row.original.detail?.mit?.situation || row.original.situation
-      })
+      cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: row.original.detail?.mit?.situation || row.original.situation })
     },
     {
       id: 'closure',
@@ -331,7 +330,7 @@ export function buildMitColumns(options: {
       cell: ({ row }) => {
         const status = row.original.detail?.mit?.encerramento_status
         if (!status) return '—'
-        return h(FiscalStatusBadge, { status, showHint: true })
+        return h(FiscalStatusBadge, { fill: true, status })
       }
     },
     {
@@ -344,7 +343,7 @@ export function buildMitColumns(options: {
         'icon': 'i-lucide-list-filter',
         'size': 'xs',
         'color': 'neutral',
-        'variant': 'outline',
+        'variant': 'ghost',
         'aria-label': 'Ver apurações MIT 317 locais',
         'data-testid': 'mit-lista-apuracoes-317',
         'onClick': () => options.onListApuracoes(row.original)

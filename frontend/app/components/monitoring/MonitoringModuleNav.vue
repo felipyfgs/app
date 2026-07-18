@@ -1,44 +1,41 @@
 <script setup lang="ts">
 /**
- * Navegação horizontal do Monitoramento — canônico (UNavigationMenu highlight
- * diretamente em UDashboardToolbar, como settings.vue do template).
- *
- * Mobile: scroll horizontal com overscroll touch; labels sem wrap; área de toque
- * um pouco mais densa no phone.
- *
- * Resolve auto-import Nuxt: `MonitoringModuleNav` (pasta monitoring/).
- * Props: `active` opcional força o módulo destacado (páginas legadas).
+ * Navegação da área Fiscal — Tabs → Subtabs via SectionNavigation.
+ * URL = verdade da navegação; highlight nunca inventa outro destino.
  */
-import type { MonitoringModuleKey } from '~/utils/monitoring-nav'
-import { monitoringNavMenuItems } from '~/utils/monitoring-nav'
+import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
+import { fiscalNavigationItems } from '~/utils/fiscal-navigation'
 
-const props = defineProps<{
-  /** Módulo forçado como ativo (senão deriva de `route.path`). */
-  active?: MonitoringModuleKey | string
+defineProps<{
+  /**
+   * @deprecated Preferir resolução só pela rota atual.
+   * Mantido por compatibilidade em páginas legadas; ignorado na resolução.
+   */
+  active?: string
 }>()
 
 const route = useRoute()
-
-const items = computed(() => [
-  monitoringNavMenuItems(route.path, props.active)
-])
+const { me } = useDashboard()
+const items = computed(() => fiscalNavigationItems(me.value))
+const showSkeleton = computed(() => items.value.length === 0 && me.value == null)
 </script>
 
 <template>
   <div
-    class="-mx-1 min-w-0 flex-1 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] touch-pan-x"
-    data-testid="monitoring-module-nav-scroll"
+    v-if="showSkeleton"
+    class="flex min-w-0 flex-1 flex-col gap-2 py-1"
+    data-testid="monitoring-module-nav-skeleton"
+    aria-hidden="true"
   >
-    <UNavigationMenu
-      :items="items"
-      :ui="{
-        root: 'gap-0.5',
-        link: 'gap-0 px-1.5 sm:px-2',
-        linkLabel: 'whitespace-nowrap text-xs sm:text-sm'
-      }"
-      highlight
-      class="w-max min-w-full"
-      data-testid="monitoring-module-nav"
-    />
+    <USkeleton class="h-8 w-full max-w-xl" />
+    <USkeleton class="h-7 w-full max-w-md" />
   </div>
+  <SectionNavigation
+    v-else
+    :items="items"
+    :path="route.fullPath"
+    aria-label="Navegação fiscal"
+    subtabs-aria-label="Módulos fiscais"
+    test-id="monitoring-module-nav"
+  />
 </template>

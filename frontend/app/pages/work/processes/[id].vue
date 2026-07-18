@@ -2,9 +2,10 @@
 /**
  * Detalhe do processo — shell Settings com seções reproduzíveis na URL.
  */
-import type { NavigationMenuItem } from '@nuxt/ui'
+import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
 import type { OperationalProcess } from '~/types/work'
 import { apiErrorMessage } from '~/utils/api-error'
+import { workProcessContextNav } from '~/utils/work-navigation'
 import {
   formatCompetence,
   formatDueDate,
@@ -33,12 +34,7 @@ const section = computed(() => {
   return ['resumo', 'tarefas', 'comentarios', 'historico'].includes(s) ? s : 'resumo'
 })
 
-const links = computed(() => [[
-  { label: 'Resumo', icon: 'i-lucide-layout-dashboard', to: `/work/processes/${id.value}?section=resumo`, active: section.value === 'resumo' },
-  { label: 'Tarefas', icon: 'i-lucide-list-checks', to: `/work/processes/${id.value}?section=tarefas`, active: section.value === 'tarefas' },
-  { label: 'Comentários', icon: 'i-lucide-message-square', to: `/work/processes/${id.value}?section=comentarios`, active: section.value === 'comentarios' },
-  { label: 'Histórico', icon: 'i-lucide-history', to: `/work/processes/${id.value}?section=historico`, active: section.value === 'historico' }
-] satisfies NavigationMenuItem[]])
+const links = computed(() => workProcessContextNav(id.value))
 
 async function load() {
   const epoch = sessionEpoch.value
@@ -98,7 +94,12 @@ watch([id, sessionEpoch], load)
       </UDashboardNavbar>
 
       <UDashboardToolbar v-if="process">
-        <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
+        <SectionNavigation
+          :items="links"
+          :path="route.fullPath"
+          aria-label="Navegação do processo"
+          test-id="work-process-section-navigation"
+        />
       </UDashboardToolbar>
     </template>
 

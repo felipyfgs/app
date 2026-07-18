@@ -3,9 +3,11 @@ import {
   flattenDestinations,
   mainDestinations,
   monitoringDestinations,
+  searchableDestinations,
   toNavigationItems
 } from '../../app/utils/navigation'
-import { MONITORING_NAV_ITEMS } from '../../app/utils/monitoring-nav'
+import { FISCAL_NAV_ITEMS, fiscalNavigationItems } from '../../app/utils/fiscal-navigation'
+import { flattenNavLeaves } from '../../app/utils/navigation-hierarchy'
 import type { MeUser } from '../../app/types/api'
 
 function user(role: MeUser['role'], confirmed = true): MeUser {
@@ -21,90 +23,82 @@ function user(role: MeUser['role'], confirmed = true): MeUser {
   }
 }
 
-describe('navigation monitoramento (15.4)', () => {
-  it('mantém todos os módulos diretamente acessíveis na sidebar', () => {
-    const ids = monitoringDestinations('/monitoring').flatMap((g) => {
-      if (g.children) return g.children.map(c => c.id)
-      return [g.id]
-    })
-    expect(ids).toEqual([
-      'monitoring-dashboard',
-      'monitoring-simples-mei',
-      'monitoring-dctfweb',
-      'monitoring-fgts',
-      'monitoring-installments',
-      'monitoring-sitfis',
-      'monitoring-mailbox',
-      'monitoring-declarations',
-      'monitoring-guides',
-      'monitoring-registrations',
-      'monitoring-tax-processes'
+describe('navigation fiscal (grupos canônicos)', () => {
+  it('sidebar Fiscal expõe até cinco grupos, não onze módulos', () => {
+    const children = monitoringDestinations('/monitoring')[0]?.children || []
+    expect(children.map(c => c.id)).toEqual([
+      'fiscal-overview',
+      'fiscal-obligations',
+      'fiscal-regularity',
+      'fiscal-finance',
+      'fiscal-comms'
     ])
+    expect(children).toHaveLength(5)
+    expect(monitoringDestinations('/monitoring')[0]?.label).toBe('Fiscal')
   })
 
-  it('usa os paths canônicos dos módulos com submódulos', () => {
+  it('grupos apontam ao primeiro destino folha do catálogo', () => {
     const children = monitoringDestinations()[0]?.children || []
-    expect(children.find(c => c.id === 'monitoring-simples-mei')?.to)
+    expect(children.find(c => c.id === 'fiscal-obligations')?.to)
       .toBe('/monitoring/simples-mei')
-    expect(children.find(c => c.id === 'monitoring-dctfweb')?.to)
-      .toBe('/monitoring/dctfweb')
+    expect(children.find(c => c.id === 'fiscal-comms')?.to)
+      .toBe('/monitoring/mailbox')
   })
 
-  it('mantém ícone no grupo e omite ícones dos módulos no submenu da sidebar', () => {
+  it('mantém ícone no grupo e omite ícones dos itens no submenu da sidebar', () => {
     const [monitoring] = toNavigationItems(monitoringDestinations('/monitoring'))
     expect(monitoring?.icon).toBe('i-lucide-radar')
     expect(monitoring?.children?.every(item => item.icon == null)).toBe(true)
   })
 
-  it('resume somente os nomes do submenu da sidebar', () => {
-    const children = monitoringDestinations('/monitoring')[0]?.children || []
-    expect(children.map(item => item.label)).toEqual([
-      'Resumo',
-      'Simples/MEI',
-      'DCTFWeb/MIT',
-      'FGTS',
-      'Parcelamentos',
-      'SITFIS',
-      'Caixas',
-      'Declarações',
-      'Guias',
-      'Vínculos',
-      'Processos'
-    ])
-    expect(children.map(item => item.label)).toEqual(
-      MONITORING_NAV_ITEMS.map(item => item.sidebarLabel)
-    )
-    expect(children.map(item => item.label)).not.toEqual(
-      MONITORING_NAV_ITEMS.map(item => item.label)
-    )
+  it('busca global indexa todos os módulos folha', () => {
+    const ids = searchableDestinations(user('OPERATOR')).map(d => d.id)
+    expect(ids).toContain('monitoring-dashboard')
+    expect(ids).toContain('monitoring-simples-mei')
+    expect(ids).toContain('monitoring-mailbox')
+    expect(ids).toContain('monitoring-tax-processes')
+    expect(flattenNavLeaves(FISCAL_NAV_ITEMS)).toHaveLength(11)
   })
 
-  it('mainDestinations inclui Monitoramento para qualquer papel autenticado', () => {
+  it('fiscalNavigationItems mantém catálogo enquanto me hidrata', () => {
+    expect(fiscalNavigationItems(null)).toEqual(FISCAL_NAV_ITEMS)
+    expect(fiscalNavigationItems(undefined)).toEqual(FISCAL_NAV_ITEMS)
+    expect(flattenNavLeaves(fiscalNavigationItems(user('OPERATOR')))).toHaveLength(11)
+    expect(fiscalNavigationItems({
+      id: 1,
+      name: 'X',
+      email: 'x@example.com',
+      two_factor_confirmed: false,
+      two_factor_required: false,
+      requires_two_factor_setup: false,
+      office: null,
+      role: null
+    } as MeUser)).toEqual([])
+  })
+
+  it('mainDestinations inclui Fiscal para qualquer papel autenticado', () => {
     for (const role of ['VIEWER', 'OPERATOR', 'ADMIN'] as const) {
       const tree = mainDestinations(user(role, role === 'ADMIN'))
       expect(tree.map(d => d.id)).toContain('monitoring')
+      expect(tree.find(d => d.id === 'monitoring')?.label).toBe('Fiscal')
       const flat = flattenDestinations(tree).map(d => d.id)
-      expect(flat).toContain('monitoring-dashboard')
-      expect(flat).toContain('monitoring-fgts')
+      expect(flat).toContain('fiscal-overview')
+      expect(flat).toContain('fiscal-obligations')
     }
   })
 
-  it('ADMIN vê Conta (perfil + escritório + consumo + equipe + departamentos), sem hub /admin', () => {
+  it('ADMIN vê Conta agrupada em folhas na ordem da taxonomia', () => {
     const tree = mainDestinations(user('ADMIN', true))
     const account = tree.find(d => d.id === 'settings')
+    expect(account?.label).toBe('Conta')
     expect(account?.children?.map(c => c.id)).toEqual([
       'account-profile',
       'account-office',
-      'account-usage',
-      'account-subscription',
+      'account-departments',
       'account-team',
-      'account-departments'
+      'account-subscription',
+      'account-usage'
     ])
-    expect(account?.children?.map(c => c.id)).not.toContain('settings-cte')
-    expect(account?.children?.map(c => c.id)).not.toContain('admin-departments')
-    expect(account?.children?.map(c => c.to)).not.toContain('/settings/cte')
-    expect(account?.children?.map(c => c.to)).toContain('/conta/departamentos')
-    // Hub plataforma fica fora da árvore do office ADMIN
     const flat = flattenDestinations(tree).map(d => d.id)
     expect(flat).not.toContain('platform-serpro-console')
   })
@@ -115,8 +109,6 @@ describe('navigation monitoramento (15.4)', () => {
     expect(ids).not.toContain('admin')
     expect(ids).toContain('account-profile')
     expect(ids).not.toContain('account-office')
-    expect(ids).not.toContain('account-usage')
-    expect(ids).not.toContain('settings-cte')
     expect(tree.find(d => d.id === 'settings')?.children?.map(d => d.id))
       .toEqual(['account-profile'])
   })

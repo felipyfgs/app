@@ -82,7 +82,7 @@ describe('painel CCMEI do detalhe de cliente', () => {
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Histórico de consultas'))
     expect(wrapper.text()).toContain('ATIVA')
-    expect(wrapper.text()).toContain('Simulada')
+    expect(wrapper.text()).toContain('Histórico não verificável')
     expect(wrapper.text()).not.toMatch(/cpf|cnpj|qrcode/i)
   })
 

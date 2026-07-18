@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui'
+import OperationsSectionNav from '~/components/navigation/OperationsSectionNav.vue'
 import type { InboxItem, InboxItemType, InboxSeverity } from '~/types/api'
 import { resolveInboxItemLink, SERPRO_INBOX_TYPE_FILTERS } from '~/utils/inbox-links'
+import { TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
 
 const api = useApi()
 const route = useRoute()
@@ -187,10 +189,19 @@ watch(sessionEpoch, () => {
   void load(true)
 })
 
-onMounted(() => {
-  if (Object.keys(route.query).length) {
-    void router.replace({ path: route.path })
+async function syncHealthUrl() {
+  const query: Record<string, string> = {}
+  if (severityFilter.value && severityFilter.value !== FILTER_ALL) {
+    query.severity = severityFilter.value
   }
+  if (typeFilter.value && typeFilter.value !== FILTER_ALL) {
+    query.type = typeFilter.value
+  }
+  await router.replace({ path: route.path, query })
+}
+
+watch([severityFilter, typeFilter], () => {
+  void syncHealthUrl()
 })
 </script>
 
@@ -216,31 +227,41 @@ onMounted(() => {
         </template>
       </UDashboardNavbar>
 
+      <UDashboardToolbar data-testid="operations-section-tabs">
+        <OperationsSectionNav />
+      </UDashboardToolbar>
+
       <UDashboardToolbar data-testid="page-toolbar">
-        <template #left>
-          <div class="flex min-w-0 flex-wrap items-center gap-2">
+        <div
+          class="flex w-full min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between"
+          data-testid="health-filter-toolbar"
+        >
+          <div
+            class="flex min-w-0 items-center gap-2 overflow-x-auto overscroll-x-contain touch-pan-x pb-0.5 sm:overflow-visible sm:pb-0"
+          >
             <USelect
               v-model="severityFilter"
               :items="severityItems"
               value-key="value"
-              class="w-44"
+              class="w-40 shrink-0 sm:w-44"
               aria-label="Filtrar por severidade"
             />
             <USelect
               v-model="typeFilter"
               :items="typeItems"
               value-key="value"
-              class="w-56"
+              class="w-48 shrink-0 sm:w-56"
               aria-label="Filtrar por tipo"
             />
           </div>
-        </template>
-        <template #right>
-          <span v-if="generatedAt" class="text-xs text-muted">
+          <span
+            v-if="generatedAt"
+            class="shrink-0 text-xs text-muted"
+          >
             Gerado em {{ formatDateTime(generatedAt) }}
             <template v-if="totalEstimate !== null"> · {{ totalEstimate }} item(ns)</template>
           </span>
-        </template>
+        </div>
       </UDashboardToolbar>
     </template>
 
@@ -310,8 +331,8 @@ onMounted(() => {
           base: 'table-fixed border-separate border-spacing-0',
           thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
           tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'border-b border-default',
+          th: 'px-3 py-1.5 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
+          td: 'px-3 py-1 border-b border-default',
           separator: 'h-0'
         }"
         @select="selectRow"
@@ -320,7 +341,10 @@ onMounted(() => {
           <UBadge
             :color="severityColor(row.original.severity)"
             variant="subtle"
+            size="md"
             class="capitalize"
+            :class="TABLE_CELL_BADGE_CLASS"
+            :ui="TABLE_CELL_BADGE_UI"
           >
             {{ severityLabel(row.original.severity) }}
           </UBadge>

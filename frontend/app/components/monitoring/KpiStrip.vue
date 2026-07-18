@@ -1,12 +1,9 @@
 <script setup lang="ts">
 /**
- * Contadores compactos da carteira fiscal.
- * Faixa operacional fixa: Total · Em dia · Processando · Pendências · Atenção
- * (zeros contam). Estados secundários (Bloqueado, Erro, …) só com contagem > 0.
- *
- * Mobile: tabs `sm`, scroll horizontal com overscroll touch (sem quebrar a linha).
+ * Contadores compactos da carteira fiscal via ShellScrollableTabs.
+ * Faixa operacional: Total · Em dia · Processando · Pendências · Atenção
+ * (zeros contam). Estados secundários só com contagem > 0.
  */
-import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
 import type { FiscalKpiKey, FiscalModuleCounters } from '~/types/fiscal-modules'
 import {
   FISCAL_COUNTER_KPI_KEYS,
@@ -15,6 +12,7 @@ import {
   normalizeFiscalModuleCounters
 } from '~/types/fiscal-modules'
 import { fiscalStatusMeta } from '~/utils/fiscal-status'
+import ShellScrollableTabs from '~/components/shell/ScrollableTabs.vue'
 
 /** Sempre visíveis (como no DCTFWeb de referência), inclusive em zero. */
 const PRIMARY_KPI_KEYS = [
@@ -49,10 +47,6 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   select: [key: FiscalKpiKey, situation: string | null]
 }>()
-
-const breakpoints = useBreakpoints(breakpointsTailwind)
-const isNarrow = breakpoints.smaller('sm')
-const tabSize = computed(() => (isNarrow.value ? 'sm' : 'md'))
 
 const resolvedTotal = computed(() => {
   if (props.total != null && Number.isFinite(Number(props.total))) {
@@ -105,7 +99,6 @@ const items = computed((): CounterTab[] => {
     if (key === 'error' && !props.showError) continue
     const count = c[key]
     const isPrimary = PRIMARY_KPI_SET.has(key)
-    // Primários sempre; secundários só com contagem ou se estiverem ativos.
     if (!isPrimary && count <= 0 && active !== key) continue
 
     list.push({
@@ -129,26 +122,14 @@ function onSelect(key: string | number) {
     data-testid="fiscal-kpi-strip"
     class="flex min-w-0 items-center gap-2"
   >
-    <div
-      class="min-w-0 flex-1 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] touch-pan-x"
-    >
-      <UTabs
-        :model-value="resolvedActiveKey"
-        :items="items"
-        :content="false"
-        activation-mode="automatic"
-        :size="tabSize"
-        color="primary"
-        variant="pill"
-        :ui="{
-          root: 'w-max min-w-full',
-          list: 'w-max min-w-full justify-start border border-default bg-elevated/60 shadow-xs',
-          trigger: 'shrink-0 data-[state=active]:text-highlighted',
-          indicator: 'bg-default ring-1 ring-default'
-        }"
-        aria-label="Filtrar por situação"
-        @update:model-value="onSelect"
-      />
-    </div>
+    <ShellScrollableTabs
+      class="min-w-0 flex-1"
+      :model-value="resolvedActiveKey"
+      :items="items"
+      size="md"
+      aria-label="Filtrar por situação"
+      test-id="fiscal-kpi-tabs"
+      @update:model-value="onSelect"
+    />
   </div>
 </template>

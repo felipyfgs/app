@@ -14,5 +14,17 @@ export function useMitListaApuracoes() {
     return fiscal.mit.listaApuracoes(clientId, params)
   }
 
-  return { fetchLocalList }
+  async function enqueueList(
+    clientId: number,
+    filters: { year: number, month?: number, situation?: number }
+  ) {
+    return fiscal.mit.enqueueListaApuracoes({
+      client_id: clientId,
+      anoApuracao: filters.year,
+      ...(filters.month ? { mesApuracao: filters.month } : {}),
+      ...(filters.situation != null ? { situacaoApuracao: filters.situation } : {})
+    })
+  }
+
+  return { fetchLocalList, enqueueList }
 }

@@ -193,7 +193,7 @@ watch(sessionEpoch, () => {
 <template>
   <UDashboardPanel id="mailbox-detail" data-testid="mailbox-detail">
     <template #header>
-      <UDashboardNavbar :title="String(message?.subject_preview || `Mensagem #${messageId}`)" data-testid="page-navbar" :toggle="false">
+      <UDashboardNavbar :title="String(message?.subject_preview || `Mensagem #${messageId}`)" data-testid="mailbox-detail-navbar" :toggle="false">
         <template #leading>
           <UButton
             v-if="showClose"

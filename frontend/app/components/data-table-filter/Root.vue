@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * Filtros estruturados controlados: chips + seletor responsivo + editor.
- * Desktop: UPopover; mobile: UDrawer. Confirmação explícita; fechar descarta rascunho.
+ * Desktop: UPopover; mobile: UModal fullscreen (evita drawer inferior vs teclado).
+ * Confirmação explícita; fechar descarta rascunho.
  */
 import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
 import type {
@@ -9,6 +10,7 @@ import type {
   DataTableFilterModel
 } from '~/types/data-table-filter'
 import { findDefinition } from '~/utils/data-table-filters'
+import { COMPACT_BUTTON_LABEL_UI, DATA_TABLE_FILTERS_ROW } from '~/utils/list-filter-layout'
 import { useDataTableFilters } from '~/composables/useDataTableFilters'
 import DataTableFilterChip from '~/components/data-table-filter/Chip.vue'
 import DataTableFilterEditor from '~/components/data-table-filter/Editor.vue'
@@ -24,8 +26,8 @@ const props = withDefaults(defineProps<{
   showClear?: boolean
 }>(), {
   modelValue: () => [],
-  addLabel: 'Adicionar filtro',
-  clearLabel: 'Limpar tudo',
+  addLabel: 'Filtro',
+  clearLabel: 'Limpar',
   showClear: true
 })
 
@@ -135,7 +137,7 @@ const popoverContent = computed(() => ({
 
 <template>
   <div
-    class="flex min-w-0 flex-wrap items-center gap-1.5"
+    :class="DATA_TABLE_FILTERS_ROW"
     data-testid="data-table-filters"
   >
     <DataTableFilterChip
@@ -162,7 +164,7 @@ const popoverContent = computed(() => ({
         icon="i-lucide-funnel-plus"
         :label="addLabel"
         :aria-label="addLabel"
-        :ui="{ label: 'hidden sm:inline' }"
+        :ui="COMPACT_BUTTON_LABEL_UI"
         data-testid="data-table-filter-add"
       />
       <span
@@ -209,7 +211,7 @@ const popoverContent = computed(() => ({
       </template>
     </UPopover>
 
-    <!-- Mobile: drawer com seletor ou editor -->
+    <!-- Mobile: modal fullscreen — busca/edição no topo, longe do teclado. -->
     <template v-else>
       <UButton
         v-if="canAdd"
@@ -218,18 +220,19 @@ const popoverContent = computed(() => ({
         icon="i-lucide-funnel-plus"
         :label="addLabel"
         :aria-label="addLabel"
-        :ui="{ label: 'hidden sm:inline' }"
+        :ui="COMPACT_BUTTON_LABEL_UI"
         data-testid="data-table-filter-add"
         @click="openSelector"
       />
-      <UDrawer
+      <UModal
         v-model:open="overlayOpen"
         :title="overlayTitle"
-        :handle="false"
+        fullscreen
+        :ui="{ body: 'p-0' }"
       >
-        <template #content>
+        <template #body>
           <div
-            class="min-w-0 w-full max-w-full overflow-x-hidden"
+            class="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overflow-y-auto"
             data-testid="data-table-filter-overlay"
           >
             <DataTableFilterSelector
@@ -264,7 +267,7 @@ const popoverContent = computed(() => ({
             </DataTableFilterEditor>
           </div>
         </template>
-      </UDrawer>
+      </UModal>
     </template>
 
     <UButton
@@ -273,7 +276,7 @@ const popoverContent = computed(() => ({
       variant="ghost"
       :label="clearLabel"
       :aria-label="clearLabel"
-      :ui="{ label: 'hidden sm:inline' }"
+      :ui="COMPACT_BUTTON_LABEL_UI"
       icon="i-lucide-filter-x"
       data-testid="data-table-filter-clear"
       @click="clear"

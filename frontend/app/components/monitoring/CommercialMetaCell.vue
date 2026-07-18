@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
  * Célula de lista de monitores: saldo, último snapshot, próxima execução, bloqueio.
+ * Layout denso — no máximo duas linhas principais.
  */
 import {
   commercialBalanceLabel,
@@ -30,37 +31,45 @@ const balance = computed(() => commercialBalanceLabel({
 const block = computed(() =>
   props.blockMessage || commercialBlockLabel(props.blockReason)
 )
+
+const snapshotText = computed(() => lastSnapshotLabel(props.lastSnapshotAt))
+const nextText = computed(() => nextRunLabel(props.nextScheduledAt))
+
+const recentTooltip = computed(() =>
+  props.isRecent ? 'Snapshot recente (dentro do TTL)' : undefined
+)
 </script>
 
 <template>
   <div
-    class="space-y-0.5 text-xs"
+    class="space-y-0.5 text-xs leading-tight"
     data-testid="monitor-commercial-meta"
   >
-    <p>
+    <p class="min-w-0 truncate">
       <span class="text-muted">Saldo</span>
       <span class="ms-1 font-medium text-highlighted">{{ balance }}</span>
-    </p>
-    <p>
+      <span class="mx-1 text-dimmed">·</span>
       <span class="text-muted">Snapshot</span>
-      <span class="ms-1 text-highlighted">{{ lastSnapshotLabel(lastSnapshotAt) }}</span>
-      <UBadge
+      <UTooltip
         v-if="isRecent"
-        class="ms-1"
-        color="info"
-        variant="subtle"
-        size="sm"
+        :text="recentTooltip"
       >
-        recente
-      </UBadge>
+        <span class="ms-1 text-highlighted underline decoration-dotted decoration-muted underline-offset-2">
+          {{ snapshotText }}
+        </span>
+      </UTooltip>
+      <span
+        v-else
+        class="ms-1 text-highlighted"
+      >{{ snapshotText }}</span>
     </p>
-    <p>
+    <p class="min-w-0 truncate">
       <span class="text-muted">Próxima</span>
-      <span class="ms-1 text-highlighted">{{ nextRunLabel(nextScheduledAt) }}</span>
+      <span class="ms-1 text-highlighted">{{ nextText }}</span>
     </p>
     <p
       v-if="block"
-      class="text-warning"
+      class="truncate text-warning"
       role="status"
     >
       {{ block }}

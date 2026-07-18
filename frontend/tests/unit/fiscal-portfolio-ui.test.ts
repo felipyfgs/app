@@ -373,21 +373,26 @@ describe('ações de carteira no contexto da seleção', () => {
       resolve(__dirname, '../../app/components/monitoring/ModuleToolbar.vue'),
       'utf8'
     )
+    const shell = readFileSync(
+      resolve(__dirname, '../../app/components/shell/ListFilterToolbar.vue'),
+      'utf8'
+    )
 
-    expect(toolbar.indexOf('<slot name="actions"'))
-      .toBeLessThan(toolbar.indexOf('data-testid="fiscal-filter-refresh"'))
-    expect(toolbar.indexOf('data-testid="fiscal-filter-refresh"'))
-      .toBeLessThan(toolbar.indexOf('<slot name="trailing"'))
+    expect(toolbar).toContain('ShellListFilterToolbar')
+    expect(shell.indexOf('<slot name="actions"'))
+      .toBeLessThan(shell.indexOf('`${prefix}-refresh`'))
+    expect(shell.indexOf('`${prefix}-refresh`'))
+      .toBeLessThan(shell.indexOf('<slot name="trailing"'))
     // Busca larga à esquerda; filtros + ações à direita.
-    expect(toolbar).toContain('class="flex flex-wrap items-center justify-between gap-1.5"')
-    expect(toolbar).toContain('sm:max-w-2xl')
-    expect(toolbar).toContain('data-testid="fiscal-structured-filters"')
-    expect(toolbar).toContain('DataTableFilterRoot')
+    expect(shell).toContain('LIST_FILTER_TOOLBAR_STACK')
+    expect(shell).toContain('LIST_FILTER_SEARCH_INPUT')
+    expect(shell).toContain('LIST_FILTER_ACTIONS_ROW')
+    expect(shell).not.toContain('basis-full')
+    expect(shell).toContain('DataTableFilterRoot')
+    expect(shell).toContain(':show-clear="hasActive"')
+    expect(shell).not.toContain('label="Atualizar"')
+    expect(shell).toContain('@keyup.enter="submitQ"')
     expect(toolbar).toContain('onChipsClear')
-    expect(toolbar).toContain(':show-clear="hasActiveStructured"')
-    expect(toolbar).not.toContain('label="Atualizar"')
-    expect(toolbar).toContain('const qDraft = ref(appliedFilters.value.q)')
-    expect(toolbar).toContain('@keyup.enter="submitQ"')
   })
 
   it('filtros estruturados usam chips e contrato filters/filterConfig.fields', () => {
@@ -410,10 +415,13 @@ describe('ações de carteira no contexto da seleção', () => {
 
     expect(toolbar).toContain('monitoringFiltersToModels')
     expect(toolbar).toContain('modelsToMonitoringFilters')
-    expect(toolbar).toContain('DataTableFilterRoot')
-    expect(editor).toContain('type="month"')
+    expect(toolbar).toContain('ShellListFilterToolbar')
+    expect(editor).toContain('FilterDateInput')
+    expect(editor).toContain('mode="month"')
     expect(editor).toContain('Use uma competência válida no formato AAAA-MM.')
     expect(editor).toContain('data-testid="data-table-filter-confirm"')
+    expect(editor).not.toContain('type="month"')
+    expect(editor).not.toContain('type="date"')
     expect(toolbar).not.toContain('advancedQDraft')
     expect(toolbar).not.toContain('advancedSituationDraft')
     expect(moduleTable).toContain(':filters="filters"')

@@ -101,13 +101,15 @@ describe('console global SERPRO (superfície)', () => {
 
   it('reduz o console a três áreas e monta somente a subvisão selecionada', () => {
     const shell = readFileSync(resolve(APP, 'pages/admin/serpro.vue'), 'utf8')
-    const primaryLinks = shell.match(/const links = (\[\[[\s\S]*?\]\]) satisfies NavigationMenuItem/)?.[1] || ''
+    expect(shell).toContain('SERPRO_NAV_ITEMS')
+    expect(shell).toContain('SectionNavigation')
+    expect(shell).toContain('test-id="admin-serpro-section-navigation"')
 
-    expect(primaryLinks.match(/label:/g)).toHaveLength(3)
-    expect(primaryLinks).toContain('label: \'Operação\'')
-    expect(primaryLinks).toContain('label: \'Integração\'')
-    expect(primaryLinks).toContain('label: \'Canário DTE\'')
-    expect(primaryLinks).not.toMatch(/label: '(?:Cobertura|Consumo|Liberação|Contratos)'/)
+    const catalog = readFileSync(resolve(APP, 'utils/serpro-navigation.ts'), 'utf8')
+    expect(catalog).toContain('label: \'Operação\'')
+    expect(catalog).toContain('label: \'Integração\'')
+    expect(catalog).toContain('label: \'Canário DTE\'')
+    expect(catalog).not.toMatch(/label: '(?:Cobertura|Consumo|Liberação|Contratos)'/)
 
     const operation = readFileSync(resolve(APP, 'pages/admin/serpro/index.vue'), 'utf8')
     expect(operation).toContain('admin-serpro-operation-sections')

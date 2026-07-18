@@ -167,8 +167,8 @@ const eventColumns: TableColumn<NfseEvent>[] = [
 
 const tableUi = {
   ...DASHBOARD_TABLE_UI,
-  th: `${DASHBOARD_TABLE_UI.th} px-2 text-xs`,
-  td: `${DASHBOARD_TABLE_UI.td} px-2 py-1.5 text-sm`
+  th: `${DASHBOARD_TABLE_UI.th} px-2`,
+  td: `${DASHBOARD_TABLE_UI.td} px-2`
 }
 
 async function copyText(label: string, value?: string | null) {
@@ -612,7 +612,11 @@ async function submitManifest() {
             </span>
           </template>
           <template #status-cell="{ row }">
-            <ShellStatusBadge v-if="row.original.status" :status="row.original.status" />
+            <ShellStatusBadge
+              v-if="row.original.status"
+              fill
+              :status="row.original.status"
+            />
             <span v-else class="text-xs text-muted">—</span>
           </template>
         </UTable>

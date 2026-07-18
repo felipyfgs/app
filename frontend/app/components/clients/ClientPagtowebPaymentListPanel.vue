@@ -3,6 +3,7 @@ import type { TableColumn } from '@nuxt/ui'
 import type { PagtowebPaymentListHistoryPayload, PagtowebPaymentListItem } from '~/types/fiscal-modules'
 import { usePagtowebPaymentListMonitoring } from '~/composables/usePagtowebPaymentListMonitoring'
 import { formatDateTime } from '~/utils/format'
+import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const props = defineProps<{ clientId: number, canConsult: boolean }>()
 const toast = useToast()
@@ -131,7 +132,7 @@ watch(() => props.clientId, () => void load(), { immediate: true })
           <UTable
             :data="history.items"
             :columns="columns"
-            :ui="{ base: 'table-fixed border-separate border-spacing-0', thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none', tbody: '[&>tr]:last:[&>td]:border-b-0', th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r', td: 'border-b border-default', separator: 'h-0' }"
+            :ui="DASHBOARD_TABLE_UI"
           >
             <template #empty>
               <UEmpty icon="i-lucide-receipt-text" title="Nenhum documento nesta página" description="A consulta foi concluída sem documentos retornados para os filtros informados." />

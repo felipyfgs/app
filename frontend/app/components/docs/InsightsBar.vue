@@ -1,10 +1,12 @@
 <script setup lang="ts">
 /**
  * Faixa de triagem: contagens reais + clique = filtra (drill-down).
- * Sem métricas inventadas — só o que a API devolve em /notes/insights.
+ * Mobile: ShellScrollableTabs (scroll touch).
+ * sm+: grid de cards (HomeStats).
  */
 import type { NotesInsights } from '~/types/api'
 import type { NotesTriageQueue } from '~/utils/notes-filters'
+import ShellScrollableTabs from '~/components/shell/ScrollableTabs.vue'
 
 const props = defineProps<{
   insights: NotesInsights | null
@@ -72,6 +74,14 @@ const chips = computed((): Chip[] => {
   ]
 })
 
+const tabItems = computed(() =>
+  chips.value.map(chip => ({
+    label: chip.title,
+    value: chip.key,
+    badge: chip.value
+  }))
+)
+
 function leadingClass(tone?: Chip['tone'], active?: boolean) {
   if (active) return 'mb-1.5 p-2 sm:mb-2.5 sm:p-2.5 rounded-full bg-primary/10 ring ring-inset ring-primary/25 flex-col'
   if (tone === 'error') return 'mb-1.5 p-2 sm:mb-2.5 sm:p-2.5 rounded-full bg-error/10 ring ring-inset ring-error/25 flex-col'
@@ -79,19 +89,42 @@ function leadingClass(tone?: Chip['tone'], active?: boolean) {
   if (tone === 'success') return 'mb-1.5 p-2 sm:mb-2.5 sm:p-2.5 rounded-full bg-success/10 ring ring-inset ring-success/25 flex-col'
   return 'mb-1.5 p-2 sm:mb-2.5 sm:p-2.5 rounded-full bg-primary/10 ring ring-inset ring-primary/25 flex-col'
 }
+
+function onTabSelect(value: string | number) {
+  emit('select', String(value) as NotesTriageQueue)
+}
 </script>
 
 <template>
-  <div data-testid="notes-insights" class="w-full">
+  <div
+    data-testid="notes-insights"
+    class="w-full min-w-0"
+  >
     <div class="mb-2 flex items-center justify-between gap-2">
       <p class="text-xs font-medium uppercase tracking-wide text-muted">
         Triagem operacional
       </p>
-      <p v-if="loading" class="text-xs text-dimmed">
+      <p
+        v-if="loading"
+        class="text-xs text-dimmed"
+      >
         Atualizando…
       </p>
     </div>
-    <UPageGrid class="grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-5 lg:gap-px">
+
+    <!-- Mobile: tabs com scroll touch (mesmo contrato KPI fiscal). -->
+    <ShellScrollableTabs
+      class="sm:hidden"
+      :model-value="activeQueue || 'all'"
+      :items="tabItems"
+      size="sm"
+      aria-label="Triagem operacional"
+      test-id="notes-insights-tabs"
+      @update:model-value="onTabSelect"
+    />
+
+    <!-- sm+: cards densos. -->
+    <UPageGrid class="hidden grid-cols-2 gap-2 sm:grid sm:gap-4 lg:grid-cols-5 lg:gap-px">
       <UPageCard
         v-for="chip in chips"
         :key="chip.key"
@@ -106,7 +139,7 @@ function leadingClass(tone?: Chip['tone'], active?: boolean) {
           leading: leadingClass(chip.tone, activeQueue === chip.key),
           title: 'w-full truncate font-normal text-muted text-xs uppercase'
         }"
-        class="min-w-0 lg:rounded-none first:rounded-l-lg last:rounded-r-lg hover:z-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        class="min-w-0 cursor-pointer hover:z-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:rounded-none first:rounded-l-lg last:rounded-r-lg"
         role="button"
         tabindex="0"
         :aria-pressed="activeQueue === chip.key"

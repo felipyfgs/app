@@ -2,6 +2,12 @@
 /**
  * Acordeão de painéis secundários empilhados (doc Nuxt UI Accordion).
  * Use para blocos densos abaixo dos KPIs — não para a faixa de KPI.
+ *
+ * Padding: no Accordion, `#slot` customizado substitui `#content` e
+ * pula o wrapper `body` (onde o tema aplica pb). Por isso o inset
+ * horizontal fica em `trigger` + `content` (sempre renderizados),
+ * alinhado ao UCard (p-4 / sm:px-6). Prefira slots `#{{name}}-body`
+ * nos consumidores para herdar o wrapper `body`.
  */
 import type { AccordionItem } from '@nuxt/ui'
 
@@ -25,11 +31,11 @@ withDefaults(defineProps<{
     :default-value="defaultValue"
     :unmount-on-hide="false"
     :ui="{
-      root: 'min-w-0 w-full flex flex-col gap-2',
+      root: 'min-w-0 w-full shrink-0 flex flex-col gap-2',
       item: 'rounded-lg border border-default bg-elevated/50 overflow-hidden',
-      header: 'px-3 sm:px-4',
-      trigger: 'py-3 text-sm font-medium text-highlighted',
-      body: 'px-3 pb-4 sm:px-4 text-sm',
+      trigger: 'px-4 py-3 sm:px-6 text-sm font-medium text-highlighted',
+      content: 'px-4 sm:px-6',
+      body: 'pb-4 text-sm',
       label: 'min-w-0 truncate'
     }"
     :data-testid="testId"

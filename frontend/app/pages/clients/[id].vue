@@ -4,9 +4,10 @@
  * + layout de detalhe (header identidade + main + aside), inspirado em HubStrom.
  * Fonte template: .reference/nuxt-dashboard-template/app/pages/settings.vue
  */
-import type { NavigationMenuItem } from '@nuxt/ui'
+import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
 import type { Client, ClientCredential, Establishment } from '~/types/api'
 import { clientDetailKey, clientSectionPath } from '~/composables/useClientDetail'
+import { clientDetailNav } from '~/utils/client-detail-navigation'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,63 +29,7 @@ const registrationEditRequested = ref(false)
 
 const establishments = computed(() => item.value?.establishments || [])
 
-/**
- * Subnav horizontal no toolbar — mesmo contrato do template settings.vue
- * (`NavigationMenuItem[][]` + `UNavigationMenu` highlight).
- */
-const sectionLinks = computed<NavigationMenuItem[][]>(() => {
-  const id = clientId.value
-  const path = route.path.replace(/\/$/, '')
-  const base = `/clients/${id}`
-
-  return [[{
-    label: 'Resumo',
-    icon: 'i-lucide-layout-dashboard',
-    to: base,
-    exact: true,
-    active: path === base
-  }, {
-    label: 'Cadastro',
-    icon: 'i-lucide-clipboard-list',
-    to: `${base}/cadastro`,
-    active: path.endsWith('/cadastro')
-  }, {
-    label: 'Estabelecimentos',
-    icon: 'i-lucide-map-pin-house',
-    to: `${base}/estabelecimentos`,
-    active: path.endsWith('/estabelecimentos')
-  }, {
-    label: 'Certificado A1',
-    icon: 'i-lucide-badge-check',
-    to: `${base}/certificado`,
-    active: path.endsWith('/certificado')
-  }, {
-    label: 'Sincronização',
-    icon: 'i-lucide-refresh-cw',
-    to: `${base}/sincronizacao`,
-    active: path.endsWith('/sincronizacao')
-  }, {
-    label: 'CCMEI',
-    icon: 'i-lucide-badge-check',
-    to: `${base}/ccmei`,
-    active: path.endsWith('/ccmei')
-  }, {
-    label: 'Receitas SICALC',
-    icon: 'i-lucide-receipt-text',
-    to: `${base}/sicalc`,
-    active: path.endsWith('/sicalc')
-  }, {
-    label: 'Pagamentos',
-    icon: 'i-lucide-chart-no-axes-column',
-    to: `${base}/pagamentos`,
-    active: path.endsWith('/pagamentos')
-  }, {
-    label: 'Captura de saídas',
-    icon: 'i-lucide-arrow-up-from-line',
-    to: `${base}/saidas`,
-    active: path.endsWith('/saidas')
-  }]]
-})
+const sectionLinks = computed(() => clientDetailNav(clientId.value))
 
 async function load() {
   loading.value = true
@@ -263,8 +208,13 @@ onMounted(async () => {
       </UDashboardNavbar>
 
       <UDashboardToolbar v-if="item" data-testid="client-section-tabs">
-        <!-- NOTE: The `-mx-1` class is used to align with the `DashboardSidebarCollapse` button here. -->
-        <UNavigationMenu :items="sectionLinks" highlight class="-mx-1 flex-1" />
+        <SectionNavigation
+          :items="sectionLinks"
+          :path="route.fullPath"
+          aria-label="Navegação do cliente"
+          subtabs-aria-label="Seções do cliente"
+          test-id="client-detail-section-navigation"
+        />
       </UDashboardToolbar>
     </template>
 

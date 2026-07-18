@@ -4,6 +4,7 @@
  */
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { SavedListFilter } from '~/types/saved-list-filters'
+import { COMPACT_BUTTON_LABEL_UI } from '~/utils/list-filter-layout'
 
 const props = withDefaults(defineProps<{
   items: SavedListFilter[]
@@ -89,9 +90,9 @@ function onOpenChange(open: boolean) {
       color="neutral"
       variant="outline"
       icon="i-lucide-bookmark"
-      label="Filtros salvos"
+      label="Salvos"
       aria-label="Filtros salvos"
-      :ui="{ label: 'hidden sm:inline' }"
+      :ui="COMPACT_BUTTON_LABEL_UI"
       :loading="loading"
       :disabled="disabled"
       data-testid="saved-filters-menu"

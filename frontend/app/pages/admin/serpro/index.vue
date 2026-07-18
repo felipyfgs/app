@@ -9,6 +9,7 @@ import {
   buildKillSwitchOffBody,
   expectedOwnerConfirmationPhrase
 } from '~/utils/serpro-owner-confirmation'
+import ShellScrollableTabs from '~/components/shell/ScrollableTabs.vue'
 import RolloutView from './rollout.vue'
 import UsageView from './usage.vue'
 
@@ -313,15 +314,13 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-6" data-testid="admin-serpro-operation">
-    <UTabs
+    <ShellScrollableTabs
       :model-value="activeSection"
       :items="operationSections"
-      :content="false"
       color="neutral"
-      variant="pill"
       class="w-full"
       aria-label="Seções da operação SERPRO"
-      data-testid="admin-serpro-operation-sections"
+      test-id="admin-serpro-operation-sections"
       @update:model-value="selectSection"
     />
 

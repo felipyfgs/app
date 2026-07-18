@@ -5,6 +5,8 @@
  * Não oferece retry remoto, aumento de frequência nem postergação de due_at.
  */
 import type { TableColumn } from '@nuxt/ui'
+import { TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+import OperationsSectionNav from '~/components/navigation/OperationsSectionNav.vue'
 import type {
   OutboundCapacityForecast,
   OutboundCompetenceSummary,
@@ -23,6 +25,11 @@ import DataTableFilterRoot from '~/components/data-table-filter/Root.vue'
 import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
 import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
 import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
+import {
+  COMPACT_BUTTON_LABEL_UI,
+  LIST_FILTER_ACTIONS_ROW,
+  LIST_FILTER_TOOLBAR_STACK
+} from '~/utils/list-filter-layout'
 
 const api = useApi()
 const route = useRoute()
@@ -529,11 +536,22 @@ watch(sessionEpoch, () => {
   void load()
 })
 
-onMounted(() => {
-  if (Object.keys(route.query).length) {
-    void router.replace({ path: route.path })
-  }
-})
+async function syncClosingUrl() {
+  const query: Record<string, string> = {}
+  if (competence.value) query.competence = competence.value
+  if (bandFilter.value && bandFilter.value !== FILTER_ALL) query.band = bandFilter.value
+  if (modelFilter.value && modelFilter.value !== FILTER_ALL) query.model = modelFilter.value
+  if (rootFilter.value.trim()) query.root = rootFilter.value.trim()
+  if (sourceFilter.value && sourceFilter.value !== FILTER_ALL) query.source = sourceFilter.value
+  if (clientFilter.value.trim()) query.client_id = clientFilter.value.trim()
+  if (pendingPage.value > 1) query.page = String(pendingPage.value)
+  await router.replace({ path: route.path, query })
+}
+
+watch(
+  [competence, bandFilter, modelFilter, rootFilter, sourceFilter, clientFilter, pendingPage],
+  () => { void syncClosingUrl() }
+)
 </script>
 
 <template>
@@ -561,6 +579,10 @@ onMounted(() => {
           </UTooltip>
         </template>
       </UDashboardNavbar>
+
+      <UDashboardToolbar data-testid="operations-section-tabs">
+        <OperationsSectionNav />
+      </UDashboardToolbar>
     </template>
 
     <template #body>
@@ -568,43 +590,50 @@ onMounted(() => {
         Competência fica fixa (contexto da tela).
         Demais campos: DataTableFilterRoot (mesmo núcleo do portfolio).
       -->
-      <div class="mb-4 flex w-full min-w-0 flex-wrap items-center justify-between gap-1.5">
-        <UFormField
-          label="Competência"
-          class="w-full sm:w-40"
-        >
-          <UInput
-            v-model="competence"
-            type="month"
-            data-testid="closing-competence"
-            aria-label="Competência (AAAA-MM)"
-          />
-        </UFormField>
-        <div class="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-          <DataTableFilterRoot
-            :definitions="closingFilterDefinitions"
-            :model-value="chipModels"
-            :reset-key="sessionEpoch"
-            data-testid="closing-structured-filters"
-            @update:model-value="onStructuredFilters"
-            @clear="onClearStructuredFilters"
-          />
-          <UButton
-            v-if="canSavePreset"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-save"
-            label="Salvar"
-            data-testid="save-filters-button"
-            @click="openSave"
-          />
-          <DataTableFilterSavedFiltersMenu
-            :items="presets"
-            :loading="presetsLoading"
-            @apply="applyPreset"
-            @manage="openManage"
-            @open="onSavedMenuOpen"
-          />
+      <div
+        class="mb-4 w-full min-w-0"
+        data-testid="closing-filter-toolbar"
+      >
+        <div :class="LIST_FILTER_TOOLBAR_STACK">
+          <UFormField
+            label="Competência"
+            class="w-full shrink-0 sm:w-40"
+          >
+            <UInput
+              v-model="competence"
+              type="month"
+              data-testid="closing-competence"
+              aria-label="Competência (AAAA-MM)"
+            />
+          </UFormField>
+          <div :class="LIST_FILTER_ACTIONS_ROW">
+            <DataTableFilterRoot
+              :definitions="closingFilterDefinitions"
+              :model-value="chipModels"
+              :reset-key="sessionEpoch"
+              data-testid="closing-structured-filters"
+              @update:model-value="onStructuredFilters"
+              @clear="onClearStructuredFilters"
+            />
+            <UButton
+              v-if="canSavePreset"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-save"
+              label="Salvar"
+              aria-label="Salvar filtros"
+              :ui="COMPACT_BUTTON_LABEL_UI"
+              data-testid="save-filters-button"
+              @click="openSave"
+            />
+            <DataTableFilterSavedFiltersMenu
+              :items="presets"
+              :loading="presetsLoading"
+              @apply="applyPreset"
+              @manage="openManage"
+              @open="onSavedMenuOpen"
+            />
+          </div>
         </div>
       </div>
 
@@ -732,13 +761,13 @@ onMounted(() => {
           base: 'table-fixed border-separate border-spacing-0',
           thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
           tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'border-b border-default',
+          th: 'px-3 py-1.5 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
+          td: 'px-3 py-1 border-b border-default',
           separator: 'h-0'
         }"
       >
         <template #urgency_band-cell="{ row }">
-          <div class="flex items-center gap-2">
+          <div class="flex w-full min-w-0 items-center gap-2">
             <UIcon
               :name="bandIcon(row.original.urgency_band)"
               class="size-4 shrink-0"
@@ -749,7 +778,13 @@ onMounted(() => {
                 'text-success': bandColor(row.original.urgency_band) === 'success'
               }"
             />
-            <UBadge :color="bandColor(row.original.urgency_band)" variant="subtle">
+            <UBadge
+              :color="bandColor(row.original.urgency_band)"
+              variant="subtle"
+              size="md"
+              class="h-8 min-w-0 flex-1 justify-center tabular-nums font-normal"
+              :ui="TABLE_CELL_BADGE_UI"
+            >
               {{ bandLabel(row.original.urgency_band) }}
             </UBadge>
             <UBadge
@@ -757,6 +792,7 @@ onMounted(() => {
               color="error"
               variant="outline"
               size="sm"
+              class="shrink-0"
             >
               Capacidade em risco
             </UBadge>

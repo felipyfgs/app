@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui'
+import OperationsSectionNav from '~/components/navigation/OperationsSectionNav.vue'
 import type { CteChannelCursor, CteHealth, SyncRun } from '~/types/api'
 
 const api = useApi()
@@ -229,6 +230,10 @@ onMounted(refreshAll)
           </UTooltip>
         </template>
       </UDashboardNavbar>
+
+      <UDashboardToolbar data-testid="operations-section-tabs">
+        <OperationsSectionNav />
+      </UDashboardToolbar>
     </template>
 
     <template #body>
@@ -424,20 +429,25 @@ onMounted(refreshAll)
           base: 'table-fixed border-separate border-spacing-0',
           thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
           tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'border-b border-default',
+          th: 'px-3 py-1.5 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
+          td: 'px-3 py-1 border-b border-default',
           separator: 'h-0'
         }"
         @select="selectRow"
       >
         <template #status-cell="{ row }">
-          <div class="flex flex-wrap items-center gap-2">
-            <ShellStatusBadge :status="row.original.status" />
+          <div class="flex w-full min-w-0 flex-wrap items-center gap-2">
+            <ShellStatusBadge
+              fill
+              :status="row.original.status"
+              class="min-w-0 flex-1"
+            />
             <UBadge
               v-if="isBlocked(row.original)"
               color="error"
               variant="subtle"
               icon="i-lucide-ban"
+              class="shrink-0"
             >
               Cursor bloqueado
             </UBadge>

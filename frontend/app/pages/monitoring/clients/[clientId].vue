@@ -4,7 +4,8 @@
  * Arquétipo Settings (nav horizontal) com seções LAZY: só a aba ativa é carregada.
  * Falha parcial com retry — nunca lista vazia silenciosa.
  */
-import type { NavigationMenuItem } from '@nuxt/ui'
+import NavbarMoreActions from '~/components/navigation/NavbarMoreActions.vue'
+import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
 import type { Client, FiscalFinding, FiscalMonitoringRun, FiscalPendingItem, FiscalSnapshot } from '~/types/api'
 import type {
   FiscalDocumentDescriptor,
@@ -12,6 +13,7 @@ import type {
   FiscalTaxProcess
 } from '~/types/fiscal-modules'
 import { documentActionVisible } from '~/types/fiscal-modules'
+import { clientFiscalDetailNav } from '~/utils/client-fiscal-detail-navigation'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
@@ -30,10 +32,13 @@ type SectionKey
     | 'pending'
     | 'installments'
     | 'declarations'
+    | 'pgdasd'
     | 'guides'
     | 'fgts'
     | 'sitfis'
     | 'registrations'
+    | 'ccmei'
+    | 'renunciations'
     | 'tax_processes'
 
 const SECTION_KEYS: SectionKey[] = [
@@ -43,10 +48,13 @@ const SECTION_KEYS: SectionKey[] = [
   'pending',
   'installments',
   'declarations',
+  'pgdasd',
   'guides',
   'fgts',
   'sitfis',
   'registrations',
+  'ccmei',
+  'renunciations',
   'tax_processes'
 ]
 
@@ -57,7 +65,7 @@ function isSectionKey(value: string): value is SectionKey {
 const api = useApi()
 const route = useRoute()
 const router = useRouter()
-const { sessionEpoch } = useDashboard()
+const { canTriggerSync, sessionEpoch } = useDashboard()
 
 const clientId = computed(() => Number(route.params.clientId))
 const tab = computed({
@@ -154,10 +162,13 @@ const sections = reactive<Record<SectionKey, SectionState>>({
   pending: emptySection(),
   installments: emptySection(),
   declarations: emptySection(),
+  pgdasd: emptySection(),
   guides: emptySection(),
   fgts: emptySection(),
   sitfis: emptySection(),
   registrations: emptySection(),
+  ccmei: emptySection(),
+  renunciations: emptySection(),
   tax_processes: emptySection()
 })
 
@@ -165,80 +176,7 @@ function cacheKey(): string {
   return `${clientId.value}@${sessionEpoch.value}`
 }
 
-const links = computed<NavigationMenuItem[][]>(() => {
-  const active = tab.value
-  const setTab = (value: SectionKey) => {
-    tab.value = value
-  }
-  return [[
-    {
-      label: 'Visão geral',
-      value: 'overview',
-      active: active === 'overview',
-      onSelect: () => setTab('overview')
-    },
-    {
-      label: 'Execuções',
-      value: 'runs',
-      active: active === 'runs',
-      onSelect: () => setTab('runs')
-    },
-    {
-      label: 'Findings',
-      value: 'findings',
-      active: active === 'findings',
-      onSelect: () => setTab('findings')
-    },
-    {
-      label: 'Pendências',
-      value: 'pending',
-      active: active === 'pending',
-      onSelect: () => setTab('pending')
-    },
-    {
-      label: 'Parcelamentos',
-      value: 'installments',
-      active: active === 'installments',
-      onSelect: () => setTab('installments')
-    },
-    {
-      label: 'Declarações',
-      value: 'declarations',
-      active: active === 'declarations',
-      onSelect: () => setTab('declarations')
-    },
-    {
-      label: 'Guias',
-      value: 'guides',
-      active: active === 'guides',
-      onSelect: () => setTab('guides')
-    },
-    {
-      label: 'FGTS',
-      value: 'fgts',
-      active: active === 'fgts',
-      onSelect: () => setTab('fgts')
-    },
-    {
-      label: 'SITFIS',
-      value: 'sitfis',
-      active: active === 'sitfis',
-      onSelect: () => setTab('sitfis')
-    },
-    {
-      label: 'Cadastro / Vínculos',
-      value: 'registrations',
-      active: active === 'registrations',
-      onSelect: () => setTab('registrations')
-    },
-    {
-      label: 'Processos fiscais',
-      value: 'tax_processes',
-      active: active === 'tax_processes',
-      onSelect: () => setTab('tax_processes')
-    }
-  ]]
-})
+const links = computed(() => clientFiscalDetailNav(clientId.value))
 
 const snapshotColumns = [
   { accessorKey: 'id', header: 'ID' },
@@ -246,7 +184,7 @@ const snapshotColumns = [
     id: 'situation',
     header: 'Situação',
     cell: ({ row }: { row: { original: FiscalSnapshot } }) =>
-      h(FiscalStatusBadge, { status: row.original.situation })
+      h(FiscalStatusBadge, { fill: true, status: row.original.situation })
   },
   {
     id: 'service',
@@ -323,14 +261,14 @@ const runColumns = [
     id: 'status',
     header: 'Situação',
     cell: ({ row }: { row: { original: FiscalMonitoringRun } }) =>
-      h(FiscalStatusBadge, { status: row.original.situation || row.original.status })
+      h(FiscalStatusBadge, { fill: true, status: row.original.situation || row.original.status })
   }
 ]
 
 const findingColumns = [
   {
     id: 'title',
-    header: 'Finding',
+    header: 'Achado',
     cell: ({ row }: { row: { original: FiscalFinding } }) => row.original.title || row.original.code
   },
   {
@@ -342,7 +280,7 @@ const findingColumns = [
     id: 'status',
     header: 'Situação',
     cell: ({ row }: { row: { original: FiscalFinding } }) =>
-      h(FiscalStatusBadge, { status: row.original.situation || row.original.severity })
+      h(FiscalStatusBadge, { fill: true, status: row.original.situation || row.original.severity })
   }
 ]
 
@@ -366,7 +304,7 @@ const pendingColumns = [
     id: 'status',
     header: 'Situação',
     cell: ({ row }: { row: { original: FiscalPendingItem } }) =>
-      h(FiscalStatusBadge, { status: row.original.situation || row.original.status })
+      h(FiscalStatusBadge, { fill: true, status: row.original.situation || row.original.status })
   }
 ]
 
@@ -396,7 +334,7 @@ const installmentColumns = [
     id: 'status',
     header: 'Situação',
     cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
-      h(FiscalStatusBadge, { status: String(row.original.situation || row.original.status || '') })
+      h(FiscalStatusBadge, { fill: true, status: String(row.original.situation || row.original.status || '') })
   },
   documentColumnFor<Record<string, unknown> & { document?: FiscalDocumentDescriptor | null }>()
 ]
@@ -424,9 +362,7 @@ const declarationColumns = [
     id: 'status',
     header: 'Situação',
     cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
-      h(FiscalStatusBadge, {
-        status: String(row.original.delivery_status || row.original.situation || row.original.status || '')
-      })
+      h(FiscalStatusBadge, { fill: true, status: String(row.original.delivery_status || row.original.situation || row.original.status || '') })
   },
   documentColumnFor<Record<string, unknown> & { document?: FiscalDocumentDescriptor | null }>()
 ]
@@ -456,7 +392,7 @@ const guideColumns = [
     id: 'status',
     header: 'Pagamento',
     cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
-      h(FiscalStatusBadge, { status: String(row.original.payment_status || 'UNKNOWN') })
+      h(FiscalStatusBadge, { fill: true, status: String(row.original.payment_status || 'UNKNOWN') })
   },
   documentColumnFor<Record<string, unknown> & { document?: FiscalDocumentDescriptor | null }>()
 ]
@@ -484,7 +420,7 @@ const fgtsColumns = [
     id: 'status',
     header: 'Situação',
     cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
-      h(FiscalStatusBadge, { status: String(row.original.situation || row.original.closure_status || '') })
+      h(FiscalStatusBadge, { fill: true, status: String(row.original.situation || row.original.closure_status || '') })
   }
 ]
 
@@ -560,6 +496,8 @@ function clearSectionData(key: SectionKey) {
     case 'declarations':
       declarations.value = []
       break
+    case 'pgdasd':
+      break
     case 'guides':
       guides.value = []
       break
@@ -571,6 +509,10 @@ function clearSectionData(key: SectionKey) {
       break
     case 'registrations':
       registrationLinks.value = []
+      break
+    case 'ccmei':
+      break
+    case 'renunciations':
       break
     case 'tax_processes':
       taxProcesses.value = []
@@ -686,6 +628,9 @@ async function loadSection(key: SectionKey, force = false) {
         declarations.value = (res.data as Record<string, unknown>[]) || []
         break
       }
+      case 'pgdasd':
+        // O histórico carrega apenas a projeção local dentro do próprio painel.
+        break
       case 'guides': {
         const res = await api.fiscal.guides.list({
           client_id: clientId.value,
@@ -716,6 +661,12 @@ async function loadSection(key: SectionKey, force = false) {
         registrationLinks.value = res.data?.links || []
         break
       }
+      case 'renunciations':
+        // O painel possui carregamento próprio: trocar de aba não gera egress.
+        break
+      case 'ccmei':
+        // Os painéis carregam somente projeções locais; egress exige clique explícito.
+        break
       case 'tax_processes': {
         const res = await api.fiscal.taxProcesses.forClient(clientId.value)
         if (cacheKey() !== keyNow) return
@@ -786,25 +737,41 @@ onMounted(async () => {
         </template>
         <template #right>
           <UButton
-            to="/clients"
+            to="/monitoring"
             color="neutral"
             variant="ghost"
-            icon="i-lucide-users"
-            label="Cadastro"
+            icon="i-lucide-arrow-left"
+            label="Dashboard"
+            class="hidden sm:inline-flex"
           />
           <UButton
             to="/monitoring"
             color="neutral"
             variant="ghost"
             icon="i-lucide-arrow-left"
-            label="Dashboard"
+            square
+            class="sm:hidden"
+            aria-label="Dashboard"
+          />
+          <NavbarMoreActions
+            :items="[{
+              id: 'client-cadastro',
+              label: 'Cadastro',
+              icon: 'i-lucide-users',
+              to: '/clients'
+            }]"
           />
         </template>
       </UDashboardNavbar>
 
       <UDashboardToolbar data-testid="monitoring-client-section-tabs">
-        <!-- NOTE: The `-mx-1` class is used to align with the `DashboardSidebarCollapse` button here. -->
-        <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
+        <SectionNavigation
+          :items="links"
+          :path="route.fullPath"
+          aria-label="Navegação fiscal do cliente"
+          subtabs-aria-label="Seções fiscais do cliente"
+          test-id="monitoring-client-section-navigation"
+        />
       </UDashboardToolbar>
     </template>
 
@@ -901,6 +868,34 @@ onMounted(async () => {
               </UTable>
             </UPageCard>
 
+            <ClientPnrRenunciationsPanel
+              v-else-if="tab === 'renunciations'"
+              :client-id="clientId"
+              :can-consult="canTriggerSync"
+            />
+
+            <section v-else-if="tab === 'pgdasd'">
+              <MonitoringPgdasdHistoryView
+                :client-id="clientId"
+                :can-collect-documents="canTriggerSync"
+              />
+            </section>
+
+            <div v-else-if="tab === 'ccmei'" class="space-y-4">
+              <ClientCcmeiPanel
+                :client-id="clientId"
+                :can-consult="canTriggerSync"
+              />
+              <ClientCcmeiRegistrationStatusPanel
+                :client-id="clientId"
+                :can-consult="canTriggerSync"
+              />
+              <ClientCcmeiCertificateIssuancePanel
+                :client-id="clientId"
+                :can-consult="canTriggerSync"
+              />
+            </div>
+
             <UPageCard
               v-else-if="tab === 'runs'"
               title="Execuções"
@@ -923,7 +918,7 @@ onMounted(async () => {
 
             <UPageCard
               v-else-if="tab === 'findings'"
-              title="Findings"
+              title="Achados"
               variant="subtle"
             >
               <UTable
@@ -935,7 +930,7 @@ onMounted(async () => {
                 <template #empty>
                   <MonitoringTableEmptyState
                     kind="empty"
-                    title="Nenhum finding ativo"
+                    title="Nenhum achado ativo"
                   />
                 </template>
               </UTable>
@@ -1097,9 +1092,11 @@ onMounted(async () => {
                   icon="i-lucide-circle-x"
                   class="mb-3"
                   :title="String(sitfisErrorCode)"
-                  :description="sitfisErrorMessage || undefined"
                   data-testid="client-sitfis-error"
                 />
+                <p v-if="sitfisErrorMessage" class="mb-3 text-sm text-error">
+                  {{ sitfisErrorMessage }}
+                </p>
                 <dl
                   class="grid gap-2 text-sm sm:grid-cols-2"
                   data-testid="client-sitfis-fields"

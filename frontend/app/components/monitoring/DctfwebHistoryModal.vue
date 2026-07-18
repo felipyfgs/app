@@ -6,6 +6,7 @@ import type {
 } from '~/types/fiscal-modules'
 import { useDctfwebMonitoring } from '~/composables/useDctfwebMonitoring'
 import { apiErrorMessage } from '~/utils/api-error'
+import { resolveApiUrl } from '~/utils/api-url'
 import { formatBytes, formatDateTime } from '~/utils/format'
 import {
   dctfwebDeclarationMeta,
@@ -25,6 +26,7 @@ const emit = defineEmits<{
 }>()
 
 const { fetchHistory, evidenceDownloadUrl } = useDctfwebMonitoring()
+const apiBase = useRuntimeConfig().public.apiBase as string
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -39,6 +41,9 @@ const periods = computed(() =>
 )
 const stateMeta = computed(() => dctfwebDeclarationMeta(payload.value.declaration_state))
 const serproCalled = computed(() => payload.value.provenance?.serpro_called === true)
+const provenanceLabel = computed(() =>
+  serproCalled.value ? 'Resultado de consulta registrado' : 'Projeção local'
+)
 
 async function loadHistory() {
   const clientId = props.clientId
@@ -84,7 +89,7 @@ function docsOf(period: DctfwebHistoryPeriod): DctfwebEvidenceDescriptor[] {
 
 function documentDownloadUrl(doc: DctfwebEvidenceDescriptor): string | undefined {
   const path = doc.download_path?.trim()
-  if (path) return path
+  if (path) return resolveApiUrl(path, apiBase)
   if (!props.clientId || !doc.id) return undefined
   return evidenceDownloadUrl(props.clientId, doc.id)
 }
@@ -110,10 +115,7 @@ function documentDownloadUrl(doc: DctfwebEvidenceDescriptor): string | undefined
                 <span v-if="cnpjMasked"> · {{ cnpjMasked }}</span>
               </p>
               <p class="text-muted text-xs mt-1">
-                Dados locais ·
-                <span :class="serproCalled ? 'text-error' : 'text-success'">
-                  serpro_called: {{ serproCalled ? 'true' : 'false' }}
-                </span>
+                Origem: {{ provenanceLabel }}
               </p>
             </div>
             <UButton

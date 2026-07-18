@@ -40,7 +40,8 @@ describe('admin owner surface contract', () => {
   it('expõe perfil genérico sem campos exclusivos do proprietário', () => {
     expect(shell).toContain('data-testid="account-panel"')
     expect(shell).toContain('title="Conta"')
-    expect(shell).toContain('accountNavigationItems(me.value)')
+    expect(shell).toContain('accountNavigationTree(me.value)')
+    expect(shell).toContain('SectionNavigation')
     expect(accountNavigation).toContain('label: \'Perfil\'')
     expect(accountNavigation).toContain('to: \'/conta\'')
     expect(accountNavigation).toContain('label: \'Escritório\'')

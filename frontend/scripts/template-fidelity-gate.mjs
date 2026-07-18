@@ -8,7 +8,7 @@
  *   node frontend/scripts/template-fidelity-gate.mjs --self-test
  *
  * Fonte de inventário:
- *   openspec/changes/ui-template-fidelity-total/parity-matrix.md
+ *   frontend/tests/fixtures/template-parity-matrix.md
  *
  * Cascas de produto permitidas (embutem o template):
  *   MonitoringModuleTable, DocsWorkspace, WorkQueueWorkspace, DASHBOARD_TABLE_UI
@@ -21,7 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(__dirname, '../..')
 const PAGES = path.join(REPO, 'frontend/app/pages')
 const APP = path.join(REPO, 'frontend/app')
-const MATRIX = path.join(REPO, 'openspec/changes/ui-template-fidelity-total/parity-matrix.md')
+const MATRIX = path.join(REPO, 'frontend/tests/fixtures/template-parity-matrix.md')
 
 /** Wrappers que NÃO embutem o template — proibidos em pages. */
 const FORBIDDEN_CHROME = [

@@ -9,14 +9,65 @@ import {
 } from '../../app/utils/monitoring-nav'
 
 describe('MonitoringModuleNav items (6.3)', () => {
-  it('preserva a navegação compacta e legível em telas estreitas', () => {
+  it('delega a navegação responsiva ao SectionNavigation com path da URL', () => {
     const component = readFileSync(
       resolve(__dirname, '../../app/components/monitoring/MonitoringModuleNav.vue'),
       'utf8'
     )
 
-    expect(component).toContain('link: \'gap-0 px-1.5 sm:px-2\'')
-    expect(component).toContain('linkLabel: \'whitespace-nowrap text-xs sm:text-sm\'')
+    expect(component).toContain('SectionNavigation')
+    expect(component).toContain('fiscalNavigationItems')
+    expect(component).toContain('test-id="monitoring-module-nav"')
+    expect(component).toContain(':path="route.fullPath"')
+    expect(component).toContain('monitoring-module-nav-skeleton')
+    expect(component).not.toContain('monitoringPathForModule')
+    expect(component).not.toContain('resolvedPath')
+    const sectionNav = readFileSync(
+      resolve(__dirname, '../../app/components/navigation/SectionNavigation.vue'),
+      'utf8'
+    )
+    expect(sectionNav).toContain('min-h-11')
+    expect(sectionNav).toContain('lg:hidden')
+    expect(sectionNav).toContain('hidden min-w-0 lg:block')
+  })
+
+  it('ModuleTable hospeda nav no slot default multi-linha (sem #left de uma faixa)', () => {
+    const moduleTable = readFileSync(
+      resolve(__dirname, '../../app/components/monitoring/ModuleTable.vue'),
+      'utf8'
+    )
+    expect(moduleTable).toContain('data-testid="monitoring-nav-toolbar"')
+    expect(moduleTable).toContain('overflow-visible')
+    expect(moduleTable).toContain('items-stretch')
+    expect(moduleTable).toContain('<MonitoringModuleNav />')
+    // Não prende SectionNavigation em template #left
+    const toolbarBlock = moduleTable.slice(
+      moduleTable.indexOf('monitoring-nav-toolbar') - 200,
+      moduleTable.indexOf('monitoring-nav-toolbar') + 400
+    )
+    expect(toolbarBlock).not.toMatch(/#left[\s\S]*MonitoringModuleNav/)
+  })
+
+  it('controles segmentados locais não competem visualmente com a nav fiscal', () => {
+    const simples = readFileSync(
+      resolve(__dirname, '../../app/pages/monitoring/simples-mei/index.vue'),
+      'utf8'
+    )
+    const dctf = readFileSync(
+      resolve(__dirname, '../../app/pages/monitoring/dctfweb/index.vue'),
+      'utf8'
+    )
+    for (const src of [simples, dctf]) {
+      expect(src).toContain('variant="pill"')
+      expect(src).toContain('color="primary"')
+      expect(src).not.toContain('>Cápsula<')
+      expect(src).not.toContain('border-t border-default/60')
+    }
+    expect(simples).toContain('badge: t.badge')
+    expect(simples).toContain('Regime: Simples Nacional ou MEI')
+    expect(dctf).toContain('Declaração: DCTFWeb ou MIT')
+    expect(simples).toContain('simples-mei-capsule-control')
+    expect(dctf).toContain('dctfweb-capsule-control')
   })
 
   it('lista todos os destinos do hub fiscal', () => {

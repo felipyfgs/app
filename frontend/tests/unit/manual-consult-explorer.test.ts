@@ -36,6 +36,17 @@ describe('explorador de consultas manuais (contrato UI)', () => {
     expect(explorer).toContain('data-testid="manual-consult-confirm"')
     expect(explorer).toContain('Confirmar consulta')
     expect(explorer).toContain('bilhetagem só após confirmação')
+    // UCard tem overflow-hidden: sem shrink-0 o flex do panel esmaga o body
+    expect(explorer).toContain('class="shrink-0"')
+  })
+
+  it('não usa string vazia como valor de opção do USelect', () => {
+    const explorer = readApp('components/monitoring/ManualConsultExplorer.vue')
+
+    expect(explorer).toContain('const ALL_MODULES_VALUE = \'__all__\'')
+    expect(explorer).toContain('value: ALL_MODULES_VALUE')
+    expect(explorer).not.toContain('label: \'Todos os módulos\', value: \'\'')
+    expect(explorer).toContain('module_key: moduleFilter.value === ALL_MODULES_VALUE ? undefined : moduleFilter.value')
   })
 
   it('CTA reutiliza o mesmo contrato e bloqueia não-ready', () => {

@@ -3,6 +3,7 @@ import {
   flattenDestinations,
   mainDestinations,
   quickActions,
+  searchableDestinations,
   sidebarDestinationGroups,
   toNavigationItems
 } from '../../app/utils/navigation'
@@ -77,10 +78,10 @@ describe('navigation', () => {
     expect(canonical.map(item => item.label)).toEqual([
       'Perfil',
       'Escritório',
-      'Consumo',
-      'Assinatura',
+      'Departamentos',
       'Equipe',
-      'Departamentos'
+      'Assinatura',
+      'Consumo'
     ])
   })
 
@@ -94,7 +95,8 @@ describe('navigation', () => {
       requires_two_factor_setup: false,
       is_platform_admin: true,
       office: null,
-      role: null
+      role: null,
+      context_status: 'office_context_required'
     }
     const tree = mainDestinations(plat)
     const ids = flattenDestinations(tree).map(d => d.id)
@@ -151,14 +153,14 @@ describe('navigation', () => {
     expect(accountNavigationItems(plat).map(i => i.id)).toEqual([
       'account-profile',
       'account-office',
-      'account-usage',
-      'account-subscription',
+      'account-departments',
       'account-team',
-      'account-departments'
+      'account-subscription',
+      'account-usage'
     ])
   })
 
-  it('destinos folha do operador batem com o produto (Trabalho, Clientes, Monitoramento, Documentos e Operações)', () => {
+  it('destinos do operador batem com a taxonomia (Trabalho, Clientes, Fiscal, Documentos e Operações)', () => {
     const tree = mainDestinations(user('OPERATOR'))
     expect(tree.map(d => d.id)).toEqual([
       'home',
@@ -169,6 +171,8 @@ describe('navigation', () => {
       'operations',
       'settings'
     ])
+    expect(tree.find(d => d.id === 'monitoring')?.label).toBe('Fiscal')
+    expect(tree.find(d => d.id === 'settings')?.label).toBe('Conta')
     expect(tree.find(d => d.id === 'work')?.children?.map(c => c.id)).toEqual([
       'work-queue',
       'work-processes',
@@ -180,16 +184,15 @@ describe('navigation', () => {
     ])
     expect(tree.find(d => d.id === 'docs')?.children?.map(c => c.id)).toEqual([
       'docs-by-client',
-      'docs-catalog'
+      'docs-catalog',
+      'docs-imports',
+      'docs-exports'
     ])
     expect(tree.find(d => d.id === 'operations')?.children?.map(c => c.id)).toEqual([
       'health',
-      'exports',
-      'closing',
       'syncs',
-      'imports'
+      'closing'
     ])
-    // CT-e não é destino próprio — vive no catálogo Documentos.
     const flatOps = flattenDestinations(tree.find(d => d.id === 'operations')?.children || [])
     expect(flatOps.map(d => d.to)).not.toContain('/settings/cte')
     expect(flatOps.map(d => d.id)).not.toContain('cte-onboarding')
@@ -197,10 +200,13 @@ describe('navigation', () => {
     expect(flat).toContain('home')
     expect(flat).toContain('work-queue')
     expect(flat).toContain('clients-list')
-    expect(flat).toContain('monitoring-dashboard')
-    expect(flat).toContain('monitoring-fgts')
+    expect(flat).toContain('fiscal-overview')
     expect(flat).toContain('docs-catalog')
+    expect(flat).toContain('docs-exports')
     expect(flat).toContain('health')
+    const searchIds = searchableDestinations(user('OPERATOR')).map(d => d.id)
+    expect(searchIds).toContain('monitoring-dashboard')
+    expect(searchIds).toContain('monitoring-fgts')
   })
 
   it('usa paths canônicos para as visões de Documentos', () => {
@@ -234,12 +240,12 @@ describe('navigation', () => {
     expect(clients?.value).toBe('clients')
     const docs = items.find(i => i.label === 'Documentos')
     expect(docs?.type).toBe('trigger')
-    expect(docs?.children?.length).toBe(2)
+    expect(docs?.children?.length).toBe(4)
     expect(docs?.to).toBeUndefined()
     expect(docs?.value).toBe('docs')
     const ops = items.find(i => i.label === 'Operações')
     expect(ops?.type).toBe('trigger')
-    expect(ops?.children?.length).toBe(5)
+    expect(ops?.children?.length).toBe(3)
     expect(ops?.to).toBeUndefined()
     expect(ops?.value).toBe('operations')
 
@@ -256,12 +262,12 @@ describe('navigation', () => {
   it('separa operação e gestão na sidebar sem criar grupo vazio', () => {
     const operatorGroups = sidebarDestinationGroups(mainDestinations(user('OPERATOR')))
     expect(operatorGroups.map(group => group.map(item => item.id))).toEqual([
-      ['home', 'work', 'monitoring', 'docs', 'operations'],
-      ['clients', 'settings']
+      ['home', 'work', 'clients', 'monitoring', 'docs', 'operations'],
+      ['settings']
     ])
 
     const adminGroups = sidebarDestinationGroups(mainDestinations(user('ADMIN')))
-    expect(adminGroups[1]?.map(item => item.id)).toEqual(['clients', 'settings'])
+    expect(adminGroups[1]?.map(item => item.id)).toEqual(['settings'])
 
     const platformOnly: MeUser = {
       id: 9,
@@ -272,13 +278,13 @@ describe('navigation', () => {
       requires_two_factor_setup: false,
       is_platform_admin: true,
       office: null,
-      role: null
+      role: null,
+      context_status: 'office_context_required'
     }
     expect(sidebarDestinationGroups(mainDestinations(platformOnly)).map(group =>
       group.map(item => item.id)
     )).toEqual([
-      ['home', 'monitoring', 'docs', 'operations'],
-      ['clients', 'platform-admin']
+      ['platform-admin']
     ])
 
     expect(sidebarDestinationGroups([{

@@ -9,8 +9,11 @@
  *
  * Compat: `/work?task=N` → `/work/tasks/N` (preserva demais query).
  */
+import WorkSectionNav from '~/components/navigation/WorkSectionNav.vue'
 import { breakpointsTailwind } from '@vueuse/core'
-import type { OperationalTaskDetail, OperationalTaskSummary } from '~/types/work'
+import type { OperationalTaskDetail, OperationalTaskSummary, WorkDepartment } from '~/types/work'
+import type { DataTableFilterDefinition, DataTableFilterModel } from '~/types/data-table-filter'
+import type { SavedListFilterPayload } from '~/types/saved-list-filters'
 import { apiErrorMessage } from '~/utils/api-error'
 import {
   parseWorkQueueQuery,
@@ -24,9 +27,9 @@ import {
   workQueueFiltersToPayload,
   workQueuePayloadToFilters
 } from '~/utils/saved-list-filters'
-import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
-import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
-import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
+import { createFilterModel, findDefinition } from '~/utils/data-table-filters'
+import ShellListFilterToolbar from '~/components/shell/ListFilterToolbar.vue'
+import ShellScrollableTabs from '~/components/shell/ScrollableTabs.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,46 +45,110 @@ const {
   apiParams
 } = useWorkQueueFilters()
 
-const {
-  canSavePreset,
-  canShare: canShareFilters,
-  presets,
-  presetsLoading,
-  saveOpen,
-  manageOpen,
-  saveLoading,
-  saveError,
-  manageError,
-  actingId,
-  clearPresetCache,
-  onSavedMenuOpen,
-  applyPreset,
-  onSaveConfirm,
-  onRename,
-  onToggleShare,
-  onDeletePreset,
-  openManage,
-  openSave
-} = useSavedListPresets({
-  surface: 'work.queue',
-  resetKey: sessionEpoch,
-  getPayload: () => workQueueFiltersToPayload(filters.value),
-  canSave: () => hasActiveWorkQueueFiltersForSave(filters.value),
-  onApply: (payload) => {
-    const next = workQueuePayloadToFilters(payload)
-    // Hidrata query (page 1); path atual preservado pelo patch.
-    void patch({
-      tab: next.tab,
-      q: next.q,
-      department_id: next.department_id,
-      assignee_membership_id: next.assignee_membership_id,
-      client_id: next.client_id,
-      scope: next.scope,
-      page: 1,
-      per_page: next.per_page
-    }, { resetPage: false })
+const departments = ref<WorkDepartment[]>([])
+
+onMounted(async () => {
+  try {
+    const res = await api.work.departments.list({ per_page: 100, is_active: true })
+    departments.value = Array.isArray(res?.data) ? res.data : []
+  } catch {
+    departments.value = []
   }
 })
+
+const queueDefinitions = computed((): DataTableFilterDefinition[] => [
+  {
+    key: 'department_id',
+    kind: 'option',
+    label: 'Departamento',
+    emptyValue: '',
+    items: departments.value.map(d => ({ label: d.name, value: String(d.id) }))
+  },
+  {
+    key: 'client_id',
+    kind: 'client',
+    label: 'Cliente',
+    emptyValue: null
+  },
+  {
+    key: 'scope',
+    kind: 'option',
+    label: 'Escopo',
+    emptyValue: 'default',
+    items: [
+      { label: 'Minhas', value: 'mine' },
+      { label: 'Departamento', value: 'department' },
+      { label: 'Escritório', value: 'office' }
+    ]
+  }
+])
+
+function queueModelsFromFilters(): DataTableFilterModel[] {
+  const models: DataTableFilterModel[] = []
+  const f = filters.value
+  const defs = queueDefinitions.value
+
+  if (f.department_id) {
+    const def = findDefinition(defs, 'department_id')
+    if (def) {
+      const model = createFilterModel(def, String(f.department_id))
+      if (model) models.push(model)
+    }
+  }
+  if (f.client_id) {
+    const def = findDefinition(defs, 'client_id')
+    if (def) {
+      const model = createFilterModel(def, f.client_id)
+      if (model) models.push(model)
+    }
+  }
+  if (f.scope && f.scope !== 'default') {
+    const def = findDefinition(defs, 'scope')
+    if (def) {
+      const model = createFilterModel(def, f.scope)
+      if (model) models.push(model)
+    }
+  }
+  return models
+}
+
+const queueChipModels = computed(() => queueModelsFromFilters())
+
+function onQueueModelsUpdate(models: DataTableFilterModel[]) {
+  const dept = models.find(m => m.key === 'department_id')
+  const client = models.find(m => m.key === 'client_id')
+  const scope = models.find(m => m.key === 'scope')
+  void patch({
+    department_id: dept ? Number(dept.value) || null : null,
+    client_id: client && typeof client.value === 'number' ? client.value : null,
+    scope: scope ? String(scope.value) : 'default'
+  })
+}
+
+function onQueueClear() {
+  void patch({
+    q: '',
+    department_id: null,
+    assignee_membership_id: null,
+    client_id: null,
+    scope: 'default',
+    page: 1
+  })
+}
+
+function onQueuePreset(payload: SavedListFilterPayload) {
+  const next = workQueuePayloadToFilters(payload)
+  void patch({
+    tab: next.tab,
+    q: next.q,
+    department_id: next.department_id,
+    assignee_membership_id: next.assignee_membership_id,
+    client_id: next.client_id,
+    scope: next.scope,
+    page: 1,
+    per_page: next.per_page
+  }, { resetPage: false })
+}
 
 // Legado ?task= → path canônico
 watch(
@@ -213,6 +280,10 @@ const search = computed({
   set: (v: string) => { void patch({ q: v }) }
 })
 
+function onQueueSearch(value: string) {
+  search.value = value
+}
+
 defineShortcuts({
   arrowdown: () => {
     if (isInputFocused()) return
@@ -262,14 +333,14 @@ watch(sessionEpoch, () => {
   detail.value = null
   loadError.value = null
   mobileOpen.value = false
-  clearPresetCache()
   void clearTask()
   void patch({
     page: 1,
     department_id: null,
     client_id: null,
     assignee_membership_id: null,
-    q: ''
+    q: '',
+    scope: 'default'
   })
 })
 
@@ -310,62 +381,45 @@ watch(selectedTaskId, (id) => {
           root: 'flex-col items-stretch justify-start gap-2 py-2 overflow-x-auto min-h-0'
         }"
       >
-        <UTabs
+        <WorkSectionNav />
+        <ShellScrollableTabs
           v-model="selectedTab"
           :items="tabs"
-          :content="false"
-          size="xs"
-          class="w-full min-w-0 overflow-x-auto"
-          :ui="{
-            list: 'flex-nowrap'
-          }"
+          size="sm"
+          class="w-full min-w-0"
+          aria-label="Filtrar fila por prazo"
+          test-id="work-queue-tabs"
         />
-        <div class="flex w-full min-w-0 flex-wrap items-center gap-1.5">
-          <UInput
-            v-model="search"
-            icon="i-lucide-search"
-            placeholder="Buscar tarefa ou processo…"
-            class="min-w-0 flex-1"
-            aria-label="Buscar na fila"
-            data-testid="work-queue-search"
-          />
-          <UButton
-            v-if="canSavePreset"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-save"
-            label="Salvar"
-            data-testid="save-filters-button"
-            @click="openSave"
-          />
-          <DataTableFilterSavedFiltersMenu
-            :items="presets"
-            :loading="presetsLoading"
-            @apply="applyPreset"
-            @manage="openManage"
-            @open="onSavedMenuOpen"
-          />
-        </div>
+        <ShellListFilterToolbar
+          :q="search"
+          search-placeholder="Buscar tarefa ou processo…"
+          search-aria-label="Buscar na fila"
+          :definitions="queueDefinitions"
+          :models="queueChipModels"
+          :loading="loading"
+          :reset-key="sessionEpoch"
+          surface="work.queue"
+          :get-payload="() => workQueueFiltersToPayload(filters)"
+          :can-save="() => hasActiveWorkQueueFiltersForSave(filters)"
+          test-id-prefix="work-queue"
+          @update:q="onQueueSearch"
+          @update:models="onQueueModelsUpdate"
+          @clear="onQueueClear"
+          @refresh="loadQueue"
+          @apply-preset="onQueuePreset"
+        >
+          <template #client="{ modelValue, update, select: selectClient }">
+            <FiscalClientPicker
+              :model-value="modelValue"
+              search-mode="select"
+              placeholder="Cliente"
+              class="w-full min-w-0"
+              @update:model-value="(value) => update?.(value as number | null)"
+              @select="(client) => selectClient?.(client)"
+            />
+          </template>
+        </ShellListFilterToolbar>
       </UDashboardToolbar>
-
-      <DataTableFilterSaveFilterModal
-        v-model:open="saveOpen"
-        :can-share="canShareFilters"
-        :loading="saveLoading"
-        :error="saveError"
-        @confirm="onSaveConfirm"
-      />
-      <DataTableFilterManageSavedFiltersModal
-        v-model:open="manageOpen"
-        :items="presets"
-        :can-share="canShareFilters"
-        :loading="presetsLoading"
-        :acting-id="actingId"
-        :error="manageError"
-        @rename="onRename"
-        @toggle-share="onToggleShare"
-        @delete="onDeletePreset"
-      />
     </template>
 
     <template #body>

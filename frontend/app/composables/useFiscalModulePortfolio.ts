@@ -1,6 +1,6 @@
 /**
  * Carteira fiscal tenant-aware: overview + lista paginada do read model.
- * - Filtros, ordenação e paginação são estado local; a URL identifica apenas a rota
+ * - Filtros, ordenação e paginação sincronizam com a query (padrão list-filters-ux)
  * - Sem fallback sintético em erro/vazio
  * - Aborta/descarta requests quando o office ou módulo muda
  * - Ordenação é sempre server-side para não reordenar apenas o lote carregado
@@ -22,7 +22,12 @@ import {
   surfaceAllowsDocument
 } from '~/types/fiscal-modules'
 import { laravelPageBatch, usePagedTable } from '~/composables/usePagedTable'
-import { encodeClientIds } from '~/utils/data-table-filters'
+import {
+  MONITORING_LIST_QUERY_SCHEMA,
+  serializeListFilterQuery,
+  useListFilterQuery
+} from '~/composables/useListFilterQuery'
+import { decodeClientIds, encodeClientIds } from '~/utils/data-table-filters'
 import {
   hasActiveMonitoringFilters,
   normalizeMonitoringFilters,
@@ -60,6 +65,12 @@ const SORT_COLUMN_TO_API = Object.freeze<Record<string, NonNullable<FiscalModule
   id: 'id'
 })
 
+const SORT_API_TO_COLUMN = Object.freeze<Record<string, string>>(
+  Object.fromEntries(
+    Object.entries(SORT_COLUMN_TO_API).map(([column, api]) => [api, column])
+  )
+)
+
 export function fiscalModuleSortKey(columnId: string | null | undefined) {
   return columnId ? SORT_COLUMN_TO_API[columnId] : undefined
 }
@@ -70,6 +81,16 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
 ) {
   const api = useApi()
   const { sessionEpoch } = useDashboard()
+  const router = useRouter()
+  const route = useRoute()
+  const monitoringQuerySchema = {
+    ...MONITORING_LIST_QUERY_SCHEMA,
+    defaults: {
+      ...MONITORING_LIST_QUERY_SCHEMA.defaults,
+      per_page: options.perPage ?? 10
+    }
+  }
+  const listQuery = useListFilterQuery(monitoringQuerySchema)
 
   const page = ref(1)
   /** pageSize alinhado ao template customers (10). */
@@ -86,6 +107,25 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   const coverage = ref('all')
   const modality = ref('all')
   const sorting = ref<FiscalModuleSortingState>([{ id: 'client', desc: false }])
+
+  function hydrateFromQuery() {
+    const state = listQuery.read()
+    q.value = String(state.q ?? '')
+    situation.value = String(state.situation ?? 'all')
+    competence.value = String(state.competence ?? '')
+    deliveryStatus.value = String(state.delivery_status ?? 'all')
+    coverage.value = String(state.coverage ?? 'all')
+    modality.value = String(state.modality ?? 'all')
+    clientIds.value = decodeClientIds(String(state.client_id ?? ''))
+    page.value = Math.max(1, Number(state.page) || 1)
+    perPage.value = Math.max(1, Number(state.per_page) || (options.perPage ?? 10))
+    const apiSort = String(state.sort ?? 'legal_name')
+    const columnId = SORT_API_TO_COLUMN[apiSort] || 'client'
+    const dir = String(state.sort_direction ?? 'asc') === 'desc'
+    sorting.value = [{ id: columnId, desc: dir }]
+  }
+
+  hydrateFromQuery()
   const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({
     q: q.value,
     situation: situation.value,
@@ -239,12 +279,23 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     modality: modality.value
   }) || Boolean(submodule.value && submodule.value !== 'all' && submodule.value.trim()))
 
-  /**
-   * URL = só a rota do módulo (sidebar). Tabs, filtros e página são estado local.
-   * Mantido como no-op nomeado para callers legados (`loadClients` ainda invoca).
-   */
+  /** Espelha filtros/paginação/sort na query (LFU-02). */
   async function syncUrl() {
-    // intencionalmente vazio
+    const { sort, sort_direction } = currentSort()
+    const query = serializeListFilterQuery({
+      q: q.value,
+      situation: situation.value,
+      competence: competence.value,
+      client_id: encodeClientIds(clientIds.value) || '',
+      delivery_status: deliveryStatus.value,
+      coverage: coverage.value,
+      modality: modality.value,
+      page: page.value,
+      per_page: perPage.value,
+      sort: sort ?? 'legal_name',
+      sort_direction: sort_direction ?? 'asc'
+    }, monitoringQuerySchema)
+    await router.replace({ path: route.path, query })
   }
 
   function overviewStillCurrent(seq: number, epoch: number) {
@@ -317,6 +368,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   async function setPage(next: number) {
     const target = Math.max(1, Math.floor(Number(next) || 1))
     page.value = target
+    await syncUrl()
     await clientsFeed.setPage(target)
     page.value = clientsFeed.page.value
     lastPage.value = clientsFeed.lastPage.value

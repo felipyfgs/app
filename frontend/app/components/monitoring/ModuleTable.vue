@@ -22,6 +22,7 @@ import { dataOriginMeta } from '~/utils/fiscal-status'
 import { formatDateTime } from '~/utils/format'
 import { monitoringFilterSignature } from '~/utils/monitoring-filters'
 import { monitoringSelectionScope } from '~/utils/monitoring-selection'
+import { COMPACT_BUTTON_LABEL_UI } from '~/utils/list-filter-layout'
 
 const props = withDefaults(defineProps<{
   title: string
@@ -243,16 +244,22 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
         </template>
       </UDashboardNavbar>
 
+      <!--
+        Nav fiscal Tabs→Subtabs no slot default (padrão Conta/Clientes).
+        Evita #left de uma linha com overflow que corta a 2ª camada.
+      -->
       <UDashboardToolbar
         v-if="showModuleNav || $slots.nav"
-        :ui="{ left: 'min-w-0 flex-1' }"
+        :ui="{
+          root: 'flex-col items-stretch gap-0 overflow-visible min-h-0',
+          left: 'min-w-0 w-full flex-1',
+          right: 'hidden'
+        }"
         data-testid="monitoring-nav-toolbar"
       >
-        <template #left>
-          <slot name="nav">
-            <MonitoringModuleNav />
-          </slot>
-        </template>
+        <slot name="nav">
+          <MonitoringModuleNav />
+        </slot>
       </UDashboardToolbar>
     </template>
 
@@ -457,12 +464,13 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
                     :content="{ align: 'end' }"
                   >
                     <UButton
-                      label="Exibir"
+                      label="Colunas"
                       color="neutral"
                       variant="outline"
                       trailing-icon="i-lucide-settings-2"
                       aria-label="Exibir colunas"
-                      :ui="{ label: 'hidden sm:inline' }"
+                      :ui="COMPACT_BUTTON_LABEL_UI"
+                      class="shrink-0"
                       data-testid="fiscal-column-visibility"
                     />
                   </UDropdownMenu>

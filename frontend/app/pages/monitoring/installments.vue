@@ -114,8 +114,34 @@ const detailOrder = ref<Record<string, unknown> | null>(null)
 const detailParcels = ref<Array<Record<string, unknown>>>([])
 const detailRow = ref<InstallmentsClientRow | null>(null)
 
-function clientHref(id: number) {
-  return `/monitoring/clients/${id}`
+/**
+ * O endpoint do pedido já retorna as parcelas persistidas. A consulta paralela
+ * preserva o contrato paginado e serve como fallback para projeções antigas.
+ * Ambas são leituras locais: abrir o detalhe nunca dispara uma consulta SERPRO.
+ */
+const orderParcels = computed(() => {
+  const embedded = detailOrder.value?.parcels
+  return Array.isArray(embedded) && embedded.length > 0
+    ? embedded as Array<Record<string, unknown>>
+    : detailParcels.value
+})
+
+const detailHasOverdueParcels = computed(() => orderParcels.value.some((parcel) => {
+  const status = String(parcel.status || parcel.situation || '').toUpperCase()
+  return status.includes('ATRAS') || status.includes('OVERDUE')
+}))
+
+function parcelLabel(parcel: Record<string, unknown>) {
+  return String(parcel.parcel_number || parcel.number || parcel.id || '—')
+}
+
+function parcelStatus(parcel: Record<string, unknown>) {
+  return String(parcel.status || parcel.situation || 'PENDING')
+}
+
+function parcelPaymentStatus(parcel: Record<string, unknown>) {
+  const value = String(parcel.payment_status || '').trim()
+  return value || null
 }
 
 function detailOf(row: InstallmentsClientRow): InstallmentsClientDetail {
@@ -177,8 +203,7 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
       legalName: row.original.legal_name,
-      cnpjMasked: row.original.cnpj_masked,
-      to: clientHref(row.original.client_id)
+      cnpjMasked: row.original.cnpj_masked
     })
   },
   {
@@ -231,27 +256,29 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
     cell: ({ row }) => {
       const n = detailOf(row.original).overdue_parcels ?? 0
       if (!n) return '—'
-      return h(FiscalStatusBadge, { status: 'ATTENTION', showHint: true })
+      return h(FiscalStatusBadge, { fill: true, status: 'ATTENTION' })
     }
   },
   {
     id: 'guide',
     header: 'Guia',
     enableSorting: false,
-    cell: ({ row }) => h(UButton, {
-      size: 'xs',
-      color: 'neutral',
-      variant: 'ghost',
-      label: 'Guias',
-      to: `/monitoring/clients/${row.original.client_id}/guides`
-    })
+    cell: ({ row }) => {
+      const orderId = detailOf(row.original).order_id
+      return h(UButton, {
+        size: 'xs',
+        color: 'neutral',
+        variant: 'ghost',
+        label: 'Ver no pedido',
+        disabled: !orderId,
+        onClick: () => orderId && openOrder(Number(orderId), row.original)
+      })
+    }
   },
   {
     id: 'situation',
     header: ({ column }) => sortHeader('Situação', column),
-    cell: ({ row }) => h(FiscalStatusBadge, {
-      status: String(detailOf(row.original).order_situation || row.original.situation)
-    })
+    cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(detailOf(row.original).order_situation || row.original.situation) })
   },
   {
     id: 'actions',
@@ -264,13 +291,6 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
         h(FiscalDocumentAction, {
           document: row.original.document,
           disabled: !allowsDocument.value
-        }),
-        h(UButton, {
-          size: 'xs',
-          color: 'neutral',
-          variant: 'ghost',
-          label: 'Cliente',
-          to: clientHref(row.original.client_id)
         })
       ]
       if (orderId) {
@@ -340,27 +360,14 @@ onMounted(() => {
   >
     <!-- Modalidades oficiais como cápsulas em largura total (padrão KPI/submódulos) -->
     <template #submodules>
-      <div
+      <ShellScrollableTabs
+        v-model="selectedModality"
+        :items="modalityTabItems"
+        size="sm"
         class="w-full min-w-0"
-        data-testid="installments-modality-tabs"
-      >
-        <UTabs
-          v-model="selectedModality"
-          :items="modalityTabItems"
-          :content="false"
-          size="sm"
-          color="primary"
-          variant="pill"
-          class="w-full"
-          :ui="{
-            root: 'w-full min-w-0',
-            list: 'flex w-full min-w-0 flex-wrap justify-stretch gap-1 border border-default bg-elevated/60 p-1 shadow-xs',
-            trigger: 'min-w-0 flex-1 basis-[calc(12.5%-0.25rem)] justify-center px-2 data-[state=active]:text-highlighted sm:basis-0',
-            indicator: 'bg-default ring-1 ring-default'
-          }"
-          aria-label="Filtrar por modalidade do catálogo"
-        />
-      </div>
+        aria-label="Filtrar por modalidade do catálogo"
+        test-id="installments-modality-tabs"
+      />
     </template>
 
     <template #utilities>
@@ -410,68 +417,144 @@ onMounted(() => {
                 :disabled="!allowsDocument"
               />
             </div>
-            <dl class="grid gap-2 text-sm sm:grid-cols-2">
-              <div>
-                <dt class="text-muted">
-                  Pedido
-                </dt>
-                <dd class="font-medium">
-                  {{ detailOrder.external_order_id || detailOrder.id }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Situação
-                </dt>
-                <dd>
-                  <FiscalStatusBadge :status="String(detailOrder.situation || detailOrder.status || '')" />
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Total
-                </dt>
-                <dd class="font-medium">
-                  {{ formatAmountCents(detailOrder.total_amount_cents as number | null) }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Parcelas
-                </dt>
-                <dd class="font-medium">
-                  {{ detailOrder.parcel_count ?? detailParcels.length }}
-                </dd>
-              </div>
-            </dl>
-            <div>
-              <h3 class="mb-2 text-sm font-medium">
-                Parcelas
-              </h3>
+            <UAlert
+              v-if="detailHasOverdueParcels"
+              color="warning"
+              icon="i-lucide-circle-alert"
+              title="Há parcelas em atraso neste pedido"
+              data-testid="installments-detail-overdue-alert"
+            />
+
+            <UPageCard
+              title="Resumo do pedido"
+              variant="subtle"
+              data-testid="installments-order-summary"
+            >
+              <dl class="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+                <div>
+                  <dt class="text-muted">
+                    Pedido
+                  </dt>
+                  <dd class="mt-1 font-medium text-highlighted">
+                    {{ detailOrder.external_order_id || detailOrder.id || '—' }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Situação
+                  </dt>
+                  <dd class="mt-1">
+                    <FiscalStatusBadge :status="String(detailOrder.situation || detailOrder.status || '')" />
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Modalidade
+                  </dt>
+                  <dd class="mt-1 font-medium text-highlighted">
+                    {{ detailOrder.modality || '—' }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Regime
+                  </dt>
+                  <dd class="mt-1 font-medium text-highlighted">
+                    {{ detailOrder.regime || '—' }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Valor consolidado
+                  </dt>
+                  <dd class="mt-1 font-medium text-highlighted">
+                    {{ formatAmountCents(detailOrder.total_amount_cents as number | null) }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Quantidade de parcelas
+                  </dt>
+                  <dd class="mt-1 font-medium text-highlighted">
+                    {{ detailOrder.parcel_count ?? orderParcels.length }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Solicitado em
+                  </dt>
+                  <dd class="mt-1 text-highlighted">
+                    {{ formatDateTime(detailOrder.requested_at as string | null) }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted">
+                    Consolidado em
+                  </dt>
+                  <dd class="mt-1 text-highlighted">
+                    {{ formatDateTime(detailOrder.consolidated_at as string | null) }}
+                  </dd>
+                </div>
+              </dl>
+            </UPageCard>
+
+            <UPageCard
+              title="Parcelas e pagamentos"
+              description="Histórico local do pedido. A abertura deste detalhe não realiza uma consulta fiscal."
+              variant="subtle"
+              data-testid="installments-order-parcels"
+            >
               <div
-                v-if="!detailParcels.length"
-                class="text-sm text-muted"
+                v-if="!orderParcels.length"
+                class="flex flex-col items-center gap-2 py-6 text-center"
+                data-testid="installments-order-parcels-empty"
               >
-                Nenhuma parcela retornada.
+                <UIcon name="i-lucide-calendar-x" class="size-7 text-dimmed" />
+                <p class="text-sm font-medium text-highlighted">
+                  Nenhuma parcela disponível
+                </p>
+                <p class="text-sm text-muted">
+                  O pedido foi importado sem parcelas associadas.
+                </p>
               </div>
-              <ul
+              <div
                 v-else
-                class="divide-y divide-default text-sm"
+                class="divide-y divide-default"
               >
-                <li
-                  v-for="p in detailParcels"
-                  :key="String(p.id)"
-                  class="flex items-center justify-between gap-2 py-2"
+                <article
+                  v-for="parcel in orderParcels"
+                  :key="String(parcel.id || parcel.parcel_key || parcelLabel(parcel))"
+                  class="grid gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                 >
-                  <span>
-                    #{{ p.number || p.parcel_number || p.id }}
-                    · {{ formatDateTime(String(p.due_at || '') || null) }}
-                    · {{ formatAmountCents(p.amount_cents as number | null) }}
-                  </span>
-                  <FiscalStatusBadge :status="String(p.status || p.situation || '')" />
-                </li>
-              </ul>
-            </div>
+                  <div class="min-w-0">
+                    <p class="font-medium text-highlighted">
+                      Parcela {{ parcelLabel(parcel) }}
+                    </p>
+                    <p class="mt-1 text-sm text-muted">
+                      Vencimento {{ formatDateTime(parcel.due_at as string | null) }}
+                      <span v-if="parcel.paid_at"> · Pago em {{ formatDateTime(parcel.paid_at as string | null) }}</span>
+                    </p>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <span class="font-medium text-highlighted">
+                      {{ formatAmountCents(parcel.amount_cents as number | null) }}
+                    </span>
+                    <FiscalStatusBadge :status="parcelStatus(parcel)" />
+                    <FiscalStatusBadge
+                      v-if="parcelPaymentStatus(parcel)"
+                      :status="parcelPaymentStatus(parcel) || ''"
+                    />
+                    <UBadge
+                      v-if="parcel.document_available"
+                      color="success"
+                      variant="subtle"
+                      icon="i-lucide-file-check-2"
+                      label="Guia disponível"
+                    />
+                  </div>
+                </article>
+              </div>
+            </UPageCard>
           </div>
         </template>
       </USlideover>

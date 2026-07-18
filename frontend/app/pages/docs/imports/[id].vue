@@ -4,8 +4,9 @@
  * Arquétipo: settings + customers table.
  */
 import type { TableColumn } from '@nuxt/ui'
+import DocsSectionNav from '~/components/navigation/DocsSectionNav.vue'
 import { documentKindLabelFromModel } from '~/utils/document-kinds'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
 
 const api = useApi()
 const route = useRoute()
@@ -291,6 +292,10 @@ onBeforeUnmount(() => {
           />
         </template>
       </UDashboardNavbar>
+
+      <UDashboardToolbar data-testid="docs-section-tabs">
+        <DocsSectionNav />
+      </UDashboardToolbar>
     </template>
 
     <template #body>
@@ -464,7 +469,13 @@ onBeforeUnmount(() => {
             </div>
           </template>
           <template #status-cell="{ row }">
-            <UBadge :color="statusColor(String(row.original.status))" variant="subtle">
+            <UBadge
+              :color="statusColor(String(row.original.status))"
+              variant="subtle"
+              size="md"
+              :class="TABLE_CELL_BADGE_CLASS"
+              :ui="TABLE_CELL_BADGE_UI"
+            >
               {{ statusLabel(String(row.original.status)) }}
             </UBadge>
           </template>

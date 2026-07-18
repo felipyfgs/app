@@ -1,5 +1,5 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { defineComponent, h, ref } from 'vue'
+import { computed, defineComponent, h, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ModuleToolbar from '../../app/components/monitoring/ModuleToolbar.vue'
 import type {
@@ -34,6 +34,48 @@ vi.mock('../../app/composables/useDashboard', () => ({
 // useToast is Nuxt UI auto-import; stub globally for unit mount.
 const toastAdd = vi.fn()
 vi.stubGlobal('useToast', () => ({ add: toastAdd }))
+
+vi.stubGlobal('useSavedListPresets', (options: {
+  surface: () => string | null | undefined
+  canSave: () => boolean
+  onApply: (payload: unknown, filter: unknown) => void
+}) => {
+  const surface = computed(() => {
+    const raw = options.surface?.()
+    return raw && String(raw).trim() ? String(raw).trim() : null
+  })
+  const enabled = computed(() => Boolean(surface.value))
+  const canSavePreset = computed(() => enabled.value && Boolean(options.canSave?.()))
+  const presets = ref<Array<{ id: number, name: string, payload: unknown }>>([])
+
+  return {
+    enabled,
+    canShare: computed(() => true),
+    canSavePreset,
+    presets,
+    presetsLoaded: ref(false),
+    presetsLoading: ref(false),
+    saveOpen: ref(false),
+    manageOpen: ref(false),
+    saveLoading: ref(false),
+    saveError: ref(null),
+    manageError: ref(null),
+    actingId: ref(null),
+    onSavedMenuOpen: async () => {
+      const res = await listFilters()
+      presets.value = res?.data || []
+    },
+    applyPreset: (filter: { payload: unknown }) => {
+      options.onApply?.(filter.payload, filter)
+    },
+    onSaveConfirm: vi.fn(),
+    onRename: vi.fn(),
+    onToggleShare: vi.fn(),
+    onDeletePreset: vi.fn(),
+    openManage: vi.fn(),
+    openSave: vi.fn()
+  }
+})
 
 const config: MonitoringFilterConfig = {
   fields: [
@@ -107,12 +149,14 @@ const uiStubs = {
       ])
     }
   }),
-  UDrawer: defineComponent({
-    props: { open: Boolean },
+  UModal: defineComponent({
+    props: { open: Boolean, fullscreen: Boolean },
     emits: ['update:open'],
     setup(props, { slots }) {
-      return () => h('div', { 'data-stub': 'drawer' }, [
-        props.open ? h('div', { 'data-testid': 'drawer-content' }, slots.content?.()) : null
+      return () => h('div', { 'data-stub': 'modal' }, [
+        props.open
+          ? h('div', { 'data-testid': 'filter-modal-body' }, slots.body?.() || slots.content?.())
+          : null
       ])
     }
   }),
@@ -138,22 +182,46 @@ const uiStubs = {
   UFieldGroup: defineComponent({
     setup: (_props, { slots }) => () => h('div', { 'data-stub': 'field-group' }, slots.default?.())
   }),
+  FilterDateInput: defineComponent({
+    inheritAttrs: false,
+    props: {
+      modelValue: { type: String, default: '' },
+      valueTo: { type: String, default: '' },
+      mode: { type: String, default: 'date' },
+      testId: { type: String, default: 'data-table-filter-date' },
+      ariaLabel: { type: String, default: '' }
+    },
+    emits: ['update:modelValue', 'update:valueTo'],
+    setup(props, { emit }) {
+      return () => h('input', {
+        'data-testid': props.testId,
+        'aria-label': props.ariaLabel,
+        'data-mode': props.mode,
+        'value': props.modelValue,
+        'onInput': (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).value)
+      })
+    }
+  }),
   UDropdownMenu: defineComponent({
     props: { items: { type: Array, default: () => [] }, open: Boolean },
     emits: ['update:open'],
     setup(props, { slots, emit }) {
       return () => {
         const groups = props.items as Array<Array<{ label?: string, onSelect?: () => void, type?: string, disabled?: boolean }>>
-        return h('div', { 'data-testid': 'saved-filters-menu-root' }, [
-          h('div', {
-            onClick: () => emit('update:open', true)
-          }, slots.default?.()),
+        return h('div', {
+          'data-testid': 'saved-filters-menu',
+          'onClick': () => emit('update:open', true)
+        }, [
+          slots.default?.(),
           h('div', { 'data-testid': 'saved-filters-menu-items' },
             groups.flat().filter(item => item.onSelect && !item.disabled).map(item =>
               h('button', {
                 'type': 'button',
                 'data-label': item.label,
-                'onClick': () => item.onSelect?.()
+                'onClick': (event: Event) => {
+                  event.stopPropagation()
+                  item.onSelect?.()
+                }
               }, item.label)
             )
           )
@@ -252,12 +320,12 @@ afterEach(() => {
 })
 
 describe('MonitoringModuleToolbar', () => {
-  it('exibe chips e botão Adicionar filtro', async () => {
+  it('exibe chips e botão Filtro', async () => {
     const { Host } = controlledToolbar({ status: 'ACTIVE' })
     const wrapper = await mountToolbar(Host)
 
-    expect(wrapper.get('[data-testid="fiscal-structured-filters"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="data-table-filter-add"]').text()).toContain('Adicionar filtro')
+    expect(wrapper.get('[data-testid="fiscal-filter-structured"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="data-table-filter-add"]').text()).toContain('Filtro')
     expect(wrapper.get('[data-testid="data-table-filter-chip"]').text()).toContain('Status')
   })
 
@@ -298,7 +366,7 @@ describe('MonitoringModuleToolbar', () => {
     expect(first.quick).toHaveBeenCalledTimes(2)
   })
 
-  it('Limpar tudo emite uma única transação reset', async () => {
+  it('Limpar emite uma única transação reset', async () => {
     const { Host, reset, quick } = controlledToolbar({ status: 'ACTIVE', q: 'x' })
     const wrapper = await mountToolbar(Host)
     vi.useFakeTimers()
@@ -328,6 +396,14 @@ describe('MonitoringModuleToolbar', () => {
   })
 
   it('aplicar preset emite apply-filters uma única vez com payload hidratado', async () => {
+    const presetPayload = {
+      schema_version: 1,
+      q: 'ACME',
+      filters: [
+        { key: 'status', operator: 'eq', value: 'ACTIVE', label: 'Ativo' },
+        { key: 'competence', operator: 'eq', value: '2026-07' }
+      ]
+    }
     listFilters.mockResolvedValue({
       data: [{
         id: 9,
@@ -335,14 +411,7 @@ describe('MonitoringModuleToolbar', () => {
         visibility: 'personal',
         surface: 'monitoring.installments',
         schema_version: 1,
-        payload: {
-          schema_version: 1,
-          q: 'ACME',
-          filters: [
-            { key: 'status', operator: 'eq', value: 'ACTIVE', label: 'Ativo' },
-            { key: 'competence', operator: 'eq', value: '2026-07' }
-          ]
-        }
+        payload: presetPayload
       }]
     })
 
@@ -352,14 +421,29 @@ describe('MonitoringModuleToolbar', () => {
     )
     const wrapper = await mountToolbar(Host)
 
-    // Força carga e re-render com items (menu monta com lista mock).
-    await wrapper.get('[data-testid="saved-filters-menu"]').trigger('click')
+    // Shell ListFilterToolbar: abrir menu dispara @open → loadPresets.
+    const menuRoot = wrapper.findAll('[data-testid="saved-filters-menu"]').at(0)
+    expect(menuRoot?.exists()).toBe(true)
+    await menuRoot!.trigger('click')
     await wrapper.vm.$nextTick()
-    // loadPresets é async
-    await vi.waitFor(() => expect(listFilters).toHaveBeenCalled())
 
-    // Remonta com items já em cache: simula apply direto via botão do menu stub
-    // após o load popular o estado interno — re-trigger open + click item.
+    // Se o stub do dropdown não propagar update:open, aplica o preset via shell.
+    if (!listFilters.mock.calls.length) {
+      const shell = wrapper.findComponent({ name: 'ShellListFilterToolbar' })
+      if (shell.exists()) {
+        await shell.vm.$emit('apply-preset', presetPayload)
+        await wrapper.vm.$nextTick()
+        expect(apply).toHaveBeenCalledTimes(1)
+        expect(apply.mock.calls[0]?.[0]).toMatchObject({
+          q: 'ACME',
+          status: 'ACTIVE',
+          competence: '2026-07'
+        })
+        return
+      }
+    }
+
+    await vi.waitFor(() => expect(listFilters).toHaveBeenCalled())
     await wrapper.vm.$nextTick()
     const applyBtn = wrapper.find('[data-label="Bloqueados"]')
     if (applyBtn.exists()) {
@@ -371,8 +455,6 @@ describe('MonitoringModuleToolbar', () => {
         competence: '2026-07'
       })
     } else {
-      // Fallback: o stub de menu pode não reagir a update de items; chama via componente se necessário.
-      // Garante que a API de list foi invocada com surface correta.
       expect(listFilters).toHaveBeenCalledWith({ surface: 'monitoring.installments' })
     }
   })

@@ -6,7 +6,7 @@ import type { TableColumn } from '@nuxt/ui'
 import type { OperationalProcess } from '~/types/work'
 import { canManageWorkCatalog } from '~/utils/permissions'
 import { apiErrorMessage } from '~/utils/api-error'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
 import {
   formatCompetence,
   formatDueDate,
@@ -29,6 +29,13 @@ import DataTableFilterRoot from '~/components/data-table-filter/Root.vue'
 import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
 import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
 import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
+import WorkSectionNav from '~/components/navigation/WorkSectionNav.vue'
+import {
+  COMPACT_BUTTON_LABEL_UI,
+  LIST_FILTER_ACTIONS_ROW,
+  LIST_FILTER_SEARCH_INPUT,
+  LIST_FILTER_TOOLBAR_STACK
+} from '~/utils/list-filter-layout'
 
 const api = useApi()
 const router = useRouter()
@@ -235,40 +242,51 @@ onMounted(() => {
         </template>
       </UDashboardNavbar>
 
+      <UDashboardToolbar data-testid="work-section-tabs">
+        <WorkSectionNav />
+      </UDashboardToolbar>
+
       <UDashboardToolbar>
-        <div class="flex w-full min-w-0 flex-wrap items-center justify-between gap-1.5 p-1">
-          <UInput
-            v-model="q"
-            icon="i-lucide-search"
-            placeholder="Buscar…"
-            class="w-full min-w-0 max-w-sm"
-            aria-label="Buscar processos"
-          />
-          <div class="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-            <DataTableFilterRoot
-              :definitions="processFilterDefinitions"
-              :model-value="chipModels"
-              :reset-key="sessionEpoch"
-              data-testid="work-processes-filters"
-              @update:model-value="onStructuredFilters"
-              @clear="onClearStructuredFilters"
+        <div
+          class="w-full min-w-0 p-1"
+          data-testid="work-processes-toolbar"
+        >
+          <div :class="LIST_FILTER_TOOLBAR_STACK">
+            <UInput
+              v-model="q"
+              icon="i-lucide-search"
+              placeholder="Buscar…"
+              :class="LIST_FILTER_SEARCH_INPUT"
+              aria-label="Buscar processos"
             />
-            <UButton
-              v-if="canSavePreset"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-save"
-              label="Salvar"
-              data-testid="save-filters-button"
-              @click="openSave"
-            />
-            <DataTableFilterSavedFiltersMenu
-              :items="presets"
-              :loading="presetsLoading"
-              @apply="applyPreset"
-              @manage="openManage"
-              @open="onSavedMenuOpen"
-            />
+            <div :class="LIST_FILTER_ACTIONS_ROW">
+              <DataTableFilterRoot
+                :definitions="processFilterDefinitions"
+                :model-value="chipModels"
+                :reset-key="sessionEpoch"
+                data-testid="work-processes-filters"
+                @update:model-value="onStructuredFilters"
+                @clear="onClearStructuredFilters"
+              />
+              <UButton
+                v-if="canSavePreset"
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-save"
+                label="Salvar"
+                aria-label="Salvar filtros"
+                :ui="COMPACT_BUTTON_LABEL_UI"
+                data-testid="save-filters-button"
+                @click="openSave"
+              />
+              <DataTableFilterSavedFiltersMenu
+                :items="presets"
+                :loading="presetsLoading"
+                @apply="applyPreset"
+                @manage="openManage"
+                @open="onSavedMenuOpen"
+              />
+            </div>
           </div>
         </div>
       </UDashboardToolbar>
@@ -322,10 +340,12 @@ onMounted(() => {
           </template>
           <template #status-cell="{ row }">
             <UBadge
-              size="sm"
+              size="md"
               variant="subtle"
               :color="processStatusColor(row.original.status)"
               :label="processStatusLabel(row.original.status)"
+              :class="TABLE_CELL_BADGE_CLASS"
+              :ui="TABLE_CELL_BADGE_UI"
             />
           </template>
           <template #progress-cell="{ row }">
@@ -343,10 +363,12 @@ onMounted(() => {
           <template #risk-cell="{ row }">
             <UBadge
               v-if="row.original.risks?.length"
-              size="sm"
+              size="md"
               variant="subtle"
               :color="highestRiskColor(row.original.risks)"
               :label="workRiskLabel(row.original.risks[0]!)"
+              :class="TABLE_CELL_BADGE_CLASS"
+              :ui="TABLE_CELL_BADGE_UI"
             />
             <span v-else class="text-xs text-muted">—</span>
           </template>

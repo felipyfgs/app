@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * Lista admin de Offices (inclui pendentes).
+ * Lista admin de Offices (inclui pendentes) — Filter Lite (busca ± lifecycle).
  * Arquétipo lista: customers.vue / serpro contracts.
  */
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { PlatformOfficeAdminSummary } from '~/types/api'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
 import { apiErrorMessage } from '~/utils/api-error'
 
 const api = useApi()
@@ -284,10 +284,12 @@ onMounted(load)
           </template>
           <template #lifecycle-cell="{ row }">
             <UBadge
-              size="sm"
+              size="md"
               variant="subtle"
               :color="lifecycleColor(row.original.lifecycle_status)"
               :label="lifecycleLabel(row.original.lifecycle_status)"
+              :class="TABLE_CELL_BADGE_CLASS"
+              :ui="TABLE_CELL_BADGE_UI"
             />
           </template>
           <template #actions-cell="{ row }">

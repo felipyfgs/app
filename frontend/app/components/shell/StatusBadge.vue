@@ -1,8 +1,14 @@
 <script setup lang="ts">
-const props = defineProps<{
+import { TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+
+const props = withDefaults(defineProps<{
   status?: string | null
   label?: string | null
-}>()
+  /** Preenche a célula da grade. */
+  fill?: boolean
+}>(), {
+  fill: false
+})
 
 const color = computed(() => {
   const s = (props.status || '').toUpperCase()
@@ -31,7 +37,15 @@ const color = computed(() => {
 </script>
 
 <template>
-  <UBadge :color="color" variant="soft" class="font-normal">
-    {{ label || statusLabel(status) }}
-  </UBadge>
+  <span :class="fill ? 'block w-full min-w-0' : undefined">
+    <UBadge
+      :color="color"
+      variant="soft"
+      :size="fill ? 'md' : undefined"
+      :class="fill ? TABLE_CELL_BADGE_CLASS : 'font-normal'"
+      :ui="fill ? TABLE_CELL_BADGE_UI : undefined"
+    >
+      {{ label || statusLabel(status) }}
+    </UBadge>
+  </span>
 </template>

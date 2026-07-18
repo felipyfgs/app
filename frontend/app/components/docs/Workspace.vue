@@ -5,6 +5,7 @@
  * ficam no submenu do sidebar (`navigation.ts`), não em tabs da página.
  * Fonte: .reference/nuxt-dashboard-template/app/pages/customers.vue
  */
+import DocsSectionNav from '~/components/navigation/DocsSectionNav.vue'
 import { documentKindLabel, isDocumentKindCaptureAvailable } from '~/utils/document-kinds'
 import type { Client, Establishment, ExportFilters, NfseNote, NotesInsights } from '~/types/api'
 import type { NoteListParams } from '~/composables/useApi'
@@ -752,6 +753,10 @@ onMounted(async () => {
           />
         </template>
       </UDashboardNavbar>
+
+      <UDashboardToolbar data-testid="docs-section-tabs">
+        <DocsSectionNav />
+      </UDashboardToolbar>
     </template>
 
     <template #body>

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createAuthApi } from '../../app/composables/api/createAuthApi'
 import { createDocumentsApi } from '../../app/composables/api/createDocumentsApi'
+import { createFiscalApi } from '../../app/composables/api/createFiscalApi'
 import { createOfficeApi } from '../../app/composables/api/createOfficeApi'
 import { createOperationsApi } from '../../app/composables/api/createOperationsApi'
 import { createPlatformApi } from '../../app/composables/api/createPlatformApi'
@@ -121,5 +122,62 @@ describe('composables/api factories (runtime)', () => {
     await platformApi.platform.offices.select(7)
     expect(pCalls[0]?.path).toBe('/api/v1/platform/offices/select')
     expect(pCalls[0]?.opts?.method).toBe('POST')
+  })
+
+  it('simplesMei não expõe consumer operacional de guide-stubs', () => {
+    const { client } = mockClient()
+    const api = createFiscalApi(client as never, apiUrl)
+
+    expect(api.fiscal.simplesMei).not.toHaveProperty('guideStubs')
+  })
+
+  it('PNR usa rotas tenant-scoped e não envia office_id', async () => {
+    const { client, calls } = mockClient()
+    const api = createFiscalApi(client as never, apiUrl)
+
+    await api.fiscal.pnrRenunciations.forClient(42)
+    await api.fiscal.pnrRenunciations.history(42, { page: 0, page_size: 10 })
+    await api.fiscal.pnrRenunciations.status(42, 'SOL-123')
+    await api.fiscal.pnrRenunciations.receipt(42, 88)
+
+    expect(calls[0]?.path).toBe('/api/v1/fiscal/clients/42/pnr-renunciations')
+    expect(calls[1]?.opts?.body).toEqual({ page: 0, page_size: 10 })
+    expect(calls[2]?.opts?.body).toEqual({ id_solicitacao: 'SOL-123' })
+    expect(calls[3]?.opts?.body).toEqual({ renunciation_id: 88 })
+    expect(JSON.stringify(calls)).not.toContain('office_id')
+  })
+
+  it('certificado CCMEI usa rotas do cliente, confirmação explícita e download sem dados fiscais', async () => {
+    const { client, calls } = mockClient()
+    const api = createFiscalApi(client as never, apiUrl)
+
+    await api.fiscal.ccmei.issuedCertificates.history(42)
+    await api.fiscal.ccmei.issuedCertificates.issue(42)
+
+    expect(calls[0]?.path).toBe('/api/v1/fiscal/simples-mei/ccmei/clients/42/issued-certificates')
+    expect(calls[1]?.path).toBe('/api/v1/fiscal/simples-mei/ccmei/clients/42/issued-certificates')
+    expect(calls[1]?.opts).toEqual({ method: 'POST', body: { confirmed: true } })
+    expect(api.fiscal.ccmei.issuedCertificates.downloadPath(42, 9))
+      .toBe('/api/v1/fiscal/simples-mei/ccmei/clients/42/issued-certificates/9/download')
+    expect(JSON.stringify(calls)).not.toContain('office_id')
+  })
+
+  it('MIT agenda somente a lista de apurações com filtros de negócio', async () => {
+    const { client, calls } = mockClient()
+    const api = createFiscalApi(client as never, apiUrl)
+
+    await api.fiscal.mit.enqueueListaApuracoes({
+      client_id: 42,
+      anoApuracao: 2026,
+      mesApuracao: 6,
+      situacaoApuracao: 2
+    })
+
+    expect(calls[0]?.path).toBe('/api/v1/fiscal/mit/lista-apuracoes')
+    expect(calls[0]?.opts).toEqual({
+      method: 'POST',
+      body: { client_id: 42, anoApuracao: 2026, mesApuracao: 6, situacaoApuracao: 2 }
+    })
+    expect(JSON.stringify(calls)).not.toContain('office_id')
   })
 })

@@ -10,7 +10,9 @@
  * | **auth** | login / 2FA | subtle | max-w no layout auth |
  * | **list-row** | dentro de panel | — | não usar UPageCard por linha |
  *
- * Acordeão (`UAccordion`): painéis secundários empilhados (não KPIs, não toolbar).
+ * Acordeão (`ShellPanelAccordion` / `UAccordion`): painéis secundários empilhados
+ * (não KPIs, não toolbar). Slots customizados: use `#{{slot}}-body` para herdar
+ * o wrapper com padding do tema; `#{{slot}}` substitui `#content` sem inset.
  * Texto: breve (ui-copy / kpiDisplay*).
  */
 
