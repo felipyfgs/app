@@ -3,7 +3,7 @@
 - [x] 1.1 Inventariar host produtivo, IP público, DNS de `app.inovaicontabil.com.br`, firewall 80/443, Docker/Compose, usuário operacional e caminho do repo; registrar evidência sanitizada sem segredos.
 - [x] 1.2 Preparar `.env.prod` e `/etc/fiscal-hub/backup.env` a partir dos exemplos, com `chmod 600`, chaves fortes, SMTP real, `ACME_EMAIL`, `BACKUP_PACKAGE_KEY` distinta e flags fiscais em contenção; registrar somente checklist de presença/força, nunca valores.
 - [x] 1.3 Revisar `Makefile`, `compose.prod.yml`, `docker/ops/deploy.sh`, `docker/ops/prod-readiness.sh`, `docker/ops/release-manifest.sh` e scripts de backup/restore contra a spec `operacao-producao-dominio`; aplicar ajustes mínimos se algum requisito ainda não estiver coberto e registrar diff.
-- [ ] 1.4 Executar gate de fonte com `make prod-readiness PHASE=source` e corrigir falhas de código/configuração versionada; preservar evidência sanitizada.
+- [x] 1.4 Executar gate de fonte com `make prod-readiness PHASE=source` e corrigir falhas de código/configuração versionada; preservar evidência sanitizada.
 
 ## 2. N1 — Gates de configuração e release
 
