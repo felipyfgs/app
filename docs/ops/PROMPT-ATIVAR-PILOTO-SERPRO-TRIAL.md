@@ -1,10 +1,11 @@
-# Ativar piloto SERPRO Trial — fluxo simples
+# Configurar demonstração oficial SERPRO Trial — fluxo simples
 
 ## Objetivo
 
-Ativar as credenciais Trial e preparar a emissão da segunda via do PGDAS-D do
-cliente AUTO CENTER sem expor secrets e sem executar etapas manuais do
-protocolo SERPRO.
+Configurar as credenciais do ambiente oficial de demonstração (Trial) e
+preparar uma consulta controlada de PGDAS-D, sem expor secrets e sem executar
+etapas manuais do protocolo SERPRO. Trial não é homologação nem evidência de
+prontidão produtiva.
 
 ## Fluxo normal
 
@@ -19,9 +20,10 @@ Clique em **Salvar e ativar**.
 
 No Trial, essa única ação cadastra a versão no vault, valida o certificado,
 testa o OAuth mTLS e ativa a credencial. Os secrets são enviados uma vez e não
-são devolvidos pela API. Produção continua usando cutover explícito e separado.
+são devolvidos pela API. O resultado não libera produção, não cria
+`PRODUCTION_CANARY` e não substitui o cutover produtivo explícito e separado.
 
-## Ativar o escritório contador
+## Configurar o escritório contador
 
 Com o A1 do autor já armazenado no vault, execute apenas:
 
@@ -62,7 +64,7 @@ O arquivo local deve permanecer ignorado pelo Git.
 
 ## Consultar PGDAS-D
 
-Depois da ativação, a consulta inicial do cliente usa o contrato interno do
+Depois da configuração, a consulta controlada do cliente usa o contrato interno do
 módulo, sem coordenadas SERPRO informadas pelo navegador:
 
 ```json
@@ -97,7 +99,8 @@ com erro sanitizado. Nunca invente o poder `00146` quando a API não o comprovar
 - Não rodar `migrate:fresh` para ativar o piloto.
 - Não versionar PFX, senhas, tokens, XML do Termo ou conteúdo do vault.
 - Não usar fake/simulated como evidência de integração real.
-- Não misturar ativação Trial com cutover de Produção.
+- Não tratar Trial como homologação, canário produtivo ou aprovação de produção.
+- Não misturar configuração Trial com cutover de Produção.
 
 Referências oficiais:
 

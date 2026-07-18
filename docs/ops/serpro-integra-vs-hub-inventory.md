@@ -72,7 +72,7 @@ com as fontes `v2026-07-18`. Maturidade de código nunca substitui
 
 | Cód. | operation_key | idSistema | idServico | Rota | Estado SERPRO | platform_support | refs | flags |
 |------|---------------|-----------|-----------|------|---------------|------------------|------|-------|
-| 12.1 | `ccmei.emitirccmei` | CCMEI | `EMITIRCCMEI121` | Emitir | PRODUCTION | IMPLEMENTED | php=0 fe=0 | — |
+| 12.1 | `ccmei.emitirccmei` | CCMEI | `EMITIRCCMEI121` | Emitir | PRODUCTION | IMPLEMENTED | php=1 fe=1 | contrato documental, cofre tenant-scoped e painel de emissão |
 | 13.1 | `eventosatualizacao.soliceventospf` | EVENTOSATUALIZACAO | `SOLICEVENTOSPF131` | Monitorar | PRODUCTION | IMPLEMENTED | php=1 fe=0 | — |
 | 13.2 | `eventosatualizacao.soliceventospj` | EVENTOSATUALIZACAO | `SOLICEVENTOSPJ132` | Monitorar | PRODUCTION | IMPLEMENTED | php=1 fe=0 | — |
 | 13.4 | `eventosatualizacao.obtereventospj` | EVENTOSATUALIZACAO | `OBTEREVENTOSPJ134` | Monitorar | PRODUCTION | IMPLEMENTED | php=1 fe=0 | — |
@@ -206,7 +206,7 @@ com as fontes `v2026-07-18`. Maturidade de código nunca substitui
 - [ ] `caixa_postal.indicador` (CAIXAPOSTAL/INNOVAMSG63) — maturidade C_HUB_COORDENADA_REFERENCIADA
 - [ ] `caixa_postal.lista` (CAIXAPOSTAL/MSGCONTRIBUINTE61) — maturidade D_HUB_SERVICO_PARCIAL
 - [ ] `ccmei.ccmeisitcadastral` (CCMEI/CCMEISITCADASTRAL123) — maturidade D_HUB_SERVICO_PARCIAL
-- [ ] `ccmei.emitirccmei` (CCMEI/EMITIRCCMEI121) — maturidade C0_HUB_SO_CATALOGO_JSON
+- [x] `ccmei.emitirccmei` (CCMEI/EMITIRCCMEI121) — maturidade D_HUB_SERVICO_LOCAL_VALIDADO; Trial/canário produtivo pendentes
 - [ ] `dctfweb.consdeccompleta` (DCTFWEB/CONSDECCOMPLETA33) — maturidade C_HUB_COORDENADA_REFERENCIADA
 - [ ] `dctfweb.consrecibo` (DCTFWEB/CONSRECIBO32) — maturidade D_HUB_SERVICO_PARCIAL
 - [ ] `dctfweb.consxmldeclaracao` (DCTFWEB/CONSXMLDECLARACAO38) — maturidade C_HUB_COORDENADA_REFERENCIADA
@@ -227,7 +227,7 @@ com as fontes `v2026-07-18`. Maturidade de código nunca substitui
 - [ ] `mit.encapuracao` (MIT/ENCAPURACAO314) — maturidade C_HUB_COORDENADA_REFERENCIADA
 - [ ] `mit.listaapuracoes` (MIT/LISTAAPURACOES317) — maturidade D_HUB_SERVICO_PARCIAL
 - [ ] `mit.situacaoenc` (MIT/SITUACAOENC315) — maturidade C_HUB_COORDENADA_REFERENCIADA
-- [ ] `pagtoweb.comparrecadacao` (PAGTOWEB/COMPARRECADACAO72) — maturidade C_HUB_COORDENADA_REFERENCIADA
+- [x] `pagtoweb.comparrecadacao` (PAGTOWEB/COMPARRECADACAO72) — maturidade B_HUB_FLUXO_LOCAL_COM_COFRE
 - [ ] `pagtoweb.contaconsdocarrpg` (PAGTOWEB/CONTACONSDOCARRPG73) — maturidade D_HUB_SERVICO_PARCIAL
 - [ ] `parcmei.detpagtoparc` (PARCMEI/DETPAGTOPARC205) — maturidade C0_HUB_SO_CATALOGO_JSON
 - [ ] `parcmei.gerardas` (PARCMEI/GERARDAS201) — maturidade C0_HUB_SO_CATALOGO_JSON
