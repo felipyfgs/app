@@ -18,29 +18,29 @@
 
 ## 3. N2 — Deploy controlado
 
-- [ ] 3.1 Definir se o deploy é fresh ou sobre instância existente; para fresh, comprovar base vazia e usar `CONFIRM_FRESH_PROD=SIM`; para existente, criar/verificar `PRE_DEPLOY_BACKUP`; registrar evidência sanitizada.
+- [x] 3.1 Definir se o deploy é fresh ou sobre instância existente; para fresh, comprovar base vazia e usar `CONFIRM_FRESH_PROD=SIM`; para existente, criar/verificar `PRE_DEPLOY_BACKUP`; registrar evidência sanitizada.
   Depende de: 2.3
-- [ ] 3.2 Executar `make prod-up CONFIRM_PROD=SIM RELEASE_SHA=<sha>` com `PRE_DEPLOY_BACKUP` ou `CONFIRM_FRESH_PROD=SIM` conforme o caso; capturar logs operacionais sanitizados.
+- [x] 3.2 Executar `make prod-up CONFIRM_PROD=SIM RELEASE_SHA=<sha>` com `PRE_DEPLOY_BACKUP` ou `CONFIRM_FRESH_PROD=SIM` conforme o caso; capturar logs operacionais sanitizados.
   Depende de: 2.4, 3.1
-- [ ] 3.3 Verificar saúde local da stack produtiva com Compose: `web`, `php`, `postgres`, `redis`, `horizon`, `scheduler`, `traefik` e `socket-proxy`; corrigir falhas antes de qualquer aceite público.
+- [x] 3.3 Verificar saúde local da stack produtiva com Compose: `web`, `php`, `postgres`, `redis`, `horizon`, `scheduler`, `traefik` e `socket-proxy`; corrigir falhas antes de qualquer aceite público.
   Depende de: 3.2
-- [ ] 3.4 Executar `PilotSeeder` no container PHP com autorização explícita de produção, verificar `felipe@example.com` ativo como `PLATFORM_ADMIN`, `gustavo@example.com` no office contador e ausência de importação automática de PFX/PDF.
+- [x] 3.4 Executar `PilotSeeder` no container PHP com autorização explícita de produção, verificar `felipe@example.com` ativo como `PLATFORM_ADMIN`, `gustavo@example.com` no office contador e ausência de importação automática de PFX/PDF.
   Depende de: 3.3
 
 ## 4. N3 — Pós-deploy operacional
 
-- [ ] 4.1 Executar `make prod-readiness PHASE=postdeploy` e validar HTTPS público, redirecionamento HTTP, resposta da SPA, readiness interno, cookies seguros e release SHA.
+- [x] 4.1 Executar `make prod-readiness PHASE=postdeploy` e validar HTTPS público, redirecionamento HTTP, resposta da SPA, readiness interno, cookies seguros e release SHA.
   Depende de: 3.2, 3.3, 3.4
-- [ ] 4.2 Criar backup produtivo inicial com `make prod-backup`, verificar com `make prod-backup-verify BACKUP=<path>` e registrar referência opaca/offsite sem chaves.
+- [x] 4.2 Criar backup produtivo inicial com `make prod-backup`, verificar com `make prod-backup-verify BACKUP=<path>` e registrar referência opaca/offsite sem chaves.
   Depende de: 4.1
-- [ ] 4.3 Gerar manifesto sanitizado com `make prod-release-manifest` e conferir que ele referencia SHA, build, domínio, containment fiscal e evidências sem segredos.
+- [x] 4.3 Gerar manifesto sanitizado com `make prod-release-manifest` e conferir que ele referencia SHA, build, domínio, containment fiscal e evidências sem segredos.
   Depende de: 4.1
-- [ ] 4.4 Configurar ou validar timer/cron de backup host-only usando `docker/ops/host-backup.*` e `/etc/fiscal-hub/backup.env`; registrar evidência de agenda e retenção.
+- [x] 4.4 Configurar ou validar timer/cron de backup host-only usando `docker/ops/host-backup.*` e `/etc/fiscal-hub/backup.env`; registrar evidência de agenda e retenção.
   Depende de: 4.2
 
 ## 5. N4 — Gates integrados e evidência de prontidão
 
-- [ ] 5.1 Executar gate integrado final: `openspec validate --specs --strict`, status da change, `prod-readiness` nas fases necessárias, backup verificado, manifesto sanitizado e URL `https://app.inovaicontabil.com.br` acessível com TLS válido.
+- [x] 5.1 Executar gate integrado final: `openspec validate --specs --strict`, status da change, `prod-readiness` nas fases necessárias, backup verificado, manifesto sanitizado e URL `https://app.inovaicontabil.com.br` acessível com TLS válido.
   Depende de: 4.1, 4.2, 4.3, 4.4
-- [ ] 5.2 Consolidar relatório final de go-live com caminhos das evidências, SHA implantado, estado de containment fiscal, política de backup, comando de rollback/restauração e pendências abertas.
+- [x] 5.2 Consolidar relatório final de go-live com caminhos das evidências, SHA implantado, estado de containment fiscal, política de backup, comando de rollback/restauração e pendências abertas.
   Depende de: 5.1
