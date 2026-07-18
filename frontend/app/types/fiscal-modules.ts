@@ -162,17 +162,18 @@ export const FISCAL_COVERAGE_CODES: readonly FiscalCoverageCode[] = [
 ] as const
 
 /** Origem do dado — espelho de App\Enums\FiscalDataOrigin. */
-export type FiscalDataOrigin = 'DEMO' | 'SIMULATED' | 'LIVE'
+export type FiscalDataOrigin = 'DEMO' | 'SIMULATED' | 'TRIAL' | 'LIVE'
 
 export const FISCAL_DATA_ORIGINS: readonly FiscalDataOrigin[] = [
   'DEMO',
   'SIMULATED',
+  'TRIAL',
   'LIVE'
 ] as const
 
 export function isSyntheticFiscalOrigin(origin?: string | null): boolean {
   const v = String(origin || '').toUpperCase()
-  return v === 'DEMO' || v === 'SIMULATED'
+  return v === 'DEMO' || v === 'SIMULATED' || v === 'TRIAL'
 }
 
 export function isFiscalPortfolioModule(value: string): value is FiscalPortfolioModuleKey {
@@ -1476,6 +1477,8 @@ export function fiscalDataOriginLabel(origin?: string | null): string {
       return 'Dados demonstrativos'
     case 'SIMULATED':
       return 'Dados simulados'
+    case 'TRIAL':
+      return 'Demonstração SERPRO'
     case 'LIVE':
       return 'Fonte produtiva'
     case '':

@@ -144,6 +144,52 @@ class SerproOperationServiceTest extends TestCase
         $this->assertTrue($attempt->attempt_state->isTerminal());
     }
 
+    public function test_trial_nao_exige_poder_de_procuracao_do_ambiente_produtivo(): void
+    {
+        config([
+            'serpro.capabilities.sitfis' => 'real',
+            'serpro.capabilities.default' => 'real',
+            'serpro.default_environment' => 'TRIAL',
+            'serpro.kill_switch' => false,
+            'features.kill_switch' => false,
+        ]);
+
+        [$office, $client] = $this->seedOfficeClientContract();
+        TaxProxyPower::query()->delete();
+
+        $httpCalls = 0;
+        $this->app->instance(IntegraContadorClient::class, new class($httpCalls) implements IntegraContadorClient
+        {
+            public function __construct(private int &$calls) {}
+
+            public function execute(IntegraRequest $request): IntegraResponse
+            {
+                $this->calls++;
+
+                return new IntegraResponse(
+                    success: true,
+                    httpStatus: 200,
+                    body: ['ok' => true],
+                    dados: ['protocolo' => 'TRIAL-1'],
+                    operationKey: $request->operationKey,
+                    sourceProvenance: FiscalSourceProvenance::SerproTrial->value,
+                );
+            }
+        });
+        $this->app->forgetInstance(SerproOperationService::class);
+
+        $response = $this->app->make(SerproOperationService::class)->run(new SerproOperationCommand(
+            office: $office,
+            client: $client,
+            operationKey: 'sitfis.solicitar_protocolo',
+            businessData: [],
+            idempotencyKey: 'trial-sem-procuracao',
+        ));
+
+        $this->assertTrue($response->success, $response->errorCode.' '.$response->errorMessage);
+        $this->assertSame(1, $httpCalls);
+    }
+
     public function test_chave_idempotencia_longa_cabe_no_ledger_tecnico(): void
     {
         config([

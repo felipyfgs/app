@@ -22,8 +22,8 @@ final class SerproRealOnlyDefaultsTest extends TestCase
             'https://gateway.apiserpro.serpro.gov.br/integra-contador-trial/v1',
             $environments['TRIAL']['base_url'] ?? null,
         );
-        $this->assertArrayHasKey('bearer_token', $environments['TRIAL']);
-        $this->assertArrayHasKey('jwt_token', $environments['TRIAL']);
+        $this->assertArrayNotHasKey('bearer_token', $environments['TRIAL']);
+        $this->assertArrayNotHasKey('jwt_token', $environments['TRIAL']);
         $this->assertArrayHasKey('PRODUCTION', $environments);
         $this->assertArrayNotHasKey('HOMOLOGATION', $environments);
 

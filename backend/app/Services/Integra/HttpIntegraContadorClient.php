@@ -21,7 +21,6 @@ use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproHttpTransport;
 use App\Services\Serpro\SerproKillSwitchService;
 use App\Services\Serpro\SerproRateLimiter;
-use App\Services\Serpro\TrialSerproGatewayCredentials;
 use App\Support\LogSanitizer;
 use RuntimeException;
 use Throwable;
@@ -58,7 +57,6 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         private readonly SecureObjectStore $store,
         private readonly ?OperationCoordinateResolver $coordinates = null,
         private readonly ?SerproRateLimiter $rateLimiter = null,
-        private readonly ?TrialSerproGatewayCredentials $trialCredentials = null,
     ) {}
 
     public function execute(IntegraRequest $request): IntegraResponse
@@ -101,38 +99,26 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         }
 
         $env = SerproEnvironment::from($request->environment);
-        $trialGateway = null;
-        if ($env === SerproEnvironment::Trial) {
-            try {
-                $trialGateway = ($this->trialCredentials ?? app(TrialSerproGatewayCredentials::class))->resolve();
-            } catch (RuntimeException) {
-                return $this->fail(
-                    $request,
-                    503,
-                    'TRIAL_CREDENTIALS_MISSING',
-                    'Credenciais Trial SERPRO ausentes ou incompletas.',
-                );
-            }
+        $procuradorToken = null;
+        // Trial e produção usam exclusivamente o contrato ativo persistido no
+        // banco e seu material no SecureObjectStore. Nenhum segredo de gateway
+        // é lido do .env.
+        $contract = $this->contracts->activeFor($env);
+        if ($contract === null || ! $contract->isUsable()) {
+            return $this->fail($request, 503, 'CONTRACT_UNAVAILABLE', 'Contrato SERPRO indisponível.');
+        }
+        $contractorCnpj = $contract->contractor_cnpj;
+        if ($contractorCnpj !== $request->contractorCnpj) {
+            return $this->fail($request, 422, 'CONTRACTOR_MISMATCH', 'Identidade contratante diverge do contrato ativo.');
         }
 
-        $procuradorToken = null;
-        $contractorCnpj = $request->contractorCnpj;
-        $contract = null;
-        if ($trialGateway === null) {
-            $contract = $this->contracts->activeFor($env);
-            if ($contract === null || ! $contract->isUsable()) {
-                return $this->fail($request, 503, 'CONTRACT_UNAVAILABLE', 'Contrato SERPRO indisponível.');
-            }
-            $contractorCnpj = $contract->contractor_cnpj;
-
+        // O Trial oficial usa objetos mock e não exige token/poder de
+        // procurador. A cadeia de representação é validada em produção.
+        if ($env === SerproEnvironment::Production) {
             $authMode = (string) ($coords['auth_mode'] ?? 'PROCURATOR_WHEN_REPRESENTING');
             $proxyRule = (string) ($coords['proxy_rule'] ?? 'NOT_APPLICABLE');
             $isAutenticaProcurador = $authMode === 'CONTRACT_ONLY'
                 || $operationKey === 'autentica_procurador.envio_xml_assinado';
-
-            if (! $isAutenticaProcurador && $contractorCnpj !== $request->contractorCnpj) {
-                return $this->fail($request, 422, 'CONTRACTOR_MISMATCH', 'Identidade contratante diverge do contrato ativo.');
-            }
 
             // Poder e-CAC e token local de procurador só existem no fluxo contratual produtivo.
             $powerCheck = $this->assertProxyPower($request, $coords, $proxyRule);
@@ -162,22 +148,26 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             }
         }
 
-        $tokenType = 'Bearer';
-        $accessToken = '';
-        $jwtToken = '';
-        if ($trialGateway !== null) {
-            $accessToken = $trialGateway['bearer_token'];
-            $jwtToken = $trialGateway['jwt_token'];
+        if ($env === SerproEnvironment::Trial) {
+            try {
+                $tokenType = 'Bearer';
+                $accessToken = $this->contracts->loadTrialGatewayBearer($contract);
+                $jwtToken = '';
+            } catch (Throwable) {
+                return $this->fail(
+                    $request,
+                    503,
+                    'TRIAL_CREDENTIALS_MISSING',
+                    'Bearer do gateway Trial ausente no banco/cofre.',
+                );
+            }
         } else {
             try {
-                if ($contract === null) {
-                    throw new RuntimeException('Contrato SERPRO indisponível.');
-                }
                 $token = $this->authenticator->authenticate($contract);
                 $token->assertComplete();
                 $tokenType = $token->tokenType;
                 $accessToken = $token->accessToken;
-                $jwtToken = $token->officialJwt();
+                $jwtToken = (string) $token->officialJwt();
             } catch (Throwable $e) {
                 return $this->fail(
                     $request,
@@ -194,14 +184,24 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         $dadosMode = (string) ($coords['dados_mode'] ?? 'JSON_STRING');
 
         $dadosString = $this->serializeDados($request, $dadosMode);
+        $envelopeContractor = ['numero' => $contractorCnpj, 'tipo' => 2];
+        $envelopeAuthor = $request->author->toEnvelope();
+        $envelopeContributor = $request->contributorEnvelope ?? $request->contributor->toEnvelope();
+
+        if ($env === SerproEnvironment::Trial) {
+            $scenario = $this->trialScenario($operationKey);
+            if ($scenario !== null) {
+                $envelopeContractor = $scenario['identity'];
+                $envelopeAuthor = $scenario['identity'];
+                $envelopeContributor = $scenario['identity'];
+                $dadosString = json_encode($scenario['business_data'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            }
+        }
 
         $envelope = [
-            'contratante' => [
-                'numero' => $contractorCnpj,
-                'tipo' => 2,
-            ],
-            'autorPedidoDados' => $request->author->toEnvelope(),
-            'contribuinte' => $request->contributorEnvelope ?? $request->contributor->toEnvelope(),
+            'contratante' => $envelopeContractor,
+            'autorPedidoDados' => $envelopeAuthor,
+            'contribuinte' => $envelopeContributor,
             'pedidoDados' => [
                 'idSistema' => $idSistema,
                 'idServico' => $idServico,
@@ -211,11 +211,14 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         ];
 
         $body = json_encode($envelope, JSON_THROW_ON_ERROR);
-        $baseUrl = $trialGateway['base_url'] ?? rtrim((string) config('serpro.api.base_url'), '/');
+        $baseUrl = rtrim((string) config('serpro.environments.'.$env->value.'.base_url'), '/');
+        if ($baseUrl === '') {
+            return $this->fail($request, 503, 'ENDPOINT_UNAVAILABLE', 'Endpoint SERPRO do ambiente não configurado.');
+        }
         $url = $baseUrl.$routePath;
 
         $attempt = 0;
-        $maxAttempts = $env === SerproEnvironment::Trial ? 1 : 2; // produção: 1 renovação OAuth após 401
+        $maxAttempts = $env === SerproEnvironment::Production ? 2 : 1;
         $lastResponse = null;
 
         while ($attempt < $maxAttempts) {
@@ -253,14 +256,14 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 throw new RuntimeException('Falha de transporte Integra Contador.', 0, $e);
             }
 
-            if ($env !== SerproEnvironment::Trial && $lastResponse['status'] === 401 && $attempt < $maxAttempts) {
+            if ($env === SerproEnvironment::Production && $lastResponse['status'] === 401 && $attempt < $maxAttempts) {
                 $this->authenticator->invalidate($contract);
                 try {
                     $token = $this->authenticator->authenticate($contract);
                     $token->assertComplete();
                     $tokenType = $token->tokenType;
                     $accessToken = $token->accessToken;
-                    $jwtToken = $token->officialJwt();
+                    $jwtToken = (string) $token->officialJwt();
                 } catch (Throwable $e) {
                     return $this->fail(
                         $request,
@@ -425,11 +428,15 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
     ): array {
         $headers = [
             'Authorization: '.$tokenType.' '.$accessToken,
-            'jwt_token: '.$jwt,
             'X-Request-Tag: '.substr($requestTag, 0, 32),
             'Content-Type: application/json',
             'Accept: application/json',
         ];
+        // O gateway de demonstração documenta jwt_token como opcional. Em
+        // produção o token sempre vem do OAuth e assertComplete() o exige.
+        if ($jwt !== '') {
+            $headers[] = 'jwt_token: '.$jwt;
+        }
         if ($procuradorToken !== null && $procuradorToken !== '') {
             $headers[] = 'autenticar_procurador_token: '.$procuradorToken;
         }
@@ -599,8 +606,12 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             );
         }
 
-        $success = $status >= 200 && $status < 300 && $status !== 204;
-        if ($success) {
+        $httpSuccess = $status >= 200 && $status < 300 && $status !== 204;
+        $businessError = $httpSuccess && $this->hasBusinessError($mensagens);
+        $success = $httpSuccess && ! $businessError;
+        if ($httpSuccess) {
+            // O transporte respondeu normalmente mesmo quando o envelope traz
+            // rejeição de negócio; isso não deve abrir o circuit breaker.
             $this->breaker->recordSuccess($solutionForBreaker);
         } else {
             $this->breaker->recordFailure($solutionForBreaker, '4xx');
@@ -611,8 +622,10 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             httpStatus: $status,
             body: $this->sanitizeBodyKeys($decoded),
             headers: $this->publicHeaders($headers),
-            errorCode: $success ? null : 'REQUEST_FAILED',
-            errorMessage: $success ? null : 'Chamada Integra Contador rejeitada.',
+            errorCode: $success ? null : ($businessError ? 'BUSINESS_ERROR' : 'REQUEST_FAILED'),
+            errorMessage: $success ? null : ($businessError
+                ? 'SERPRO rejeitou os dados da operação.'
+                : 'Chamada Integra Contador rejeitada.'),
             simulated: $simulated,
             retryAfterSeconds: $tempoEspera,
             correlationId: $request->correlationId,
@@ -663,6 +676,48 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         }
 
         return json_encode($legacy, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * @return array{identity: array{numero: string, tipo: int}, business_data: array<string, mixed>}|null
+     */
+    private function trialScenario(string $operationKey): ?array
+    {
+        $scenarios = config('serpro.environments.TRIAL.scenarios', []);
+        $scenario = is_array($scenarios) ? ($scenarios[$operationKey] ?? null) : null;
+        if (! is_array($scenario) || ! is_array($scenario['identity'] ?? null)
+            || ! is_array($scenario['business_data'] ?? null)
+        ) {
+            return null;
+        }
+
+        $numero = (string) ($scenario['identity']['numero'] ?? '');
+        $tipo = (int) ($scenario['identity']['tipo'] ?? 0);
+        if ($numero === '' || $tipo < 1) {
+            return null;
+        }
+
+        return [
+            'identity' => ['numero' => $numero, 'tipo' => $tipo],
+            'business_data' => $scenario['business_data'],
+        ];
+    }
+
+    /** @param list<array<string, mixed>> $mensagens */
+    private function hasBusinessError(array $mensagens): bool
+    {
+        foreach ($mensagens as $mensagem) {
+            $code = strtoupper(trim((string) ($mensagem['codigo'] ?? $mensagem['code'] ?? '')));
+            $compact = preg_replace('/[^A-Z0-9]/', '', $code) ?? '';
+            if ($code === 'ERRO' || str_starts_with($code, 'ERRO-')
+                || str_starts_with($compact, 'ACESSONEGADO')
+                || str_starts_with($compact, 'ENTRADAINCORRETA')
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

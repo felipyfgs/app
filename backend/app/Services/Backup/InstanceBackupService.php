@@ -589,6 +589,7 @@ final class InstanceBackupService
         $columns = [
             ['serpro_contracts', 'pfx_vault_object_id'],
             ['serpro_contracts', 'oauth_vault_object_id'],
+            ['serpro_contracts', 'trial_bearer_vault_object_id'],
             ['serpro_contracts', 'token_vault_object_id'],
             ['serpro_credential_versions', 'pfx_vault_object_id'],
             ['serpro_credential_versions', 'oauth_vault_object_id'],

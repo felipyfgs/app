@@ -58,7 +58,7 @@ fora do chrome do dashboard. A classificação não altera comportamento de rota
 | `pages/monitoring/clients/[clientId].vue` | — | `SHELL` | painel próprio |
 | `pages/monitoring/dctfweb/[submodule].vue` | — | `CHILD` | redirect legado por middleware |
 | `pages/monitoring/dctfweb/index.vue` | — | `SHELL` | painel próprio |
-| `pages/monitoring/declarations.vue` | — | `SHELL` | painel próprio |
+| `pages/monitoring/declarations.vue` | `pages/customers.vue` | `LIST` | carteira agregada; detalhe em slideover |
 | `pages/monitoring/fgts.vue` | — | `SHELL` | painel próprio |
 | `pages/monitoring/guides.vue` | — | `SHELL` | painel próprio |
 | `pages/monitoring/index.vue` | — | `SHELL` | painel próprio |

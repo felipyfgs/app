@@ -6,6 +6,7 @@ use App\Contracts\CaixaPostalClient;
 use App\Contracts\FiscalSourceAdapter;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
+use App\DTO\Mailbox\CaixaPostalListResult;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalMutability;
@@ -64,21 +65,111 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
 
     public function execute(FiscalAdapterRequest $request): FiscalAdapterResult
     {
-        $list = $this->client->listMessages([
-            'office_id' => $request->office->id,
-            'client_id' => $request->client->id,
-            'cnpj' => $request->client->root_cnpj,
-            'correlation_id' => $request->run->correlation_id,
-        ]);
+        $maxPages = max(1, (int) config('fiscal_monitoring.mailbox.max_pages_per_sync', 20));
+        $page = 0;
+        $pointer = null;
+        $seenPointers = [];
+        $itemsByExternalId = [];
+        $simulated = false;
+        $sourceVersion = 'caixa-postal-serpro-v1';
+        $lastMeta = [];
+        $paginationComplete = false;
 
-        if (! $list->success) {
-            $this->store->markListError($request->office, $request->client, $request->run->id);
+        do {
+            $context = [
+                'office_id' => $request->office->id,
+                'client_id' => $request->client->id,
+                'correlation_id' => $request->run->correlation_id,
+                'status_leitura' => '0',
+                'indicador_pagina' => $page === 0 ? '0' : '1',
+            ];
+            if ($pointer !== null) {
+                $context['ponteiro_pagina'] = $pointer;
+            }
 
-            return FiscalAdapterResult::failed(
-                $list->errorMessage ?? 'Falha ao listar Caixa Postal.',
-                $list->errorCode ?? 'MAILBOX_LIST_FAILED',
-            );
-        }
+            $list = $this->client->listMessages($context);
+            if (! $list->success) {
+                $this->store->markListError($request->office, $request->client, $request->run->id);
+
+                return FiscalAdapterResult::failed(
+                    $list->errorMessage ?? 'Falha ao listar Caixa Postal.',
+                    $list->errorCode ?? 'MAILBOX_LIST_FAILED',
+                );
+            }
+
+            $page++;
+            $simulated = $simulated || $list->simulated;
+            $sourceVersion = $list->sourceVersion;
+            $lastMeta = $list->rawMeta;
+
+            foreach ($list->items as $item) {
+                $externalId = trim((string) ($item['external_id'] ?? ''));
+                if ($externalId !== '') {
+                    $itemsByExternalId[$externalId] = $item;
+                }
+            }
+
+            $lastPage = strtoupper(trim((string) ($list->rawMeta['indicador_ultima_pagina'] ?? '')));
+            $nextPointer = trim((string) ($list->rawMeta['ponteiro_proxima_pagina'] ?? ''));
+            if ($lastPage === 'S') {
+                $paginationComplete = true;
+                break;
+            }
+            if ($nextPointer === '') {
+                if ($lastPage === 'N') {
+                    $this->store->markListError($request->office, $request->client, $request->run->id);
+
+                    return FiscalAdapterResult::failed(
+                        'SERPRO indicou nova página sem fornecer o ponteiro de continuação.',
+                        'MAILBOX_PAGINATION_CURSOR_MISSING',
+                    );
+                }
+
+                // Compatibilidade com respostas antigas que não informavam paginação.
+                $paginationComplete = true;
+                break;
+            }
+            if ($page >= $maxPages) {
+                break;
+            }
+            if (isset($seenPointers[$nextPointer])) {
+                $this->store->markListError($request->office, $request->client, $request->run->id);
+
+                return FiscalAdapterResult::failed(
+                    'SERPRO repetiu o ponteiro de paginação da Caixa Postal.',
+                    'MAILBOX_PAGINATION_LOOP',
+                );
+            }
+
+            $seenPointers[$nextPointer] = true;
+            $pointer = $nextPointer;
+        } while ($page < $maxPages);
+
+        $items = array_values($itemsByExternalId);
+        $officialReadValues = array_values(array_filter(
+            array_map(static fn (array $item) => $item['official_read'] ?? null, $items),
+            static fn (mixed $value) => is_bool($value),
+        ));
+        $officialUnreadCount = $items === []
+            ? 0
+            : ($officialReadValues === [] ? null : count(array_filter(
+                $officialReadValues,
+                static fn (bool $read) => ! $read,
+            )));
+        $paginationTruncated = ! $paginationComplete;
+        $list = new CaixaPostalListResult(
+            success: true,
+            items: $items,
+            officialUnreadCount: $officialUnreadCount,
+            simulated: $simulated,
+            rawMeta: [
+                ...$lastMeta,
+                'pages_processed' => $page,
+                'pagination_complete' => $paginationComplete,
+                'pagination_truncated' => $paginationTruncated,
+            ],
+            sourceVersion: $sourceVersion,
+        );
 
         $applied = $this->store->applyList(
             $request->office,
@@ -95,6 +186,9 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
             'created' => $applied['created'],
             'updated' => $applied['updated'],
             'official_unread_count' => $list->officialUnreadCount,
+            'pages_processed' => $page,
+            'pagination_complete' => $paginationComplete,
+            'pagination_truncated' => $paginationTruncated,
             // sem corpos/subjects
             'external_ids' => array_map(
                 fn (array $i) => $i['external_id'] ?? null,
@@ -103,6 +197,16 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
         ], JSON_THROW_ON_ERROR);
 
         $findings = [];
+        if ($paginationTruncated) {
+            $findings[] = [
+                'code' => 'MAILBOX_PAGINATION_TRUNCATED',
+                'severity' => FiscalFindingSeverity::Medium->value,
+                'title' => 'Sincronização parcial da Caixa Postal',
+                'detail' => sprintf('Limite de %d página(s) atingido.', $maxPages),
+                'situation' => FiscalSituation::Unknown->value,
+                'creates_pending' => false,
+            ];
+        }
         if (($list->officialUnreadCount ?? 0) > 0 || $applied['created'] > 0) {
             $findings[] = [
                 'code' => 'MAILBOX_NEW_OR_UNREAD',
@@ -118,14 +222,16 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
             ];
         }
 
-        $situation = ($applied['created'] > 0 || ($list->officialUnreadCount ?? 0) > 0)
-            ? FiscalSituation::Attention
-            : FiscalSituation::UpToDate;
+        $situation = match (true) {
+            $applied['created'] > 0, ($list->officialUnreadCount ?? 0) > 0 => FiscalSituation::Attention,
+            $paginationTruncated => FiscalSituation::Unknown,
+            default => FiscalSituation::UpToDate,
+        };
 
         return new FiscalAdapterResult(
             result: FiscalRunResult::Success,
             situation: $situation,
-            coverage: FiscalCoverage::Full,
+            coverage: $paginationTruncated ? FiscalCoverage::Partial : FiscalCoverage::Full,
             evidenceBytes: $evidence,
             evidenceContentType: 'application/json',
             sourceVersion: $list->sourceVersion,
@@ -135,10 +241,11 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
                 'updated' => $applied['updated'],
                 'official_unread_count' => $list->officialUnreadCount,
                 'messages_status' => 'CONSULTED',
+                'pagination_complete' => $paginationComplete,
             ],
             findings: $findings,
             itemsProcessed: count($list->items),
-            pagesProcessed: 1,
+            pagesProcessed: $page,
         );
     }
 }

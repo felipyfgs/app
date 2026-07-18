@@ -337,6 +337,79 @@ final class SerproContractService
     }
 
     /**
+     * Armazena o bearer específico do gateway oficial Trial no cofre.
+     * O banco mantém apenas a referência opaca; o valor nunca é reexibido.
+     */
+    public function storeTrialGatewayBearer(
+        SerproContract $contract,
+        string $bearerToken,
+        ?int $actorUserId = null,
+    ): SerproContract {
+        if ($contract->environment !== SerproEnvironment::Trial) {
+            throw new RuntimeException('Bearer do gateway Trial só pode ser associado a contrato TRIAL.');
+        }
+
+        $bearerToken = trim($bearerToken);
+        if ($bearerToken === '' || strlen($bearerToken) > 4096) {
+            throw new RuntimeException('Bearer do gateway Trial ausente ou inválido.');
+        }
+
+        $aad = SecureObjectPurpose::SerproTrialGatewayBearer->aadBase([
+            'environment' => SerproEnvironment::Trial->value,
+            'contract_id' => (int) $contract->id,
+            'contractor_cnpj' => $contract->contractor_cnpj,
+        ]);
+        $payload = json_encode(['bearer_token' => $bearerToken], JSON_THROW_ON_ERROR);
+        $objectId = $this->store->put($payload, $aad);
+        $previous = $contract->trial_bearer_vault_object_id;
+
+        try {
+            $contract->trial_bearer_vault_object_id = $objectId;
+            $contract->save();
+        } catch (Throwable $e) {
+            $this->safeDelete($objectId);
+            throw $e;
+        } finally {
+            unset($bearerToken, $payload);
+        }
+
+        if (is_string($previous) && $previous !== '' && $previous !== $objectId) {
+            $this->safeDelete($previous);
+        }
+
+        $this->audit->record('serpro.contract.trial_bearer.store', 'SUCCESS', $contract, [
+            'environment' => SerproEnvironment::Trial->value,
+            'has_trial_bearer' => true,
+        ], $actorUserId, null);
+
+        return $contract->refresh();
+    }
+
+    public function loadTrialGatewayBearer(SerproContract $contract): string
+    {
+        if ($contract->environment !== SerproEnvironment::Trial
+            || $contract->trial_bearer_vault_object_id === null
+        ) {
+            throw new RuntimeException('Bearer do gateway Trial não cadastrado no banco/cofre.');
+        }
+
+        $aad = SecureObjectPurpose::SerproTrialGatewayBearer->aadBase([
+            'environment' => SerproEnvironment::Trial->value,
+            'contract_id' => (int) $contract->id,
+            'contractor_cnpj' => $contract->contractor_cnpj,
+        ]);
+        $json = $this->store->get($contract->trial_bearer_vault_object_id, $aad);
+        /** @var array{bearer_token?: string} $data */
+        $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        $token = trim((string) ($data['bearer_token'] ?? ''));
+        if ($token === '') {
+            throw new RuntimeException('Bearer do gateway Trial corrompido no cofre.');
+        }
+
+        return $token;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function listSanitized(?SerproEnvironment $environment = null): array

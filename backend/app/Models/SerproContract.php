@@ -32,6 +32,7 @@ use Illuminate\Database\Eloquent\Model;
     'health_message',
     'pfx_vault_object_id',
     'oauth_vault_object_id',
+    'trial_bearer_vault_object_id',
     'token_vault_object_id',
     'token_expires_at',
     'consumer_key_hint',
@@ -41,6 +42,7 @@ use Illuminate\Database\Eloquent\Model;
 #[Hidden([
     'pfx_vault_object_id',
     'oauth_vault_object_id',
+    'trial_bearer_vault_object_id',
     'token_vault_object_id',
 ])]
 class SerproContract extends Model
@@ -99,6 +101,7 @@ class SerproContract extends Model
             'active_credential_version_id' => $this->active_credential_version_id,
             'has_pfx' => $this->pfx_vault_object_id !== null,
             'has_oauth' => $this->oauth_vault_object_id !== null,
+            'has_trial_bearer' => $this->trial_bearer_vault_object_id !== null,
             'has_cached_token' => $this->token_vault_object_id !== null
                 && $this->token_expires_at !== null
                 && $this->token_expires_at->isFuture(),

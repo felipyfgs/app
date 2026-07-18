@@ -90,6 +90,16 @@ return [
     ],
 
     /**
+     * Onboarding simplificado de ativação SERPRO em produção.
+     * Default OFF; allowlist vazia = ninguém, salvo allow_all_offices=true.
+     */
+    'serpro_production_onboarding' => [
+        'enabled' => filter_var(env('FEATURE_SERPRO_PRODUCTION_ONBOARDING_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'office_allowlist' => $parseIdList(env('FEATURE_SERPRO_PRODUCTION_ONBOARDING_OFFICE_ALLOWLIST')),
+        'allow_all_offices' => filter_var(env('FEATURE_SERPRO_PRODUCTION_ONBOARDING_ALLOW_ALL_OFFICES', false), FILTER_VALIDATE_BOOL),
+    ],
+
+    /**
      * Módulos do hub. Chaves estáveis — não renomear sem migração de config/ops.
      */
     'modules' => [

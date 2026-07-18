@@ -36,6 +36,7 @@ const isPgmei = computed(() =>
 const isMit = computed(() =>
   props.moduleKey === 'dctfweb' && normalizedSubmodule.value === 'MIT'
 )
+const isDctfweb = computed(() => props.moduleKey === 'dctfweb' && !isMit.value)
 const supportsSearch = computed(() =>
   isPgmei.value || moduleSupportsEnqueueRead.value
 )
@@ -60,6 +61,19 @@ const visible = computed(() =>
 )
 const scopeLabel = computed(() => usesSelection.value ? 'selecionado(s)' : 'da página atual')
 const currentYear = computed(() => new Date().getFullYear())
+const actionLabel = computed(() => isDctfweb.value ? 'Consulta manual' : 'Buscar pendências')
+const confirmationTitle = computed(() => isDctfweb.value
+  ? 'Confirmar consulta manual DCTFWeb'
+  : 'Confirmar busca de pendências')
+const refreshTimers: ReturnType<typeof setTimeout>[] = []
+
+function scheduleRefreshes() {
+  for (const delay of [2000, 5000, 10000, 20000]) {
+    refreshTimers.push(setTimeout(() => emit('submitted'), delay))
+  }
+}
+
+onBeforeUnmount(() => refreshTimers.splice(0).forEach(timer => clearTimeout(timer)))
 
 function openConfirmation() {
   if (requiresCompetence.value) {
@@ -113,6 +127,7 @@ async function submitSearch() {
   if (queued > 0) {
     open.value = false
     emit('submitted')
+    scheduleRefreshes()
   }
 }
 </script>
@@ -123,8 +138,8 @@ async function submitSearch() {
     color="primary"
     variant="soft"
     icon="i-lucide-scan-search"
-    label="Buscar pendências"
-    aria-label="Buscar pendências"
+    :label="actionLabel"
+    :aria-label="actionLabel"
     :ui="COMPACT_BUTTON_LABEL_UI"
     :loading="searching"
     data-testid="monitoring-pending-search"
@@ -138,7 +153,7 @@ async function submitSearch() {
   <UModal
     v-if="visible"
     v-model:open="open"
-    title="Confirmar busca de pendências"
+    :title="confirmationTitle"
     :description="`Será solicitada uma consulta de leitura para ${targets.length} cliente(s) ${scopeLabel}.`"
     :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
   >
@@ -166,7 +181,7 @@ async function submitSearch() {
       <UButton
         color="primary"
         icon="i-lucide-search-check"
-        label="Confirmar busca"
+        :label="isDctfweb ? 'Confirmar consulta' : 'Confirmar busca'"
         :loading="searching"
         data-testid="monitoring-pending-search-confirm"
         @click="submitSearch"

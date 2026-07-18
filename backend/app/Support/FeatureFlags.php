@@ -102,6 +102,37 @@ final class FeatureFlags
     }
 
     /**
+     * Onboarding simplificado de produção SERPRO.
+     * Default OFF; allowlist vazia não libera ninguém.
+     */
+    public static function isSerproProductionOnboardingEnabled(?int $officeId = null): bool
+    {
+        if (self::isKillSwitchActive()) {
+            return false;
+        }
+
+        if (! (bool) config('features.serpro_production_onboarding.enabled', false)) {
+            return false;
+        }
+
+        if ($officeId === null) {
+            return true;
+        }
+
+        /** @var list<int> $allowlist */
+        $allowlist = config('features.serpro_production_onboarding.office_allowlist', []);
+        if (! is_array($allowlist)) {
+            $allowlist = [];
+        }
+
+        if ($allowlist === []) {
+            return (bool) config('features.serpro_production_onboarding.allow_all_offices', false);
+        }
+
+        return in_array($officeId, $allowlist, true);
+    }
+
+    /**
      * @return list<string>
      */
     public static function knownModules(): array
@@ -215,6 +246,7 @@ final class FeatureFlags
             'platform_privileged_context' => self::isPlatformPrivilegedContextEnabled(),
             'canonical_multitenant_rbac' => self::isCanonicalMultitenantRbacEnabled(),
             'unified_office_config' => self::isUnifiedOfficeConfigEnabled(),
+            'serpro_production_onboarding' => self::isSerproProductionOnboardingEnabled(),
             'mutating' => [
                 'enabled' => (bool) config('features.mutating.enabled', false),
                 'kill_switch' => (bool) config('features.mutating.kill_switch', false),

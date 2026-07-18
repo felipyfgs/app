@@ -183,6 +183,23 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
         return res.data as Record<string, unknown>
       }
 
+      if (key === 'dctfweb') {
+        const res = await api.fiscal.dctfweb.consult({
+          client_id: input.client_id,
+          period_key: input.competence || undefined,
+          operation_code: input.operation_code || 'CONSULTAR_RECIBO'
+        })
+        lastRun.value = res.data
+        if (!input.silent) {
+          toast.add({
+            title: 'Consulta DCTFWeb enfileirada',
+            description: `Run #${res.data.id} · ${res.data.status || 'QUEUED'}`,
+            color: 'success'
+          })
+        }
+        return res.data
+      }
+
       const defaults = defaultReadCodesForModule(key)
       const system = input.system_code || defaults?.system_code
       const service = input.service_code || defaults?.service_code

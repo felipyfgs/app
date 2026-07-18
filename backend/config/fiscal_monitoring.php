@@ -118,6 +118,8 @@ return [
      * Caixa Postal / DTE — conteúdo fiscal restrito; triagem interna ≠ leitura oficial.
      */
     'mailbox' => [
+        /** Até 50 mensagens por página no contrato SERPRO; limita custo e duração da run. */
+        'max_pages_per_sync' => (int) env('MAILBOX_MAX_PAGES_PER_SYNC', 20),
         'retention_days' => (int) env('MAILBOX_RETENTION_DAYS', 2555), // ~7 anos
         'max_body_bytes' => (int) env('MAILBOX_MAX_BODY_BYTES', 2_097_152), // 2 MiB
         'max_attachment_bytes' => (int) env('MAILBOX_MAX_ATTACHMENT_BYTES', 10_485_760), // 10 MiB

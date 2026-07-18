@@ -32,6 +32,10 @@ final class DataOriginResolver
             return FiscalDataOrigin::Simulated;
         }
 
+        if (strtoupper((string) config('serpro.default_environment', 'TRIAL')) === 'TRIAL') {
+            return FiscalDataOrigin::Trial;
+        }
+
         return FiscalDataOrigin::Live;
     }
 }

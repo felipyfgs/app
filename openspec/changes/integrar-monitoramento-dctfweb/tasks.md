@@ -29,3 +29,10 @@
 - [x] 5.1 Cobrir backend e frontend com testes de payload, segurança, estados, tenancy, colunas e ausência de chamadas implícitas
 - [x] 5.2 Executar gates Laravel, frontend e OpenSpec; corrigir regressões encontradas
 - [ ] 5.3 Sincronizar/arquivar a change e criar commit somente após aceite explícito do usuário
+- [x] 5.4 Segregar endpoints e credenciais `TRIAL`/`PRODUCTION`, armazenar bearer trial no banco/cofre e validar `CONSRECIBO32` no gateway oficial sem mutação fiscal
+
+## 6. Consulta manual em massa para validação do escritório
+
+- [x] 6.1 Ligar seleção/página ao endpoint dedicado DCTFWeb, limitar a 100 clientes e atualizar a carteira após os jobs
+- [x] 6.2 Aplicar o cenário oficial `CONSRECIBO32` no Trial, dispensar procuração/poder e normalizar erro de negócio em HTTP 200
+- [x] 6.3 Exibir proveniência Trial não produtiva, cobrir backend/frontend e validar uma consulta real sem promover estado fiscal

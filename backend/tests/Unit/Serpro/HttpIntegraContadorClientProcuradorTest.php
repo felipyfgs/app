@@ -41,8 +41,6 @@ class HttpIntegraContadorClientProcuradorTest extends TestCase
 
         config([
             'serpro.environments.TRIAL.base_url' => 'https://trial.example.test/integra-contador/v1',
-            'serpro.environments.TRIAL.bearer_token' => 'trial-bearer-token',
-            'serpro.environments.TRIAL.jwt_token' => 'trial-jwt-token',
         ]);
     }
 
@@ -279,13 +277,14 @@ class HttpIntegraContadorClientProcuradorTest extends TestCase
         $alphaCnpj = '12ABC34501DE35';
         $client = Client::factory()->create(['office_id' => $office->id, 'root_cnpj' => $alphaCnpj]);
 
-        SerproContract::query()->create([
+        $contract = SerproContract::query()->create([
             'environment' => SerproEnvironment::Trial,
             'status' => SerproContractStatus::Active,
             'contractor_cnpj' => '11222333000181',
             'health_status' => 'OK',
             'activated_at' => now(),
         ]);
+        app(SerproContractService::class)->storeTrialGatewayBearer($contract, 'database-trial-bearer');
 
         $transport = new class extends SerproHttpTransport
         {
@@ -353,10 +352,10 @@ class HttpIntegraContadorClientProcuradorTest extends TestCase
         $this->assertArrayNotHasKey('etag', $response->headers);
     }
 
-    public function test_trial_usa_endpoint_e_tokens_exclusivos_do_ambiente_sem_oauth_mtls(): void
+    public function test_trial_usa_endpoint_de_demonstracao_e_credenciais_do_contrato_no_banco(): void
     {
         config([
-            'serpro.api.base_url' => 'https://production.example.test/integra-contador/v1',
+            'serpro.environments.PRODUCTION.base_url' => 'https://production.example.test/integra-contador/v1',
             'serpro.kill_switch' => false,
             'serpro.rate_limit.global_per_minute' => 0,
             'serpro.rate_limit.per_office_per_minute' => 0,
@@ -364,6 +363,14 @@ class HttpIntegraContadorClientProcuradorTest extends TestCase
 
         $office = Office::factory()->create();
         $client = Client::factory()->create(['office_id' => $office->id, 'root_cnpj' => '11222333000181']);
+        $contract = SerproContract::query()->create([
+            'environment' => SerproEnvironment::Trial,
+            'status' => SerproContractStatus::Active,
+            'contractor_cnpj' => '11222333000181',
+            'health_status' => 'OK',
+            'activated_at' => now(),
+        ]);
+        app(SerproContractService::class)->storeTrialGatewayBearer($contract, 'database-trial-bearer');
         $transport = new class extends SerproHttpTransport
         {
             public ?string $url = null;
@@ -406,19 +413,17 @@ class HttpIntegraContadorClientProcuradorTest extends TestCase
 
         $this->assertTrue($response->success);
         $this->assertSame('https://trial.example.test/integra-contador/v1/Apoiar', $transport->url);
-        $this->assertStringContainsString('Authorization: Bearer trial-bearer-token', implode("\n", $transport->headers));
-        $this->assertStringContainsString('jwt_token: trial-jwt-token', implode("\n", $transport->headers));
+        $this->assertStringContainsString('Authorization: Bearer database-trial-bearer', implode("\n", $transport->headers));
+        $this->assertStringNotContainsString('jwt_token:', implode("\n", $transport->headers));
         $this->assertStringNotContainsString('autenticar_procurador_token:', implode("\n", $transport->headers));
         $this->assertStringContainsString('"contratante":{"numero":"11222333000181"', (string) $transport->body);
         $this->assertFalse($response->isProductiveEvidence());
         $this->assertSame(FiscalSourceProvenance::SerproTrial->value, $response->sourceProvenance);
     }
 
-    public function test_trial_falha_fechada_sem_tokens_e_nao_tenta_oauth_ou_transporte(): void
+    public function test_trial_falha_fechada_sem_contrato_ativo_no_banco(): void
     {
         config([
-            'serpro.environments.TRIAL.bearer_token' => '',
-            'serpro.environments.TRIAL.jwt_token' => '',
             'serpro.kill_switch' => false,
             'serpro.rate_limit.global_per_minute' => 0,
             'serpro.rate_limit.per_office_per_minute' => 0,
@@ -448,15 +453,132 @@ class HttpIntegraContadorClientProcuradorTest extends TestCase
             operationKey: 'autentica_procurador.envio_xml_assinado',
         ));
 
-        $this->assertSame('TRIAL_CREDENTIALS_MISSING', $response->errorCode);
+        $this->assertSame('CONTRACT_UNAVAILABLE', $response->errorCode);
         $this->assertFalse($response->simulated);
+        $this->assertSame(FiscalSourceProvenance::SerproTrial->value, $response->sourceProvenance);
+    }
+
+    public function test_dctfweb_trial_usa_cenario_oficial_e_detecta_erro_de_negocio_http_200(): void
+    {
+        config([
+            'serpro.kill_switch' => false,
+            'serpro.rate_limit.global_per_minute' => 0,
+            'serpro.rate_limit.per_office_per_minute' => 0,
+        ]);
+        $office = Office::factory()->create();
+        $client = Client::factory()->create(['office_id' => $office->id, 'root_cnpj' => '11222333000181']);
+        $contract = SerproContract::query()->create([
+            'environment' => SerproEnvironment::Trial,
+            'status' => SerproContractStatus::Active,
+            'contractor_cnpj' => '11222333000181',
+            'health_status' => 'OK',
+            'activated_at' => now(),
+        ]);
+        app(SerproContractService::class)->storeTrialGatewayBearer($contract, 'database-trial-bearer');
+
+        $transport = new class extends SerproHttpTransport
+        {
+            public string $body = '';
+
+            public function request(string $method, string $url, ?array $certificate, ?string $body, array $headers = [], ?string $correlationId = null): array
+            {
+                $this->body = (string) $body;
+
+                return [
+                    'status' => 200,
+                    'body' => json_encode([
+                        'mensagens' => [['codigo' => 'ERRO', 'texto' => 'Dados inválidos.']],
+                    ], JSON_THROW_ON_ERROR),
+                    'headers' => [],
+                    'retry_after' => null,
+                    'latency_ms' => 1,
+                ];
+            }
+        };
+        $authenticator = Mockery::mock(SerproContractAuthenticator::class);
+        $authenticator->shouldNotReceive('authenticate');
+        $http = new HttpIntegraContadorClient(
+            contracts: app(SerproContractService::class),
+            authenticator: $authenticator,
+            transport: $transport,
+            killSwitch: app(SerproKillSwitchService::class),
+            breaker: app(SerproCircuitBreaker::class),
+            store: app(SecureObjectStore::class),
+        );
+
+        $response = $http->execute(new IntegraRequest(
+            officeId: (int) $office->id,
+            clientId: (int) $client->id,
+            environment: SerproEnvironment::Trial->value,
+            contractorCnpj: '11222333000181',
+            authorIdentity: '52998224725',
+            contributorCnpj: '11222333000181',
+            operationKey: 'dctfweb.consrecibo',
+            businessData: ['anoPA' => '2026', 'mesPA' => '06'],
+        ));
+
+        $envelope = json_decode($transport->body, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('00000000000000', $envelope['contratante']['numero']);
+        $this->assertSame($envelope['contratante'], $envelope['autorPedidoDados']);
+        $this->assertSame($envelope['contratante'], $envelope['contribuinte']);
+        $this->assertSame([
+            'categoria' => 40,
+            'anoPA' => '2027',
+            'mesPA' => '11',
+            'numeroReciboEntrega' => 24573,
+        ], json_decode($envelope['pedidoDados']['dados'], true, flags: JSON_THROW_ON_ERROR));
+        $this->assertFalse($response->success);
+        $this->assertSame('BUSINESS_ERROR', $response->errorCode);
+        $this->assertSame(FiscalSourceProvenance::SerproTrial->value, $response->sourceProvenance);
+    }
+
+    public function test_trial_falha_fechada_sem_bearer_no_cofre(): void
+    {
+        config([
+            'serpro.kill_switch' => false,
+            'serpro.rate_limit.global_per_minute' => 0,
+            'serpro.rate_limit.per_office_per_minute' => 0,
+        ]);
+        $office = Office::factory()->create();
+        $client = Client::factory()->create(['office_id' => $office->id, 'root_cnpj' => '11222333000181']);
+        SerproContract::query()->create([
+            'environment' => SerproEnvironment::Trial,
+            'status' => SerproContractStatus::Active,
+            'contractor_cnpj' => '11222333000181',
+            'health_status' => 'OK',
+            'activated_at' => now(),
+        ]);
+        $transport = Mockery::mock(SerproHttpTransport::class);
+        $transport->shouldNotReceive('request');
+        $authenticator = Mockery::mock(SerproContractAuthenticator::class);
+        $authenticator->shouldNotReceive('authenticate');
+
+        $http = new HttpIntegraContadorClient(
+            contracts: app(SerproContractService::class),
+            authenticator: $authenticator,
+            transport: $transport,
+            killSwitch: app(SerproKillSwitchService::class),
+            breaker: app(SerproCircuitBreaker::class),
+            store: app(SecureObjectStore::class),
+        );
+        $response = $http->execute(new IntegraRequest(
+            officeId: (int) $office->id,
+            clientId: (int) $client->id,
+            environment: SerproEnvironment::Trial->value,
+            contractorCnpj: '11222333000181',
+            authorIdentity: '11222333000181',
+            contributorCnpj: '11222333000181',
+            operationKey: 'autentica_procurador.envio_xml_assinado',
+        ));
+
+        $this->assertSame('TRIAL_CREDENTIALS_MISSING', $response->errorCode);
         $this->assertSame(FiscalSourceProvenance::SerproTrial->value, $response->sourceProvenance);
     }
 
     public function test_producao_preserva_oauth_mtls_e_nao_usa_tokens_trial(): void
     {
         config([
-            'serpro.api.base_url' => 'https://production.example.test/integra-contador/v1',
+            'serpro.environments.PRODUCTION.base_url' => 'https://production.example.test/integra-contador/v1',
             'serpro.kill_switch' => false,
             'serpro.rate_limit.global_per_minute' => 0,
             'serpro.rate_limit.per_office_per_minute' => 0,
@@ -519,7 +641,7 @@ class HttpIntegraContadorClientProcuradorTest extends TestCase
         $this->assertSame('https://production.example.test/integra-contador/v1/Apoiar', $transport->url);
         $this->assertStringContainsString('Authorization: Bearer production-oauth-bearer', $joined);
         $this->assertStringContainsString('jwt_token: production-oauth-jwt', $joined);
-        $this->assertStringNotContainsString('trial-bearer-token', $joined);
+        $this->assertStringNotContainsString('database-oauth-bearer', $joined);
         $this->assertFalse($response->simulated);
         $this->assertSame(FiscalSourceProvenance::SerproReal->value, $response->sourceProvenance);
     }

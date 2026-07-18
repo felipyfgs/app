@@ -59,10 +59,10 @@ return [
     |--------------------------------------------------------------------------
     | Endpoints oficiais por ambiente
     |--------------------------------------------------------------------------
-    | Trial é o gateway de demonstração publicado no Swagger da SERPRO. O
-    | bearer/jwt nunca são embutidos no código: a operação só pode usá-los
-    | quando forem fornecidos no ambiente. Qualquer ambiente diferente de
-    | Trial e Produção é recusado por não ter endpoint público confirmado.
+    | Trial é o gateway de demonstração publicado no Swagger da SERPRO e usa
+    | bearer próprio guardado no contrato/banco/cofre. Produção usa OAuth mTLS
+    | do contrato. O .env define apenas endpoints sem segredo. Qualquer outro
+    | ambiente é recusado por não ter endpoint público confirmado.
     */
     'environments' => [
         'TRIAL' => [
@@ -70,8 +70,21 @@ return [
                 'SERPRO_TRIAL_INTEGRA_BASE_URL',
                 'https://gateway.apiserpro.serpro.gov.br/integra-contador-trial/v1',
             ),
-            'bearer_token' => env('SERPRO_TRIAL_BEARER_TOKEN', ''),
-            'jwt_token' => env('SERPRO_TRIAL_JWT_TOKEN', ''),
+            // O gateway Trial aceita somente os objetos fixos publicados no
+            // menu "Cenários" da documentação. Eles validam transporte e
+            // contrato, mas nunca representam o contribuinte da carteira.
+            'scenarios' => [
+                'dctfweb.consrecibo' => [
+                    'identity' => ['numero' => '00000000000000', 'tipo' => 2],
+                    'business_data' => [
+                        'categoria' => 40,
+                        'anoPA' => '2027',
+                        'mesPA' => '11',
+                        'numeroReciboEntrega' => 24573,
+                    ],
+                    'source_url' => 'https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/cenarios_trial/cenarios_dctfweb/',
+                ],
+            ],
         ],
         'PRODUCTION' => [
             'base_url' => env(
@@ -190,6 +203,28 @@ return [
             env('SERPRO_OWNER_CONFIRMATION_ALL_ENVS', false),
             FILTER_VALIDATE_BOOL,
         ),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Onboarding produtivo simplificado
+    |--------------------------------------------------------------------------
+    | Contrato público do texto de aceite. Não contém segredo, endpoint
+    | alternativo nem bypass de gates operacionais.
+    */
+    'production_onboarding' => [
+        'consent_version' => env(
+            'SERPRO_PRODUCTION_ONBOARDING_CONSENT_VERSION',
+            'serpro-prod-onboarding.v1',
+        ),
+        'consent_text' => env(
+            'SERPRO_PRODUCTION_ONBOARDING_CONSENT_TEXT',
+            'Autorizo o armazenamento cifrado dos materiais SERPRO informados, o teste OAuth produtivo mTLS, a ativação da credencial contratual da plataforma e o início de consultas somente leitura potencialmente bilhetáveis para o escritório selecionado. Este aceite não substitui Termo, procuração, assinatura, poderes e-CAC, assinatura do produto, orçamento, allowlist, capability ou kill switches.',
+        ),
+        'resume_window_minutes' => (int) env('SERPRO_PRODUCTION_ONBOARDING_RESUME_WINDOW_MINUTES', 30),
+        'initial_read_sync' => [
+            'mailbox_operation' => 'caixa_postal.msgcontribuinte',
+        ],
     ],
 
     'termo_destination_cnpj' => env('SERPRO_TERMO_DESTINATION_CNPJ', ''),

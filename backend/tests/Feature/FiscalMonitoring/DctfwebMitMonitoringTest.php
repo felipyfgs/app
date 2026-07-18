@@ -31,6 +31,7 @@ use App\Models\SerproContract;
 use App\Models\SerproServiceCatalogEntry;
 use App\Models\TaxProxyPower;
 use App\Models\User;
+use App\Services\Fiscal\Dctfweb\DctfwebPeriod;
 use App\Services\Fiscal\Mutations\RecentTwoFactorGate;
 use App\Services\FiscalMonitoring\FiscalAdapterRegistry;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
@@ -158,6 +159,29 @@ class DctfwebMitMonitoringTest extends TestCase
         $registry = new FiscalAdapterRegistry;
         app(DctfwebAdapterRegistrar::class)->register($registry);
         $this->app->instance(FiscalAdapterRegistry::class, $registry);
+    }
+
+    public function test_consulta_manual_sem_periodo_usa_pa_esperado_e_enfileira_endpoint_dedicado(): void
+    {
+        Queue::fake();
+        $this->actingAs($this->admin);
+        app(CurrentOffice::class)->resolve($this->admin);
+
+        $response = $this->postJson('/api/v1/fiscal/dctfweb/consult', [
+            'client_id' => $this->client->id,
+            'operation_code' => DctfwebCodes::OP_CONSULTAR_RECIBO,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.client_id', $this->client->id)
+            ->assertJsonPath('data.operation_code', DctfwebCodes::OP_CONSULTAR_RECIBO);
+
+        $periodKey = DctfwebPeriod::toPeriodKey(DctfwebPeriod::expectedPa(null, $this->office->timezone));
+        $this->assertDatabaseHas('dctfweb_declarations', [
+            'office_id' => $this->office->id,
+            'client_id' => $this->client->id,
+            'period_key' => $periodKey,
+        ]);
     }
 
     public function test_evento_duplicado_nao_duplica_run_nem_reconcilia_duas_vezes(): void

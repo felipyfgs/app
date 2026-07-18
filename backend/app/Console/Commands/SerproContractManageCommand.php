@@ -19,13 +19,14 @@ use Throwable;
 class SerproContractManageCommand extends Command
 {
     protected $signature = 'serpro:contract
-        {action : list|show|register|activate|replace|deactivate|block|health|catalog|kill-on|kill-off}
+        {action : list|show|register|activate|replace|trial-token-store|deactivate|block|health|catalog|kill-on|kill-off}
         {--id= : ID do contrato}
         {--serpro-env=TRIAL : Ambiente SERPRO TRIAL|PRODUCTION}
         {--pfx= : Caminho do arquivo PFX}
         {--password= : Senha do PFX (prefira prompt interativo)}
         {--consumer-key= : Consumer Key}
         {--consumer-secret= : Consumer Secret}
+        {--trial-token-file= : Arquivo contendo o bearer do gateway Trial (nunca informe em argv)}
         {--name= : Nome do contratante}
         {--notes= : Notas operacionais}
         {--reason= : Motivo (block/deactivate/kill)}
@@ -48,6 +49,7 @@ class SerproContractManageCommand extends Command
                 'register' => $this->doRegister($contracts),
                 'activate' => $this->doActivate($contracts),
                 'replace' => $this->doReplace($contracts),
+                'trial-token-store' => $this->doTrialTokenStore($contracts),
                 'deactivate' => $this->doDeactivate($contracts),
                 'block' => $this->doBlock($contracts),
                 'health' => $this->doHealth($health),
@@ -149,6 +151,23 @@ class SerproContractManageCommand extends Command
         $contract = $this->resolveContract($contracts);
         $contracts->deactivate($contract, $this->option('reason') ? (string) $this->option('reason') : null);
         $this->info('Contrato desativado id='.$contract->id);
+
+        return self::SUCCESS;
+    }
+
+    private function doTrialTokenStore(SerproContractService $contracts): int
+    {
+        $contract = $this->resolveContract($contracts);
+        $path = (string) $this->option('trial-token-file');
+        if ($path === '' || ! is_readable($path)) {
+            throw new RuntimeException('Informe --trial-token-file= com arquivo legível.');
+        }
+
+        $token = trim((string) file_get_contents($path));
+        $contracts->storeTrialGatewayBearer($contract, $token);
+        unset($token);
+
+        $this->info('Bearer Trial armazenado no cofre para o contrato id='.$contract->id.'.');
 
         return self::SUCCESS;
     }

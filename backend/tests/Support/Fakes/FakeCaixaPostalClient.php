@@ -20,6 +20,12 @@ final class FakeCaixaPostalClient implements CaixaPostalClient
 
     public int $detailCalls = 0;
 
+    /** @var list<CaixaPostalListResult> */
+    public array $listResults = [];
+
+    /** @var list<array<string, mixed>> */
+    public array $listContexts = [];
+
     /** @var array<string, CaixaPostalDetailResult> */
     public array $detailsByExternalId = [];
 
@@ -72,11 +78,18 @@ final class FakeCaixaPostalClient implements CaixaPostalClient
         ];
         $this->listCalls = 0;
         $this->detailCalls = 0;
+        $this->listResults = [];
+        $this->listContexts = [];
     }
 
     public function listMessages(array $context = []): CaixaPostalListResult
     {
         $this->listCalls++;
+        $this->listContexts[] = $context;
+
+        if ($this->listResults !== []) {
+            return array_shift($this->listResults);
+        }
 
         return new CaixaPostalListResult(
             success: true,

@@ -14,6 +14,9 @@ enum SecureObjectPurpose: string
     /** Consumer Key/Secret OAuth2 do contrato SERPRO. */
     case SerproOauthSecrets = 'SERPRO_OAUTH_SECRETS';
 
+    /** Bearer público controlado do gateway oficial de demonstração. */
+    case SerproTrialGatewayBearer = 'SERPRO_TRIAL_GATEWAY_BEARER';
+
     /** Bearer/JWT temporários do contratante (cache cifrado). */
     case SerproBearerToken = 'SERPRO_BEARER_TOKEN';
 
@@ -52,6 +55,7 @@ enum SecureObjectPurpose: string
         return match ($this) {
             self::SerproContractorPfx => 'Certificado contratante SERPRO',
             self::SerproOauthSecrets => 'Credenciais OAuth SERPRO',
+            self::SerproTrialGatewayBearer => 'Bearer do gateway Trial SERPRO',
             self::SerproBearerToken => 'Token Bearer/JWT contratante',
             self::SerproProcuradorToken => 'Token do procurador',
             self::SerproTermoXml => 'Termo de Autorização XML',

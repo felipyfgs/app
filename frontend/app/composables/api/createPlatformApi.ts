@@ -15,6 +15,7 @@ import type {
   SerproGlobalHealth,
   SerproKillSwitchStatus,
   SerproPlatformConfiguration,
+  SerproProductionOnboardingEnvelope,
   SerproReadinessSnapshot,
   SerproUsageConsolidation,
   SerproUsageReconciliation,
@@ -103,6 +104,21 @@ export function createPlatformApi(client: ApiClient) {
             client<{ data: SerproPlatformConfiguration }>('/api/v1/platform/serpro/configuration', {
               query: params
             })
+        },
+        productionOnboarding: {
+          show: () =>
+            client<{ data: SerproProductionOnboardingEnvelope }>(
+              '/api/v1/platform/serpro/production-onboarding'
+            ),
+          submit: (body: FormData, idempotencyKey: string) =>
+            client<{ data: SerproProductionOnboardingEnvelope }>(
+              '/api/v1/platform/serpro/production-onboarding',
+              {
+                method: 'POST',
+                body,
+                headers: { 'Idempotency-Key': idempotencyKey }
+              }
+            )
         },
         credentialVersions: {
           list: (params?: { environment?: string }) =>

@@ -1354,6 +1354,7 @@ export interface SerproContractSanitized {
   active_credential_version_id?: number | null
   has_pfx?: boolean
   has_oauth?: boolean
+  has_trial_bearer?: boolean
   has_cached_token?: boolean
   created_at?: string | null
   updated_at?: string | null
@@ -1386,6 +1387,70 @@ export interface SerproCredentialVersionSanitized {
   blocks_billable_egress?: boolean
   created_at?: string | null
   updated_at?: string | null
+}
+
+export type SerproProductionOnboardingStatus
+  = | 'PENDING'
+    | 'RUNNING'
+    | 'ACTIVE_SYNC_PENDING'
+    | 'ACTIVE'
+    | 'ACTION_REQUIRED'
+    | 'FAILED'
+    | string
+
+export type SerproProductionOnboardingStep
+  = | 'VALIDATE_INPUT'
+    | 'STORE_PENDING'
+    | 'VERIFY_VAULT'
+    | 'TEST_OAUTH'
+    | 'CONFIRM_CUTOVER'
+    | 'ACTIVATE_AUTHORIZATION'
+    | 'QUEUE_READ_SYNC'
+    | 'COMPLETED'
+    | string
+
+export interface SerproProductionOnboardingState {
+  id: number
+  environment: 'PRODUCTION' | string
+  status: SerproProductionOnboardingStatus
+  current_step?: SerproProductionOnboardingStep | null
+  completed_steps?: SerproProductionOnboardingStep[]
+  idempotency_key_hash?: string | null
+  credential_version_id?: number | null
+  serpro_contract_id?: number | null
+  authorization_id?: number | null
+  initial_mailbox_run_id?: number | null
+  consent?: {
+    version?: string | null
+    text_sha256?: string | null
+    consented_at?: string | null
+    actor_user_id?: number | null
+  } | null
+  hints?: {
+    consumer_key_hint?: string | null
+    certificate_fingerprint_sha256?: string | null
+    contractor_cnpj_masked?: string | null
+    certificate_valid_to?: string | null
+  } | null
+  error?: {
+    code?: string | null
+    message?: string | null
+  } | null
+  required_actions?: Array<Record<string, unknown>>
+  created_at?: string | null
+  updated_at?: string | null
+  completed_at?: string | null
+}
+
+export interface SerproProductionOnboardingEnvelope {
+  enabled: boolean
+  office_id?: number | null
+  consent?: {
+    version: string
+    text: string
+    text_sha256: string
+  } | null
+  onboarding?: SerproProductionOnboardingState | null
 }
 
 export interface SerproExternalGateSanitized {

@@ -5,6 +5,8 @@ namespace Tests\Feature\FiscalMonitoring;
 use App\Contracts\CaixaPostalClient;
 use App\Contracts\DteIndicatorClient;
 use App\DTO\Mailbox\CaixaPostalDetailResult;
+use App\DTO\Mailbox\CaixaPostalListResult;
+use App\Enums\FiscalCoverage;
 use App\Enums\MailboxAccessAction;
 use App\Enums\MailboxDteStatus;
 use App\Enums\MailboxMessagesConsultStatus;
@@ -219,9 +221,7 @@ class MailboxMonitoringTest extends TestCase
             correlationId: 'detail-'.$msg->external_id,
             dispatch: false,
         );
-        $detailRun->forceFill([
-            'progress' => ['external_message_id' => $msg->external_id],
-        ])->save();
+        $detailRun->forceFill(['progress' => ['message_id' => $msg->id]])->save();
         $runSvc->execute($detailRun->id);
 
         $msg->refresh();
@@ -236,6 +236,62 @@ class MailboxMonitoringTest extends TestCase
         $this->assertNotNull($att->vault_object_id);
         $this->assertNotNull($att->content_sha256);
         $this->assertNotNull($att->retention_until);
+    }
+
+    public function test_lista_percorre_todas_as_paginas_com_ponteiro_oficial(): void
+    {
+        $this->caixaFake->listResults = [
+            new CaixaPostalListResult(
+                success: true,
+                items: [[
+                    'external_id' => 'msg-page-1',
+                    'subject' => 'Página 1',
+                    'official_read' => false,
+                ]],
+                officialUnreadCount: 1,
+                simulated: true,
+                rawMeta: [
+                    'indicador_ultima_pagina' => 'N',
+                    'ponteiro_proxima_pagina' => 'cursor-2',
+                ],
+            ),
+            new CaixaPostalListResult(
+                success: true,
+                items: [[
+                    'external_id' => 'msg-page-2',
+                    'subject' => 'Página 2',
+                    'official_read' => true,
+                ]],
+                officialUnreadCount: 0,
+                simulated: true,
+                rawMeta: ['indicador_ultima_pagina' => 'S'],
+            ),
+        ];
+
+        $runSvc = app(FiscalMonitoringRunService::class);
+        $run = $runSvc->enqueueManual(
+            $this->office,
+            $this->client,
+            'INTEGRA_CAIXAPOSTAL',
+            'CAIXA_POSTAL',
+            'LISTAR',
+            dispatch: false,
+        );
+        $runSvc->execute($run->id);
+
+        $done = $run->fresh();
+        $this->assertSame(2, $this->caixaFake->listCalls);
+        $this->assertSame('0', $this->caixaFake->listContexts[0]['indicador_pagina']);
+        $this->assertArrayNotHasKey('ponteiro_pagina', $this->caixaFake->listContexts[0]);
+        $this->assertSame('1', $this->caixaFake->listContexts[1]['indicador_pagina']);
+        $this->assertSame('cursor-2', $this->caixaFake->listContexts[1]['ponteiro_pagina']);
+        $this->assertSame(2, $done->pages_processed);
+        $this->assertSame(2, $done->items_processed);
+        $this->assertSame(FiscalCoverage::Full, $done->coverage);
+        $this->assertSame(2, MailboxMessage::query()->withoutGlobalScopes()
+            ->where('office_id', $this->office->id)
+            ->where('client_id', $this->client->id)
+            ->count());
     }
 
     public function test_tenant_cruzado_nao_ve_mensagem_nem_alerta(): void

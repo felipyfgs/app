@@ -269,7 +269,7 @@ final class MonitoringSurfaceRegistry
                 resultKind: MonitoringResultKind::Aggregate,
                 allowsDocument: true,
                 documentPolicy: MonitoringDocumentPolicy::WhenArtifact,
-                sourceLabel: 'Declarações',
+                sourceLabel: 'Integra Contador + agenda fiscal',
             ),
             new MonitoringSurfaceContract(
                 surfaceKey: 'guides',

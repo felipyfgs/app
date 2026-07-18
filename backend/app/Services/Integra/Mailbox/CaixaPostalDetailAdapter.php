@@ -10,6 +10,7 @@ use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutability;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalSituation;
+use App\Models\MailboxMessage;
 
 /**
  * Adapter detalhe de mensagem — operação DETALHE, separada de LISTAR e DTE.
@@ -65,8 +66,22 @@ final class CaixaPostalDetailAdapter implements FiscalSourceAdapter
             ?? '');
 
         if ($externalId === '') {
+            $messageId = (int) ($request->context['message_id']
+                ?? $request->progress['message_id']
+                ?? 0);
+            if ($messageId > 0) {
+                $externalId = (string) (MailboxMessage::query()
+                    ->withoutGlobalScopes()
+                    ->where('office_id', $request->office->id)
+                    ->where('client_id', $request->client->id)
+                    ->whereKey($messageId)
+                    ->value('external_id') ?? '');
+            }
+        }
+
+        if ($externalId === '') {
             return FiscalAdapterResult::skipped(
-                'external_message_id ausente no contexto da run.',
+                'Identificador da mensagem ausente ou fora do tenant da run.',
                 'MAILBOX_DETAIL_ID_MISSING',
             );
         }
@@ -74,7 +89,6 @@ final class CaixaPostalDetailAdapter implements FiscalSourceAdapter
         $detail = $this->client->getMessageDetail($externalId, [
             'office_id' => $request->office->id,
             'client_id' => $request->client->id,
-            'cnpj' => $request->client->root_cnpj,
             'correlation_id' => $request->run->correlation_id,
         ]);
 

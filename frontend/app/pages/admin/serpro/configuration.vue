@@ -8,7 +8,10 @@ import type { AccordionItem, TabsItem } from '@nuxt/ui'
 import type {
   SerproCredentialVersionSanitized,
   SerproExternalGateSanitized,
-  SerproPlatformConfiguration
+  SerproPlatformConfiguration,
+  SerproProductionOnboardingEnvelope,
+  SerproProductionOnboardingState,
+  SerproProductionOnboardingStep
 } from '~/types/api'
 import {
   defaultChangeWindow,
@@ -61,6 +64,8 @@ const loading = ref(false)
 const acting = ref(false)
 const loadError = ref<string | null>(null)
 const configuration = ref<SerproPlatformConfiguration | null>(null)
+const productionOnboarding = ref<SerproProductionOnboardingEnvelope | null>(null)
+const onboardingLoadError = ref<string | null>(null)
 const environment = ref<'TRIAL' | 'PRODUCTION'>('TRIAL')
 const passwordModalOpen = ref(false)
 const passwordInput = ref('')
@@ -85,6 +90,14 @@ const upload = reactive({
   notes: ''
 })
 
+const productionUpload = reactive({
+  certificate: null as File | null,
+  certificate_password: '',
+  consumer_key: '',
+  consumer_secret: '',
+  consent_granted: false
+})
+
 const limitsForm = reactive({
   cycle_start_day: 1,
   alert_percent: 80,
@@ -104,6 +117,14 @@ function clearUpload() {
   upload.consumer_key = ''
   upload.consumer_secret = ''
   upload.notes = ''
+}
+
+function clearProductionUpload() {
+  productionUpload.certificate = null
+  productionUpload.certificate_password = ''
+  productionUpload.consumer_key = ''
+  productionUpload.consumer_secret = ''
+  productionUpload.consent_granted = false
 }
 
 function resetLimits() {
@@ -126,14 +147,24 @@ async function load() {
   const requestedEnvironment = environment.value
   loading.value = true
   loadError.value = null
+  onboardingLoadError.value = null
   try {
-    const res = await api.platform.serpro.configuration.show({ environment: requestedEnvironment })
+    const [res, onboardingRes] = await Promise.all([
+      api.platform.serpro.configuration.show({ environment: requestedEnvironment }),
+      requestedEnvironment === 'PRODUCTION'
+        ? api.platform.serpro.productionOnboarding.show().catch((caught) => {
+            onboardingLoadError.value = apiErrorMessage(caught, 'Falha ao carregar onboarding de produção.')
+            return null
+          })
+        : Promise.resolve(null)
+    ])
     if (
       seq !== loadSeq
       || epoch !== sessionEpoch.value
       || requestedEnvironment !== environment.value
     ) return
     configuration.value = res.data || null
+    productionOnboarding.value = onboardingRes?.data || null
     const cfg = res.data?.usage_limits?.config as Record<string, unknown> | undefined
     if (cfg) {
       limitsForm.cycle_start_day = Number(cfg.cycle_start_day ?? 1)
@@ -160,6 +191,7 @@ async function load() {
       || requestedEnvironment !== environment.value
     ) return
     configuration.value = null
+    productionOnboarding.value = null
     loadError.value = apiErrorMessage(caught, 'Falha ao carregar configuração SERPRO.')
   } finally {
     if (
@@ -227,6 +259,45 @@ function submitUpload() {
       await load()
     } catch (caught) {
       toast.add({ title: apiErrorMessage(caught, 'Falha ao salvar e ativar as credenciais.'), color: 'error' })
+    }
+  })
+}
+
+function submitProductionOnboarding() {
+  if (
+    !productionUpload.certificate
+    || !productionUpload.certificate_password
+    || !productionUpload.consumer_key
+    || !productionUpload.consumer_secret
+  ) {
+    toast.add({ title: 'Preencha Key, Secret, certificado e senha do certificado.', color: 'warning' })
+    return
+  }
+  if (!productionUpload.consent_granted) {
+    toast.add({ title: 'Confirme o consentimento para ativar a produção.', color: 'warning' })
+    return
+  }
+
+  requestPasswordThen(async () => {
+    try {
+      const body = new FormData()
+      body.append('consumer_key', productionUpload.consumer_key)
+      body.append('consumer_secret', productionUpload.consumer_secret)
+      body.append('certificate', productionUpload.certificate!)
+      body.append('certificate_password', productionUpload.certificate_password)
+      body.append('consent_granted', '1')
+
+      const res = await api.platform.serpro.productionOnboarding.submit(
+        body,
+        makeOnboardingIdempotencyKey()
+      )
+      productionOnboarding.value = res.data || null
+      clearProductionUpload()
+      toast.add({ title: productionOnboardingToastTitle(res.data?.onboarding), color: 'success' })
+      await load()
+    } catch (caught) {
+      clearProductionUpload()
+      toast.add({ title: apiErrorMessage(caught, 'Falha ao ativar Produção SERPRO.'), color: 'error' })
     }
   })
 }
@@ -389,12 +460,85 @@ const pendingVersions = computed(() => configuration.value?.pending_credential_v
 const history = computed(() => configuration.value?.credential_history || [])
 const gates = computed(() => configuration.value?.external_gates || [])
 const pendingOffices = computed(() => configuration.value?.pending_offices?.items || [])
+const productionState = computed(() => productionOnboarding.value?.onboarding || null)
+const productionCompletedSteps = computed(() => new Set(productionState.value?.completed_steps || []))
+const productionConsent = computed(() => productionOnboarding.value?.consent || null)
+const productionStepItems = computed(() => {
+  const state = productionState.value
+  const completed = productionCompletedSteps.value
+  return productionSteps.map((step) => {
+    const done = completed.has(step.value)
+      || state?.current_step === 'COMPLETED'
+      || state?.status === 'ACTIVE'
+      || state?.status === 'ACTIVE_SYNC_PENDING'
+    const current = state?.current_step === step.value
+      || (!state && step.value === 'VALIDATE_INPUT')
+
+    return {
+      ...step,
+      done,
+      current,
+      blocked: state?.status === 'FAILED' && state.current_step === step.value
+    }
+  })
+})
 const gateItems = computed<GateAccordionItem[]>(() => gates.value.map(gate => ({
   label: gate.label || gate.kind,
   value: gate.kind,
   icon: gate.status === 'ACCEPTED' ? 'i-lucide-circle-check' : 'i-lucide-circle-dashed',
   gate
 })))
+
+const productionSteps = [
+  { value: 'VALIDATE_INPUT', label: 'Certificado' },
+  { value: 'STORE_PENDING', label: 'Vault' },
+  { value: 'VERIFY_VAULT', label: 'Verificação' },
+  { value: 'TEST_OAUTH', label: 'OAuth' },
+  { value: 'CONFIRM_CUTOVER', label: 'Contrato' },
+  { value: 'ACTIVATE_AUTHORIZATION', label: 'Autorização' },
+  { value: 'QUEUE_READ_SYNC', label: 'Caixa Postal' },
+  { value: 'COMPLETED', label: 'Concluído' }
+] satisfies Array<{ value: SerproProductionOnboardingStep, label: string }>
+
+function makeOnboardingIdempotencyKey(): string {
+  const bytes = new Uint32Array(2)
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes)
+  } else {
+    bytes[0] = Math.floor(Math.random() * 0xffffffff)
+    bytes[1] = Math.floor(Math.random() * 0xffffffff)
+  }
+
+  const first = bytes[0] ?? 0
+  const second = bytes[1] ?? 0
+
+  return `serpro-prod-${Date.now()}-${first.toString(16)}${second.toString(16)}`
+}
+
+function productionOnboardingToastTitle(state?: SerproProductionOnboardingState | null): string {
+  if (state?.status === 'ACTIVE_SYNC_PENDING') return 'Produção ativada; primeira leitura da Caixa Postal foi enfileirada.'
+  if (state?.status === 'ACTION_REQUIRED') return 'Produção ativada parcialmente; há ação pendente antes da primeira leitura.'
+  if (state?.status === 'ACTIVE') return 'Produção SERPRO ativada.'
+  return 'Onboarding de produção registrado.'
+}
+
+function productionStatusLabel(status?: string | null): string {
+  return {
+    PENDING: 'Pendente',
+    RUNNING: 'Processando',
+    ACTIVE_SYNC_PENDING: 'Ativa; sync pendente',
+    ACTIVE: 'Ativa',
+    ACTION_REQUIRED: 'Ação necessária',
+    FAILED: 'Falhou'
+  }[status || ''] || status || 'Não iniciado'
+}
+
+function productionStatusColor(status?: string | null): 'success' | 'warning' | 'error' | 'neutral' {
+  if (status === 'ACTIVE' || status === 'ACTIVE_SYNC_PENDING') return 'success'
+  if (status === 'ACTION_REQUIRED' || status === 'RUNNING' || status === 'PENDING') return 'warning'
+  if (status === 'FAILED') return 'error'
+  return 'neutral'
+}
 
 function credentialStatusLabel(status: string): string {
   return {
@@ -427,9 +571,12 @@ function resetEnvironmentState() {
   loadSeq++
   loading.value = false
   configuration.value = null
+  productionOnboarding.value = null
   loadError.value = null
+  onboardingLoadError.value = null
   gateDrafts.value = {}
   clearUpload()
+  clearProductionUpload()
   resetLimits()
   cancelPasswordConfirmation()
 }
@@ -513,6 +660,14 @@ onMounted(() => {
           />
         </template>
       </UAlert>
+
+      <UAlert
+        v-if="onboardingLoadError"
+        color="warning"
+        icon="i-lucide-triangle-alert"
+        :title="onboardingLoadError"
+        data-testid="serpro-prod-onboarding-load-error"
+      />
 
       <div
         v-if="loading && !configuration"
@@ -625,6 +780,211 @@ onMounted(() => {
         />
 
         <UPageCard
+          v-if="environment === 'PRODUCTION'"
+          title="Ativação de Produção"
+          variant="subtle"
+          data-testid="serpro-production-onboarding"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p class="text-sm text-muted">
+                Escritório atual
+              </p>
+              <h3 class="mt-1 text-base font-semibold text-highlighted">
+                {{ productionOnboarding?.office_id ? `Office #${productionOnboarding.office_id}` : 'Contexto não selecionado' }}
+              </h3>
+            </div>
+            <UBadge
+              :color="productionStatusColor(productionState?.status)"
+              variant="subtle"
+              size="lg"
+            >
+              {{ productionStatusLabel(productionState?.status) }}
+            </UBadge>
+          </div>
+
+          <ol class="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <li
+              v-for="step in productionStepItems"
+              :key="step.value"
+              class="flex min-h-14 items-center gap-3 rounded-md border border-default px-3 py-2 text-sm"
+              :class="step.done ? 'bg-success/5' : step.blocked ? 'bg-error/5' : step.current ? 'bg-elevated' : ''"
+              :data-testid="`serpro-prod-step-${step.value}`"
+            >
+              <UIcon
+                :name="step.done ? 'i-lucide-circle-check' : step.blocked ? 'i-lucide-circle-x' : 'i-lucide-circle'"
+                class="size-4 shrink-0"
+                :class="step.done ? 'text-success' : step.blocked ? 'text-error' : 'text-muted'"
+                aria-hidden="true"
+              />
+              <span class="font-medium text-highlighted">{{ step.label }}</span>
+            </li>
+          </ol>
+
+          <UAlert
+            v-if="productionState?.status === 'ACTION_REQUIRED'"
+            class="mt-5"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-circle-alert"
+            title="Há uma ação operacional pendente antes da leitura inicial."
+            data-testid="serpro-prod-action-required"
+          />
+          <p
+            v-if="productionState?.status === 'ACTION_REQUIRED'"
+            class="mt-2 text-sm text-muted"
+          >
+            {{ productionState.error?.message || 'Revise autorização e gates de Produção antes de tentar novamente.' }}
+          </p>
+
+          <UAlert
+            v-else-if="productionState?.status === 'FAILED'"
+            class="mt-5"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-circle-x"
+            title="Ativação não concluída"
+            data-testid="serpro-prod-failed"
+          />
+          <p
+            v-if="productionState?.status === 'FAILED'"
+            class="mt-2 text-sm text-muted"
+          >
+            {{ productionState.error?.message || 'Revise os dados e tente novamente.' }}
+          </p>
+
+          <div
+            v-if="productionState"
+            class="mt-5 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4"
+          >
+            <div>
+              <p class="text-muted">
+                Key
+              </p>
+              <p class="mt-1 font-medium text-highlighted">
+                {{ productionState.hints?.consumer_key_hint || 'Não informada' }}
+              </p>
+            </div>
+            <div>
+              <p class="text-muted">
+                CNPJ contratante
+              </p>
+              <p class="mt-1 font-medium text-highlighted">
+                {{ productionState.hints?.contractor_cnpj_masked || 'Não validado' }}
+              </p>
+            </div>
+            <div>
+              <p class="text-muted">
+                Certificado até
+              </p>
+              <p class="mt-1 font-medium text-highlighted">
+                {{ productionState.hints?.certificate_valid_to ? formatDateTime(productionState.hints.certificate_valid_to) : 'Não informado' }}
+              </p>
+            </div>
+            <div>
+              <p class="text-muted">
+                Sync inicial
+              </p>
+              <p class="mt-1 font-medium text-highlighted">
+                {{ productionState.initial_mailbox_run_id ? `Run #${productionState.initial_mailbox_run_id}` : 'Aguardando' }}
+              </p>
+            </div>
+          </div>
+
+          <USeparator class="my-5" />
+
+          <div
+            v-if="productionOnboarding?.enabled"
+            class="grid gap-4 sm:grid-cols-2"
+          >
+            <UFormField
+              label="Consumer Key"
+              required
+            >
+              <UInput
+                v-model="productionUpload.consumer_key"
+                class="w-full"
+                autocomplete="off"
+                data-testid="serpro-prod-consumer-key"
+              />
+            </UFormField>
+            <UFormField
+              label="Consumer Secret"
+              required
+            >
+              <UInput
+                v-model="productionUpload.consumer_secret"
+                type="password"
+                class="w-full"
+                autocomplete="new-password"
+                data-testid="serpro-prod-consumer-secret"
+              />
+            </UFormField>
+            <UFormField
+              label="Certificado do contratante (.pfx ou .p12)"
+              required
+              class="sm:col-span-2"
+            >
+              <UFileUpload
+                v-model="productionUpload.certificate"
+                accept=".pfx,.p12,application/x-pkcs12"
+                label="Selecione ou arraste o arquivo"
+                icon="i-lucide-file-key-2"
+                layout="list"
+                position="inside"
+                class="w-full"
+                :ui="{ base: 'min-h-28' }"
+                data-testid="serpro-prod-certificate"
+              />
+            </UFormField>
+            <UFormField
+              label="Senha do certificado"
+              required
+            >
+              <UInput
+                v-model="productionUpload.certificate_password"
+                type="password"
+                class="w-full"
+                autocomplete="new-password"
+                data-testid="serpro-prod-certificate-password"
+              />
+            </UFormField>
+            <div class="flex items-end">
+              <UButton
+                label="Ativar Produção"
+                icon="i-lucide-shield-check"
+                :loading="acting"
+                data-testid="serpro-prod-submit"
+                @click="submitProductionOnboarding"
+              />
+            </div>
+            <div class="sm:col-span-2 rounded-md border border-default p-3">
+              <UCheckbox
+                v-model="productionUpload.consent_granted"
+                :label="productionConsent?.text || 'Autorizo a ativação de Produção SERPRO para o escritório selecionado.'"
+                data-testid="serpro-prod-consent"
+              />
+              <p
+                v-if="productionConsent?.version"
+                class="mt-2 font-mono text-xs text-muted"
+              >
+                {{ productionConsent.version }} · {{ productionConsent.text_sha256 }}
+              </p>
+            </div>
+          </div>
+
+          <UAlert
+            v-else
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-lock"
+            title="Onboarding produtivo desabilitado por feature flag."
+            data-testid="serpro-prod-disabled"
+          />
+        </UPageCard>
+
+        <UPageCard
+          v-if="environment === 'TRIAL'"
           title="Credenciais"
           variant="subtle"
           data-testid="serpro-config-credentials"

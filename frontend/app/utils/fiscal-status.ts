@@ -333,6 +333,15 @@ export function dataOriginMeta(value?: string | null): FiscalOriginMeta {
         color: 'info',
         synthetic: true
       }
+    case 'TRIAL':
+      return {
+        code,
+        label: 'Demonstração SERPRO',
+        description: 'Cenário técnico oficial do Trial SERPRO — sem validade fiscal.',
+        icon: 'i-lucide-beaker',
+        color: 'warning',
+        synthetic: true
+      }
     case 'LIVE':
       return {
         code,

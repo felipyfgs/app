@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Fiscal;
 use App\Enums\OfficeRole;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
+use App\Services\Fiscal\Dctfweb\DctfwebPeriod;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebDeclarationService;
@@ -125,7 +126,7 @@ class DctfwebController extends Controller
 
         $data = $request->validate([
             'client_id' => ['required', 'integer'],
-            'period_key' => ['required', 'string', 'max:20'],
+            'period_key' => ['sometimes', 'nullable', 'string', 'max:20'],
             'operation_code' => ['sometimes', 'string', 'max:80'],
             'correlation_id' => ['sometimes', 'string', 'max:64'],
         ]);
@@ -148,7 +149,11 @@ class DctfwebController extends Controller
             return response()->json(['message' => 'Cliente não encontrado.'], 404);
         }
 
-        $declaration = $this->declarations->findOrCreate($office, $client, $data['period_key']);
+        $timezone = (string) ($office->timezone ?: 'America/Sao_Paulo');
+        $periodKey = $data['period_key'] ?? DctfwebPeriod::toPeriodKey(
+            DctfwebPeriod::expectedPa(null, $timezone),
+        );
+        $declaration = $this->declarations->findOrCreate($office, $client, $periodKey);
 
         try {
             $run = $this->runs->enqueueManual(

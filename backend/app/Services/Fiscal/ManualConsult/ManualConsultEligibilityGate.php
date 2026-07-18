@@ -72,6 +72,12 @@ final class ManualConsultEligibilityGate
             return ManualConsultEligibility::CapabilityOff;
         }
 
+        // O Trial oficial usa identidades e payloads fixos da documentação;
+        // não depende de token de procurador nem de poder e-CAC do cliente.
+        if ($environment === SerproEnvironment::Trial) {
+            return ManualConsultEligibility::Ready;
+        }
+
         if (! $hasToken) {
             return ManualConsultEligibility::TokenMissing;
         }

@@ -334,8 +334,8 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           client<{ data: Record<string, unknown>, evidence_versions?: Array<Record<string, unknown>> }>(
             `/api/v1/fiscal/dctfweb/declarations/${id}`
           ),
-        consult: (body: Record<string, unknown>) =>
-          client<{ data: unknown }>('/api/v1/fiscal/dctfweb/consult', { method: 'POST', body }),
+        consult: (body: { client_id: number, period_key?: string, operation_code?: string, correlation_id?: string }) =>
+          client<{ data: FiscalMonitoringRun }>('/api/v1/fiscal/dctfweb/consult', { method: 'POST', body }),
         transmit: (body: Record<string, unknown>) =>
           client<{ data: unknown }>('/api/v1/fiscal/dctfweb/transmit', { method: 'POST', body }),
         history: (clientId: number, params?: { year?: number }) =>

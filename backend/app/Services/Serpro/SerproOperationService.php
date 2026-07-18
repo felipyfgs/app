@@ -290,8 +290,9 @@ final class SerproOperationService implements SerproOperationExecutor
             $contributor = $command->contributorIdentityOverride ?? $author;
         }
 
-        // 12. Gate de procuração por metadado da operation_key (antes do transporte)
-        if ($client !== null && ! $contractOnly) {
+        // 12. Produção exige procuração. O gateway Trial oficial dispensa
+        // jwt_token e autenticar_procurador_token e trabalha com cenários demo.
+        if ($environment === SerproEnvironment::Production && $client !== null && ! $contractOnly) {
             $proxyRule = (string) ($coords['proxy_rule'] ?? 'NOT_APPLICABLE');
             /** @var list<string> $requiredPowers */
             $requiredPowers = $coords['required_proxy_powers'] ?? [];
@@ -320,8 +321,13 @@ final class SerproOperationService implements SerproOperationExecutor
             }
         }
 
-        // 13. Termo / token / poder (eligibility) — egress real com cliente
-        if ($client !== null && ! $contractOnly && $driver->value === 'real') {
+        // 13. Termo / token / poder (eligibility) — somente produção.
+        if (
+            $environment === SerproEnvironment::Production
+            && $client !== null
+            && ! $contractOnly
+            && $driver->value === 'real'
+        ) {
             $elig = $this->eligibility->evaluate(
                 $office,
                 $client,

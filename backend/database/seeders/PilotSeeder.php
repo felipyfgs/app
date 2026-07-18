@@ -24,6 +24,8 @@ use LogicException;
  * - gustavo@example.com → office contador (AUTO CENTER)
  *
  * PFX/PDFs ficam só em `dados/`; este seeder não importa cofre.
+ *
+ * Produção só é permitida com `PILOT_SEED_ALLOW_PRODUCTION=true`.
  */
 class PilotSeeder extends Seeder
 {
@@ -31,7 +33,9 @@ class PilotSeeder extends Seeder
 
     public function run(): void
     {
-        if (! app()->environment(['local', 'testing'])) {
+        $productionAllowed = filter_var(env('PILOT_SEED_ALLOW_PRODUCTION', false), FILTER_VALIDATE_BOOL);
+
+        if (! app()->environment(['local', 'testing']) && ! $productionAllowed) {
             throw new LogicException('PilotSeeder só pode rodar em local/testing.');
         }
 

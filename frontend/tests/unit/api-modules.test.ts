@@ -86,11 +86,17 @@ describe('composables/api factories (runtime)', () => {
     await api.platform.serpro.health({ environment: 'TRIAL' })
     await api.platform.serpro.killSwitch.set({ active: true, reason: 'teste' })
     await api.platform.serpro.usage.consolidation({ year: 2026, month: 1 })
+    await api.platform.serpro.productionOnboarding.show()
+    await api.platform.serpro.productionOnboarding.submit(new FormData(), 'prod-onboard-test')
 
     expect(calls[0]?.path).toBe('/api/v1/platform/serpro/health')
     expect(calls[1]?.path).toBe('/api/v1/platform/serpro/kill-switch')
     expect(calls[1]?.opts?.method).toBe('POST')
     expect(calls[2]?.path).toBe('/api/v1/platform/serpro-usage/consolidation')
+    expect(calls[3]?.path).toBe('/api/v1/platform/serpro/production-onboarding')
+    expect(calls[4]?.path).toBe('/api/v1/platform/serpro/production-onboarding')
+    expect(calls[4]?.opts?.method).toBe('POST')
+    expect(calls[4]?.opts?.headers).toEqual({ 'Idempotency-Key': 'prod-onboard-test' })
   })
 
   it('platform.owner usa recurso singular /api/v1/platform/owner', async () => {

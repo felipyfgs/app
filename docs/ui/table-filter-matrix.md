@@ -19,7 +19,7 @@ de fato a consulta completa (servidor ou feed), nunca apenas a página carregada
 | MEI (PGMEI) | Cliente, Situação e dados operacionais | Busca, Cliente; Situação pela faixa KPI | Ano e estados específicos do PGMEI |
 | DCTFWeb | Cliente, Situação, Últ. declaração | Busca, Cliente, Situação, Competência | Estados de transmissão/pagamento internos |
 | MIT | Cliente, Competência, Situação, Encerramento, Apurações | Busca, Cliente, Situação, Competência | Encerramento e presença de apurações |
-| Declarações | Cliente, Obrigação, Aplicabilidade, Vencimento, Entrega, Evidência, Abertas | Busca, Cliente, Situação, Competência, Status de entrega | Obrigação, aplicabilidade, vencimento e evidência |
+| Declarações | Cliente, Obrigação, Competência, Vencimento, Entrega, Abertas, Situação | Busca, Cliente, Situação, Competência, Status de entrega | Obrigação e vencimento; aplicabilidade/evidências ficam no detalhe sob demanda |
 | FGTS/eSocial | Cliente, Fechamento, Totalização, Guia, Pagamento | Busca, Cliente, Situação, Competência | Estados individuais das quatro etapas |
 | SITFIS | Cliente, Procuração, Agenda, Idade/TTL, Achados, Cobertura | Busca, Cliente, Situação, Cobertura | Procuração, TTL e quantidade de achados |
 | Parcelamentos | Cliente, Modalidade, Pedido, Saldo, Parcelas, Próxima parcela, Atraso, Guia | Busca, Cliente, Situação, Modalidade | Pedido, faixas de saldo/parcela/data/atraso e guia |

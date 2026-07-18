@@ -487,6 +487,21 @@ describe('ações de carteira no contexto da seleção', () => {
     expect(dctfwebTable).toContain('dctfweb-history')
   })
 
+  it('Declarações segue a lista canônica sem resumo paralelo nem N+1', () => {
+    const declarations = readFileSync(
+      resolve(__dirname, '../../app/pages/monitoring/declarations.vue'),
+      'utf8'
+    )
+
+    expect(declarations).toContain('<MonitoringModuleTable')
+    expect(declarations).toContain('table-class="min-w-[960px]"')
+    expect(declarations).not.toContain('Resumo por obrigação')
+    expect(declarations).not.toContain('api.fiscal.declarations.summary')
+    expect(declarations).not.toContain('enrichProjections')
+    expect(declarations).not.toContain('Promise.allSettled')
+    expect(declarations).toContain('api.fiscal.declarations.get(id)')
+  })
+
   it('módulos fiscais não injetam mais PortfolioActions no cabeçalho', () => {
     const pages = [
       'pages/monitoring/installments.vue',

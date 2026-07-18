@@ -65,6 +65,7 @@ use App\Http\Controllers\Api\V1\Platform\SerproContractController;
 use App\Http\Controllers\Api\V1\Platform\SerproDteCanaryController;
 use App\Http\Controllers\Api\V1\Platform\SerproPlatformConfigurationController;
 use App\Http\Controllers\Api\V1\Platform\SerproPlatformOpsController;
+use App\Http\Controllers\Api\V1\Platform\SerproProductionOnboardingController;
 use App\Http\Controllers\Api\V1\Platform\SerproUsageAdminController;
 use App\Http\Controllers\Api\V1\Platform\TenantAdminController;
 use App\Http\Controllers\Api\V1\SavedListFilterController;
@@ -178,6 +179,9 @@ Route::prefix('v1')->group(function (): void {
 
             // Configuração global unificada (Proprietário)
             Route::get('/serpro/configuration', [SerproPlatformConfigurationController::class, 'show']);
+            Route::get('/serpro/production-onboarding', [SerproProductionOnboardingController::class, 'show']);
+            Route::post('/serpro/production-onboarding', [SerproProductionOnboardingController::class, 'store'])
+                ->middleware(['throttle:5,1', EnsureRecentPasswordConfirmation::class]);
             Route::post('/serpro/credential-versions', [SerproPlatformConfigurationController::class, 'storeCredentialVersion']);
             Route::post('/serpro/credential-versions/{serproCredentialVersion}/verify', [SerproPlatformConfigurationController::class, 'verifyCredentialVersion']);
             Route::post('/serpro/credential-versions/{serproCredentialVersion}/test-connection', [SerproPlatformConfigurationController::class, 'testConnection']);

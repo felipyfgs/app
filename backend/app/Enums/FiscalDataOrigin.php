@@ -10,6 +10,7 @@ enum FiscalDataOrigin: string
 {
     case Demo = 'DEMO';
     case Simulated = 'SIMULATED';
+    case Trial = 'TRIAL';
     case Live = 'LIVE';
 
     public function label(): string
@@ -17,6 +18,7 @@ enum FiscalDataOrigin: string
         return match ($this) {
             self::Demo => 'Dados demonstrativos',
             self::Simulated => 'Dados simulados',
+            self::Trial => 'Demonstração SERPRO',
             self::Live => 'Fonte produtiva',
         };
     }
@@ -45,9 +47,11 @@ enum FiscalDataOrigin: string
             'origin' => $this->value,
             'label' => $this->label(),
             'synthetic' => $this->isSynthetic(),
-            'banner' => $this->isSynthetic()
-                ? 'Dados demonstrativos — sem validade fiscal'
-                : null,
+            'banner' => match ($this) {
+                self::Trial => 'Demonstração SERPRO — cenário técnico sem validade fiscal',
+                self::Demo, self::Simulated => 'Dados demonstrativos — sem validade fiscal',
+                self::Live => null,
+            },
         ];
     }
 }

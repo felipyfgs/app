@@ -34,7 +34,7 @@ use RuntimeException;
  * - felipe@example.com → plataforma + aba Admin/SERPRO
  * - gustavo@example.com → contador (tenant_admin)
  *
- * Idempotente. Só local/testing.
+ * Idempotente. Só local/testing, salvo go-live piloto com `PILOT_SEED_ALLOW_PRODUCTION=true`.
  */
 class LocalSerproSmokeSeeder extends Seeder
 {
@@ -83,7 +83,9 @@ class LocalSerproSmokeSeeder extends Seeder
 
     public function run(): void
     {
-        if (! app()->environment(['local', 'testing'])) {
+        $productionAllowed = filter_var(env('PILOT_SEED_ALLOW_PRODUCTION', false), FILTER_VALIDATE_BOOL);
+
+        if (! app()->environment(['local', 'testing']) && ! $productionAllowed) {
             throw new LogicException('LocalSerproSmokeSeeder só pode rodar em local/testing.');
         }
 

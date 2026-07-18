@@ -26,7 +26,11 @@ class SerproAuthorizationConsent extends Model
 
     public const TYPE_MANAGED_A1_CUSTODY = 'MANAGED_A1_CUSTODY';
 
+    public const TYPE_PRODUCTION_ONBOARDING = 'PRODUCTION_ONBOARDING';
+
     public const VERSION_MANAGED_A1_V1 = 'managed-a1-sign.v1';
+
+    public const VERSION_PRODUCTION_ONBOARDING_V1 = 'serpro-prod-onboarding.v1';
 
     protected function casts(): array
     {

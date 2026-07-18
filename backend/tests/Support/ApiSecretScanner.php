@@ -47,6 +47,7 @@ final class ApiSecretScanner
         '"procurador_token_vault_object_id"',
         '"author_pfx_vault_object_id"',
         '"token_vault_object_id"',
+        '"trial_bearer_vault_object_id"',
         // Work / evidências operacionais
         '"storage_path"',
         '"vault_path"',

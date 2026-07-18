@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Grade DCTFWeb fiel à referência
-O sistema SHALL renderizar a cápsula DCTFWeb com exatamente oito colunas, nesta ordem: Situação, Últ. Declaração, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca, sem seleção ou coluna adicional.
+O sistema SHALL renderizar a cápsula DCTFWeb com oito colunas fiscais, nesta ordem: Situação, Últ. Declaração, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca. Uma coluna técnica de seleção MAY precedê-las para perfis autorizados, exclusivamente para consulta manual somente-leitura.
 
 #### Scenario: Estrutura da grade
 - **WHEN** o usuário abre `/monitoring/dctfweb` na cápsula DCTFWeb
-- **THEN** a tabela apresenta as oito colunas na ordem normativa, com Cliente em duas linhas e scroll horizontal quando necessário
+- **THEN** a tabela apresenta as oito colunas fiscais na ordem normativa, com Cliente em duas linhas e scroll horizontal quando necessário, admitindo seleção técnica antes delas quando disponível
 
 #### Scenario: Cápsula MIT independente
 - **WHEN** o usuário alterna para MIT
@@ -32,6 +32,44 @@ O sistema SHALL usar `dctfweb.consrecibo` (`DCTFWEB/CONSRECIBO32/1.0`) com `cate
 #### Scenario: Falha da consulta
 - **WHEN** `CONSRECIBO32` falha
 - **THEN** a execução termina sem fallback automático para relatório, XML, DARF ou transmissão
+
+### Requirement: Transporte segregado entre demonstração e produção
+O sistema SHALL selecionar o endpoint e a credencial pelo ambiente do contrato ativo, mantendo todos os segredos no banco/cofre e falhando de forma fechada antes do transporte quando faltar material obrigatório.
+
+#### Scenario: Consulta no gateway trial
+- **WHEN** o ambiente ativo é `TRIAL` e o contrato possui bearer de demonstração no cofre
+- **THEN** o sistema chama `integra-contador-trial/v1/Consultar` com esse bearer, sem exigir `jwt_token` ou `autenticar_procurador_token`, e marca a origem como `SERPRO_TRIAL`
+
+#### Scenario: Consulta no gateway produtivo
+- **WHEN** o ambiente ativo é `PRODUCTION` e o contrato possui PFX e OAuth válidos
+- **THEN** o sistema autentica por mTLS, envia `access_token`, `jwt_token` e, quando aplicável, o token do procurador para `integra-contador/v1/Consultar`
+
+#### Scenario: Credencial ausente
+- **WHEN** não existe contrato ativo ou falta o bearer trial, PFX, OAuth ou autorização produtiva exigida
+- **THEN** o sistema bloqueia a chamada sem fallback entre ambientes e sem carregar segredo de `.env`
+
+#### Scenario: Envelope demonstrativo DCTFWeb
+- **WHEN** `dctfweb.consrecibo` é executada no ambiente `TRIAL`
+- **THEN** o transporte usa as identidades e os parâmetros fixos publicados no cenário oficial, ignora requisitos de token/poder produtivos e mantém a associação ao cliente apenas como rastreio técnico não produtivo
+
+#### Scenario: Erro de negócio com HTTP 200
+- **WHEN** a SERPRO responde HTTP 200 com mensagem classificada como erro e sem resultado válido
+- **THEN** o sistema normaliza a execução como falha de negócio e não persiste documento nem promove estado fiscal
+
+### Requirement: Consulta manual DCTFWeb em massa
+O sistema SHALL permitir que `ADMIN` e `OPERATOR` confirmem uma consulta somente-leitura para até 100 clientes selecionados ou da página atual, usando o endpoint dedicado DCTFWeb e uma chamada por cliente.
+
+#### Scenario: Consultar seleção
+- **WHEN** o usuário seleciona clientes e confirma “Consulta manual”
+- **THEN** o sistema enfileira `CONSRECIBO32` para cada cliente, informa sucessos e falhas e atualiza a carteira enquanto os jobs terminam
+
+#### Scenario: Consultar página atual
+- **WHEN** não há seleção e o usuário confirma a consulta
+- **THEN** os clientes visíveis da página atual são os alvos, respeitando o limite de 100
+
+#### Scenario: Ambiente Trial visível
+- **WHEN** a carteira está operando com contrato `TRIAL`
+- **THEN** a UI exibe “Demonstração SERPRO — sem validade fiscal” e não usa o rótulo “Fonte produtiva”
 
 ### Requirement: Documento DCTFWeb protegido
 O sistema SHALL decodificar `PDFByteArrayBase64` de forma estrita, limitar o documento a 10 MiB, exigir assinatura PDF e armazenar os bytes no `SecureObjectStore` antes de persistir metadados. O sistema MUST NOT gravar Base64 em banco, log ou API.

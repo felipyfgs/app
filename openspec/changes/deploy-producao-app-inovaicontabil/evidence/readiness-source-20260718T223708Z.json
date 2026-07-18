@@ -1,0 +1,7 @@
+{
+  "phase": "source",
+  "ok": false,
+  "checked_at": "2026-07-18T22:37:08Z",
+  "release_sha": "b94c39a9b57f9e83e045c88b6e68069267a47ebd",
+  "checks": [{"id":"git_head","ok":true,"detail":"present"},{"id":"worktree","ok":false,"detail":"dirty"},{"id":"release_sha_match","ok":true,"detail":"matches_head"},{"id":"compose_prod","ok":true,"detail":"valid"},{"id":"ops_scripts","ok":true,"detail":"syntax_ok"},{"id":"prereq_changes","ok":true,"detail":"archived"}]
+}

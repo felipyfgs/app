@@ -40,9 +40,11 @@ class FiscalModuleAndOriginEnumsTest extends TestCase
 
     public function test_data_origin_values_and_synthetic(): void
     {
-        $this->assertSame(['DEMO', 'SIMULATED', 'LIVE'], FiscalDataOrigin::values());
+        $this->assertSame(['DEMO', 'SIMULATED', 'TRIAL', 'LIVE'], FiscalDataOrigin::values());
         $this->assertTrue(FiscalDataOrigin::Demo->isSynthetic());
         $this->assertTrue(FiscalDataOrigin::Simulated->isSynthetic());
+        $this->assertTrue(FiscalDataOrigin::Trial->isSynthetic());
+        $this->assertSame('Demonstração SERPRO', FiscalDataOrigin::Trial->label());
         $this->assertFalse(FiscalDataOrigin::Live->isSynthetic());
     }
 

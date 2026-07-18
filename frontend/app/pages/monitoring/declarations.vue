@@ -1,19 +1,17 @@
 <script setup lang="ts">
 /**
- * Declarações — overview/KPIs reais + carteira (obrigação, aplicabilidade,
- * competência, vencimento, entrega, evidência). Task 7.8
+ * Declarações — carteira operacional agregada por cliente.
+ * A lista usa somente o contrato do portfolio; a projeção completa é carregada
+ * sob demanda, evitando resumo paralelo e N+1 de detalhes.
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { DeclarationsClientDetail, DeclarationsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
-import { tableCellBadgeProps } from '~/utils/table-ui'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
 const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
 const UButton = resolveComponent('UButton')
-const UBadge = resolveComponent('UBadge')
-
 const api = useApi()
 
 const {
@@ -43,24 +41,6 @@ const {
   applyQuickFilters,
   resetFilters
 } = useFiscalModulePortfolio('declarations')
-
-/** Resumo real da API (por obrigação × aplicabilidade × entrega). */
-interface DeclarationSummaryRow {
-  obligation_definition_id?: number
-  obligation_code?: string | null
-  obligation_name?: string | null
-  module_key?: string | null
-  applicability?: string | null
-  delivery_status?: string | null
-  total?: number
-}
-
-const summary = ref<DeclarationSummaryRow[]>([])
-const summaryError = ref<string | null>(null)
-const summaryLoading = ref(false)
-
-/** Enriquecimento por projeção (applicability / evidência) — resource backend. */
-const projectionCache = ref<Record<number, Record<string, unknown>>>({})
 
 const detailOpen = ref(false)
 const detailLoading = ref(false)
@@ -102,12 +82,6 @@ function detailOf(row: DeclarationsClientRow): DeclarationsClientDetail {
   return row.detail || {}
 }
 
-function projectionOf(row: DeclarationsClientRow): Record<string, unknown> | null {
-  const id = detailOf(row).next_projection_id
-  if (!id) return null
-  return projectionCache.value[id] || null
-}
-
 function applicabilityLabel(code?: string | null) {
   const map: Record<string, string> = {
     APPLICABLE: 'Aplicável',
@@ -117,66 +91,6 @@ function applicabilityLabel(code?: string | null) {
   }
   const k = String(code || '').toUpperCase()
   return map[k] || (k || '—')
-}
-
-function evidenceLabel(proj: Record<string, unknown> | null) {
-  if (!proj) return '—'
-  if (proj.conclusive_evidence_id || proj.evidence_artifact_id) {
-    return 'Com evidência'
-  }
-  if (Array.isArray(proj.evidences) && proj.evidences.length) {
-    return `${proj.evidences.length} evidência(s)`
-  }
-  return 'Sem evidência'
-}
-
-async function loadSummary() {
-  summaryLoading.value = true
-  try {
-    const res = await api.fiscal.declarations.summary()
-    const raw = res.data as unknown
-    if (Array.isArray(raw)) {
-      summary.value = raw as DeclarationSummaryRow[]
-    } else if (raw && typeof raw === 'object') {
-      // Contrato antigo/objeto — não stringify; extrai listas conhecidas ou vazio.
-      const maybe = raw as { items?: unknown, data?: unknown }
-      const list = Array.isArray(maybe.items)
-        ? maybe.items
-        : Array.isArray(maybe.data)
-          ? maybe.data
-          : []
-      summary.value = list as DeclarationSummaryRow[]
-    } else {
-      summary.value = []
-    }
-    summaryError.value = null
-  } catch (caught) {
-    summary.value = []
-    summaryError.value = apiErrorMessage(caught, 'Falha ao carregar resumo de declarações.')
-  } finally {
-    summaryLoading.value = false
-  }
-}
-
-async function enrichProjections() {
-  const ids = rows.value
-    .map(r => detailOf(r).next_projection_id)
-    .filter((id): id is number => typeof id === 'number' && id > 0)
-  const missing = ids.filter(id => !projectionCache.value[id])
-  if (!missing.length) return
-
-  const settled = await Promise.allSettled(
-    missing.map(id => api.fiscal.declarations.get(id))
-  )
-  const next = { ...projectionCache.value }
-  settled.forEach((result, i) => {
-    const id = missing[i]
-    if (id == null) return
-    if (result.status === 'fulfilled' && result.value?.data) {
-      next[id] = result.value.data as Record<string, unknown>
-    }
-  })
-  projectionCache.value = next
 }
 
 async function openProjection(row: DeclarationsClientRow) {
@@ -191,7 +105,6 @@ async function openProjection(row: DeclarationsClientRow) {
     const res = await api.fiscal.declarations.get(id)
     const data = (res.data || {}) as Record<string, unknown>
     detailProjection.value = data
-    projectionCache.value = { ...projectionCache.value, [id]: data }
     detailEvidences.value = Array.isArray(data.evidences)
       ? (data.evidences as Array<Record<string, unknown>>)
       : []
@@ -221,29 +134,7 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
     enableSorting: false,
     cell: ({ row }) => {
       const d = detailOf(row.original)
-      const proj = projectionOf(row.original)
-      return String(
-        d.next_obligation_code
-        || proj?.obligation_code
-        || proj?.obligation_name
-        || '—'
-      )
-    }
-  },
-  {
-    id: 'applicability',
-    header: 'Aplicabilidade',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const proj = projectionOf(row.original)
-      const code = proj?.applicability != null ? String(proj.applicability) : null
-      if (!code) return '—'
-      return h('div', { class: 'block w-full min-w-0' }, [
-        h(UBadge, tableCellBadgeProps({
-          color: 'neutral',
-          label: applicabilityLabel(code)
-        }))
-      ])
+      return String(d.next_obligation_code || '—')
     }
   },
   {
@@ -252,7 +143,6 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
     cell: ({ row }) => String(
       row.original.competence
       || detailOf(row.original).next_period_key
-      || projectionOf(row.original)?.period_key
       || '—'
     )
   },
@@ -264,7 +154,6 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
       String(
         detailOf(row.original).next_due_at
         || row.original.next_deadline_at
-        || projectionOf(row.original)?.due_at
         || ''
       ) || null
     )
@@ -276,31 +165,9 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
     cell: ({ row }) => {
       const status = String(
         detailOf(row.original).next_delivery_status
-        || projectionOf(row.original)?.delivery_status
         || '—'
       )
       return status === '—' ? '—' : h(FiscalStatusBadge, { fill: true, status })
-    }
-  },
-  {
-    id: 'evidence',
-    header: 'Evidência',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const proj = projectionOf(row.original)
-      if (!proj) {
-        return detailOf(row.original).next_projection_id ? '…' : '—'
-      }
-      const label = evidenceLabel(proj)
-      if (label === 'Com evidência' || label.endsWith('evidência(s)')) {
-        return h('div', { class: 'block w-full min-w-0' }, [
-          h(UBadge, tableCellBadgeProps({
-            color: 'success',
-            label
-          }))
-        ])
-      }
-      return label
     }
   },
   {
@@ -322,7 +189,7 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
     header: 'Ações',
     enableHiding: false,
     enableSorting: false,
-    meta: { class: { th: 'w-52', td: 'w-52' } },
+    meta: { class: { th: 'w-28', td: 'w-28' } },
     cell: ({ row }) => {
       const children = [
         h(FiscalDocumentAction, {
@@ -330,38 +197,28 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
           disabled: !allowsDocument.value
         }),
         h(UButton, {
-          size: 'xs',
-          color: 'neutral',
-          variant: 'ghost',
-          label: 'Cliente',
-          to: clientHref(row.original.client_id)
+          'size': 'xs',
+          'color': 'neutral',
+          'variant': 'ghost',
+          'icon': 'i-lucide-building-2',
+          'aria-label': `Abrir cliente ${row.original.client_id}`,
+          'to': clientHref(row.original.client_id)
         })
       ]
       if (detailOf(row.original).next_projection_id) {
         children.unshift(h(UButton, {
-          size: 'xs',
-          color: 'primary',
-          variant: 'ghost',
-          label: 'Projeção',
-          onClick: () => openProjection(row.original)
+          'size': 'xs',
+          'color': 'primary',
+          'variant': 'ghost',
+          'icon': 'i-lucide-panel-right-open',
+          'aria-label': `Abrir projeção do cliente ${row.original.client_id}`,
+          'onClick': () => openProjection(row.original)
         }))
       }
       return h('div', { class: 'flex justify-end gap-1 items-center' }, children)
     }
   }
 ]
-
-watch(rows, () => {
-  void enrichProjections()
-}, { deep: false })
-
-watch(lastValidAt, () => {
-  void loadSummary()
-})
-
-onMounted(() => {
-  void loadSummary()
-})
 </script>
 
 <template>
@@ -392,14 +249,12 @@ onMounted(() => {
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
     :horizontal-scroll="true"
-    table-class="min-w-[1120px]"
+    table-class="min-w-[960px]"
     empty-title="Nenhuma declaração"
     :column-labels="{
       obligation: 'Obrigação',
-      applicability: 'Aplicabilidade',
       due: 'Vencimento',
       delivery: 'Entrega',
-      evidence: 'Evidência',
       open: 'Abertas'
     }"
     @update:page="setPage"
@@ -407,86 +262,9 @@ onMounted(() => {
     @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"
     @reset-filters="resetFilters"
-    @refresh="() => { refresh(); loadSummary() }"
+    @refresh="refresh"
   >
     <template #utilities>
-      <UAlert
-        v-if="summaryError"
-        color="warning"
-        icon="i-lucide-triangle-alert"
-        :title="summaryError"
-        class="w-full"
-      />
-      <UPageCard
-        v-else-if="summaryLoading && !summary.length"
-        variant="subtle"
-        title="Resumo por obrigação"
-        class="w-full"
-      >
-        <p class="text-sm text-muted">
-          Carregando resumo…
-        </p>
-      </UPageCard>
-      <UPageCard
-        v-else-if="summary.length"
-        variant="subtle"
-        title="Resumo por obrigação"
-        class="w-full"
-      >
-        <div class="overflow-x-auto">
-          <table class="w-full min-w-[28rem] text-left text-sm">
-            <thead class="text-xs text-muted">
-              <tr class="border-b border-default">
-                <th class="py-2 pe-3 font-medium">
-                  Obrigação
-                </th>
-                <th class="py-2 pe-3 font-medium">
-                  Aplicabilidade
-                </th>
-                <th class="py-2 pe-3 font-medium">
-                  Entrega
-                </th>
-                <th class="py-2 font-medium text-end">
-                  Total
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(row, idx) in summary"
-                :key="`${row.obligation_definition_id}-${row.applicability}-${row.delivery_status}-${idx}`"
-                class="border-b border-default/60 last:border-0"
-              >
-                <td class="py-2 pe-3">
-                  <span class="font-medium text-highlighted">
-                    {{ row.obligation_code || row.obligation_name || '—' }}
-                  </span>
-                  <span
-                    v-if="row.obligation_name && row.obligation_code"
-                    class="mt-0.5 block text-xs text-muted"
-                  >
-                    {{ row.obligation_name }}
-                  </span>
-                </td>
-                <td class="py-2 pe-3">
-                  {{ applicabilityLabel(row.applicability) }}
-                </td>
-                <td class="py-2 pe-3">
-                  <FiscalStatusBadge
-                    v-if="row.delivery_status"
-                    :status="String(row.delivery_status)"
-                    show-hint
-                  />
-                  <span v-else>—</span>
-                </td>
-                <td class="py-2 text-end tabular-nums font-medium">
-                  {{ row.total ?? '—' }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </UPageCard>
       <UAlert
         v-if="overviewError"
         color="warning"

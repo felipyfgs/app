@@ -4,12 +4,13 @@ O monitoramento DCTFWeb atual combina dados da declaração e do MIT em uma grad
 
 ## O que muda
 
-- Especializar a cápsula DCTFWeb com as oito colunas, nesta ordem: Situação, Últ. Declaração, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca, sem checkbox ou colunas adicionais.
+- Especializar a cápsula DCTFWeb com as oito colunas fiscais, nesta ordem: Situação, Últ. Declaração, Ações, Enviar, Cliente, Rastreio de envio, Última Busca e Histórico de Busca. Quando o perfil puder consultar, uma coluna técnica de seleção poderá precedê-las exclusivamente para consulta manual em massa.
 - Separar renderer, contrato e estado da DCTFWeb daqueles da cápsula MIT, mantendo ambas na mesma rota.
 - Consultar `DCTFWEB/CONSRECIBO32/1.0` para a categoria mensal geral `GERAL_MENSAL` (`40`) com `categoria`, `anoPA` e `mesPA`, uma vez por cliente e competência congelada em cada execução.
 - Persistir observações imutáveis e documentos validados no cofre, sem Base64, conteúdo integral ou caminhos internos em banco operacional, logs e respostas públicas.
 - Consolidar os estados `CURRENT`, `NO_MOVEMENT_VALID`, `DUE_WITHIN_DEADLINE`, `OVERDUE_NOT_FOUND` e `UNVERIFIED`, impedindo “Sem Declaração” sem consulta produtiva, obrigação confirmada e prazo vencido.
 - Disponibilizar histórico, prévia e rastreio locais, além da preferência “Enviar” em modo `TEMPLATE_ONLY`, sem chamadas remotas ao abrir modais e sem envio real.
+- Permitir consulta manual somente-leitura para uma seleção ou para a página atual, com confirmação, limite de 100 clientes, atualização automática do resultado e identificação explícita do ambiente Trial.
 - Remover da grade DCTFWeb as colunas genéricas Competência, Encerramento, Transmissão, Recibo, Evidência, DARF e Pagamento; os detalhes documentais ficam no histórico local.
 
 Não são objetivos desta change: habilitar SERPRO live, gerar DARF, transmitir DCTFWeb, encerrar MIT, comprovar pagamento, criar provider/webhook/job de comunicação, apagar dados históricos ou emitir parecer jurídico.
