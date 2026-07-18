@@ -6,6 +6,7 @@ use App\Enums\OfficeAccessMode;
 use App\Enums\OfficeLifecycleStatus;
 use App\Enums\OfficeRole;
 use App\Models\Office;
+use App\Models\OfficeMembership;
 use App\Models\PlatformPrivilegedAuditEvent;
 use App\Models\User;
 use App\Support\CurrentOffice;
@@ -26,6 +27,7 @@ final class PlatformOfficeSelectService
 {
     public function __construct(
         private readonly CurrentOffice $currentOffice,
+        private readonly TenantSwitchService $tenantSwitch,
     ) {}
 
     /**
@@ -74,6 +76,10 @@ final class PlatformOfficeSelectService
         }
 
         if (! FeatureFlags::isPlatformPrivilegedContextEnabled()) {
+            if ($this->hasActiveRealMembership($user, $targetOfficeId)) {
+                return $this->tenantSwitch->switchTo($user, $targetOfficeId, $request);
+            }
+
             $this->auditDenied($user, $targetOfficeId, 'privileged_context_disabled');
 
             throw new HttpException(
@@ -133,6 +139,20 @@ final class PlatformOfficeSelectService
         );
 
         return $office;
+    }
+
+    private function hasActiveRealMembership(User $user, int $targetOfficeId): bool
+    {
+        if (! $user->isPlatformAdmin()) {
+            return false;
+        }
+
+        return OfficeMembership::query()
+            ->where('user_id', $user->id)
+            ->where('office_id', $targetOfficeId)
+            ->where('is_active', true)
+            ->whereHas('office', fn ($q) => $q->where('is_active', true))
+            ->exists();
     }
 
     /**

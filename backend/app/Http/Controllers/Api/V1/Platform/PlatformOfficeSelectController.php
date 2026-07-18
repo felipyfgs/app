@@ -69,7 +69,7 @@ class PlatformOfficeSelectController extends Controller
                     'name' => $office->name,
                     'slug' => $office->slug,
                 ],
-                'role' => OfficeRole::Admin->value,
+                'role' => $this->currentOffice->role()?->value ?? OfficeRole::Admin->value,
                 'access_mode' => $this->currentOffice->accessMode()?->value,
                 'real_office_role' => $this->currentOffice->realOfficeRole()?->value,
                 'has_real_membership' => $this->currentOffice->hasRealMembership(),

@@ -46,6 +46,37 @@ class PlatformPrivilegedContextTest extends TestCase
         $this->assertSame(0, OfficeMembership::query()->where('user_id', $admin->id)->count());
     }
 
+    public function test_flag_off_permite_troca_por_membership_real_para_platform_admin(): void
+    {
+        config([
+            'features.kill_switch' => false,
+            'features.platform_privileged_context.enabled' => false,
+        ]);
+
+        $office = Office::factory()->create(['name' => 'Contador']);
+        $admin = User::factory()
+            ->asPlatformAdmin()
+            ->forOffice($office, OfficeRole::Operator)
+            ->create(['selected_office_id' => null]);
+
+        $this->actingAs($admin)
+            ->postJson('/api/v1/platform/offices/select', ['office_id' => $office->id])
+            ->assertOk()
+            ->assertJsonPath('data.office.id', $office->id)
+            ->assertJsonPath('data.role', OfficeRole::Operator->value)
+            ->assertJsonPath('data.access_mode', OfficeAccessMode::Membership->value)
+            ->assertJsonPath('data.has_real_membership', true);
+
+        $this->assertSame($office->id, (int) $admin->fresh()->selected_office_id);
+        $this->assertFalse(
+            PlatformPrivilegedAuditEvent::query()
+                ->where('actor_user_id', $admin->id)
+                ->where('office_id', $office->id)
+                ->where('result', PlatformPrivilegedAuditEvent::RESULT_DENIED)
+                ->exists()
+        );
+    }
+
     public function test_platform_admin_seleciona_office_sem_membership(): void
     {
         $this->enablePrivileged();
