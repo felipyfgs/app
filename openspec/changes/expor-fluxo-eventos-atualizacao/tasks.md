@@ -25,7 +25,7 @@
 
 - [ ] 4.1 Consultar fontes públicas oficiais da experiência de eventos/monitoramento e registrar a referência visual antes de alterar a UI fiscal.
 - [ ] 4.2 Criar contratos Nuxt e composable sem `office_id`, protocolo, operação ou conteúdo bruto.
-  Depende de: 3.1
+  Depende de: 3.1, 4.1
 - [ ] 4.3 Implementar painel no detalhe do cliente seguindo `panel-ui` e `ui-archetype`, com histórico, confirmação, espera, bloqueio, limite, erro, sucesso e atualização manual sem polling.
   Depende de: 4.1, 4.2
 - [ ] 4.4 Cobrir no Vitest abertura sem egress, confirmação, estados, permissão, dados sanitizados e ações de solicitação/obtenção.

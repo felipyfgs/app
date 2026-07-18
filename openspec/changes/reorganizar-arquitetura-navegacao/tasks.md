@@ -104,12 +104,12 @@
 
 - [ ] 4.2 Executar gates de fidelidade, segurança de artefatos e OpenSpec
 
-  Depende de: 3.1, 3.2, 3.3.
+  Depende de: 4.1.
 
   Evidência: `cd frontend && pnpm run test:fidelity`, `cd frontend && pnpm run test:artifacts` e validação OpenSpec strict da change/specs passam; revisão confirma alinhamento ao template `0f30c09`, ausência de segredos e nenhum contrato alheio incorporado.
 
 - [ ] 4.3 Concluir validação visual e acessível rota a rota
 
-  Depende de: 3.1, 3.2, 3.3.
+  Depende de: 4.1, 4.2.
 
   Evidência: `validation-matrix.md` registra PASS para cada rota `SHELL`, `CHILD` relevante e `AUTH` em desktop e mobile, com identidades/permissões aplicáveis, loading, vazio, erro, detalhe, menus, teclado, foco, nomes acessíveis e ausência de overflow; redirects têm destino final verificado e toda divergência encontrada foi corrigida e revalidada.
