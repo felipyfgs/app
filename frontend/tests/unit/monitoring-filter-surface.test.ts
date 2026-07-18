@@ -74,11 +74,13 @@ describe('superfície de filtros das nove listas de monitoramento', () => {
     expect(src).toContain('surface="monitoring.guides"')
   })
 
-  it('Cadastro/Vínculos e Processos expõem status e clientId', () => {
+  it('Cadastro/Vínculos e Processos expõem busca server-side, status e clientId', () => {
     for (const file of ['registrations.vue', 'tax-processes.vue']) {
       const src = readPage(file)
       expect(src).toContain('key: \'status\'')
       expect(src).toContain('key: \'clientId\'')
+      expect(src).toContain('q: q.value || undefined')
+      expect(src).toContain('ariaLabel: \'Buscar por cliente, CNPJ')
       expect(src).toContain('client_id:')
       expect(src).not.toContain('key: \'situation\'')
       expect(src).not.toContain('key: \'competence\'')
@@ -113,6 +115,7 @@ describe('superfície de filtros das nove listas de monitoramento', () => {
       const src = readPage(file)
       expect(src).toContain('status.value = \'all\'')
       expect(src).toContain('clientId.value = null')
+      expect(src).toContain('q.value = \'\'')
     }
 
     const mailbox = readPage('mailbox.vue')

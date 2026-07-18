@@ -27,6 +27,7 @@ const page = ref(1)
 const perPage = ref(25)
 const lastPage = ref(1)
 const total = ref(0)
+const q = ref('')
 const status = ref('all')
 const clientId = ref<number | null>(null)
 const sorting = ref<{ id: string, desc: boolean }[]>([{ id: 'client', desc: false }])
@@ -39,11 +40,15 @@ const statusItems = [
   { label: 'Desconhecido', value: 'UNKNOWN' }
 ]
 const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({
+  q: q.value,
   status: status.value,
   clientIds: clientId.value != null && clientId.value >= 1 ? [clientId.value] : []
 }))
 const filterConfig: MonitoringFilterConfig = {
-  search: false,
+  search: {
+    placeholder: 'Buscar cliente ou processo…',
+    ariaLabel: 'Buscar por cliente, CNPJ ou número do processo'
+  },
   fields: [
     { key: 'status', kind: 'option', label: 'Status', items: statusItems },
     { key: 'clientId', kind: 'client', label: 'Cliente', multiple: false }
@@ -52,9 +57,10 @@ const filterConfig: MonitoringFilterConfig = {
 
 async function applyFilters(nextValue: MonitoringFilterValue) {
   const next = normalizeMonitoringFilters(nextValue)
-  if (status.value === next.status && (clientId.value ?? null) === (next.clientIds[0] ?? null) && next.clientIds.length <= 1) return
+  if (q.value === next.q && status.value === next.status && (clientId.value ?? null) === (next.clientIds[0] ?? null) && next.clientIds.length <= 1) return
   filterTransactionDepth += 1
   try {
+    q.value = next.q
     status.value = next.status
     clientId.value = next.clientIds[0] ?? null
     page.value = 1
@@ -78,6 +84,7 @@ async function load() {
     const res = await api.fiscal.taxProcesses.list({
       page: page.value,
       per_page: perPage.value,
+      q: q.value || undefined,
       status: status.value === 'all' ? undefined : status.value,
       client_id: clientId.value != null && clientId.value >= 1 ? clientId.value : undefined
     })
@@ -182,7 +189,7 @@ const columns: TableColumn<FiscalTaxProcess>[] = [
   }
 ]
 
-watch([status, clientId], () => {
+watch([q, status, clientId], () => {
   if (filterTransactionDepth > 0) return
   page.value = 1
   void load()
@@ -191,6 +198,7 @@ watch(sessionEpoch, () => {
   loadSeq += 1
   filterTransactionDepth += 1
   try {
+    q.value = ''
     status.value = 'all'
     clientId.value = null
     rows.value = []

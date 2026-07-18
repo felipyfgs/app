@@ -439,7 +439,7 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           })
       },
       registrations: {
-        list: (params?: { page?: number, per_page?: number, client_id?: number, status?: string }) =>
+        list: (params?: { page?: number, per_page?: number, q?: string, client_id?: number, status?: string }) =>
           client<{ data: FiscalRegistrationLink[], meta?: PageMeta }>('/api/v1/fiscal/registrations', {
             query: params
           }),
@@ -460,7 +460,7 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
         receipt: (clientId: number, renunciation_id: number) => client<{ data: { success: boolean, renunciation_id?: number, error_code?: string, error_message?: string } }>(`/api/v1/fiscal/clients/${clientId}/pnr-renunciations/receipt`, { method: 'POST', body: { renunciation_id } })
       },
       taxProcesses: {
-        list: (params?: { page?: number, per_page?: number, client_id?: number, status?: string }) =>
+        list: (params?: { page?: number, per_page?: number, q?: string, client_id?: number, status?: string }) =>
           client<{ data: FiscalTaxProcess[], meta?: PageMeta }>('/api/v1/fiscal/tax-processes', {
             query: params
           }),

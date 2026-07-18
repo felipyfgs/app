@@ -8,6 +8,7 @@ use App\Jobs\Fiscal\RefreshRegistrationLinksJob;
 use App\Models\Client;
 use App\Models\FiscalRegistrationLink;
 use App\Support\CurrentOffice;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -32,6 +33,28 @@ final class RegistrationLinkController extends Controller
         }
         if ($request->filled('status')) {
             $query->where('status', (string) $request->query('status'));
+        }
+        $search = trim((string) $request->query('q', ''));
+        if ($search !== '') {
+            $search = mb_substr($search, 0, 120);
+            $like = '%'.addcslashes($search, '%_\\').'%';
+            $normalizedDigits = preg_replace('/\D+/', '', $search) ?: '';
+            $digits = strlen($normalizedDigits) >= 8 ? $normalizedDigits : null;
+            $query->where(function (Builder $filter) use ($search, $like, $digits, $office): void {
+                $filter->where('link_key', 'like', $like)
+                    ->orWhere('source_provenance', 'like', $like)
+                    ->when(ctype_digit($search), fn (Builder $q) => $q->orWhere('client_id', (int) $search))
+                    ->orWhereHas('client', function (Builder $client) use ($like, $digits, $office): void {
+                        $client->where('office_id', $office->id)
+                            ->where(function (Builder $identity) use ($like, $digits): void {
+                                $identity->where('legal_name', 'like', $like)
+                                    ->orWhere('display_name', 'like', $like);
+                                if ($digits !== null) {
+                                    $identity->orWhere('root_cnpj', 'like', '%'.$digits.'%');
+                                }
+                            });
+                    });
+            });
         }
 
         $perPage = min(100, max(1, (int) $request->query('per_page', 25)));

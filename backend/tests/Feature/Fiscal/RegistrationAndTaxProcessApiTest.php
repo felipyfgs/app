@@ -111,6 +111,51 @@ final class RegistrationAndTaxProcessApiTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_search_filters_links_and_processes_on_the_server(): void
+    {
+        $matchingClient = Client::factory()->forOffice($this->officeA)->create([
+            'legal_name' => 'Empresa Alfa Monitorada',
+            'root_cnpj' => '99888777000166',
+        ]);
+
+        foreach ([
+            [$matchingClient, 'vinculo-alfa'],
+            [$this->clientA, 'vinculo-beta'],
+        ] as [$client, $linkKey]) {
+            FiscalRegistrationLink::query()->create([
+                'office_id' => $this->officeA->id,
+                'client_id' => $client->id,
+                'contributor_cnpj' => $client->root_cnpj,
+                'link_key' => $linkKey,
+                'status' => 'ACTIVE',
+            ]);
+        }
+
+        foreach (['PROC-ALFA-001', 'PROC-BETA-002'] as $number) {
+            FiscalTaxProcess::query()->create([
+                'office_id' => $this->officeA->id,
+                'client_id' => $this->clientA->id,
+                'contributor_cnpj' => $this->clientA->root_cnpj,
+                'process_number' => $number,
+                'status' => 'OPEN',
+            ]);
+        }
+
+        $this->actingAs($this->admin);
+        app(CurrentOffice::class)->clear();
+        app(CurrentOffice::class)->resolve($this->admin);
+
+        $this->getJson('/api/v1/fiscal/registrations?q=Empresa%20Alfa')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.link_key', 'vinculo-alfa');
+
+        $this->getJson('/api/v1/fiscal/tax-processes?q=ALFA-001')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.process_number', 'PROC-ALFA-001');
+    }
+
     public function test_office_id_in_query_is_ignored(): void
     {
         FiscalTaxProcess::query()->create([
