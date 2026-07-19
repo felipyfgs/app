@@ -26,7 +26,11 @@ class MeiAutomationAttemptTest extends TestCase
             'status' => MeiAutomationStatus::Queued,
             'idempotency_key' => 'secret-idempotency-value',
             'request_fingerprint' => str_repeat('a', 64),
-            'safe_metadata' => ['portal_version' => 'fixture'],
+            'safe_metadata' => [
+                'portal_version' => 'fixture',
+                'cnpj' => '11222333000181',
+                'raw_html' => '<html>fiscal</html>',
+            ],
         ]);
 
         $payload = $attempt->toPublicArray();
@@ -36,5 +40,7 @@ class MeiAutomationAttemptTest extends TestCase
         self::assertArrayNotHasKey('request_fingerprint', $payload);
         self::assertArrayNotHasKey('external_job_id', $payload);
         self::assertSame('RECEITA_PORTAL', $payload['provider']);
+        self::assertArrayNotHasKey('cnpj', $payload['metadata']);
+        self::assertArrayNotHasKey('raw_html', $payload['metadata']);
     }
 }

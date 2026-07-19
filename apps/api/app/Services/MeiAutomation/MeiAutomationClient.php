@@ -4,6 +4,7 @@ namespace App\Services\MeiAutomation;
 
 use App\DTO\MeiAutomation\MeiAutomationJobRequest;
 use App\DTO\MeiAutomation\MeiAutomationJobResult;
+use App\Exceptions\MeiAutomationTransportException;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
 use RuntimeException;
@@ -13,11 +14,15 @@ final class MeiAutomationClient
     public function __construct(
         private readonly HttpFactory $http,
         private readonly MeiAutomationHmacSigner $signer,
+        private readonly MeiAutomationInputPolicy $inputPolicy,
     ) {}
 
     public function create(MeiAutomationJobRequest $request): MeiAutomationJobResult
     {
-        return $this->sendJson('POST', '/v1/jobs', $request->toArray());
+        $payload = $request->toArray();
+        $payload['input'] = $this->inputPolicy->sanitize($request->operationKey, $request->input);
+
+        return $this->sendJson('POST', '/v1/jobs', $payload);
     }
 
     public function get(string $jobId): MeiAutomationJobResult
@@ -88,7 +93,7 @@ final class MeiAutomationClient
             default => 'AUTOMATION_TRANSPORT_ERROR',
         };
 
-        throw new RuntimeException($code);
+        throw new MeiAutomationTransportException($code, $response->status());
     }
 
     private function jobId(string $jobId): string

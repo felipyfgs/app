@@ -7,6 +7,7 @@ use App\Enums\FiscalVerificationKind;
 use App\Enums\MeiAutomationStatus;
 use App\Enums\MeiProvider;
 use App\Models\Concerns\BelongsToOffice;
+use App\Services\MeiAutomation\MeiAutomationMetadataSanitizer;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -33,7 +34,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'error_code',
     'error_message',
     'safe_metadata',
+    'vault_artifacts',
     'started_at',
+    'last_synced_at',
+    'submitted_at',
+    'sync_lost_at',
     'finished_at',
 ])]
 class MeiAutomationAttempt extends Model
@@ -50,7 +55,11 @@ class MeiAutomationAttempt extends Model
             'attempt_number' => 'integer',
             'captcha_cost_micros' => 'integer',
             'safe_metadata' => 'array',
+            'vault_artifacts' => 'array',
             'started_at' => 'immutable_datetime',
+            'last_synced_at' => 'immutable_datetime',
+            'submitted_at' => 'immutable_datetime',
+            'sync_lost_at' => 'immutable_datetime',
             'finished_at' => 'immutable_datetime',
         ];
     }
@@ -86,8 +95,18 @@ class MeiAutomationAttempt extends Model
             'fallback_reason' => $this->fallback_reason,
             'error_code' => $this->error_code,
             'error_message' => $this->error_message,
-            'metadata' => $this->safe_metadata ?? [],
+            'metadata' => app(MeiAutomationMetadataSanitizer::class)->sanitize($this->safe_metadata ?? []),
+            'artifacts' => collect($this->vault_artifacts ?? [])
+                ->filter('is_array')
+                ->map(static fn (array $artifact): array => [
+                    'id' => $artifact['id'] ?? null,
+                    'name' => $artifact['name'] ?? null,
+                    'content_type' => $artifact['content_type'] ?? null,
+                    'byte_size' => $artifact['byte_size'] ?? null,
+                    'sha256' => $artifact['sha256'] ?? null,
+                ])->values()->all(),
             'started_at' => $this->started_at?->toIso8601String(),
+            'last_synced_at' => $this->last_synced_at?->toIso8601String(),
             'finished_at' => $this->finished_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];

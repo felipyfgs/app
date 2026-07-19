@@ -7,6 +7,7 @@ use App\Enums\MeiAutomationStatus;
 use App\Services\MeiAutomation\MeiAutomationClient;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use InvalidArgumentException;
 use Tests\TestCase;
 
 class MeiAutomationClientTest extends TestCase
@@ -63,5 +64,25 @@ class MeiAutomationClientTest extends TestCase
         self::assertSame('%PDF-1.7 fixture', $response->body());
         Http::assertSent(fn (Request $request): bool => $request->hasHeader('X-MEI-Signature')
             && $request->url() === "http://mei.test/v1/jobs/{$jobId}/artifacts/{$artifactId}");
+    }
+
+    public function test_rejects_disallowed_input_before_http_and_hmac_transport(): void
+    {
+        config()->set('mei_automation.hmac.key_id', 'laravel');
+        config()->set('mei_automation.hmac.secret', 'shared-test-secret');
+        Http::fake();
+
+        try {
+            app(MeiAutomationClient::class)->create(new MeiAutomationJobRequest(
+                operationKey: 'fixture.health',
+                idempotencyKey: 'fixture:12345678',
+                requestFingerprint: str_repeat('a', 64),
+                clientRef: 'opaque-client-fixture',
+                input: ['password' => 'nao-enviar'],
+            ));
+            self::fail('Input fora da allowlist deveria ser rejeitado.');
+        } catch (InvalidArgumentException) {
+            Http::assertNothingSent();
+        }
     }
 }

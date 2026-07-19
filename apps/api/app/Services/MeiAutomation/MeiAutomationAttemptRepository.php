@@ -5,9 +5,11 @@ namespace App\Services\MeiAutomation;
 use App\DTO\MeiAutomation\MeiAutomationJobResult;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\FiscalVerificationKind;
+use App\Enums\MeiAutomationStatus;
 use App\Enums\MeiProvider;
 use App\Models\MeiAutomationAttempt;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\DB;
 use LogicException;
 
 final class MeiAutomationAttemptRepository
@@ -72,6 +74,8 @@ final class MeiAutomationAttemptRepository
         $errorCode = is_string($job->error['code'] ?? null) ? $job->error['code'] : null;
         $errorMessage = is_string($job->error['message'] ?? null) ? $job->error['message'] : null;
         $provider = $attempt->provider;
+        $submitted = ($job->error['submitted'] ?? false) === true
+            || ($job->result['submitted'] ?? false) === true;
 
         $attempt->forceFill([
             'external_job_id' => $job->id,
@@ -90,7 +94,66 @@ final class MeiAutomationAttemptRepository
                 'artifact_count' => count($job->artifacts),
             ]),
             'started_at' => $attempt->started_at ?? now(),
+            'last_synced_at' => now(),
+            'submitted_at' => $submitted ? ($attempt->submitted_at ?? now()) : $attempt->submitted_at,
+            'sync_lost_at' => null,
             'finished_at' => $job->status->isTerminal() ? now() : null,
+        ])->save();
+
+        return $attempt->refresh();
+    }
+
+    public function markSyncLost(MeiAutomationAttempt $attempt): MeiAutomationAttempt
+    {
+        $submitted = $attempt->submitted_at !== null;
+        $attempt->forceFill([
+            'status' => $submitted ? MeiAutomationStatus::Uncertain : MeiAutomationStatus::SyncLost,
+            'error_code' => $submitted ? 'SYNC_LOST_AFTER_SUBMISSION' : 'SYNC_LOST',
+            'error_message' => $submitted
+                ? 'Estado efêmero perdido após possível submissão; reconciliação obrigatória.'
+                : 'Estado efêmero do job expirou antes da sincronização.',
+            'last_synced_at' => now(),
+            'sync_lost_at' => now(),
+            'finished_at' => now(),
+        ])->save();
+
+        return $attempt->refresh();
+    }
+
+    /** @param array{id:string,name:string,content_type:string,byte_size:int,sha256:string,object_id:string} $artifact */
+    public function recordVaultArtifact(MeiAutomationAttempt $attempt, array $artifact): MeiAutomationAttempt
+    {
+        return DB::transaction(function () use ($attempt, $artifact): MeiAutomationAttempt {
+            $locked = MeiAutomationAttempt::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $attempt->office_id)
+                ->whereKey($attempt->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $artifacts = collect($locked->vault_artifacts ?? [])->filter('is_array');
+            if (! $artifacts->contains(fn (array $item): bool => ($item['id'] ?? null) === $artifact['id'])) {
+                $artifacts->push($artifact);
+            }
+            $metadata = (array) ($locked->safe_metadata ?? []);
+            $metadata['artifact_count'] = $artifacts->count();
+            $locked->forceFill([
+                'vault_artifacts' => $artifacts->values()->all(),
+                'safe_metadata' => $this->sanitizer->sanitize($metadata),
+                'last_synced_at' => now(),
+            ])->save();
+
+            return $locked->refresh();
+        });
+    }
+
+    public function markArtifactFailure(MeiAutomationAttempt $attempt, string $code, string $message): MeiAutomationAttempt
+    {
+        $attempt->forceFill([
+            'status' => MeiAutomationStatus::Failed,
+            'error_code' => mb_substr($code, 0, 80),
+            'error_message' => $this->sanitizer->error($message),
+            'last_synced_at' => now(),
+            'finished_at' => now(),
         ])->save();
 
         return $attempt->refresh();

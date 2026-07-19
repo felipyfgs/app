@@ -20,6 +20,14 @@ return [
     'base_url' => env('MEI_AUTOMATION_URL', 'http://mei:8080'),
     'timeout_seconds' => (int) env('MEI_AUTOMATION_HTTP_TIMEOUT', 15),
     'poll_interval_seconds' => (int) env('MEI_AUTOMATION_POLL_INTERVAL', 10),
+    'result_ttl_seconds' => (int) env('MEI_AUTOMATION_RESULT_TTL_SECONDS', 900),
+    'queue' => env('MEI_AUTOMATION_QUEUE', 'fiscal'),
+    'artifact_max_bytes' => (int) env('MEI_AUTOMATION_ARTIFACT_MAX_BYTES', 10485760),
+    'artifact_allowed_content_types' => [
+        'application/pdf',
+        'application/json',
+        'text/plain',
+    ],
     'hmac' => [
         'key_id' => env('MEI_AUTOMATION_HMAC_KEY_ID', 'laravel'),
         'secret' => env('MEI_AUTOMATION_HMAC_SECRET'),

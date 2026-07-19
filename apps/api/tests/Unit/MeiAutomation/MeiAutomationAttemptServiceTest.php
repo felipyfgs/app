@@ -12,6 +12,7 @@ use App\Models\Office;
 use App\Services\MeiAutomation\MeiAutomationAttemptRepository;
 use App\Services\MeiAutomation\MeiAutomationAttemptService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use LogicException;
 use Tests\TestCase;
 
 class MeiAutomationAttemptServiceTest extends TestCase
@@ -31,16 +32,16 @@ class MeiAutomationAttemptServiceTest extends TestCase
             'pgmei.dividaativa',
             MeiProvider::ReceitaPortal,
             'run:12345678',
-            ['year' => 2026, 'cnpj' => '11222333000181'],
+            ['calendar_year' => 2026, 'cnpj' => '11222333000181'],
         );
-        $request = $service->jobRequest($attempt, ['year' => 2026, 'cnpj' => '11222333000181']);
+        $request = $service->jobRequest($attempt, ['calendar_year' => 2026, 'cnpj' => '11222333000181']);
 
         self::assertSame($attempt->request_fingerprint, $request->requestFingerprint);
         self::assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $request->clientRef);
         self::assertNotSame((string) $client->id, $request->clientRef);
         self::assertStringNotContainsString('11222333000181', $request->clientRef);
         self::assertSame(
-            $service->fingerprint('pgmei.dividaativa', ['cnpj' => '11222333000181', 'year' => 2026]),
+            $service->fingerprint('pgmei.dividaativa', ['cnpj' => '11222333000181', 'calendar_year' => 2026]),
             $attempt->request_fingerprint,
         );
     }
@@ -77,5 +78,41 @@ class MeiAutomationAttemptServiceTest extends TestCase
         self::assertStringNotContainsString('11222333000181', (string) $attempt->error_message);
         self::assertStringNotContainsString('secret', (string) $attempt->error_message);
         self::assertArrayNotHasKey('raw_html', $attempt->safe_metadata);
+    }
+
+    public function test_attempt_idempotency_reuses_same_input_and_rejects_collision(): void
+    {
+        $office = Office::factory()->create();
+        $client = Client::factory()->forOffice($office)->create();
+        $service = app(MeiAutomationAttemptService::class);
+        $input = ['cnpj' => '11222333000181', 'calendar_year' => 2026];
+
+        $first = $service->start(
+            $office,
+            $client,
+            'pgmei.dividaativa',
+            MeiProvider::ReceitaPortal,
+            'same:12345678',
+            $input,
+        );
+        $second = $service->start(
+            $office,
+            $client,
+            'pgmei.dividaativa',
+            MeiProvider::ReceitaPortal,
+            'same:12345678',
+            array_reverse($input, true),
+        );
+        self::assertSame($first->id, $second->id);
+
+        $this->expectException(LogicException::class);
+        $service->start(
+            $office,
+            $client,
+            'pgmei.dividaativa',
+            MeiProvider::ReceitaPortal,
+            'same:12345678',
+            ['cnpj' => '11222333000181', 'calendar_year' => 2025],
+        );
     }
 }
