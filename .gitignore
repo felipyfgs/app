@@ -21,11 +21,18 @@ apps/web/.env.*
 !**/.env.example
 apps/api/auth.json
 **/auth.json
-# Chaves e segredos soltos
+# Chaves e segredos soltos.
+# Evitar **/*secret* amplo: bloqueava infra/docker/ops/secret-scan.sh e classes *Secret*.
 **/secrets/
-**/*secret*
+**/.secrets/
+**/*credentials*
+**/*secret*.env
+**/*secrets*.json
 !**/*.example
-!**/*.md
+# Exceções só para docs/exemplos que casariam com padrões de segredo acima
+!**/*secret*.md
+!**/*credentials*.md
+!**/*secrets*.example
 
 # --- Dependências ---
 **/node_modules/
@@ -86,6 +93,37 @@ apps/web/.history/
 apps/web/.eslintcache
 apps/web/.vite/
 apps/web/**/*.tsbuildinfo
+# Fixture Vitest/Nuxt regenerável (não versionar cache gerado)
+apps/web/tests/**/.nuxt/
+apps/web/tests/**/node_modules/
+
+# --- Python sidecars (services/*) ---
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/coverage.xml
+**/htmlcov/
+**/*.egg-info/
+**/.eggs/
+**/.venv/
+**/venv/
+**/ENV/
+# Builds hatch/pip locais do sidecar
+services/**/dist/
+services/**/build/
+# Celery local (se rodar fora do Compose)
+**/celerybeat-schedule
+**/celerybeat-schedule.*
+**/celerybeat.pid
+# Artefatos efêmeros do executor MEI (TTL; nunca SoT — Postgres é a verdade)
+services/mei/**/artifacts-data/
+services/mei/.artifacts/
+services/mei/tmp/
+services/mei/**/tmp-mei/
 
 # --- Docker / runtime local ---
 docker-compose.override.yml
@@ -200,7 +238,7 @@ apps/web/tests/e2e/__screenshots__/
 *.orig
 *.rej
 
-# OpenSpec: archive vai pro git; changes ativas (fora de archive/) ficam só locais.
-openspec/changes/*
-!openspec/changes/archive/
-!openspec/changes/archive/**
+# OpenSpec: changes ativas E archive são versionados (openspec/config.yaml + CI).
+# NÃO usar `openspec/changes/*` — o validate do workflow percorre deltas ativos.
+openspec/**/.openspec-cache/
+openspec/**/.DS_Store

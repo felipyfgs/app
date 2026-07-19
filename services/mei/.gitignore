@@ -1,11 +1,25 @@
+# Reforço local; a fonte canônica é o .gitignore da raiz do monorepo.
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
+coverage.xml
 htmlcov/
 dist/
 build/
 *.egg-info/
-
+.eggs/
+.venv/
+venv/
+celerybeat-schedule
+celerybeat-schedule.*
+celerybeat.pid
+.artifacts/
+artifacts-data/
+tmp/
+tmp-mei/
+.env
+.env.*
+!.env.example
