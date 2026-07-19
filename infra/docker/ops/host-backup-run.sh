@@ -3,7 +3,7 @@
 # Não monta Docker socket nos containers da aplicação; a chave permanece no host.
 set -euo pipefail
 
-ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)"
 BACKUP_ENV="${BACKUP_ENV:-/etc/fiscal-hub/backup.env}"
 
 if [[ ! -f "$BACKUP_ENV" ]]; then

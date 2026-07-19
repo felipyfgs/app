@@ -3,7 +3,7 @@
 # Destino fora do repositório, modo 600. Sem segredos.
 set -euo pipefail
 
-ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)"
 cd "$ROOT_DIR"
 
 RELEASE_SHA="${RELEASE_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"

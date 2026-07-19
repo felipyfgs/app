@@ -3,7 +3,7 @@ set -eu
 
 umask 077
 
-ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 project="fiscal-hub-restore-smoke-$$"
 work_dir=$(mktemp -d)
 env_file="$work_dir/.env"

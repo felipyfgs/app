@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 STACK_FILE=${STACK_FILE:-compose.prod.yml}
 STACK_ENV=${STACK_ENV:-.env}
 STACK_PROJECT=${STACK_PROJECT:-fiscal-hub}

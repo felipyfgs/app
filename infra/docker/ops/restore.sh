@@ -3,7 +3,7 @@ set -eu
 
 umask 077
 
-ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 force=false
 verify_only=false
 STACK_FILE=${STACK_FILE:-docker-compose.yml}
