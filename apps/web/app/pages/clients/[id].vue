@@ -1,13 +1,18 @@
 <script setup lang="ts">
 /**
- * Página de detalhe do cliente — arquétipo Settings do template
- * + layout de detalhe (header identidade + main + aside), inspirado em HubStrom.
- * Fonte template: .local/reference/nuxt-dashboard-template/app/pages/settings.vue
+ * Shell do detalhe do cliente — arquétipo settings (Conta).
+ * Fonte: `.local/reference/nuxt-dashboard-template/app/pages/settings.vue`
+ * 4 destinos de toolbar; Fiscal/Integrações são hubs.
  */
-import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
 import type { Client, ClientCredential, Establishment } from '~/types/api'
 import { clientDetailKey, clientSectionPath } from '~/composables/useClientDetail'
-import { clientDetailNav } from '~/utils/client-detail-navigation'
+import { clientNavigationMenu } from '~/utils/client-detail-navigation'
+import type { ClientDetailPanel, ClientDetailTab } from '~/utils/client-detail-tabs'
+import {
+  clientDetailHref,
+  legacySectionToHref,
+  queryToClientDetailHref
+} from '~/utils/client-detail-tabs'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,7 +34,16 @@ const registrationEditRequested = ref(false)
 
 const establishments = computed(() => item.value?.establishments || [])
 
-const sectionLinks = computed(() => clientDetailNav(clientId.value))
+const navbarTitle = computed(() =>
+  item.value?.display_name
+  || item.value?.legal_name
+  || item.value?.name
+  || 'Cliente'
+)
+
+const links = computed(() =>
+  clientNavigationMenu(clientId.value, route.path)
+)
 
 async function load() {
   loading.value = true
@@ -76,7 +90,6 @@ async function triggerSync(establishment: Establishment) {
 
 function onCredentialActivated(value: ClientCredential) {
   credential.value = value
-  // Mantém summary alinhado para KPIs/aside (mesmo sem re-fetch).
   if (item.value) {
     item.value = {
       ...item.value,
@@ -95,11 +108,14 @@ function sectionPath(section?: string) {
   return clientSectionPath(clientId.value, section)
 }
 
-/** Editar → aba Cadastro com formulário desbloqueado */
+function goToTab(tab: ClientDetailTab, panel?: ClientDetailPanel) {
+  void navigateTo(clientDetailHref(clientId.value, tab, panel))
+}
+
 function goEditCadastro() {
   if (!item.value || !canManageClients.value) return
   registrationEditRequested.value = true
-  navigateTo(clientSectionPath(item.value.id, 'cadastro'))
+  goToTab('cadastro')
 }
 
 provide(clientDetailKey, {
@@ -117,29 +133,35 @@ provide(clientDetailKey, {
   load,
   triggerSync,
   onCredentialActivated,
-  sectionPath
+  sectionPath,
+  goToTab
 })
 
-/**
- * Compat: URLs antigas ?section=X → /clients/:id[/X]
- * Padrão Nuxt/template Settings: rotas aninhadas, não query.
- */
-async function migrateLegacySectionQuery() {
-  const raw = route.query.section
-  if (typeof raw !== 'string' || raw === '') {
+/** `/clients/:id` → `/clients/:id/cadastro` */
+async function ensureCanonicalChild() {
+  const path = route.path.replace(/\/+$/, '')
+  if (!/^\/clients\/\d+$/.test(path)) return
+
+  if (typeof route.query.tab === 'string' || typeof route.query.section === 'string') {
+    const fromSection = typeof route.query.section === 'string'
+      ? legacySectionToHref(clientId.value, route.query.section)
+      : null
+    const href = fromSection || queryToClientDetailHref(clientId.value, route.query as Record<string, unknown>)
+    await router.replace(href)
     return
   }
 
-  const allowed = new Set(['resumo', 'cadastro', 'estabelecimentos', 'certificado', 'sincronizacao'])
-  if (!allowed.has(raw)) {
-    return
-  }
+  await router.replace(clientDetailHref(clientId.value, 'cadastro'))
+}
 
-  const { section: _drop, ...rest } = route.query
-  await router.replace({
-    path: clientSectionPath(clientId.value, raw),
-    query: rest
-  })
+/** Query legada em qualquer filho → path. */
+async function migrateLegacyQuery() {
+  if (typeof route.query.tab !== 'string' && typeof route.query.section !== 'string') return
+  const fromSection = typeof route.query.section === 'string'
+    ? legacySectionToHref(clientId.value, route.query.section)
+    : null
+  const href = fromSection || queryToClientDetailHref(clientId.value, route.query as Record<string, unknown>)
+  await router.replace(href)
 }
 
 watch(clientId, () => {
@@ -147,128 +169,98 @@ watch(clientId, () => {
   load()
 })
 
+watch(
+  () => route.fullPath,
+  async () => {
+    await ensureCanonicalChild()
+    await migrateLegacyQuery()
+  }
+)
+
 onMounted(async () => {
-  await migrateLegacySectionQuery()
+  await ensureCanonicalChild()
+  await migrateLegacyQuery()
   await load()
 })
 </script>
 
 <template>
-  <!--
-    Arquétipo settings seções (template settings.vue):
-    Navbar + Toolbar UNavigationMenu highlight + body com NuxtPage.
-    Header de identidade e aside são adaptação de domínio (não do demo).
-  -->
-  <UDashboardPanel id="client-detail" data-testid="settings-panel" :ui="{ body: 'lg:py-12' }">
-    <template #header>
-      <UDashboardNavbar title="Clientes" data-testid="page-navbar">
-        <template #leading>
-          <div class="flex items-center gap-1">
-            <UDashboardSidebarCollapse />
-            <UButton
-              to="/clients"
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-arrow-left"
-              label="Voltar aos clientes"
-              class="hidden sm:inline-flex"
-            />
-            <UButton
-              to="/clients"
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-arrow-left"
-              square
-              class="sm:hidden"
-              aria-label="Voltar aos clientes"
-            />
-          </div>
-        </template>
-        <template #right>
-          <UButton
-            v-if="item && canManageClients"
-            color="primary"
-            variant="soft"
-            icon="i-lucide-pencil"
-            label="Editar cliente"
-            class="hidden sm:inline-flex"
-            @click="goEditCadastro"
-          />
-          <UButton
-            v-if="item && canManageClients"
-            color="primary"
-            variant="soft"
-            icon="i-lucide-pencil"
-            square
-            class="sm:hidden"
-            aria-label="Editar cliente"
-            @click="goEditCadastro"
-          />
-        </template>
-      </UDashboardNavbar>
-
-      <UDashboardToolbar v-if="item" data-testid="client-section-tabs">
-        <SectionNavigation
-          :items="sectionLinks"
-          :path="route.fullPath"
-          aria-label="Navegação do cliente"
-          subtabs-aria-label="Seções do cliente"
-          test-id="client-detail-section-navigation"
-        />
-      </UDashboardToolbar>
+  <ShellSettingsShell
+    id="client-detail"
+    :title="navbarTitle"
+    width="comfortable"
+    test-id="client-detail-panel"
+    toolbar-test-id="client-section-tabs"
+  >
+    <template #navbar-leading>
+      <ShellNavbarBack
+        to="/clients"
+        label="Voltar aos clientes"
+        aria-label="Voltar aos clientes"
+        test-id="client-detail-back"
+      />
     </template>
 
-    <template #body>
-      <DashboardContent width="wide" class="gap-4 sm:gap-6 lg:gap-12">
-        <div
-          v-if="loading && !item"
-          class="space-y-4"
-          role="status"
-          aria-label="Carregando cliente"
-        >
-          <USkeleton class="h-28 w-full rounded-lg" />
-          <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-            <USkeleton class="h-96 w-full rounded-lg" />
-            <div class="space-y-4">
-              <USkeleton class="h-40 w-full rounded-lg" />
-              <USkeleton class="h-32 w-full rounded-lg" />
-            </div>
-          </div>
-        </div>
-
-        <UEmpty
-          v-else-if="!item"
-          icon="i-lucide-building-2"
-          title="Cliente não encontrado"
-          description="O registro não existe ou pertence a outro escritório."
-        >
-          <UButton to="/clients" label="Voltar para clientes" />
-        </UEmpty>
-
-        <template v-else>
-          <ClientsClientDetailHeader
-            :client="item"
-            :establishments="establishments"
-            :can-manage-clients="canManageClients"
-            @edit="goEditCadastro"
-          />
-
-          <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
-            <div class="min-w-0">
-              <NuxtPage />
-            </div>
-
-            <aside class="xl:sticky xl:top-4">
-              <ClientsClientDetailAside
-                :client="item"
-                :credential="credential"
-                :establishments="establishments"
-                :can-manage-credentials="canManageCredentials"
-              />
-            </aside>
-          </div>
-        </template>
-      </DashboardContent>
+    <template
+      v-if="item && canManageClients"
+      #navbar-right
+    >
+      <UButton
+        color="primary"
+        variant="soft"
+        icon="i-lucide-pencil"
+        label="Editar cliente"
+        class="hidden sm:inline-flex"
+        data-testid="client-page-edit"
+        @click="goEditCadastro"
+      />
+      <UButton
+        color="primary"
+        variant="soft"
+        icon="i-lucide-pencil"
+        square
+        class="sm:hidden"
+        aria-label="Editar cliente"
+        data-testid="client-page-edit-mobile"
+        @click="goEditCadastro"
+      />
     </template>
-  </UDashboardPanel>
+
+    <template
+      v-if="item"
+      #toolbar
+    >
+      <UNavigationMenu
+        :items="links"
+        highlight
+        class="-mx-1 flex-1"
+        data-testid="client-section-navigation"
+        aria-label="Navegação do cliente"
+      />
+    </template>
+
+    <div
+      v-if="loading && !item"
+      class="space-y-4"
+      role="status"
+      aria-label="Carregando cliente"
+    >
+      <USkeleton class="h-10 w-48 rounded-lg" />
+      <USkeleton class="h-96 w-full rounded-lg" />
+    </div>
+
+    <UEmpty
+      v-else-if="!item"
+      icon="i-lucide-building-2"
+      title="Cliente não encontrado"
+      description="O registro não existe ou pertence a outro escritório."
+    >
+      <UButton
+        to="/clients"
+        label="Voltar para clientes"
+      />
+    </UEmpty>
+
+    <NuxtPage v-else />
+  </ShellSettingsShell>
 </template>

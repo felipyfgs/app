@@ -1,3 +1,4 @@
+import type { NavigationMenuItem } from '@nuxt/ui'
 import type { MeUser } from '~/types/api'
 import type { NavLayerItem, NavLeafDestination } from '~/utils/navigation-hierarchy'
 import { filterNavItems, flattenNavLeaves, validateNavCatalog } from '~/utils/navigation-hierarchy'
@@ -17,8 +18,8 @@ export interface AccountNavigationItem {
 }
 
 /**
- * Vocabulário canônico da Conta (folhas).
- * Perfil pertence ao User; Escritório e demais seções pertencem ao Office.
+ * Vocabulário canônico da Conta — uma seção = um path (como o template settings).
+ * Perfil pertence ao User; demais seções pertencem ao Office.
  */
 export const ACCOUNT_NAVIGATION = {
   profile: {
@@ -35,17 +36,11 @@ export const ACCOUNT_NAVIGATION = {
     to: '/conta/escritorio',
     exact: true
   },
-  usage: {
-    id: 'account-usage',
-    label: 'Consumo',
-    icon: 'i-lucide-chart-pie',
-    to: '/conta/consumo'
-  },
-  subscription: {
-    id: 'account-subscription',
-    label: 'Assinatura',
-    icon: 'i-lucide-badge-check',
-    to: '/conta/assinatura'
+  departments: {
+    id: 'account-departments',
+    label: 'Departamentos',
+    icon: 'i-lucide-building',
+    to: '/conta/departamentos'
   },
   team: {
     id: 'account-team',
@@ -53,11 +48,17 @@ export const ACCOUNT_NAVIGATION = {
     icon: 'i-lucide-users-round',
     to: '/conta/equipe'
   },
-  departments: {
-    id: 'account-departments',
-    label: 'Departamentos',
-    icon: 'i-lucide-building',
-    to: '/conta/departamentos'
+  subscription: {
+    id: 'account-subscription',
+    label: 'Assinatura',
+    icon: 'i-lucide-badge-check',
+    to: '/conta/assinatura'
+  },
+  usage: {
+    id: 'account-usage',
+    label: 'Consumo',
+    icon: 'i-lucide-chart-pie',
+    to: '/conta/consumo'
   }
 } satisfies Record<string, AccountNavigationItem>
 
@@ -72,39 +73,21 @@ function leaf(item: AccountNavigationItem, capability?: string): NavLeafDestinat
   }
 }
 
-/** Hierarquia Tabs → Subtabs da Conta. */
+/**
+ * Catálogo plano (folhas) — toolbar UNavigationMenu + sidebar/busca.
+ * Espelha `.local/reference/nuxt-dashboard-template/app/pages/settings.vue`.
+ */
 export const ACCOUNT_NAV_ITEMS: NavLayerItem[] = [
   leaf(ACCOUNT_NAVIGATION.profile, 'profile'),
-  {
-    id: 'account-organization',
-    label: 'Organização',
-    icon: 'i-lucide-building-2',
-    children: [
-      leaf(ACCOUNT_NAVIGATION.office, 'office-settings'),
-      leaf(ACCOUNT_NAVIGATION.departments, 'work-catalog')
-    ]
-  },
-  {
-    id: 'account-people',
-    label: 'Pessoas e acesso',
-    icon: 'i-lucide-users-round',
-    children: [
-      leaf(ACCOUNT_NAVIGATION.team, 'manage-team')
-      // Perfis e permissões: só quando a change proprietária publicar a superfície.
-    ]
-  },
-  {
-    id: 'account-plan',
-    label: 'Plano',
-    icon: 'i-lucide-badge-check',
-    children: [
-      leaf(ACCOUNT_NAVIGATION.subscription, 'office-settings'),
-      leaf(ACCOUNT_NAVIGATION.usage, 'office-settings')
-    ]
-  }
+  leaf(ACCOUNT_NAVIGATION.office, 'office-settings'),
+  leaf(ACCOUNT_NAVIGATION.departments, 'work-catalog'),
+  leaf(ACCOUNT_NAVIGATION.team, 'manage-team'),
+  leaf(ACCOUNT_NAVIGATION.subscription, 'office-settings'),
+  leaf(ACCOUNT_NAVIGATION.usage, 'office-settings')
 ]
 
-validateNavCatalog(ACCOUNT_NAV_ITEMS)
+/** Flat settings: até 8 folhas na toolbar (sem grupos/subtabs). */
+validateNavCatalog(ACCOUNT_NAV_ITEMS, 8)
 
 function allowAccountLeaf(user: MeUser | null | undefined, leafItem: NavLeafDestination): boolean {
   switch (leafItem.capability) {
@@ -121,7 +104,7 @@ function allowAccountLeaf(user: MeUser | null | undefined, leafItem: NavLeafDest
   }
 }
 
-/** Catálogo hierárquico filtrado por capacidade. */
+/** Catálogo filtrado por capacidade. */
 export function accountNavigationTree(user?: MeUser | null): NavLayerItem[] {
   if (!user) return []
   const office = user.current_office ?? user.office
@@ -130,7 +113,7 @@ export function accountNavigationTree(user?: MeUser | null): NavLayerItem[] {
   return filterNavItems(ACCOUNT_NAV_ITEMS, leafItem => allowAccountLeaf(user, leafItem))
 }
 
-/** Folhas planas — sidebar, busca e compatibilidade com testes existentes. */
+/** Folhas planas — sidebar, busca e compatibilidade. */
 export function accountNavigationItems(user?: MeUser | null): AccountNavigationItem[] {
   return flattenNavLeaves(accountNavigationTree(user)).map(item => ({
     id: item.id,
@@ -139,4 +122,15 @@ export function accountNavigationItems(user?: MeUser | null): AccountNavigationI
     to: item.to,
     exact: item.exact
   }))
+}
+
+/** Links para UNavigationMenu da toolbar (grupo único, como o template). */
+export function accountNavigationMenu(user?: MeUser | null): NavigationMenuItem[][] {
+  const items = accountNavigationItems(user).map((item): NavigationMenuItem => ({
+    label: item.label,
+    icon: item.icon,
+    to: item.to,
+    exact: item.exact === true
+  }))
+  return items.length ? [items] : []
 }

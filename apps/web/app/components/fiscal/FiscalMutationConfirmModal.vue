@@ -276,7 +276,7 @@ async function submit() {
     </template>
 
     <template #footer>
-      <div class="flex w-full justify-end gap-2">
+      <ShellModalFooter>
         <UButton
           color="neutral"
           variant="ghost"
@@ -299,7 +299,7 @@ async function submit() {
           :loading="loading"
           @click="runPreflight"
         />
-      </div>
+      </ShellModalFooter>
     </template>
   </UModal>
 </template>

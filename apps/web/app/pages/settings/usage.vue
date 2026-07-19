@@ -5,7 +5,8 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { OfficeUsageEntry, OfficeUsageSummary } from '~/types/api'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import ShellDataTable from '~/components/shell/DataTable.vue'
+import { normalizeListTablePerPage } from '~/utils/table-ui'
 
 const api = useApi()
 const { sessionEpoch } = useDashboard()
@@ -19,9 +20,13 @@ const usage = ref<OfficeUsageSummary | null>(null)
 const entries = ref<OfficeUsageEntry[]>([])
 const entriesTotal = ref(0)
 const page = ref(1)
-const perPage = 20
+const perPage = ref(20)
 
 const summary = computed(() => usage.value?.summary || null)
+const byServiceRows = computed(() =>
+  (usage.value?.by_service || []) as unknown as Record<string, unknown>[]
+)
+const servicePage = reactive(useLocalTablePagination(byServiceRows))
 
 const serviceColumns: TableColumn<Record<string, unknown>>[] = [
   { accessorKey: 'service_code', header: 'Serviço' },
@@ -74,7 +79,7 @@ async function load() {
         year: year.value,
         month: month.value,
         page: page.value,
-        per_page: perPage
+        per_page: perPage.value
       })
     ])
 
@@ -106,6 +111,17 @@ async function load() {
   }
 }
 
+function setPerPage(next: number) {
+  const target = normalizeListTablePerPage(next, 20)
+  if (perPage.value === target) return
+  perPage.value = target
+  if (page.value !== 1) {
+    page.value = 1
+    return
+  }
+  void load()
+}
+
 watch([year, month, page], () => {
   void load()
 })
@@ -119,16 +135,14 @@ onMounted(load)
 </script>
 
 <template>
-  <!-- Padrão members: naked header horizontal + conteúdo em cards subtle -->
+  <!-- Chrome: ShellSectionHeader (template settings). -->
   <div>
-    <UPageCard
+    <ShellSectionHeader
       title="Consumo do plano"
       description="Uso deste escritório."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
+      test-id="settings-usage-header"
     >
-      <div class="flex w-full flex-wrap items-end gap-2 lg:ms-auto lg:w-fit">
+      <div class="flex w-full flex-wrap items-end gap-2 lg:w-fit">
         <UFormField label="Ano">
           <UInput
             v-model.number="year"
@@ -156,14 +170,14 @@ onMounted(load)
           @click="load"
         />
       </div>
-    </UPageCard>
+    </ShellSectionHeader>
 
     <div class="flex flex-col gap-4 sm:gap-6 lg:gap-12">
-      <UAlert
+      <ShellLoadError
         v-if="loadError"
-        color="error"
-        icon="i-lucide-circle-x"
         :title="loadError"
+        test-id="usage-load-error"
+        @retry="load"
       />
 
       <div
@@ -232,10 +246,19 @@ onMounted(load)
         variant="subtle"
         title="Por serviço"
       >
-        <UTable
-          :data="usage.by_service as unknown as Record<string, unknown>[]"
+        <ShellDataTable
+          ui-preset="dashboard"
+          primary-column-id="service_code"
+          status-column-id="consumption_class"
+          :summary-column-ids="['system_code', 'total_quantity', 'entry_count']"
+          :data="servicePage.rows"
           :columns="serviceColumns"
-          :ui="DASHBOARD_TABLE_UI"
+          :page="servicePage.page"
+          :total="servicePage.total"
+          :items-per-page="servicePage.perPage"
+          per-page-aria-label="Serviços por página"
+          @update:page="servicePage.setPage"
+          @update:items-per-page="servicePage.setPerPage"
         />
       <!-- Intencionalmente sem coluna de preço global / fatura consolidada -->
       </UPageCard>
@@ -256,31 +279,32 @@ onMounted(load)
           icon="i-lucide-receipt"
           title="Nenhum lançamento no período"
         />
-        <template v-else>
-          <UTable
-            :data="entries"
-            :columns="entryColumns"
-            :ui="DASHBOARD_TABLE_UI"
-          >
-            <template #provenance-cell="{ row }">
-              <SerproProvenanceBadge
-                :consumption-class="row.original.consumption_class"
-                :is-billable-attempt="row.original.is_billable_attempt"
-                :result="row.original.result"
-              />
-            </template>
-          </UTable>
-          <div
-            v-if="entriesTotal > perPage"
-            class="mt-4 flex justify-end"
-          >
-            <UPagination
-              v-model="page"
-              :total="entriesTotal"
-              :items-per-page="perPage"
+        <ShellDataTable
+          v-else
+          ui-preset="dashboard"
+          primary-column-id="occurred_at"
+          status-column-id="result"
+          :summary-column-ids="['svc', 'quantity', 'provenance']"
+          :data="entries"
+          :columns="entryColumns"
+          :page="page"
+          :total="entriesTotal"
+          :items-per-page="perPage"
+          per-page-aria-label="Lançamentos por página"
+          @update:page="page = $event"
+          @update:items-per-page="setPerPage"
+        >
+          <template #provenance-cell="{ row }">
+            <SerproProvenanceBadge
+              :consumption-class="row.original.consumption_class"
+              :is-billable-attempt="row.original.is_billable_attempt"
+              :result="row.original.result"
             />
-          </div>
-        </template>
+          </template>
+          <template #footer>
+            <span class="tabular-nums">{{ entriesTotal }}</span> lançamento(s)
+          </template>
+        </ShellDataTable>
       </UPageCard>
     </div>
   </div>

@@ -1,27 +1,12 @@
 <script setup lang="ts">
-/**
- * Seção Captura de saídas — arquétipo Settings do template dashboard.
- */
-const {
-  item,
-  establishments,
-  canManageClients,
-  canManageCredentials
-} = useClientDetail()
+/** Legado: redireciona para a IA de 4 páginas. */
+import { legacyClientPathToHref } from '~/utils/client-detail-tabs'
+
+const route = useRoute()
+const href = legacyClientPathToHref(route.params.id as string, 'saidas') || `/clients/${route.params.id}/cadastro`
+await navigateTo(href, { replace: true })
 </script>
 
 <template>
-  <ClientsClientOutboundCapturePanel
-    v-if="item"
-    :client-id="item.id"
-    :establishments="establishments"
-    :can-manage="canManageClients"
-    :can-admin="canManageCredentials"
-  />
-  <UAlert
-    v-else
-    color="neutral"
-    variant="subtle"
-    title="Cliente indisponível"
-  />
+  <div />
 </template>

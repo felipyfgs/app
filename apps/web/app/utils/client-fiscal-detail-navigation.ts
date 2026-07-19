@@ -159,7 +159,7 @@ export function clientFiscalDetailNav(clientId: string | number): NavLayerItem[]
         },
         {
           id: 'cf-registrations',
-          label: 'Cadastro / Vínculos',
+          label: 'Cadastro e Vínculos',
           icon: 'i-lucide-link-2',
           to: sectionPath(id, 'registrations'),
           isActive: sectionActive('registrations', id)
@@ -180,7 +180,7 @@ export function clientFiscalDetailNav(clientId: string | number): NavLayerItem[]
         },
         {
           id: 'cf-tax-processes',
-          label: 'Processos fiscais',
+          label: 'Processos Fiscais',
           icon: 'i-lucide-scale',
           to: sectionPath(id, 'tax_processes'),
           isActive: sectionActive('tax_processes', id)

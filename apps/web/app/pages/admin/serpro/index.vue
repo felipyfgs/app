@@ -318,6 +318,7 @@ onMounted(() => {
       :model-value="activeSection"
       :items="operationSections"
       color="neutral"
+      variant="pill"
       class="w-full"
       aria-label="Seções da operação SERPRO"
       test-id="admin-serpro-operation-sections"

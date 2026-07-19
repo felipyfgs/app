@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui'
-import OperationsSectionNav from '~/components/navigation/OperationsSectionNav.vue'
 import type { CteChannelCursor, CteHealth, SyncRun } from '~/types/api'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 
 const api = useApi()
 const { sessionEpoch } = useDashboard()
@@ -210,30 +210,17 @@ onMounted(refreshAll)
 </script>
 
 <template>
-  <UDashboardPanel id="syncs">
+  <ShellPagePanel id="syncs">
     <template #header>
-      <UDashboardNavbar title="Sincronizações" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
+      <ShellPageNavbar title="Sincronizações">
         <template #right>
-          <UTooltip text="Atualizar histórico">
-            <UButton
-              icon="i-lucide-refresh-cw"
-              color="neutral"
-              variant="ghost"
-              square
-              aria-label="Atualizar histórico de sincronizações"
-              :loading="loading || cteLoading"
-              @click="refreshAll"
-            />
-          </UTooltip>
+          <ShellNavbarRefresh
+            :loading="loading || cteLoading"
+            aria-label="Atualizar histórico de sincronizações"
+            @click="refreshAll"
+          />
         </template>
-      </UDashboardNavbar>
-
-      <UDashboardToolbar data-testid="operations-section-tabs">
-        <OperationsSectionNav />
-      </UDashboardToolbar>
+      </ShellPageNavbar>
     </template>
 
     <template #body>
@@ -418,21 +405,20 @@ onMounted(refreshAll)
         :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: () => load(true) }]"
       />
 
-      <UTable
+      <ShellDataTable
         v-if="loading || items.length"
-        data-testid="data-table"
+        test-id="data-table"
+        ui-preset="monitoring-compact"
+        primary-column-id="id"
+        status-column-id="status"
+        :summary-column-ids="['trigger', 'pages_processed', 'documents_persisted', 'started_at']"
+        :columns="columns"
         :data="items"
         :loading="loading"
-        :columns="columns"
-        class="shrink-0"
-        :ui="{
-          base: 'table-fixed border-separate border-spacing-0',
-          thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-          tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'px-3 py-1.5 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'px-3 py-1 border-b border-default',
-          separator: 'h-0'
-        }"
+        :page="1"
+        :total="items.length"
+        :items-per-page="items.length || 1"
+        :show-footer="false"
         @select="selectRow"
       >
         <template #status-cell="{ row }">
@@ -469,7 +455,7 @@ onMounted(refreshAll)
             @click.stop="openDetail(row.original)"
           />
         </template>
-      </UTable>
+      </ShellDataTable>
 
       <UEmpty
         v-if="!loading && !loadError && !items.length"
@@ -586,5 +572,5 @@ onMounted(refreshAll)
         </template>
       </USlideover>
     </template>
-  </UDashboardPanel>
+  </ShellPagePanel>
 </template>

@@ -124,42 +124,23 @@ async function confirmEnqueue() {
 </script>
 
 <template>
-  <UModal
+  <ShellScrollableModal
     :open="open"
-    :ui="{ content: 'sm:max-w-3xl' }"
-    data-testid="mit-lista-apuracoes-modal"
+    title="Apurações MIT 317"
+    :description="`${clientName || 'Cliente'}${cnpjMasked ? ` · ${cnpjMasked}` : ''}`"
+    content-class="sm:max-w-3xl"
+    test-id="mit-lista-apuracoes-modal"
+    :show-default-footer="false"
     @update:open="emit('update:open', $event)"
+    @cancel="emit('update:open', false)"
   >
-    <template #content>
-      <UCard>
-        <template #header>
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <h3 class="text-highlighted font-semibold">
-                Apurações MIT 317
-              </h3>
-              <p class="text-muted text-sm mt-0.5">
-                {{ clientName || 'Cliente' }}
-                <span v-if="cnpjMasked"> · {{ cnpjMasked }}</span>
-              </p>
-              <p class="text-muted text-xs mt-1">
-                Origem: {{ provenanceLabel }}
-              </p>
-            </div>
-            <UButton
-              icon="i-lucide-x"
-              color="neutral"
-              variant="ghost"
-              size="sm"
-              aria-label="Fechar apurações MIT"
-              @click="emit('update:open', false)"
-            />
-          </div>
-        </template>
+    <template #body>
+      <div class="space-y-3">
+        <p class="text-muted text-xs">
+          Origem: {{ provenanceLabel }}
+        </p>
 
-        <div v-if="loading" class="flex justify-center py-10">
-          <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-muted" />
-        </div>
+        <ShellLoadingModalBody v-if="loading" :rows="3" />
 
         <UAlert
           v-else-if="error"
@@ -244,15 +225,26 @@ async function confirmEnqueue() {
             </div>
           </div>
         </div>
-      </UCard>
+      </div>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        cancel-label="Fechar"
+        :show-submit="false"
+        @cancel="emit('update:open', false)"
+      />
+    </template>
+  </ShellScrollableModal>
 
-  <UModal
+  <ShellConfirmModal
     v-model:open="confirmationOpen"
     title="Confirmar atualização das apurações"
     :description="`MIT · ${requestedPeriodLabel}`"
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    confirm-label="Confirmar atualização"
+    confirm-icon="i-lucide-check"
+    :loading="enqueueing"
+    @confirm="confirmEnqueue"
   >
     <template #body>
       <div class="space-y-3">
@@ -267,20 +259,5 @@ async function confirmEnqueue() {
         </p>
       </div>
     </template>
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        @click="() => { confirmationOpen = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-check"
-        label="Confirmar atualização"
-        :loading="enqueueing"
-        @click="confirmEnqueue"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 </template>

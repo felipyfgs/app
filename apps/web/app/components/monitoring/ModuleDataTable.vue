@@ -2,13 +2,12 @@
 /**
  * Grade de carteira fiscal — arquétipo customers.vue do template.
  *
- * Desktop (md+): UTable (customers.vue) + columnVisibility «Exibir».
- * Mobile (&lt; md): lista de cards (ModuleMobileCards) com resumo + collapsible
- * + ações — sem scroll horizontal nem pin de colunas.
+ * Compõe ShellDataTable (desktop UTable + cards &lt; md via shell) com
+ * columnVisibility «Exibir» e empty fiscal. Emite update:page / update:perPage.
  *
  * @see .local/reference/nuxt-dashboard-template/app/pages/customers.vue
- * @see components/monitoring/ModuleMobileCards.vue
- * @see tests/unit/monitoring-mobile-layout.test.ts
+ * @see components/shell/DataTable.vue
+ * @see components/shell/MobileCards.vue
  */
 import type { TableColumn } from '@nuxt/ui'
 import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
@@ -26,13 +25,26 @@ import {
   pruneMonitoringSelection,
   selectedMonitoringRows
 } from '~/utils/monitoring-selection'
-import { MONITORING_COMPACT_TABLE_UI } from '~/utils/table-ui'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 
-/** Largura mínima padrão quando a página pede scroll sem `tableClass` explícito. */
-const DEFAULT_SCROLL_MIN_WIDTH = 'min-w-[56rem]'
+/**
+ * Classe neutra da grade desktop: preenche a viewport sem forçar barra horizontal.
+ * Scroll (`horizontalScroll`) fica só como escape hatch se o conteúdo ainda
+ * ultrapassar — não injeta largura mínima artificial na &lt;table&gt;.
+ */
+const FIT_VIEWPORT_TABLE_CLASS = 'w-full min-w-0'
 
-/** Preset canônico — ver `table-ui.ts` (contrato xs/ghost nas células). */
-const TABLE_UI = MONITORING_COMPACT_TABLE_UI
+/** Resumo padrão das carteiras fiscais nos cards shell. */
+const DEFAULT_SUMMARY_IDS = [
+  'last_declaration',
+  'competence',
+  'period',
+  'coverage',
+  'consulted',
+  'last_search',
+  'observed',
+  'synced'
+]
 
 const UCheckbox = resolveComponent('UCheckbox')
 
@@ -55,7 +67,8 @@ const props = withDefaults(defineProps<{
   initialHiddenColumns?: string[]
   showColumnVisibility?: boolean
   /**
-   * Scroll horizontal na grade desktop (tabela densa).
+   * Escape hatch: wrapper `overflow-x-auto` se a grade ainda ultrapassar a viewport.
+   * Preferir caber na tela (colunas `w-full` + ocultas default) a forçar `min-w-*`.
    * No mobile os cards substituem a grade — este flag não afeta o phone.
    */
   horizontalScroll?: boolean
@@ -68,10 +81,13 @@ const props = withDefaults(defineProps<{
   emptyTitle?: string
   emptyDescription?: string
   emptyKind?: FiscalTableEmptyKind | null
+  clientColumnId?: string
+  situationColumnId?: string
+  summaryColumnIds?: string[]
 }>(), {
   loading: false,
   error: null,
-  perPage: 15,
+  perPage: 20,
   selectionEnabled: false,
   getClientId: undefined,
   columnLabels: () => ({}),
@@ -82,25 +98,32 @@ const props = withDefaults(defineProps<{
   mobileCards: true,
   emptyTitle: undefined,
   emptyDescription: undefined,
-  emptyKind: null
+  emptyKind: null,
+  clientColumnId: 'client',
+  situationColumnId: 'situation',
+  summaryColumnIds: undefined
 })
 
 const emit = defineEmits<{
   'update:page': [value: number]
+  'update:perPage': [value: number]
   'update:sorting': [value: FiscalModuleSortingState]
   'selection-change': [payload: { rows: T[], clientIds: number[], count: number }]
   'refresh': []
 }>()
 
-const table = useTemplateRef<{ tableApi?: {
-  getAllColumns: () => Array<{
-    id: string
-    getCanHide: () => boolean
-    getIsVisible: () => boolean
-    toggleVisibility: (value: boolean) => void
-  }>
-  resetRowSelection: () => void
-} } | null>('table')
+const table = useTemplateRef<{
+  tableApi?: {
+    getAllColumns: () => Array<{
+      id: string
+      getCanHide: () => boolean
+      getIsVisible: () => boolean
+      toggleVisibility: (value: boolean) => void
+    }>
+    resetRowSelection: () => void
+  }
+  usingMobileCards?: boolean
+} | null>('shellTable')
 
 const columnVisibility = ref<Record<string, boolean>>(
   Object.fromEntries(props.initialHiddenColumns.map(id => [id, false]))
@@ -187,7 +210,7 @@ const labels = computed<Record<string, string>>(() => ({
   competence: 'Competência',
   situation: 'Situação',
   coverage: 'Cobertura',
-  consulted: 'Última consulta',
+  consulted: 'Consulta',
   observed: 'Observado',
   synced: 'Sincronizado',
   actions: 'Ações',
@@ -217,9 +240,8 @@ const itemsPerPage = computed(() => props.perPage > 0
   ? props.perPage
   : props.lastPage > 0 && props.total > 0
     ? Math.max(1, Math.ceil(props.total / props.lastPage))
-    : 15)
+    : 20)
 
-/** Viewport estreito: cards + paginação compacta. Desktop: tabela. */
 const breakpoints = useBreakpoints(breakpointsTailwind)
 const isNarrow = breakpoints.smaller('sm')
 const isCompact = breakpoints.smaller('md')
@@ -234,17 +256,32 @@ const canShowColumnVisibility = computed(() =>
 const resolvedTableClass = computed(() => {
   const custom = props.tableClass?.trim()
   if (custom) return custom
-  if (props.horizontalScroll) return DEFAULT_SCROLL_MIN_WIDTH
-  return undefined
+  return FIT_VIEWPORT_TABLE_CLASS
+})
+
+const resolvedSummaryIds = computed(() =>
+  props.summaryColumnIds?.length
+    ? props.summaryColumnIds
+    : DEFAULT_SUMMARY_IDS
+)
+
+const emptyKindShell = computed(() => {
+  const kind = resolvedEmptyKind.value
+  if (kind === 'error' || kind === 'filtered' || kind === 'empty') return kind
+  return props.error ? 'error' : 'empty'
 })
 
 defineExpose({ clearSelection })
 </script>
 
 <template>
+  <!--
+    Stack toolbar · tabela · footer — mesmo papel do bloco em /clients:
+    um único flex-1 no #body; ShellDataTable empurra o footer com mt-auto.
+  -->
   <div
-    class="flex min-w-0 flex-col gap-1.5"
-    data-testid="fiscal-data-table"
+    class="flex min-w-0 flex-1 flex-col gap-1.5"
+    data-testid="fiscal-table-stack"
   >
     <slot
       name="toolbar"
@@ -252,68 +289,54 @@ defineExpose({ clearSelection })
       :show-column-visibility="canShowColumnVisibility"
     />
 
-    <!-- Mobile: um card por cliente (resumo + collapsible + ações). -->
-    <MonitoringModuleMobileCards
-      v-if="useMobileCards"
-      :rows="rows"
-      :columns="tableColumns"
-      :get-row-id="getRowId"
-      :get-client-id="getClientId"
+    <ShellDataTable
+      ref="shellTable"
+      v-model:column-visibility="columnVisibility"
+      v-model:row-selection="rowSelection"
+      v-model:sorting="sortingModel"
+      ui-preset="monitoring-compact"
+      test-id="fiscal-table"
+      footer-test-id="fiscal-pagination"
+      mobile-cards-test-id="fiscal-mobile-cards"
+      :mobile-cards="mobileCards"
       :selection-enabled="selectionEnabled"
-      :row-selection="rowSelection"
-      :column-labels="labels"
+      :columns="tableColumns"
+      :data="rows"
       :loading="loading"
+      :page="page"
+      :total="total"
+      :items-per-page="itemsPerPage"
+      :get-row-id="getRowId"
+      :table-class="resolvedTableClass"
+      :horizontal-scroll="horizontalScroll"
+      :manual-sorting="true"
+      :selected-count="selectionEnabled ? selectedCount : 0"
+      :sibling-count="paginationSiblingCount"
+      :show-edges="!isNarrow"
+      :column-labels="labels"
+      :primary-column-id="clientColumnId"
+      :status-column-id="situationColumnId"
+      :summary-column-ids="resolvedSummaryIds"
+      :empty-kind="emptyKindShell"
       :empty-title="emptyTitle"
       :empty-description="emptyDescription"
-      :empty-kind="resolvedEmptyKind"
       :error="error"
-      @update:row-selection="rowSelection = $event"
-      @refresh="emit('refresh')"
-    />
-
-    <!-- Desktop: customers.vue — UTable com scroll horizontal se denso. -->
-    <div
-      v-else
-      class="min-w-0"
-      :class="horizontalScroll
-        ? 'overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]'
-        : undefined"
-      data-testid="fiscal-table-scroll"
+      per-page-aria-label="Registros por página"
+      @update:page="pageModel = $event"
+      @update:items-per-page="emit('update:perPage', $event)"
+      @retry="emit('refresh')"
     >
-      <UTable
-        ref="table"
-        v-model:column-visibility="columnVisibility"
-        v-model:row-selection="rowSelection"
-        v-model:sorting="sortingModel"
-        sticky="header"
-        :data="rows"
-        :columns="tableColumns"
-        :loading="loading"
-        :sorting-options="{ manualSorting: true, enableMultiSort: false }"
-        :get-row-id="getRowId"
-        :ui="TABLE_UI"
-        class="shrink-0"
-        :class="resolvedTableClass"
-        data-testid="fiscal-table"
-      >
-        <template #empty>
-          <MonitoringTableEmptyState
-            :kind="resolvedEmptyKind"
-            :title="emptyTitle"
-            :description="emptyDescription"
-            :error="error"
-            class="py-10"
-            @retry="emit('refresh')"
-          />
-        </template>
-      </UTable>
-    </div>
-
-    <div
-      class="mt-auto flex flex-col gap-3 border-t border-default pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-      data-testid="fiscal-pagination"
-    >
-      <div class="min-w-0 text-sm text-muted">
+      <template #empty>
+        <MonitoringTableEmptyState
+          :kind="resolvedEmptyKind"
+          :title="emptyTitle"
+          :description="emptyDescription"
+          :error="error"
+          class="py-10"
+          @retry="emit('refresh')"
+        />
+      </template>
+      <template #footer>
         <template v-if="selectionEnabled">
           <span class="tabular-nums">{{ selectedCount }}</span>
           <span class="max-sm:hidden"> de {{ rows.length }}</span>
@@ -329,16 +352,7 @@ defineExpose({ clearSelection })
             · {{ page }}/{{ Math.max(lastPage, 1) }}
           </span>
         </template>
-      </div>
-      <div class="flex shrink-0 items-center justify-end gap-1.5">
-        <UPagination
-          v-model="pageModel"
-          :total="total"
-          :items-per-page="itemsPerPage"
-          :sibling-count="paginationSiblingCount"
-          :show-edges="!isNarrow"
-        />
-      </div>
-    </div>
+      </template>
+    </ShellDataTable>
   </div>
 </template>

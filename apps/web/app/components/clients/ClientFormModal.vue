@@ -65,15 +65,14 @@ watch(open, (value) => {
 </script>
 
 <template>
-  <UModal
+  <ShellFormModal
     v-model:open="open"
-    data-testid="client-form-modal"
     :title="title"
     :description="description"
-    :ui="{
-      content: 'w-[calc(100vw-1.5rem)] sm:max-w-2xl max-h-[min(90dvh,44rem)] overflow-hidden flex flex-col',
-      body: 'flex min-h-0 flex-1 flex-col overflow-hidden'
-    }"
+    content-class="w-[calc(100vw-1.5rem)] sm:max-w-2xl max-h-[min(90dvh,44rem)] overflow-hidden flex flex-col"
+    :show-default-footer="false"
+    test-id="client-form-modal"
+    @cancel="onCancel"
   >
     <template #body>
       <ClientsClientForm
@@ -89,5 +88,5 @@ watch(open, (value) => {
         @open-existing="onOpenExisting"
       />
     </template>
-  </UModal>
+  </ShellFormModal>
 </template>

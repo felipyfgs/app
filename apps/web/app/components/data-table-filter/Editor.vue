@@ -256,13 +256,19 @@ function onClientSelectMany(clients: Array<{
 </script>
 
 <template>
+  <!--
+    Altura vem do popover (--reka-popover-content-available-height).
+    Lista rola no meio; Cancelar/Confirmar ficam fixos no rodapé.
+  -->
   <div
-    class="flex min-w-0 flex-col gap-3 p-3"
+    class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
     data-testid="data-table-filter-editor"
   >
-    <p class="text-sm font-medium text-highlighted">
-      {{ definition.label }}
-    </p>
+    <div class="shrink-0 px-3 pt-3">
+      <p class="text-sm font-medium text-highlighted">
+        {{ definition.label }}
+      </p>
+    </div>
 
     <!--
       multiOption (bazza): checklist embutida — não USelect multiple.
@@ -270,7 +276,7 @@ function onClientSelectMany(clients: Array<{
     -->
     <div
       v-if="definition.kind === 'option' && isOptionMultiple"
-      class="min-w-0 overflow-hidden rounded-md border border-default"
+      class="mx-3 mt-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-default"
       data-testid="data-table-filter-option-multi"
     >
       <UInput
@@ -280,13 +286,16 @@ function onClientSelectMany(clients: Array<{
         placeholder="Buscar…"
         variant="none"
         autocomplete="off"
-        class="w-full min-w-0"
+        class="w-full min-w-0 shrink-0"
         :aria-label="`Buscar ${definition.label}`"
         :ui="{
           base: 'rounded-none border-0 border-b border-default focus-visible:ring-0'
         }"
       />
-      <div class="max-h-60 overflow-y-auto">
+      <div
+        class="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
+        data-testid="data-table-filter-option-list"
+      >
         <p
           v-if="!filteredOptionItems.length"
           class="px-3 py-6 text-center text-sm text-muted"
@@ -336,149 +345,154 @@ function onClientSelectMany(clients: Array<{
     </div>
 
     <div
-      v-else-if="definition.kind === 'option'"
-      class="min-w-0"
+      v-else
+      class="min-w-0 shrink-0 space-y-3 px-3 pt-3"
     >
-      <USelect
-        :model-value="String(modelValue ?? '')"
-        :items="optionItems"
-        value-key="value"
-        class="w-full min-w-0"
-        :aria-label="definition.label"
-        data-testid="data-table-filter-option"
-        :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
-        @update:model-value="onOption(String($event))"
-      />
-    </div>
-
-    <UFormField
-      v-else-if="definition.kind === 'month'"
-      :error="monthError"
-      class="min-w-0"
-    >
-      <FilterDateInput
-        :model-value="String(modelValue ?? '')"
-        mode="month"
-        :aria-label="definition.label"
-        test-id="data-table-filter-month"
-        @update:model-value="onMonth($event)"
-      />
-    </UFormField>
-
-    <div
-      v-else-if="definition.kind === 'client' && isClientMultiple"
-      class="min-w-0"
-    >
-      <slot
-        name="client"
-        :model-value="multiClientModel"
-        :multiple="true"
-        :update="(v: number | number[] | null) => {
-          multiClientModel = Array.isArray(v) ? v : (v != null ? [v] : [])
-        }"
-        :select="onClientSelect"
-        :select-many="onClientSelectMany"
+      <div
+        v-if="definition.kind === 'option'"
+        class="min-w-0"
       >
-        <FiscalClientPicker
+        <USelect
+          :model-value="String(modelValue ?? '')"
+          :items="optionItems"
+          value-key="value"
+          class="w-full min-w-0"
+          :aria-label="definition.label"
+          data-testid="data-table-filter-option"
+          :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
+          @update:model-value="onOption(String($event))"
+        />
+      </div>
+
+      <UFormField
+        v-else-if="definition.kind === 'month'"
+        :error="monthError"
+        class="min-w-0"
+      >
+        <FilterDateInput
+          :model-value="String(modelValue ?? '')"
+          mode="month"
+          :aria-label="definition.label"
+          test-id="data-table-filter-month"
+          @update:model-value="onMonth($event)"
+        />
+      </UFormField>
+
+      <div
+        v-else-if="definition.kind === 'client' && isClientMultiple"
+        class="min-w-0"
+      >
+        <slot
+          name="client"
           :model-value="multiClientModel"
-          multiple
-          search-mode="select"
-          placeholder="Buscar…"
-          class="w-full min-w-0"
-          data-testid="data-table-filter-client-multi"
-          @update:model-value="(v) => {
-            multiClientModel = Array.isArray(v) ? v : (typeof v === 'number' ? [v] : [])
+          :multiple="true"
+          :update="(v: number | number[] | null) => {
+            multiClientModel = Array.isArray(v) ? v : (v != null ? [v] : [])
           }"
-          @select="onClientSelect"
-          @select-many="onClientSelectMany"
-        />
-      </slot>
-    </div>
+          :select="onClientSelect"
+          :select-many="onClientSelectMany"
+        >
+          <FiscalClientPicker
+            :model-value="multiClientModel"
+            multiple
+            search-mode="select"
+            placeholder="Buscar…"
+            class="w-full min-w-0"
+            data-testid="data-table-filter-client-multi"
+            @update:model-value="(v) => {
+              multiClientModel = Array.isArray(v) ? v : (typeof v === 'number' ? [v] : [])
+            }"
+            @select="onClientSelect"
+            @select-many="onClientSelectMany"
+          />
+        </slot>
+      </div>
 
-    <div
-      v-else-if="definition.kind === 'client'"
-      class="min-w-0"
-    >
-      <slot
-        name="client"
-        :model-value="typeof modelValue === 'number' ? modelValue : null"
-        :multiple="false"
-        :update="onClientId"
-        :select="onClientSelect"
+      <div
+        v-else-if="definition.kind === 'client'"
+        class="min-w-0"
       >
-        <FiscalClientPicker
+        <slot
+          name="client"
           :model-value="typeof modelValue === 'number' ? modelValue : null"
-          search-mode="select"
-          placeholder="Cliente"
+          :multiple="false"
+          :update="onClientId"
+          :select="onClientSelect"
+        >
+          <FiscalClientPicker
+            :model-value="typeof modelValue === 'number' ? modelValue : null"
+            search-mode="select"
+            placeholder="Cliente"
+            class="w-full min-w-0"
+            data-testid="data-table-filter-client"
+            @update:model-value="onClientId"
+            @select="onClientSelect"
+          />
+        </slot>
+      </div>
+
+      <div
+        v-else-if="definition.kind === 'text'"
+        class="min-w-0"
+      >
+        <UInput
+          :model-value="String(modelValue ?? '')"
+          type="text"
           class="w-full min-w-0"
-          data-testid="data-table-filter-client"
-          @update:model-value="onClientId"
-          @select="onClientSelect"
+          :aria-label="definition.label"
+          data-testid="data-table-filter-text"
+          @update:model-value="onText($event)"
         />
-      </slot>
+      </div>
+
+      <div
+        v-else-if="definition.kind === 'boolean'"
+        class="min-w-0"
+      >
+        <USelect
+          :model-value="booleanModel"
+          :items="booleanItems"
+          value-key="value"
+          class="w-full min-w-0"
+          :aria-label="definition.label"
+          data-testid="data-table-filter-boolean"
+          :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
+          @update:model-value="onBoolean(String($event))"
+        />
+      </div>
+
+      <UFormField
+        v-else-if="definition.kind === 'date'"
+        :error="dateError"
+        class="min-w-0"
+      >
+        <FilterDateInput
+          :model-value="String(modelValue ?? '')"
+          mode="date"
+          :aria-label="definition.label"
+          test-id="data-table-filter-date"
+          @update:model-value="onDate($event)"
+        />
+      </UFormField>
+
+      <UFormField
+        v-else-if="definition.kind === 'date_range'"
+        :error="dateRangeError"
+        class="min-w-0"
+      >
+        <FilterDateInput
+          :model-value="String(modelValue ?? '')"
+          :value-to="String(valueTo ?? '')"
+          mode="date_range"
+          :aria-label="definition.label"
+          test-id="data-table-filter-date-range"
+          @update:model-value="onDateFrom($event)"
+          @update:value-to="onDateTo($event)"
+        />
+      </UFormField>
     </div>
 
-    <div
-      v-else-if="definition.kind === 'text'"
-      class="min-w-0"
-    >
-      <UInput
-        :model-value="String(modelValue ?? '')"
-        type="text"
-        class="w-full min-w-0"
-        :aria-label="definition.label"
-        data-testid="data-table-filter-text"
-        @update:model-value="onText($event)"
-      />
-    </div>
-
-    <div
-      v-else-if="definition.kind === 'boolean'"
-      class="min-w-0"
-    >
-      <USelect
-        :model-value="booleanModel"
-        :items="booleanItems"
-        value-key="value"
-        class="w-full min-w-0"
-        :aria-label="definition.label"
-        data-testid="data-table-filter-boolean"
-        :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
-        @update:model-value="onBoolean(String($event))"
-      />
-    </div>
-
-    <UFormField
-      v-else-if="definition.kind === 'date'"
-      :error="dateError"
-      class="min-w-0"
-    >
-      <FilterDateInput
-        :model-value="String(modelValue ?? '')"
-        mode="date"
-        :aria-label="definition.label"
-        test-id="data-table-filter-date"
-        @update:model-value="onDate($event)"
-      />
-    </UFormField>
-
-    <UFormField
-      v-else-if="definition.kind === 'date_range'"
-      :error="dateRangeError"
-      class="min-w-0"
-    >
-      <FilterDateInput
-        :model-value="String(modelValue ?? '')"
-        :value-to="String(valueTo ?? '')"
-        mode="date_range"
-        :aria-label="definition.label"
-        test-id="data-table-filter-date-range"
-        @update:model-value="onDateFrom($event)"
-        @update:value-to="onDateTo($event)"
-      />
-    </UFormField>
-
-    <div class="flex flex-wrap items-center justify-between gap-2 border-t border-default pt-3">
+    <div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-default bg-default p-3">
       <UButton
         v-if="showBack"
         type="button"

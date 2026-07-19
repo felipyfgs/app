@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Modal para salvar o estado de filtro aplicado como preset nomeado.
- * Fechar sem confirmar não cria preset.
+ * Casca: ShellFormModal (padrão SaveFilter / customers AddModal).
  */
 const open = defineModel<boolean>('open', { default: false })
 
@@ -46,11 +46,17 @@ function onConfirm() {
 </script>
 
 <template>
-  <UModal
+  <ShellFormModal
     v-model:open="open"
     title="Salvar filtros"
     description="Guarde o recorte atual para reutilizar depois."
-    :ui="{ content: 'sm:max-w-md' }"
+    content-class="sm:max-w-md"
+    submit-label="Salvar"
+    :loading="loading"
+    :disabled="!canSubmit"
+    test-id="save-filter-modal-shell"
+    @cancel="onCancel"
+    @submit="onConfirm"
   >
     <template #body>
       <div
@@ -97,24 +103,15 @@ function onConfirm() {
       </div>
     </template>
     <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          label="Cancelar"
-          :disabled="loading"
-          data-testid="save-filter-cancel"
-          @click="onCancel"
-        />
-        <UButton
-          color="primary"
-          label="Salvar"
-          :loading="loading"
-          :disabled="!canSubmit"
-          data-testid="save-filter-confirm"
-          @click="onConfirm"
-        />
-      </div>
+      <ShellModalFooter
+        cancel-test-id="save-filter-cancel"
+        submit-test-id="save-filter-confirm"
+        submit-label="Salvar"
+        :loading="loading"
+        :disabled="!canSubmit"
+        @cancel="onCancel"
+        @submit="onConfirm"
+      />
     </template>
-  </UModal>
+  </ShellFormModal>
 </template>

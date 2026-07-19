@@ -24,7 +24,7 @@ const refreshingClientId = ref<number | null>(null)
 const loadError = ref<string | null>(null)
 const rows = ref<FiscalRegistrationLink[]>([])
 const page = ref(1)
-const perPage = ref(25)
+const perPage = ref(20)
 const lastPage = ref(1)
 const total = ref(0)
 const q = ref('')
@@ -106,6 +106,15 @@ async function load() {
 
 async function setPage(next: number) {
   page.value = Math.max(1, Math.floor(Number(next) || 1))
+  await load()
+}
+
+async function setPerPage(next: number) {
+  const allowed = [10, 20, 50]
+  const target = allowed.includes(Number(next)) ? Number(next) : 20
+  if (perPage.value === target) return
+  perPage.value = target
+  page.value = 1
   await load()
 }
 
@@ -214,7 +223,7 @@ watch(sessionEpoch, () => {
 
 <template>
   <MonitoringModuleTable
-    title="Cadastro e vínculos"
+    title="Cadastro e Vínculos"
     panel-id="monitoring-registrations"
     surface="monitoring.registrations"
     :columns="columns"
@@ -231,7 +240,6 @@ watch(sessionEpoch, () => {
     :get-row-id="row => `registration:${row.id}`"
     :show-kpis="false"
     :horizontal-scroll="true"
-    table-class="min-w-[40rem]"
     empty-title="Nenhum vínculo"
     empty-description="Atualize por cliente."
     :column-labels="{
@@ -241,13 +249,10 @@ watch(sessionEpoch, () => {
       refreshed: 'Atualizado'
     }"
     @update:page="setPage"
+    @update:per-page="setPerPage"
     @update:sorting="sorting = $event"
     @apply-filters="applyFilters"
     @reset-filters="resetFilters"
     @refresh="load"
-  >
-    <template #nav>
-      <MonitoringModuleNav active="registrations" />
-    </template>
-  </MonitoringModuleTable>
+  />
 </template>

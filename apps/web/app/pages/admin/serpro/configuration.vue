@@ -604,6 +604,7 @@ onMounted(() => {
       :model-value="activeSection"
       :items="integrationSections"
       color="neutral"
+      variant="pill"
       class="w-full"
       aria-label="Seções da integração SERPRO"
       test-id="admin-serpro-integration-sections"
@@ -1351,10 +1352,15 @@ onMounted(() => {
         Nenhuma configuração carregada.
       </div>
 
-      <UModal
+      <ShellFormModal
         v-model:open="passwordModalOpen"
         title="Reconfirmar senha"
-        data-testid="serpro-config-password-modal"
+        submit-label="Confirmar"
+        :loading="acting"
+        :show-default-footer="false"
+        test-id="serpro-config-password-modal"
+        @cancel="cancelPasswordConfirmation"
+        @submit="submitPassword"
       >
         <template #body>
           <UFormField
@@ -1371,22 +1377,15 @@ onMounted(() => {
           </UFormField>
         </template>
         <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton
-              color="neutral"
-              variant="ghost"
-              label="Cancelar"
-              @click="cancelPasswordConfirmation"
-            />
-            <UButton
-              label="Confirmar"
-              :loading="acting"
-              data-testid="serpro-config-password-submit"
-              @click="submitPassword"
-            />
-          </div>
+          <ShellModalFooter
+            submit-label="Confirmar"
+            submit-test-id="serpro-config-password-submit"
+            :loading="acting"
+            @cancel="cancelPasswordConfirmation"
+            @submit="submitPassword"
+          />
         </template>
-      </UModal>
+      </ShellFormModal>
 
       <SerproOwnerConfirmModal
         v-model:open="cutoverOwnerOpen"

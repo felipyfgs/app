@@ -57,8 +57,8 @@ function closeConfirm() {
 const moduleOptions = [
   // O Select do Reka UI reserva `''` para limpar o valor; itens nunca podem usá-lo.
   { label: 'Todos os módulos', value: ALL_MODULES_VALUE },
-  { label: 'Simples / MEI', value: 'simples_mei' },
-  { label: 'DCTFWeb / MIT', value: 'dctfweb' },
+  { label: 'Simples Nacional | MEI', value: 'simples_mei' },
+  { label: 'DCTFWeb', value: 'dctfweb' },
   { label: 'SITFIS', value: 'sitfis' },
   { label: 'Caixa Postal', value: 'mailbox' },
   { label: 'Guias', value: 'guides' },
@@ -331,10 +331,12 @@ onMounted(async () => {
       </li>
     </ul>
 
-    <UModal
+    <ShellFormModal
       v-model:open="confirmOpen"
       title="Confirmar consulta manual"
       description="Esta ação pode consumir a franquia da integração SERPRO. O histórico local só atualiza após o job."
+      :show-default-footer="false"
+      @cancel="closeConfirm"
     >
       <template #body>
         <div
@@ -367,23 +369,15 @@ onMounted(async () => {
         </div>
       </template>
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton
-            color="neutral"
-            variant="ghost"
-            label="Cancelar"
-            @click="closeConfirm"
-          />
-          <UButton
-            color="primary"
-            label="Confirmar consulta"
-            icon="i-lucide-check"
-            :loading="executing"
-            data-testid="manual-consult-confirm-submit"
-            @click="confirmExecute"
-          />
-        </div>
+        <ShellModalFooter
+          submit-label="Confirmar consulta"
+          submit-icon="i-lucide-check"
+          :loading="executing"
+          submit-test-id="manual-consult-confirm-submit"
+          @cancel="closeConfirm"
+          @submit="confirmExecute"
+        />
       </template>
-    </UModal>
+    </ShellFormModal>
   </UCard>
 </template>

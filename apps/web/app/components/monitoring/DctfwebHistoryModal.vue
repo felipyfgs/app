@@ -96,48 +96,23 @@ function documentDownloadUrl(doc: DctfwebEvidenceDescriptor): string | undefined
 </script>
 
 <template>
-  <UModal
+  <ShellScrollableModal
     :open="open"
-    :ui="{ content: 'sm:max-w-3xl' }"
-    data-testid="dctfweb-history-modal"
+    title="Histórico de busca DCTFWeb"
+    :description="`${clientName || 'Cliente'}${cnpjMasked ? ` · ${cnpjMasked}` : ''}`"
+    content-class="sm:max-w-3xl"
+    test-id="dctfweb-history-modal"
+    :show-default-footer="false"
     @update:open="emit('update:open', $event)"
+    @cancel="emit('update:open', false)"
   >
-    <template #content>
-      <UCard>
-        <template #header>
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <h3 class="text-highlighted font-semibold">
-                Histórico de busca DCTFWeb
-              </h3>
-              <p class="text-muted text-sm mt-0.5">
-                {{ clientName || 'Cliente' }}
-                <span v-if="cnpjMasked"> · {{ cnpjMasked }}</span>
-              </p>
-              <p class="text-muted text-xs mt-1">
-                Origem: {{ provenanceLabel }}
-              </p>
-            </div>
-            <UButton
-              icon="i-lucide-x"
-              color="neutral"
-              variant="ghost"
-              size="sm"
-              aria-label="Fechar histórico"
-              @click="emit('update:open', false)"
-            />
-          </div>
-        </template>
+    <template #body>
+      <div class="space-y-4">
+        <p class="text-muted text-xs">
+          Origem: {{ provenanceLabel }}
+        </p>
 
-        <div
-          v-if="loading"
-          class="flex justify-center py-10"
-        >
-          <UIcon
-            name="i-lucide-loader-circle"
-            class="size-6 animate-spin text-muted"
-          />
-        </div>
+        <ShellLoadingModalBody v-if="loading" :rows="3" />
 
         <UAlert
           v-else-if="error"
@@ -223,7 +198,14 @@ function documentDownloadUrl(doc: DctfwebEvidenceDescriptor): string | undefined
             </div>
           </div>
         </div>
-      </UCard>
+      </div>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        cancel-label="Fechar"
+        :show-submit="false"
+        @cancel="emit('update:open', false)"
+      />
+    </template>
+  </ShellScrollableModal>
 </template>

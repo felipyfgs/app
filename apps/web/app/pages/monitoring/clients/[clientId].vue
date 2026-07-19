@@ -14,7 +14,7 @@ import type {
 } from '~/types/fiscal-modules'
 import { documentActionVisible } from '~/types/fiscal-modules'
 import { clientFiscalDetailNav } from '~/utils/client-fiscal-detail-navigation'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
@@ -237,7 +237,7 @@ function documentColumnFor<T extends { document?: FiscalDocumentDescriptor | nul
   }
 }
 
-/** Colunas das seções-lista: UTable sempre montada (#empty), padrão ModuleTable/customers. */
+/** Colunas das seções-lista: ShellDataTable sempre montada (#empty), padrão ModuleTable/customers. */
 const runColumns = [
   {
     id: 'run',
@@ -769,7 +769,6 @@ onMounted(async () => {
           :items="links"
           :path="route.fullPath"
           aria-label="Navegação fiscal do cliente"
-          subtabs-aria-label="Seções fiscais do cliente"
           test-id="monitoring-client-section-navigation"
         />
       </UDashboardToolbar>
@@ -847,17 +846,21 @@ onMounted(async () => {
           </UAlert>
 
           <template v-else>
-            <!-- overview: UTable sempre montada (customers.vue / ModuleTable) -->
+            <!-- overview: ShellDataTable sempre montada (customers.vue / ModuleTable) -->
             <UPageCard
               v-if="tab === 'overview'"
               title="Snapshots atuais"
               variant="subtle"
             >
-              <UTable
+              <ShellDataTable
+                ui-preset="monitoring-compact"
                 :data="snapshots"
                 :columns="snapshotColumns"
-                :ui="DASHBOARD_TABLE_UI"
-                data-testid="client-section-table-overview"
+                :page="1"
+                :total="snapshots.length"
+                :items-per-page="snapshots.length || 1"
+                :show-footer="false"
+                test-id="client-section-table-overview"
               >
                 <template #empty>
                   <MonitoringTableEmptyState
@@ -865,7 +868,7 @@ onMounted(async () => {
                     title="Nenhum snapshot atual"
                   />
                 </template>
-              </UTable>
+              </ShellDataTable>
             </UPageCard>
 
             <ClientPnrRenunciationsPanel
@@ -901,11 +904,15 @@ onMounted(async () => {
               title="Execuções"
               variant="subtle"
             >
-              <UTable
+              <ShellDataTable
+                ui-preset="monitoring-compact"
                 :data="runs"
                 :columns="runColumns"
-                :ui="DASHBOARD_TABLE_UI"
-                data-testid="client-section-table-runs"
+                :page="1"
+                :total="runs.length"
+                :items-per-page="runs.length || 1"
+                :show-footer="false"
+                test-id="client-section-table-runs"
               >
                 <template #empty>
                   <MonitoringTableEmptyState
@@ -913,7 +920,7 @@ onMounted(async () => {
                     title="Nenhuma execução"
                   />
                 </template>
-              </UTable>
+              </ShellDataTable>
             </UPageCard>
 
             <UPageCard
@@ -921,11 +928,15 @@ onMounted(async () => {
               title="Achados"
               variant="subtle"
             >
-              <UTable
+              <ShellDataTable
+                ui-preset="monitoring-compact"
                 :data="findings"
                 :columns="findingColumns"
-                :ui="DASHBOARD_TABLE_UI"
-                data-testid="client-section-table-findings"
+                :page="1"
+                :total="findings.length"
+                :items-per-page="findings.length || 1"
+                :show-footer="false"
+                test-id="client-section-table-findings"
               >
                 <template #empty>
                   <MonitoringTableEmptyState
@@ -933,7 +944,7 @@ onMounted(async () => {
                     title="Nenhum achado ativo"
                   />
                 </template>
-              </UTable>
+              </ShellDataTable>
             </UPageCard>
 
             <UPageCard
@@ -941,11 +952,15 @@ onMounted(async () => {
               title="Pendências"
               variant="subtle"
             >
-              <UTable
+              <ShellDataTable
+                ui-preset="monitoring-compact"
                 :data="pending"
                 :columns="pendingColumns"
-                :ui="DASHBOARD_TABLE_UI"
-                data-testid="client-section-table-pending"
+                :page="1"
+                :total="pending.length"
+                :items-per-page="pending.length || 1"
+                :show-footer="false"
+                test-id="client-section-table-pending"
               >
                 <template #empty>
                   <MonitoringTableEmptyState
@@ -953,7 +968,7 @@ onMounted(async () => {
                     title="Nenhuma pendência aberta"
                   />
                 </template>
-              </UTable>
+              </ShellDataTable>
             </UPageCard>
 
             <UPageCard
@@ -961,11 +976,15 @@ onMounted(async () => {
               title="Parcelamentos"
               variant="subtle"
             >
-              <UTable
+              <ShellDataTable
+                ui-preset="monitoring-compact"
                 :data="installments"
                 :columns="installmentColumns"
-                :ui="DASHBOARD_TABLE_UI"
-                data-testid="client-section-table-installments"
+                :page="1"
+                :total="installments.length"
+                :items-per-page="installments.length || 1"
+                :show-footer="false"
+                test-id="client-section-table-installments"
               >
                 <template #empty>
                   <MonitoringTableEmptyState
@@ -973,7 +992,7 @@ onMounted(async () => {
                     title="Nenhum parcelamento"
                   />
                 </template>
-              </UTable>
+              </ShellDataTable>
               <div class="mt-3">
                 <UButton
                   size="sm"
@@ -990,11 +1009,15 @@ onMounted(async () => {
               title="Declarações"
               variant="subtle"
             >
-              <UTable
+              <ShellDataTable
+                ui-preset="monitoring-compact"
                 :data="declarations"
                 :columns="declarationColumns"
-                :ui="DASHBOARD_TABLE_UI"
-                data-testid="client-section-table-declarations"
+                :page="1"
+                :total="declarations.length"
+                :items-per-page="declarations.length || 1"
+                :show-footer="false"
+                test-id="client-section-table-declarations"
               >
                 <template #empty>
                   <MonitoringTableEmptyState
@@ -1002,7 +1025,7 @@ onMounted(async () => {
                     title="Nenhuma declaração"
                   />
                 </template>
-              </UTable>
+              </ShellDataTable>
               <div class="mt-3">
                 <UButton
                   size="sm"
@@ -1019,11 +1042,15 @@ onMounted(async () => {
               title="Guias"
               variant="subtle"
             >
-              <UTable
+              <ShellDataTable
+                ui-preset="monitoring-compact"
                 :data="guides"
                 :columns="guideColumns"
-                :ui="DASHBOARD_TABLE_UI"
-                data-testid="client-section-table-guides"
+                :page="1"
+                :total="guides.length"
+                :items-per-page="guides.length || 1"
+                :show-footer="false"
+                test-id="client-section-table-guides"
               >
                 <template #empty>
                   <MonitoringTableEmptyState
@@ -1031,7 +1058,7 @@ onMounted(async () => {
                     title="Nenhuma guia"
                   />
                 </template>
-              </UTable>
+              </ShellDataTable>
               <div class="mt-3">
                 <UButton
                   size="sm"
@@ -1045,14 +1072,18 @@ onMounted(async () => {
 
             <UPageCard
               v-else-if="tab === 'fgts'"
-              title="FGTS / eSocial"
+              title="FGTS Digital"
               variant="subtle"
             >
-              <UTable
+              <ShellDataTable
+                ui-preset="monitoring-compact"
                 :data="fgtsCompetences"
                 :columns="fgtsColumns"
-                :ui="DASHBOARD_TABLE_UI"
-                data-testid="client-section-table-fgts"
+                :page="1"
+                :total="fgtsCompetences.length"
+                :items-per-page="fgtsCompetences.length || 1"
+                :show-footer="false"
+                test-id="client-section-table-fgts"
               >
                 <template #empty>
                   <MonitoringTableEmptyState
@@ -1060,7 +1091,7 @@ onMounted(async () => {
                     title="Nenhuma competência FGTS"
                   />
                 </template>
-              </UTable>
+              </ShellDataTable>
               <div class="mt-3">
                 <UButton
                   size="sm"
@@ -1150,15 +1181,19 @@ onMounted(async () => {
 
             <UPageCard
               v-else-if="tab === 'registrations'"
-              title="Cadastro e vínculos"
+              title="Cadastro e Vínculos"
               variant="subtle"
               data-testid="client-registrations-section"
             >
-              <UTable
+              <ShellDataTable
+                ui-preset="monitoring-compact"
                 :data="registrationLinks"
                 :columns="registrationColumns"
-                :ui="DASHBOARD_TABLE_UI"
-                data-testid="client-section-table-registrations"
+                :page="1"
+                :total="registrationLinks.length"
+                :items-per-page="registrationLinks.length || 1"
+                :show-footer="false"
+                test-id="client-section-table-registrations"
               >
                 <template #empty>
                   <MonitoringTableEmptyState
@@ -1167,7 +1202,7 @@ onMounted(async () => {
                     description="Nenhum vínculo projetado para este cliente."
                   />
                 </template>
-              </UTable>
+              </ShellDataTable>
               <div class="mt-3">
                 <UButton
                   size="sm"
@@ -1181,18 +1216,22 @@ onMounted(async () => {
 
             <UPageCard
               v-else-if="tab === 'tax_processes'"
-              title="Processos fiscais"
+              title="Processos Fiscais"
               variant="subtle"
               data-testid="client-tax-processes-section"
             >
               <p class="mb-3 text-xs text-muted">
                 Documentos indisponíveis via API produtiva
               </p>
-              <UTable
+              <ShellDataTable
+                ui-preset="monitoring-compact"
                 :data="taxProcesses"
                 :columns="taxProcessColumns"
-                :ui="DASHBOARD_TABLE_UI"
-                data-testid="client-section-table-tax-processes"
+                :page="1"
+                :total="taxProcesses.length"
+                :items-per-page="taxProcesses.length || 1"
+                :show-footer="false"
+                test-id="client-section-table-tax-processes"
               >
                 <template #empty>
                   <MonitoringTableEmptyState
@@ -1201,7 +1240,7 @@ onMounted(async () => {
                     description="Nenhum processo projetado para este cliente."
                   />
                 </template>
-              </UTable>
+              </ShellDataTable>
               <div class="mt-3">
                 <UButton
                   size="sm"

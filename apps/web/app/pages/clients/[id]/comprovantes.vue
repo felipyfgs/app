@@ -1,10 +1,12 @@
 <script setup lang="ts">
-// Arquétipo Settings: filho de /clients/[id], baseado no template de settings.
-const { clientId, item, canTriggerSync } = useClientDetail()
+/** Legado: redireciona para a IA de 4 páginas. */
+import { legacyClientPathToHref } from '~/utils/client-detail-tabs'
+
+const route = useRoute()
+const href = legacyClientPathToHref(route.params.id as string, 'comprovantes') || `/clients/${route.params.id}/cadastro`
+await navigateTo(href, { replace: true })
 </script>
 
 <template>
-  <div v-if="item" class="space-y-4">
-    <ClientsClientPagtowebArrecadacaoReceiptPanel :client-id="clientId" :can-consult="canTriggerSync" />
-  </div>
+  <div />
 </template>

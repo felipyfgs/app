@@ -96,16 +96,18 @@ function itemStatus(item: PgmeiDebtItem): string {
 </script>
 
 <template>
-  <UModal
+  <ShellScrollableModal
     :open="open"
     :title="`Dívida ativa PGMEI · ${year}`"
     description="Histórico armazenado localmente; abrir este modal não consulta a SERPRO."
-    scrollable
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-5xl', body: 'max-h-[75vh] overflow-y-auto' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-5xl"
+    test-id="pgmei-history-modal"
+    :show-default-footer="false"
     @update:open="emit('update:open', $event)"
+    @cancel="emit('update:open', false)"
   >
     <template #body>
-      <div class="space-y-4" data-testid="pgmei-history-modal">
+      <div class="space-y-4">
         <div>
           <p class="font-medium text-highlighted">
             {{ history?.client?.legal_name || clientName || `Cliente #${clientId || '—'}` }}
@@ -127,11 +129,7 @@ function itemStatus(item: PgmeiDebtItem): string {
           </template>
         </UAlert>
 
-        <div v-if="loading" class="space-y-3" aria-label="Carregando histórico PGMEI">
-          <USkeleton class="h-20 w-full" />
-          <USkeleton class="h-40 w-full" />
-          <USkeleton class="h-32 w-full" />
-        </div>
+        <ShellLoadingModalBody v-if="loading" :rows="3" />
 
         <template v-else-if="history">
           <div v-if="current" class="flex flex-wrap items-center gap-2">
@@ -293,5 +291,12 @@ function itemStatus(item: PgmeiDebtItem): string {
         </template>
       </div>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        cancel-label="Fechar"
+        :show-submit="false"
+        @cancel="emit('update:open', false)"
+      />
+    </template>
+  </ShellScrollableModal>
 </template>

@@ -175,218 +175,182 @@ async function savePreferences() {
 </script>
 
 <template>
-  <UModal
+  <ShellScrollableModal
     :open="previewOpen"
-    data-testid="pgmei-preview-modal"
+    title="Prévia de envio PGMEI"
+    :description="`${clientName || 'Cliente'} · TEMPLATE_ONLY · can_send=false`"
+    test-id="pgmei-preview-modal"
+    :show-default-footer="false"
     @update:open="emit('update:previewOpen', $event)"
+    @cancel="emit('update:previewOpen', false)"
   >
-    <template #content>
-      <UCard>
-        <template #header>
-          <div>
-            <h3 class="font-semibold">
-              Prévia de envio PGMEI
-            </h3>
-            <p class="text-muted text-sm">
-              {{ clientName || 'Cliente' }} · TEMPLATE_ONLY · can_send=false
-            </p>
-          </div>
-        </template>
-        <div
-          v-if="previewLoading"
-          class="text-muted py-6 text-center text-sm"
-        >
-          Carregando…
-        </div>
+    <template #body>
+      <ShellLoadingModalBody v-if="previewLoading" />
+      <UAlert
+        v-else-if="previewError"
+        color="error"
+        :title="previewError"
+      />
+      <div
+        v-else-if="preview"
+        class="space-y-3 text-sm"
+      >
         <UAlert
-          v-else-if="previewError"
-          color="error"
-          :title="previewError"
-        />
-        <div
-          v-else-if="preview"
-          class="space-y-3 text-sm"
+          color="info"
+          icon="i-lucide-info"
+          title="Nenhum envio real será disparado."
         >
-          <UAlert
-            color="info"
-            icon="i-lucide-info"
-            title="Nenhum envio real será disparado."
-          >
-            <template #description>
-              Destinatários mascarados; execução apenas em modo template.
-            </template>
-          </UAlert>
-          <div
-            v-for="channel in preview.channels || []"
-            :key="String(channel.channel)"
-            class="border-default rounded-md border p-3"
-          >
-            <div class="font-medium">
-              {{ channelLabel(channel.channel) }}
-              <UBadge
-                class="ml-2"
-                size="sm"
-                :label="channel.enabled ? 'Habilitado' : 'Off'"
-                :color="channel.enabled ? 'success' : 'neutral'"
-                variant="subtle"
-              />
-            </div>
-            <ul class="text-muted mt-1 list-inside list-disc">
-              <li
-                v-for="(recipient, idx) in channel.recipients || []"
-                :key="idx"
-              >
-                {{ recipient.masked || recipient.name || '***' }}
-              </li>
-              <li v-if="!(channel.recipients?.length)">
-                Sem destinatário elegível
-              </li>
-            </ul>
-          </div>
-        </div>
-        <template #footer>
-          <div class="flex justify-end">
-            <UButton
-              color="neutral"
-              variant="outline"
-              label="Fechar"
-              @click="emit('update:previewOpen', false)"
+          <template #description>
+            Destinatários mascarados; execução apenas em modo template.
+          </template>
+        </UAlert>
+        <div
+          v-for="channel in preview.channels || []"
+          :key="String(channel.channel)"
+          class="border-default rounded-md border p-3"
+        >
+          <div class="font-medium">
+            {{ channelLabel(channel.channel) }}
+            <UBadge
+              class="ml-2"
+              size="sm"
+              :label="channel.enabled ? 'Habilitado' : 'Off'"
+              :color="channel.enabled ? 'success' : 'neutral'"
+              variant="subtle"
             />
           </div>
-        </template>
-      </UCard>
+          <ul class="text-muted mt-1 list-inside list-disc">
+            <li
+              v-for="(recipient, idx) in channel.recipients || []"
+              :key="idx"
+            >
+              {{ recipient.masked || recipient.name || '***' }}
+            </li>
+            <li v-if="!(channel.recipients?.length)">
+              Sem destinatário elegível
+            </li>
+          </ul>
+        </div>
+      </div>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        cancel-label="Fechar"
+        :show-submit="false"
+        @cancel="emit('update:previewOpen', false)"
+      />
+    </template>
+  </ShellScrollableModal>
 
-  <UModal
+  <ShellScrollableModal
     :open="trackingOpen"
-    data-testid="pgmei-tracking-modal"
+    title="Rastreio PGMEI"
+    description="Somente leitura; abrir este modal não altera o estado de entrega."
+    test-id="pgmei-tracking-modal"
+    :show-default-footer="false"
     @update:open="emit('update:trackingOpen', $event)"
+    @cancel="emit('update:trackingOpen', false)"
   >
-    <template #content>
-      <UCard>
-        <template #header>
-          <h3 class="font-semibold">
-            Rastreio PGMEI
-          </h3>
-        </template>
-        <div
-          v-if="trackingLoading"
-          class="text-muted py-6 text-center text-sm"
-        >
-          Carregando…
-        </div>
-        <UAlert
-          v-else-if="trackingError"
-          color="error"
-          :title="trackingError"
+    <template #body>
+      <ShellLoadingModalBody v-if="trackingLoading" />
+      <UAlert
+        v-else-if="trackingError"
+        color="error"
+        :title="trackingError"
+      />
+      <div
+        v-else-if="tracking"
+        class="space-y-3 text-sm"
+      >
+        <UBadge
+          :label="pgdasdTrackingMeta(tracking.status).label"
+          :color="pgdasdTrackingMeta(tracking.status).color"
+          variant="subtle"
         />
         <div
-          v-else-if="tracking"
-          class="space-y-3 text-sm"
+          v-for="channel in tracking.channels || []"
+          :key="String(channel.channel)"
+          class="border-default rounded-md border p-3"
         >
-          <UBadge
-            :label="pgdasdTrackingMeta(tracking.status).label"
-            :color="pgdasdTrackingMeta(tracking.status).color"
-            variant="subtle"
-          />
-          <div
-            v-for="channel in tracking.channels || []"
-            :key="String(channel.channel)"
-            class="border-default rounded-md border p-3"
+          <div class="font-medium">
+            {{ channelLabel(channel.channel) }} · {{ channel.status }}
+          </div>
+          <ul
+            v-if="channel.dispatches?.length"
+            class="text-muted mt-1 space-y-1"
           >
-            <div class="font-medium">
-              {{ channelLabel(channel.channel) }} · {{ channel.status }}
-            </div>
-            <ul
-              v-if="channel.dispatches?.length"
-              class="text-muted mt-1 space-y-1"
+            <li
+              v-for="(dispatch, idx) in channel.dispatches"
+              :key="dispatch.id ?? idx"
             >
-              <li
-                v-for="(dispatch, idx) in channel.dispatches"
-                :key="dispatch.id ?? idx"
-              >
-                {{ dispatch.recipient_masked || '***' }}
-                · {{ dispatch.status }}
-                <span v-if="dispatch.queued_at"> · {{ formatDateTime(dispatch.queued_at) }}</span>
-              </li>
-            </ul>
-            <p
-              v-else
-              class="text-muted mt-1"
-            >
-              Sem histórico de envio.
-            </p>
-          </div>
+              {{ dispatch.recipient_masked || '***' }}
+              · {{ dispatch.status }}
+              <span v-if="dispatch.queued_at"> · {{ formatDateTime(dispatch.queued_at) }}</span>
+            </li>
+          </ul>
+          <p
+            v-else
+            class="text-muted mt-1"
+          >
+            Sem histórico de envio.
+          </p>
         </div>
-        <template #footer>
-          <div class="flex justify-end">
-            <UButton
-              color="neutral"
-              variant="outline"
-              label="Fechar"
-              @click="emit('update:trackingOpen', false)"
-            />
-          </div>
-        </template>
-      </UCard>
+      </div>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        cancel-label="Fechar"
+        :show-submit="false"
+        @cancel="emit('update:trackingOpen', false)"
+      />
+    </template>
+  </ShellScrollableModal>
 
-  <UModal
+  <ShellScrollableModal
     :open="prefsOpen"
-    data-testid="pgmei-prefs-modal"
+    title="Comunicação PGMEI"
+    description="Modo template; automatic_effective permanece false."
+    test-id="pgmei-prefs-modal"
+    :show-default-footer="false"
     @update:open="emit('update:prefsOpen', $event)"
+    @cancel="emit('update:prefsOpen', false)"
   >
-    <template #content>
-      <UCard>
-        <template #header>
-          <h3 class="font-semibold">
-            Comunicação PGMEI
-          </h3>
-        </template>
-        <div class="space-y-4">
-          <UAlert
-            color="info"
-            title="Modo template"
-          >
-            <template #description>
-              automatic_effective permanece false; nenhum job ou e-mail é criado.
-            </template>
-          </UAlert>
-          <UFormField label="E-mail">
-            <USwitch v-model="form.email_enabled" />
-          </UFormField>
-          <UFormField label="WhatsApp">
-            <USwitch v-model="form.whatsapp_enabled" />
-          </UFormField>
-          <UFormField label="Envio automático (intenção)">
-            <USwitch v-model="form.automatic_requested" />
-          </UFormField>
-          <UAlert
-            v-if="preferenceError"
-            color="error"
-            :title="preferenceError"
-          />
-        </div>
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton
-              color="neutral"
-              variant="outline"
-              label="Cancelar"
-              @click="emit('update:prefsOpen', false)"
-            />
-            <UButton
-              color="primary"
-              label="Salvar"
-              :loading="saving"
-              :disabled="!canManage"
-              @click="savePreferences"
-            />
-          </div>
-        </template>
-      </UCard>
+    <template #body>
+      <div class="space-y-4">
+        <UAlert
+          color="info"
+          title="Modo template"
+        >
+          <template #description>
+            automatic_effective permanece false; nenhum job ou e-mail é criado.
+          </template>
+        </UAlert>
+        <UFormField label="E-mail">
+          <USwitch v-model="form.email_enabled" />
+        </UFormField>
+        <UFormField label="WhatsApp">
+          <USwitch v-model="form.whatsapp_enabled" />
+        </UFormField>
+        <UFormField label="Envio automático (intenção)">
+          <USwitch v-model="form.automatic_requested" />
+        </UFormField>
+        <UAlert
+          v-if="preferenceError"
+          color="error"
+          :title="preferenceError"
+        />
+      </div>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        cancel-label="Cancelar"
+        submit-label="Salvar"
+        :loading="saving"
+        :disabled="!canManage"
+        :show-submit="Boolean(canManage)"
+        @cancel="emit('update:prefsOpen', false)"
+        @submit="savePreferences"
+      />
+    </template>
+  </ShellScrollableModal>
 </template>

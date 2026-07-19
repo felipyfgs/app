@@ -53,7 +53,7 @@ const columns: TableColumn<TotalRow>[] = [{
       :data="data"
       :columns="columns"
       :loading="loading"
-      class="min-w-0"
+      class="min-w-0 shrink-0"
       :ui="COMPACT_DASHBOARD_TABLE_UI"
     >
       <template #label-cell="{ row }">

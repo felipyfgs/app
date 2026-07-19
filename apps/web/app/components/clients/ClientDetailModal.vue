@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
-import type { Client, ClientCredential, Establishment } from '~/types/api'
-import type { NavLeafDestination } from '~/utils/navigation-hierarchy'
-import { clientModalNav } from '~/utils/client-detail-navigation'
+/**
+ * Modal de cliente — subset: Cadastro · Contato · Configuração.
+ */
+import type { Client, ClientCredential } from '~/types/api'
+import type { ClientDetailTab, ClientModalTab } from '~/utils/client-detail-tabs'
+import {
+  clientDetailHref,
+  clientModalTabItems
+} from '~/utils/client-detail-tabs'
 
-type Section = 'resumo' | 'cadastro' | 'estabelecimentos' | 'certificado' | 'sincronizacao'
+type ModalSection = 'resumo' | 'cadastro' | 'contato' | 'configuracao' | 'estabelecimentos' | 'certificado' | 'sincronizacao'
 
 const open = defineModel<boolean>('open', { default: false })
 
 const props = defineProps<{
   clientId: number | null
-  initialSection?: Section
+  initialSection?: ModalSection
 }>()
 
 const emit = defineEmits<{
@@ -21,18 +26,14 @@ const api = useApi()
 const toast = useToast()
 const {
   canManageClients,
-  canManageCredentials,
-  canTriggerSync
+  canManageCredentials
 } = useDashboard()
 
-const section = ref<Section>('resumo')
+const activeTab = ref<ClientModalTab>('cadastro')
 const item = ref<Client | null>(null)
 const credential = ref<ClientCredential | null>(null)
 const loading = ref(false)
-const triggeringId = ref<number | null>(null)
-const triggeredIds = ref<number[]>([])
-
-const establishments = computed(() => item.value?.establishments || [])
+const cadastroStartEditing = ref(false)
 
 const title = computed(() =>
   item.value?.display_name || item.value?.legal_name || item.value?.name || 'Cliente'
@@ -46,21 +47,29 @@ const description = computed(() => {
   return `CNPJ ${cnpj}`
 })
 
-const sectionLinks = computed(() => clientModalNav())
-const syntheticPath = computed(() =>
-  section.value === 'resumo' ? '/clients/0' : `/clients/0/${section.value}`
-)
-const sectionByLeafId: Record<string, Section> = {
-  'client-resumo': 'resumo',
-  'client-cadastro': 'cadastro',
-  'client-estabelecimentos': 'estabelecimentos',
-  'client-certificado': 'certificado',
-  'client-sincronizacao': 'sincronizacao'
+const primaryItems = clientModalTabItems()
+
+function mapInitialSection(section?: ModalSection) {
+  switch (section) {
+    case 'contato':
+      activeTab.value = 'contato'
+      break
+    case 'configuracao':
+    case 'certificado':
+    case 'sincronizacao':
+      activeTab.value = 'configuracao'
+      break
+    case 'estabelecimentos':
+    case 'cadastro':
+    case 'resumo':
+    default:
+      activeTab.value = 'cadastro'
+  }
 }
 
-function onSectionNavigate(leaf: NavLeafDestination) {
-  const next = sectionByLeafId[leaf.id]
-  if (next) goSection(next)
+function onPrimaryChange(value: string | number) {
+  activeTab.value = value as ClientModalTab
+  cadastroStartEditing.value = false
 }
 
 async function load() {
@@ -89,20 +98,10 @@ async function reload() {
   emit('updated')
 }
 
-async function triggerSync(establishment: Establishment) {
-  if (!canTriggerSync.value) return
-  triggeringId.value = establishment.id
-  try {
-    await api.sync.trigger(establishment.id)
-    if (!triggeredIds.value.includes(establishment.id)) {
-      triggeredIds.value.push(establishment.id)
-    }
-    toast.add({ title: `Sincronização de ${establishment.cnpj} enfileirada.`, color: 'success' })
-  } catch (caught) {
-    toast.add({ title: apiErrorMessage(caught, 'Não foi possível iniciar a sincronização.'), color: 'error' })
-  } finally {
-    triggeringId.value = null
-  }
+function openEditForm() {
+  if (!canManageClients.value) return
+  activeTab.value = 'cadastro'
+  cadastroStartEditing.value = true
 }
 
 function onCredentialActivated(value: ClientCredential) {
@@ -119,104 +118,47 @@ function onCredentialActivated(value: ClientCredential) {
       }
     }
   }
-  emit('updated')
-}
-
-const cadastroStartEditing = ref(false)
-
-function goSection(next: Section) {
-  section.value = next
-  if (next !== 'cadastro') {
-    cadastroStartEditing.value = false
-  }
-}
-
-function openEditForm() {
-  if (!item.value || !canManageClients.value) return
-  section.value = 'cadastro'
-  cadastroStartEditing.value = true
-}
-
-function resetState() {
-  item.value = null
-  credential.value = null
-  section.value = 'resumo'
-  triggeringId.value = null
-  triggeredIds.value = []
-  cadastroStartEditing.value = false
 }
 
 watch(
   () => [open.value, props.clientId, props.initialSection] as const,
-  async ([isOpen, id, initial]) => {
-    if (!isOpen || !id) {
-      return
-    }
-    section.value = initial || 'resumo'
-    triggeredIds.value = []
-    await load()
+  ([isOpen]) => {
+    if (!isOpen) return
+    mapInitialSection(props.initialSection)
+    cadastroStartEditing.value = false
+    void load()
   }
 )
-
-watch(open, (value) => {
-  if (!value) {
-    resetState()
-  }
-})
 </script>
 
 <template>
-  <!--
-    Template Settings: subnav = UNavigationMenu + highlight (não UTabs).
-    Modal Nuxt UI: title/description/#actions + #body + #footer.
-  -->
-  <UModal
+  <ShellScrollableModal
     v-model:open="open"
-    data-testid="client-detail-modal"
     :title="title"
     :description="description"
-    :ui="{
-      content: 'w-[calc(100vw-1.5rem)] sm:w-[min(72rem,calc(100vw-2rem))] sm:max-w-none h-[min(90dvh,52rem)] max-h-[min(90dvh,52rem)] overflow-hidden',
-      body: 'flex min-h-0 flex-1 flex-col overflow-hidden p-0 sm:p-0',
-      footer: 'justify-between gap-2 shrink-0'
-    }"
+    :ui="{ content: 'sm:max-w-4xl' }"
+    test-id="client-detail-modal"
   >
-    <template #actions>
-      <UBadge
-        v-if="item"
-        :color="item.is_active ? 'success' : 'neutral'"
-        variant="subtle"
-        class="me-8"
-      >
-        {{ item.is_active ? 'Ativo' : 'Inativo' }}
-      </UBadge>
-    </template>
-
     <template #body>
-      <!-- Equivalente ao UDashboardToolbar do settings.vue do template -->
-      <div class="shrink-0 border-b border-default px-2 sm:px-3">
-        <SectionNavigation
-          :items="sectionLinks"
-          :path="syntheticPath"
-          :navigate-with-router="false"
-          aria-label="Navegação do modal de cliente"
-          subtabs-aria-label="Seções do modal de cliente"
-          test-id="client-modal-section-navigation"
-          @navigate="onSectionNavigate"
+      <div class="space-y-3 border-b border-default px-4 py-3 sm:px-6">
+        <ShellScrollableTabs
+          :model-value="activeTab"
+          :items="primaryItems"
+          color="primary"
+          variant="pill"
+          class="w-full"
+          aria-label="Seções do modal de cliente"
+          test-id="client-modal-primary-tabs"
+          @update:model-value="onPrimaryChange"
         />
       </div>
 
       <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
-        <div
+        <ShellLoadingModalBody
           v-if="loading && !item"
-          class="space-y-4"
-          role="status"
-          aria-label="Carregando cliente"
-        >
-          <USkeleton class="h-24 w-full" />
-          <USkeleton class="h-40 w-full" />
-          <USkeleton class="h-28 w-full" />
-        </div>
+          :rows="3"
+          test-id="client-detail-loading"
+        />
 
         <UEmpty
           v-else-if="!item"
@@ -226,84 +168,53 @@ watch(open, (value) => {
         />
 
         <template v-else>
-          <ClientsClientDashboard
-            v-if="section === 'resumo'"
-            :client="item"
-            :credential="credential"
-            :establishments="establishments"
-            :triggered-ids="triggeredIds"
-            :can-manage-credentials="canManageCredentials"
-            :can-manage-clients="canManageClients"
-            :can-trigger-sync="canTriggerSync"
-            :in-modal="true"
-            @navigate-section="goSection"
-          />
-
           <ClientsClientRegistration
-            v-else-if="section === 'cadastro'"
+            v-if="activeTab === 'cadastro'"
             :client="item"
             :can-manage-clients="canManageClients"
             :start-editing="cadastroStartEditing"
+            panel="dados"
             @updated="() => { cadastroStartEditing = false; reload() }"
           />
 
-          <ClientsClientBranchesPanel
-            v-else-if="section === 'estabelecimentos'"
+          <ClientsClientContactsSection
+            v-else-if="activeTab === 'contato'"
             :client="item"
-            :establishments="establishments"
+            :can-manage-clients="canManageClients"
+            @updated="reload"
+          />
+
+          <ClientsClientConfigPanel
+            v-else
+            :client="item"
+            :credential="credential"
             :can-manage-clients="canManageClients"
             :can-manage-credentials="canManageCredentials"
             @updated="reload"
-            @branch-created="() => reload()"
-          />
-
-          <ClientsClientCredentialPanel
-            v-else-if="section === 'certificado'"
-            :client-id="item.id"
-            :credential="credential"
-            :credential-summary="item.credential_summary"
-            :can-manage-credentials="canManageCredentials"
-            @activated="onCredentialActivated"
-          />
-
-          <ClientsClientSyncPanel
-            v-else-if="section === 'sincronizacao'"
-            :establishments="establishments"
-            :credential="credential"
-            :credential-summary="item.credential_summary"
-            :can-trigger-sync="canTriggerSync"
-            :can-manage-credentials="canManageCredentials"
-            :triggering-id="triggeringId"
-            :triggered-ids="triggeredIds"
-            @sync="triggerSync"
+            @credential-activated="onCredentialActivated"
           />
         </template>
       </div>
     </template>
 
-    <template #footer="{ close }">
+    <template #footer>
       <div class="flex w-full flex-wrap items-center justify-between gap-2">
         <p class="text-xs text-muted">
           <template v-if="item">
-            CNPJ {{ item.cnpj || establishments[0]?.cnpj || item.root_cnpj }}
-          </template>
-          <template v-if="!canManageClients && item">
-            · visualização
+            CNPJ {{ item.cnpj || item.establishments?.[0]?.cnpj || item.root_cnpj }}
           </template>
         </p>
         <div class="flex flex-wrap items-center gap-2">
-          <template v-if="item && canManageClients">
-            <UButton
-              v-if="section === 'resumo' || section === 'cadastro'"
-              color="primary"
-              variant="soft"
-              size="sm"
-              icon="i-lucide-pencil"
-              label="Editar cadastro"
-              data-testid="client-detail-edit"
-              @click="openEditForm"
-            />
-          </template>
+          <UButton
+            v-if="item && canManageClients && activeTab === 'cadastro'"
+            color="primary"
+            variant="soft"
+            size="sm"
+            icon="i-lucide-pencil"
+            label="Editar cadastro"
+            data-testid="client-detail-edit"
+            @click="openEditForm"
+          />
           <UButton
             v-if="item"
             color="neutral"
@@ -311,17 +222,17 @@ watch(open, (value) => {
             size="sm"
             icon="i-lucide-external-link"
             label="Página"
-            :to="clientSectionPath(item.id)"
+            :to="clientDetailHref(item.id, activeTab as ClientDetailTab)"
           />
           <UButton
             color="neutral"
             variant="subtle"
             size="sm"
             label="Fechar"
-            @click="close()"
+            @click="() => { open = false }"
           />
         </div>
       </div>
     </template>
-  </UModal>
+  </ShellScrollableModal>
 </template>

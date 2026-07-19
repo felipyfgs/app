@@ -164,14 +164,14 @@ export function pgdasdRbt12Tooltip(rbt12?: PgdasdRbt12Summary | null): string {
   if (!rbt12 || !parsed || !hasValue) {
     return rbt12?.availability_reason?.trim()
       || rbt12?.unavailable_reason?.trim()
-      || 'RBT12 indisponível. O sistema não estima valores ausentes ou ambíguos.'
+      || 'RBT12 (RB12 — receita bruta dos 12 meses) indisponível. O sistema não estima valores ausentes ou ambíguos.'
   }
 
   const total = rbt12.total_cents != null
     ? formatAmountCents(rbt12.total_cents)
     : formatCurrency(rbt12.rbt12_value)
   const parts = [
-    `Receita bruta acumulada nos 12 meses anteriores ao período de apuração: ${total}.`
+    `RBT12 (RB12): receita bruta acumulada nos 12 meses anteriores ao período de apuração — ${total}.`
   ]
   if (rbt12.internal_market_cents != null) {
     parts.push(`Mercado interno: ${formatAmountCents(rbt12.internal_market_cents)}.`)

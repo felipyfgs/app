@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
  * Visão de fechamento mensal de XMLs de saída (competência / prazo operacional).
- * Arquétipo: lista + filtros + stats (customers/home + UDashboardPanel (inline template)).
+ * Arquétipo: lista + filtros + stats (customers/home + ShellPagePanel).
  * Não oferece retry remoto, aumento de frequência nem postergação de due_at.
  */
 import type { TableColumn } from '@nuxt/ui'
 import { TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
-import OperationsSectionNav from '~/components/navigation/OperationsSectionNav.vue'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import type {
   OutboundCapacityForecast,
   OutboundCompetenceSummary,
@@ -39,7 +39,7 @@ const { canCreateExport, canAccessAdministration, canImportDocuments, me, sessio
 
 const FILTER_ALL = 'all'
 const pendingPage = ref(1)
-const pendingPerPage = 50
+const pendingPerPage = ref(20)
 const pendingTotal = ref(0)
 const pendingLastPage = ref(1)
 
@@ -392,7 +392,7 @@ async function load() {
         source,
         client_id: clientId && clientId > 0 ? clientId : undefined,
         page: pendingPage.value,
-        per_page: pendingPerPage
+        per_page: pendingPerPage.value
       }),
       api.outbound.deadline.metrics(comp)
     ])
@@ -504,6 +504,18 @@ async function advanceTarget() {
   }
 }
 
+function setPendingPerPage(next: number) {
+  const allowed = [10, 20, 50]
+  const target = allowed.includes(Number(next)) ? Number(next) : 20
+  if (pendingPerPage.value === target) return
+  pendingPerPage.value = target
+  if (pendingPage.value !== 1) {
+    pendingPage.value = 1
+    return
+  }
+  void load()
+}
+
 watch(
   [competence, bandFilter, modelFilter, rootFilter, sourceFilter, clientFilter],
   () => {
@@ -556,33 +568,20 @@ watch(
 
 <template>
   <!--
-    Arquétipo lista admin (customers.vue) via UDashboardPanel (inline template).
+    Arquétipo lista admin (customers.vue) via ShellPagePanel.
     Fontes: .local/reference/.../customers.vue + clients/index.vue + table-ui presets.
   -->
-  <UDashboardPanel id="closing">
+  <ShellPagePanel id="closing">
     <template #header>
-      <UDashboardNavbar title="Fechamento de saídas" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
+      <ShellPageNavbar title="Fechamento de saídas">
         <template #right>
-          <UTooltip text="Atualizar">
-            <UButton
-              icon="i-lucide-refresh-cw"
-              color="neutral"
-              variant="ghost"
-              square
-              aria-label="Atualizar fechamento"
-              :loading="loading"
-              @click="load"
-            />
-          </UTooltip>
+          <ShellNavbarRefresh
+            :loading="loading"
+            aria-label="Atualizar fechamento"
+            @click="load"
+          />
         </template>
-      </UDashboardNavbar>
-
-      <UDashboardToolbar data-testid="operations-section-tabs">
-        <OperationsSectionNav />
-      </UDashboardToolbar>
+      </ShellPageNavbar>
     </template>
 
     <template #body>
@@ -737,7 +736,13 @@ watch(
         />
       </div>
 
-      <UModal v-model:open="advanceOpen" title="Antecipar meta">
+      <ShellFormModal
+        v-model:open="advanceOpen"
+        title="Antecipar meta"
+        submit-label="Aplicar antecipação"
+        :loading="actionLoading"
+        @submit="advanceTarget"
+      >
         <template #body>
           <UFormField label="Nova meta (local)">
             <UInput
@@ -748,23 +753,29 @@ watch(
             />
           </UFormField>
         </template>
-      </UModal>
+      </ShellFormModal>
 
-      <UTable
-        data-testid="closing-table"
+      <p class="text-xs text-muted">
+        Escopo: {{ summary?.completeness_scope || 'known_documents_only' }}.
+        Papel atual: {{ me?.role || '—' }}.
+        Atalho: <kbd class="px-1 rounded border">g</kbd> então <kbd class="px-1 rounded border">f</kbd>.
+      </p>
+
+      <ShellDataTable
+        test-id="closing-table"
+        ui-preset="monitoring-compact"
+        primary-column-id="access_key_masked"
+        status-column-id="urgency_band"
+        :summary-column-ids="['model', 'due_at', 'recovery_status', 'next']"
+        :columns="columns"
         :data="filteredItems"
         :loading="loading"
-        :columns="columns"
-        empty="Nenhuma pendência para os filtros."
-        class="w-full"
-        :ui="{
-          base: 'table-fixed border-separate border-spacing-0',
-          thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-          tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'px-3 py-1.5 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'px-3 py-1 border-b border-default',
-          separator: 'h-0'
-        }"
+        :page="pendingPage"
+        :total="pendingTotal"
+        :items-per-page="pendingPerPage"
+        per-page-aria-label="Pendências por página"
+        @update:page="pendingPage = $event"
+        @update:items-per-page="setPendingPerPage"
       >
         <template #urgency_band-cell="{ row }">
           <div class="flex w-full min-w-0 items-center gap-2">
@@ -826,43 +837,19 @@ watch(
             />
           </div>
         </template>
-      </UTable>
-
-      <div
-        v-if="pendingTotal"
-        class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4"
-      >
-        <p class="text-sm text-muted">
-          {{ pendingTotal }} pendência(s) · página {{ pendingPage }} de {{ pendingLastPage }}
-        </p>
-        <UPagination
-          v-if="pendingLastPage > 1"
-          v-model:page="pendingPage"
-          :total="pendingTotal"
-          :items-per-page="pendingPerPage"
-        />
-      </div>
-
-      <p class="text-xs text-muted mt-3">
-        Escopo: {{ summary?.completeness_scope || 'known_documents_only' }}.
-        Papel atual: {{ me?.role || '—' }}.
-        Atalho: <kbd class="px-1 rounded border">g</kbd> então <kbd class="px-1 rounded border">f</kbd>.
-      </p>
-
-      <div class="flex justify-end gap-2">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          label="Cancelar"
-          @click="() => { advanceOpen = false }"
-        />
-        <UButton
-          color="primary"
-          label="Aplicar antecipação"
-          :loading="actionLoading"
-          @click="advanceTarget"
-        />
-      </div>
+        <template #empty>
+          <div class="py-8 text-center text-sm text-muted">
+            Nenhuma pendência para os filtros.
+          </div>
+        </template>
+        <template #footer>
+          <span class="tabular-nums">{{ pendingTotal }}</span> pendência(s)
+          <template v-if="pendingLastPage > 1">
+            <span class="text-dimmed"> · </span>
+            página {{ pendingPage }} de {{ pendingLastPage }}
+          </template>
+        </template>
+      </ShellDataTable>
     </template>
-  </UDashboardPanel>
+  </ShellPagePanel>
 </template>

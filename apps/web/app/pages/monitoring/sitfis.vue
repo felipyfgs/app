@@ -12,6 +12,7 @@ import {
   sitfisAgeLabel as ageLabel,
   sitfisDetailOf as detailOf
 } from '~/utils/sitfis-table'
+import { MONITORING_SHARED_COLUMN_LABELS } from '~/utils/monitoring-table-columns'
 
 const api = useApi()
 const { canTriggerSync } = useDashboard()
@@ -39,6 +40,7 @@ const {
   allowsDocument,
   sorting,
   setPage,
+  setPerPage,
   refresh,
   applyFilters,
   applyQuickFilters,
@@ -225,8 +227,7 @@ const columns = computed(() => buildSitfisColumns({
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
     :horizontal-scroll="true"
-    table-class="min-w-[720px]"
-    :initial-hidden-columns="['procuracao', 'franchise', 'age', 'observed']"
+    :initial-hidden-columns="['procuracao', 'franchise', 'age']"
     empty-title="Nenhum cliente"
     :column-labels="{
       situation: 'Situação',
@@ -237,9 +238,10 @@ const columns = computed(() => buildSitfisColumns({
       procuracao: 'Procuração',
       franchise: 'Franquia / agenda',
       age: 'Idade / TTL',
-      observed: 'Observado'
+      ...MONITORING_SHARED_COLUMN_LABELS
     }"
     @update:page="setPage"
+    @update:per-page="setPerPage"
     @update:sorting="sorting = $event"
     @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"

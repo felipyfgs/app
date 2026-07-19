@@ -26,13 +26,23 @@ import {
   formatDctfwebDate
 } from '~/utils/dctfweb'
 import { sortHeader } from '~/utils/table-sort'
+import { tableIconButton, tableIconGroup } from '~/utils/table-icon-slots'
 import { tableCellBadgeProps } from '~/utils/table-ui'
+import {
+  MONITORING_ACTIONS_LABEL,
+  MONITORING_ACTIONS_META,
+  MONITORING_CONSULTED_ID,
+  MONITORING_CONSULTED_LABEL,
+  MONITORING_CONSULTED_META,
+  MONITORING_HISTORY_LABEL,
+  MONITORING_TRACKING_LABEL,
+  MONITORING_TRACKING_META
+} from '~/utils/monitoring-table-columns'
 
 /**
- * Renderer exclusivo da cápsula DCTFWeb.
- * Oito colunas fixas, nesta ordem: Situação, Últ. Declaração, Ações, Enviar,
- * Cliente, Rastreio de envio, Última Busca e Histórico de Busca.
- * Sem seleção e sem colunas adicionais.
+ * Renderer DCTFWeb — alinhado ao padrão PGDAS-D:
+ * Cliente · Situação · Últ. Declaração · Ações (prévia+envio) · Rastreio ·
+ * Última consulta · Histórico.
  */
 export function buildDctfwebColumns(options: {
   canManage: boolean
@@ -101,6 +111,19 @@ export function buildDctfwebColumns(options: {
 
   return [
     {
+      id: 'client',
+      header: ({ column }) => sortHeader('Cliente', column),
+      enableHiding: false,
+      meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
+      cell: ({ row }) => h(FiscalClientCell, {
+        clientId: row.original.client_id,
+        name: row.original.legal_name || row.original.name,
+        legalName: row.original.legal_name,
+        cnpjMasked: row.original.cnpj_masked,
+        to: `/monitoring/clients/${row.original.client_id}`
+      })
+    },
+    {
       id: 'situation',
       header: ({ column }) => sortHeader('Situação', column),
       enableHiding: false,
@@ -158,83 +181,67 @@ export function buildDctfwebColumns(options: {
     },
     {
       id: 'actions',
-      header: 'Ações',
+      header: MONITORING_ACTIONS_LABEL,
       enableHiding: false,
       enableSorting: false,
-      meta: { class: { th: 'w-16 min-w-16', td: 'w-16 min-w-16' } },
-      cell: ({ row }) => {
-        const name = row.original.name || row.original.legal_name || `cliente ${row.original.client_id}`
-        return h(UDropdownMenu, {
-          items: actionItems(row.original),
-          content: { align: 'start' }
-        }, () => h(UButton, {
-          'icon': 'i-lucide-ellipsis-vertical',
-          'color': 'neutral',
-          'variant': 'ghost',
-          'size': 'sm',
-          'aria-label': `Ações de ${name}`,
-          'data-testid': 'dctfweb-row-actions'
-        }))
-      }
-    },
-    {
-      id: 'send',
-      header: 'Enviar',
-      enableSorting: false,
-      meta: { class: { th: 'w-20 min-w-20', td: 'w-20 min-w-20' } },
+      meta: { ...MONITORING_ACTIONS_META },
       cell: ({ row }) => {
         const summary = dctfwebSummary(row.original)
         const preference = summary?.communication
-        // Switch Enviar: intenção template; VIEWER desabilitado.
-        return h(UTooltip, {
-          text: options.canManage
-            ? 'Registra intenção de envio (template). Nenhum envio real.'
-            : 'Somente ADMIN ou OPERATOR pode alterar.'
-        }, {
-          default: () => h(USwitch, {
-            'modelValue': preference?.automatic_requested === true,
-            'disabled': !options.canManage,
+        const name = row.original.name || row.original.legal_name || `cliente ${row.original.client_id}`
+        return tableIconGroup([
+          tableIconButton({
+            label: 'Abrir prévia de envio',
+            icon: 'i-lucide-send',
+            color: 'primary',
+            testId: 'dctfweb-send-preview',
+            onClick: () => options.onPreview(row.original)
+          }),
+          h('div', {
+            'class': 'inline-flex size-8 items-center justify-center',
+            'data-testid': 'dctfweb-send-slot'
+          }, [
+            h(UTooltip, {
+              text: options.canManage
+                ? 'Registra intenção de envio (template). Nenhum envio real.'
+                : 'Somente ADMIN ou OPERATOR pode alterar.'
+            }, {
+              default: () => h(USwitch, {
+                'modelValue': preference?.automatic_requested === true,
+                'disabled': !options.canManage,
+                'size': 'sm',
+                'ariaLabel': preference?.automatic_requested
+                  ? 'Desativar envio automático'
+                  : 'Ativar envio automático',
+                'data-testid': 'dctfweb-send-switch',
+                'onUpdate:modelValue': () => {
+                  if (!options.canManage) return
+                  options.onConfigure(row.original)
+                }
+              })
+            })
+          ]),
+          h(UDropdownMenu, {
+            items: actionItems(row.original),
+            content: { align: 'end' }
+          }, () => h(UButton, {
+            'icon': 'i-lucide-ellipsis-vertical',
+            'color': 'neutral',
+            'variant': 'ghost',
             'size': 'sm',
-            'ariaLabel': preference?.automatic_requested
-              ? 'Desativar envio automático'
-              : 'Ativar envio automático',
-            'data-testid': 'dctfweb-send-switch',
-            'onUpdate:modelValue': (value: unknown) => {
-              if (!options.canManage) return
-              if (value === true && !preference) {
-                options.onConfigure(row.original)
-                return
-              }
-              if (!preference) {
-                options.onConfigure(row.original)
-                return
-              }
-              // Abre preferências para confirmar canais / lock_version.
-              options.onConfigure(row.original)
-            }
-          })
-        })
+            'square': true,
+            'class': 'size-8 justify-center',
+            'aria-label': `Mais ações de ${name}`,
+            'data-testid': 'dctfweb-row-actions'
+          }))
+        ], 'dctfweb-actions-group')
       }
     },
     {
-      id: 'client',
-      header: ({ column }) => sortHeader('Cliente', column),
-      enableHiding: false,
-      meta: { class: { th: 'min-w-56', td: 'min-w-56' } },
-      cell: ({ row }) => h(FiscalClientCell, {
-        clientId: row.original.client_id,
-        name: row.original.legal_name || row.original.name,
-        legalName: row.original.legal_name,
-        cnpjMasked: row.original.cnpj_masked,
-        // Duas linhas: razão social + CNPJ mascarado (padrão do FiscalClientCell).
-        to: `/monitoring/clients/${row.original.client_id}`
-      })
-    },
-    {
       id: 'tracking',
-      header: 'Rastreio de envio',
+      header: MONITORING_TRACKING_LABEL,
       enableSorting: false,
-      meta: { class: { th: 'w-28 min-w-28', td: 'w-28 min-w-28' } },
+      meta: { ...MONITORING_TRACKING_META },
       cell: ({ row }) => {
         const summary = dctfwebSummary(row.original)
         const hasTracking = summary?.has_tracking === true
@@ -253,27 +260,26 @@ export function buildDctfwebColumns(options: {
       }
     },
     {
-      id: 'last_search',
-      header: 'Última Busca',
-      enableSorting: false,
-      meta: { class: { th: 'min-w-28', td: 'min-w-28' } },
+      id: MONITORING_CONSULTED_ID,
+      header: ({ column }) => sortHeader(MONITORING_CONSULTED_LABEL, column),
+      meta: { ...MONITORING_CONSULTED_META },
       cell: ({ row }) => {
         const summary = dctfwebSummary(row.original)
         const label = formatDctfwebDate(
           summary?.last_search_at || summary?.last_valid_query_at
         )
         return h('span', {
-          'class': 'tabular-nums text-sm text-muted',
+          'class': 'whitespace-nowrap tabular-nums text-xs text-muted',
           'data-testid': 'dctfweb-last-search'
         }, label)
       }
     },
     {
       id: 'history',
-      header: 'Histórico de Busca',
+      header: MONITORING_HISTORY_LABEL,
       enableHiding: false,
       enableSorting: false,
-      meta: { class: { th: 'w-28 min-w-28', td: 'w-28 min-w-28' } },
+      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
       cell: ({ row }) => {
         const summary = dctfwebSummary(row.original)
         const hasHistory = summary?.has_history === true

@@ -8,9 +8,14 @@
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { Client } from '~/types/api'
 import { upperFirst } from 'scule'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import { laravelPageBatch, usePagedTable } from '~/composables/usePagedTable'
 import { sortHeader } from '~/utils/table-sort'
-import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+import {
+  TABLE_CELL_BADGE_CLASS,
+  TABLE_CELL_BADGE_UI
+} from '~/utils/table-ui'
+import { formatCnpj, truncateText } from '~/utils/format'
 import {
   COMPACT_BUTTON_LABEL_UI,
   LIST_FILTER_ACTIONS_ROW,
@@ -29,7 +34,15 @@ const emit = defineEmits<{
 }>()
 
 const api = useApi()
-const table = useTemplateRef('table')
+const table = useTemplateRef<{ tableApi?: {
+  getAllColumns: () => Array<{
+    id: string
+    getCanHide: () => boolean
+    getIsVisible: () => boolean
+    getColumn: (id: string) => { toggleVisibility: (v: boolean) => void } | undefined
+  }>
+  getColumn: (id: string) => { toggleVisibility: (v: boolean) => void } | undefined
+} } | null>('table')
 const columnVisibility = ref()
 const toast = useToast()
 
@@ -40,11 +53,12 @@ const operationalItems = [
 
 const clientsFeed = usePagedTable<Client>({
   getKey: client => client.id,
-  load: async ({ page }) => {
+  pageSize: 20,
+  load: async ({ page, pageSize }) => {
     const sort = sorting.value[0]
     const response = await api.clients.list({
       page,
-      per_page: 10,
+      per_page: pageSize,
       q: search.value.trim() || undefined,
       operational_filter: operationalFilter.value === 'total'
         ? undefined
@@ -59,6 +73,7 @@ const clientsFeed = usePagedTable<Client>({
 
 const clientsFeedTotal = clientsFeed.total
 const clientsFeedPage = clientsFeed.page
+const clientsFeedPageSize = clientsFeed.pageSize
 
 const rows = clientsFeed.rows
 const loading = clientsFeed.pendingInitial
@@ -81,8 +96,8 @@ const columns: TableColumn<Client>[] = [
     enableHiding: false,
     meta: {
       class: {
-        th: 'w-[36%] min-w-40',
-        td: 'w-[36%] min-w-40'
+        th: 'min-w-40 w-full',
+        td: 'min-w-40 w-full overflow-hidden'
       }
     }
   },
@@ -92,8 +107,8 @@ const columns: TableColumn<Client>[] = [
     header: ({ column }) => sortHeader('CNPJ/CPF', column),
     meta: {
       class: {
-        th: 'hidden sm:table-cell w-[18%] min-w-36',
-        td: 'hidden sm:table-cell w-[18%] min-w-36'
+        th: 'hidden sm:table-cell w-40 min-w-36',
+        td: 'hidden sm:table-cell w-40 min-w-36'
       }
     }
   },
@@ -104,8 +119,8 @@ const columns: TableColumn<Client>[] = [
     enableSorting: false,
     meta: {
       class: {
-        th: 'w-[14%] min-w-28',
-        td: 'w-[14%] min-w-28'
+        th: 'w-32 min-w-28',
+        td: 'w-32 min-w-28'
       }
     }
   },
@@ -116,8 +131,8 @@ const columns: TableColumn<Client>[] = [
     enableSorting: false,
     meta: {
       class: {
-        th: 'hidden md:table-cell w-[14%]',
-        td: 'hidden md:table-cell w-[14%]'
+        th: 'hidden md:table-cell w-32 min-w-28',
+        td: 'hidden md:table-cell w-32 min-w-28'
       }
     }
   },
@@ -128,8 +143,8 @@ const columns: TableColumn<Client>[] = [
     enableHiding: false,
     meta: {
       class: {
-        th: 'w-[12%] min-w-24',
-        td: 'w-[12%] min-w-24'
+        th: 'w-28 min-w-24',
+        td: 'w-28 min-w-24'
       }
     }
   }
@@ -299,21 +314,30 @@ defineExpose({ reload })
       :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: clientsFeed.retry }]"
     />
 
-    <UTable
+    <ShellDataTable
       v-if="loading || rows.length"
       ref="table"
       v-model:column-visibility="columnVisibility"
       v-model:sorting="sorting"
-      :sorting-options="{ manualSorting: true, enableMultiSort: false }"
-      data-testid="data-table"
-      class="shrink-0"
+      ui-preset="dashboard"
+      test-id="data-table"
+      primary-column-id="legal_name"
+      status-column-id="capture"
+      :summary-column-ids="['cnpj', 'sync']"
       :data="rows"
       :columns="columns"
       :loading="loading"
-      :ui="DASHBOARD_TABLE_UI"
+      :page="clientsFeedPage"
+      :total="clientsFeedTotal"
+      :items-per-page="clientsFeedPageSize"
+      :manual-sorting="true"
+      per-page-aria-label="Clientes por página"
+      @update:page="(p) => clientsFeed.setPage(p)"
+      @update:items-per-page="(n) => clientsFeed.setPageSize(n)"
+      @retry="clientsFeed.retry"
     >
       <template #legal_name-cell="{ row }">
-        <div class="min-w-0">
+        <div class="min-w-0 max-w-xs">
           <button
             type="button"
             class="block w-full truncate text-left font-medium text-highlighted hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -322,13 +346,14 @@ defineExpose({ reload })
               : (row.original.legal_name || row.original.name)"
             @click="emit('openClient', row.original)"
           >
-            {{ row.original.legal_name || row.original.name }}
+            {{ truncateText(row.original.legal_name || row.original.name, 40) || row.original.legal_name || row.original.name || '—' }}
           </button>
           <p
             v-if="row.original.display_name"
             class="truncate text-xs text-muted"
+            :title="row.original.display_name"
           >
-            {{ row.original.display_name }}
+            {{ truncateText(row.original.display_name, 40) }}
           </p>
           <p class="mt-0.5 font-mono text-xs text-dimmed sm:hidden">
             {{ formatCnpj(row.original.cnpj || row.original.root_cnpj) }}
@@ -413,7 +438,10 @@ defineExpose({ reload })
           </UDropdownMenu>
         </div>
       </template>
-    </UTable>
+      <template #footer>
+        <span class="tabular-nums">{{ clientsFeedTotal }}</span> cliente(s)
+      </template>
+    </ShellDataTable>
 
     <UEmpty
       v-if="!loading && !loadError && !rows.length"
@@ -429,12 +457,5 @@ defineExpose({ reload })
         @click="clearSearch"
       />
     </UEmpty>
-
-    <ShellTableFooter
-      :total="clientsFeedTotal"
-      :page="clientsFeedPage"
-      :items-per-page="10"
-      @update:page="(p) => clientsFeed.setPage(p)"
-    />
   </div>
 </template>

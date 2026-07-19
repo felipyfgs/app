@@ -17,21 +17,34 @@ export const LIST_FILTER_SEARCH_INPUT
 
 /**
  * Faixa de chips + ações: scroll horizontal no mobile (não quebra em 3 linhas);
- * no sm+ volta a wrap + alinhamento à direita (ml-auto só em sm+ para não deslocar no flex-col).
+ * no sm+ encolhe (flex-1) para o DataTableFilterRoot colapsar chips em contador
+ * antes de empurrar Salvar/Colunas — nowrap + justify-end.
  */
 export const LIST_FILTER_ACTIONS_ROW
-  = `${TOUCH_SCROLL_X} flex w-full items-center gap-1.5 pb-0.5 sm:ml-auto sm:w-auto sm:shrink-0 sm:flex-wrap sm:justify-end sm:overflow-visible sm:pb-0`
+  = `${TOUCH_SCROLL_X} flex w-full items-center gap-1.5 pb-0.5 sm:ml-auto sm:min-w-0 sm:flex-1 sm:flex-nowrap sm:justify-end sm:overflow-visible sm:pb-0`
 
-/** Lista de chips DataTableFilter (nowrap + scroll no xs). */
+/** Lista de chips DataTableFilter (nowrap + scroll no xs) — legado / host direto. */
 export const DATA_TABLE_FILTERS_ROW
   = `${TOUCH_SCROLL_X} flex min-w-0 max-w-full items-center gap-1.5`
 
-/** ui defaults para UTabs pill com scroll (KPI / fila / submódulos). */
+/**
+ * Ajuste apenas estrutural para UTabs retraída. Cores, superfície, raio,
+ * indicador e estados permanecem integralmente no tema padrão do Nuxt UI.
+ */
 export const SCROLLABLE_TABS_UI = {
-  root: 'w-max min-w-full',
-  list: 'w-max min-w-full flex-nowrap justify-start border border-default bg-elevated/60 shadow-xs',
-  trigger: 'shrink-0 data-[state=active]:text-highlighted',
-  indicator: 'bg-default ring-1 ring-default'
+  root: 'w-max',
+  list: 'w-max flex-nowrap',
+  trigger: 'min-w-max shrink-0 grow-0'
+} as const
+
+/**
+ * O variant link usa a mesma restrição estrutural; sua aparência continua
+ * sendo definida pelo variant nativo do Nuxt UI.
+ */
+export const LINK_TABS_UI = {
+  root: 'w-max',
+  list: 'w-max flex-nowrap',
+  trigger: 'min-w-max shrink-0 grow-0'
 } as const
 
 /** Labels de botão: ícone no xs, texto a partir de sm (aria-label obrigatório). */

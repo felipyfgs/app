@@ -95,11 +95,17 @@ async function submit() {
 </script>
 
 <template>
-  <UModal
+  <ShellFormModal
     v-model:open="open"
     title="Associar categorias"
     description="Vincule clientes a uma categoria fiscal."
-    :ui="{ content: 'sm:max-w-md' }"
+    content-class="sm:max-w-md"
+    submit-label="Associar"
+    :loading="associating"
+    :disabled="!categoryId || !clientIdsRaw.trim()"
+    test-id="associate-categories-modal"
+    @cancel="() => { open = false }"
+    @submit="submit"
   >
     <template #body>
       <div class="space-y-4 text-sm">
@@ -135,22 +141,14 @@ async function submit() {
       </div>
     </template>
     <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          label="Cancelar"
-          :disabled="associating"
-          @click="() => { open = false }"
-        />
-        <UButton
-          label="Associar"
-          :loading="associating"
-          :disabled="!categoryId || !clientIdsRaw.trim()"
-          data-testid="associate-categories-submit"
-          @click="submit"
-        />
-      </div>
+      <ShellModalFooter
+        submit-label="Associar"
+        submit-test-id="associate-categories-submit"
+        :loading="associating"
+        :disabled="!categoryId || !clientIdsRaw.trim()"
+        @cancel="() => { open = false }"
+        @submit="submit"
+      />
     </template>
-  </UModal>
+  </ShellFormModal>
 </template>

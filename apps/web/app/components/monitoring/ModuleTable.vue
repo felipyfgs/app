@@ -67,8 +67,11 @@ const props = withDefaults(defineProps<{
   sourceLabel?: string | null
   /** Observação fiscal oficial (as_of) — não confundir com lastGoodAt. */
   asOf?: string | null
-  showModuleNav?: boolean
   showKpis?: boolean
+  /** Exibe a ação de consulta em lote no navbar. */
+  showPendingSearch?: boolean
+  /** Exibe o aviso de dados demonstrativos; proveniência LIVE permanece visível. */
+  showSyntheticAlert?: boolean
   showColumnVisibility?: boolean
   emptyTitle?: string
   emptyDescription?: string
@@ -90,7 +93,7 @@ const props = withDefaults(defineProps<{
   loading: false,
   refreshing: false,
   error: null,
-  perPage: 15,
+  perPage: 20,
   getClientId: undefined,
   moduleKey: null,
   submodule: '',
@@ -107,8 +110,9 @@ const props = withDefaults(defineProps<{
   dataOriginLabel: null,
   sourceLabel: null,
   asOf: null,
-  showModuleNav: true,
   showKpis: true,
+  showPendingSearch: true,
+  showSyntheticAlert: true,
   showColumnVisibility: true,
   emptyTitle: undefined,
   emptyDescription: undefined,
@@ -119,6 +123,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'update:page': [value: number]
+  'update:perPage': [value: number]
   'update:sorting': [value: FiscalModuleSortingState]
   'quick-filter-change': [filters: MonitoringFilterValue]
   'apply-filters': [filters: MonitoringFilterValue]
@@ -230,7 +235,7 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
         </template>
 
         <template
-          v-if="moduleKey && getClientId && !surfaceIsUnavailable"
+          v-if="showPendingSearch && moduleKey && getClientId && !surfaceIsUnavailable"
           #right
         >
           <MonitoringPendingSearchButton
@@ -243,35 +248,23 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
           />
         </template>
       </UDashboardNavbar>
-
-      <!--
-        Nav fiscal Tabs→Subtabs no slot default (padrão Conta/Clientes).
-        Evita #left de uma linha com overflow que corta a 2ª camada.
-      -->
-      <UDashboardToolbar
-        v-if="showModuleNav || $slots.nav"
-        :ui="{
-          root: 'flex-col items-stretch gap-0 overflow-visible min-h-0',
-          left: 'min-w-0 w-full flex-1',
-          right: 'hidden'
-        }"
-        data-testid="monitoring-nav-toolbar"
-      >
-        <slot name="nav">
-          <MonitoringModuleNav />
-        </slot>
-      </UDashboardToolbar>
     </template>
 
     <template #body>
       <!--
-        Stack vertical fluido (lista customers): gap menor no phone, min-w-0
-        para o scroll horizontal da grade não estourar o painel.
+        Mesmo contrato de /clients (customers.vue): filhos diretos do #body
+        com gap/padding do painel. `contents` evita wrapper flex-1 aninhado
+        que colava a paginação na borda inferior (sem o respiro do p-4/p-6).
       -->
       <div
-        class="flex min-w-0 flex-col gap-3 sm:gap-4"
+        class="contents"
         data-testid="fiscal-module-body"
       >
+        <FiscalModuleAvailabilityBanner
+          :module-key="moduleKey"
+          :surface="resolvedSurface"
+        />
+
         <div
           v-if="$slots.submodules"
           class="w-full min-w-0 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]"
@@ -292,7 +285,7 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
 
         <!-- Proveniência / frescor fiscal — antes dos KPIs; sintético persiste em filtro/paginação. -->
         <div
-          v-if="counters != null || dataOrigin != null || dataOriginLabel"
+          v-if="(showSyntheticAlert || !isSyntheticOrigin) && (counters != null || dataOrigin != null || dataOriginLabel)"
           data-testid="fiscal-provenance"
           class="flex min-w-0 flex-col gap-2"
         >
@@ -389,96 +382,95 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
           </template>
         </UAlert>
 
-        <!-- customers.vue: toolbar colada à tabela (stack). -->
-        <div
-          class="flex min-w-0 flex-col gap-1.5"
-          data-testid="fiscal-table-stack"
+        <!--
+          Fill único como /clients: toolbar + ShellDataTable (flex-1 + footer mt-auto).
+          Sem stack flex-1 extra — o padding do #body (p-4 sm:p-6) volta a respirar.
+        -->
+        <MonitoringModuleDataTable
+          ref="dataTable"
+          :columns="columns"
+          :rows="rows"
+          :loading="loading || refreshing"
+          :error="error"
+          :page="page"
+          :last-page="lastPage"
+          :total="total"
+          :per-page="perPage"
+          :sorting="sorting"
+          :filters="filters"
+          :selection-scope="selectionScope"
+          :selection-enabled="resolvedSelectionEnabled"
+          :horizontal-scroll="horizontalScroll"
+          :table-class="tableClass"
+          :mobile-cards="mobileCards"
+          :get-row-id="getRowId"
+          :get-client-id="getClientId"
+          :column-labels="columnLabels"
+          :initial-hidden-columns="initialHiddenColumns"
+          :show-column-visibility="showColumnVisibility"
+          :empty-title="emptyTitle"
+          :empty-description="emptyDescription"
+          :empty-kind="emptyKind"
+          @update:page="emit('update:page', $event)"
+          @update:per-page="emit('update:perPage', $event)"
+          @update:sorting="emit('update:sorting', $event)"
+          @selection-change="onSelectionChange"
+          @refresh="emit('refresh')"
         >
-          <MonitoringModuleDataTable
-            ref="dataTable"
-            :columns="columns"
-            :rows="rows"
-            :loading="loading || refreshing"
-            :error="error"
-            :page="page"
-            :last-page="lastPage"
-            :total="total"
-            :per-page="perPage"
-            :sorting="sorting"
-            :filters="filters"
-            :selection-scope="selectionScope"
-            :selection-enabled="resolvedSelectionEnabled"
-            :horizontal-scroll="horizontalScroll"
-            :table-class="tableClass"
-            :mobile-cards="mobileCards"
-            :get-row-id="getRowId"
-            :get-client-id="getClientId"
-            :column-labels="columnLabels"
-            :initial-hidden-columns="initialHiddenColumns"
-            :show-column-visibility="showColumnVisibility"
-            :empty-title="emptyTitle"
-            :empty-description="emptyDescription"
-            :empty-kind="emptyKind"
-            @update:page="emit('update:page', $event)"
-            @update:sorting="emit('update:sorting', $event)"
-            @selection-change="onSelectionChange"
-            @refresh="emit('refresh')"
-          >
-            <template #toolbar="{ displayColumnItems, showColumnVisibility: canDisplayColumns }">
-              <MonitoringModuleToolbar
-                :filters="filters"
-                :filter-config="filterConfig"
-                :loading="loading || refreshing"
-                :show-total="false"
-                :reset-key="sessionEpoch"
-                :surface="resolvedSurface"
-                @quick-filter-change="emit('quick-filter-change', $event)"
-                @apply-filters="emit('apply-filters', $event)"
-                @reset-filters="emit('reset-filters', $event)"
-                @refresh="emit('refresh')"
-              >
-                <template #actions>
-                  <slot
-                    v-if="customBulkActions"
-                    name="bulk-actions"
-                    :selected-client-ids="selectedClientIds"
-                    :selected-count="selectedCount"
-                    :clear-selection="clearSelection"
+          <template #toolbar="{ displayColumnItems, showColumnVisibility: canDisplayColumns }">
+            <MonitoringModuleToolbar
+              :filters="filters"
+              :filter-config="filterConfig"
+              :loading="loading || refreshing"
+              :show-total="false"
+              :reset-key="sessionEpoch"
+              :surface="resolvedSurface"
+              @quick-filter-change="emit('quick-filter-change', $event)"
+              @apply-filters="emit('apply-filters', $event)"
+              @reset-filters="emit('reset-filters', $event)"
+              @refresh="emit('refresh')"
+            >
+              <template #actions>
+                <slot
+                  v-if="customBulkActions"
+                  name="bulk-actions"
+                  :selected-client-ids="selectedClientIds"
+                  :selected-count="selectedCount"
+                  :clear-selection="clearSelection"
+                />
+                <MonitoringModuleBulkActions
+                  v-else-if="moduleKey"
+                  :module-key="moduleKey"
+                  :selected-client-ids="selectedClientIds"
+                  :selected-count="selectedCount"
+                  :filters="filters"
+                  :submodule="submodule"
+                  @availability-change="bulkAvailable = $event"
+                  @clear="clearSelection"
+                  @refresh="emit('refresh')"
+                />
+              </template>
+              <template #trailing>
+                <UDropdownMenu
+                  v-if="canDisplayColumns"
+                  :items="displayColumnItems"
+                  :content="{ align: 'end' }"
+                >
+                  <UButton
+                    label="Colunas"
+                    color="neutral"
+                    variant="outline"
+                    trailing-icon="i-lucide-settings-2"
+                    aria-label="Exibir colunas"
+                    :ui="COMPACT_BUTTON_LABEL_UI"
+                    class="shrink-0"
+                    data-testid="fiscal-column-visibility"
                   />
-                  <MonitoringModuleBulkActions
-                    v-else-if="moduleKey"
-                    :module-key="moduleKey"
-                    :selected-client-ids="selectedClientIds"
-                    :selected-count="selectedCount"
-                    :filters="filters"
-                    :submodule="submodule"
-                    @availability-change="bulkAvailable = $event"
-                    @clear="clearSelection"
-                    @refresh="emit('refresh')"
-                  />
-                </template>
-                <template #trailing>
-                  <UDropdownMenu
-                    v-if="canDisplayColumns"
-                    :items="displayColumnItems"
-                    :content="{ align: 'end' }"
-                  >
-                    <UButton
-                      label="Colunas"
-                      color="neutral"
-                      variant="outline"
-                      trailing-icon="i-lucide-settings-2"
-                      aria-label="Exibir colunas"
-                      :ui="COMPACT_BUTTON_LABEL_UI"
-                      class="shrink-0"
-                      data-testid="fiscal-column-visibility"
-                    />
-                  </UDropdownMenu>
-                </template>
-              </MonitoringModuleToolbar>
-            </template>
-          </MonitoringModuleDataTable>
-        </div>
+                </UDropdownMenu>
+              </template>
+            </MonitoringModuleToolbar>
+          </template>
+        </MonitoringModuleDataTable>
 
         <slot name="detail" />
       </div>

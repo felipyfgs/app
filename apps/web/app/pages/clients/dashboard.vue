@@ -4,10 +4,12 @@
  * Conteúdo: arquétipo Home (stats + chart Unovis + tabela).
  */
 import type { Client, ClientListStats } from '~/types/api'
+import { useClientsCatalogChrome } from '~/composables/useClientsCatalogChrome'
 
 const api = useApi()
 const toast = useToast()
 const { sessionEpoch } = useDashboard()
+const catalogChrome = useClientsCatalogChrome()
 
 const clients = ref<Client[]>([])
 function emptyStats(): ClientListStats {
@@ -32,6 +34,7 @@ async function load() {
   const seq = ++loadSeq
   const epoch = sessionEpoch.value
   loading.value = true
+  if (catalogChrome) catalogChrome.loading.value = true
   try {
     const first = await api.clients.list({
       page: 1,
@@ -50,39 +53,37 @@ async function load() {
       color: 'error'
     })
   } finally {
-    if (seq === loadSeq && epoch === sessionEpoch.value) loading.value = false
+    if (seq === loadSeq && epoch === sessionEpoch.value) {
+      loading.value = false
+      if (catalogChrome) catalogChrome.loading.value = false
+    }
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  catalogChrome?.registerReload(load)
+  void load()
+})
+
+onBeforeUnmount(() => {
+  catalogChrome?.registerReload(null)
+  if (catalogChrome) catalogChrome.loading.value = false
+})
 
 watch(sessionEpoch, () => {
   loadSeq += 1
   clients.value = []
   stats.value = emptyStats()
   loading.value = false
+  if (catalogChrome) catalogChrome.loading.value = false
   void load()
 })
 </script>
 
 <template>
-  <div class="flex w-full flex-col gap-4 sm:gap-5">
-    <div class="flex flex-wrap items-center justify-end gap-1.5">
-      <UButton
-        icon="i-lucide-refresh-cw"
-        color="neutral"
-        variant="ghost"
-        square
-        aria-label="Atualizar dashboard"
-        :loading="loading"
-        @click="load"
-      />
-    </div>
-
-    <ClientsClientListDashboard
-      :clients="clients"
-      :stats="stats"
-      :loading="loading"
-    />
-  </div>
+  <ClientsClientListDashboard
+    :clients="clients"
+    :stats="stats"
+    :loading="loading"
+  />
 </template>

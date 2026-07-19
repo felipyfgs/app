@@ -23,11 +23,16 @@ const description = computed(() => recentRefreshConfirmDescription({
 </script>
 
 <template>
-  <UModal
+  <ShellConfirmModal
     v-model:open="open"
     title="Confirmar nova consulta"
     :description="description"
-    data-testid="recent-refresh-confirm-modal"
+    confirm-label="Confirmar consulta"
+    confirm-icon="i-lucide-cloud-download"
+    :loading="loading"
+    test-id="recent-refresh-confirm-modal"
+    confirm-test-id="recent-refresh-confirm"
+    @confirm="emit('confirm')"
   >
     <template #body>
       <UAlert
@@ -36,23 +41,5 @@ const description = computed(() => recentRefreshConfirmDescription({
         title="Consome 1 franquia — servidor pode bloquear se o intervalo mínimo não passou"
       />
     </template>
-    <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          label="Cancelar"
-          @click="() => { open = false }"
-        />
-        <UButton
-          color="primary"
-          label="Confirmar consulta"
-          icon="i-lucide-cloud-download"
-          :loading="loading"
-          data-testid="recent-refresh-confirm"
-          @click="emit('confirm')"
-        />
-      </div>
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 </template>

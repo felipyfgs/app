@@ -5,9 +5,9 @@
  */
 import * as z from 'zod'
 import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
-import DocsSectionNav from '~/components/navigation/DocsSectionNav.vue'
 import NavbarMoreActions from '~/components/navigation/NavbarMoreActions.vue'
 import type { ExportFilters, ExportJob } from '~/types/api'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 
 const api = useApi()
 const route = useRoute()
@@ -17,7 +17,7 @@ const toast = useToast()
 
 const items = ref<ExportJob[]>([])
 const page = ref(Math.max(1, Number(route.query.page) || 1))
-const perPage = 20
+const perPage = ref(20)
 const total = ref(0)
 const lastPage = ref(1)
 const loading = ref(false)
@@ -319,7 +319,7 @@ async function load(silent = false) {
   const epoch = sessionEpoch.value
   if (!silent) loading.value = true
   try {
-    const response = await api.exports.list({ page: page.value, per_page: perPage })
+    const response = await api.exports.list({ page: page.value, per_page: perPage.value })
     if (epoch !== sessionEpoch.value) return
     items.value = response.data
     total.value = response.meta.total
@@ -437,9 +437,26 @@ function openCreate() {
   createOpen.value = true
 }
 
+function submitCreateForm() {
+  const el = globalThis.document?.getElementById('export-create-form') as HTMLFormElement | null
+  el?.requestSubmit()
+}
+
 const { pause, resume } = useIntervalFn(() => {
   if (hasPending.value) load(true)
 }, 8000, { immediate: false })
+
+function setPerPage(next: number) {
+  const allowed = [10, 20, 50]
+  const target = allowed.includes(Number(next)) ? Number(next) : 20
+  if (perPage.value === target) return
+  perPage.value = target
+  if (page.value !== 1) {
+    page.value = 1
+    return
+  }
+  void load()
+}
 
 watch(hasPending, pending => (pending ? resume() : pause()), { immediate: true })
 watch(page, () => void load())
@@ -467,12 +484,9 @@ onBeforeUnmount(pause)
 </script>
 
 <template>
-  <UDashboardPanel id="exports">
+  <ShellPagePanel id="exports">
     <template #header>
-      <UDashboardNavbar title="Exportações" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
+      <ShellPageNavbar title="Exportações">
         <template #right>
           <UButton
             v-if="canCreateExport"
@@ -489,6 +503,11 @@ onBeforeUnmount(pause)
             aria-label="Pedir ZIP"
             @click="openCreate"
           />
+          <ShellNavbarRefresh
+            :loading="loading"
+            aria-label="Atualizar lista"
+            @click="() => { void load() }"
+          />
           <NavbarMoreActions
             :items="[{
               id: 'exports-refresh',
@@ -498,38 +517,34 @@ onBeforeUnmount(pause)
             }]"
           />
         </template>
-      </UDashboardNavbar>
-
-      <UDashboardToolbar data-testid="docs-section-tabs">
-        <DocsSectionNav />
-      </UDashboardToolbar>
+      </ShellPageNavbar>
     </template>
 
     <template #body>
-      <UAlert
+      <ShellLoadError
         v-if="loadError"
-        class="mb-4"
         :color="items.length ? 'warning' : 'error'"
-        icon="i-lucide-wifi-off"
         :title="loadError"
-        :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: () => load() }]"
+        @retry="() => load()"
       />
 
-      <UTable
-        v-if="loading || items.length"
-        data-testid="data-table"
+      <ShellDataTable
+        v-if="loading || items.length || !loadError"
+        test-id="data-table"
+        ui-preset="monitoring-compact"
+        primary-column-id="when"
+        status-column-id="status"
+        :summary-column-ids="['scope', 'package']"
+        :columns="columns"
         :data="items"
         :loading="loading"
-        :columns="columns"
-        class="shrink-0"
-        :ui="{
-          base: 'table-fixed border-separate border-spacing-0',
-          thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-          tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'px-3 py-1.5 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'px-3 py-1 border-b border-default',
-          separator: 'h-0'
-        }"
+        :page="page"
+        :total="total"
+        :items-per-page="perPage"
+        per-page-aria-label="Exportações por página"
+        @update:page="page = $event"
+        @update:items-per-page="setPerPage"
+        @retry="() => load()"
       >
         <template #when-cell="{ row }">
           <div class="text-sm">
@@ -626,39 +641,55 @@ onBeforeUnmount(pause)
             </span>
           </div>
         </template>
-      </UTable>
+        <template #empty>
+          <ShellListEmpty
+            v-if="!loadError"
+            kind="empty"
+            title="Nenhum ZIP ainda"
+            description="Peça um pacote ZIP dos documentos ou vá ao fechamento mensal."
+          >
+            <template #actions>
+              <UButton
+                v-if="canCreateExport"
+                label="Pedir primeiro ZIP"
+                icon="i-lucide-plus"
+                @click="openCreate"
+              />
+              <UButton
+                to="/closing"
+                color="neutral"
+                variant="soft"
+                label="Ir ao fechamento mensal"
+                icon="i-lucide-calendar-clock"
+              />
+            </template>
+          </ShellListEmpty>
+        </template>
+        <template #footer>
+          <span class="tabular-nums">{{ total }}</span> exportação(ões)
+          <template v-if="lastPage > 1">
+            <span class="text-dimmed"> · </span>
+            página {{ page }} de {{ lastPage }}
+          </template>
+        </template>
+      </ShellDataTable>
 
-      <UEmpty
-        v-if="!loading && !loadError && !items.length"
-        icon="i-lucide-package-open"
-        title="Nenhum ZIP ainda"
-      >
-        <div class="flex flex-wrap justify-center gap-2">
-          <UButton
-            v-if="canCreateExport"
-            label="Pedir primeiro ZIP"
-            icon="i-lucide-plus"
-            @click="openCreate"
-          />
-          <UButton
-            to="/closing"
-            color="neutral"
-            variant="soft"
-            label="Ir ao fechamento mensal"
-            icon="i-lucide-calendar-clock"
-          />
-        </div>
-      </UEmpty>
-
-      <UModal
+      <ShellFormModal
         v-if="canCreateExport"
         v-model:open="createOpen"
         title="Pedir pacote ZIP"
         description="Recorte dos documentos."
-        :ui="{ content: 'sm:max-w-lg' }"
+        content-class="sm:max-w-lg"
+        submit-label="Enfileirar ZIP"
+        submit-icon="i-lucide-package"
+        :loading="creating"
+        :disabled="creating"
+        :show-default-footer="false"
+        @cancel="() => { createOpen = false }"
       >
         <template #body>
           <UForm
+            id="export-create-form"
             :schema="schema"
             :state="state"
             class="space-y-5"
@@ -779,42 +810,19 @@ onBeforeUnmount(pause)
                 </UFormField>
               </div>
             </div>
-
-            <div class="flex justify-end gap-2 pt-1">
-              <UButton
-                color="neutral"
-                variant="subtle"
-                type="button"
-                label="Cancelar"
-                :disabled="creating"
-                @click="() => { createOpen = false }"
-              />
-              <UButton
-                type="submit"
-                icon="i-lucide-package"
-                label="Enfileirar ZIP"
-                :loading="creating"
-                :disabled="creating"
-              />
-            </div>
           </UForm>
         </template>
-      </UModal>
-
-      <div
-        v-if="total"
-        class="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4"
-      >
-        <p class="text-sm text-muted">
-          {{ total }} exportação(ões) · página {{ page }} de {{ lastPage }}
-        </p>
-        <UPagination
-          v-if="lastPage > 1"
-          v-model:page="page"
-          :total="total"
-          :items-per-page="perPage"
-        />
-      </div>
+        <template #footer>
+          <ShellModalFooter
+            submit-label="Enfileirar ZIP"
+            submit-icon="i-lucide-package"
+            :loading="creating"
+            :disabled="creating"
+            @cancel="() => { createOpen = false }"
+            @submit="submitCreateForm"
+          />
+        </template>
+      </ShellFormModal>
     </template>
-  </UDashboardPanel>
+  </ShellPagePanel>
 </template>

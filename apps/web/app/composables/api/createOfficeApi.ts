@@ -187,10 +187,14 @@ export function createOfficeApi(client: ApiClient) {
           }>('/api/v1/office/settings/credential')
           return { data: res.data?.credential ?? null }
         },
-        upload: async (pfx: File, password: string, options?: { password_confirmation?: string }) => {
+        upload: async (pfx: File, password: string, options: {
+          consent_accepted: boolean
+          password_confirmation?: string
+        }) => {
           const body = new FormData()
           body.append('pfx', pfx)
           body.append('password', password)
+          body.append('consent_accepted', options.consent_accepted ? '1' : '0')
           if (options?.password_confirmation) {
             body.append('password_confirmation', options.password_confirmation)
           }
@@ -200,12 +204,16 @@ export function createOfficeApi(client: ApiClient) {
           return { data: unwrapCredential(res.data) }
         },
         replace: async (pfx: File, password: string, options?: {
+          consent_accepted?: boolean
           password_confirmation?: string
           reconfirm_password?: string
         }) => {
           const body = new FormData()
           body.append('pfx', pfx)
           body.append('password', password)
+          if (options?.consent_accepted != null) {
+            body.append('consent_accepted', options.consent_accepted ? '1' : '0')
+          }
           if (options?.password_confirmation) {
             body.append('password_confirmation', options.password_confirmation)
           }

@@ -77,19 +77,21 @@ const profile65 = computed(() =>
 const recoveryList = useTemplateRef('recoveryList')
 const recoveriesFeed = usePagedTable<SvrsNfceRecovery>({
   getKey: row => row.id,
-  load: async ({ page }) => laravelPageBatch(await api.outbound.svrsNfce.recoveries({
+  pageSize: 20,
+  load: async ({ page, pageSize }) => laravelPageBatch(await api.outbound.svrsNfce.recoveries({
     status: statusFilter.value && statusFilter.value !== STATUS_ALL
       ? statusFilter.value
       : undefined,
     client_id: props.clientId,
     profile_id: profile65.value?.id,
     page,
-    per_page: 10
+    per_page: pageSize
   }))
 })
 
 const recoveriesFeedTotal = recoveriesFeed.total
 const recoveriesFeedPage = recoveriesFeed.page
+const recoveriesFeedPageSize = recoveriesFeed.pageSize
 const recoveries = recoveriesFeed.rows
 const loading = computed(() => overviewLoading.value || recoveriesFeed.pendingInitial.value)
 const error = computed(() => recoveriesFeed.error.value
@@ -624,8 +626,10 @@ watch(
     <ShellTableFooter
       :total="recoveriesFeedTotal"
       :page="recoveriesFeedPage"
-      :items-per-page="10"
+      :items-per-page="recoveriesFeedPageSize"
+      per-page-aria-label="Recuperações por página"
       @update:page="(p) => recoveriesFeed.setPage(p)"
+      @update:items-per-page="(n) => recoveriesFeed.setPageSize(n)"
     />
   </div>
 </template>

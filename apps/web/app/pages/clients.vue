@@ -1,17 +1,21 @@
 <script setup lang="ts">
 /**
- * Shell de catálogo de clientes — arquétipo Settings do template.
- * Fonte: .local/reference/nuxt-dashboard-template/app/pages/settings.vue
- *   UDashboardNavbar + UDashboardToolbar + UNavigationMenu (to/exact) + NuxtPage
+ * Shell de catálogo de clientes — arquétipo Lista do template.
+ * A navegação Lista/Dashboard pertence exclusivamente ao sidebar.
  *
  * Detalhe /clients/:id tem painel próprio e não usa este chrome.
  */
-import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
-import type { NavLayerItem } from '~/utils/navigation-hierarchy'
+import {
+  clientsCatalogChromeKey,
+  createClientsCatalogChrome
+} from '~/composables/useClientsCatalogChrome'
 
 const route = useRoute()
 const router = useRouter()
 const { canManageClients, openClientCreate } = useDashboard()
+const catalogChrome = createClientsCatalogChrome()
+provide(clientsCatalogChromeKey, catalogChrome)
+const dashboardLoading = catalogChrome.loading
 
 /** Lista e Dashboard compartilham o shell; detalhe do cliente não. */
 const isCatalog = computed(() => {
@@ -19,50 +23,45 @@ const isCatalog = computed(() => {
   return path === '/clients' || path === '/clients/dashboard'
 })
 
-const links: NavLayerItem[] = [
-  {
-    id: 'clients-list',
-    label: 'Lista',
-    icon: 'i-lucide-list',
-    to: '/clients',
-    exact: true
-  },
-  {
-    id: 'clients-dashboard',
-    label: 'Dashboard',
-    icon: 'i-lucide-layout-dashboard',
-    to: '/clients/dashboard'
-  }
-]
+/** Lista = customers.vue: conteúdo direto no #body (não via NuxtPage). */
+const isList = computed(() => {
+  const path = route.path.replace(/\/$/, '') || '/'
+  return path === '/clients'
+})
+
+const isDashboard = computed(() => {
+  const path = route.path.replace(/\/$/, '') || '/'
+  return path === '/clients/dashboard'
+})
 
 /**
- * Compatibilidade de entrada: remove queries antigas do catálogo e mantém a
- * URL canônica. `?new=1` ainda abre o modal uma vez antes de ser descartado.
+ * Compatibilidade: `?new=1` abre o modal uma vez e some da URL.
+ * Demais query params (filtros da lista) são preservados.
  */
 watch(
   () => route.fullPath,
   async () => {
-    if (!isCatalog.value || !Object.keys(route.query).length) return
-    const shouldOpenCreate = route.path === '/clients' && route.query.new === '1'
-    await router.replace({ path: route.path })
-    if (shouldOpenCreate) await openClientCreate()
+    if (!isCatalog.value || route.path !== '/clients' || route.query.new !== '1') return
+    const { new: _new, ...rest } = route.query
+    await router.replace({ path: route.path, query: rest })
+    await openClientCreate()
   },
   { immediate: true }
 )
 </script>
 
 <template>
-  <!--
-    Hierarquia: navbar + tabs Lista/Dashboard (settings.vue / customers).
-    Casca: UDashboardPanel (inline template).
-  -->
-  <UDashboardPanel v-if="isCatalog" id="clients">
+  <ShellPagePanel v-if="isCatalog" id="clients">
     <template #header>
-      <UDashboardNavbar title="Clientes" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
+      <ShellPageNavbar title="Clientes">
         <template #right>
+          <ShellNavbarRefresh
+            v-if="isDashboard"
+            :loading="dashboardLoading"
+            aria-label="Atualizar dashboard"
+            test-id="clients-dashboard-refresh"
+            @click="catalogChrome.reload"
+          />
           <UButton
             v-if="canManageClients"
             icon="i-lucide-plus"
@@ -70,22 +69,14 @@ watch(
             @click="openClientCreate"
           />
         </template>
-      </UDashboardNavbar>
-
-      <UDashboardToolbar data-testid="clients-section-tabs">
-        <SectionNavigation
-          :items="links"
-          :path="route.fullPath"
-          aria-label="Navegação de clientes"
-          test-id="clients-section-navigation"
-        />
-      </UDashboardToolbar>
+      </ShellPageNavbar>
     </template>
 
     <template #body>
-      <NuxtPage />
+      <ClientsClientCatalogList v-if="isList" />
+      <NuxtPage v-else />
     </template>
-  </UDashboardPanel>
+  </ShellPagePanel>
 
   <!-- /clients/:id… — painel próprio em [id].vue -->
   <NuxtPage v-else />

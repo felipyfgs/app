@@ -62,15 +62,18 @@ watch(() => [props.open, props.clientId] as const, ([open]) => {
 </script>
 
 <template>
-  <UModal
+  <ShellScrollableModal
     :open="open"
     title="Declaração DEFIS e recibo"
     description="Escolha uma declaração já listada; abrir este modal não consulta a SERPRO."
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-xl' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-xl"
+    test-id="defis-specific-declaration-modal"
+    :show-default-footer="false"
     @update:open="emit('update:open', $event)"
+    @cancel="emit('update:open', false)"
   >
     <template #body>
-      <div class="space-y-4" data-testid="defis-specific-declaration-modal">
+      <div class="space-y-4">
         <p class="font-medium text-highlighted">
           {{ clientName || `Cliente #${clientId || '—'}` }}
         </p>
@@ -85,9 +88,7 @@ watch(() => [props.open, props.clientId] as const, ([open]) => {
             />
           </template>
         </UAlert>
-        <div v-else-if="loading" class="space-y-2" aria-label="Carregando declarações DEFIS locais">
-          <USkeleton class="h-10 w-full" /><USkeleton class="h-10 w-full" />
-        </div>
+        <ShellLoadingModalBody v-else-if="loading" :rows="2" />
         <template v-else>
           <div v-if="history?.references.length" class="divide-y divide-default rounded-lg border border-default">
             <div v-for="item in history.references" :key="item.reference_id" class="flex items-center justify-between gap-3 p-3">
@@ -152,5 +153,12 @@ watch(() => [props.open, props.clientId] as const, ([open]) => {
         </template>
       </div>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        cancel-label="Fechar"
+        :show-submit="false"
+        @cancel="emit('update:open', false)"
+      />
+    </template>
+  </ShellScrollableModal>
 </template>

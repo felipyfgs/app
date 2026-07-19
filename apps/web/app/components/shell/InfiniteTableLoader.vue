@@ -1,4 +1,9 @@
 <script setup lang="ts">
+/**
+ * Sentinel IntersectionObserver para listas cursor / «carregar mais».
+ * Auto-import: ShellInfiniteTableLoader.
+ * Nenhum consumidor ativo nesta change — disponível para docs cursor / syncs.
+ */
 const props = defineProps<{ loading: boolean, hasMore: boolean }>()
 const emit = defineEmits<{ load: [] }>()
 const sentinel = ref<HTMLElement | null>(null)

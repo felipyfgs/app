@@ -98,7 +98,7 @@ export const MONITORING_LIST_QUERY_SCHEMA: ListFilterQuerySchema = {
     coverage: 'all',
     modality: 'all',
     page: 1,
-    per_page: 10,
+    per_page: 20,
     sort: 'legal_name',
     sort_direction: 'asc'
   },
@@ -110,6 +110,9 @@ export const CLIENTS_LIST_QUERY_SCHEMA: ListFilterQuerySchema = {
     q: '',
     status: 'all',
     operational_filter: 'total',
+    category_ids: '',
+    tax_regimes: '',
+    procuracao_statuses: '',
     page: 1,
     per_page: 20,
     sort: 'legal_name',

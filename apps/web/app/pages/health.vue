@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui'
-import OperationsSectionNav from '~/components/navigation/OperationsSectionNav.vue'
 import type { InboxItem, InboxItemType, InboxSeverity } from '~/types/api'
 import { resolveInboxItemLink, SERPRO_INBOX_TYPE_FILTERS } from '~/utils/inbox-links'
-import { TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+import {
+  TABLE_CELL_BADGE_CLASS,
+  TABLE_CELL_BADGE_UI
+} from '~/utils/table-ui'
+import { truncateText } from '~/utils/format'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import {
   LIST_FILTER_ACTIONS_ROW,
   LIST_FILTER_TOOLBAR_STACK
@@ -210,31 +214,20 @@ watch([severityFilter, typeFilter], () => {
 </script>
 
 <template>
-  <UDashboardPanel id="health">
+  <ShellPagePanel id="health">
     <template #header>
-      <UDashboardNavbar title="Saúde operacional" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
+      <ShellPageNavbar title="Saúde operacional">
         <template #right>
-          <UTooltip text="Atualizar inbox">
-            <UButton
-              icon="i-lucide-refresh-cw"
-              color="neutral"
-              variant="ghost"
-              square
-              aria-label="Atualizar inbox operacional"
-              :loading="loading"
-              @click="load(true)"
-            />
-          </UTooltip>
+          <ShellNavbarRefresh
+            :loading="loading"
+            aria-label="Atualizar inbox operacional"
+            @click="load(true)"
+          />
         </template>
-      </UDashboardNavbar>
+      </ShellPageNavbar>
+    </template>
 
-      <UDashboardToolbar data-testid="operations-section-tabs">
-        <OperationsSectionNav />
-      </UDashboardToolbar>
-
+    <template #toolbar>
       <UDashboardToolbar data-testid="page-toolbar">
         <div
           :class="LIST_FILTER_TOOLBAR_STACK"
@@ -322,21 +315,21 @@ watch([severityFilter, typeFilter], () => {
         title="Nenhum problema operacional"
       />
 
-      <UTable
+      <ShellDataTable
         v-else
-        data-testid="data-table"
+        test-id="data-table"
+        ui-preset="monitoring-compact"
+        table-class="min-w-0 w-full"
+        primary-column-id="title"
+        status-column-id="severity"
+        :summary-column-ids="['type', 'occurred_at']"
+        :columns="columns"
         :data="items"
         :loading="loading"
-        :columns="columns"
-        class="shrink-0 min-w-0 w-full"
-        :ui="{
-          base: 'table-fixed border-separate border-spacing-0',
-          thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-          tbody: '[&>tr]:last:[&>td]:border-b-0',
-          th: 'px-3 py-1.5 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-          td: 'px-3 py-1 border-b border-default',
-          separator: 'h-0'
-        }"
+        :page="1"
+        :total="items.length"
+        :items-per-page="items.length || 1"
+        :show-footer="false"
         @select="selectRow"
       >
         <template #severity-cell="{ row }">
@@ -355,12 +348,18 @@ watch([severityFilter, typeFilter], () => {
           <span class="text-sm text-muted">{{ typeLabel(row.original.type) }}</span>
         </template>
         <template #title-cell="{ row }">
-          <div class="min-w-0">
-            <p class="truncate font-medium text-highlighted">
-              {{ row.original.title }}
+          <div class="min-w-0 max-w-md">
+            <p
+              class="truncate font-medium text-highlighted"
+              :title="row.original.title || undefined"
+            >
+              {{ truncateText(row.original.title, 48) || row.original.title || '—' }}
             </p>
-            <p class="truncate text-xs text-muted">
-              {{ row.original.body }}
+            <p
+              class="truncate text-xs text-muted"
+              :title="row.original.body || undefined"
+            >
+              {{ truncateText(row.original.body, 64) || row.original.body }}
             </p>
           </div>
         </template>
@@ -379,7 +378,7 @@ watch([severityFilter, typeFilter], () => {
             @click.stop
           />
         </template>
-      </UTable>
+      </ShellDataTable>
 
       <div v-if="cursor" class="mt-4 flex justify-center">
         <UButton
@@ -391,5 +390,5 @@ watch([severityFilter, typeFilter], () => {
         />
       </div>
     </template>
-  </UDashboardPanel>
+  </ShellPagePanel>
 </template>

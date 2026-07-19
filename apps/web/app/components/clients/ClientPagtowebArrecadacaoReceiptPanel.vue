@@ -178,11 +178,15 @@ watch(() => props.clientId, () => void load(), { immediate: true })
     </template>
   </UPageCard>
 
-  <UModal
+  <ShellConfirmModal
     v-model:open="confirmOpen"
     title="Confirmar solicitação"
     description="A consulta será enviada agora e pode consumir uma chamada do serviço."
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    confirm-label="Confirmar solicitação"
+    confirm-icon="i-lucide-check"
+    :loading="requesting"
+    @confirm="confirmRequest"
   >
     <template #body>
       <div class="space-y-3">
@@ -200,20 +204,5 @@ watch(() => props.clientId, () => void load(), { immediate: true })
         </p>
       </div>
     </template>
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        @click="() => { confirmOpen = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-check"
-        label="Confirmar solicitação"
-        :loading="requesting"
-        @click="confirmRequest"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 </template>

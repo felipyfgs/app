@@ -3,10 +3,11 @@ import type { MeUser } from '~/types/api'
 import { accountNavigationItems, accountNavigationTree } from '~/utils/account-navigation'
 import { lacksOfficeContext } from '~/utils/auth-redirect'
 import { DOCS_NAV_ITEMS, OPERATIONS_NAV_ITEMS } from '~/utils/docs-operations-navigation'
-import { FISCAL_NAV_ITEMS } from '~/utils/fiscal-navigation'
+import { fiscalNavigationItems } from '~/utils/fiscal-navigation'
 import {
   flattenNavLeaves,
   groupEntryTo,
+  isNavLeaf,
   isNavTabGroup,
   pathMatchesLeaf,
   type NavLeafDestination
@@ -17,6 +18,7 @@ import {
   canManageClients,
   canViewWork
 } from '~/utils/permissions'
+import { SERPRO_NAV_ITEMS } from '~/utils/serpro-navigation'
 import { workNavigationItems } from '~/utils/work-navigation'
 
 export interface NavDestination {
@@ -29,8 +31,8 @@ export interface NavDestination {
   exact?: boolean
   /** Força estado ativo em destinos com detalhe dinâmico. */
   active?: boolean
-  /** Grupo colapsável no estilo Settings do template (UNavigationMenu type=trigger). */
-  type?: 'trigger'
+  /** Item estrutural nativo do UNavigationMenu vertical. */
+  type?: 'trigger' | 'label'
   defaultOpen?: boolean
   children?: NavDestination[]
 }
@@ -53,30 +55,27 @@ function leafToDestination(leaf: NavLeafDestination, path: string): NavDestinati
   }
 }
 
-/** Destinos do grupo Fiscal (grupos canônicos → entrada do grupo). */
-export function monitoringDestinations(path = ''): NavDestination[] {
-  const monitoringOpen = !path || path === '/monitoring' || path.startsWith('/monitoring/')
+/** Contextos fiscais globais sob um único acordeão Monitoramento. */
+export function monitoringDestinations(
+  user?: MeUser | null,
+  path = ''
+): NavDestination[] {
+  const contexts = fiscalNavigationItems(user).filter(isNavLeaf)
+  if (!contexts.length) return []
+  const monitoringActive = path === '/monitoring' || path.startsWith('/monitoring/')
+
   return [{
     id: 'monitoring',
-    label: 'Fiscal',
+    label: 'Monitoramento',
     icon: 'i-lucide-radar',
     type: 'trigger',
-    defaultOpen: monitoringOpen,
-    children: FISCAL_NAV_ITEMS.filter(isNavTabGroup).map((group) => {
-      const active = path
-        ? group.children.some(child =>
-            pathMatchesLeaf(path, child)
-            // Detalhe de cliente fiscal destaca o grupo Visão geral (Dashboard).
-            || (child.to === '/monitoring' && path.startsWith('/monitoring/clients'))
-          )
-        : false
-      return {
-        id: group.id,
-        label: group.label,
-        icon: group.icon || 'i-lucide-circle',
-        to: groupEntryTo(group),
-        active: path ? active : undefined
+    defaultOpen: monitoringActive,
+    children: contexts.map((leaf) => {
+      const destination = leafToDestination(leaf, path)
+      if (leaf.to === '/monitoring' && path.startsWith('/monitoring/clients')) {
+        destination.active = true
       }
+      return destination
     })
   }]
 }
@@ -96,11 +95,23 @@ function platformAdminDestinations(path = ''): NavDestination[] {
         to: '/admin/offices'
       },
       {
-        id: 'platform-serpro-console',
-        label: 'SERPRO',
-        icon: 'i-lucide-gauge',
-        to: '/admin/serpro'
-      }
+        id: 'platform-fiscal-modules',
+        label: 'Módulos fiscais',
+        icon: 'i-lucide-blocks',
+        to: '/admin/fiscal-modules'
+      },
+      ...SERPRO_NAV_ITEMS.map(item => ({
+        id: `platform-${item.id}`,
+        label: `SERPRO · ${item.label}`,
+        icon: item.icon || 'i-lucide-gauge',
+        to: isNavTabGroup(item) ? groupEntryTo(item) : item.to,
+        exact: !isNavTabGroup(item) ? item.exact : undefined,
+        active: path
+          ? (isNavTabGroup(item)
+              ? item.children.some(child => pathMatchesLeaf(path, child))
+              : pathMatchesLeaf(path, item))
+          : undefined
+      }))
     ]
   }]
 }
@@ -172,7 +183,7 @@ export function mainDestinations(
         }
       ]
     },
-    ...monitoringDestinations(path),
+    ...monitoringDestinations(user, path),
     {
       id: 'docs',
       label: 'Documentos',
@@ -282,23 +293,17 @@ export function flattenDestinations(destinations: NavDestination[]): NavDestinat
 
 /**
  * Destinos folha para busca global / atalhos.
- * Expande grupos fiscais para todos os módulos (não só as 5 entradas da sidebar).
+ * Usa as mesmas folhas do sidebar para manter busca, permissões e navegação
+ * visual sincronizadas.
  */
 export function searchableDestinations(
   user?: MeUser | null,
   options?: { path?: string }
 ): NavDestination[] {
-  const path = options?.path || ''
   const tree = mainDestinations(user, options)
   const out: NavDestination[] = []
 
   for (const item of tree) {
-    if (item.id === 'monitoring') {
-      out.push(
-        ...flattenNavLeaves(FISCAL_NAV_ITEMS).map(leaf => leafToDestination(leaf, path))
-      )
-      continue
-    }
     if (item.children?.length) {
       out.push(...flattenDestinations(item.children))
     } else {
@@ -344,6 +349,15 @@ export function toNavigationItems(
         : item.external
           ? onSelect
           : undefined
+    }
+
+    if (item.type === 'label') {
+      return {
+        ...base,
+        type: 'label' as const,
+        to: undefined,
+        onSelect: undefined
+      }
     }
 
     if (item.type === 'trigger' && item.children?.length) {

@@ -1,44 +1,37 @@
 <script setup lang="ts">
 /**
- * Shell unificado de perfil pessoal e configurações do escritório.
- * Arquétipo: `.local/reference/nuxt-dashboard-template/app/pages/settings.vue`.
+ * Shell da Conta — arquétipo settings do Nuxt UI Dashboard.
+ * Fonte: `.local/reference/nuxt-dashboard-template/app/pages/settings.vue`
+ * Uma seção = um path (sem subtabs).
  */
-import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
-import { accountNavigationTree } from '~/utils/account-navigation'
+import { accountNavigationMenu } from '~/utils/account-navigation'
 
-const route = useRoute()
 const { me } = useDashboard()
-const links = computed(() => accountNavigationTree(me.value))
+
+const links = computed(() => accountNavigationMenu(me.value))
 </script>
 
 <template>
-  <UDashboardPanel
+  <ShellSettingsShell
     id="account"
-    data-testid="account-panel"
-    :ui="{ body: 'lg:py-12' }"
+    title="Conta"
+    width="comfortable"
+    test-id="account-panel"
+    toolbar-test-id="account-section-tabs"
   >
-    <template #header>
-      <UDashboardNavbar title="Conta" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-      </UDashboardNavbar>
-
-      <UDashboardToolbar data-testid="account-section-tabs">
-        <SectionNavigation
-          :items="links"
-          :path="route.fullPath"
-          aria-label="Navegação da conta"
-          subtabs-aria-label="Seções da conta"
-          test-id="account-section-navigation"
-        />
-      </UDashboardToolbar>
+    <template
+      v-if="links.length"
+      #toolbar
+    >
+      <UNavigationMenu
+        :items="links"
+        highlight
+        class="-mx-1 flex-1"
+        data-testid="account-section-navigation"
+        aria-label="Navegação da conta"
+      />
     </template>
 
-    <template #body>
-      <DashboardContent width="comfortable" class="gap-4 sm:gap-6 lg:gap-12">
-        <NuxtPage />
-      </DashboardContent>
-    </template>
-  </UDashboardPanel>
+    <NuxtPage />
+  </ShellSettingsShell>
 </template>

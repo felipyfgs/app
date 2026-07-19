@@ -3,11 +3,13 @@ const props = defineProps<{
   selectedClientIds: number[]
   selectedCount: number
   year: number
+  canUsePublicServices?: boolean
 }>()
 
 const emit = defineEmits<{
   clear: []
   refresh: []
+  publicServices: [clientId: number]
 }>()
 
 const { batchAutomatic, requestConsult } = usePgmeiMonitoring()
@@ -97,6 +99,16 @@ async function confirmQuery() {
       </template>
     </UButton>
     <UButton
+      v-if="selectedCount === 1 && canUsePublicServices"
+      size="sm"
+      color="neutral"
+      variant="outline"
+      icon="i-lucide-landmark"
+      label="Serviços MEI"
+      data-testid="mei-public-services-open"
+      @click="emit('publicServices', selectedClientIds[0]!)"
+    />
+    <UButton
       size="sm"
       color="primary"
       variant="soft"
@@ -116,11 +128,15 @@ async function confirmQuery() {
     />
   </div>
 
-  <UModal
+  <ShellConfirmModal
     v-model:open="confirmOpen"
     title="Confirmar consulta de dívida ativa"
     :description="`A consulta à SERPRO para ${selectedCount} cliente(s), ano ${year}, é explícita e pode ser faturável.`"
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    confirm-label="Confirmar consulta"
+    confirm-icon="i-lucide-refresh-cw"
+    :loading="querying"
+    @confirm="confirmQuery"
   >
     <template #body>
       <UAlert
@@ -134,21 +150,5 @@ async function confirmQuery() {
         </template>
       </UAlert>
     </template>
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        :disabled="querying"
-        @click="() => { confirmOpen = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-refresh-cw"
-        label="Confirmar consulta"
-        :loading="querying"
-        @click="confirmQuery"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 </template>

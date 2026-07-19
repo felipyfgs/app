@@ -41,14 +41,12 @@ onMounted(load)
 </script>
 
 <template>
-  <!-- Padrão members: naked header + subtle card de conteúdo -->
+  <!-- Chrome: ShellSectionHeader (template settings). -->
   <div>
-    <UPageCard
+    <ShellSectionHeader
       title="Assinatura"
       description="Plano e limites do escritório."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
+      test-id="settings-subscription-header"
     >
       <UButton
         to="/conta/consumo"
@@ -56,14 +54,13 @@ onMounted(load)
         label="Ver consumo"
         class="w-fit lg:ms-auto"
       />
-    </UPageCard>
+    </ShellSectionHeader>
 
-    <UAlert
+    <ShellLoadError
       v-if="loadError"
-      color="error"
-      icon="i-lucide-circle-x"
       :title="loadError"
-      class="mb-4"
+      test-id="subscription-load-error"
+      @retry="load"
     />
 
     <div

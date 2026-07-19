@@ -9,7 +9,6 @@
  *
  * Compat: `/work?task=N` → `/work/tasks/N` (preserva demais query).
  */
-import WorkSectionNav from '~/components/navigation/WorkSectionNav.vue'
 import { breakpointsTailwind } from '@vueuse/core'
 import type { OperationalTaskDetail, OperationalTaskSummary, WorkDepartment } from '~/types/work'
 import type { DataTableFilterDefinition, DataTableFilterModel } from '~/types/data-table-filter'
@@ -381,7 +380,6 @@ watch(selectedTaskId, (id) => {
           root: 'flex-col items-stretch justify-start gap-2 py-2 overflow-x-auto min-h-0'
         }"
       >
-        <WorkSectionNav />
         <ShellScrollableTabs
           v-model="selectedTab"
           :items="tabs"

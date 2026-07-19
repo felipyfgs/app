@@ -7,6 +7,10 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { DeclarationsClientDetail, DeclarationsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
+import {
+  buildMonitoringConsultedColumn,
+  MONITORING_SHARED_COLUMN_LABELS
+} from '~/utils/monitoring-table-columns'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
@@ -36,6 +40,7 @@ const {
   allowsDocument,
   sorting,
   setPage,
+  setPerPage,
   refresh,
   applyFilters,
   applyQuickFilters,
@@ -120,6 +125,7 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
     id: 'client',
     header: ({ column }) => sortHeader('Cliente', column),
     enableHiding: false,
+    meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
@@ -184,6 +190,11 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
       || row.original.situation
     ) })
   },
+  buildMonitoringConsultedColumn<DeclarationsClientRow>({
+    getAt: row => row.last_consulted_at || row.last_snapshot_at,
+    format: 'datetime',
+    testId: 'declarations-last-consulted'
+  }),
   {
     id: 'actions',
     header: 'Ações',
@@ -249,15 +260,16 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
     :horizontal-scroll="true"
-    table-class="min-w-[960px]"
     empty-title="Nenhuma declaração"
     :column-labels="{
       obligation: 'Obrigação',
       due: 'Vencimento',
       delivery: 'Entrega',
-      open: 'Abertas'
+      open: 'Abertas',
+      ...MONITORING_SHARED_COLUMN_LABELS
     }"
     @update:page="setPage"
+    @update:per-page="setPerPage"
     @update:sorting="sorting = $event"
     @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"

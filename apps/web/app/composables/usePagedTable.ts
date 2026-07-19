@@ -39,6 +39,7 @@ export function laravelPageBatch<T>(payload: LaravelPagePayload<T>): PagedTableB
 
 export interface PagedTableRequest {
   page: number
+  pageSize: number
   signal: AbortSignal
 }
 
@@ -49,8 +50,11 @@ export interface UsePagedTableOptions<T> {
   pageSize?: number
 }
 
+const LIST_PER_PAGE_ALLOWED = [10, 20, 50] as const
+
 export function usePagedTable<T>(options: UsePagedTableOptions<T>) {
-  const pageSize = options.pageSize ?? 10
+  const defaultPageSize = options.pageSize ?? 20
+  const pageSize = ref(defaultPageSize)
   const rows = ref<T[]>([]) as Ref<T[]>
   const page = ref(1)
   const total = ref(0)
@@ -74,6 +78,7 @@ export function usePagedTable<T>(options: UsePagedTableOptions<T>) {
     try {
       const batch = await options.load({
         page: page.value,
+        pageSize: pageSize.value,
         signal: controller.signal
       })
       if (my !== seq) return
@@ -84,7 +89,7 @@ export function usePagedTable<T>(options: UsePagedTableOptions<T>) {
 
       if (typeof batch.lastPage === 'number') lastPage.value = Math.max(1, batch.lastPage)
       else if (typeof batch.total === 'number') {
-        lastPage.value = Math.max(1, Math.ceil(batch.total / pageSize))
+        lastPage.value = Math.max(1, Math.ceil(batch.total / pageSize.value))
       } else {
         lastPage.value = 1
       }
@@ -105,6 +110,16 @@ export function usePagedTable<T>(options: UsePagedTableOptions<T>) {
 
   async function setPage(p: number) {
     await load(Math.max(1, Math.floor(p)))
+  }
+
+  /** Troca «N por página» — volta à página 1 e recarrega. */
+  async function setPageSize(next: number) {
+    const target = LIST_PER_PAGE_ALLOWED.includes(Number(next) as 10 | 20 | 50)
+      ? Number(next)
+      : defaultPageSize
+    if (pageSize.value === target) return
+    pageSize.value = target
+    await load(1)
   }
 
   function reset() {
@@ -134,6 +149,7 @@ export function usePagedTable<T>(options: UsePagedTableOptions<T>) {
     load,
     resetAndLoad,
     setPage,
+    setPageSize,
     reset,
     retry
   }

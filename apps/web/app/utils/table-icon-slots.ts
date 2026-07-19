@@ -17,17 +17,32 @@ export const TABLE_ICON_SLOT_CLASS = 'inline-flex size-8 shrink-0 items-center j
 export const TABLE_ICON_GROUP_CLASS
   = 'inline-flex items-center rounded-md ring-1 ring-inset ring-default divide-x divide-default'
 
-type IconColor = 'neutral' | 'primary' | 'success' | 'warning' | 'error' | 'info'
+export const TABLE_ICON_GROUP_FILL_CLASS
+  = 'flex w-full min-w-0 items-center rounded-md ring-1 ring-inset ring-default divide-x divide-default'
 
-export function tableIconSlot(child: VNode | VNode[] | null) {
-  return h('div', { class: TABLE_ICON_SLOT_CLASS }, child ? (Array.isArray(child) ? child : [child]) : [])
+const TABLE_ICON_SLOT_FILL_CLASS = 'flex h-8 min-w-0 flex-1 items-center justify-center'
+
+type IconColor = 'neutral' | 'primary' | 'success' | 'warning' | 'error' | 'info'
+type IconVariant = 'ghost' | 'subtle' | 'outline' | 'soft' | 'solid'
+
+export function tableIconSlot(child: VNode | VNode[] | null, fill = false) {
+  return h(
+    'div',
+    { class: fill ? TABLE_ICON_SLOT_FILL_CLASS : TABLE_ICON_SLOT_CLASS },
+    child ? (Array.isArray(child) ? child : [child]) : []
+  )
 }
 
-export function tableIconGroup(slots: Array<VNode | null>, testId?: string) {
+export function tableIconGroup(
+  slots: Array<VNode | null>,
+  testId?: string,
+  options: { fill?: boolean } = {}
+) {
+  const fill = options.fill === true
   return h('div', {
-    class: TABLE_ICON_GROUP_CLASS,
+    class: fill ? TABLE_ICON_GROUP_FILL_CLASS : TABLE_ICON_GROUP_CLASS,
     ...(testId ? { 'data-testid': testId } : {})
-  }, slots.map(slot => tableIconSlot(slot)))
+  }, slots.map(slot => tableIconSlot(slot, fill)))
 }
 
 export function tableIconButton(args: {
@@ -35,21 +50,24 @@ export function tableIconButton(args: {
   icon: string
   testId: string
   color?: IconColor
+  variant?: IconVariant
   disabled?: boolean
   onClick?: () => void
   href?: string | null
   target?: string
   rel?: string
+  fill?: boolean
 }) {
   const disabled = args.disabled === true || (!args.onClick && !args.href)
+  // UButton icon + square — padrão Nuxt UI Dashboard (ghost, ícone centrado).
   return h(UTooltip, { text: args.label }, {
     default: () => h(UButton, {
-      'size': 'xs',
+      'size': 'sm',
       'color': args.color || 'neutral',
-      'variant': 'ghost',
+      'variant': args.variant || 'ghost',
       'icon': args.icon,
       'square': true,
-      'class': 'size-8',
+      'class': args.fill ? 'h-8 w-full justify-center' : 'size-8 justify-center',
       'aria-label': args.label,
       'disabled': disabled,
       'data-testid': args.testId,
@@ -67,16 +85,19 @@ export function tableIconMenu(args: {
   testId: string
   items: DropdownMenuItem[][]
   color?: IconColor
+  variant?: IconVariant
   disabled?: boolean
   align?: 'start' | 'end'
+  fill?: boolean
 }) {
+  // Docs Nuxt UI: DropdownMenu default slot = Button (ghost + icon).
   const trigger = () => h(UButton, {
-    'size': 'xs',
+    'size': 'sm',
     'color': args.color || 'neutral',
-    'variant': 'ghost',
+    'variant': args.variant || 'ghost',
     'icon': args.icon,
     'square': true,
-    'class': 'size-8',
+    'class': args.fill ? 'h-8 w-full justify-center' : 'size-8 justify-center',
     'aria-label': args.label,
     'disabled': args.disabled === true,
     'data-testid': args.testId

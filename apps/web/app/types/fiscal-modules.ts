@@ -49,15 +49,15 @@ export const FISCAL_PORTFOLIO_MODULE_KEYS: readonly FiscalPortfolioModuleKey[] =
 ] as const
 
 export const FISCAL_MODULE_LABELS: Record<FiscalModuleKey, string> = {
-  dashboard: 'Dashboard fiscal',
-  simples_mei: 'Simples / MEI',
-  dctfweb: 'DCTFWeb / MIT',
+  dashboard: 'Dashboard',
+  simples_mei: 'Simples Nacional | MEI',
+  dctfweb: 'DCTFWeb',
   installments: 'Parcelamentos',
-  sitfis: 'Situação fiscal',
-  mailbox: 'Caixa postal',
+  sitfis: 'Situação Fiscal',
+  mailbox: 'Caixas Postais',
   declarations: 'Declarações',
   guides: 'Guias',
-  fgts: 'FGTS / eSocial'
+  fgts: 'FGTS Digital'
 }
 
 export const FISCAL_MODULE_PATHS: Record<FiscalModuleKey, string> = {

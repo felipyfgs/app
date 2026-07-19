@@ -87,14 +87,14 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     ...MONITORING_LIST_QUERY_SCHEMA,
     defaults: {
       ...MONITORING_LIST_QUERY_SCHEMA.defaults,
-      per_page: options.perPage ?? 10
+      per_page: options.perPage ?? 20
     }
   }
   const listQuery = useListFilterQuery(monitoringQuerySchema)
 
   const page = ref(1)
-  /** pageSize alinhado ao template customers (10). */
-  const perPage = ref(options.perPage ?? 10)
+  /** pageSize alinhado à lista de clientes (20). */
+  const perPage = ref(options.perPage ?? 20)
   const lastPage = ref(1)
   const q = ref('')
   const situation = ref('all')
@@ -118,7 +118,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     modality.value = String(state.modality ?? 'all')
     clientIds.value = decodeClientIds(String(state.client_id ?? ''))
     page.value = Math.max(1, Number(state.page) || 1)
-    perPage.value = Math.max(1, Number(state.per_page) || (options.perPage ?? 10))
+    perPage.value = Math.max(1, Number(state.per_page) || (options.perPage ?? 20))
     const apiSort = String(state.sort ?? 'legal_name')
     const columnId = SORT_API_TO_COLUMN[apiSort] || 'client'
     const dir = String(state.sort_direction ?? 'asc') === 'desc'
@@ -374,6 +374,17 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     lastPage.value = clientsFeed.lastPage.value
   }
 
+  /** Troca «N por página» — volta à página 1 e recarrega (padrão lista de clientes). */
+  async function setPerPage(next: number) {
+    const allowed = [10, 20, 50]
+    const target = allowed.includes(Number(next)) ? Number(next) : (options.perPage ?? 20)
+    if (perPage.value === target) return
+    perPage.value = target
+    page.value = 1
+    await syncUrl()
+    await loadClients()
+  }
+
   async function load(opts?: { silent?: boolean }) {
     await Promise.all([loadOverview(), loadClients(opts)])
   }
@@ -597,6 +608,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     hasPreviousData,
     isFiltered,
     setPage,
+    setPerPage,
     retry: retryClients,
     load,
     loadClients,

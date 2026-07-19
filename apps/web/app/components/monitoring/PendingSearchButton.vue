@@ -150,12 +150,17 @@ async function submitSearch() {
     </template>
   </UButton>
 
-  <UModal
+  <ShellConfirmModal
     v-if="visible"
     v-model:open="open"
     :title="confirmationTitle"
     :description="`Será solicitada uma consulta de leitura para ${targets.length} cliente(s) ${scopeLabel}.`"
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    :confirm-label="isDctfweb ? 'Confirmar consulta' : 'Confirmar busca'"
+    confirm-icon="i-lucide-search-check"
+    :loading="searching"
+    confirm-test-id="monitoring-pending-search-confirm"
+    @confirm="submitSearch"
   >
     <template #body>
       <UAlert
@@ -169,23 +174,5 @@ async function submitSearch() {
         </template>
       </UAlert>
     </template>
-
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        :disabled="searching"
-        @click="() => { open = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-search-check"
-        :label="isDctfweb ? 'Confirmar consulta' : 'Confirmar busca'"
-        :loading="searching"
-        data-testid="monitoring-pending-search-confirm"
-        @click="submitSearch"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 </template>

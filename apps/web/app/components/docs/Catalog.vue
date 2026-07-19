@@ -11,8 +11,8 @@
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { Row } from '@tanstack/table-core'
 import type { NfseNote } from '~/types/api'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import { documentKindLabel } from '~/utils/document-kinds'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
 const props = withDefaults(defineProps<{
   notes: NfseNote[]
@@ -42,7 +42,6 @@ const UCheckbox = resolveComponent('UCheckbox')
 const UButton = resolveComponent('UButton')
 const UDropdownMenu = resolveComponent('UDropdownMenu')
 
-const table = useTemplateRef('table')
 const toast = useToast()
 
 /** Seleção nativa UTable (id da linha = access_key). */
@@ -221,8 +220,8 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
       enableSorting: false,
       meta: {
         class: {
-          th: 'min-w-28 w-[10%]',
-          td: 'min-w-28 w-[10%]'
+          th: 'w-36 min-w-28',
+          td: 'w-36 min-w-28'
         }
       }
     },
@@ -257,8 +256,8 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
       enableSorting: false,
       meta: {
         class: {
-          th: 'max-w-52 min-w-36 w-[18%]',
-          td: 'max-w-52 min-w-36 w-[18%]'
+          th: 'min-w-36 w-full',
+          td: 'min-w-36 w-full overflow-hidden'
         }
       }
     },
@@ -270,8 +269,8 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
       enableSorting: false,
       meta: {
         class: {
-          th: 'max-w-52 min-w-36 w-[18%] hidden sm:table-cell',
-          td: 'max-w-52 min-w-36 w-[18%] hidden sm:table-cell'
+          th: 'w-52 min-w-36 hidden sm:table-cell',
+          td: 'w-52 min-w-36 overflow-hidden hidden sm:table-cell'
         }
       }
     },
@@ -364,16 +363,24 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
       :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: () => emit('retry') }]"
     />
 
-    <UTable
+    <ShellDataTable
       v-if="loading || notes.length"
-      ref="table"
       v-model:row-selection="rowSelection"
+      ui-preset="dashboard"
+      test-id="docs-catalog-table"
+      primary-column-id="number"
+      status-column-id="status"
+      :summary-column-ids="['kind', 'issued_at', 'competence', 'issuer', 'service_amount']"
+      :selection-enabled="true"
       :data="notes"
       :columns="columns"
       :loading="!!loading"
+      :page="1"
+      :total="total || notes.length"
+      :items-per-page="pageSize"
+      :show-footer="false"
       :get-row-id="(row: NfseNote) => row.access_key"
-      class="shrink-0"
-      :ui="DASHBOARD_TABLE_UI"
+      @retry="emit('retry')"
     >
       <template #kind-cell="{ row }">
         <UBadge
@@ -496,7 +503,20 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
         </div>
         <span v-else class="text-muted">—</span>
       </template>
-    </UTable>
+    </ShellDataTable>
+
+    <div
+      v-if="hasMore"
+      class="flex justify-center border-t border-default pt-4"
+    >
+      <UButton
+        color="neutral"
+        variant="subtle"
+        label="Carregar mais"
+        :loading="!!loading"
+        @click="emit('loadMore')"
+      />
+    </div>
 
     <UEmpty
       v-if="!loading && !error && !notes.length"

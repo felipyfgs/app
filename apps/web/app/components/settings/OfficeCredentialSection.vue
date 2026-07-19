@@ -8,17 +8,29 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 import type { OfficeCanonicalCredential } from '~/types/api'
 import { credentialAlerts } from '~/utils/office-settings'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   credential: OfficeCanonicalCredential | null
   loading?: boolean
   saving?: boolean
   readonly?: boolean
   /** Reconfirmação de senha (todos os perfis em ações sensíveis). */
   requirePasswordReconfirm?: boolean
-}>()
+  showHeader?: boolean
+}>(), {
+  loading: false,
+  saving: false,
+  readonly: false,
+  requirePasswordReconfirm: true,
+  showHeader: true
+})
 
 const emit = defineEmits<{
-  upload: [payload: { file: File, password: string, reconfirm_password?: string }]
+  upload: [payload: {
+    file: File
+    password: string
+    consent_accepted: boolean
+    reconfirm_password?: string
+  }]
   remove: [payload: { reconfirm_password?: string }]
 }>()
 
@@ -27,6 +39,7 @@ const removeOpen = ref(false)
 const credentialFile = ref<File | null>(null)
 const fileInputKey = ref(0)
 const reconfirmPassword = ref('')
+const consentAccepted = ref(false)
 
 const schema = z.object({
   password: z.string().min(1, 'Informe a senha do certificado.')
@@ -40,6 +53,7 @@ function clearSensitive() {
   state.password = ''
   credentialFile.value = null
   reconfirmPassword.value = ''
+  consentAccepted.value = false
   fileInputKey.value += 1
 }
 
@@ -58,9 +72,14 @@ function onSubmit(_event: FormSubmitEvent<Schema>) {
     useToast().add({ title: 'Reconfirme sua senha de acesso.', color: 'warning' })
     return
   }
+  if (!consentAccepted.value) {
+    useToast().add({ title: 'Confirme o consentimento para continuar.', color: 'warning' })
+    return
+  }
   emit('upload', {
     file: credentialFile.value,
     password: state.password || '',
+    consent_accepted: consentAccepted.value,
     reconfirm_password: props.requirePasswordReconfirm ? reconfirmPassword.value : undefined
   })
   open.value = false
@@ -79,6 +98,11 @@ function confirmRemove() {
   clearSensitive()
 }
 
+function submitCredentialForm() {
+  const el = document.getElementById('office-credential-form') as HTMLFormElement | null
+  el?.requestSubmit()
+}
+
 watch(open, (v) => {
   if (!v) clearSensitive()
 })
@@ -89,10 +113,8 @@ watch(removeOpen, (v) => {
 
 <template>
   <div data-testid="settings-credential-section">
-    <UPageCard
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
+    <ShellSectionHeader
+      v-if="showHeader"
       title="Certificado A1"
     >
       <UButton
@@ -104,7 +126,20 @@ watch(removeOpen, (v) => {
         data-testid="settings-credential-open-upload"
         @click="() => { open = true }"
       />
-    </UPageCard>
+    </ShellSectionHeader>
+    <div
+      v-else-if="!readonly"
+      class="mb-3 flex justify-end"
+    >
+      <UButton
+        :label="credential ? 'Substituir' : 'Enviar'"
+        color="neutral"
+        class="w-fit"
+        icon="i-lucide-upload"
+        data-testid="settings-credential-open-upload"
+        @click="() => { open = true }"
+      />
+    </div>
 
     <UPageCard variant="subtle">
       <div
@@ -186,14 +221,22 @@ watch(removeOpen, (v) => {
       </UEmpty>
     </UPageCard>
 
-    <UModal
+    <ShellFormModal
       v-if="!readonly"
       v-model:open="open"
       :title="credential ? 'Substituir A1' : 'Enviar A1'"
       description="O arquivo não poderá ser baixado depois."
+      submit-label="Validar e armazenar"
+      submit-icon="i-lucide-shield-check"
+      :loading="saving"
+      :show-default-footer="false"
+      test-id="settings-credential-modal"
+      @cancel="() => { open = false }"
+      @submit="submitCredentialForm"
     >
       <template #body>
         <UForm
+          id="office-credential-form"
           :schema="schema"
           :state="state"
           class="space-y-4"
@@ -212,6 +255,12 @@ watch(removeOpen, (v) => {
               @change="selectFile"
             >
           </UFormField>
+          <UCheckbox
+            v-model="consentAccepted"
+            label="Autorizo o uso deste A1 pelo sistema"
+            description="O sistema validará o certificado, assinará o Termo, carregará procurações e iniciará a primeira coleta automaticamente."
+            data-testid="settings-credential-consent"
+          />
           <UFormField
             name="password"
             label="Senha do PFX"
@@ -238,31 +287,32 @@ watch(removeOpen, (v) => {
               data-testid="settings-credential-reconfirm"
             />
           </UFormField>
-          <div class="flex justify-end gap-2">
-            <UButton
-              color="neutral"
-              variant="ghost"
-              label="Cancelar"
-              @click="() => { open = false }"
-            />
-            <UButton
-              type="submit"
-              color="primary"
-              label="Validar e armazenar"
-              icon="i-lucide-shield-check"
-              :loading="saving"
-              data-testid="settings-credential-submit"
-            />
-          </div>
         </UForm>
       </template>
-    </UModal>
+      <template #footer>
+        <ShellModalFooter
+          submit-label="Validar e armazenar"
+          submit-icon="i-lucide-shield-check"
+          submit-test-id="settings-credential-submit"
+          :loading="saving"
+          :disabled="!consentAccepted"
+          @cancel="() => { open = false }"
+          @submit="submitCredentialForm"
+        />
+      </template>
+    </ShellFormModal>
 
-    <UModal
+    <ShellFormModal
       v-if="!readonly"
       v-model:open="removeOpen"
       title="Remover A1?"
       description="As finalidades que dependem do certificado ficam bloqueadas."
+      submit-label="Remover"
+      submit-color="error"
+      :loading="saving"
+      :show-default-footer="false"
+      @cancel="() => { removeOpen = false }"
+      @submit="confirmRemove"
     >
       <template #body>
         <UFormField
@@ -279,22 +329,15 @@ watch(removeOpen, (v) => {
         </UFormField>
       </template>
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton
-            color="neutral"
-            variant="ghost"
-            label="Cancelar"
-            @click="() => { removeOpen = false }"
-          />
-          <UButton
-            color="error"
-            label="Remover"
-            :loading="saving"
-            data-testid="settings-credential-confirm-remove"
-            @click="confirmRemove"
-          />
-        </div>
+        <ShellModalFooter
+          submit-label="Remover"
+          submit-color="error"
+          submit-test-id="settings-credential-confirm-remove"
+          :loading="saving"
+          @cancel="() => { removeOpen = false }"
+          @submit="confirmRemove"
+        />
       </template>
-    </UModal>
+    </ShellFormModal>
   </div>
 </template>

@@ -71,7 +71,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo({ path: '/docs/catalog', query }, { replace: true })
   }
 
-  // Procurações manuais removidas do tenant — redireciona para settings unificado.
+  // Procurações manuais removidas do tenant — redireciona para Conta/Escritório.
   if (to.path.replace(/\/+$/, '') === '/settings/proxies') {
     return navigateTo('/conta/escritorio', { replace: true })
   }
@@ -89,7 +89,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo(legacyAccountRoutes[normalizedPath], { replace: true })
   }
 
-  // Departamentos: /admin/departments → /settings/departments
+  // Departamentos: /admin/departments → Conta
   if (to.path === '/admin/departments' || to.path.startsWith('/admin/departments/')) {
     return navigateTo('/conta/departamentos', { replace: true })
   }
@@ -100,7 +100,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     if (canAccessPlatformAdmin(identity)) {
       return undefined
     }
-    // Office ADMIN que ainda aponte para /admin → settings.
+    // Office ADMIN que ainda aponte para /admin → Conta/Escritório.
     if (hasConfirmedAdminAccess(identity)) {
       return navigateTo('/conta/escritorio', { replace: true })
     }
@@ -112,7 +112,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo('/admin', { replace: true })
   }
 
-  // Configuração do escritório: ADMIN office ou PLATFORM_ADMIN privilegiado.
+  // Configuração do escritório (exceto /conta perfil): ADMIN office ou PLATFORM_ADMIN.
   if (to.path.startsWith('/conta/') && !canAccessOfficeSettings(identity)) {
     return navigateTo('/conta')
   }

@@ -1,5 +1,13 @@
 <script setup lang="ts">
-const { item, canManageClients, load, registrationEditRequested } = useClientDetail()
+/**
+ * Cadastro do cliente — chrome: ShellSectionHeader (template settings).
+ */
+const {
+  item,
+  canManageClients,
+  registrationEditRequested,
+  load
+} = useClientDetail()
 
 function onEditingChange(value: boolean) {
   registrationEditRequested.value = value
@@ -7,12 +15,24 @@ function onEditingChange(value: boolean) {
 </script>
 
 <template>
-  <ClientsClientRegistration
+  <div
     v-if="item"
-    :client="item"
-    :can-manage-clients="canManageClients"
-    :start-editing="registrationEditRequested"
-    @editing-change="onEditingChange"
-    @updated="load"
-  />
+    class="min-w-0"
+    data-testid="client-page-cadastro"
+  >
+    <ShellSectionHeader
+      title="Cadastro"
+      description="Dados cadastrais, sócios e filiais do contribuinte."
+      test-id="client-section-cadastro"
+    />
+
+    <ClientsClientRegistration
+      :client="item"
+      :can-manage-clients="canManageClients"
+      :start-editing="registrationEditRequested"
+      panel="all"
+      @editing-change="onEditingChange"
+      @updated="load"
+    />
+  </div>
 </template>

@@ -13,8 +13,9 @@ import { buildPgdasdColumns } from '~/utils/pgdasd-table'
 import { buildPgmeiColumns } from '~/utils/pgmei-table'
 import { pgdasdSummary } from '~/utils/pgdasd'
 import { pgmeiSummary } from '~/utils/pgmei'
+import { MONITORING_SHARED_COLUMN_LABELS } from '~/utils/monitoring-table-columns'
 
-const { canManageClients, canTriggerSync } = useDashboard()
+const { canExecuteHighRiskMutation, canManageClients, canTriggerSync } = useDashboard()
 
 // Tab local (PGDASD default). URL permanece /monitoring/simples-mei.
 const submodule = ref(normalizeMonitoringSubmodule('simples_mei', undefined))
@@ -46,6 +47,7 @@ const {
   surface,
   sorting,
   setPage,
+  setPerPage,
   refresh,
   applyFilters,
   applyQuickFilters,
@@ -156,6 +158,10 @@ const previewOpen = ref(false)
 const trackingOpen = ref(false)
 const prefsOpen = ref(false)
 const consultOpen = ref(false)
+const publicServicesOpen = ref(false)
+const publicServicesClientId = ref<number | null>(null)
+const publicServicesClientName = ref<string | null>(null)
+const publicServicesCnpjMasked = ref<string | null>(null)
 const consultClientId = ref<number | null>(null)
 const consultClientName = ref<string | null>(null)
 const consultQuerying = ref(false)
@@ -233,6 +239,15 @@ function openConsultConfirm(row: SimplesMeiClientRow) {
   consultClientId.value = row.client_id
   consultClientName.value = row.legal_name || row.name || `Cliente #${row.client_id}`
   consultOpen.value = true
+}
+
+function openMeiPublicServices(clientId: number) {
+  const row = rows.value.find(item => item.client_id === clientId)
+  if (!row) return
+  publicServicesClientId.value = row.client_id
+  publicServicesClientName.value = row.legal_name || row.name || `Cliente #${row.client_id}`
+  publicServicesCnpjMasked.value = row.cnpj_masked || null
+  publicServicesOpen.value = true
 }
 
 function openRegimeHistory(row: SimplesMeiClientRow) {
@@ -468,29 +483,19 @@ const columns = computed(() => {
 
 const columnLabels = computed<Record<string, string>>(() => {
   if (isPgmei.value) {
-    const labels: Record<string, string> = {
+    return {
       situation: 'Situação',
-      actions: 'Ações',
-      send: 'Enviar',
-      client: 'Cliente',
-      tracking: 'Rastreio de envio',
-      consulted: 'Última Busca',
-      history: 'Histórico de Busca'
+      ...MONITORING_SHARED_COLUMN_LABELS,
+      client: 'Cliente'
     }
-    return labels
   }
-  const labels: Record<string, string> = {
+  return {
     situation: 'Situação',
     last_declaration: 'Últ. Declaração',
-    rbt12: 'Sublimite (RBT12)',
-    actions: 'Ações',
-    send: 'Enviar',
-    client: 'Cliente',
-    tracking: 'Rastreio de envio',
-    consulted: 'Última Busca',
-    history: 'Histórico de Busca'
+    rbt12: 'RBT12',
+    ...MONITORING_SHARED_COLUMN_LABELS,
+    client: 'Cliente'
   }
-  return labels
 })
 
 function onSortingUpdate(next: typeof sorting.value) {
@@ -512,12 +517,14 @@ watch(submodule, (next, prev) => {
   trackingOpen.value = false
   prefsOpen.value = false
   consultOpen.value = false
+  publicServicesOpen.value = false
   regimeHistoryOpen.value = false
   regimeConsultOpen.value = false
   regimeResolutionHistoryOpen.value = false
   regimeResolutionConsultOpen.value = false
   modalClientId.value = null
   consultClientId.value = null
+  publicServicesClientId.value = null
   regimeClientId.value = null
   clearSelection()
   setPage(1)
@@ -528,7 +535,7 @@ watch(submodule, (next, prev) => {
 <template>
   <MonitoringModuleTable
     ref="moduleTableRef"
-    title="Simples Nacional / MEI"
+    title="Simples Nacional | MEI"
     panel-id="monitoring-simples-mei"
     module-key="simples_mei"
     :columns="columns"
@@ -550,6 +557,8 @@ watch(submodule, (next, prev) => {
     :source-label="sourceLabel"
     :as-of="asOf"
     :surface-summary="surface"
+    :show-pending-search="false"
+    :show-synthetic-alert="false"
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
@@ -557,11 +566,11 @@ watch(submodule, (next, prev) => {
     :selection-enabled="(isPgdasd || isPgmei) ? canManageClients : undefined"
     :custom-bulk-actions="true"
     :horizontal-scroll="true"
-    table-class="min-w-[1100px]"
-    :initial-hidden-columns="['consulted', 'history']"
+    :initial-hidden-columns="['history']"
     empty-title="Nenhum cliente"
     :column-labels="columnLabels"
     @update:page="setPage"
+    @update:per-page="setPerPage"
     @update:sorting="onSortingUpdate"
     @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"
@@ -570,25 +579,16 @@ watch(submodule, (next, prev) => {
     @selection-change="onSelectionChange"
   >
     <template #submodules>
-      <!-- Controle segmentado local; não compete com as tabs de rota acima. -->
-      <div
-        class="flex min-w-0 flex-col gap-2"
-        data-testid="simples-mei-capsule-control"
-      >
-        <p class="text-xs font-medium text-muted">
-          Regime
-        </p>
-        <ShellScrollableTabs
-          v-model="submodule"
-          :items="tabItems"
-          size="sm"
-          color="primary"
-          variant="pill"
-          class="w-full min-w-0"
-          aria-label="Regime: Simples Nacional ou MEI"
-          test-id="simples-mei-submodule-tabs"
-        />
-      </div>
+      <ShellScrollableTabs
+        v-model="submodule"
+        :items="tabItems"
+        size="sm"
+        color="primary"
+        variant="pill"
+        class="min-w-0"
+        aria-label="Selecionar Simples Nacional ou MEI"
+        test-id="simples-mei-submodule-tabs"
+      />
     </template>
 
     <!-- Ações do cliente selecionado na toolbar (junto ao filtro); automático no header Enviar. -->
@@ -607,8 +607,10 @@ watch(submodule, (next, prev) => {
         :selected-client-ids="ids"
         :selected-count="count"
         :year="pgmeiYear"
+        :can-use-public-services="canTriggerSync || canExecuteHighRiskMutation"
         @clear="clear"
         @refresh="refresh"
+        @public-services="openMeiPublicServices"
       />
     </template>
 
@@ -703,13 +705,27 @@ watch(submodule, (next, prev) => {
     :can-manage="canManageClients"
     @saved="onModalPreferenceSaved"
   />
+  <MonitoringMeiPublicServicesModal
+    v-if="isPgmei"
+    v-model:open="publicServicesOpen"
+    :client-id="publicServicesClientId"
+    :client-name="publicServicesClientName"
+    :cnpj-masked="publicServicesCnpjMasked"
+    :can-generate-das="canExecuteHighRiskMutation"
+    :can-consult-dasn="canTriggerSync"
+  />
 
-  <UModal
+  <ShellConfirmModal
     v-if="isPgmei"
     v-model:open="consultOpen"
     title="Confirmar consulta de dívida ativa"
     :description="`A consulta à SERPRO para ${consultClientName || 'o cliente'}, ano ${pgmeiYear}, é explícita e pode ser faturável.`"
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    confirm-label="Confirmar consulta"
+    confirm-icon="i-lucide-refresh-cw"
+    :loading="consultQuerying"
+    confirm-test-id="pgmei-consult-confirm"
+    @confirm="confirmPgmeiConsult"
   >
     <template #body>
       <UAlert
@@ -723,31 +739,19 @@ watch(submodule, (next, prev) => {
         </template>
       </UAlert>
     </template>
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        :disabled="consultQuerying"
-        @click="() => { consultOpen = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-refresh-cw"
-        label="Confirmar consulta"
-        :loading="consultQuerying"
-        data-testid="pgmei-consult-confirm"
-        @click="confirmPgmeiConsult"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 
-  <UModal
+  <ShellConfirmModal
     v-if="isPgdasd"
     v-model:open="defisConsultOpen"
     title="Confirmar consulta das declarações DEFIS"
     :description="`A consulta à SERPRO para ${defisClientName || 'o cliente'} é explícita e pode ser faturável.`"
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    confirm-label="Confirmar consulta"
+    confirm-icon="i-lucide-refresh-cw"
+    :loading="regimeQuerying"
+    confirm-test-id="defis-consult-confirm"
+    @confirm="confirmDefisConsult"
   >
     <template #body>
       <UAlert
@@ -761,31 +765,19 @@ watch(submodule, (next, prev) => {
         </template>
       </UAlert>
     </template>
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        :disabled="regimeQuerying"
-        @click="() => { defisConsultOpen = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-refresh-cw"
-        label="Confirmar consulta"
-        :loading="regimeQuerying"
-        data-testid="defis-consult-confirm"
-        @click="confirmDefisConsult"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 
-  <UModal
+  <ShellConfirmModal
     v-if="isPgdasd"
     v-model:open="defisLatestConsultOpen"
     title="Confirmar consulta da última DEFIS"
     :description="`A consulta à SERPRO para ${defisClientName || 'o cliente'}, ano ${new Date().getFullYear()}, é explícita e pode ser faturável.`"
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    confirm-label="Confirmar consulta"
+    confirm-icon="i-lucide-refresh-cw"
+    :loading="regimeQuerying"
+    confirm-test-id="defis-latest-consult-confirm"
+    @confirm="confirmDefisLatestConsult"
   >
     <template #body>
       <UAlert
@@ -799,31 +791,19 @@ watch(submodule, (next, prev) => {
         </template>
       </UAlert>
     </template>
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        :disabled="regimeQuerying"
-        @click="() => { defisLatestConsultOpen = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-refresh-cw"
-        label="Confirmar consulta"
-        :loading="regimeQuerying"
-        data-testid="defis-latest-consult-confirm"
-        @click="confirmDefisLatestConsult"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 
-  <UModal
+  <ShellConfirmModal
     v-if="isPgdasd"
     v-model:open="defisSpecificConsultOpen"
     title="Confirmar consulta da declaração DEFIS"
     :description="`A consulta à SERPRO para ${defisClientName || 'o cliente'} é explícita e pode ser faturável.`"
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    confirm-label="Confirmar consulta"
+    confirm-icon="i-lucide-file-down"
+    :loading="regimeQuerying"
+    confirm-test-id="defis-specific-consult-confirm"
+    @confirm="confirmDefisSpecificConsult"
   >
     <template #body>
       <UAlert
@@ -837,31 +817,19 @@ watch(submodule, (next, prev) => {
         </template>
       </UAlert>
     </template>
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        :disabled="regimeQuerying"
-        @click="() => { defisSpecificConsultOpen = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-file-down"
-        label="Confirmar consulta"
-        :loading="regimeQuerying"
-        data-testid="defis-specific-consult-confirm"
-        @click="confirmDefisSpecificConsult"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 
-  <UModal
+  <ShellConfirmModal
     v-if="isPgdasd"
     v-model:open="regimeOptionConsultOpen"
     title="Confirmar consulta da opção anual"
     :description="`A consulta à SERPRO para ${regimeClientName || 'o cliente'}, no ano atual, é explícita e pode ser faturável.`"
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    confirm-label="Confirmar consulta"
+    confirm-icon="i-lucide-calendar-sync"
+    :loading="regimeQuerying"
+    confirm-test-id="regime-option-consult-confirm"
+    @confirm="confirmRegimeOptionConsult"
   >
     <template #body>
       <UAlert
@@ -875,31 +843,19 @@ watch(submodule, (next, prev) => {
         </template>
       </UAlert>
     </template>
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        :disabled="regimeQuerying"
-        @click="() => { regimeOptionConsultOpen = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-calendar-sync"
-        label="Confirmar consulta"
-        :loading="regimeQuerying"
-        data-testid="regime-option-consult-confirm"
-        @click="confirmRegimeOptionConsult"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 
-  <UModal
+  <ShellConfirmModal
     v-if="isPgdasd"
     v-model:open="regimeConsultOpen"
     title="Confirmar consulta de regimes"
     :description="`A consulta à SERPRO para ${regimeClientName || 'o cliente'} é explícita e pode ser faturável.`"
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    confirm-label="Confirmar consulta"
+    confirm-icon="i-lucide-refresh-cw"
+    :loading="regimeQuerying"
+    confirm-test-id="regime-calendar-consult-confirm"
+    @confirm="confirmRegimeConsult"
   >
     <template #body>
       <UAlert
@@ -913,31 +869,19 @@ watch(submodule, (next, prev) => {
         </template>
       </UAlert>
     </template>
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        :disabled="regimeQuerying"
-        @click="() => { regimeConsultOpen = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-refresh-cw"
-        label="Confirmar consulta"
-        :loading="regimeQuerying"
-        data-testid="regime-calendar-consult-confirm"
-        @click="confirmRegimeConsult"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 
-  <UModal
+  <ShellConfirmModal
     v-if="isPgdasd"
     v-model:open="regimeResolutionConsultOpen"
     title="Confirmar consulta da resolução"
     :description="`A consulta à SERPRO para ${regimeClientName || 'o cliente'}, no ano atual, é explícita e pode ser faturável.`"
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    confirm-label="Confirmar consulta"
+    confirm-icon="i-lucide-file-down"
+    :loading="regimeQuerying"
+    confirm-test-id="regime-resolution-consult-confirm"
+    @confirm="confirmRegimeResolutionConsult"
   >
     <template #body>
       <UAlert
@@ -951,22 +895,5 @@ watch(submodule, (next, prev) => {
         </template>
       </UAlert>
     </template>
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        :disabled="regimeQuerying"
-        @click="() => { regimeResolutionConsultOpen = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-file-down"
-        label="Confirmar consulta"
-        :loading="regimeQuerying"
-        data-testid="regime-resolution-consult-confirm"
-        @click="confirmRegimeResolutionConsult"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 </template>

@@ -1,7 +1,12 @@
 <script setup lang="ts">
-const { clientId, item, canTriggerSync } = useClientDetail()
+/** Legado: redireciona para a IA de 4 páginas. */
+import { legacyClientPathToHref } from '~/utils/client-detail-tabs'
+
+const route = useRoute()
+const href = legacyClientPathToHref(route.params.id as string, 'renuncias') || `/clients/${route.params.id}/cadastro`
+await navigateTo(href, { replace: true })
 </script>
 
 <template>
-  <ClientsClientPnrRenunciationsPanel v-if="item" :client-id="clientId" :can-consult="canTriggerSync" />
+  <div />
 </template>

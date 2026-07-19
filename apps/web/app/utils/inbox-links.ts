@@ -42,6 +42,7 @@ export function normalizeTenantPath(path?: string | null): string | null {
   // Paths absolutos já canônicos
   if (
     trimmed === SERPRO_INBOX_ROUTES.authorization
+    || trimmed === '/conta'
     || trimmed.startsWith('/conta/')
     || trimmed.startsWith('/clients/')
     || trimmed.startsWith('/monitoring')

@@ -5,12 +5,18 @@
 import type { OfficeMonitorSchedulePolicy } from '~/types/api'
 import { DEFAULT_MONITOR_SCHEDULES } from '~/utils/office-settings'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   policies: OfficeMonitorSchedulePolicy[]
   loading?: boolean
   savingKey?: string | null
   readonly?: boolean
-}>()
+  showHeader?: boolean
+}>(), {
+  loading: false,
+  savingKey: null,
+  readonly: false,
+  showHeader: true
+})
 
 const emit = defineEmits<{
   save: [payload: { monitor_key: string, day_of_month: number }]
@@ -63,15 +69,13 @@ function save(key: string) {
 
 <template>
   <div data-testid="settings-schedules-section">
-    <UPageCard
+    <ShellSectionHeader
+      v-if="showHeader"
       title="Agendas"
       description="Dia do mês (1–28) por monitor."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
     />
 
-    <UPageCard variant="subtle">
+    <ShellSectionCard>
       <div
         v-if="loading && !policies.length"
         class="space-y-2"
@@ -131,6 +135,6 @@ function save(key: string) {
           </div>
         </li>
       </ul>
-    </UPageCard>
+    </ShellSectionCard>
   </div>
 </template>

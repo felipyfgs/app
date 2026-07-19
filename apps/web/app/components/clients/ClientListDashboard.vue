@@ -9,7 +9,9 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { Client, ClientListStats } from '~/types/api'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import { COMPACT_DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import { truncateText } from '~/utils/format'
 import {
   format,
   isValid,
@@ -161,7 +163,14 @@ const columns: TableColumn<RecentRow>[] = [
   },
   {
     accessorKey: 'name',
-    header: 'Cliente'
+    header: 'Cliente',
+    cell: ({ row }) => {
+      const name = row.original.name || '—'
+      return h('span', {
+        class: 'block min-w-0 max-w-xs truncate font-medium text-highlighted',
+        title: name
+      }, truncateText(name, 40) || name)
+    }
   },
   {
     accessorKey: 'cnpj',
@@ -216,9 +225,10 @@ const columns: TableColumn<RecentRow>[] = [
     </UPageGrid>
 
     <!-- HomeChart (Unovis) -->
-    <UCard
+    <UPageCard
       ref="chartCard"
       class="shrink-0"
+      variant="subtle"
       :ui="{ root: 'overflow-visible', body: 'px-0! pt-0! pb-3!' }"
     >
       <template #header>
@@ -273,14 +283,17 @@ const columns: TableColumn<RecentRow>[] = [
           <div class="h-96" />
         </template>
       </ClientOnly>
-    </UCard>
+    </UPageCard>
 
     <!-- HomeSales → últimos clientes -->
-    <UTable
+    <ShellDataTable
       :data="recentRows"
       :columns="columns"
       :loading="loading"
-      class="shrink-0"
+      :page="1"
+      :total="recentRows.length"
+      :items-per-page="recentRows.length || 1"
+      :show-footer="false"
       :ui="COMPACT_DASHBOARD_TABLE_UI"
     />
   </div>

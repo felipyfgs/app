@@ -5,6 +5,8 @@ import {
   canExecuteHighRiskMutation as userCanExecuteHighRiskMutation,
   canImportDocuments as userCanImportDocuments,
   canManageClients as userCanManageClients,
+  canManageClientCategoryCatalog as userCanManageClientCategoryCatalog,
+  canAssignClientCategories as userCanAssignClientCategories,
   canManageCredentials as userCanManageCredentials,
   canTriageMailbox as userCanTriageMailbox,
   canTriggerSync as userCanTriggerSync,
@@ -30,6 +32,8 @@ const _useDashboard = () => {
   const me = computed(() => unwrapMeUser(user.value as MeIdentity))
 
   const canManageClients = computed(() => userCanManageClients(me.value))
+  const canManageClientCategoryCatalog = computed(() => userCanManageClientCategoryCatalog(me.value))
+  const canAssignClientCategories = computed(() => userCanAssignClientCategories(me.value))
   const canManageCredentials = computed(() =>
     userCanManageCredentials(me.value) || userIsPlatformPrivilegedContext(me.value)
   )
@@ -130,6 +134,8 @@ const _useDashboard = () => {
     canExecuteHighRiskMutation,
     canImportDocuments,
     canManageClients,
+    canManageClientCategoryCatalog,
+    canAssignClientCategories,
     canManageCredentials,
     canTriageMailbox,
     canTriggerSync,

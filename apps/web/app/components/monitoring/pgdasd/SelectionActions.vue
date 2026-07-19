@@ -60,10 +60,6 @@ function openBatchConfirm(kind: PgdasdBatchConsultKind, clientIds: number[]) {
   confirmOpen.value = true
 }
 
-function cancelBatchConfirm() {
-  confirmOpen.value = false
-}
-
 const handlersWithBatch = computed<PgdasdActionHandlers>(() => ({
   ...props.handlers,
   onBatchConsult: openBatchConfirm
@@ -158,11 +154,16 @@ async function confirmBatch() {
       </UButton>
     </UDropdownMenu>
 
-    <UModal
+    <ShellConfirmModal
       v-model:open="confirmOpen"
       title="Confirmar consultas SERPRO"
       :description="`Será feita 1 chamada Consultar por cliente (${pendingIds.length}) — ${pendingLabel}. Pode ser faturável.`"
-      :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+      content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+      confirm-label="Confirmar consultas"
+      confirm-icon="i-lucide-refresh-cw"
+      :loading="busy"
+      confirm-test-id="pgdasd-batch-consult-confirm"
+      @confirm="confirmBatch"
     >
       <template #body>
         <UAlert
@@ -177,23 +178,6 @@ async function confirmBatch() {
           </template>
         </UAlert>
       </template>
-      <template #footer>
-        <UButton
-          color="neutral"
-          variant="ghost"
-          label="Cancelar"
-          :disabled="busy"
-          @click="cancelBatchConfirm"
-        />
-        <UButton
-          color="primary"
-          icon="i-lucide-refresh-cw"
-          label="Confirmar consultas"
-          :loading="busy"
-          data-testid="pgdasd-batch-consult-confirm"
-          @click="confirmBatch"
-        />
-      </template>
-    </UModal>
+    </ShellConfirmModal>
   </div>
 </template>

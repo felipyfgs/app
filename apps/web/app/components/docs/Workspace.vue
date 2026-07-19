@@ -5,7 +5,6 @@
  * ficam no submenu do sidebar (`navigation.ts`), não em tabs da página.
  * Fonte: .local/reference/nuxt-dashboard-template/app/pages/customers.vue
  */
-import DocsSectionNav from '~/components/navigation/DocsSectionNav.vue'
 import { documentKindLabel, isDocumentKindCaptureAvailable } from '~/utils/document-kinds'
 import type { Client, Establishment, ExportFilters, NfseNote, NotesInsights } from '~/types/api'
 import type { NoteListParams } from '~/composables/useApi'
@@ -732,6 +731,7 @@ onMounted(async () => {
             variant="ghost"
             size="sm"
             aria-label="Histórico de lotes de importação"
+            :ui="{ label: 'hidden sm:inline' }"
           />
           <UButton
             v-if="canImportDocuments && view === 'document'"
@@ -740,6 +740,7 @@ onMounted(async () => {
             color="neutral"
             variant="outline"
             aria-label="Importar XML ou ZIP de saídas"
+            :ui="{ label: 'hidden md:inline' }"
             @click="() => { importOpen = true }"
           />
           <UButton
@@ -749,21 +750,25 @@ onMounted(async () => {
             color="primary"
             :loading="exporting"
             :disabled="exporting || !kindExportAvailable"
+            aria-label="Exportar filtro atual"
+            :ui="{ label: 'hidden md:inline' }"
             @click="exportCurrentFilter"
           />
         </template>
       </UDashboardNavbar>
-
-      <UDashboardToolbar data-testid="docs-section-tabs">
-        <DocsSectionNav />
-      </UDashboardToolbar>
     </template>
 
     <template #body>
-      <UModal
+      <ShellFormModal
         v-model:open="importOpen"
         title="Importar documentos fiscais"
         description="NF-e 55, NFC-e 65 e CT-e 57 · associação tenant-safe · lote assíncrono"
+        submit-label="Enviar lote"
+        :loading="importing"
+        :disabled="!importFiles.length || importLimitExceeded"
+        :show-default-footer="false"
+        @cancel="() => { importOpen = false }"
+        @submit="submitImport"
       >
         <template #body>
           <div class="space-y-4">
@@ -841,7 +846,16 @@ onMounted(async () => {
             />
           </div>
         </template>
-      </UModal>
+        <template #footer>
+          <ShellModalFooter
+            submit-label="Enviar lote"
+            :loading="importing"
+            :disabled="!importFiles.length || importLimitExceeded"
+            @cancel="() => { importOpen = false }"
+            @submit="submitImport"
+          />
+        </template>
+      </ShellFormModal>
       <!--
         Body: insights (HomeStats-like) → toolbar busca → tabela (customers).
       -->
@@ -922,23 +936,6 @@ onMounted(async () => {
             @retry="load(true)"
           />
         </template>
-      </div>
-
-      <div class="flex justify-end gap-2">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          label="Cancelar"
-          @click="() => { importOpen = false }"
-        />
-        <UButton
-          color="primary"
-          label="Enviar lote"
-          :loading="importing"
-          :disabled="!importFiles.length || importLimitExceeded"
-          aria-label="Enviar lote de importação"
-          @click="submitImport"
-        />
       </div>
     </template>
   </UDashboardPanel>

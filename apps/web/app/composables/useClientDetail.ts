@@ -1,5 +1,7 @@
 import type { Client, ClientCredential, Establishment } from '~/types/api'
 import type { InjectionKey, Ref, ComputedRef } from 'vue'
+import type { ClientDetailPanel, ClientDetailTab } from '~/utils/client-detail-tabs'
+import { clientDetailHref, legacyClientPathToHref } from '~/utils/client-detail-tabs'
 
 export interface ClientDetailContext {
   clientId: ComputedRef<number>
@@ -17,11 +19,12 @@ export interface ClientDetailContext {
   triggerSync: (establishment: Establishment) => Promise<void>
   onCredentialActivated: (value: ClientCredential) => void
   sectionPath: (section?: string) => string
+  goToTab: (tab: ClientDetailTab, panel?: ClientDetailPanel) => void
 }
 
 export const clientDetailKey: InjectionKey<ClientDetailContext> = Symbol('clientDetail')
 
-/** Contexto do detalhe de cliente (pai Settings + filhos aninhados). */
+/** Contexto do detalhe de cliente (pai Settings + NuxtPage). */
 export function useClientDetail(): ClientDetailContext {
   const ctx = inject(clientDetailKey, null)
   if (!ctx) {
@@ -30,11 +33,10 @@ export function useClientDetail(): ClientDetailContext {
   return ctx
 }
 
-/** Monta path de seção: /clients/:id ou /clients/:id/cadastro */
+/** Path canônico do detalhe (`/clients/:id/:segment`). */
 export function clientSectionPath(clientId: number | string, section?: string): string {
-  const base = `/clients/${clientId}`
   if (!section || section === 'resumo' || section === 'index') {
-    return base
+    return clientDetailHref(clientId, 'cadastro')
   }
-  return `${base}/${section}`
+  return legacyClientPathToHref(clientId, section) || clientDetailHref(clientId)
 }

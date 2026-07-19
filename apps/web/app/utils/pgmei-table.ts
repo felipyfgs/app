@@ -30,11 +30,21 @@ import {
 import { tableIconButton, tableIconGroup } from '~/utils/table-icon-slots'
 import { tableCellBadgeProps } from '~/utils/table-ui'
 import { sortHeader } from '~/utils/table-sort'
+import {
+  MONITORING_ACTIONS_LABEL,
+  MONITORING_ACTIONS_META,
+  MONITORING_CONSULTED_ID,
+  MONITORING_CONSULTED_LABEL,
+  MONITORING_CONSULTED_META,
+  MONITORING_HISTORY_LABEL,
+  MONITORING_TRACKING_LABEL,
+  MONITORING_TRACKING_META
+} from '~/utils/monitoring-table-columns'
 
 /**
- * Renderer PGMEI — sete colunas de negócio (densidade compacta):
- * Cliente · Situação · Ações · Enviar · Rastreio de envio · Última Busca ·
- * Histórico de Busca. Sem colunas mensais do PGDAS-D.
+ * Renderer PGMEI — colunas de negócio (densidade compacta):
+ * Cliente · Situação · Ações (prévia+auto) · Rastreio de envio · Última consulta ·
+ * Histórico. Sem colunas mensais do PGDAS-D.
  * Seleção é acrescentada pelo shell autorizado antes de Cliente.
  */
 export function buildPgmeiColumns(options: {
@@ -61,7 +71,7 @@ export function buildPgmeiColumns(options: {
   const BulkAutomaticSwitch = MonitoringPgmeiBulkAutomaticActions
 
   function rowActions(row: SimplesMeiClientRow) {
-    // Menu completo fica na toolbar (bulk/seleção); linha só mantém prévia.
+    // Prévia + automático na mesma coluna; regimes/bulk ficam na toolbar.
     return tableIconGroup([
       tableIconButton({
         label: 'Abrir prévia de envio',
@@ -69,7 +79,20 @@ export function buildPgmeiColumns(options: {
         color: 'primary',
         testId: 'pgmei-send-preview',
         onClick: () => options.onPreview(row)
-      })
+      }),
+      h('div', {
+        'class': 'inline-flex size-8 items-center justify-center',
+        'data-testid': 'pgmei-send-slot'
+      }, [
+        h(AutomaticSwitch, {
+          clientId: row.client_id,
+          preference: pgmeiSummary(row, options.year)?.communication,
+          canManage: options.canManage,
+          onConfigure: () => options.onConfigure(row),
+          onSaved: (preference: PgdasdCommunicationPreference) =>
+            options.onPreferenceSaved(row, preference)
+        })
+      ])
     ], 'pgmei-actions-group')
   }
 
@@ -112,7 +135,7 @@ export function buildPgmeiColumns(options: {
       id: 'client',
       header: ({ column }) => sortHeader('Cliente', column),
       enableHiding: false,
-      meta: { class: { th: 'min-w-48 w-[26%]', td: 'min-w-48 w-[26%]' } },
+      meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
       cell: ({ row }) => h(FiscalClientCell, {
         clientId: row.original.client_id,
         name: row.original.legal_name,
@@ -157,15 +180,8 @@ export function buildPgmeiColumns(options: {
     },
     {
       id: 'actions',
-      header: 'Ações',
-      enableSorting: false,
-      meta: { class: { th: 'w-20 min-w-20', td: 'w-20 min-w-20' } },
-      cell: ({ row }) => rowActions(row.original)
-    },
-    {
-      id: 'send',
       header: () => h('div', { class: 'flex items-center gap-1' }, [
-        h('span', 'Enviar'),
+        h('span', MONITORING_ACTIONS_LABEL),
         options.canManage
           ? h(BulkAutomaticSwitch, {
               selectedClientIds: options.getSelectedClientIds(),
@@ -177,32 +193,20 @@ export function buildPgmeiColumns(options: {
           : null
       ]),
       enableSorting: false,
-      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
-      cell: ({ row }) => h('div', {
-        'class': 'inline-flex h-8 w-10 shrink-0 items-center justify-center',
-        'data-testid': 'pgmei-send-slot'
-      }, [
-        h(AutomaticSwitch, {
-          clientId: row.original.client_id,
-          preference: pgmeiSummary(row.original, options.year)?.communication,
-          canManage: options.canManage,
-          onConfigure: () => options.onConfigure(row.original),
-          onSaved: (preference: PgdasdCommunicationPreference) =>
-            options.onPreferenceSaved(row.original, preference)
-        })
-      ])
+      meta: { ...MONITORING_ACTIONS_META },
+      cell: ({ row }) => rowActions(row.original)
     },
     {
       id: 'tracking',
-      header: 'Rastreio de envio',
+      header: MONITORING_TRACKING_LABEL,
       enableSorting: false,
-      meta: { class: { th: 'w-28 min-w-28', td: 'w-28 min-w-28' } },
+      meta: { ...MONITORING_TRACKING_META },
       cell: ({ row }) => trackingCell(row.original)
     },
     {
-      id: 'consulted',
-      header: ({ column }) => sortHeader('Última Busca', column),
-      meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
+      id: MONITORING_CONSULTED_ID,
+      header: ({ column }) => sortHeader(MONITORING_CONSULTED_LABEL, column),
+      meta: { ...MONITORING_CONSULTED_META },
       cell: ({ row }) => {
         const lastQuery = pgmeiSummary(row.original, options.year)?.last_valid_query_at
         return h(UTooltip, {
@@ -219,7 +223,7 @@ export function buildPgmeiColumns(options: {
     },
     {
       id: 'history',
-      header: 'Histórico de Busca',
+      header: MONITORING_HISTORY_LABEL,
       enableSorting: false,
       meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
       cell: ({ row }) => h(UTooltip, {

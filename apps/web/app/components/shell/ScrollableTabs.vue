@@ -4,7 +4,11 @@
  * size sm no viewport estreito; md (ou prop) no desktop.
  */
 import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
-import { SCROLLABLE_TABS_UI, TOUCH_SCROLL_X } from '~/utils/list-filter-layout'
+import {
+  LINK_TABS_UI,
+  SCROLLABLE_TABS_UI,
+  TOUCH_SCROLL_X
+} from '~/utils/list-filter-layout'
 
 defineOptions({ inheritAttrs: false })
 
@@ -40,7 +44,7 @@ const isNarrow = breakpoints.smaller('sm')
 const resolvedSize = computed(() => (isNarrow.value ? 'sm' : props.size))
 
 const mergedUi = computed(() => ({
-  ...SCROLLABLE_TABS_UI,
+  ...(props.variant === 'link' ? LINK_TABS_UI : SCROLLABLE_TABS_UI),
   ...props.ui
 }))
 </script>

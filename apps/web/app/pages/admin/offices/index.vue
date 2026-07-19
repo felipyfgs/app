@@ -5,7 +5,12 @@
  */
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { PlatformOfficeAdminSummary } from '~/types/api'
-import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+import {
+  TABLE_CELL_BADGE_CLASS,
+  TABLE_CELL_BADGE_UI
+} from '~/utils/table-ui'
+import { truncateText } from '~/utils/format'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import { apiErrorMessage } from '~/utils/api-error'
 import {
   LIST_FILTER_ACTIONS_ROW,
@@ -40,6 +45,16 @@ const filtered = computed(() => {
     || String(o.id).includes(term)
   )
 })
+
+const {
+  page,
+  perPage,
+  total: pageTotal,
+  rows: pagedRows,
+  setPage,
+  setPerPage,
+  resetPage
+} = useLocalTablePagination(filtered)
 
 const hasFilters = computed(() => Boolean(q.value.trim()) || lifecycleFilter.value !== 'all')
 
@@ -139,7 +154,12 @@ function lifecycleColor(status: string): 'warning' | 'success' | 'neutral' {
 function clearFilters() {
   q.value = ''
   lifecycleFilter.value = 'all'
+  resetPage()
 }
+
+watch(q, () => {
+  resetPage()
+})
 
 let loadSeq = 0
 
@@ -177,18 +197,12 @@ onMounted(load)
 </script>
 
 <template>
-  <UDashboardPanel
+  <ShellPagePanel
     id="admin-offices"
     data-testid="admin-offices-panel"
   >
     <template #header>
-      <UDashboardNavbar
-        title="Escritórios"
-        data-testid="page-navbar"
-      >
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
+      <ShellPageNavbar title="Escritórios">
         <template #right>
           <UButton
             to="/admin/offices/new"
@@ -197,7 +211,7 @@ onMounted(load)
             data-testid="admin-offices-new"
           />
         </template>
-      </UDashboardNavbar>
+      </ShellPageNavbar>
     </template>
 
     <template #body>
@@ -267,58 +281,68 @@ onMounted(load)
         </template>
       </UEmpty>
 
-      <div
+      <ShellDataTable
         v-else
-        class="overflow-x-auto"
+        test-id="admin-offices-table"
+        ui-preset="monitoring-compact"
+        table-class="min-w-full"
+        horizontal-scroll
+        primary-column-id="name"
+        status-column-id="lifecycle"
+        :summary-column-ids="['id', 'slug', 'plan', 'activation']"
+        :columns="columns"
+        :data="pagedRows"
+        :loading="loading"
+        :page="page"
+        :total="pageTotal"
+        :items-per-page="perPage"
+        per-page-aria-label="Escritórios por página"
+        @update:page="setPage"
+        @update:items-per-page="setPerPage"
       >
-        <UTable
-          :data="filtered"
-          :columns="columns"
-          :loading="loading"
-          :ui="DASHBOARD_TABLE_UI"
-          class="min-w-full"
-          data-testid="admin-offices-table"
-        >
-          <template #name-cell="{ row }">
-            <NuxtLink
-              :to="`/admin/offices/${row.original.id}`"
-              class="font-medium text-primary hover:underline"
+        <template #footer>
+          <span class="tabular-nums">{{ pageTotal }}</span> escritório(s)
+        </template>
+        <template #name-cell="{ row }">
+          <NuxtLink
+            :to="`/admin/offices/${row.original.id}`"
+            class="block min-w-0 max-w-xs truncate font-medium text-primary hover:underline"
+            :title="row.original.name || undefined"
+          >
+            {{ truncateText(row.original.name, 40) || row.original.name || '—' }}
+          </NuxtLink>
+        </template>
+        <template #lifecycle-cell="{ row }">
+          <UBadge
+            size="md"
+            variant="subtle"
+            :color="lifecycleColor(row.original.lifecycle_status)"
+            :label="lifecycleLabel(row.original.lifecycle_status)"
+            :class="TABLE_CELL_BADGE_CLASS"
+            :ui="TABLE_CELL_BADGE_UI"
+          />
+        </template>
+        <template #actions-cell="{ row }">
+          <div class="flex justify-end">
+            <UDropdownMenu
+              :items="rowActions(row.original)"
+              :content="{ align: 'end' }"
             >
-              {{ row.original.name }}
-            </NuxtLink>
-          </template>
-          <template #lifecycle-cell="{ row }">
-            <UBadge
-              size="md"
-              variant="subtle"
-              :color="lifecycleColor(row.original.lifecycle_status)"
-              :label="lifecycleLabel(row.original.lifecycle_status)"
-              :class="TABLE_CELL_BADGE_CLASS"
-              :ui="TABLE_CELL_BADGE_UI"
-            />
-          </template>
-          <template #actions-cell="{ row }">
-            <div class="flex justify-end">
-              <UDropdownMenu
-                :items="rowActions(row.original)"
-                :content="{ align: 'end' }"
-              >
-                <UButton
-                  icon="i-lucide-ellipsis-vertical"
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  square
-                  :loading="switchingOffice && actionOfficeId === row.original.id"
-                  :disabled="switchingOffice && actionOfficeId !== row.original.id"
-                  :aria-label="`Ações de ${row.original.name}`"
-                  data-testid="admin-office-row-actions"
-                />
-              </UDropdownMenu>
-            </div>
-          </template>
-        </UTable>
-      </div>
+              <UButton
+                icon="i-lucide-ellipsis-vertical"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                square
+                :loading="switchingOffice && actionOfficeId === row.original.id"
+                :disabled="switchingOffice && actionOfficeId !== row.original.id"
+                :aria-label="`Ações de ${row.original.name}`"
+                data-testid="admin-office-row-actions"
+              />
+            </UDropdownMenu>
+          </div>
+        </template>
+      </ShellDataTable>
     </template>
-  </UDashboardPanel>
+  </ShellPagePanel>
 </template>

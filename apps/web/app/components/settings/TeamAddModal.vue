@@ -82,13 +82,23 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     creating.value = false
   }
 }
+
+function submitForm() {
+  const el = document.getElementById('team-add-form') as HTMLFormElement | null
+  el?.requestSubmit()
+}
 </script>
 
 <template>
-  <UModal
+  <ShellFormModal
     v-model:open="open"
     title="Novo membro"
     description="Define o papel e o método de primeiro acesso."
+    submit-label="Criar"
+    :loading="creating"
+    :show-default-footer="false"
+    @cancel="() => { open = false }"
+    @submit="submitForm"
   >
     <UButton
       label="Novo membro"
@@ -100,6 +110,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
     <template #body>
       <UForm
+        id="team-add-form"
         :schema="schema"
         :state="state"
         class="space-y-4"
@@ -171,22 +182,16 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             data-testid="team-member-reconfirm"
           />
         </UFormField>
-        <div class="flex justify-end gap-2">
-          <UButton
-            label="Cancelar"
-            color="neutral"
-            variant="subtle"
-            @click="() => { open = false }"
-          />
-          <UButton
-            label="Criar"
-            color="primary"
-            type="submit"
-            :loading="creating"
-            data-testid="team-create-submit"
-          />
-        </div>
       </UForm>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        submit-label="Criar"
+        submit-test-id="team-create-submit"
+        :loading="creating"
+        @cancel="() => { open = false }"
+        @submit="submitForm"
+      />
+    </template>
+  </ShellFormModal>
 </template>

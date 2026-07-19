@@ -154,10 +154,12 @@ watch(
       @click="openConfirm"
     />
 
-    <UModal
+    <ShellFormModal
       v-model:open="confirmOpen"
       title="Confirmar consulta manual"
       description="Pode consumir franquia SERPRO. A tela recarrega a projeção local após sucesso."
+      :show-default-footer="false"
+      @cancel="closeConfirm"
     >
       <template #body>
         <div
@@ -188,22 +190,14 @@ watch(
         </div>
       </template>
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton
-            color="neutral"
-            variant="ghost"
-            label="Cancelar"
-            @click="closeConfirm"
-          />
-          <UButton
-            color="primary"
-            label="Confirmar"
-            :loading="executing"
-            data-testid="manual-consult-cta-submit"
-            @click="confirmExecute"
-          />
-        </div>
+        <ShellModalFooter
+          submit-label="Confirmar"
+          :loading="executing"
+          submit-test-id="manual-consult-cta-submit"
+          @cancel="closeConfirm"
+          @submit="confirmExecute"
+        />
       </template>
-    </UModal>
+    </ShellFormModal>
   </div>
 </template>

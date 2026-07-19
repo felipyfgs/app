@@ -16,16 +16,15 @@ import UBadge from '@nuxt/ui/components/Badge.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type { SitfisClientDetail, SitfisClientRow } from '~/types/fiscal-modules'
 import { documentActionVisible } from '~/types/fiscal-modules'
-import { formatDate, formatDateTime } from '~/utils/format'
 import { tableIconButton, tableIconGroup } from '~/utils/table-icon-slots'
 import { sortHeader } from '~/utils/table-sort'
+import { buildMonitoringConsultedColumn } from '~/utils/monitoring-table-columns'
 
 /**
  * Renderer SITFIS — alinhado à densidade Simples/MEI:
  * Cliente · Situação · Achados · Cobertura · Ações ·
- * Procuração · Franquia / agenda · Idade / TTL · Observado.
- * Secundárias (procuração/franquia/idade/observado) começam ocultas via Exibir.
- * Seleção é acrescentada pelo shell autorizado antes de Cliente.
+ * Procuração · Franquia / agenda · Idade / TTL · Última consulta.
+ * Secundárias (procuração/franquia/idade) começam ocultas via Exibir.
  */
 export function sitfisDetailOf(row: SitfisClientRow): SitfisClientDetail {
   return row.detail || {}
@@ -76,7 +75,7 @@ export function buildSitfisColumns(options: {
       id: 'client',
       header: ({ column }) => sortHeader('Cliente', column),
       enableHiding: false,
-      meta: { class: { th: 'min-w-48 w-[26%]', td: 'min-w-48 w-[26%]' } },
+      meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
       cell: ({ row }) => h(FiscalClientCell, {
         clientId: row.original.client_id,
         name: row.original.legal_name || row.original.name || row.original.display_name,
@@ -170,28 +169,13 @@ export function buildSitfisColumns(options: {
         ])
       }
     },
-    {
-      id: 'observed',
-      header: ({ column }) => sortHeader('Observado', column),
-      meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
-      cell: ({ row }) => {
-        const raw = String(
-          sitfisDetailOf(row.original).observed_at
-          || row.original.last_snapshot_at
-          || row.original.last_consulted_at
-          || ''
-        ) || null
-        return h(UTooltip, {
-          text: raw
-            ? `Observado: ${formatDateTime(raw)}`
-            : 'Sem observação registrada'
-        }, {
-          default: () => h('span', {
-            'class': 'whitespace-nowrap tabular-nums text-xs',
-            'data-testid': 'sitfis-observed'
-          }, formatDate(raw))
-        })
-      }
-    }
+    buildMonitoringConsultedColumn<SitfisClientRow>({
+      getAt: (row) => {
+        return sitfisDetailOf(row).observed_at
+          || row.last_snapshot_at
+          || row.last_consulted_at
+      },
+      testId: 'sitfis-observed'
+    })
   ]
 }

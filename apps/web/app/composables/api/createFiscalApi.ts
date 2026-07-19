@@ -43,10 +43,14 @@ import type {
   FiscalPnrRenunciation
 } from '~/types/fiscal-modules'
 import type { ApiClient, ApiUrl } from './types'
+import { createMeiPublicServicesApi } from './createMeiPublicServicesApi'
 
 export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
+  const meiPublicServices = createMeiPublicServicesApi(client, apiUrl)
+
   return {
     fiscal: {
+      meiPublicServices,
       categories: () =>
         client<{ data: FiscalCategory[] }>('/api/v1/fiscal/categories'),
       categoryLinks: {

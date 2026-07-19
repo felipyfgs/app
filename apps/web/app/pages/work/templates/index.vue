@@ -6,9 +6,13 @@ import type { TableColumn } from '@nuxt/ui'
 import type { GenerationBatch, ProcessTemplate, ProcessTemplateTask } from '~/types/work'
 import { canManageWorkCatalog } from '~/utils/permissions'
 import { apiErrorMessage } from '~/utils/api-error'
-import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
-import WorkSectionNav from '~/components/navigation/WorkSectionNav.vue'
+import {
+  TABLE_CELL_BADGE_CLASS,
+  TABLE_CELL_BADGE_UI
+} from '~/utils/table-ui'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import ShellListFilterToolbar from '~/components/shell/ListFilterToolbar.vue'
+import { truncateText } from '~/utils/format'
 
 const api = useApi()
 const toast = useToast()
@@ -20,6 +24,7 @@ const items = ref<ProcessTemplate[]>([])
 const loading = ref(false)
 const q = ref(String(route.query.q || ''))
 const page = ref(Math.max(1, Number(route.query.page) || 1))
+const perPage = ref(20)
 const total = ref(0)
 
 const createOpen = ref(false)
@@ -65,7 +70,7 @@ async function load() {
   loading.value = true
   try {
     const res = await api.work.templates.list({
-      per_page: 25,
+      per_page: perPage.value,
       page: page.value,
       q: q.value || undefined
     })
@@ -194,6 +199,18 @@ function removeTaskRow(idx: number) {
   formTasks.value.splice(idx, 1)
 }
 
+function setPerPage(next: number) {
+  const allowed = [10, 20, 50]
+  const target = allowed.includes(Number(next)) ? Number(next) : 20
+  if (perPage.value === target) return
+  perPage.value = target
+  if (page.value !== 1) {
+    page.value = 1
+    return
+  }
+  void load()
+}
+
 watch([page, q], () => {
   router.replace({
     query: {
@@ -214,15 +231,15 @@ onMounted(load)
 
 <template>
   <!--
-    Arquétipo lista admin (customers.vue) via UDashboardPanel (inline template).
+    Arquétipo lista admin (customers.vue) via ShellPagePanel.
     Fontes: .local/reference/.../customers.vue + clients + table-ui.
   -->
-  <UDashboardPanel id="work-templates" data-testid="work-templates-panel">
+  <ShellPagePanel
+    id="work-templates"
+    data-testid="work-templates-panel"
+  >
     <template #header>
-      <UDashboardNavbar title="Modelos de processo" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
+      <ShellPageNavbar title="Modelos de processo">
         <template #right>
           <UButton
             icon="i-lucide-plus"
@@ -230,12 +247,10 @@ onMounted(load)
             @click="() => { createOpen = true }"
           />
         </template>
-      </UDashboardNavbar>
+      </ShellPageNavbar>
+    </template>
 
-      <UDashboardToolbar data-testid="work-section-tabs">
-        <WorkSectionNav />
-      </UDashboardToolbar>
-
+    <template #toolbar>
       <UDashboardToolbar>
         <ShellListFilterToolbar
           :q="q"
@@ -254,52 +269,73 @@ onMounted(load)
         Modelos de processo
       </h1>
 
-      <div v-if="loading" class="space-y-2 p-4">
-        <USkeleton v-for="i in 4" :key="i" class="h-10 w-full" />
-      </div>
-      <UEmpty
-        v-else-if="!items.length"
-        icon="i-lucide-layout-template"
-        title="Nenhum modelo"
-        description="Crie um modelo para gerar processos."
-      />
-      <template v-else>
-        <UTable :data="items" :columns="columns" :ui="DASHBOARD_TABLE_UI">
-          <template #is_active-cell="{ row }">
-            <UBadge
-              size="md"
-              variant="subtle"
-              :color="row.original.is_active ? 'success' : 'neutral'"
-              :label="row.original.is_active ? 'Ativo' : 'Inativo'"
-              :class="TABLE_CELL_BADGE_CLASS"
-              :ui="TABLE_CELL_BADGE_UI"
-            />
-          </template>
-          <template #tasks-cell="{ row }">
-            {{ row.original.tasks?.length ?? 0 }}
-          </template>
-          <template #actions-cell="{ row }">
-            <UButton
-              size="xs"
-              variant="soft"
-              label="Gerar"
-              @click="openGeneration(row.original)"
-            />
-          </template>
-        </UTable>
-        <div class="flex justify-between border-t border-default p-3 text-sm text-muted">
-          <span>{{ total }} modelo(s)</span>
-          <UPagination
-            v-if="total > 25"
-            v-model:page="page"
-            :total="total"
-            :items-per-page="25"
+      <ShellDataTable
+        test-id="work-templates-table"
+        ui-preset="monitoring-compact"
+        primary-column-id="name"
+        status-column-id="is_active"
+        :summary-column-ids="['tasks']"
+        :columns="columns"
+        :data="items"
+        :loading="loading"
+        :page="page"
+        :total="total"
+        :items-per-page="perPage"
+        per-page-aria-label="Modelos por página"
+        @update:page="page = $event"
+        @update:items-per-page="setPerPage"
+      >
+        <template #name-cell="{ row }">
+          <span
+            class="block min-w-0 max-w-xs truncate font-medium text-highlighted"
+            :title="row.original.name || undefined"
+          >
+            {{ truncateText(row.original.name, 40) || row.original.name || '—' }}
+          </span>
+        </template>
+        <template #is_active-cell="{ row }">
+          <UBadge
+            size="md"
+            variant="subtle"
+            :color="row.original.is_active ? 'success' : 'neutral'"
+            :label="row.original.is_active ? 'Ativo' : 'Inativo'"
+            :class="TABLE_CELL_BADGE_CLASS"
+            :ui="TABLE_CELL_BADGE_UI"
           />
-        </div>
-      </template>
+        </template>
+        <template #tasks-cell="{ row }">
+          {{ row.original.tasks?.length ?? 0 }}
+        </template>
+        <template #actions-cell="{ row }">
+          <UButton
+            size="xs"
+            variant="soft"
+            label="Gerar"
+            @click="openGeneration(row.original)"
+          />
+        </template>
+        <template #empty>
+          <UEmpty
+            icon="i-lucide-layout-template"
+            title="Nenhum modelo"
+            description="Crie um modelo para gerar processos."
+          />
+        </template>
+        <template #footer>
+          <span class="tabular-nums">{{ total }}</span> modelo(s)
+        </template>
+      </ShellDataTable>
 
-      <!-- Modal criar (AddModal-like) -->
-      <UModal v-model:open="createOpen" title="Novo modelo de processo">
+      <ShellFormModal
+        v-model:open="createOpen"
+        title="Novo modelo de processo"
+        submit-label="Criar"
+        :loading="creating"
+        :disabled="!formName.trim()"
+        :show-default-footer="false"
+        @cancel="() => { createOpen = false }"
+        @submit="createTemplate"
+      >
         <template #body>
           <div class="space-y-4">
             <UFormField label="Nome" required>
@@ -349,26 +385,26 @@ onMounted(load)
                 />
               </div>
             </div>
-            <div class="flex justify-end gap-2">
-              <UButton
-                label="Cancelar"
-                color="neutral"
-                variant="subtle"
-                @click="() => { createOpen = false }"
-              />
-              <UButton
-                label="Criar"
-                :loading="creating"
-                :disabled="!formName.trim()"
-                @click="createTemplate"
-              />
-            </div>
           </div>
         </template>
-      </UModal>
+        <template #footer>
+          <ShellModalFooter
+            submit-label="Criar"
+            :loading="creating"
+            :disabled="!formName.trim()"
+            @cancel="() => { createOpen = false }"
+            @submit="createTemplate"
+          />
+        </template>
+      </ShellFormModal>
 
-      <!-- Fluxo de geração com UStepper -->
-      <UModal v-model:open="genOpen" :title="`Gerar — ${genTemplate?.name || ''}`" :ui="{ content: 'max-w-2xl' }">
+      <ShellFormModal
+        v-model:open="genOpen"
+        :title="`Gerar — ${genTemplate?.name || ''}`"
+        content-class="max-w-2xl"
+        :show-default-footer="false"
+        @cancel="() => { genOpen = false }"
+      >
         <template #body>
           <UStepper
             :model-value="genStep"
@@ -452,11 +488,18 @@ onMounted(load)
         </template>
 
         <template #footer>
-          <div
+          <ShellModalFooter
             v-if="genOpen"
-            class="flex w-full justify-end gap-2"
+            :show-cancel="true"
+            :show-submit="false"
           >
-            <UButton variant="ghost" label="Fechar" @click="() => { genOpen = false }" />
+            <UButton
+              color="neutral"
+              variant="ghost"
+              label="Fechar"
+              data-testid="shell-modal-cancel"
+              @click="() => { genOpen = false }"
+            />
             <UButton
               v-if="genStep === 1"
               data-testid="work-gen-preview"
@@ -472,9 +515,9 @@ onMounted(load)
               label="Confirmar geração"
               @click="() => { void runConfirm() }"
             />
-          </div>
+          </ShellModalFooter>
         </template>
-      </UModal>
+      </ShellFormModal>
     </template>
-  </UDashboardPanel>
+  </ShellPagePanel>
 </template>

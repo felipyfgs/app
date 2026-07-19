@@ -123,7 +123,7 @@ function onSelect(key: string | number) {
     class="flex min-w-0 items-center gap-2"
   >
     <ShellScrollableTabs
-      class="min-w-0 flex-1"
+      class="min-w-0"
       :model-value="resolvedActiveKey"
       :items="items"
       size="md"

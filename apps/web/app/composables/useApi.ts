@@ -48,6 +48,7 @@ export function useApi() {
     office: officeApi.office,
     fiscal: fiscalApi.fiscal,
     clients: clientsApi.clients,
+    clientCategories: clientsApi.clientCategories,
     cnpj: clientsApi.cnpj,
     establishments: clientsApi.establishments,
     contacts: clientsApi.contacts,

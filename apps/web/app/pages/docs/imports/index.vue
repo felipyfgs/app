@@ -4,8 +4,11 @@
  * Arquétipo: customers.vue (lista + tabela) — adaptado a batches.
  */
 import type { TableColumn, TableRow } from '@nuxt/ui'
-import DocsSectionNav from '~/components/navigation/DocsSectionNav.vue'
-import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+import {
+  TABLE_CELL_BADGE_CLASS,
+  TABLE_CELL_BADGE_UI
+} from '~/utils/table-ui'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 
 const api = useApi()
 const router = useRouter()
@@ -16,6 +19,7 @@ const items = ref<Array<Record<string, unknown>>>([])
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const page = ref(1)
+const perPage = ref(20)
 const lastPage = ref(1)
 const total = ref(0)
 
@@ -57,7 +61,7 @@ async function load() {
   const epoch = sessionEpoch.value
   loading.value = true
   try {
-    const res = await api.documents.importBatches({ page: page.value, per_page: 20 })
+    const res = await api.documents.importBatches({ page: page.value, per_page: perPage.value })
     if (epoch !== sessionEpoch.value) return
     items.value = res.data || []
     lastPage.value = Number(res.meta?.last_page || 1)
@@ -82,6 +86,18 @@ function selectRow(_event: Event, row: TableRow<Record<string, unknown>>) {
   openBatch(row.original)
 }
 
+function setPerPage(next: number) {
+  const allowed = [10, 20, 50]
+  const target = allowed.includes(Number(next)) ? Number(next) : 20
+  if (perPage.value === target) return
+  perPage.value = target
+  if (page.value !== 1) {
+    page.value = 1
+    return
+  }
+  void load()
+}
+
 watch(page, () => {
   void load()
 })
@@ -101,39 +117,26 @@ onMounted(() => {
 
 <template>
   <!--
-    Arquétipo lista admin (customers.vue) via UDashboardPanel (inline template).
-    Empty: UEmpty (Nuxt UI) · tabela: DASHBOARD_TABLE_UI · paginação: UPagination.
+    Arquétipo lista admin (customers.vue) via ShellPagePanel.
+    Empty: UEmpty (Nuxt UI) · tabela: ShellDataTable · paginação no footer.
   -->
-  <UDashboardPanel id="import-batches">
+  <ShellPagePanel id="import-batches">
     <template #header>
-      <UDashboardNavbar title="Importações XML/ZIP" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
+      <ShellPageNavbar title="Importações XML/ZIP">
         <template #right>
-          <UTooltip text="Atualizar histórico">
-            <UButton
-              icon="i-lucide-refresh-cw"
-              color="neutral"
-              variant="ghost"
-              square
-              aria-label="Atualizar histórico de lotes"
-              :loading="loading"
-              @click="load"
-            />
-          </UTooltip>
           <UButton
             v-if="canImportDocuments"
             icon="i-lucide-upload"
             label="Nova importação"
             to="/docs?import=1"
           />
+          <ShellNavbarRefresh
+            :loading="loading"
+            aria-label="Atualizar histórico de lotes"
+            @click="load"
+          />
         </template>
-      </UDashboardNavbar>
-
-      <UDashboardToolbar data-testid="docs-section-tabs">
-        <DocsSectionNav />
-      </UDashboardToolbar>
+      </ShellPageNavbar>
     </template>
 
     <template #body>
@@ -145,14 +148,22 @@ onMounted(() => {
         :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
       />
 
-      <UTable
-        v-if="loading || items.length"
-        data-testid="data-table"
+      <ShellDataTable
+        v-if="loading || items.length || !loadError"
+        test-id="data-table"
+        ui-preset="monitoring-compact"
+        primary-column-id="id"
+        status-column-id="status"
+        :summary-column-ids="['file_count', 'processed_count', 'imported_count', 'created_at']"
+        :columns="columns"
         :data="items"
         :loading="loading"
-        :columns="columns"
-        class="shrink-0"
-        :ui="DASHBOARD_TABLE_UI"
+        :page="page"
+        :total="total"
+        :items-per-page="perPage"
+        per-page-aria-label="Lotes por página"
+        @update:page="page = $event"
+        @update:items-per-page="setPerPage"
         @select="selectRow"
       >
         <template #id-cell="{ row }">
@@ -198,30 +209,19 @@ onMounted(() => {
             @click.stop="openBatch(row.original)"
           />
         </template>
-      </UTable>
-
-      <UEmpty
-        v-if="!loading && !loadError && !items.length"
-        icon="i-lucide-upload"
-        title="Nenhum lote ainda"
-        description="Importe XML/ZIP em Documentos para criar o primeiro lote."
-        :actions="[{ label: 'Ir a Documentos', to: '/docs' }]"
-      />
-
-      <div
-        v-if="lastPage > 1"
-        class="flex items-center justify-between border-t border-default pt-4"
-      >
-        <p class="text-sm text-muted">
-          {{ total }} lote(s)
-        </p>
-        <UPagination
-          v-model:page="page"
-          :total="total"
-          :items-per-page="20"
-          :sibling-count="1"
-        />
-      </div>
+        <template #empty>
+          <UEmpty
+            v-if="!loadError"
+            icon="i-lucide-upload"
+            title="Nenhum lote ainda"
+            description="Importe XML/ZIP em Documentos para criar o primeiro lote."
+            :actions="[{ label: 'Ir a Documentos', to: '/docs' }]"
+          />
+        </template>
+        <template #footer>
+          <span class="tabular-nums">{{ total }}</span> lote(s)
+        </template>
+      </ShellDataTable>
     </template>
-  </UDashboardPanel>
+  </ShellPagePanel>
 </template>

@@ -38,8 +38,17 @@ export interface ClientsSavedFilterPayload {
   q: string
   /** 'all' | 'active' | 'inactive' — espelho do statusFilter da lista. */
   status: string
-  /** KPI operacional: total | with_credential | without_credential | expiring */
+  /**
+   * KPI operacional: total | with_credential | without_credential | expiring
+   * | credential_expired | capture_problem
+   */
   operational_filter: string
+  /** CSV de ids; opcional para compatibilidade com presets anteriores. */
+  category_ids?: string
+  /** CSV de códigos canônicos; opcional para compatibilidade com presets anteriores. */
+  tax_regimes?: string
+  /** CSV de status projetados de procuração; opcional para compat. */
+  procuracao_statuses?: string
 }
 
 /** Payload docs.catalog v1 — espelho enxuto de NotesFilterState (só chaves ativas). */

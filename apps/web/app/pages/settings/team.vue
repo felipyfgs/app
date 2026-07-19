@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
  * Equipe do escritório — Filter Lite (busca ± select de papel; sem chips).
+ * Chrome: ShellSectionHeader + ShellFilterToolbarLite.
  * Arquétipo: .local/reference/nuxt-dashboard-template/app/pages/settings/members.vue
  */
 import type { ActivationMethod, CredentialDeliveryPayload, OfficeMember, OfficeRole } from '~/types/api'
@@ -217,18 +218,16 @@ onBeforeUnmount(clearSecret)
     class="min-w-0 overflow-x-hidden"
     data-testid="settings-team"
   >
-    <UPageCard
+    <ShellSectionHeader
       title="Equipe"
       :description="canMutate ? `Membros do escritório · ${seatsLabel}` : 'Gestão de equipe'"
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
+      test-id="settings-team-header"
     >
       <SettingsTeamAddModal
         v-if="canMutate && !forbidden"
         @created="onCreated"
       />
-    </UPageCard>
+    </ShellSectionHeader>
 
     <ActivationOneTimeSecret
       v-if="secret"
@@ -249,16 +248,14 @@ onBeforeUnmount(clearSecret)
     />
 
     <template v-else>
-      <UAlert
+      <ShellLoadError
         v-if="loadError"
-        color="error"
-        icon="i-lucide-circle-x"
         :title="loadError"
-        class="mb-4"
-        :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
-        data-testid="team-load-error"
+        test-id="team-load-error"
+        @retry="load"
       />
 
+      <!-- Lista settings: UPageCard subtle com header p-0 (exceção documentada vs SectionCard). -->
       <UPageCard
         variant="subtle"
         :ui="{
@@ -268,34 +265,35 @@ onBeforeUnmount(clearSecret)
         }"
       >
         <template #header>
-          <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <UInput
-              v-model="q"
-              icon="i-lucide-search"
-              placeholder="Buscar por nome ou e-mail"
-              autofocus
-              class="w-full min-w-0 sm:flex-1"
-              aria-label="Buscar por nome ou e-mail"
-              data-testid="team-search"
-            />
-            <USelect
-              v-model="roleFilter"
-              :items="roleFilterItems"
-              value-key="value"
-              label-key="label"
-              color="neutral"
-              class="w-full min-w-0 sm:w-40"
-              aria-label="Filtrar por papel"
-              data-testid="team-role-filter"
-            />
-            <UBadge
-              v-if="maxUsers != null"
-              variant="subtle"
-              color="neutral"
-              :label="seatsLabel"
-              data-testid="team-seats"
-            />
-          </div>
+          <ShellFilterToolbarLite
+            :q="q"
+            search-placeholder="Buscar por nome ou e-mail"
+            search-aria-label="Buscar por nome ou e-mail"
+            :loading="loading"
+            test-id-prefix="team"
+            @update:q="(value) => { q = value }"
+            @refresh="load"
+          >
+            <template #actions>
+              <USelect
+                v-model="roleFilter"
+                :items="roleFilterItems"
+                value-key="value"
+                label-key="label"
+                color="neutral"
+                class="w-full min-w-0 sm:w-40"
+                aria-label="Filtrar por papel"
+                data-testid="team-role-filter"
+              />
+              <UBadge
+                v-if="maxUsers != null"
+                variant="subtle"
+                color="neutral"
+                :label="seatsLabel"
+                data-testid="team-seats"
+              />
+            </template>
+          </ShellFilterToolbarLite>
         </template>
 
         <div
@@ -353,41 +351,29 @@ onBeforeUnmount(clearSecret)
       </UPageCard>
     </template>
 
-    <UModal
+    <ShellFormModal
       v-model:open="passwordOpen"
       title="Confirmar senha"
       description="Ação sensível da equipe."
+      submit-label="Confirmar"
+      @cancel="cancelPassword"
+      @submit="submitPassword"
     >
       <template #body>
-        <div class="space-y-4">
-          <UFormField
-            label="Sua senha"
-            required
-          >
-            <UInput
-              v-model="passwordValue"
-              type="password"
-              autocomplete="current-password"
-              class="w-full"
-              data-testid="team-action-reconfirm"
-              @keyup.enter="submitPassword"
-            />
-          </UFormField>
-          <div class="flex justify-end gap-2">
-            <UButton
-              label="Cancelar"
-              color="neutral"
-              variant="subtle"
-              @click="cancelPassword"
-            />
-            <UButton
-              label="Confirmar"
-              color="primary"
-              @click="submitPassword"
-            />
-          </div>
-        </div>
+        <UFormField
+          label="Sua senha"
+          required
+        >
+          <UInput
+            v-model="passwordValue"
+            type="password"
+            autocomplete="current-password"
+            class="w-full"
+            data-testid="team-action-reconfirm"
+            @keyup.enter="submitPassword"
+          />
+        </UFormField>
       </template>
-    </UModal>
+    </ShellFormModal>
   </div>
 </template>

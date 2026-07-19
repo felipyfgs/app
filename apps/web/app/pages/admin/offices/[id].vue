@@ -579,10 +579,14 @@ onBeforeUnmount(clearSecret)
           </div>
         </template>
 
-        <UModal
+        <ShellFormModal
           v-model:open="correctOpen"
           title="Corrigir primeiro administrador"
           description="Revoga o acesso anterior."
+          :loading="acting"
+          :show-default-footer="false"
+          test-id="admin-office-correct-modal"
+          @cancel="() => { correctOpen = false }"
         >
           <template #body>
             <div class="space-y-4">
@@ -628,24 +632,18 @@ onBeforeUnmount(clearSecret)
                   data-testid="admin-office-correct-reconfirm"
                 />
               </UFormField>
-              <div class="flex justify-end gap-2">
-                <UButton
-                  label="Cancelar"
-                  color="neutral"
-                  variant="subtle"
-                  @click="() => { correctOpen = false }"
-                />
-                <UButton
-                  label="Corrigir"
-                  color="primary"
-                  :loading="acting"
-                  data-testid="admin-office-correct-submit"
-                  @click="() => { void correctFirstAdmin() }"
-                />
-              </div>
             </div>
           </template>
-        </UModal>
+          <template #footer>
+            <ShellModalFooter
+              submit-label="Corrigir"
+              :loading="acting"
+              submit-test-id="admin-office-correct-submit"
+              @cancel="() => { correctOpen = false }"
+              @submit="() => { void correctFirstAdmin() }"
+            />
+          </template>
+        </ShellFormModal>
       </DashboardContent>
     </template>
   </UDashboardPanel>

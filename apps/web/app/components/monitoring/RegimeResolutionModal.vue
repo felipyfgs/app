@@ -51,15 +51,18 @@ watch(
 </script>
 
 <template>
-  <UModal
+  <ShellScrollableModal
     :open="open"
     title="Resoluções do Regime de Caixa"
     description="Documentos já armazenados localmente; abrir este modal não consulta a SERPRO."
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-xl' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-xl"
+    test-id="regime-resolution-modal"
+    :show-default-footer="false"
     @update:open="emit('update:open', $event)"
+    @cancel="emit('update:open', false)"
   >
     <template #body>
-      <div class="space-y-4" data-testid="regime-resolution-modal">
+      <div class="space-y-4">
         <p class="font-medium text-highlighted">
           {{ clientName || `Cliente #${clientId || '—'}` }}
         </p>
@@ -76,10 +79,7 @@ watch(
           </template>
         </UAlert>
 
-        <div v-else-if="loading" class="space-y-2" aria-label="Carregando resoluções locais">
-          <USkeleton class="h-10 w-full" />
-          <USkeleton class="h-10 w-full" />
-        </div>
+        <ShellLoadingModalBody v-else-if="loading" :rows="2" />
 
         <template v-else>
           <div v-if="history?.data.length" class="overflow-x-auto">
@@ -127,5 +127,12 @@ watch(
         </template>
       </div>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        cancel-label="Fechar"
+        :show-submit="false"
+        @cancel="emit('update:open', false)"
+      />
+    </template>
+  </ShellScrollableModal>
 </template>

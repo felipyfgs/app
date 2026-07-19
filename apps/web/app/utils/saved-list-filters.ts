@@ -55,6 +55,18 @@ function asString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback
 }
 
+function normalizeCsv(
+  value: unknown,
+  accept: (token: string) => boolean = () => true
+): string {
+  const tokens = String(value ?? '')
+    .split(',')
+    .map(token => token.trim())
+    .filter(token => token !== '' && accept(token))
+
+  return [...new Set(tokens)].sort((a, b) => a.localeCompare(b)).join(',')
+}
+
 function asPositiveIntOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null
   const n = Number(value)
@@ -149,15 +161,24 @@ export interface ClientsFilterState {
   q: string
   /** 'all' | 'active' | 'inactive' */
   status: string
-  /** KPI: total | with_credential | without_credential | expiring */
+  /**
+   * KPI: total | with_credential | without_credential | expiring
+   * | credential_expired | capture_problem
+   */
   operational_filter: string
+  category_ids: string
+  tax_regimes: string
+  procuracao_statuses: string
 }
 
 export function emptyClientsFilters(): ClientsFilterState {
   return {
     q: '',
     status: 'all',
-    operational_filter: 'total'
+    operational_filter: 'total',
+    category_ids: '',
+    tax_regimes: '',
+    procuracao_statuses: ''
   }
 }
 
@@ -166,7 +187,16 @@ const CLIENT_OPERATIONAL = new Set([
   'total',
   'with_credential',
   'without_credential',
-  'expiring'
+  'expiring',
+  'credential_expired',
+  'capture_problem'
+])
+const CLIENT_PROCURACAO_STATUSES = new Set([
+  'authorized',
+  'expiring',
+  'expired',
+  'missing',
+  'unverified'
 ])
 
 export function clientsFiltersToPayload(
@@ -178,7 +208,13 @@ export function clientsFiltersToPayload(
     status: CLIENT_STATUSES.has(state.status) ? state.status : 'all',
     operational_filter: CLIENT_OPERATIONAL.has(state.operational_filter)
       ? state.operational_filter
-      : 'total'
+      : 'total',
+    category_ids: normalizeCsv(state.category_ids, value => /^\d+$/.test(value) && Number(value) > 0),
+    tax_regimes: normalizeCsv(state.tax_regimes),
+    procuracao_statuses: normalizeCsv(
+      state.procuracao_statuses,
+      value => CLIENT_PROCURACAO_STATUSES.has(value)
+    )
   }
 }
 
@@ -192,7 +228,13 @@ export function clientsPayloadToFilters(
   return {
     q: asString(payload.q, '').trim(),
     status: CLIENT_STATUSES.has(status) ? status : 'all',
-    operational_filter: CLIENT_OPERATIONAL.has(operational) ? operational : 'total'
+    operational_filter: CLIENT_OPERATIONAL.has(operational) ? operational : 'total',
+    category_ids: normalizeCsv(asString(payload.category_ids, ''), value => /^\d+$/.test(value) && Number(value) > 0),
+    tax_regimes: normalizeCsv(asString(payload.tax_regimes, '')),
+    procuracao_statuses: normalizeCsv(
+      asString(payload.procuracao_statuses, ''),
+      value => CLIENT_PROCURACAO_STATUSES.has(value)
+    )
   }
 }
 
@@ -203,6 +245,9 @@ export function hasClientsPayloadContent(
   if (String(payload.q || '').trim()) return true
   if (payload.status && payload.status !== 'all') return true
   if (payload.operational_filter && payload.operational_filter !== 'total') return true
+  if (payload.category_ids) return true
+  if (payload.tax_regimes) return true
+  if (payload.procuracao_statuses) return true
   return false
 }
 

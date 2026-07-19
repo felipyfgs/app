@@ -6,7 +6,11 @@ import type { TableColumn } from '@nuxt/ui'
 import type { OperationalProcess } from '~/types/work'
 import { canManageWorkCatalog } from '~/utils/permissions'
 import { apiErrorMessage } from '~/utils/api-error'
-import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+import {
+  TABLE_CELL_BADGE_CLASS,
+  TABLE_CELL_BADGE_UI
+} from '~/utils/table-ui'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import {
   formatCompetence,
   formatDueDate,
@@ -15,6 +19,7 @@ import {
   processStatusLabel,
   workRiskLabel
 } from '~/utils/work-labels'
+import { truncateText } from '~/utils/format'
 import type { DataTableFilterDefinition, DataTableFilterModel } from '~/types/data-table-filter'
 import {
   createFilterModel,
@@ -29,7 +34,6 @@ import DataTableFilterRoot from '~/components/data-table-filter/Root.vue'
 import DataTableFilterSaveFilterModal from '~/components/data-table-filter/SaveFilterModal.vue'
 import DataTableFilterSavedFiltersMenu from '~/components/data-table-filter/SavedFiltersMenu.vue'
 import DataTableFilterManageSavedFiltersModal from '~/components/data-table-filter/ManageSavedFiltersModal.vue'
-import WorkSectionNav from '~/components/navigation/WorkSectionNav.vue'
 import {
   COMPACT_BUTTON_LABEL_UI,
   LIST_FILTER_ACTIONS_ROW,
@@ -46,6 +50,7 @@ const { me, sessionEpoch } = useDashboard()
 const items = ref<OperationalProcess[]>([])
 const loading = ref(false)
 const page = ref(Math.max(1, Number(route.query.page) || 1))
+const perPage = ref(20)
 const total = ref(0)
 const q = ref(String(route.query.q || ''))
 const competence = ref(String(route.query.competence || ''))
@@ -175,7 +180,7 @@ async function load() {
   try {
     const res = await api.work.processes.list({
       page: page.value,
-      per_page: 25,
+      per_page: perPage.value,
       q: q.value || undefined,
       competence: competence.value || undefined,
       status: status.value && status.value !== 'all' ? status.value : undefined
@@ -193,6 +198,18 @@ async function load() {
 
 function openRow(row: OperationalProcess) {
   navigateTo(`/work/processes/${row.id}`)
+}
+
+function setPerPage(next: number) {
+  const allowed = [10, 20, 50]
+  const target = allowed.includes(Number(next)) ? Number(next) : 20
+  if (perPage.value === target) return
+  perPage.value = target
+  if (page.value !== 1) {
+    page.value = 1
+    return
+  }
+  void load()
 }
 
 watch([page, q, competence, status], () => {
@@ -226,12 +243,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <UDashboardPanel id="work-processes" data-testid="work-processes-panel">
+  <ShellPagePanel
+    id="work-processes"
+    data-testid="work-processes-panel"
+  >
     <template #header>
-      <UDashboardNavbar title="Processos" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
+      <ShellPageNavbar title="Processos">
         <template #right>
           <UButton
             v-if="canOpenTemplates"
@@ -240,12 +257,29 @@ onMounted(() => {
             to="/work/templates"
           />
         </template>
-      </UDashboardNavbar>
+      </ShellPageNavbar>
 
-      <UDashboardToolbar data-testid="work-section-tabs">
-        <WorkSectionNav />
-      </UDashboardToolbar>
+      <DataTableFilterSaveFilterModal
+        v-model:open="saveOpen"
+        :can-share="canShareFilters"
+        :loading="saveLoading"
+        :error="saveError"
+        @confirm="onSaveConfirm"
+      />
+      <DataTableFilterManageSavedFiltersModal
+        v-model:open="manageOpen"
+        :items="presets"
+        :can-share="canShareFilters"
+        :loading="presetsLoading"
+        :acting-id="actingId"
+        :error="manageError"
+        @rename="onRename"
+        @toggle-share="onToggleShare"
+        @delete="onDeletePreset"
+      />
+    </template>
 
+    <template #toolbar>
       <UDashboardToolbar>
         <div
           class="w-full min-w-0 p-1"
@@ -290,105 +324,100 @@ onMounted(() => {
           </div>
         </div>
       </UDashboardToolbar>
-
-      <DataTableFilterSaveFilterModal
-        v-model:open="saveOpen"
-        :can-share="canShareFilters"
-        :loading="saveLoading"
-        :error="saveError"
-        @confirm="onSaveConfirm"
-      />
-      <DataTableFilterManageSavedFiltersModal
-        v-model:open="manageOpen"
-        :items="presets"
-        :can-share="canShareFilters"
-        :loading="presetsLoading"
-        :acting-id="actingId"
-        :error="manageError"
-        @rename="onRename"
-        @toggle-share="onToggleShare"
-        @delete="onDeletePreset"
-      />
     </template>
 
     <template #body>
       <h1 data-testid="page-title" class="sr-only">
         Processos
       </h1>
-      <div v-if="loading" class="p-4 space-y-2">
-        <USkeleton v-for="i in 5" :key="i" class="h-10 w-full" />
-      </div>
-      <UEmpty
-        v-else-if="!items.length"
-        icon="i-lucide-folder-open"
-        title="Nenhum processo encontrado"
-        description="Ajuste filtros ou crie um processo."
-      />
-      <template v-else>
-        <UTable
-          :data="items"
-          :columns="columns"
-          :ui="DASHBOARD_TABLE_UI"
-          class="cursor-pointer"
-          @select="(_e: Event, row: { original: OperationalProcess }) => openRow(row.original)"
-        >
-          <template #client-cell="{ row }">
-            {{ row.original.client?.name || '—' }}
-          </template>
-          <template #competence-cell="{ row }">
-            {{ formatCompetence(row.original.competence) }}
-          </template>
-          <template #status-cell="{ row }">
-            <UBadge
-              size="md"
-              variant="subtle"
-              :color="processStatusColor(row.original.status)"
-              :label="processStatusLabel(row.original.status)"
-              :class="TABLE_CELL_BADGE_CLASS"
-              :ui="TABLE_CELL_BADGE_UI"
-            />
-          </template>
-          <template #progress-cell="{ row }">
-            <div class="flex min-w-24 flex-col gap-1">
-              <UProgress
-                :model-value="row.original.progress_percent ?? 0"
-                size="sm"
-                :aria-label="`Progresso ${row.original.progress_percent ?? 0}%`"
-              />
-              <span class="text-xs text-muted">
-                {{ row.original.completed_task_count ?? 0 }}/{{ row.original.task_count ?? 0 }}
-              </span>
-            </div>
-          </template>
-          <template #risk-cell="{ row }">
-            <UBadge
-              v-if="row.original.risks?.length"
-              size="md"
-              variant="subtle"
-              :color="highestRiskColor(row.original.risks)"
-              :label="workRiskLabel(row.original.risks[0]!)"
-              :class="TABLE_CELL_BADGE_CLASS"
-              :ui="TABLE_CELL_BADGE_UI"
-            />
-            <span v-else class="text-xs text-muted">—</span>
-          </template>
-          <template #due_date-cell="{ row }">
-            {{ formatDueDate(row.original.due_date) }}
-          </template>
-          <template #assignee-cell="{ row }">
-            {{ row.original.assignee?.name || '—' }}
-          </template>
-        </UTable>
-        <div class="flex items-center justify-between gap-2 border-t border-default p-3 text-sm text-muted">
-          <span>{{ total }} processo(s)</span>
-          <UPagination
-            v-if="total > 25"
-            v-model:page="page"
-            :total="total"
-            :items-per-page="25"
+      <ShellDataTable
+        test-id="work-processes-table"
+        ui-preset="monitoring-compact"
+        table-class="cursor-pointer"
+        primary-column-id="title"
+        status-column-id="status"
+        :summary-column-ids="['client', 'competence', 'progress', 'risk', 'due_date']"
+        :columns="columns"
+        :data="items"
+        :loading="loading"
+        :page="page"
+        :total="total"
+        :items-per-page="perPage"
+        per-page-aria-label="Processos por página"
+        @update:page="page = $event"
+        @update:items-per-page="setPerPage"
+        @select="(_e: Event, row: { original: OperationalProcess }) => openRow(row.original)"
+      >
+        <template #title-cell="{ row }">
+          <span
+            class="block min-w-0 max-w-xs truncate font-medium text-highlighted"
+            :title="row.original.title || undefined"
+          >
+            {{ truncateText(row.original.title, 40) || row.original.title || '—' }}
+          </span>
+        </template>
+        <template #client-cell="{ row }">
+          <span
+            class="block min-w-0 max-w-[12rem] truncate"
+            :title="row.original.client?.name || undefined"
+          >
+            {{ truncateText(row.original.client?.name, 32) || row.original.client?.name || '—' }}
+          </span>
+        </template>
+        <template #competence-cell="{ row }">
+          {{ formatCompetence(row.original.competence) }}
+        </template>
+        <template #status-cell="{ row }">
+          <UBadge
+            size="md"
+            variant="subtle"
+            :color="processStatusColor(row.original.status)"
+            :label="processStatusLabel(row.original.status)"
+            :class="TABLE_CELL_BADGE_CLASS"
+            :ui="TABLE_CELL_BADGE_UI"
           />
-        </div>
-      </template>
+        </template>
+        <template #progress-cell="{ row }">
+          <div class="flex min-w-24 flex-col gap-1">
+            <UProgress
+              :model-value="row.original.progress_percent ?? 0"
+              size="sm"
+              :aria-label="`Progresso ${row.original.progress_percent ?? 0}%`"
+            />
+            <span class="text-xs text-muted">
+              {{ row.original.completed_task_count ?? 0 }}/{{ row.original.task_count ?? 0 }}
+            </span>
+          </div>
+        </template>
+        <template #risk-cell="{ row }">
+          <UBadge
+            v-if="row.original.risks?.length"
+            size="md"
+            variant="subtle"
+            :color="highestRiskColor(row.original.risks)"
+            :label="workRiskLabel(row.original.risks[0]!)"
+            :class="TABLE_CELL_BADGE_CLASS"
+            :ui="TABLE_CELL_BADGE_UI"
+          />
+          <span v-else class="text-xs text-muted">—</span>
+        </template>
+        <template #due_date-cell="{ row }">
+          {{ formatDueDate(row.original.due_date) }}
+        </template>
+        <template #assignee-cell="{ row }">
+          {{ row.original.assignee?.name || '—' }}
+        </template>
+        <template #empty>
+          <UEmpty
+            icon="i-lucide-folder-open"
+            title="Nenhum processo encontrado"
+            description="Ajuste filtros ou crie um processo."
+          />
+        </template>
+        <template #footer>
+          <span class="tabular-nums">{{ total }}</span> processo(s)
+        </template>
+      </ShellDataTable>
     </template>
-  </UDashboardPanel>
+  </ShellPagePanel>
 </template>

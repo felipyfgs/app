@@ -5,7 +5,7 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { SerproContractSanitized } from '~/types/api'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import {
   LIST_FILTER_ACTIONS_ROW,
   LIST_FILTER_TOOLBAR_STACK
@@ -25,6 +25,16 @@ const loading = ref(false)
 const loadError = ref<string | null>(null)
 const rows = ref<SerproContractSanitized[]>([])
 const environment = ref('TRIAL')
+
+const {
+  page,
+  perPage,
+  total: pageTotal,
+  rows: pagedRows,
+  setPage,
+  setPerPage,
+  resetPage
+} = useLocalTablePagination(rows)
 
 const envItems = [
   { label: 'Demonstração SERPRO', value: 'TRIAL' },
@@ -86,10 +96,12 @@ async function load() {
 }
 
 watch(environment, () => {
+  resetPage()
   void load()
 })
 watch(sessionEpoch, () => {
   rows.value = []
+  resetPage()
   void load()
 })
 onMounted(load)
@@ -161,13 +173,26 @@ onMounted(load)
       variant="subtle"
       :ui="{ container: 'p-0 sm:p-0 gap-y-0' }"
     >
-      <UTable
-        :data="rows"
+      <ShellDataTable
+        ui-preset="dashboard"
+        test-id="admin-serpro-contracts-table"
+        primary-column-id="id"
+        status-column-id="status"
+        :summary-column-ids="['environment', 'contractor', 'cert', 'flags']"
+        :data="pagedRows"
         :loading="loading"
         :columns="columns"
-        :ui="DASHBOARD_TABLE_UI"
-        data-testid="admin-serpro-contracts-table"
+        :page="page"
+        :total="pageTotal"
+        :items-per-page="perPage"
+        per-page-aria-label="Contratos por página"
+        @update:page="setPage"
+        @update:items-per-page="setPerPage"
+        @retry="load"
       >
+        <template #footer>
+          <span class="tabular-nums">{{ pageTotal }}</span> contrato(s)
+        </template>
         <template #environment-cell="{ row }">
           <UBadge color="neutral" variant="subtle">
             {{ row.original.environment === 'PRODUCTION' ? 'Produção' : 'Demonstração SERPRO' }}
@@ -188,7 +213,7 @@ onMounted(load)
             />
           </div>
         </template>
-      </UTable>
+      </ShellDataTable>
 
       <div
         v-if="!loading && !rows.length"

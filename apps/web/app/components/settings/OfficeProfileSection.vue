@@ -6,12 +6,19 @@ import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { OfficeInstitutionalProfile } from '~/types/api'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   profile: OfficeInstitutionalProfile | null
   loading?: boolean
   saving?: boolean
   readonly?: boolean
-}>()
+  /** false quando o pai usa ShellPanelAccordion (evita double title). */
+  showHeader?: boolean
+}>(), {
+  loading: false,
+  saving: false,
+  readonly: false,
+  showHeader: true
+})
 
 const emit = defineEmits<{
   save: [payload: {
@@ -98,7 +105,10 @@ function confirmCnpjChange() {
       :state="state"
       @submit="onSubmit"
     >
-      <ShellSectionHeader title="Perfil do escritório">
+      <ShellSectionHeader
+        v-if="showHeader"
+        title="Perfil do escritório"
+      >
         <UButton
           v-if="!readonly"
           form="office-profile-form"
@@ -111,6 +121,21 @@ function confirmCnpjChange() {
           data-testid="settings-profile-save"
         />
       </ShellSectionHeader>
+      <div
+        v-else-if="!readonly"
+        class="mb-3 flex justify-end"
+      >
+        <UButton
+          form="office-profile-form"
+          type="submit"
+          label="Salvar"
+          color="neutral"
+          icon="i-lucide-save"
+          :loading="saving"
+          :disabled="loading"
+          data-testid="settings-profile-save"
+        />
+      </div>
 
       <ShellSectionCard>
         <div
@@ -190,27 +215,21 @@ function confirmCnpjChange() {
       </ShellSectionCard>
     </UForm>
 
-    <UModal
+    <ShellFormModal
       v-model:open="confirmCnpjOpen"
       title="Trocar CNPJ?"
       description="O certificado A1 atual será invalidado se for de outro CNPJ."
+      :show-default-footer="false"
     >
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton
-            color="neutral"
-            variant="ghost"
-            label="Cancelar"
-            @click="() => { confirmCnpjOpen = false }"
-          />
-          <UButton
-            color="warning"
-            label="Confirmar troca"
-            data-testid="settings-confirm-cnpj-change"
-            @click="confirmCnpjChange"
-          />
-        </div>
+        <ShellModalFooter
+          submit-label="Confirmar troca"
+          submit-color="warning"
+          submit-test-id="settings-confirm-cnpj-change"
+          @cancel="() => { confirmCnpjOpen = false }"
+          @submit="confirmCnpjChange"
+        />
       </template>
-    </UModal>
+    </ShellFormModal>
   </div>
 </template>

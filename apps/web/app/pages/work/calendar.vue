@@ -14,7 +14,6 @@ import {
   taskStatusLabel,
   workRiskLabel
 } from '~/utils/work-labels'
-import WorkSectionNav from '~/components/navigation/WorkSectionNav.vue'
 import ShellScrollableTabs from '~/components/shell/ScrollableTabs.vue'
 import { useWorkCalendarRange } from '~/composables/useWorkCalendarRange'
 
@@ -194,10 +193,6 @@ watch(sessionEpoch, () => {
           <UDashboardSidebarCollapse />
         </template>
       </UDashboardNavbar>
-
-      <UDashboardToolbar data-testid="work-section-tabs">
-        <WorkSectionNav />
-      </UDashboardToolbar>
 
       <UDashboardToolbar>
         <div class="flex w-full flex-wrap items-center gap-1">

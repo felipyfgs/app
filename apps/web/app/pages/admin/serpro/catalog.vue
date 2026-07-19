@@ -4,7 +4,7 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { SerproCatalogEntry } from '~/types/api'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import {
   LIST_FILTER_ACTIONS_ROW,
   LIST_FILTER_TOOLBAR_STACK
@@ -43,6 +43,20 @@ const filtered = computed(() => {
   return rows.value.filter(
     r => String(r.platform_support || '').toUpperCase() === supportFilter.value
   )
+})
+
+const {
+  page,
+  perPage,
+  total: pageTotal,
+  rows: pagedRows,
+  setPage,
+  setPerPage,
+  resetPage
+} = useLocalTablePagination(filtered)
+
+watch([supportFilter, environment], () => {
+  resetPage()
 })
 
 const columns: TableColumn<SerproCatalogEntry>[] = [
@@ -197,30 +211,40 @@ onMounted(load)
       :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
     />
 
-    <div
+    <ShellDataTable
       v-if="loading || filtered.length"
-      class="overflow-x-auto"
+      ui-preset="dashboard"
+      test-id="admin-serpro-catalog-table"
+      horizontal-scroll
+      table-class="w-full min-w-0"
+      primary-column-id="operation"
+      status-column-id="platform_support"
+      :summary-column-ids="['coords', 'power_code', 'route', 'billable']"
+      :data="pagedRows"
+      :loading="loading"
+      :columns="columns"
+      :page="page"
+      :total="pageTotal"
+      :items-per-page="perPage"
+      per-page-aria-label="Operações por página"
+      @update:page="setPage"
+      @update:items-per-page="setPerPage"
+      @retry="load"
     >
-      <UTable
-        :data="filtered"
-        :loading="loading"
-        :columns="columns"
-        :ui="DASHBOARD_TABLE_UI"
-        class="min-w-4xl shrink-0"
-        data-testid="admin-serpro-catalog-table"
-      >
-        <template #platform_support-cell="{ row }">
-          <div class="flex flex-wrap items-center gap-1">
-            <UBadge
-              :color="supportBadge(row.original.platform_support)"
-              variant="subtle"
-            >
-              {{ supportLabel(row.original.platform_support) }}
-            </UBadge>
-          </div>
-        </template>
-      </UTable>
-    </div>
+      <template #footer>
+        <span class="tabular-nums">{{ pageTotal }}</span> operação(ões)
+      </template>
+      <template #platform_support-cell="{ row }">
+        <div class="flex flex-wrap items-center gap-1">
+          <UBadge
+            :color="supportBadge(row.original.platform_support)"
+            variant="subtle"
+          >
+            {{ supportLabel(row.original.platform_support) }}
+          </UBadge>
+        </div>
+      </template>
+    </ShellDataTable>
 
     <UEmpty
       v-if="!loading && !loadError && !filtered.length"

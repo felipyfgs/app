@@ -10,12 +10,17 @@ import {
   registrationStatusLabel
 } from '~/utils/registration-labels'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   client: Client
   establishments: Establishment[]
   canManageClients: boolean
   canManageCredentials?: boolean
-}>()
+  /** false quando a page já fornece ShellSectionHeader. */
+  showHeader?: boolean
+}>(), {
+  canManageCredentials: false,
+  showHeader: true
+})
 
 const emit = defineEmits<{
   updated: []
@@ -51,13 +56,11 @@ function openClient(id: number) {
 </script>
 
 <template>
-  <div class="space-y-6" data-testid="client-branches-panel">
-    <UPageCard
+  <div class="space-y-4" data-testid="client-branches-panel">
+    <ShellSectionHeader
+      v-if="showHeader"
       title="Estabelecimentos"
       description="Cada CNPJ tem cadastro próprio. A matriz lista e vincula as filiais."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-2"
     >
       <UButton
         v-if="canManageClients && isMatrixProfile"
@@ -69,7 +72,21 @@ function openClient(id: number) {
         data-testid="client-branch-create"
         @click="openCreateBranch"
       />
-    </UPageCard>
+    </ShellSectionHeader>
+    <div
+      v-else-if="canManageClients && isMatrixProfile"
+      class="mb-2 flex justify-end"
+    >
+      <UButton
+        icon="i-lucide-plus"
+        label="Cadastrar filial"
+        color="primary"
+        variant="soft"
+        class="w-fit"
+        data-testid="client-branch-create"
+        @click="openCreateBranch"
+      />
+    </div>
 
     <UAlert
       v-if="client.matrix"

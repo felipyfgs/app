@@ -83,11 +83,14 @@ function canDelete(filter: SavedListFilter): boolean {
 </script>
 
 <template>
-  <UModal
+  <ShellFormModal
     v-model:open="open"
     title="Gerenciar filtros salvos"
     description="Renomeie, compartilhe ou exclua presets desta lista."
-    :ui="{ content: 'sm:max-w-lg' }"
+    content-class="sm:max-w-lg"
+    :show-default-footer="false"
+    test-id="manage-saved-filters-modal"
+    @cancel="() => { open = false }"
   >
     <template #body>
       <div
@@ -237,15 +240,12 @@ function canDelete(filter: SavedListFilter): boolean {
     </template>
 
     <template #footer>
-      <div class="flex w-full justify-end">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          label="Fechar"
-          data-testid="manage-saved-filters-close"
-          @click="() => { open = false }"
-        />
-      </div>
+      <ShellModalFooter
+        cancel-label="Fechar"
+        cancel-test-id="manage-saved-filters-close"
+        :show-submit="false"
+        @cancel="() => { open = false }"
+      />
     </template>
-  </UModal>
+  </ShellFormModal>
 </template>

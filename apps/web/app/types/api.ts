@@ -11,8 +11,54 @@ export type FiscalRole
 
 /** Direção fiscal no catálogo: entrada / saída. */
 export type DocumentDirection = 'IN' | 'OUT' | 'UNKNOWN'
-export type RegistrationSource = 'LEGACY' | 'MANUAL' | 'CNPJ_WS'
+export type RegistrationSource = 'LEGACY' | 'MANUAL' | 'CNPJ_WS' | 'SERPRO_CONSULTA'
+
+export interface CnaePayload {
+  code: string
+  name?: string | null
+}
+
+export interface StateRegistrationPayload {
+  number: string
+  state?: string | null
+  active?: boolean | null
+}
+
+export interface ShareholderPayload {
+  name: string
+  type?: string | null
+  qualification_code?: string | null
+  qualification_name?: string | null
+  entered_at?: string | null
+  document_masked?: string | null
+}
 export type RegistrationStatus = 'ACTIVE' | 'VOID' | 'SUSPENDED' | 'UNFIT' | 'CLOSED' | 'UNKNOWN'
+export type ClientTaxRegimeCode
+  = | 'SIMPLES_NACIONAL'
+    | 'MEI'
+    | 'LUCRO_PRESUMIDO'
+    | 'LUCRO_REAL'
+    | 'IMUNE_ISENTO'
+    | 'OUTRO'
+export type ClientCategoryColor
+  = | 'primary'
+    | 'secondary'
+    | 'success'
+    | 'info'
+    | 'warning'
+    | 'error'
+    | 'neutral'
+    | 'rose'
+    | 'pink'
+    | 'fuchsia'
+    | 'purple'
+    | 'indigo'
+    | 'sky'
+    | 'cyan'
+    | 'teal'
+    | 'emerald'
+    | 'lime'
+    | 'yellow'
 
 export interface Office {
   id: number
@@ -49,6 +95,8 @@ export interface MeUser {
   current_office?: Office | null
   role: OfficeRole | null
   default_office_id?: number | null
+  /** Chaves efetivas resolvidas pelo backend para o office corrente. */
+  effective_permissions?: string[]
 }
 
 /** GET /api/v1/onboarding/status */
@@ -116,12 +164,21 @@ export interface Establishment {
   registration_status?: RegistrationStatus | string | null
   registration_status_at?: string | null
   registration_status_reason?: string | null
+  special_situation?: string | null
+  special_situation_at?: string | null
   activity_started_at?: string | null
   main_cnae_code?: string | null
   main_cnae_name?: string | null
+  secondary_cnaes?: CnaePayload[]
+  state_registrations?: StateRegistrationPayload[]
+  shareholders?: ShareholderPayload[]
   address?: AddressPayload | null
   public_email?: string | null
   public_phone?: string | null
+  public_phone_secondary?: string | null
+  public_fax?: string | null
+  simples_optant?: boolean | null
+  mei_optant?: boolean | null
   capture_enabled?: boolean
   registration_source?: RegistrationSource | string | null
   registration_refreshed_at?: string | null
@@ -150,8 +207,15 @@ export interface ClientCustomField {
   id: number
   label: string
   type: 'TEXT' | 'SECRET'
+  is_active?: boolean
   value: string | null
   has_value: boolean
+}
+
+export interface ClientWorkDepartmentSummary {
+  id: number
+  name: string
+  code: string
 }
 
 export interface ClientCredentialSummary {
@@ -193,6 +257,17 @@ export interface ClientListStats {
   capture_problem?: number
   /** Série acumulada mensal dos últimos 12 meses, calculada no servidor. */
   client_growth_12m?: Array<{ month: string, total: number }>
+}
+
+export interface ClientCategorySummary {
+  id: number
+  name: string
+  color: ClientCategoryColor
+  is_active: boolean
+}
+
+export interface ClientCategory extends ClientCategorySummary {
+  clients_count: number
 }
 
 export type OfficeAutXmlEnrollmentStatus = 'NONE' | 'PENDING' | 'CONFIRMED' | 'INACTIVE'
@@ -274,8 +349,15 @@ export interface Client {
   legal_nature_name?: string | null
   company_size_code?: string | null
   company_size_name?: string | null
-  /** Regime tributário (ex.: Lucro Presumido, Simples Nacional) */
-  tax_regime?: string | null
+  capital_social?: string | null
+  responsible_qualification_code?: string | null
+  responsible_qualification_name?: string | null
+  /** Projeção cadastral atual; histórico oficial permanece nos períodos fiscais. */
+  tax_regime?: ClientTaxRegimeCode | null
+  tax_regime_label?: string | null
+  work_department_id?: number | null
+  work_department?: ClientWorkDepartmentSummary | null
+  categories?: ClientCategorySummary[]
   notes?: string | null
   is_active: boolean
   inactive_reason?: string | null
@@ -314,6 +396,9 @@ export interface CnpjLookupClient {
   legal_nature_name?: string | null
   company_size_code?: string | null
   company_size_name?: string | null
+  capital_social?: string | null
+  responsible_qualification_code?: string | null
+  responsible_qualification_name?: string | null
 }
 
 export interface CnpjLookupEstablishment {
@@ -323,18 +408,28 @@ export interface CnpjLookupEstablishment {
   registration_status: RegistrationStatus | string
   registration_status_at?: string | null
   registration_status_reason?: string | null
+  special_situation?: string | null
+  special_situation_at?: string | null
   activity_started_at?: string | null
   main_cnae_code?: string | null
   main_cnae_name?: string | null
+  secondary_cnaes?: CnaePayload[]
+  state_registrations?: StateRegistrationPayload[]
+  shareholders?: ShareholderPayload[]
   address?: AddressPayload | null
   public_email?: string | null
   public_phone?: string | null
+  public_phone_secondary?: string | null
+  public_fax?: string | null
+  simples_optant?: boolean | null
+  mei_optant?: boolean | null
   source_updated_at?: string | null
 }
 
 export interface CnpjLookupResult {
   source: string
   source_updated_at?: string | null
+  sources_used?: string[]
   client: CnpjLookupClient
   establishment: CnpjLookupEstablishment
 }
@@ -357,14 +452,26 @@ export interface CreateClientPayload {
   activity_started_at?: string | null
   main_cnae_code?: string | null
   main_cnae_name?: string | null
+  secondary_cnaes?: CnaePayload[] | null
+  state_registrations?: StateRegistrationPayload[] | null
+  shareholders?: ShareholderPayload[] | null
   public_email?: string | null
   public_phone?: string | null
+  public_phone_secondary?: string | null
+  public_fax?: string | null
+  special_situation?: string | null
+  special_situation_at?: string | null
+  simples_optant?: boolean | null
+  mei_optant?: boolean | null
   capture_enabled?: boolean
   legal_nature_code?: string | null
   legal_nature_name?: string | null
   company_size_code?: string | null
   company_size_name?: string | null
-  tax_regime?: string | null
+  capital_social?: string | number | null
+  responsible_qualification_code?: string | null
+  responsible_qualification_name?: string | null
+  tax_regime?: ClientTaxRegimeCode | string | null
   address?: AddressPayload | null
   initial_contact?: {
     name: string
@@ -1157,6 +1264,11 @@ export interface OfficeCanonicalCredential {
 /** Estado de onboarding acionável (sem jargão técnico SERPRO). */
 export type OfficeOnboardingStatus
   = | 'incomplete'
+    | 'configuring'
+    | 'validating'
+    | 'authorizing'
+    | 'loading_proxy_powers'
+    | 'syncing'
     | 'ready'
     | 'provisioning'
     | 'authorized'
@@ -1166,6 +1278,17 @@ export type OfficeOnboardingStatus
 
 export interface OfficeOnboardingActionable {
   status: OfficeOnboardingStatus | string
+  stage?:
+    | 'CONFIGURANDO'
+    | 'VALIDANDO'
+    | 'AUTORIZANDO'
+    | 'CARREGANDO_PROCURACOES'
+    | 'SINCRONIZANDO'
+    | 'PRONTO'
+    | 'ACAO_NECESSARIA'
+    | 'FALHA_TECNICA'
+    | 'REVOGADO'
+    | string
   actions: Array<{
     code: string
     label: string
@@ -1175,6 +1298,18 @@ export interface OfficeOnboardingActionable {
   /** Correlation id sanitizado quando houver falha técnica. */
   correlation_id?: string | null
   message?: string | null
+  modules?: FiscalModuleAdminItem[]
+  procuracoes?: {
+    total_clients: number
+    by_status: Record<string, number>
+    verified: number
+  }
+  initial_collection?: {
+    queued_at: string | null
+    runs_total: number
+    runs_pending: number
+    runs_finished: number
+  }
 }
 
 /** Política mensal de execução automática por monitor (dia 1–28). */
@@ -1224,6 +1359,54 @@ export interface PlatformOfficeSelectResult {
   real_office_role?: OfficeRole | string | null
   has_real_membership?: boolean
   default_office_id?: number | null
+}
+
+export type FiscalModuleAvailabilityState
+  = | 'AVAILABLE'
+    | 'GLOBALLY_RESTRICTED'
+    | 'OFFICE_RESTRICTED'
+    | 'AWAITING_CONFIGURATION'
+    | 'TECHNICAL_FAILURE'
+
+export interface FiscalModuleRestrictionControl {
+  id: number
+  restricted: boolean
+  reason: string
+  updated_by: { id: number, name: string } | null
+  restricted_at: string | null
+  updated_at: string | null
+  blocked_jobs_count: number
+}
+
+export interface FiscalModuleAdminItem {
+  module_key: string
+  label: string
+  profile: 'dev' | 'trial' | 'production' | string
+  operation_class: 'READ' | 'DOCUMENT_GENERATION' | 'FISCAL_MUTATION' | string
+  allowed: boolean
+  state: FiscalModuleAvailabilityState
+  reason_code: string | null
+  reason: string | null
+  control_id: number | null
+  historical_data_visible: true
+  global_restriction: FiscalModuleRestrictionControl | null
+  office_restriction: FiscalModuleRestrictionControl | null
+  blocked_jobs_count: number
+}
+
+export interface PlatformFiscalModulesEnvelope {
+  profile: 'dev' | 'trial' | 'production' | string
+  kill_switch: boolean
+  modules: FiscalModuleAdminItem[]
+}
+
+export interface PlatformOfficeFiscalModulesEnvelope extends PlatformFiscalModulesEnvelope {
+  office: Pick<PlatformOfficeSummary, 'id' | 'name' | 'slug' | 'is_active'>
+}
+
+export interface FiscalModuleRestrictionBody {
+  restricted: boolean
+  reason: string
 }
 
 // ─── Assinatura / Integra Contador (tenant) ──────────────────────────────────

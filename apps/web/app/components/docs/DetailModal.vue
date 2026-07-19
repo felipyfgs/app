@@ -146,16 +146,14 @@ async function downloadXml() {
 </script>
 
 <template>
-  <UModal
+  <ShellScrollableModal
     v-model:open="open"
-    data-testid="note-detail-modal"
+    test-id="note-detail-modal"
     :title="title"
     :description="description"
-    :ui="{
-      content: 'w-[calc(100vw-1.5rem)] sm:w-[min(42rem,calc(100vw-2rem))] lg:w-[min(48rem,calc(100vw-2rem))] sm:max-w-none h-[min(92dvh,52rem)] max-h-[min(92dvh,52rem)] overflow-hidden',
-      body: 'flex min-h-0 flex-1 flex-col overflow-hidden p-0 sm:p-0',
-      footer: 'justify-between gap-2 shrink-0'
-    }"
+    content-class="w-[calc(100vw-1.5rem)] sm:w-[min(42rem,calc(100vw-2rem))] lg:w-[min(48rem,calc(100vw-2rem))] sm:max-w-none h-[min(92dvh,52rem)] max-h-[min(92dvh,52rem)] overflow-hidden"
+    :show-default-footer="false"
+    @cancel="() => { open = false }"
   >
     <template #actions>
       <div
@@ -191,7 +189,7 @@ async function downloadXml() {
       </div>
     </template>
 
-    <template #footer="{ close }">
+    <template #footer>
       <div class="flex w-full flex-wrap items-center justify-between gap-2">
         <p class="text-xs text-muted">
           Download do XML é auditado
@@ -222,10 +220,10 @@ async function downloadXml() {
             variant="subtle"
             size="sm"
             label="Fechar"
-            @click="close"
+            @click="() => { open = false }"
           />
         </div>
       </div>
     </template>
-  </UModal>
+  </ShellScrollableModal>
 </template>

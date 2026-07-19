@@ -3,9 +3,13 @@ import type {
   CreatePlatformOfficeBody,
   CreatePlatformOfficeResult,
   CredentialDeliveryPayload,
+  FiscalModuleAdminItem,
+  FiscalModuleRestrictionBody,
   PlatformOfficeAdminDetail,
   PlatformOfficeAdminSummary,
   PlatformOfficeSelectResult,
+  PlatformFiscalModulesEnvelope,
+  PlatformOfficeFiscalModulesEnvelope,
   PlatformOfficesEnvelope,
   PlatformOwner,
   SerproCatalogEntry,
@@ -81,6 +85,28 @@ export function createPlatformApi(client: ApiClient) {
         ) =>
           client<{ data: CredentialDeliveryPayload }>(
             `/api/v1/platform/offices/${officeId}/first-admin`,
+            { method: 'PATCH', body }
+          )
+      },
+      fiscalModules: {
+        list: () =>
+          client<{ data: PlatformFiscalModulesEnvelope }>('/api/v1/platform/fiscal/modules'),
+        setRestriction: (moduleKey: string, body: FiscalModuleRestrictionBody) =>
+          client<{ data: FiscalModuleAdminItem, message: string }>(
+            `/api/v1/platform/fiscal/modules/${encodeURIComponent(moduleKey)}/restriction`,
+            { method: 'PATCH', body }
+          ),
+        listForOffice: (officeId: number) =>
+          client<{ data: PlatformOfficeFiscalModulesEnvelope }>(
+            `/api/v1/platform/tenants/${officeId}/fiscal/modules`
+          ),
+        setOfficeRestriction: (
+          officeId: number,
+          moduleKey: string,
+          body: FiscalModuleRestrictionBody
+        ) =>
+          client<{ data: FiscalModuleAdminItem, message: string }>(
+            `/api/v1/platform/tenants/${officeId}/fiscal/modules/${encodeURIComponent(moduleKey)}/restriction`,
             { method: 'PATCH', body }
           )
       },

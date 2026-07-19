@@ -327,6 +327,18 @@ function setPage(next: number) {
   page.value = Math.max(1, Math.floor(Number(next) || 1))
 }
 
+function setPerPage(next: number) {
+  const allowed = [10, 20, 50]
+  const target = allowed.includes(Number(next)) ? Number(next) : 20
+  if (perPage.value === target) return
+  perPage.value = target
+  if (page.value !== 1) {
+    page.value = 1
+    return
+  }
+  void load()
+}
+
 /** Transação de filtro: evita double-load entre watch(page) e mutação de filtros. */
 let filterTransactionDepth = 0
 
@@ -431,7 +443,6 @@ onMounted(() => {
     :source-label="overview?.source_label"
     :as-of="overview?.as_of"
     :horizontal-scroll="true"
-    table-class="min-w-[1120px]"
     empty-title="Nenhuma guia"
     :column-labels="{
       system: 'Sistema / tipo',
@@ -443,16 +454,13 @@ onMounted(() => {
       version: 'Versão'
     }"
     @update:page="setPage"
+    @update:per-page="setPerPage"
     @update:sorting="sorting = $event"
     @quick-filter-change="applyModuleFilters"
     @apply-filters="applyModuleFilters"
     @reset-filters="resetModuleFilters"
     @refresh="refreshAll"
   >
-    <template #nav>
-      <MonitoringModuleNav active="guides" />
-    </template>
-
     <template #utilities>
       <UAlert
         v-if="overviewError"

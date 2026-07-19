@@ -672,42 +672,21 @@ async function confirmDocumentCollection() {
     </UPageCard>
   </div>
 
-  <UModal
+  <ShellScrollableModal
     v-model:open="documentConfirmOpen"
+    title="Buscar declaração e recibo"
+    :description="`${pendingClientLabel} · PA ${pendingPeriodLabel}`"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-xl"
     :dismissible="collectingPeriod == null"
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-xl' }"
+    :show-default-footer="false"
+    @cancel="closeDocumentConfirmation"
   >
-    <template #content>
-      <UCard :ui="{ body: 'space-y-5', footer: 'flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end' }">
-        <template #header>
-          <div class="flex items-start justify-between gap-3 sm:gap-4">
-            <div class="min-w-0">
-              <div class="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-primary">
-                <UIcon name="i-lucide-file-search" class="size-4 shrink-0" />
-                PGDAS-D
-              </div>
-              <h3 class="text-base font-semibold text-highlighted">
-                Buscar declaração e recibo
-              </h3>
-              <p class="mt-1 text-sm text-muted">
-                <span class="break-words">{{ pendingClientLabel }}</span>
-                <span class="text-dimmed"> · </span>
-                <span class="whitespace-nowrap">PA {{ pendingPeriodLabel }}</span>
-              </p>
-            </div>
-            <UButton
-              icon="i-lucide-x"
-              color="neutral"
-              variant="ghost"
-              size="sm"
-              square
-              class="shrink-0"
-              aria-label="Fechar confirmação de busca de documentos"
-              :disabled="collectingPeriod != null"
-              @click="closeDocumentConfirmation"
-            />
-          </div>
-        </template>
+    <template #body>
+      <div class="space-y-5">
+        <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-primary">
+          <UIcon name="i-lucide-file-search" class="size-4 shrink-0" />
+          PGDAS-D
+        </div>
 
         <UAlert
           color="warning"
@@ -733,27 +712,19 @@ async function confirmDocumentCollection() {
           label="Entendo que esta ação solicita uma consulta para este cliente e período."
           :disabled="collectingPeriod != null"
         />
-
-        <template #footer>
-          <UButton
-            color="neutral"
-            variant="ghost"
-            label="Cancelar"
-            class="w-full sm:w-auto"
-            :disabled="collectingPeriod != null"
-            @click="closeDocumentConfirmation"
-          />
-          <UButton
-            color="primary"
-            icon="i-lucide-check"
-            label="Solicitar documentos"
-            class="w-full sm:w-auto"
-            :loading="collectingPeriod != null"
-            :disabled="!documentsAcknowledged"
-            @click="confirmDocumentCollection"
-          />
-        </template>
-      </UCard>
+      </div>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        cancel-label="Cancelar"
+        submit-label="Solicitar documentos"
+        submit-icon="i-lucide-check"
+        :loading="collectingPeriod != null"
+        :disabled="!documentsAcknowledged"
+        :cancel-disabled="collectingPeriod != null"
+        @cancel="closeDocumentConfirmation"
+        @submit="confirmDocumentCollection"
+      />
+    </template>
+  </ShellScrollableModal>
 </template>

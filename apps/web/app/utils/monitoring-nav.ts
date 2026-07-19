@@ -16,10 +16,8 @@ const MONITORING_EXTRA_PATHS: Record<Exclude<MonitoringModuleKey, FiscalModuleKe
 
 export interface MonitoringNavItem {
   id: string
-  /** Rótulo preservado nas tabs horizontais do MonitorHub. */
+  /** Rótulo canônico compartilhado por sidebar, busca e título da superfície. */
   label: string
-  /** Rótulo curto usado somente no submenu Monitoramento da sidebar. */
-  sidebarLabel: string
   icon: string
   to: string
   moduleKey: MonitoringModuleKey
@@ -32,7 +30,6 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
   {
     id: 'monitoring-dashboard',
     label: 'Dashboard',
-    sidebarLabel: 'Resumo',
     icon: 'i-lucide-gauge',
     to: '/monitoring',
     moduleKey: 'dashboard',
@@ -40,8 +37,7 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
   },
   {
     id: 'monitoring-simples-mei',
-    label: 'Simples / MEI',
-    sidebarLabel: 'Simples/MEI',
+    label: 'Simples Nacional | MEI',
     icon: 'i-lucide-badge-percent',
     // Depth = item da sidebar (submódulos PGDASD/PGMEI são tabs, não path).
     to: '/monitoring/simples-mei',
@@ -50,8 +46,7 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
   },
   {
     id: 'monitoring-dctfweb',
-    label: 'DCTFWeb / MIT',
-    sidebarLabel: 'DCTFWeb/MIT',
+    label: 'DCTFWeb',
     icon: 'i-lucide-file-input',
     to: '/monitoring/dctfweb',
     moduleKey: 'dctfweb',
@@ -59,8 +54,7 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
   },
   {
     id: 'monitoring-fgts',
-    label: 'FGTS',
-    sidebarLabel: 'FGTS',
+    label: 'FGTS Digital',
     icon: 'i-lucide-landmark',
     to: '/monitoring/fgts',
     moduleKey: 'fgts'
@@ -68,15 +62,13 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
   {
     id: 'monitoring-installments',
     label: 'Parcelamentos',
-    sidebarLabel: 'Parcelamentos',
     icon: 'i-lucide-calendar-range',
     to: '/monitoring/installments',
     moduleKey: 'installments'
   },
   {
     id: 'monitoring-sitfis',
-    label: 'SITFIS',
-    sidebarLabel: 'SITFIS',
+    label: 'Situação Fiscal',
     icon: 'i-lucide-clipboard-check',
     to: '/monitoring/sitfis',
     moduleKey: 'sitfis'
@@ -84,7 +76,6 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
   {
     id: 'monitoring-mailbox',
     label: 'Caixas Postais',
-    sidebarLabel: 'Caixas',
     icon: 'i-lucide-mail',
     to: '/monitoring/mailbox',
     moduleKey: 'mailbox'
@@ -92,7 +83,6 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
   {
     id: 'monitoring-declarations',
     label: 'Declarações',
-    sidebarLabel: 'Declarações',
     icon: 'i-lucide-file-check-2',
     to: '/monitoring/declarations',
     moduleKey: 'declarations'
@@ -100,23 +90,20 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
   {
     id: 'monitoring-guides',
     label: 'Guias',
-    sidebarLabel: 'Guias',
     icon: 'i-lucide-receipt',
     to: '/monitoring/guides',
     moduleKey: 'guides'
   },
   {
     id: 'monitoring-registrations',
-    label: 'Cadastro / Vínculos',
-    sidebarLabel: 'Vínculos',
+    label: 'Cadastro e Vínculos',
     icon: 'i-lucide-link-2',
     to: '/monitoring/registrations',
     moduleKey: 'registrations'
   },
   {
     id: 'monitoring-tax-processes',
-    label: 'Processos fiscais',
-    sidebarLabel: 'Processos',
+    label: 'Processos Fiscais',
     icon: 'i-lucide-scale',
     to: '/monitoring/tax-processes',
     moduleKey: 'tax_processes'

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * Departamentos do escritório (catálogo operacional Work) — Filter Lite (só busca).
+ * Chrome: ShellSectionHeader + ShellFilterToolbarLite.
  * Arquétipo settings/lista: .local/reference/.../settings/members.vue
- * Conteúdo aninhado no shell de pages/settings.vue (toolbar + NuxtPage).
  */
 import type { WorkDepartment } from '~/types/work'
 import { canManageWorkCatalog } from '~/utils/permissions'
@@ -80,26 +80,22 @@ onMounted(load)
     members.vue: UPageCard naked (título + ação) + UPageCard subtle (search + lista)
   -->
   <div data-testid="settings-departments">
-    <UPageCard
+    <ShellSectionHeader
       title="Departamentos"
       description="Organize a operação em áreas (Fiscal, Contábil, DP…)."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
+      test-id="settings-departments-header"
     >
       <SettingsDepartmentAddModal @created="load" />
-    </UPageCard>
+    </ShellSectionHeader>
 
-    <UAlert
+    <ShellLoadError
       v-if="loadError"
-      color="error"
-      icon="i-lucide-circle-x"
       :title="loadError"
-      class="mb-4"
-      :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: load }]"
-      data-testid="departments-load-error"
+      test-id="departments-load-error"
+      @retry="load"
     />
 
+    <!-- Lista settings: UPageCard subtle com header p-0 (exceção documentada vs SectionCard). -->
     <UPageCard
       variant="subtle"
       :ui="{
@@ -109,13 +105,14 @@ onMounted(load)
       }"
     >
       <template #header>
-        <UInput
-          v-model="q"
-          icon="i-lucide-search"
-          placeholder="Buscar por nome ou sigla"
-          autofocus
-          class="w-full"
-          data-testid="departments-search"
+        <ShellFilterToolbarLite
+          :q="q"
+          search-placeholder="Buscar por nome ou sigla"
+          search-aria-label="Buscar por nome ou sigla"
+          :loading="loading"
+          test-id-prefix="departments"
+          @update:q="(value) => { q = value }"
+          @refresh="load"
         />
       </template>
 

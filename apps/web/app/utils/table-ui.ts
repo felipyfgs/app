@@ -1,6 +1,11 @@
 /**
  * Presets de UTable — cópia do template @ 0f30c09 + densidade do painel.
  *
+ * Regra de ouro (kit Shell*):
+ * - Lista admin = `ShellDataTable` (+ `ShellTableFooter` / toolbar shell).
+ * - Page/domínio NÃO montam `<UTable` nem paginação/per-page na mão.
+ * - Prefixo auto-import: pasta `components/shell/` → `Shell*`.
+ *
  * Tema Nuxt UI (`.nuxt/ui/table.ts`) default:
  *   th → `px-4 py-3.5` · td → `p-4`
  * Os presets abaixo sobrescrevem padding via `ui` (tailwind-merge) sem reduzir
@@ -10,11 +15,84 @@
  * - COMPACT_DASHBOARD_TABLE_UI ← HomeSales.vue + py/px densos
  * - MONITORING_COMPACT_TABLE_UI ← carteiras fiscais (ModuleDataTable)
  *
+ * Layout de lista (customers.vue):
+ * - LIST_TABLE_CLASS → UTable `shrink-0` (altura natural)
+ * - LIST_TABLE_FOOTER_CLASS → contagem + UPagination com `mt-auto`
+ * - LIST_TABLE_STACK_CLASS → coluna flex que preenche o #body do painel
+ *
  * Contrato de célula:
  * - UBadge de status/chip: size="md" + TABLE_CELL_BADGE_* (preenche a célula)
  * - UButton ícone: size="xs", variant="ghost"
  * - Larguras só em column.meta.class
+ *
+ * Larguras em `table-fixed` (evita «coluna fantasma» à direita):
+ * - Coluna de identidade (Cliente / razão social / título): `min-w-* w-full`
+ *   — absorve o espaço restante quando há colunas ocultas ou ações estreitas.
+ * - Demais colunas: largura fixa em rem (`w-28 min-w-24`), sem `%` baixo nem `max-w`
+ *   na identidade (max-w na coluna flexível deixa faixa vazia no fim da tabela).
+ *
+ * Preferir caber na viewport (sem barra horizontal):
+ * - NÃO forçar `min-w-[960px]` / `min-w-4xl` na `<table>` só para “alinhar ícones”.
+ * - Usar `w-full min-w-0` na grade; `horizontalScroll` só como escape hatch.
+ * - Colunas secundárias começam ocultas (`initialHiddenColumns`) e voltam via «Colunas».
  */
+
+/** UTable em lista admin — customers.vue `class="shrink-0"`. */
+export const LIST_TABLE_CLASS = 'shrink-0'
+
+/**
+ * Footer de lista — customers.vue + stack em &lt; sm:
+ * empilha contagem e controles no telefone; linha em sm+.
+ */
+export const LIST_TABLE_FOOTER_CLASS
+  = 'flex flex-col gap-3 border-t border-default pt-4 mt-auto sm:flex-row sm:items-center sm:justify-between'
+
+/**
+ * Stack toolbar + tabela + footer dentro do #body (flex do painel).
+ * `min-h-full flex-1` faz o `mt-auto` do footer empurrar ao fim da página.
+ */
+export const LIST_TABLE_STACK_CLASS = 'flex min-h-full min-w-0 flex-1 flex-col gap-1.5'
+
+/** Opções do USelect «N por página» (lista de clientes / ModuleDataTable). */
+export const LIST_TABLE_PER_PAGE_ITEMS = Object.freeze([
+  { label: '10 por página', value: 10 },
+  { label: '20 por página', value: 20 },
+  { label: '50 por página', value: 50 }
+] as const)
+
+export type ListTablePerPage = (typeof LIST_TABLE_PER_PAGE_ITEMS)[number]['value']
+
+/** Valores permitidos no seletor / contrato de lista offset. */
+export const LIST_TABLE_PER_PAGE_VALUES: readonly ListTablePerPage[] = LIST_TABLE_PER_PAGE_ITEMS.map(
+  item => item.value
+)
+
+/**
+ * Normaliza per-page para 10 | 20 | 50 (default 20).
+ * Evita UPagination com pageCount fantasma quando a API/URL manda outro valor.
+ */
+export function normalizeListTablePerPage(
+  value: unknown,
+  fallback: ListTablePerPage = 20
+): ListTablePerPage {
+  const n = Number(value)
+  if (n === 10 || n === 20 || n === 50) return n
+  return fallback
+}
+
+/** Quantidade de páginas offset (mínimo 1). */
+export function listTablePageCount(total: number, itemsPerPage: number): number {
+  const size = Math.max(1, Number(itemsPerPage) || 1)
+  const n = Math.max(0, Number(total) || 0)
+  return Math.max(1, Math.ceil(n / size))
+}
+
+/** Página atual limitada a `[1, pageCount]`. */
+export function clampListTablePage(page: number, pageCount: number): number {
+  const p = Math.floor(Number(page) || 1)
+  const max = Math.max(1, Math.floor(Number(pageCount) || 1))
+  return Math.min(Math.max(1, p), max)
+}
 
 /** Classes do badge que preenche a célula (padrão clients/index). */
 export const TABLE_CELL_BADGE_CLASS = 'h-8 w-full min-w-0 justify-center tabular-nums font-normal'

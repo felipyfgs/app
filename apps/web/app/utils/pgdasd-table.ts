@@ -32,13 +32,23 @@ import {
 import { tableIconButton, tableIconGroup, tableIconMenu } from '~/utils/table-icon-slots'
 import { sortHeader } from '~/utils/table-sort'
 import { tableCellBadgeProps } from '~/utils/table-ui'
+import {
+  MONITORING_ACTIONS_LABEL,
+  MONITORING_ACTIONS_META,
+  MONITORING_CONSULTED_ID,
+  MONITORING_CONSULTED_LABEL,
+  MONITORING_CONSULTED_META,
+  MONITORING_HISTORY_LABEL,
+  MONITORING_TRACKING_LABEL,
+  MONITORING_TRACKING_META
+} from '~/utils/monitoring-table-columns'
 
 /** Handlers fiscais ficam na toolbar (SelectionActions); a linha só mantém atalho de prévia. */
 
 /**
- * Renderer PGDAS-D — nove colunas de negócio (densidade compacta):
- * Cliente · Situação · Últ. Declaração · Sublimite (RBT12) · Ações · Enviar ·
- * Rastreio de envio · Última Busca · Histórico de Busca.
+ * Renderer PGDAS-D — colunas de negócio (densidade compacta):
+ * Cliente · Situação · Últ. Declaração · RBT12 · Ações (prévia+auto) ·
+ * Rastreio de envio · Consulta · Histórico.
  * Seleção é acrescentada pelo shell autorizado antes de Cliente.
  */
 export function buildPgdasdColumns(options: {
@@ -80,7 +90,7 @@ export function buildPgdasdColumns(options: {
   }
 
   function rowActions(row: SimplesMeiClientRow) {
-    // Menu completo (regimes/DEFIS) vive na toolbar ao selecionar a linha.
+    // Prévia + automático na mesma coluna (regimes/DEFIS ficam na toolbar ao selecionar).
     return tableIconGroup([
       tableIconButton({
         label: 'Abrir prévia de envio',
@@ -88,7 +98,20 @@ export function buildPgdasdColumns(options: {
         color: 'primary',
         testId: 'pgdasd-send-preview',
         onClick: () => options.onPreview(row)
-      })
+      }),
+      h('div', {
+        'class': 'inline-flex size-8 items-center justify-center',
+        'data-testid': 'pgdasd-send-slot'
+      }, [
+        h(AutomaticSwitch, {
+          clientId: row.client_id,
+          preference: pgdasdSummary(row)?.communication,
+          canManage: options.canManage,
+          onConfigure: () => options.onConfigure(row),
+          onSaved: (preference: PgdasdCommunicationPreference) =>
+            options.onPreferenceSaved(row, preference)
+        })
+      ])
     ], 'pgdasd-actions-group')
   }
 
@@ -166,7 +189,7 @@ export function buildPgdasdColumns(options: {
       id: 'client',
       header: ({ column }) => sortHeader('Cliente', column),
       enableHiding: false,
-      meta: { class: { th: 'min-w-48 w-[22%]', td: 'min-w-48 w-[22%]' } },
+      meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
       cell: ({ row }) => h(FiscalClientCell, {
         clientId: row.original.client_id,
         name: row.original.legal_name,
@@ -213,30 +236,23 @@ export function buildPgdasdColumns(options: {
     {
       id: 'rbt12',
       header: () => h(UTooltip, {
-        text: 'Receita bruta acumulada nos 12 meses anteriores ao período de apuração; não é o sublimite anual legal.'
+        text: 'RBT12 (RB12): receita bruta acumulada nos 12 meses anteriores ao período de apuração. Não é RPA (receita do mês) nem o sublimite anual.'
       }, {
-        default: () => h('span', { class: 'inline-flex items-center gap-1' }, [
-          'Sublimite (RBT12)',
+        default: () => h('span', { class: 'whitespace-nowrap' }, [
+          'RBT12',
           h('span', { class: 'sr-only' }, ' — receita bruta acumulada em doze meses')
         ])
       }),
       enableSorting: false,
-      meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
+      meta: { class: { th: 'w-0 whitespace-nowrap', td: 'w-0 whitespace-nowrap' } },
       cell: ({ row }) => h(Rbt12Value, {
         rbt12: pgdasdSummary(row.original)?.rbt12
       })
     },
     {
       id: 'actions',
-      header: 'Ações',
-      enableSorting: false,
-      meta: { class: { th: 'w-20 min-w-20', td: 'w-20 min-w-20' } },
-      cell: ({ row }) => rowActions(row.original)
-    },
-    {
-      id: 'send',
       header: () => h('div', { class: 'flex items-center gap-1' }, [
-        h('span', 'Enviar'),
+        h('span', MONITORING_ACTIONS_LABEL),
         options.canManage
           ? h(BulkAutomaticSwitch, {
               selectedClientIds: options.getSelectedClientIds(),
@@ -248,32 +264,20 @@ export function buildPgdasdColumns(options: {
           : null
       ]),
       enableSorting: false,
-      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
-      cell: ({ row }) => h('div', {
-        'class': 'inline-flex h-8 w-10 shrink-0 items-center justify-center',
-        'data-testid': 'pgdasd-send-slot'
-      }, [
-        h(AutomaticSwitch, {
-          clientId: row.original.client_id,
-          preference: pgdasdSummary(row.original)?.communication,
-          canManage: options.canManage,
-          onConfigure: () => options.onConfigure(row.original),
-          onSaved: (preference: PgdasdCommunicationPreference) =>
-            options.onPreferenceSaved(row.original, preference)
-        })
-      ])
+      meta: { ...MONITORING_ACTIONS_META },
+      cell: ({ row }) => rowActions(row.original)
     },
     {
       id: 'tracking',
-      header: 'Rastreio de envio',
+      header: MONITORING_TRACKING_LABEL,
       enableSorting: false,
-      meta: { class: { th: 'w-28 min-w-28', td: 'w-28 min-w-28' } },
+      meta: { ...MONITORING_TRACKING_META },
       cell: ({ row }) => trackingCell(row.original)
     },
     {
-      id: 'consulted',
-      header: ({ column }) => sortHeader('Última Busca', column),
-      meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
+      id: MONITORING_CONSULTED_ID,
+      header: ({ column }) => sortHeader(MONITORING_CONSULTED_LABEL, column),
+      meta: { ...MONITORING_CONSULTED_META },
       cell: ({ row }) => {
         const lastQuery = pgdasdSummary(row.original)?.last_valid_query_at
         return h(UTooltip, {
@@ -290,7 +294,7 @@ export function buildPgdasdColumns(options: {
     },
     {
       id: 'history',
-      header: 'Histórico de Busca',
+      header: MONITORING_HISTORY_LABEL,
       enableSorting: false,
       meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
       cell: ({ row }) => h(UTooltip, {

@@ -37,7 +37,7 @@ function onSelect(item: CommandPaletteItem | CommandPaletteItem[] | undefined | 
   <UCommandPalette
     :groups="groups"
     placeholder="Buscar campo…"
-    class="min-w-0 w-full max-h-[min(24rem,calc(100dvh-8rem))]"
+    class="min-h-0 w-full min-w-0 max-h-full"
     :ui="{
       root: 'min-w-0',
       input: 'border-b border-default'

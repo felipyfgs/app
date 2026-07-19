@@ -12,6 +12,16 @@ export function onboardingStatusLabel(status?: string | null): string {
   switch (status as OfficeOnboardingStatus | string) {
     case 'incomplete':
       return 'Cadastro incompleto'
+    case 'configuring':
+      return 'Configurando'
+    case 'validating':
+      return 'Validando certificado'
+    case 'authorizing':
+      return 'Autorizando acesso'
+    case 'loading_proxy_powers':
+      return 'Carregando procurações'
+    case 'syncing':
+      return 'Sincronizando dados'
     case 'ready':
       return 'Pronto para ativação'
     case 'provisioning':
@@ -34,8 +44,13 @@ export function onboardingStatusColor(
 ): 'success' | 'warning' | 'error' | 'info' | 'neutral' {
   switch (status) {
     case 'authorized':
-      return 'success'
     case 'ready':
+      return 'success'
+    case 'configuring':
+    case 'validating':
+    case 'authorizing':
+    case 'loading_proxy_powers':
+    case 'syncing':
     case 'provisioning':
       return 'info'
     case 'action_required':
@@ -47,6 +62,31 @@ export function onboardingStatusColor(
     default:
       return 'neutral'
   }
+}
+
+export const OFFICE_ONBOARDING_STAGES = [
+  { key: 'CONFIGURANDO', label: 'Configurando' },
+  { key: 'VALIDANDO', label: 'Validando' },
+  { key: 'AUTORIZANDO', label: 'Autorizando' },
+  { key: 'CARREGANDO_PROCURACOES', label: 'Procurações' },
+  { key: 'SINCRONIZANDO', label: 'Sincronizando' },
+  { key: 'PRONTO', label: 'Pronto' }
+] as const
+
+export function onboardingStageIndex(stage?: string | null): number {
+  const index = OFFICE_ONBOARDING_STAGES.findIndex(item => item.key === stage)
+  return index < 0 ? 0 : index
+}
+
+export function onboardingIsInProgress(status?: string | null): boolean {
+  return [
+    'configuring',
+    'validating',
+    'authorizing',
+    'loading_proxy_powers',
+    'syncing',
+    'provisioning'
+  ].includes(String(status || ''))
 }
 
 export function credentialStatusLabel(status?: string | null): string {
@@ -101,8 +141,8 @@ export function emptyOnboarding(): OfficeOnboardingActionable {
 /** Monitores SERPRO com agenda mensal (chaves estáveis). */
 export const DEFAULT_MONITOR_SCHEDULES: Array<{ key: string, label: string }> = [
   { key: 'sitfis', label: 'Situação fiscal' },
-  { key: 'simples_mei', label: 'Simples / MEI' },
-  { key: 'dctfweb', label: 'DCTFWeb / MIT' },
+  { key: 'simples_mei', label: 'Simples Nacional | MEI' },
+  { key: 'dctfweb', label: 'DCTFWeb' },
   { key: 'installments', label: 'Parcelamentos' },
   { key: 'mailbox', label: 'Caixa postal' },
   { key: 'declarations', label: 'Declarações' },

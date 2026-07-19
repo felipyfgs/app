@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import OfficeSettingsPage from '../settings/index.vue'
+import OfficeSettingsPanel from '~/components/settings/OfficeSettingsPanel.vue'
 </script>
 
 <template>
-  <OfficeSettingsPage />
+  <OfficeSettingsPanel />
 </template>

@@ -8,6 +8,10 @@ import type { TableColumn } from '@nuxt/ui'
 import type { FgtsCoverageManifest } from '~/types/api'
 import type { FgtsClientDetail, FgtsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
+import {
+  buildMonitoringConsultedColumn,
+  MONITORING_SHARED_COLUMN_LABELS
+} from '~/utils/monitoring-table-columns'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
@@ -36,6 +40,7 @@ const {
   surface,
   sorting,
   setPage,
+  setPerPage,
   refresh,
   applyFilters,
   applyQuickFilters,
@@ -176,6 +181,7 @@ const columns: TableColumn<FgtsClientRow>[] = [
     id: 'client',
     header: ({ column }) => sortHeader('Cliente', column),
     enableHiding: false,
+    meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
@@ -217,19 +223,17 @@ const columns: TableColumn<FgtsClientRow>[] = [
     enableSorting: false,
     cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(detailOf(row.original).payment_status || 'UNSUPPORTED') })
   },
-  {
-    id: 'synced',
-    header: ({ column }) => sortHeader('Último sync', column),
-    cell: ({ row }) => formatDateTime(
-      String(detailOf(row.original).last_synced_at || row.original.last_consulted_at || '') || null
-    )
-  },
+  buildMonitoringConsultedColumn<FgtsClientRow>({
+    getAt: row => detailOf(row).last_synced_at || row.last_consulted_at,
+    format: 'datetime',
+    testId: 'fgts-last-consulted'
+  }),
   {
     id: 'actions',
     header: 'Ações',
     enableHiding: false,
     enableSorting: false,
-    meta: { class: { th: 'w-40', td: 'w-40' } },
+    meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
     cell: ({ row }) => h('div', { class: 'flex justify-end gap-1' }, [
       h(UButton, {
         size: 'xs',
@@ -256,7 +260,7 @@ onMounted(() => {
 
 <template>
   <MonitoringModuleTable
-    title="FGTS (parcial eSocial)"
+    title="FGTS Digital"
     panel-id="monitoring-fgts"
     module-key="fgts"
     :columns="columns"
@@ -282,16 +286,16 @@ onMounted(() => {
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
     :horizontal-scroll="true"
-    table-class="min-w-[960px]"
     empty-title="Nenhum cliente FGTS"
     :column-labels="{
       closure: 'Fechamento',
       totalization: 'Totalização',
       guide: 'Guia FGTS Digital',
       payment: 'Pagamento',
-      synced: 'Último sync'
+      ...MONITORING_SHARED_COLUMN_LABELS
     }"
     @update:page="setPage"
+    @update:per-page="setPerPage"
     @update:sorting="sorting = $event"
     @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"

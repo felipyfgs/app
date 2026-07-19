@@ -225,19 +225,18 @@ function openPreferences() {
 </script>
 
 <template>
-  <UModal
+  <ShellScrollableModal
     :open="previewOpen"
     title="Prévia de comunicação"
     description="Somente visualização; nenhum envio será realizado."
-    scrollable
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-3xl', body: 'max-h-[70vh] overflow-y-auto' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-3xl"
+    :test-id="isPgmei ? 'pgmei-communication-preview' : 'pgdasd-communication-preview'"
+    :show-default-footer="false"
     @update:open="emit('update:previewOpen', $event)"
+    @cancel="emit('update:previewOpen', false)"
   >
     <template #body>
-      <div
-        class="space-y-4"
-        :data-testid="isPgmei ? 'pgmei-communication-preview' : 'pgdasd-communication-preview'"
-      >
+      <div class="space-y-4">
         <div>
           <p class="font-medium text-highlighted">
             {{ preview?.client?.legal_name || clientName || `Cliente #${clientId || '—'}` }}
@@ -269,10 +268,7 @@ function openPreferences() {
             />
           </template>
         </UAlert>
-        <div v-if="previewLoading" class="space-y-3" aria-label="Carregando prévia">
-          <USkeleton class="h-20 w-full" />
-          <USkeleton class="h-28 w-full" />
-        </div>
+        <ShellLoadingModalBody v-if="previewLoading" :rows="2" />
 
         <template v-else-if="preview">
           <section>
@@ -373,20 +369,20 @@ function openPreferences() {
         </UTooltip>
       </div>
     </template>
-  </UModal>
+  </ShellScrollableModal>
 
-  <UModal
+  <ShellScrollableModal
     :open="prefsOpen"
     title="Preferências de comunicação"
     description="Registra intenção de uso; o envio automático permanece inativo."
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-xl' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-xl"
+    :test-id="isPgmei ? 'pgmei-communication-preferences' : 'pgdasd-communication-preferences'"
+    :show-default-footer="false"
     @update:open="emit('update:prefsOpen', $event)"
+    @cancel="emit('update:prefsOpen', false)"
   >
     <template #body>
-      <div
-        class="space-y-4"
-        :data-testid="isPgmei ? 'pgmei-communication-preferences' : 'pgdasd-communication-preferences'"
-      >
+      <div class="space-y-4">
         <UAlert
           color="warning"
           variant="subtle"
@@ -427,38 +423,30 @@ function openPreferences() {
       </div>
     </template>
     <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          label="Cancelar"
-          @click="emit('update:prefsOpen', false)"
-        />
-        <UButton
-          v-if="canManage"
-          color="primary"
-          label="Salvar preferências"
-          :loading="saving"
-          :disabled="previewLoading"
-          @click="savePreferences"
-        />
-      </div>
+      <ShellModalFooter
+        cancel-label="Cancelar"
+        submit-label="Salvar preferências"
+        :loading="saving"
+        :disabled="previewLoading"
+        :show-submit="Boolean(canManage)"
+        @cancel="emit('update:prefsOpen', false)"
+        @submit="savePreferences"
+      />
     </template>
-  </UModal>
+  </ShellScrollableModal>
 
-  <UModal
+  <ShellScrollableModal
     :open="trackingOpen"
     title="Rastreio de comunicação"
     description="Somente leitura; abrir este modal não altera o estado de entrega."
-    scrollable
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-3xl', body: 'max-h-[70vh] overflow-y-auto' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-3xl"
+    :test-id="isPgmei ? 'pgmei-communication-tracking' : 'pgdasd-communication-tracking'"
+    :show-default-footer="false"
     @update:open="emit('update:trackingOpen', $event)"
+    @cancel="emit('update:trackingOpen', false)"
   >
     <template #body>
-      <div
-        class="space-y-4"
-        :data-testid="isPgmei ? 'pgmei-communication-tracking' : 'pgdasd-communication-tracking'"
-      >
+      <div class="space-y-4">
         <UAlert v-if="trackingError" color="error" :title="trackingError">
           <template #actions>
             <UButton
@@ -470,10 +458,7 @@ function openPreferences() {
             />
           </template>
         </UAlert>
-        <div v-if="trackingLoading" class="space-y-3" aria-label="Carregando rastreio">
-          <USkeleton class="h-16 w-full" />
-          <USkeleton class="h-28 w-full" />
-        </div>
+        <ShellLoadingModalBody v-if="trackingLoading" :rows="2" />
 
         <template v-else-if="tracking">
           <UBadge
@@ -535,5 +520,12 @@ function openPreferences() {
         </template>
       </div>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        cancel-label="Fechar"
+        :show-submit="false"
+        @cancel="emit('update:trackingOpen', false)"
+      />
+    </template>
+  </ShellScrollableModal>
 </template>

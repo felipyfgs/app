@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * Modal de criação de departamento.
- * Fonte: .local/reference/nuxt-dashboard-template/app/components/customers/AddModal.vue
+ * Modal de criação de departamento — casca ShellFormModal.
  */
 import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
@@ -55,13 +54,23 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     creating.value = false
   }
 }
+
+function submitForm() {
+  const el = document.getElementById('department-add-form') as HTMLFormElement | null
+  el?.requestSubmit()
+}
 </script>
 
 <template>
-  <UModal
+  <ShellFormModal
     v-model:open="open"
     title="Novo departamento"
     description="Área operacional do escritório (ex.: Fiscal, Contábil)."
+    submit-label="Criar"
+    :loading="creating"
+    :show-default-footer="false"
+    @cancel="() => { open = false }"
+    @submit="submitForm"
   >
     <UButton
       label="Novo departamento"
@@ -73,6 +82,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
     <template #body>
       <UForm
+        id="department-add-form"
         :schema="schema"
         :state="state"
         class="space-y-4"
@@ -105,23 +115,16 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             maxlength="16"
           />
         </UFormField>
-        <div class="flex justify-end gap-2">
-          <UButton
-            label="Cancelar"
-            color="neutral"
-            variant="subtle"
-            @click="() => { open = false }"
-          />
-          <UButton
-            label="Criar"
-            color="primary"
-            variant="solid"
-            type="submit"
-            data-testid="department-create"
-            :loading="creating"
-          />
-        </div>
       </UForm>
     </template>
-  </UModal>
+    <template #footer>
+      <ShellModalFooter
+        submit-label="Criar"
+        submit-test-id="department-create"
+        :loading="creating"
+        @cancel="() => { open = false }"
+        @submit="submitForm"
+      />
+    </template>
+  </ShellFormModal>
 </template>

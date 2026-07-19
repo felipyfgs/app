@@ -34,6 +34,7 @@ const {
   allowsDocument,
   sorting,
   setPage,
+  setPerPage,
   refresh,
   applyFilters,
   applyQuickFilters,
@@ -199,6 +200,7 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
     id: 'client',
     header: ({ column }) => sortHeader('Cliente', column),
     enableHiding: false,
+    meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
@@ -340,7 +342,6 @@ onMounted(() => {
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
     :horizontal-scroll="true"
-    table-class="min-w-[960px]"
     empty-title="Nenhum parcelamento"
     :column-labels="{
       modality: 'Modalidade',
@@ -352,6 +353,7 @@ onMounted(() => {
       guide: 'Guia'
     }"
     @update:page="setPage"
+    @update:per-page="setPerPage"
     @update:sorting="sorting = $event"
     @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"

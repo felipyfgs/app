@@ -3,13 +3,18 @@ import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { ClientCredential, ClientCredentialSummary } from '~/types/api'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   clientId: number
   credential: ClientCredential | null
   /** Summary do show — permite OPERATOR/VIEWER ver status sem detalhe completo. */
   credentialSummary?: ClientCredentialSummary | null
   canManageCredentials: boolean
-}>()
+  /** false quando a page já fornece ShellSectionHeader. */
+  showHeader?: boolean
+}>(), {
+  credentialSummary: null,
+  showHeader: true
+})
 
 const emit = defineEmits<{
   activated: [credential: ClientCredential]
@@ -35,6 +40,11 @@ type Schema = z.output<typeof schema>
 const state = reactive<Partial<Schema>>({
   password: ''
 })
+
+function submitCredentialForm() {
+  const el = globalThis.document?.getElementById('client-credential-form') as HTMLFormElement | null
+  el?.requestSubmit()
+}
 
 function clearSensitive() {
   state.password = ''
@@ -88,10 +98,8 @@ watch(open, (value) => {
 
 <template>
   <div class="space-y-4">
-    <UPageCard
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
+    <ShellSectionHeader
+      v-if="showHeader"
       title="Certificado A1"
       description="Um certificado por raiz do cliente. PFX e senha nunca são recuperáveis pela API."
     >
@@ -103,7 +111,20 @@ watch(open, (value) => {
         icon="i-lucide-upload"
         @click="() => { open = true }"
       />
-    </UPageCard>
+    </ShellSectionHeader>
+    <div
+      v-else-if="canManageCredentials"
+      class="flex justify-end"
+    >
+      <UButton
+        :label="credential ? 'Substituir' : 'Enviar A1'"
+        color="neutral"
+        class="w-fit"
+        icon="i-lucide-upload"
+        data-testid="client-credential-upload"
+        @click="() => { open = true }"
+      />
+    </div>
 
     <UPageCard variant="subtle">
       <div v-if="!canManageCredentials" class="space-y-3">
@@ -185,14 +206,19 @@ watch(open, (value) => {
       </UEmpty>
     </UPageCard>
 
-    <UModal
+    <ShellFormModal
       v-if="canManageCredentials"
       v-model:open="open"
       title="Enviar certificado A1"
       description="O PFX e a senha são usados somente para validação e armazenados no cofre. Nunca poderão ser recuperados pela API."
+      submit-label="Validar e ativar"
+      :loading="activating"
+      :show-default-footer="false"
+      @cancel="() => { open = false }"
     >
       <template #body>
         <UForm
+          id="client-credential-form"
           :schema="schema"
           :state="state"
           class="space-y-4"
@@ -228,19 +254,16 @@ watch(open, (value) => {
             icon="i-lucide-shield-alert"
             title="Substituição atômica"
           />
-          <div class="flex justify-end gap-2">
-            <UButton
-              color="neutral"
-              variant="subtle"
-              type="button"
-              label="Cancelar"
-              :disabled="activating"
-              @click="() => { open = false }"
-            />
-            <UButton type="submit" label="Validar e ativar" :loading="activating" />
-          </div>
         </UForm>
       </template>
-    </UModal>
+      <template #footer>
+        <ShellModalFooter
+          submit-label="Validar e ativar"
+          :loading="activating"
+          @cancel="() => { open = false }"
+          @submit="submitCredentialForm"
+        />
+      </template>
+    </ShellFormModal>
   </div>
 </template>

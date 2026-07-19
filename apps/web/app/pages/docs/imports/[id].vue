@@ -4,9 +4,12 @@
  * Arquétipo: settings + customers table.
  */
 import type { TableColumn } from '@nuxt/ui'
-import DocsSectionNav from '~/components/navigation/DocsSectionNav.vue'
 import { documentKindLabelFromModel } from '~/utils/document-kinds'
-import { DASHBOARD_TABLE_UI, TABLE_CELL_BADGE_CLASS, TABLE_CELL_BADGE_UI } from '~/utils/table-ui'
+import {
+  TABLE_CELL_BADGE_CLASS,
+  TABLE_CELL_BADGE_UI
+} from '~/utils/table-ui'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import {
   LIST_FILTER_ACTIONS_ROW,
   LIST_FILTER_TOOLBAR_STACK
@@ -26,6 +29,7 @@ const itemsLoading = ref(false)
 const loadError = ref<string | null>(null)
 const pollError = ref<string | null>(null)
 const page = ref(1)
+const perPage = ref(20)
 const lastPage = ref(1)
 const total = ref(0)
 const statusFilter = ref('all')
@@ -147,7 +151,7 @@ async function loadItems() {
   try {
     const res = await api.documents.importBatchItems(requestedPublicId, {
       page: page.value,
-      per_page: 25,
+      per_page: perPage.value,
       ...(statusFilter.value !== 'all' ? { status: statusFilter.value } : {})
     })
     if (seq !== itemsLoadSeq || epoch !== sessionEpoch.value) return
@@ -227,6 +231,18 @@ async function reload() {
   startPoll()
 }
 
+function setPerPage(next: number) {
+  const allowed = [10, 20, 50]
+  const target = allowed.includes(Number(next)) ? Number(next) : 20
+  if (perPage.value === target) return
+  perPage.value = target
+  if (page.value !== 1) {
+    page.value = 1
+    return
+  }
+  void loadItems()
+}
+
 watch([page, statusFilter], () => {
   void loadItems()
 })
@@ -257,23 +273,16 @@ onBeforeUnmount(() => {
 
 <template>
   <!--
-    Detalhe de lote — casca UDashboardPanel (inline template) (lista/settings híbrido).
-    Tabela de itens: DASHBOARD_TABLE_UI (customers.vue).
+    Detalhe de lote — casca ShellPagePanel (lista/settings híbrido).
+    Tabela de itens: ShellDataTable (customers.vue).
   -->
-  <UDashboardPanel id="import-batch-detail">
+  <ShellPagePanel id="import-batch-detail">
     <template #header>
-      <UDashboardNavbar :title="`Lote ${publicId.slice(0, 8)}…`" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
+      <ShellPageNavbar :title="`Lote ${publicId.slice(0, 8)}…`">
         <template #right>
-          <UButton
+          <ShellNavbarBack
             to="/docs/imports"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-arrow-left"
             label="Histórico"
-            size="sm"
           />
           <UButton
             v-if="batch"
@@ -285,21 +294,13 @@ onBeforeUnmount(() => {
             aria-label="Exportar relatório CSV do lote"
             @click="downloadCsv"
           />
-          <UButton
-            icon="i-lucide-refresh-cw"
-            color="neutral"
-            variant="ghost"
-            square
-            aria-label="Atualizar lote"
+          <ShellNavbarRefresh
             :loading="loading || itemsLoading"
+            aria-label="Atualizar lote"
             @click="() => { loadBatch(); loadItems() }"
           />
         </template>
-      </UDashboardNavbar>
-
-      <UDashboardToolbar data-testid="docs-section-tabs">
-        <DocsSectionNav />
-      </UDashboardToolbar>
+      </ShellPageNavbar>
     </template>
 
     <template #body>
@@ -444,14 +445,21 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <UTable
-          v-if="itemsLoading || items.length"
-          data-testid="batch-items-table"
+        <ShellDataTable
+          test-id="batch-items-table"
+          ui-preset="monitoring-compact"
+          primary-column-id="source_name"
+          status-column-id="status"
+          :summary-column-ids="['item_index', 'access_key']"
+          :columns="columns"
           :data="items"
           :loading="itemsLoading"
-          :columns="columns"
-          class="shrink-0"
-          :ui="DASHBOARD_TABLE_UI"
+          :page="page"
+          :total="total"
+          :items-per-page="perPage"
+          per-page-aria-label="Itens por página"
+          @update:page="page = $event"
+          @update:items-per-page="setPerPage"
         >
           <template #source_name-cell="{ row }">
             <div class="min-w-0">
@@ -522,29 +530,17 @@ onBeforeUnmount(() => {
               />
             </UTooltip>
           </template>
-        </UTable>
-
-        <UEmpty
-          v-if="!itemsLoading && !items.length"
-          icon="i-lucide-file-x-2"
-          title="Nenhum item neste resultado"
-          description="Altere o filtro ou aguarde o processamento do lote."
-        />
-
-        <div
-          v-if="lastPage > 1"
-          class="flex items-center justify-between border-t border-default pt-4"
-        >
-          <p class="text-sm text-muted">
-            {{ total }} item(ns)
-          </p>
-          <UPagination
-            v-model:page="page"
-            :total="total"
-            :items-per-page="25"
-            :sibling-count="1"
-          />
-        </div>
+          <template #empty>
+            <UEmpty
+              icon="i-lucide-file-x-2"
+              title="Nenhum item neste resultado"
+              description="Altere o filtro ou aguarde o processamento do lote."
+            />
+          </template>
+          <template #footer>
+            <span class="tabular-nums">{{ total }}</span> item(ns)
+          </template>
+        </ShellDataTable>
       </template>
 
       <div
@@ -556,5 +552,5 @@ onBeforeUnmount(() => {
         <USkeleton class="h-24 w-full" />
       </div>
     </template>
-  </UDashboardPanel>
+  </ShellPagePanel>
 </template>

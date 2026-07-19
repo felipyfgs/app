@@ -100,6 +100,21 @@ export function canManageClients(user?: MeUser | null): boolean {
   return hasMutationAccess(user)
 }
 
+function hasEffectivePermission(user: MeUser | null | undefined, permission: string): boolean | null {
+  if (!Array.isArray(user?.effective_permissions)) return null
+  return user.effective_permissions.includes(permission)
+}
+
+/** Catálogo livre de categorias: permissão dedicada, ADMIN no payload legado. */
+export function canManageClientCategoryCatalog(user?: MeUser | null): boolean {
+  return hasEffectivePermission(user, 'clients.categories.manage') ?? hasOfficeAdminSurface(user)
+}
+
+/** Atribuir/remover categorias usa a mesma autoridade de clients.manage. */
+export function canAssignClientCategories(user?: MeUser | null): boolean {
+  return hasEffectivePermission(user, 'clients.manage') ?? canManageClients(user)
+}
+
 export function canManageCredentials(user?: MeUser | null): boolean {
   return hasConfirmedAdminAccess(user)
 }

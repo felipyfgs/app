@@ -241,7 +241,7 @@ onMounted(load)
 <template>
   <UDashboardPanel id="monitoring-dashboard">
     <template #header>
-      <UDashboardNavbar title="Dashboard Fiscal" data-testid="page-navbar">
+      <UDashboardNavbar title="Dashboard" data-testid="page-navbar">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
@@ -263,17 +263,6 @@ onMounted(load)
           />
         </template>
       </UDashboardNavbar>
-
-      <UDashboardToolbar
-        data-testid="page-toolbar"
-        :ui="{
-          root: 'flex-col items-stretch gap-0 overflow-visible min-h-0',
-          left: 'min-w-0 w-full flex-1',
-          right: 'hidden'
-        }"
-      >
-        <MonitoringModuleNav />
-      </UDashboardToolbar>
     </template>
 
     <template #body>

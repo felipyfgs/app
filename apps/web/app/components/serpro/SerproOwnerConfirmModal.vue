@@ -133,22 +133,14 @@ async function submit() {
     </template>
 
     <template #footer>
-      <div class="flex justify-end gap-2">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          label="Cancelar"
-          :disabled="submitting"
-          @click="close"
-        />
-        <UButton
-          color="error"
-          label="Confirmar operação"
-          :loading="submitting"
-          data-testid="serpro-owner-confirm-submit"
-          @click="submit"
-        />
-      </div>
+      <ShellModalFooter
+        submit-label="Confirmar operação"
+        submit-color="error"
+        submit-test-id="serpro-owner-confirm-submit"
+        :loading="submitting"
+        @cancel="close"
+        @submit="submit"
+      />
     </template>
   </UModal>
 </template>

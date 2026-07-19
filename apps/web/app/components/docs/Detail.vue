@@ -16,6 +16,7 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { NfseEvent, NfseNote, NoteDetail } from '~/types/api'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 import { documentKindLabel } from '~/utils/document-kinds'
 import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
 
@@ -595,10 +596,16 @@ async function submitManifest() {
         variant="subtle"
         :ui="{ title: 'text-sm font-semibold', container: 'gap-y-3' }"
       >
-        <UTable
+        <ShellDataTable
+          primary-column-id="event_type"
+          status-column-id="status"
+          :summary-column-ids="['event_at']"
           :data="events"
           :columns="eventColumns"
-          class="shrink-0"
+          :page="1"
+          :total="events.length"
+          :items-per-page="events.length || 1"
+          :show-footer="false"
           :ui="tableUi"
         >
           <template #event_type-cell="{ row }">
@@ -619,7 +626,7 @@ async function submitManifest() {
             />
             <span v-else class="text-xs text-muted">—</span>
           </template>
-        </UTable>
+        </ShellDataTable>
       </UPageCard>
 
       <!-- 6b. XML completo / manifestação (NF-e) -->
@@ -706,10 +713,13 @@ async function submitManifest() {
         </p>
       </UPageCard>
 
-      <UModal
+      <ShellFormModal
         v-model:open="confirmOpen"
         :title="confirmTitle"
         :description="confirmDescription"
+        submit-label="Confirmar envio"
+        :loading="actionBusy"
+        :show-default-footer="false"
       >
         <template #body>
           <div class="space-y-3 p-1">
@@ -734,24 +744,16 @@ async function submitManifest() {
             </p>
           </div>
         </template>
-        <template #footer="{ close }">
-          <div class="flex w-full justify-end gap-2">
-            <UButton
-              color="neutral"
-              variant="ghost"
-              label="Cancelar"
-              @click="close()"
-            />
-            <UButton
-              color="primary"
-              label="Confirmar envio"
-              :loading="actionBusy"
-              data-testid="nfe-manifest-confirm"
-              @click="submitManifest"
-            />
-          </div>
+        <template #footer>
+          <ShellModalFooter
+            submit-label="Confirmar envio"
+            :loading="actionBusy"
+            submit-test-id="nfe-manifest-confirm"
+            @cancel="() => { confirmOpen = false }"
+            @submit="submitManifest"
+          />
         </template>
-      </UModal>
+      </ShellFormModal>
 
       <!-- 7. Metadados do cofre (secundário — técnico) -->
       <UPageCard

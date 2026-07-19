@@ -4,12 +4,18 @@
  */
 import type { OfficeTechnicalConsent } from '~/types/api'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   consent: OfficeTechnicalConsent | null
   loading?: boolean
   saving?: boolean
   readonly?: boolean
-}>()
+  showHeader?: boolean
+}>(), {
+  loading: false,
+  saving: false,
+  readonly: false,
+  showHeader: true
+})
 
 const emit = defineEmits<{
   accept: []
@@ -38,14 +44,12 @@ const needsAction = computed(() =>
 
 <template>
   <div data-testid="settings-consent-section">
-    <UPageCard
+    <ShellSectionHeader
+      v-if="showHeader"
       title="Consentimento"
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
     />
 
-    <UPageCard variant="subtle">
+    <ShellSectionCard>
       <div
         v-if="loading && !consent"
         class="space-y-2"
@@ -124,6 +128,6 @@ const needsAction = computed(() =>
           />
         </div>
       </div>
-    </UPageCard>
+    </ShellSectionCard>
   </div>
 </template>

@@ -157,10 +157,11 @@ const compactLabelUi = COMPACT_BUTTON_LABEL_UI
 
         <div
           v-if="hasStructured || hasActive"
-          class="flex shrink-0 items-center gap-1.5"
+          class="flex min-w-0 flex-1 items-center justify-end gap-1.5"
           :data-testid="`${prefix}-structured`"
         >
           <DataTableFilterRoot
+            class="min-w-0 w-full max-w-full"
             :definitions="[...definitions]"
             :model-value="[...models]"
             :reset-key="resetKey"
@@ -187,6 +188,7 @@ const compactLabelUi = COMPACT_BUTTON_LABEL_UI
             text="Salvar filtros"
           >
             <UButton
+              class="shrink-0"
               color="neutral"
               variant="outline"
               icon="i-lucide-save"
@@ -197,17 +199,20 @@ const compactLabelUi = COMPACT_BUTTON_LABEL_UI
               @click="openSave"
             />
           </UTooltip>
-          <DataTableFilterSavedFiltersMenu
-            :items="presets"
-            :loading="presetsLoading"
-            @apply="applyPreset"
-            @manage="openManage"
-            @open="onSavedMenuOpen"
-          />
+          <div class="shrink-0">
+            <DataTableFilterSavedFiltersMenu
+              :items="presets"
+              :loading="presetsLoading"
+              @apply="applyPreset"
+              @manage="openManage"
+              @open="onSavedMenuOpen"
+            />
+          </div>
         </template>
 
         <UTooltip text="Atualizar dados">
           <UButton
+            class="shrink-0"
             color="neutral"
             variant="ghost"
             icon="i-lucide-refresh-cw"

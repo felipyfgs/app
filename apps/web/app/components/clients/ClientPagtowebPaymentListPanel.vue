@@ -3,9 +3,15 @@ import type { TableColumn } from '@nuxt/ui'
 import type { PagtowebPaymentListHistoryPayload, PagtowebPaymentListItem } from '~/types/fiscal-modules'
 import { usePagtowebPaymentListMonitoring } from '~/composables/usePagtowebPaymentListMonitoring'
 import { formatDateTime } from '~/utils/format'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import { DASHBOARD_TABLE_UI, LIST_TABLE_CLASS } from '~/utils/table-ui'
 
-const props = defineProps<{ clientId: number, canConsult: boolean }>()
+const props = withDefaults(defineProps<{
+  clientId: number
+  canConsult: boolean
+  showBillingAlert?: boolean
+}>(), {
+  showBillingAlert: true
+})
 const toast = useToast()
 const { fetchHistory, requestConsult } = usePagtowebPaymentListMonitoring()
 const initialDate = ref('')
@@ -76,7 +82,12 @@ watch(() => props.clientId, () => void load(), { immediate: true })
   >
     <template #default>
       <div class="space-y-4">
-        <UAlert color="warning" icon="i-lucide-circle-alert" title="Consulta potencialmente bilhetável">
+        <UAlert
+          v-if="showBillingAlert"
+          color="warning"
+          icon="i-lucide-circle-alert"
+          title="Consulta potencialmente bilhetável"
+        >
           <template #description>
             A consulta só é iniciada após confirmação. Em modo simulado, o resultado será identificado como simulado.
           </template>
@@ -132,6 +143,7 @@ watch(() => props.clientId, () => void load(), { immediate: true })
           <UTable
             :data="history.items"
             :columns="columns"
+            :class="LIST_TABLE_CLASS"
             :ui="DASHBOARD_TABLE_UI"
           >
             <template #empty>

@@ -13,6 +13,7 @@ import type {
 import { DCTFWEB_TABS } from '~/types/fiscal-modules'
 import { buildDctfwebColumns, buildMitColumns } from '~/utils/dctfweb-table'
 import { dctfwebSummary, isDctfwebCapsule, isMitCapsule } from '~/utils/dctfweb'
+import { MONITORING_SHARED_COLUMN_LABELS } from '~/utils/monitoring-table-columns'
 
 const { canManageClients, canTriggerSync } = useDashboard()
 
@@ -40,6 +41,7 @@ const {
   surface,
   sorting,
   setPage,
+  setPerPage,
   refresh,
   applyFilters,
   applyQuickFilters,
@@ -156,7 +158,7 @@ watch(submodule, (next, prev) => {
 
 <template>
   <MonitoringModuleTable
-    title="DCTFWeb / MIT"
+    title="DCTFWeb"
     panel-id="monitoring-dctfweb"
     module-key="dctfweb"
     :columns="columns"
@@ -185,7 +187,6 @@ watch(submodule, (next, prev) => {
     :selection-enabled="canManageClients"
     :initial-hidden-columns="['evidence', 'darf']"
     :horizontal-scroll="true"
-    table-class="min-w-[1120px]"
     empty-title="Nenhum cliente"
     :column-labels="isMit
       ? {
@@ -197,14 +198,11 @@ watch(submodule, (next, prev) => {
       : {
         situation: 'Situação',
         last_declaration: 'Últ. Declaração',
-        actions: 'Ações',
-        send: 'Enviar',
-        client: 'Cliente',
-        tracking: 'Rastreio de envio',
-        last_search: 'Última Busca',
-        history: 'Histórico de Busca'
+        ...MONITORING_SHARED_COLUMN_LABELS,
+        client: 'Cliente'
       }"
     @update:page="setPage"
+    @update:per-page="setPerPage"
     @update:sorting="sorting = $event"
     @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"

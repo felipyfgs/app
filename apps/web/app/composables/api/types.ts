@@ -15,8 +15,17 @@ export interface ClientListParams {
   dashboard?: boolean | 0 | 1
   /** Filtro de estado no escritório (true/false) */
   is_active?: boolean | 0 | 1
-  operational_filter?: 'with_credential' | 'without_credential' | 'expiring' | 'capture_problem'
-  sort?: 'legal_name' | 'cnpj' | 'is_active' | 'created_at'
+  operational_filter?:
+    | 'with_credential'
+    | 'without_credential'
+    | 'expiring'
+    | 'credential_expired'
+    | 'capture_problem'
+  category_ids?: string
+  tax_regimes?: string
+  /** CSV: authorized|expiring|expired|missing|unverified */
+  procuracao_statuses?: string
+  sort?: 'legal_name' | 'cnpj' | 'is_active' | 'tax_regime' | 'created_at'
   direction?: 'asc' | 'desc'
 }
 

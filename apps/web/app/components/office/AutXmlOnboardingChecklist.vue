@@ -11,7 +11,7 @@ import type {
   OfficeAutXmlStream
 } from '~/types/api'
 import { laravelPageBatch, usePagedTable } from '~/composables/usePagedTable'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import { DASHBOARD_TABLE_UI, LIST_TABLE_CLASS } from '~/utils/table-ui'
 
 const api = useApi()
 const toast = useToast()
@@ -25,9 +25,10 @@ const coverage = ref<OfficeAutXmlCoverage | null>(null)
 const table = useTemplateRef('table')
 const feed = usePagedTable<OfficeAutXmlEnrollment>({
   getKey: row => row.establishment_id,
-  load: async ({ page, signal }) => {
+  pageSize: 20,
+  load: async ({ page, pageSize, signal }) => {
     const epoch = sessionEpoch.value
-    const response = await api.officeAutXml.overview({ page, per_page: 10 }, { signal })
+    const response = await api.officeAutXml.overview({ page, per_page: pageSize }, { signal })
     if (epoch === sessionEpoch.value) {
       officeCnpj.value = response.data.office_cnpj
       stream.value = response.data.stream
@@ -40,6 +41,7 @@ const feed = usePagedTable<OfficeAutXmlEnrollment>({
 
 const feedTotal = feed.total
 const feedPage = feed.page
+const feedPageSize = feed.pageSize
 const rows = feed.rows
 const loading = feed.pendingInitial
 const error = computed(() => feed.error.value
@@ -256,7 +258,7 @@ onMounted(() => {
       data-testid="autxml-enrollment-table"
       :data="rows"
       :columns="columns"
-      class="shrink-0"
+      :class="LIST_TABLE_CLASS"
       :ui="DASHBOARD_TABLE_UI"
     >
       <template #establishment_cnpj-cell="{ row }">
@@ -341,8 +343,10 @@ onMounted(() => {
     <ShellTableFooter
       :total="feedTotal"
       :page="feedPage"
-      :items-per-page="10"
+      :items-per-page="feedPageSize"
+      per-page-aria-label="Estabelecimentos por página"
       @update:page="(p) => feed.setPage(p)"
+      @update:items-per-page="(n) => feed.setPageSize(n)"
     />
   </div>
 </template>

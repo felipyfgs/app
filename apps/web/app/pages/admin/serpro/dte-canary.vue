@@ -731,12 +731,18 @@ onMounted(load)
       </UPageCard>
     </template>
 
-    <UModal
+    <ShellFormModal
       v-if="summary"
       v-model:open="passwordModalOpen"
       title="Reconfirmar senha"
       :description="pendingActionLabel"
-      data-testid="dte-canary-password-modal"
+      submit-label="Confirmar e continuar"
+      submit-icon="i-lucide-shield-check"
+      :loading="confirmingPassword"
+      :show-default-footer="false"
+      test-id="dte-canary-password-modal"
+      @cancel="() => { passwordModalOpen = false }"
+      @submit="submitRecentPassword"
     >
       <template #body>
         <UFormField
@@ -754,25 +760,16 @@ onMounted(load)
           />
         </UFormField>
       </template>
-
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton
-            color="neutral"
-            variant="outline"
-            label="Cancelar"
-            :disabled="confirmingPassword"
-            @click="() => { passwordModalOpen = false }"
-          />
-          <UButton
-            label="Confirmar e continuar"
-            icon="i-lucide-shield-check"
-            :loading="confirmingPassword"
-            data-testid="dte-canary-password-submit"
-            @click="submitRecentPassword"
-          />
-        </div>
+        <ShellModalFooter
+          submit-label="Confirmar e continuar"
+          submit-icon="i-lucide-shield-check"
+          submit-test-id="dte-canary-password-submit"
+          :loading="confirmingPassword"
+          @cancel="() => { passwordModalOpen = false }"
+          @submit="submitRecentPassword"
+        />
       </template>
-    </UModal>
+    </ShellFormModal>
   </div>
 </template>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Caixa Postal — mestre–detalhe (arquétipo Inbox).
- * Chrome Fiscal (navbar + MonitoringModuleNav) em largura total;
+ * Página de Monitoramento em largura total, sem navegação global duplicada;
  * lista + NuxtPage (detalhe em /monitoring/mailbox/[id]) abaixo das tabs.
  * Desktop: painéis adjacentes; mobile: detalhe em USlideover.
  *
@@ -16,6 +16,7 @@ import {
   normalizeMonitoringFilters,
   resetMonitoringFilters
 } from '~/utils/monitoring-filters'
+import ShellTableFooter from '~/components/shell/TableFooter.vue'
 
 const api = useApi()
 const route = useRoute()
@@ -157,6 +158,15 @@ function onTriaged() {
   void load()
 }
 
+function setPerPage(next: number) {
+  const allowed = [10, 20, 50]
+  const target = allowed.includes(Number(next)) ? Number(next) : 20
+  if (perPage.value === target) return
+  perPage.value = target
+  resetPage()
+  void load()
+}
+
 watch(page, () => {
   if (filterTransactionDepth > 0) return
   void load()
@@ -203,19 +213,11 @@ onMounted(load)
       </template>
     </UDashboardNavbar>
 
-    <UDashboardToolbar
-      data-testid="page-toolbar"
-      class="shrink-0"
-      :ui="{
-        root: 'flex-col items-stretch gap-0 overflow-visible min-h-0',
-        left: 'min-w-0 w-full flex-1',
-        right: 'hidden'
-      }"
-    >
-      <MonitoringModuleNav />
-    </UDashboardToolbar>
+    <div class="shrink-0 px-4 pt-4 sm:px-6">
+      <FiscalModuleAvailabilityBanner module-key="mailbox" />
+    </div>
 
-    <!-- Inbox abaixo das tabs -->
+    <!-- Inbox abaixo do navbar; navegação fiscal fica no sidebar. -->
     <div class="flex min-h-0 w-full flex-1">
       <UDashboardPanel
         id="mailbox-list"
@@ -283,24 +285,21 @@ onMounted(load)
             @select="selectMessage"
           />
 
-          <div
-            class="mt-3 flex items-center justify-between border-t border-default pt-3"
-            data-testid="mailbox-pagination"
+          <ShellTableFooter
+            :total="total"
+            :page="page"
+            :items-per-page="perPage"
+            per-page-aria-label="Mensagens por página"
+            test-id="mailbox-pagination"
+            @update:page="page = $event"
+            @update:items-per-page="setPerPage"
           >
-            <span class="text-xs text-muted">
-              {{ total }} mensagem(ns)
-              <template v-if="lastPage > 1">
-                · pág. {{ page }}/{{ lastPage }}
-              </template>
-            </span>
-            <UPagination
-              v-if="lastPage > 1"
-              v-model="page"
-              :total="total"
-              :items-per-page="perPage"
-              size="sm"
-            />
-          </div>
+            <span class="tabular-nums">{{ total }}</span> mensagem(ns)
+            <template v-if="lastPage > 1">
+              <span class="text-dimmed"> · </span>
+              página {{ page }} de {{ lastPage }}
+            </template>
+          </ShellTableFooter>
         </template>
       </UDashboardPanel>
 

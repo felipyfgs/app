@@ -193,23 +193,32 @@ export function groupEntryTo(group: NavTabGroup, activeLeafId?: string | null): 
 
 export const NAV_LAYER_MAX_ITEMS = 5
 
-/** Valida limite de cinco itens por camada (tabs ou subtabs de um grupo). */
+/** Valida limite de itens por camada (tabs ou subtabs de um grupo). */
 export function assertNavLayerLimit(
   items: readonly unknown[],
-  label = 'camada'
+  label = 'camada',
+  maxItems = NAV_LAYER_MAX_ITEMS
 ): void {
-  if (items.length > NAV_LAYER_MAX_ITEMS) {
+  if (items.length > maxItems) {
     throw new Error(
-      `Navegação: ${label} excede ${NAV_LAYER_MAX_ITEMS} itens (recebido ${items.length}).`
+      `Navegação: ${label} excede ${maxItems} itens (recebido ${items.length}).`
     )
   }
 }
 
-export function validateNavCatalog(items: readonly NavLayerItem[]): void {
-  assertNavLayerLimit(items, 'tabs')
+/**
+ * Valida catálogo Tabs→Subtabs.
+ * `maxItems` default = 5 (SectionNavigation). Catálogos flat (settings/UNavigationMenu)
+ * podem passar um teto maior.
+ */
+export function validateNavCatalog(
+  items: readonly NavLayerItem[],
+  maxItems = NAV_LAYER_MAX_ITEMS
+): void {
+  assertNavLayerLimit(items, 'tabs', maxItems)
   for (const item of items) {
     if (isNavTabGroup(item)) {
-      assertNavLayerLimit(item.children, `subtabs:${item.id}`)
+      assertNavLayerLimit(item.children, `subtabs:${item.id}`, maxItems)
     }
   }
 }

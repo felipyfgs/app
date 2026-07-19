@@ -3,7 +3,14 @@ import type { CcmeiIssuedCertificate, CcmeiIssuedCertificateHistoryPayload } fro
 import { useCcmeiCertificateIssuance } from '~/composables/useCcmeiCertificateIssuance'
 import { formatDateTime } from '~/utils/format'
 
-const props = defineProps<{ clientId: number, canConsult: boolean }>()
+const props = withDefaults(defineProps<{
+  clientId: number
+  canConsult: boolean
+  /** Quando false, o alerta bilhetável fica no wrapper da página. */
+  showBillingAlert?: boolean
+}>(), {
+  showBillingAlert: true
+})
 const toast = useToast()
 const { fetchHistory, requestIssue, downloadPath } = useCcmeiCertificateIssuance()
 const loading = ref(true)
@@ -76,7 +83,12 @@ watch(() => props.clientId, () => void load(), { immediate: true })
     data-testid="client-ccmei-certificate-issuance-panel"
   >
     <div class="space-y-4">
-      <UAlert color="warning" icon="i-lucide-circle-alert" title="Emissão potencialmente bilhetável" />
+      <UAlert
+        v-if="showBillingAlert"
+        color="warning"
+        icon="i-lucide-circle-alert"
+        title="Emissão potencialmente bilhetável"
+      />
       <p class="text-sm text-muted">
         A emissão só começa após sua ação explícita. O resultado fica disponível no histórico quando o serviço responder.
       </p>
@@ -169,11 +181,15 @@ watch(() => props.clientId, () => void load(), { immediate: true })
     </template>
   </UPageCard>
 
-  <UModal
+  <ShellConfirmModal
     v-model:open="issueConfirmOpen"
     title="Confirmar emissão do CCMEI"
     description="A emissão será solicitada para este cliente e poderá consumir uma consulta do serviço."
-    :ui="{ content: 'w-[calc(100vw-1rem)] sm:max-w-lg', footer: 'justify-end' }"
+    content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+    confirm-label="Confirmar emissão"
+    confirm-icon="i-lucide-check"
+    :loading="issuing"
+    @confirm="confirmIssue"
   >
     <template #body>
       <div class="space-y-3">
@@ -188,20 +204,5 @@ watch(() => props.clientId, () => void load(), { immediate: true })
         </p>
       </div>
     </template>
-    <template #footer>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        label="Cancelar"
-        @click="() => { issueConfirmOpen = false }"
-      />
-      <UButton
-        color="primary"
-        icon="i-lucide-check"
-        label="Confirmar emissão"
-        :loading="issuing"
-        @click="confirmIssue"
-      />
-    </template>
-  </UModal>
+  </ShellConfirmModal>
 </template>

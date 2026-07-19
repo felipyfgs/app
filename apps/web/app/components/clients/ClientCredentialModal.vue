@@ -113,22 +113,28 @@ watch(open, async (value) => {
     credential.value = null
   }
 })
+
+function submitForm() {
+  const el = document.getElementById('client-credential-form') as HTMLFormElement | null
+  el?.requestSubmit()
+}
 </script>
 
 <template>
-  <UModal
+  <ShellFormModal
     v-model:open="open"
     :title="title"
     :description="description"
+    :submit-label="credential ? 'Atualizar A1' : 'Validar e ativar'"
+    :loading="activating"
+    :show-default-footer="canManageCredentials && !loading"
+    :disabled="loading"
+    @cancel="() => { open = false }"
+    @submit="submitForm"
   >
     <template #body>
       <div class="space-y-4">
-        <div
-          v-if="loading"
-          class="text-sm text-muted"
-        >
-          Carregando certificado…
-        </div>
+        <ShellLoadingModalBody v-if="loading" />
 
         <div
           v-else-if="credential"
@@ -156,7 +162,8 @@ watch(open, async (value) => {
         />
 
         <UForm
-          v-else
+          v-else-if="!loading"
+          id="client-credential-form"
           :schema="schema"
           :state="state"
           class="space-y-4"
@@ -191,23 +198,8 @@ watch(open, async (value) => {
               class="w-full"
             />
           </UFormField>
-          <div class="flex justify-end gap-2">
-            <UButton
-              color="neutral"
-              variant="subtle"
-              type="button"
-              label="Cancelar"
-              :disabled="activating"
-              @click="() => { open = false }"
-            />
-            <UButton
-              type="submit"
-              :label="credential ? 'Atualizar A1' : 'Validar e ativar'"
-              :loading="activating"
-            />
-          </div>
         </UForm>
       </div>
     </template>
-  </UModal>
+  </ShellFormModal>
 </template>

@@ -5,7 +5,7 @@
  */
 import type { TableColumn } from '@nuxt/ui'
 import type { SerproUsageConsolidation, SerproUsageReconciliation } from '~/types/api'
-import { DASHBOARD_TABLE_UI } from '~/utils/table-ui'
+import ShellDataTable from '~/components/shell/DataTable.vue'
 
 definePageMeta({
   redirect: {
@@ -127,6 +127,10 @@ const reconColumns: TableColumn<SerproUsageReconciliation>[] = [
 
 const tenants = computed(() => consolidation.value?.by_tenant || [])
 const reconciliations = computed(() => consolidation.value?.reconciliations || [])
+
+const budgetPage = reactive(useLocalTablePagination(budgetRows))
+const tenantPage = reactive(useLocalTablePagination(tenants))
+const reconPage = reactive(useLocalTablePagination(reconciliations))
 const periodValid = computed(() => (
   Number.isInteger(Number(year.value))
   && Number(year.value) >= 2020
@@ -147,6 +151,9 @@ function clearPeriodSnapshot() {
   periodLoaded.value = false
   loadError.value = null
   reconOpen.value = false
+  budgetPage.resetPage()
+  tenantPage.resetPage()
+  reconPage.resetPage()
 }
 
 async function load() {
@@ -317,15 +324,23 @@ onMounted(load)
         variant="subtle"
         :ui="{ container: 'p-0 sm:p-0 gap-y-0' }"
       >
-        <div class="overflow-x-auto">
-          <UTable
-            :data="budgetRows"
-            :loading="loading"
-            :columns="budgetColumns"
-            :ui="DASHBOARD_TABLE_UI"
-            class="min-w-3xl"
-          />
-        </div>
+        <ShellDataTable
+          ui-preset="dashboard"
+          horizontal-scroll
+          table-class="w-full min-w-0"
+          primary-column-id="scope"
+          status-column-id="environment"
+          :summary-column-ids="['cycle_code', 'limit', 'consumed', 'remaining']"
+          :data="budgetPage.rows"
+          :loading="loading"
+          :columns="budgetColumns"
+          :page="budgetPage.page"
+          :total="budgetPage.total"
+          :items-per-page="budgetPage.perPage"
+          per-page-aria-label="Orçamentos por página"
+          @update:page="budgetPage.setPage"
+          @update:items-per-page="budgetPage.setPerPage"
+        />
       </UPageCard>
 
       <UEmpty
@@ -371,15 +386,22 @@ onMounted(load)
             <span class="text-xs text-muted">Valores em micros de BRL.</span>
           </div>
         </template>
-        <div class="overflow-x-auto">
-          <UTable
-            :data="tenants"
-            :loading="loading"
-            :columns="tenantColumns"
-            :ui="DASHBOARD_TABLE_UI"
-            class="min-w-2xl"
-          />
-        </div>
+        <ShellDataTable
+          ui-preset="dashboard"
+          horizontal-scroll
+          table-class="w-full min-w-0"
+          primary-column-id="office_id"
+          :summary-column-ids="['entry_count', 'total_quantity', 'cost']"
+          :data="tenantPage.rows"
+          :loading="loading"
+          :columns="tenantColumns"
+          :page="tenantPage.page"
+          :total="tenantPage.total"
+          :items-per-page="tenantPage.perPage"
+          per-page-aria-label="Offices por página"
+          @update:page="tenantPage.setPage"
+          @update:items-per-page="tenantPage.setPerPage"
+        />
       </UPageCard>
 
       <UEmpty
@@ -396,63 +418,54 @@ onMounted(load)
         orientation="horizontal"
         class="mb-4"
       >
-        <UModal
-          v-model:open="reconOpen"
-          title="Registrar fatura oficial"
-        >
-          <UButton
-            class="w-fit lg:ms-auto"
-            icon="i-lucide-scale"
-            label="Registrar fatura"
-            :disabled="!periodLoaded || loading"
-          />
-
-          <template #body>
-            <div class="space-y-4">
-              <UFormField
-                label="Total oficial (micros BRL)"
-                required
-              >
-                <UInput
-                  v-model.number="reconForm.official_total_cost_micros"
-                  type="number"
-                  min="0"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="Referência oficial">
-                <UInput
-                  v-model="reconForm.official_reference"
-                  class="w-full"
-                  placeholder="Nº fatura / ciclo"
-                  autocomplete="off"
-                />
-              </UFormField>
-              <UFormField label="Notas">
-                <UTextarea
-                  v-model="reconForm.notes"
-                  class="w-full"
-                  :rows="3"
-                />
-              </UFormField>
-              <div class="flex justify-end gap-2">
-                <UButton
-                  color="neutral"
-                  variant="outline"
-                  label="Cancelar"
-                  @click="() => { reconOpen = false }"
-                />
-                <UButton
-                  label="Registrar conciliação"
-                  icon="i-lucide-scale"
-                  :loading="saving"
-                  @click="registerRecon"
-                />
-              </div>
-            </div>
-          </template>
-        </UModal>
+        <UButton
+          class="w-fit lg:ms-auto"
+          icon="i-lucide-scale"
+          label="Registrar fatura"
+          :disabled="!periodLoaded || loading"
+          @click="() => { reconOpen = true }"
+        />
       </UPageCard>
+
+      <ShellFormModal
+        v-model:open="reconOpen"
+        title="Registrar fatura oficial"
+        submit-label="Registrar conciliação"
+        submit-icon="i-lucide-scale"
+        :loading="saving"
+        @submit="registerRecon"
+      >
+        <template #body>
+          <div class="space-y-4">
+            <UFormField
+              label="Total oficial (micros BRL)"
+              required
+            >
+              <UInput
+                v-model.number="reconForm.official_total_cost_micros"
+                type="number"
+                min="0"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Referência oficial">
+              <UInput
+                v-model="reconForm.official_reference"
+                class="w-full"
+                placeholder="Nº fatura / ciclo"
+                autocomplete="off"
+              />
+            </UFormField>
+            <UFormField label="Notas">
+              <UTextarea
+                v-model="reconForm.notes"
+                class="w-full"
+                :rows="3"
+              />
+            </UFormField>
+          </div>
+        </template>
+      </ShellFormModal>
 
       <UPageCard
         v-if="loading || reconciliations.length"
@@ -464,24 +477,32 @@ onMounted(load)
             <SerproProvenanceBadge code="conciliado" />
           </div>
         </template>
-        <div class="overflow-x-auto">
-          <UTable
-            :data="reconciliations"
-            :loading="loading"
-            :columns="reconColumns"
-            :ui="DASHBOARD_TABLE_UI"
-            class="min-w-4xl"
-          >
-            <template #status-cell="{ row }">
-              <UBadge
-                :color="reconciliationColor(row.original.status)"
-                variant="subtle"
-              >
-                {{ row.original.status || '—' }}
-              </UBadge>
-            </template>
-          </UTable>
-        </div>
+        <ShellDataTable
+          ui-preset="dashboard"
+          horizontal-scroll
+          table-class="w-full min-w-0"
+          primary-column-id="id"
+          status-column-id="status"
+          :summary-column-ids="['official', 'estimated', 'difference', 'official_reference']"
+          :data="reconPage.rows"
+          :loading="loading"
+          :columns="reconColumns"
+          :page="reconPage.page"
+          :total="reconPage.total"
+          :items-per-page="reconPage.perPage"
+          per-page-aria-label="Conciliações por página"
+          @update:page="reconPage.setPage"
+          @update:items-per-page="reconPage.setPerPage"
+        >
+          <template #status-cell="{ row }">
+            <UBadge
+              :color="reconciliationColor(row.original.status)"
+              variant="subtle"
+            >
+              {{ row.original.status || '—' }}
+            </UBadge>
+          </template>
+        </ShellDataTable>
       </UPageCard>
 
       <UEmpty

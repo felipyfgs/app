@@ -3,7 +3,13 @@ import type { PagtowebPaymentCountHistoryPayload } from '~/types/fiscal-modules'
 import { usePagtowebPaymentCountMonitoring } from '~/composables/usePagtowebPaymentCountMonitoring'
 import { formatDateTime } from '~/utils/format'
 
-const props = defineProps<{ clientId: number, canConsult: boolean }>()
+const props = withDefaults(defineProps<{
+  clientId: number
+  canConsult: boolean
+  showBillingAlert?: boolean
+}>(), {
+  showBillingAlert: true
+})
 const toast = useToast()
 const { fetchHistory, requestConsult } = usePagtowebPaymentCountMonitoring()
 const initialDate = ref('')
@@ -68,6 +74,7 @@ watch(() => props.clientId, () => void load(), { immediate: true })
       <template #default>
         <div class="space-y-4">
           <UAlert
+            v-if="showBillingAlert"
             color="warning"
             icon="i-lucide-circle-alert"
             title="Consulta potencialmente bilhetável"
