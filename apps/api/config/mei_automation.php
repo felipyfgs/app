@@ -15,6 +15,7 @@ return [
     'enabled' => filter_var(env('MEI_AUTOMATION_ENABLED', false), FILTER_VALIDATE_BOOL),
     'kill_switch' => filter_var(env('MEI_AUTOMATION_KILL_SWITCH', false), FILTER_VALIDATE_BOOL),
     'live_egress_enabled' => filter_var(env('MEI_AUTOMATION_LIVE_EGRESS_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'fixture_enabled' => filter_var(env('MEI_AUTOMATION_FIXTURE_ENABLED', false), FILTER_VALIDATE_BOOL),
     'office_allowlist' => $parseIdList(env('MEI_AUTOMATION_OFFICE_ALLOWLIST')),
     'allow_all_offices' => filter_var(env('MEI_AUTOMATION_ALLOW_ALL_OFFICES', false), FILTER_VALIDATE_BOOL),
     'base_url' => env('MEI_AUTOMATION_URL', 'http://mei:8080'),

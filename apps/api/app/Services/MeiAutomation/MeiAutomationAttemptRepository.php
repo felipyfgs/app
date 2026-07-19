@@ -159,4 +159,14 @@ final class MeiAutomationAttemptRepository
 
         return $attempt->refresh();
     }
+
+    public function markFallback(MeiAutomationAttempt $attempt, string $reason): MeiAutomationAttempt
+    {
+        $attempt->forceFill([
+            'fallback_reason' => mb_substr($reason, 0, 80),
+            'last_synced_at' => now(),
+        ])->save();
+
+        return $attempt->refresh();
+    }
 }
