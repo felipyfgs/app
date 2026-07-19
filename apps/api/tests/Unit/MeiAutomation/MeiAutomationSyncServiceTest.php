@@ -43,6 +43,30 @@ class MeiAutomationSyncServiceTest extends TestCase
         self::assertSame('SYNC_LOST_AFTER_SUBMISSION', $synced->error_code);
     }
 
+    public function test_persists_running_status_before_redis_ttl(): void
+    {
+        $attempt = $this->attempt();
+        Http::fake(['http://mei.test/v1/jobs/*' => Http::response([
+            'id' => $attempt->external_job_id,
+            'operation_key' => 'pgmei.dividaativa',
+            'status' => 'RUNNING',
+            'result' => null,
+            'error' => null,
+            'artifacts' => [],
+            'action_type' => null,
+        ])]);
+
+        $synced = app(MeiAutomationSyncService::class)->synchronize($attempt);
+
+        self::assertSame(MeiAutomationStatus::Running, $synced->status);
+        self::assertNotNull($synced->last_synced_at);
+        self::assertNull($synced->finished_at);
+        self::assertLessThan(
+            config('mei_automation.result_ttl_seconds'),
+            app(MeiAutomationSyncService::class)->pollIntervalSeconds(),
+        );
+    }
+
     public function test_rejects_poll_interval_not_lower_than_result_ttl(): void
     {
         config()->set('mei_automation.poll_interval_seconds', 900);
