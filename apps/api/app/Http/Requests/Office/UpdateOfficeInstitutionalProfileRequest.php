@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Office;
 
+use App\Rules\ValidCnpj;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateOfficeInstitutionalProfileRequest extends FormRequest
@@ -18,6 +19,11 @@ class UpdateOfficeInstitutionalProfileRequest extends FormRequest
         if ($this->isJson() && $this->json() !== null) {
             $this->json()->remove('office_id');
         }
+
+        // CNPJ vazio = omitir / limpar depois; não validar como CNPJ.
+        if ($this->exists('cnpj') && trim((string) $this->input('cnpj')) === '') {
+            $this->merge(['cnpj' => null]);
+        }
     }
 
     /**
@@ -26,7 +32,7 @@ class UpdateOfficeInstitutionalProfileRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'cnpj' => ['sometimes', 'nullable', 'string', 'max:18'],
+            'cnpj' => ['sometimes', 'nullable', 'string', new ValidCnpj],
             'legal_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'institutional_email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'institutional_phone' => ['sometimes', 'nullable', 'string', 'max:40'],

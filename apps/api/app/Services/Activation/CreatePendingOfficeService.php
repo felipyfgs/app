@@ -36,7 +36,7 @@ final class CreatePendingOfficeService
     /**
      * @param  array{
      *   name: string,
-     *   profile: array{cnpj: string, legal_name: string, institutional_email: string, institutional_phone: string},
+     *   profile: array{cnpj?: string|null, legal_name: string, institutional_email: string, institutional_phone: string},
      *   plan: SubscriptionPlan|string,
      *   admin_name: string,
      *   admin_email: string,
@@ -65,7 +65,10 @@ final class CreatePendingOfficeService
             throw ActivationException::invalid('Chave de idempotência obrigatória.');
         }
 
-        $cnpj = Cnpj::parse((string) $profile['cnpj'])->toStorageString();
+        $rawCnpj = trim((string) ($profile['cnpj'] ?? ''));
+        $cnpj = $rawCnpj === ''
+            ? null
+            : Cnpj::parse($rawCnpj)->toStorageString();
         $requestHash = $this->requestHash([
             'name' => $name,
             'profile' => [

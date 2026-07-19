@@ -78,10 +78,17 @@ class PlatformOfficeController extends Controller
         /** @var User $actor */
         $actor = $request->user();
 
+        // CNPJ institucional pode ficar em branco e ser preenchido depois.
+        $profile = $request->input('profile');
+        if (is_array($profile) && array_key_exists('cnpj', $profile) && trim((string) $profile['cnpj']) === '') {
+            $profile['cnpj'] = null;
+            $request->merge(['profile' => $profile]);
+        }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'profile' => ['required', 'array'],
-            'profile.cnpj' => ['required', 'string', new ValidCnpj],
+            'profile.cnpj' => ['nullable', 'string', new ValidCnpj],
             'profile.legal_name' => ['required', 'string', 'max:255'],
             'profile.institutional_email' => ['required', 'email', 'max:255'],
             'profile.institutional_phone' => ['required', 'string', 'max:40'],
