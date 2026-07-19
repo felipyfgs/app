@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
  * Detalhe mestre–cliente fiscal (7.11).
- * Arquétipo Settings: ShellSettingsShell + UNavigationMenu (template settings.vue).
+ * Arquétipo painel duplo (mailbox/inbox): sidebar interno vertical + conteúdo.
  * Seções LAZY: só a aba ativa é carregada. Falha parcial com retry — nunca lista vazia silenciosa.
  */
+import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
 import NavbarMoreActions from '~/components/navigation/NavbarMoreActions.vue'
 import type { Client, FiscalFinding, FiscalMonitoringRun, FiscalPendingItem, FiscalSnapshot } from '~/types/api'
 import type {
@@ -67,6 +68,47 @@ const route = useRoute()
 const router = useRouter()
 const { canTriggerSync, sessionEpoch } = useDashboard()
 
+const breakpoints = useBreakpoints(breakpointsTailwind)
+const isMobile = breakpoints.smaller('lg')
+const navOpen = ref(false)
+/**
+ * Rail sempre fino (ícones); no hover/focus expand overlay sem empurrar a tabela.
+ * Pequeno delay no leave evita flicker com tooltips.
+ */
+const navHovered = ref(false)
+let navLeaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function onNavEnter() {
+  if (navLeaveTimer) {
+    clearTimeout(navLeaveTimer)
+    navLeaveTimer = null
+  }
+  navHovered.value = true
+}
+
+function onNavLeave() {
+  navLeaveTimer = setTimeout(() => {
+    navHovered.value = false
+    navLeaveTimer = null
+  }, 140)
+}
+
+function onNavFocusOut(event: FocusEvent) {
+  const root = event.currentTarget as HTMLElement | null
+  const next = event.relatedTarget as Node | null
+  if (root && next && root.contains(next)) return
+  onNavLeave()
+}
+
+onBeforeUnmount(() => {
+  if (navLeaveTimer) clearTimeout(navLeaveTimer)
+})
+
+watch(() => route.path, () => {
+  navOpen.value = false
+  navHovered.value = false
+})
+
 const clientId = computed(() => Number(route.params.clientId))
 const tab = computed({
   get: (): SectionKey => {
@@ -82,6 +124,10 @@ const tab = computed({
 const client = ref<Client | null>(null)
 const clientLoading = ref(false)
 const clientError = ref<string | null>(null)
+
+const pageTitle = computed(() =>
+  client.value?.name || client.value?.legal_name || `Cliente #${clientId.value}`
+)
 
 const snapshots = ref<FiscalSnapshot[]>([])
 const runs = ref<FiscalMonitoringRun[]>([])
@@ -731,578 +777,600 @@ onMounted(async () => {
 </script>
 
 <template>
-  <ShellSettingsShell
-    id="monitoring-client-detail"
-    :title="client?.name || client?.legal_name || `Cliente #${clientId}`"
-    width="wide"
-    test-id="settings-panel"
-    toolbar-test-id="monitoring-client-section-tabs"
+  <div
+    class="flex min-h-0 w-full flex-1 flex-col"
+    data-testid="monitoring-client-detail"
   >
-    <template #navbar-leading>
-      <ShellNavbarBack
-        to="/monitoring"
-        label="Dashboard"
-        aria-label="Voltar ao dashboard de monitoramento"
-        test-id="monitoring-client-back"
-      />
-    </template>
-
-    <template #navbar-right>
-      <NavbarMoreActions
-        :items="[{
-          id: 'client-cadastro',
-          label: 'Cadastro',
-          icon: 'i-lucide-clipboard-list',
-          to: clientCrmHref(clientId, 'cadastro')
-        }, {
-          id: 'client-configuracao',
-          label: 'Configuração',
-          icon: 'i-lucide-sliders-horizontal',
-          to: clientCrmHref(clientId, 'configuracao')
-        }]"
-      />
-    </template>
-
-    <template #toolbar>
-      <UNavigationMenu
-        :items="links"
-        highlight
-        class="-mx-1 flex-1"
-        data-testid="monitoring-client-section-navigation"
-        aria-label="Navegação fiscal do cliente"
-      />
-    </template>
-
-    <UAlert
-      v-if="clientError"
-      color="error"
-      icon="i-lucide-circle-x"
-      :title="clientError"
-    >
-      <template #actions>
-        <UButton
-          size="xs"
-          color="neutral"
-          variant="outline"
-          label="Tentar de novo"
-          @click="bootstrap(true)"
+    <ShellPageNavbar :title="pageTitle">
+      <template #leading>
+        <ShellNavbarBack
+          to="/monitoring"
+          label="Dashboard"
+          aria-label="Voltar ao dashboard de monitoramento"
+          test-id="monitoring-client-back"
         />
       </template>
-    </UAlert>
+      <template #right>
+        <UButton
+          class="lg:hidden"
+          icon="i-lucide-panel-left"
+          color="neutral"
+          variant="ghost"
+          aria-label="Abrir navegação do cliente"
+          data-testid="monitoring-client-nav-toggle"
+          @click="navOpen = true"
+        />
+        <NavbarMoreActions
+          :items="[{
+            id: 'client-cadastro',
+            label: 'Cadastro',
+            icon: 'i-lucide-clipboard-list',
+            to: clientCrmHref(clientId, 'cadastro')
+          }, {
+            id: 'client-configuracao',
+            label: 'Configuração',
+            icon: 'i-lucide-sliders-horizontal',
+            to: clientCrmHref(clientId, 'configuracao')
+          }]"
+        />
+      </template>
+    </ShellPageNavbar>
 
-    <div
-      v-if="clientLoading && !client"
-      class="py-12 text-center text-sm text-muted"
-    >
-      Carregando cliente…
-    </div>
-
-    <template v-else-if="client">
-      <UPageCard
-        variant="subtle"
-        :title="client.legal_name || client.name"
-        :description="client.cnpj ? formatCnpj(client.cnpj) : client.root_cnpj"
+    <div class="flex min-h-0 w-full flex-1">
+      <!--
+        Slot fixo w-14 (sempre fechado na tela). No hover/focus o painel
+        cresce em overlay sobre o conteúdo — a tabela não reflow.
+      -->
+      <aside
+        class="relative z-20 hidden w-14 shrink-0 lg:block"
+        data-testid="monitoring-client-nav-panel"
+        @mouseenter="onNavEnter"
+        @mouseleave="onNavLeave"
+        @focusin="onNavEnter"
+        @focusout="onNavFocusOut"
       >
-        <div class="flex flex-col gap-3">
-          <div class="flex flex-wrap gap-2 text-sm">
-            <UBadge
-              :color="client.is_active ? 'success' : 'neutral'"
-              variant="subtle"
-            >
-              {{ client.is_active ? 'Ativo' : 'Inativo' }}
-            </UBadge>
-            <span class="text-muted">ID {{ client.id }}</span>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              size="sm"
-              color="primary"
-              variant="soft"
-              icon="i-lucide-clipboard-list"
-              label="Abrir cadastro"
-              :to="clientCrmHref(clientId, 'cadastro')"
-              data-testid="monitoring-client-to-cadastro"
-            />
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="soft"
-              icon="i-lucide-sliders-horizontal"
-              label="Certificado / config"
-              :to="clientCrmHref(clientId, 'configuracao')"
-              data-testid="monitoring-client-to-config"
+        <div
+          class="absolute inset-y-0 left-0 flex flex-col overflow-hidden border-e border-default bg-default transition-[width,box-shadow] duration-150 ease-out"
+          :class="navHovered
+            ? 'w-52 shadow-lg ring-1 ring-default'
+            : 'w-14'"
+        >
+          <div class="min-h-0 flex-1 overflow-y-auto p-2">
+            <MonitoringClientFiscalAside
+              :collapsed="!navHovered"
+              :client="client"
+              :client-id="clientId"
+              :links="links"
+              :loading="clientLoading"
             />
           </div>
         </div>
-      </UPageCard>
+      </aside>
 
-      <!-- Estado de carregamento da seção ativa -->
-      <div
-        v-if="sections[tab].loading && !sections[tab].loadedKey"
-        class="py-8 text-center text-sm text-muted"
-        data-testid="section-loading"
+      <UDashboardPanel
+        id="monitoring-client-content"
+        class="min-w-0"
+        data-testid="settings-panel"
+        :ui="{ body: 'gap-4 sm:gap-6 lg:py-8' }"
       >
-        Carregando seção…
-      </div>
+        <template #body>
+          <UAlert
+            v-if="clientError"
+            color="error"
+            icon="i-lucide-circle-x"
+            :title="clientError"
+          >
+            <template #actions>
+              <UButton
+                size="xs"
+                color="neutral"
+                variant="outline"
+                label="Tentar de novo"
+                @click="bootstrap(true)"
+              />
+            </template>
+          </UAlert>
 
-      <!-- Falha da seção (não vira lista vazia) -->
-      <UAlert
-        v-else-if="sections[tab].error"
-        color="error"
-        icon="i-lucide-circle-x"
-        :title="sections[tab].error || 'Falha ao carregar seção'"
-        data-testid="section-error"
-      >
-        <template #actions>
-          <UButton
-            size="xs"
-            color="neutral"
-            variant="outline"
-            label="Tentar de novo"
-            @click="retrySection(tab)"
-          />
-        </template>
-      </UAlert>
+          <div
+            v-if="clientLoading && !client"
+            class="py-12 text-center text-sm text-muted"
+          >
+            Carregando cliente…
+          </div>
 
-      <template v-else>
-            <!-- overview: ShellDataTable sempre montada (customers.vue / ModuleTable) -->
-            <UPageCard
-              v-if="tab === 'overview'"
-              title="Snapshots atuais"
-              variant="subtle"
+          <template v-else-if="client">
+            <!-- Estado de carregamento da seção ativa -->
+            <div
+              v-if="sections[tab].loading && !sections[tab].loadedKey"
+              class="py-8 text-center text-sm text-muted"
+              data-testid="section-loading"
             >
-              <ShellDataTable
-                ui-preset="monitoring-compact"
-                :data="snapshots"
-                :columns="snapshotColumns"
-                :page="1"
-                :total="snapshots.length"
-                :items-per-page="snapshots.length || 1"
-                :show-footer="false"
-                test-id="client-section-table-overview"
-              >
-                <template #empty>
-                  <MonitoringTableEmptyState
-                    kind="empty"
-                    title="Nenhum snapshot atual"
-                  />
-                </template>
-              </ShellDataTable>
-            </UPageCard>
-
-            <ClientPnrRenunciationsPanel
-              v-else-if="tab === 'renunciations'"
-              :client-id="clientId"
-              :can-consult="canTriggerSync"
-            />
-
-            <section v-else-if="tab === 'pgdasd'">
-              <MonitoringPgdasdHistoryView
-                :client-id="clientId"
-                :can-collect-documents="canTriggerSync"
-              />
-            </section>
-
-            <div v-else-if="tab === 'ccmei'" class="space-y-4">
-              <ClientCcmeiPanel
-                :client-id="clientId"
-                :can-consult="canTriggerSync"
-              />
-              <ClientCcmeiRegistrationStatusPanel
-                :client-id="clientId"
-                :can-consult="canTriggerSync"
-              />
-              <ClientCcmeiCertificateIssuancePanel
-                :client-id="clientId"
-                :can-consult="canTriggerSync"
-              />
+              Carregando seção…
             </div>
 
-            <UPageCard
-              v-else-if="tab === 'runs'"
-              title="Execuções"
-              variant="subtle"
+            <!-- Falha da seção (não vira lista vazia) -->
+            <UAlert
+              v-else-if="sections[tab].error"
+              color="error"
+              icon="i-lucide-circle-x"
+              :title="sections[tab].error || 'Falha ao carregar seção'"
+              data-testid="section-error"
             >
-              <ShellDataTable
-                ui-preset="monitoring-compact"
-                :data="runs"
-                :columns="runColumns"
-                :page="1"
-                :total="runs.length"
-                :items-per-page="runs.length || 1"
-                :show-footer="false"
-                test-id="client-section-table-runs"
-              >
-                <template #empty>
-                  <MonitoringTableEmptyState
-                    kind="empty"
-                    title="Nenhuma execução"
-                  />
-                </template>
-              </ShellDataTable>
-            </UPageCard>
-
-            <UPageCard
-              v-else-if="tab === 'findings'"
-              title="Achados"
-              variant="subtle"
-            >
-              <ShellDataTable
-                ui-preset="monitoring-compact"
-                :data="findings"
-                :columns="findingColumns"
-                :page="1"
-                :total="findings.length"
-                :items-per-page="findings.length || 1"
-                :show-footer="false"
-                test-id="client-section-table-findings"
-              >
-                <template #empty>
-                  <MonitoringTableEmptyState
-                    kind="empty"
-                    title="Nenhum achado ativo"
-                  />
-                </template>
-              </ShellDataTable>
-            </UPageCard>
-
-            <UPageCard
-              v-else-if="tab === 'pending'"
-              title="Pendências"
-              variant="subtle"
-            >
-              <ShellDataTable
-                ui-preset="monitoring-compact"
-                :data="pending"
-                :columns="pendingColumns"
-                :page="1"
-                :total="pending.length"
-                :items-per-page="pending.length || 1"
-                :show-footer="false"
-                test-id="client-section-table-pending"
-              >
-                <template #empty>
-                  <MonitoringTableEmptyState
-                    kind="empty"
-                    title="Nenhuma pendência aberta"
-                  />
-                </template>
-              </ShellDataTable>
-            </UPageCard>
-
-            <UPageCard
-              v-else-if="tab === 'installments'"
-              title="Parcelamentos"
-              variant="subtle"
-            >
-              <ShellDataTable
-                ui-preset="monitoring-compact"
-                :data="installments"
-                :columns="installmentColumns"
-                :page="1"
-                :total="installments.length"
-                :items-per-page="installments.length || 1"
-                :show-footer="false"
-                test-id="client-section-table-installments"
-              >
-                <template #empty>
-                  <MonitoringTableEmptyState
-                    kind="empty"
-                    title="Nenhum parcelamento"
-                  />
-                </template>
-              </ShellDataTable>
-              <div class="mt-3">
+              <template #actions>
                 <UButton
-                  size="sm"
+                  size="xs"
                   color="neutral"
-                  variant="soft"
-                  to="/monitoring/installments"
-                  label="Abrir carteira de parcelamentos"
+                  variant="outline"
+                  label="Tentar de novo"
+                  @click="retrySection(tab)"
                 />
-              </div>
-            </UPageCard>
+              </template>
+            </UAlert>
 
-            <UPageCard
-              v-else-if="tab === 'declarations'"
-              title="Declarações"
-              variant="subtle"
-            >
-              <ShellDataTable
-                ui-preset="monitoring-compact"
-                :data="declarations"
-                :columns="declarationColumns"
-                :page="1"
-                :total="declarations.length"
-                :items-per-page="declarations.length || 1"
-                :show-footer="false"
-                test-id="client-section-table-declarations"
+            <template v-else>
+              <!-- overview: ShellDataTable sempre montada (customers.vue / ModuleTable) -->
+              <UPageCard
+                v-if="tab === 'overview'"
+                title="Snapshots atuais"
+                variant="subtle"
               >
-                <template #empty>
-                  <MonitoringTableEmptyState
-                    kind="empty"
-                    title="Nenhuma declaração"
-                  />
-                </template>
-              </ShellDataTable>
-              <div class="mt-3">
-                <UButton
-                  size="sm"
-                  color="neutral"
-                  variant="soft"
-                  to="/monitoring/declarations"
-                  label="Abrir central de declarações"
-                />
-              </div>
-            </UPageCard>
-
-            <UPageCard
-              v-else-if="tab === 'guides'"
-              title="Guias"
-              variant="subtle"
-            >
-              <ShellDataTable
-                ui-preset="monitoring-compact"
-                :data="guides"
-                :columns="guideColumns"
-                :page="1"
-                :total="guides.length"
-                :items-per-page="guides.length || 1"
-                :show-footer="false"
-                test-id="client-section-table-guides"
-              >
-                <template #empty>
-                  <MonitoringTableEmptyState
-                    kind="empty"
-                    title="Nenhuma guia"
-                  />
-                </template>
-              </ShellDataTable>
-              <div class="mt-3">
-                <UButton
-                  size="sm"
-                  color="neutral"
-                  variant="soft"
-                  to="/monitoring/guides"
-                  label="Abrir central de guias"
-                />
-              </div>
-            </UPageCard>
-
-            <UPageCard
-              v-else-if="tab === 'fgts'"
-              title="FGTS Digital"
-              variant="subtle"
-            >
-              <ShellDataTable
-                ui-preset="monitoring-compact"
-                :data="fgtsCompetences"
-                :columns="fgtsColumns"
-                :page="1"
-                :total="fgtsCompetences.length"
-                :items-per-page="fgtsCompetences.length || 1"
-                :show-footer="false"
-                test-id="client-section-table-fgts"
-              >
-                <template #empty>
-                  <MonitoringTableEmptyState
-                    kind="empty"
-                    title="Nenhuma competência FGTS"
-                  />
-                </template>
-              </ShellDataTable>
-              <div class="mt-3">
-                <UButton
-                  size="sm"
-                  color="neutral"
-                  variant="soft"
-                  to="/monitoring/fgts"
-                  label="Abrir carteira FGTS"
-                />
-              </div>
-            </UPageCard>
-
-            <!-- sitfis: painel detalhe (não lista) — casca sempre visível -->
-            <UPageCard
-              v-else-if="tab === 'sitfis'"
-              title="Situação fiscal (SITFIS)"
-              variant="subtle"
-              data-testid="client-sitfis-section"
-            >
-              <MonitoringTableEmptyState
-                v-if="!sitfis || (!sitfisSituation && !sitfisErrorCode)"
-                kind="empty"
-                title="Nenhum snapshot SITFIS"
-              />
-              <template v-else>
-                <UAlert
-                  v-if="sitfisErrorCode"
-                  color="error"
-                  variant="subtle"
-                  icon="i-lucide-circle-x"
-                  class="mb-3"
-                  :title="String(sitfisErrorCode)"
-                  data-testid="client-sitfis-error"
-                />
-                <p v-if="sitfisErrorMessage" class="mb-3 text-sm text-error">
-                  {{ sitfisErrorMessage }}
-                </p>
-                <dl
-                  class="grid gap-2 text-sm sm:grid-cols-2"
-                  data-testid="client-sitfis-fields"
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="snapshots"
+                  :columns="snapshotColumns"
+                  :page="1"
+                  :total="snapshots.length"
+                  :items-per-page="snapshots.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-overview"
                 >
-                  <div>
-                    <dt class="text-muted">
-                      Situação
-                    </dt>
-                    <dd>
-                      <FiscalStatusBadge
-                        v-if="sitfisSituation"
-                        :status="sitfisSituation"
-                        show-hint
-                      />
-                      <span v-else class="text-muted">—</span>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt class="text-muted">
-                      Observado
-                    </dt>
-                    <dd>{{ formatDateTime(sitfisObserved) }}</dd>
-                  </div>
-                  <div>
-                    <dt class="text-muted">
-                      Protocolo
-                    </dt>
-                    <dd>{{ sitfisProtocol || '—' }}</dd>
-                  </div>
-                  <div>
-                    <dt class="text-muted">
-                      Cobertura
-                    </dt>
-                    <dd>{{ sitfisCoverage || '—' }}</dd>
-                  </div>
-                </dl>
-                <div class="mt-3 flex flex-wrap items-center gap-2">
-                  <FiscalDocumentAction
-                    :document="sitfisDocument"
-                  />
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhum snapshot atual"
+                    />
+                  </template>
+                </ShellDataTable>
+              </UPageCard>
+
+              <ClientPnrRenunciationsPanel
+                v-else-if="tab === 'renunciations'"
+                :client-id="clientId"
+                :can-consult="canTriggerSync"
+              />
+
+              <section v-else-if="tab === 'pgdasd'">
+                <MonitoringPgdasdHistoryView
+                  :client-id="clientId"
+                  :can-collect-documents="canTriggerSync"
+                />
+              </section>
+
+              <div v-else-if="tab === 'ccmei'" class="space-y-4">
+                <ClientCcmeiPanel
+                  :client-id="clientId"
+                  :can-consult="canTriggerSync"
+                />
+                <ClientCcmeiRegistrationStatusPanel
+                  :client-id="clientId"
+                  :can-consult="canTriggerSync"
+                />
+                <ClientCcmeiCertificateIssuancePanel
+                  :client-id="clientId"
+                  :can-consult="canTriggerSync"
+                />
+              </div>
+
+              <UPageCard
+                v-else-if="tab === 'runs'"
+                title="Execuções"
+                variant="subtle"
+              >
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="runs"
+                  :columns="runColumns"
+                  :page="1"
+                  :total="runs.length"
+                  :items-per-page="runs.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-runs"
+                >
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhuma execução"
+                    />
+                  </template>
+                </ShellDataTable>
+              </UPageCard>
+
+              <UPageCard
+                v-else-if="tab === 'findings'"
+                title="Achados"
+                variant="subtle"
+              >
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="findings"
+                  :columns="findingColumns"
+                  :page="1"
+                  :total="findings.length"
+                  :items-per-page="findings.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-findings"
+                >
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhum achado ativo"
+                    />
+                  </template>
+                </ShellDataTable>
+              </UPageCard>
+
+              <UPageCard
+                v-else-if="tab === 'pending'"
+                title="Pendências"
+                variant="subtle"
+              >
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="pending"
+                  :columns="pendingColumns"
+                  :page="1"
+                  :total="pending.length"
+                  :items-per-page="pending.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-pending"
+                >
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhuma pendência aberta"
+                    />
+                  </template>
+                </ShellDataTable>
+              </UPageCard>
+
+              <UPageCard
+                v-else-if="tab === 'installments'"
+                title="Parcelamentos"
+                variant="subtle"
+              >
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="installments"
+                  :columns="installmentColumns"
+                  :page="1"
+                  :total="installments.length"
+                  :items-per-page="installments.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-installments"
+                >
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhum parcelamento"
+                    />
+                  </template>
+                </ShellDataTable>
+                <div class="mt-3">
                   <UButton
                     size="sm"
                     color="neutral"
                     variant="soft"
-                    to="/monitoring/sitfis"
-                    label="Abrir carteira SITFIS"
+                    to="/monitoring/installments"
+                    label="Abrir carteira de parcelamentos"
                   />
                 </div>
-              </template>
-            </UPageCard>
+              </UPageCard>
 
-            <UPageCard
-              v-else-if="tab === 'registrations'"
-              title="Cadastro e Vínculos"
-              variant="subtle"
-              data-testid="client-registrations-section"
-            >
-              <ShellDataTable
-                ui-preset="monitoring-compact"
-                :data="registrationLinks"
-                :columns="registrationColumns"
-                :page="1"
-                :total="registrationLinks.length"
-                :items-per-page="registrationLinks.length || 1"
-                :show-footer="false"
-                test-id="client-section-table-registrations"
+              <UPageCard
+                v-else-if="tab === 'declarations'"
+                title="Declarações"
+                variant="subtle"
               >
-                <template #empty>
-                  <MonitoringTableEmptyState
-                    kind="empty"
-                    title="Nenhum vínculo projetado"
-                    description="Nenhum vínculo projetado para este cliente."
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="declarations"
+                  :columns="declarationColumns"
+                  :page="1"
+                  :total="declarations.length"
+                  :items-per-page="declarations.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-declarations"
+                >
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhuma declaração"
+                    />
+                  </template>
+                </ShellDataTable>
+                <div class="mt-3">
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="soft"
+                    to="/monitoring/declarations"
+                    label="Abrir central de declarações"
                   />
-                </template>
-              </ShellDataTable>
-              <div class="mt-3">
-                <UButton
-                  size="sm"
-                  color="neutral"
-                  variant="soft"
-                  to="/monitoring/registrations"
-                  label="Abrir carteira de vínculos"
-                />
-              </div>
-            </UPageCard>
+                </div>
+              </UPageCard>
 
-            <UPageCard
-              v-else-if="tab === 'tax_processes'"
-              title="Processos Fiscais"
-              variant="subtle"
-              data-testid="client-tax-processes-section"
-            >
-              <p class="mb-3 text-xs text-muted">
-                Documentos indisponíveis via API produtiva
-              </p>
-              <ShellDataTable
-                ui-preset="monitoring-compact"
-                :data="taxProcesses"
-                :columns="taxProcessColumns"
-                :page="1"
-                :total="taxProcesses.length"
-                :items-per-page="taxProcesses.length || 1"
-                :show-footer="false"
-                test-id="client-section-table-tax-processes"
+              <UPageCard
+                v-else-if="tab === 'guides'"
+                title="Guias"
+                variant="subtle"
               >
-                <template #empty>
-                  <MonitoringTableEmptyState
-                    kind="empty"
-                    title="Nenhum processo projetado"
-                    description="Nenhum processo projetado para este cliente."
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="guides"
+                  :columns="guideColumns"
+                  :page="1"
+                  :total="guides.length"
+                  :items-per-page="guides.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-guides"
+                >
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhuma guia"
+                    />
+                  </template>
+                </ShellDataTable>
+                <div class="mt-3">
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="soft"
+                    to="/monitoring/guides"
+                    label="Abrir central de guias"
                   />
-                </template>
-              </ShellDataTable>
-              <div class="mt-3">
-                <UButton
-                  size="sm"
-                  color="neutral"
-                  variant="soft"
-                  to="/monitoring/tax-processes"
-                  label="Abrir carteira de processos"
+                </div>
+              </UPageCard>
+
+              <UPageCard
+                v-else-if="tab === 'fgts'"
+                title="FGTS Digital"
+                variant="subtle"
+              >
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="fgtsCompetences"
+                  :columns="fgtsColumns"
+                  :page="1"
+                  :total="fgtsCompetences.length"
+                  :items-per-page="fgtsCompetences.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-fgts"
+                >
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhuma competência FGTS"
+                    />
+                  </template>
+                </ShellDataTable>
+                <div class="mt-3">
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="soft"
+                    to="/monitoring/fgts"
+                    label="Abrir carteira FGTS"
+                  />
+                </div>
+              </UPageCard>
+
+              <!-- sitfis: painel detalhe (não lista) — casca sempre visível -->
+              <UPageCard
+                v-else-if="tab === 'sitfis'"
+                title="Situação fiscal (SITFIS)"
+                variant="subtle"
+                data-testid="client-sitfis-section"
+              >
+                <MonitoringTableEmptyState
+                  v-if="!sitfis || (!sitfisSituation && !sitfisErrorCode)"
+                  kind="empty"
+                  title="Nenhum snapshot SITFIS"
                 />
-              </div>
-            </UPageCard>
+                <template v-else>
+                  <UAlert
+                    v-if="sitfisErrorCode"
+                    color="error"
+                    variant="subtle"
+                    icon="i-lucide-circle-x"
+                    class="mb-3"
+                    :title="String(sitfisErrorCode)"
+                    data-testid="client-sitfis-error"
+                  />
+                  <p v-if="sitfisErrorMessage" class="mb-3 text-sm text-error">
+                    {{ sitfisErrorMessage }}
+                  </p>
+                  <dl
+                    class="grid gap-2 text-sm sm:grid-cols-2"
+                    data-testid="client-sitfis-fields"
+                  >
+                    <div>
+                      <dt class="text-muted">
+                        Situação
+                      </dt>
+                      <dd>
+                        <FiscalStatusBadge
+                          v-if="sitfisSituation"
+                          :status="sitfisSituation"
+                          show-hint
+                        />
+                        <span v-else class="text-muted">—</span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="text-muted">
+                        Observado
+                      </dt>
+                      <dd>{{ formatDateTime(sitfisObserved) }}</dd>
+                    </div>
+                    <div>
+                      <dt class="text-muted">
+                        Protocolo
+                      </dt>
+                      <dd>{{ sitfisProtocol || '—' }}</dd>
+                    </div>
+                    <div>
+                      <dt class="text-muted">
+                        Cobertura
+                      </dt>
+                      <dd>{{ sitfisCoverage || '—' }}</dd>
+                    </div>
+                  </dl>
+                  <div class="mt-3 flex flex-wrap items-center gap-2">
+                    <FiscalDocumentAction
+                      :document="sitfisDocument"
+                    />
+                    <UButton
+                      size="sm"
+                      color="neutral"
+                      variant="soft"
+                      to="/monitoring/sitfis"
+                      label="Abrir carteira SITFIS"
+                    />
+                  </div>
+                </template>
+              </UPageCard>
+
+              <UPageCard
+                v-else-if="tab === 'registrations'"
+                title="Cadastro e Vínculos"
+                variant="subtle"
+                data-testid="client-registrations-section"
+              >
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="registrationLinks"
+                  :columns="registrationColumns"
+                  :page="1"
+                  :total="registrationLinks.length"
+                  :items-per-page="registrationLinks.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-registrations"
+                >
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhum vínculo projetado"
+                      description="Nenhum vínculo projetado para este cliente."
+                    />
+                  </template>
+                </ShellDataTable>
+                <div class="mt-3">
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="soft"
+                    to="/monitoring/registrations"
+                    label="Abrir carteira de vínculos"
+                  />
+                </div>
+              </UPageCard>
+
+              <UPageCard
+                v-else-if="tab === 'tax_processes'"
+                title="Processos Fiscais"
+                variant="subtle"
+                data-testid="client-tax-processes-section"
+              >
+                <p class="mb-3 text-xs text-muted">
+                  Documentos indisponíveis via API produtiva
+                </p>
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="taxProcesses"
+                  :columns="taxProcessColumns"
+                  :page="1"
+                  :total="taxProcesses.length"
+                  :items-per-page="taxProcesses.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-tax-processes"
+                >
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhum processo projetado"
+                      description="Nenhum processo projetado para este cliente."
+                    />
+                  </template>
+                </ShellDataTable>
+                <div class="mt-3">
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="soft"
+                    to="/monitoring/tax-processes"
+                    label="Abrir carteira de processos"
+                  />
+                </div>
+              </UPageCard>
+            </template>
+
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="soft"
+                to="/monitoring/mailbox"
+                label="Caixa postal"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="soft"
+                to="/monitoring/dctfweb"
+                label="DCTFWeb"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="soft"
+                to="/monitoring/simples-mei"
+                label="Simples/MEI"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="soft"
+                :to="clientCrmHref(clientId, 'cadastro')"
+                label="Cadastro completo"
+                data-testid="monitoring-client-cadastro-completo"
+              />
+            </div>
           </template>
+        </template>
+      </UDashboardPanel>
+    </div>
 
-      <div class="flex flex-wrap gap-2">
-        <UButton
-          size="sm"
-          color="neutral"
-          variant="soft"
-          to="/monitoring/mailbox"
-          label="Caixa postal"
-        />
-        <UButton
-          size="sm"
-          color="neutral"
-          variant="soft"
-          to="/monitoring/dctfweb"
-          label="DCTFWeb"
-        />
-        <UButton
-          size="sm"
-          color="neutral"
-          variant="soft"
-          to="/monitoring/simples-mei"
-          label="Simples/MEI"
-        />
-        <UButton
-          size="sm"
-          color="neutral"
-          variant="soft"
-          :to="clientCrmHref(clientId, 'cadastro')"
-          label="Cadastro completo"
-          data-testid="monitoring-client-cadastro-completo"
-        />
-      </div>
-    </template>
-  </ShellSettingsShell>
+    <ClientOnly>
+      <USlideover
+        v-if="isMobile"
+        v-model:open="navOpen"
+        side="left"
+        title="Navegação do cliente"
+        :ui="{ content: 'max-w-xs' }"
+        data-testid="monitoring-client-nav-slideover"
+      >
+        <template #body>
+          <MonitoringClientFiscalAside
+            :collapsed="false"
+            :client="client"
+            :client-id="clientId"
+            :links="links"
+            :loading="clientLoading"
+            class="p-1"
+          />
+        </template>
+      </USlideover>
+    </ClientOnly>
+  </div>
 </template>

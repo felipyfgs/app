@@ -1,6 +1,6 @@
 /**
  * Navegação do detalhe fiscal do cliente (`/monitoring/clients/:id/:section?`).
- * Catálogo plano — arquétipo Settings (toolbar UNavigationMenu), como Conta/CRM.
+ * Catálogo plano — sidebar interno (UNavigationMenu vertical).
  */
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { NavLayerItem, NavLeafDestination } from '~/utils/navigation-hierarchy'
@@ -46,7 +46,7 @@ interface FiscalSectionDef {
   icon: string
 }
 
-/** Ordem estável da toolbar (folhas). */
+/** Ordem estável do sidebar interno (folhas). */
 const FISCAL_SECTIONS: FiscalSectionDef[] = [
   { key: 'overview', id: 'cf-overview', label: 'Visão geral', icon: 'i-lucide-layout-dashboard' },
   { key: 'runs', id: 'cf-runs', label: 'Execuções', icon: 'i-lucide-play' },
@@ -93,7 +93,7 @@ function sectionLeaf(
   }
 }
 
-/** Catálogo plano (folhas) — toolbar Settings / busca. */
+/** Catálogo plano (folhas) — sidebar interno / busca. */
 export function clientFiscalDetailNav(clientId: string | number): NavLayerItem[] {
   const items = FISCAL_SECTIONS.map(def => sectionLeaf(clientId, def))
   validateNavCatalog(items, FISCAL_SECTIONS.length)
@@ -104,7 +104,7 @@ export function clientFiscalDetailLeaves(clientId: string | number): NavLeafDest
   return flattenNavLeaves(clientFiscalDetailNav(clientId))
 }
 
-/** Links para UNavigationMenu da toolbar (grupo único, como o template settings). */
+/** Links para UNavigationMenu vertical do sidebar interno (grupo único). */
 export function clientFiscalNavigationMenu(
   clientId: string | number,
   currentPath?: string

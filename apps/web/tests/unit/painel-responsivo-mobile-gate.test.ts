@@ -103,14 +103,23 @@ describe('painel-responsivo-mobile-gate', () => {
     expect(client).not.toContain('ClientDetailAside')
   })
 
-  it('detalhe fiscal do cliente segue arquétipo settings (toolbar plana)', () => {
+  it('detalhe fiscal do cliente usa rail fino com expand no hover + slideover', () => {
     const fiscal = readFileSync(root('app/pages/monitoring/clients/[clientId].vue'), 'utf8')
-    expect(fiscal).toContain('ShellSettingsShell')
-    expect(fiscal).toContain('UNavigationMenu')
-    expect(fiscal).toContain('monitoring-client-section-navigation')
-    expect(fiscal).toContain('width="wide"')
+    const aside = readFileSync(root('app/components/monitoring/ClientFiscalAside.vue'), 'utf8')
+    expect(fiscal).toContain('monitoring-client-nav-panel')
+    expect(fiscal).toContain('MonitoringClientFiscalAside')
+    expect(fiscal).toContain('w-14')
+    expect(fiscal).toContain('w-52')
+    expect(fiscal).toContain('onNavEnter')
+    expect(fiscal).toContain('@mouseenter="onNavEnter"')
+    expect(fiscal).toContain('USlideover')
+    expect(fiscal).toContain('monitoring-client-nav-slideover')
+    expect(fiscal).not.toContain('ShellSettingsShell')
     expect(fiscal).not.toContain('SectionNavigation')
     expect(fiscal).not.toContain('section-nav-subtabs')
+    expect(aside).toContain('UNavigationMenu')
+    expect(aside).toContain('orientation="vertical"')
+    expect(aside).toContain('monitoring-client-section-navigation')
   })
 
   it('folhas do cliente e settings Conta usam ShellSectionHeader (chrome settings)', () => {
