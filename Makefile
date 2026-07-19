@@ -1,4 +1,4 @@
-.PHONY: help init-env setup up dev down build logs shell-php composer-install migrate seed seed-dev seed-pilot horizon-status audit-names frontend-prepare-generated frontend-install frontend-generate frontend-dev backup backup-verify restore prod-check prod-config prod-build prod-up prod-down prod-backup prod-backup-verify prod-restore prod-restore-smoke prod-readiness prod-release-manifest
+.PHONY: help init-env setup up dev down build logs shell-php composer-install migrate seed seed-dev seed-pilot horizon-status audit-names check-mei-compose-boundary frontend-prepare-generated frontend-install frontend-generate frontend-dev backup backup-verify restore prod-check prod-config prod-build prod-up prod-down prod-backup prod-backup-verify prod-restore prod-restore-smoke prod-readiness prod-release-manifest
 
 LOCAL_UID := $(shell id -u)
 LOCAL_GID := $(shell id -g)
@@ -52,24 +52,38 @@ init-env:
 	fi; \
 	if grep -q '^VAULT_MASTER_KEY=$$' apps/api/.env; then \
 		key=$$(openssl rand -base64 32); sed -i "s|^VAULT_MASTER_KEY=$$|VAULT_MASTER_KEY=$$key|" apps/api/.env; \
-	fi
+	fi; \
+	root_mei=$$(grep -E '^MEI_AUTOMATION_HMAC_SECRET=' .env | head -1 | cut -d= -f2-); \
+	api_mei=$$(grep -E '^MEI_AUTOMATION_HMAC_SECRET=' apps/api/.env | head -1 | cut -d= -f2-); \
+	if [ -n "$$root_mei" ] && [ -n "$$api_mei" ] && [ "$$root_mei" != "$$api_mei" ]; then \
+		echo 'MEI_AUTOMATION_HMAC_SECRET diverge entre .env e apps/api/.env' >&2; exit 1; \
+	fi; \
+	mei_secret=$${root_mei:-$$api_mei}; \
+	if [ -z "$$mei_secret" ]; then mei_secret=$$(openssl rand -base64 32); fi; \
+	for file in .env apps/api/.env; do \
+		if grep -q '^MEI_AUTOMATION_HMAC_SECRET=' "$$file"; then \
+			sed -i "s|^MEI_AUTOMATION_HMAC_SECRET=.*|MEI_AUTOMATION_HMAC_SECRET=$$mei_secret|" "$$file"; \
+		else \
+			printf '\nMEI_AUTOMATION_HMAC_SECRET=%s\n' "$$mei_secret" >> "$$file"; \
+		fi; \
+	done
 
 setup: init-env build composer-install frontend-generate
 	docker compose up -d postgres redis
 	docker compose run --rm php php artisan migrate --force
-	docker compose up -d nginx php horizon scheduler
+	docker compose up -d nginx php horizon scheduler mei mei-worker
 
 up:
-	docker compose up -d nginx php postgres redis horizon scheduler
+	docker compose up -d nginx php postgres redis horizon scheduler mei mei-worker
 
 dev: frontend-prepare-generated
-	LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID) docker compose --profile dev up -d nginx php postgres redis horizon scheduler frontend-dev
+	LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID) docker compose --profile dev up -d nginx php postgres redis horizon scheduler mei mei-worker frontend-dev
 
 down:
 	docker compose down
 
 build:
-	docker compose --profile dev build nginx php frontend-dev
+	docker compose --profile dev build nginx php mei frontend-dev
 
 logs:
 	docker compose logs -f
@@ -138,6 +152,7 @@ prod-check:
 	@grep -Eq '^ACME_EMAIL=[^[:space:]@]+@[^[:space:]@]+$$' "$(PROD_ENV)" || { echo "Defina ACME_EMAIL válido em $(PROD_ENV)" >&2; exit 2; }
 	@grep -Eq '^APP_KEY=base64:.{32,}$$' "$(PROD_ENV)" || { echo "Defina APP_KEY válida em $(PROD_ENV)" >&2; exit 2; }
 	@grep -Eq '^VAULT_MASTER_KEY=.{32,}$$' "$(PROD_ENV)" || { echo "Defina VAULT_MASTER_KEY em $(PROD_ENV)" >&2; exit 2; }
+	@grep -Eq '^MEI_AUTOMATION_HMAC_SECRET=.{32,}$$' "$(PROD_ENV)" || { echo "Defina MEI_AUTOMATION_HMAC_SECRET em $(PROD_ENV)" >&2; exit 2; }
 	@grep -Eq '^DB_PASSWORD=.{16,}$$' "$(PROD_ENV)" || { echo "DB_PASSWORD deve ter ao menos 16 caracteres" >&2; exit 2; }
 	@grep -qx 'LOG_CHANNEL=stderr' "$(PROD_ENV)" || { echo "Produção exige LOG_CHANNEL=stderr" >&2; exit 2; }
 	@grep -qx 'MAIL_MAILER=smtp' "$(PROD_ENV)" || { echo "Produção exige MAIL_MAILER=smtp" >&2; exit 2; }

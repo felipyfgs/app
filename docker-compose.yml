@@ -1,3 +1,5 @@
+name: ${COMPOSE_PROJECT_NAME:-app}
+
 x-php: &php
   image: ${COMPOSE_PROJECT_NAME:-app}-php:dev
   build: ./infra/docker/php
@@ -6,6 +8,8 @@ x-php: &php
       required: false
   environment:
     APP_ENV: ${APP_ENV:-local}
+    FISCAL_PROFILE: ${FISCAL_PROFILE:-dev}
+    FISCAL_KILL_SWITCH: ${FISCAL_KILL_SWITCH:-false}
     DB_CONNECTION: pgsql
     DB_HOST: postgres
     DB_PORT: 5432
@@ -26,8 +30,48 @@ x-php: &php
   networks:
     - app
 
+x-mei: &mei
+  build:
+    context: ./services/mei
+    target: runtime
+  environment:
+    MEI_AUTOMATION_ENVIRONMENT: local
+    MEI_AUTOMATION_REDIS_URL: redis://redis:6379/4
+    MEI_AUTOMATION_HMAC_KEY_ID: ${MEI_AUTOMATION_HMAC_KEY_ID:-laravel}
+    MEI_AUTOMATION_HMAC_SECRET: ${MEI_AUTOMATION_HMAC_SECRET:-}
+    MEI_AUTOMATION_RESULT_TTL_SECONDS: ${MEI_AUTOMATION_RESULT_TTL_SECONDS:-900}
+    MEI_AUTOMATION_ARTIFACT_TTL_SECONDS: ${MEI_AUTOMATION_ARTIFACT_TTL_SECONDS:-300}
+    MEI_AUTOMATION_ARTIFACT_ROOT: /tmp/mei
+    MEI_AUTOMATION_LIVE_EGRESS_ENABLED: ${MEI_AUTOMATION_LIVE_EGRESS_ENABLED:-false}
+    MEI_AUTOMATION_FIXTURE_ENABLED: ${MEI_AUTOMATION_FIXTURE_ENABLED:-false}
+    MEI_AUTOMATION_FIXTURE_ROOT: /app/fixtures
+    MEI_AUTOMATION_CAPTCHA_DRIVER: ${MEI_AUTOMATION_CAPTCHA_DRIVER:-manual}
+    MEI_AUTOMATION_CAPTCHA_BUDGET_MICROS: ${MEI_AUTOMATION_CAPTCHA_BUDGET_MICROS:-0}
+    MEI_AUTOMATION_NOPECHA_ENABLED: ${MEI_AUTOMATION_NOPECHA_ENABLED:-false}
+    MEI_AUTOMATION_NOPECHA_API_KEY: ${MEI_AUTOMATION_NOPECHA_API_KEY:-}
+    MEI_AUTOMATION_NOPECHA_OPERATION_ALLOWLIST: ${MEI_AUTOMATION_NOPECHA_OPERATION_ALLOWLIST:-}
+    MEI_AUTOMATION_NOPECHA_UNIT_COST_MICROS: ${MEI_AUTOMATION_NOPECHA_UNIT_COST_MICROS:-0}
+    MEI_AUTOMATION_NOPECHA_TIMEOUT_SECONDS: ${MEI_AUTOMATION_NOPECHA_TIMEOUT_SECONDS:-180}
+    MEI_AUTOMATION_NOPECHA_POLL_INTERVAL_SECONDS: ${MEI_AUTOMATION_NOPECHA_POLL_INTERVAL_SECONDS:-1}
+    MEI_AUTOMATION_NOPECHA_PROXY_URL: ${MEI_AUTOMATION_NOPECHA_PROXY_URL:-}
+    # Alinhado ao docapi: Chrome real + headed sob Xvfb (nao headless puro).
+    MEI_AUTOMATION_BROWSER_HEADLESS: ${MEI_AUTOMATION_BROWSER_HEADLESS:-false}
+    MEI_AUTOMATION_BROWSER_CHANNEL: ${MEI_AUTOMATION_BROWSER_CHANNEL:-chrome}
+  volumes:
+    - mei_artifacts:/tmp/mei
+  depends_on:
+    redis:
+      condition: service_healthy
+  init: true
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  networks:
+    - app
+
 services:
   nginx:
+    image: ${COMPOSE_PROJECT_NAME:-app}-nginx:dev
     build:
       context: ./infra/docker/nginx
       target: dev
@@ -70,6 +114,7 @@ services:
 
   horizon:
     <<: *php
+    image: ${COMPOSE_PROJECT_NAME:-app}-horizon:dev
     command: ["php", "artisan", "horizon"]
     depends_on:
       php:
@@ -79,6 +124,7 @@ services:
 
   scheduler:
     <<: *php
+    image: ${COMPOSE_PROJECT_NAME:-app}-scheduler:dev
     command: ["php", "artisan", "schedule:work"]
     depends_on:
       php:
@@ -86,7 +132,33 @@ services:
       redis:
         condition: service_healthy
 
+  mei:
+    <<: *mei
+    image: ${COMPOSE_PROJECT_NAME:-app}-mei:dev
+    networks:
+      app:
+        aliases:
+          - mei
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  mei-worker:
+    <<: *mei
+    image: ${COMPOSE_PROJECT_NAME:-app}-mei-worker:dev
+    command: ["celery", "-A", "mei.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=1", "--max-tasks-per-child=50"]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A mei.celery_app:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
   frontend-dev:
+    image: ${COMPOSE_PROJECT_NAME:-app}-frontend-dev:dev
     build: ./infra/docker/frontend
     working_dir: /app
     volumes:
@@ -159,6 +231,7 @@ volumes:
   vault_data:
   private_storage:
   frontend_node_modules:
+  mei_artifacts:
 
 networks:
   app:
