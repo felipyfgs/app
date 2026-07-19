@@ -35,6 +35,19 @@ final class MeiAutomationClient
         return $this->sendJson('POST', '/v1/jobs/'.$this->jobId($jobId).'/resume');
     }
 
+    public function downloadArtifact(string $jobId, string $artifactId): Response
+    {
+        $path = '/v1/jobs/'.$this->jobId($jobId).'/artifacts/'.$this->jobId($artifactId);
+        $request = $this->http
+            ->baseUrl(rtrim((string) config('mei_automation.base_url'), '/'))
+            ->timeout(max(1, (int) config('mei_automation.timeout_seconds', 15)))
+            ->withHeaders($this->signer->headers('GET', $path));
+        $response = $request->get($path);
+        $this->assertSuccessful($response);
+
+        return $response;
+    }
+
     /** @param array<string, mixed>|null $payload */
     private function sendJson(string $method, string $path, ?array $payload = null): MeiAutomationJobResult
     {

@@ -1,0 +1,81 @@
+<?php
+
+namespace Tests\Unit\MeiAutomation;
+
+use App\DTO\MeiAutomation\MeiAutomationJobResult;
+use App\Enums\FiscalSourceProvenance;
+use App\Enums\FiscalVerificationKind;
+use App\Enums\MeiAutomationStatus;
+use App\Enums\MeiProvider;
+use App\Models\Client;
+use App\Models\Office;
+use App\Services\MeiAutomation\MeiAutomationAttemptRepository;
+use App\Services\MeiAutomation\MeiAutomationAttemptService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class MeiAutomationAttemptServiceTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_builds_stable_fingerprint_and_opaque_client_reference(): void
+    {
+        config()->set('mei_automation.hmac.secret', 'shared-test-secret');
+        $office = Office::factory()->create();
+        $client = Client::factory()->forOffice($office)->create();
+        $service = app(MeiAutomationAttemptService::class);
+
+        $attempt = $service->start(
+            $office,
+            $client,
+            'pgmei.dividaativa',
+            MeiProvider::ReceitaPortal,
+            'run:12345678',
+            ['year' => 2026, 'cnpj' => '11222333000181'],
+        );
+        $request = $service->jobRequest($attempt, ['year' => 2026, 'cnpj' => '11222333000181']);
+
+        self::assertSame($attempt->request_fingerprint, $request->requestFingerprint);
+        self::assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $request->clientRef);
+        self::assertNotSame((string) $client->id, $request->clientRef);
+        self::assertStringNotContainsString('11222333000181', $request->clientRef);
+        self::assertSame(
+            $service->fingerprint('pgmei.dividaativa', ['cnpj' => '11222333000181', 'year' => 2026]),
+            $attempt->request_fingerprint,
+        );
+    }
+
+    public function test_synchronizes_safe_metadata_and_redacts_error(): void
+    {
+        $office = Office::factory()->create();
+        $client = Client::factory()->forOffice($office)->create();
+        $attempt = app(MeiAutomationAttemptService::class)->start(
+            $office,
+            $client,
+            'pgmei.dividaativa',
+            MeiProvider::ReceitaPortal,
+            'run:87654321',
+            [],
+        );
+
+        $attempt = app(MeiAutomationAttemptRepository::class)->synchronize(
+            $attempt,
+            new MeiAutomationJobResult(
+                id: '0f82d5ec-d69f-4b2b-a2d6-b2c52e0e1b92',
+                operationKey: 'pgmei.dividaativa',
+                status: MeiAutomationStatus::Failed,
+                result: null,
+                error: ['code' => 'PORTAL_ERROR', 'message' => 'CNPJ 11222333000181 token=secret'],
+                artifacts: [],
+                actionType: null,
+            ),
+            ['portal_version' => '2026.07', 'raw_html' => '<html>fiscal</html>'],
+        );
+
+        self::assertSame(FiscalSourceProvenance::ReceitaPortal, $attempt->source_provenance);
+        self::assertSame(FiscalVerificationKind::PortalArtifact, $attempt->verification_kind);
+        self::assertStringNotContainsString('11222333000181', (string) $attempt->error_message);
+        self::assertStringNotContainsString('secret', (string) $attempt->error_message);
+        self::assertArrayNotHasKey('raw_html', $attempt->safe_metadata);
+    }
+}

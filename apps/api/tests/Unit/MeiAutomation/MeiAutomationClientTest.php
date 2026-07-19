@@ -42,4 +42,26 @@ class MeiAutomationClientTest extends TestCase
                 && $request->url() === 'http://mei.test/v1/jobs';
         });
     }
+
+    public function test_downloads_artifact_with_signed_exact_path(): void
+    {
+        config()->set('mei_automation.base_url', 'http://mei.test');
+        config()->set('mei_automation.hmac.key_id', 'laravel');
+        config()->set('mei_automation.hmac.secret', 'shared-test-secret');
+        $jobId = '0f82d5ec-d69f-4b2b-a2d6-b2c52e0e1b92';
+        $artifactId = '3dfad6d4-f87c-44da-91eb-1e77cf53dd57';
+        Http::fake([
+            "http://mei.test/v1/jobs/{$jobId}/artifacts/{$artifactId}" => Http::response(
+                '%PDF-1.7 fixture',
+                200,
+                ['Content-Type' => 'application/pdf'],
+            ),
+        ]);
+
+        $response = app(MeiAutomationClient::class)->downloadArtifact($jobId, $artifactId);
+
+        self::assertSame('%PDF-1.7 fixture', $response->body());
+        Http::assertSent(fn (Request $request): bool => $request->hasHeader('X-MEI-Signature')
+            && $request->url() === "http://mei.test/v1/jobs/{$jobId}/artifacts/{$artifactId}");
+    }
 }
