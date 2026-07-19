@@ -103,6 +103,16 @@ describe('painel-responsivo-mobile-gate', () => {
     expect(client).not.toContain('ClientDetailAside')
   })
 
+  it('detalhe fiscal do cliente segue arquétipo settings (toolbar plana)', () => {
+    const fiscal = readFileSync(root('app/pages/monitoring/clients/[clientId].vue'), 'utf8')
+    expect(fiscal).toContain('ShellSettingsShell')
+    expect(fiscal).toContain('UNavigationMenu')
+    expect(fiscal).toContain('monitoring-client-section-navigation')
+    expect(fiscal).toContain('width="wide"')
+    expect(fiscal).not.toContain('SectionNavigation')
+    expect(fiscal).not.toContain('section-nav-subtabs')
+  })
+
   it('folhas do cliente e settings Conta usam ShellSectionHeader (chrome settings)', () => {
     const leafPages = [
       'app/pages/clients/[id]/cadastro.vue',

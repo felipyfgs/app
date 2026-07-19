@@ -1,11 +1,10 @@
 <script setup lang="ts">
 /**
  * Detalhe mestre–cliente fiscal (7.11).
- * Arquétipo Settings (nav horizontal) com seções LAZY: só a aba ativa é carregada.
- * Falha parcial com retry — nunca lista vazia silenciosa.
+ * Arquétipo Settings: ShellSettingsShell + UNavigationMenu (template settings.vue).
+ * Seções LAZY: só a aba ativa é carregada. Falha parcial com retry — nunca lista vazia silenciosa.
  */
 import NavbarMoreActions from '~/components/navigation/NavbarMoreActions.vue'
-import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
 import type { Client, FiscalFinding, FiscalMonitoringRun, FiscalPendingItem, FiscalSnapshot } from '~/types/api'
 import type {
   FiscalDocumentDescriptor,
@@ -13,7 +12,8 @@ import type {
   FiscalTaxProcess
 } from '~/types/fiscal-modules'
 import { documentActionVisible } from '~/types/fiscal-modules'
-import { clientFiscalDetailNav } from '~/utils/client-fiscal-detail-navigation'
+import { clientCrmHref } from '~/utils/client-cross-links'
+import { clientFiscalNavigationMenu } from '~/utils/client-fiscal-detail-navigation'
 import ShellDataTable from '~/components/shell/DataTable.vue'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
@@ -176,7 +176,9 @@ function cacheKey(): string {
   return `${clientId.value}@${sessionEpoch.value}`
 }
 
-const links = computed(() => clientFiscalDetailNav(clientId.value))
+const links = computed(() =>
+  clientFiscalNavigationMenu(clientId.value, route.path)
+)
 
 const snapshotColumns = [
   { accessorKey: 'id', header: 'ID' },
@@ -729,123 +731,140 @@ onMounted(async () => {
 </script>
 
 <template>
-  <UDashboardPanel id="monitoring-client-detail" data-testid="settings-panel" :ui="{ body: 'lg:py-12' }">
-    <template #header>
-      <UDashboardNavbar :title="client?.name || client?.legal_name || `Cliente #${clientId}`" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #right>
-          <UButton
-            to="/monitoring"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-arrow-left"
-            label="Dashboard"
-            class="hidden sm:inline-flex"
-          />
-          <UButton
-            to="/monitoring"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-arrow-left"
-            square
-            class="sm:hidden"
-            aria-label="Dashboard"
-          />
-          <NavbarMoreActions
-            :items="[{
-              id: 'client-cadastro',
-              label: 'Cadastro',
-              icon: 'i-lucide-users',
-              to: '/clients'
-            }]"
-          />
-        </template>
-      </UDashboardNavbar>
-
-      <UDashboardToolbar data-testid="monitoring-client-section-tabs">
-        <SectionNavigation
-          :items="links"
-          :path="route.fullPath"
-          aria-label="Navegação fiscal do cliente"
-          test-id="monitoring-client-section-navigation"
-        />
-      </UDashboardToolbar>
+  <ShellSettingsShell
+    id="monitoring-client-detail"
+    :title="client?.name || client?.legal_name || `Cliente #${clientId}`"
+    width="wide"
+    test-id="settings-panel"
+    toolbar-test-id="monitoring-client-section-tabs"
+  >
+    <template #navbar-leading>
+      <ShellNavbarBack
+        to="/monitoring"
+        label="Dashboard"
+        aria-label="Voltar ao dashboard de monitoramento"
+        test-id="monitoring-client-back"
+      />
     </template>
 
-    <template #body>
-      <DashboardContent width="wide" class="gap-4 sm:gap-6">
-        <UAlert
-          v-if="clientError"
-          color="error"
-          icon="i-lucide-circle-x"
-          :title="clientError"
-        >
-          <template #actions>
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="outline"
-              label="Tentar de novo"
-              @click="bootstrap(true)"
-            />
-          </template>
-        </UAlert>
+    <template #navbar-right>
+      <NavbarMoreActions
+        :items="[{
+          id: 'client-cadastro',
+          label: 'Cadastro',
+          icon: 'i-lucide-clipboard-list',
+          to: clientCrmHref(clientId, 'cadastro')
+        }, {
+          id: 'client-configuracao',
+          label: 'Configuração',
+          icon: 'i-lucide-sliders-horizontal',
+          to: clientCrmHref(clientId, 'configuracao')
+        }]"
+      />
+    </template>
 
-        <div
-          v-if="clientLoading && !client"
-          class="py-12 text-center text-sm text-muted"
-        >
-          Carregando cliente…
-        </div>
+    <template #toolbar>
+      <UNavigationMenu
+        :items="links"
+        highlight
+        class="-mx-1 flex-1"
+        data-testid="monitoring-client-section-navigation"
+        aria-label="Navegação fiscal do cliente"
+      />
+    </template>
 
-        <template v-else-if="client">
-          <UPageCard
-            variant="subtle"
-            :title="client.legal_name || client.name"
-            :description="client.cnpj ? formatCnpj(client.cnpj) : client.root_cnpj"
-          >
-            <div class="flex flex-wrap gap-2 text-sm">
-              <UBadge
-                :color="client.is_active ? 'success' : 'neutral'"
-                variant="subtle"
-              >
-                {{ client.is_active ? 'Ativo' : 'Inativo' }}
-              </UBadge>
-              <span class="text-muted">ID {{ client.id }}</span>
-            </div>
-          </UPageCard>
+    <UAlert
+      v-if="clientError"
+      color="error"
+      icon="i-lucide-circle-x"
+      :title="clientError"
+    >
+      <template #actions>
+        <UButton
+          size="xs"
+          color="neutral"
+          variant="outline"
+          label="Tentar de novo"
+          @click="bootstrap(true)"
+        />
+      </template>
+    </UAlert>
 
-          <!-- Estado de carregamento da seção ativa -->
-          <div
-            v-if="sections[tab].loading && !sections[tab].loadedKey"
-            class="py-8 text-center text-sm text-muted"
-            data-testid="section-loading"
-          >
-            Carregando seção…
+    <div
+      v-if="clientLoading && !client"
+      class="py-12 text-center text-sm text-muted"
+    >
+      Carregando cliente…
+    </div>
+
+    <template v-else-if="client">
+      <UPageCard
+        variant="subtle"
+        :title="client.legal_name || client.name"
+        :description="client.cnpj ? formatCnpj(client.cnpj) : client.root_cnpj"
+      >
+        <div class="flex flex-col gap-3">
+          <div class="flex flex-wrap gap-2 text-sm">
+            <UBadge
+              :color="client.is_active ? 'success' : 'neutral'"
+              variant="subtle"
+            >
+              {{ client.is_active ? 'Ativo' : 'Inativo' }}
+            </UBadge>
+            <span class="text-muted">ID {{ client.id }}</span>
           </div>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              size="sm"
+              color="primary"
+              variant="soft"
+              icon="i-lucide-clipboard-list"
+              label="Abrir cadastro"
+              :to="clientCrmHref(clientId, 'cadastro')"
+              data-testid="monitoring-client-to-cadastro"
+            />
+            <UButton
+              size="sm"
+              color="neutral"
+              variant="soft"
+              icon="i-lucide-sliders-horizontal"
+              label="Certificado / config"
+              :to="clientCrmHref(clientId, 'configuracao')"
+              data-testid="monitoring-client-to-config"
+            />
+          </div>
+        </div>
+      </UPageCard>
 
-          <!-- Falha da seção (não vira lista vazia) -->
-          <UAlert
-            v-else-if="sections[tab].error"
-            color="error"
-            icon="i-lucide-circle-x"
-            :title="sections[tab].error || 'Falha ao carregar seção'"
-            data-testid="section-error"
-          >
-            <template #actions>
-              <UButton
-                size="xs"
-                color="neutral"
-                variant="outline"
-                label="Tentar de novo"
-                @click="retrySection(tab)"
-              />
-            </template>
-          </UAlert>
+      <!-- Estado de carregamento da seção ativa -->
+      <div
+        v-if="sections[tab].loading && !sections[tab].loadedKey"
+        class="py-8 text-center text-sm text-muted"
+        data-testid="section-loading"
+      >
+        Carregando seção…
+      </div>
 
-          <template v-else>
+      <!-- Falha da seção (não vira lista vazia) -->
+      <UAlert
+        v-else-if="sections[tab].error"
+        color="error"
+        icon="i-lucide-circle-x"
+        :title="sections[tab].error || 'Falha ao carregar seção'"
+        data-testid="section-error"
+      >
+        <template #actions>
+          <UButton
+            size="xs"
+            color="neutral"
+            variant="outline"
+            label="Tentar de novo"
+            @click="retrySection(tab)"
+          />
+        </template>
+      </UAlert>
+
+      <template v-else>
             <!-- overview: ShellDataTable sempre montada (customers.vue / ModuleTable) -->
             <UPageCard
               v-if="tab === 'overview'"
@@ -1253,38 +1272,37 @@ onMounted(async () => {
             </UPageCard>
           </template>
 
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="soft"
-              to="/monitoring/mailbox"
-              label="Caixa postal"
-            />
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="soft"
-              to="/monitoring/dctfweb"
-              label="DCTFWeb"
-            />
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="soft"
-              to="/monitoring/simples-mei"
-              label="Simples/MEI"
-            />
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="soft"
-              :to="`/clients/${clientId}`"
-              label="Cadastro completo"
-            />
-          </div>
-        </template>
-      </DashboardContent>
+      <div class="flex flex-wrap gap-2">
+        <UButton
+          size="sm"
+          color="neutral"
+          variant="soft"
+          to="/monitoring/mailbox"
+          label="Caixa postal"
+        />
+        <UButton
+          size="sm"
+          color="neutral"
+          variant="soft"
+          to="/monitoring/dctfweb"
+          label="DCTFWeb"
+        />
+        <UButton
+          size="sm"
+          color="neutral"
+          variant="soft"
+          to="/monitoring/simples-mei"
+          label="Simples/MEI"
+        />
+        <UButton
+          size="sm"
+          color="neutral"
+          variant="soft"
+          :to="clientCrmHref(clientId, 'cadastro')"
+          label="Cadastro completo"
+          data-testid="monitoring-client-cadastro-completo"
+        />
+      </div>
     </template>
-  </UDashboardPanel>
+  </ShellSettingsShell>
 </template>

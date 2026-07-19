@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { clientFiscalHref } from '~/utils/client-cross-links'
+
 const {
+  clientId,
   item,
   credential,
   canManageClients,
@@ -7,6 +10,8 @@ const {
   load,
   onCredentialActivated
 } = useClientDetail()
+
+const fiscalHref = computed(() => clientFiscalHref(clientId.value))
 </script>
 
 <template>
@@ -19,7 +24,16 @@ const {
       title="Configuração"
       description="Certificado, canais de captura e campos personalizados deste cliente."
       test-id="client-section-configuracao"
-    />
+    >
+      <UButton
+        :to="fiscalHref"
+        color="primary"
+        variant="soft"
+        icon="i-lucide-radar"
+        label="Monitoramento fiscal"
+        data-testid="client-config-to-fiscal"
+      />
+    </ShellSectionHeader>
 
     <ClientsClientConfigPanel
       :client="item"

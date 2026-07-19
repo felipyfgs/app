@@ -1,8 +1,10 @@
 /**
- * Taxonomia do detalhe fiscal do cliente (`/monitoring/clients/:id/:section?`).
+ * Navegação do detalhe fiscal do cliente (`/monitoring/clients/:id/:section?`).
+ * Catálogo plano — arquétipo Settings (toolbar UNavigationMenu), como Conta/CRM.
  */
-import type { NavLayerItem } from '~/utils/navigation-hierarchy'
-import { validateNavCatalog } from '~/utils/navigation-hierarchy'
+import type { NavigationMenuItem } from '@nuxt/ui'
+import type { NavLayerItem, NavLeafDestination } from '~/utils/navigation-hierarchy'
+import { flattenNavLeaves, validateNavCatalog } from '~/utils/navigation-hierarchy'
 
 export type ClientFiscalSectionKey
   = | 'overview'
@@ -37,6 +39,31 @@ export const CLIENT_FISCAL_SECTION_KEYS: ClientFiscalSectionKey[] = [
   'tax_processes'
 ]
 
+interface FiscalSectionDef {
+  key: ClientFiscalSectionKey
+  id: string
+  label: string
+  icon: string
+}
+
+/** Ordem estável da toolbar (folhas). */
+const FISCAL_SECTIONS: FiscalSectionDef[] = [
+  { key: 'overview', id: 'cf-overview', label: 'Visão geral', icon: 'i-lucide-layout-dashboard' },
+  { key: 'runs', id: 'cf-runs', label: 'Execuções', icon: 'i-lucide-play' },
+  { key: 'findings', id: 'cf-findings', label: 'Achados', icon: 'i-lucide-search' },
+  { key: 'pending', id: 'cf-pending', label: 'Pendências', icon: 'i-lucide-circle-alert' },
+  { key: 'declarations', id: 'cf-declarations', label: 'Declarações', icon: 'i-lucide-file-check-2' },
+  { key: 'pgdasd', id: 'cf-pgdasd', label: 'PGDAS-D', icon: 'i-lucide-badge-percent' },
+  { key: 'fgts', id: 'cf-fgts', label: 'FGTS', icon: 'i-lucide-landmark' },
+  { key: 'installments', id: 'cf-installments', label: 'Parcelamentos', icon: 'i-lucide-calendar-range' },
+  { key: 'guides', id: 'cf-guides', label: 'Guias', icon: 'i-lucide-receipt' },
+  { key: 'sitfis', id: 'cf-sitfis', label: 'SITFIS', icon: 'i-lucide-clipboard-check' },
+  { key: 'registrations', id: 'cf-registrations', label: 'Cadastro e Vínculos', icon: 'i-lucide-link-2' },
+  { key: 'ccmei', id: 'cf-ccmei', label: 'CCMEI', icon: 'i-lucide-badge-check' },
+  { key: 'renunciations', id: 'cf-renunciations', label: 'Renúncias', icon: 'i-lucide-unlink' },
+  { key: 'tax_processes', id: 'cf-tax-processes', label: 'Processos Fiscais', icon: 'i-lucide-scale' }
+]
+
 function sectionPath(clientId: string | number, section: ClientFiscalSectionKey): string {
   const base = `/monitoring/clients/${clientId}`
   return section === 'overview' ? base : `${base}/${section}`
@@ -52,144 +79,48 @@ function sectionActive(section: ClientFiscalSectionKey, clientId: string | numbe
   }
 }
 
+function sectionLeaf(
+  clientId: string | number,
+  def: FiscalSectionDef
+): NavLeafDestination {
+  return {
+    id: def.id,
+    label: def.label,
+    icon: def.icon,
+    to: sectionPath(clientId, def.key),
+    exact: def.key === 'overview',
+    isActive: sectionActive(def.key, clientId)
+  }
+}
+
+/** Catálogo plano (folhas) — toolbar Settings / busca. */
 export function clientFiscalDetailNav(clientId: string | number): NavLayerItem[] {
-  const id = clientId
-  const items: NavLayerItem[] = [
-    {
-      id: 'cf-overview',
-      label: 'Visão geral',
-      icon: 'i-lucide-layout-dashboard',
-      children: [{
-        id: 'cf-overview-leaf',
-        label: 'Resumo',
-        icon: 'i-lucide-layout-dashboard',
-        to: sectionPath(id, 'overview'),
-        exact: true,
-        isActive: sectionActive('overview', id)
-      }]
-    },
-    {
-      id: 'cf-activity',
-      label: 'Atividade',
-      icon: 'i-lucide-activity',
-      children: [
-        {
-          id: 'cf-runs',
-          label: 'Execuções',
-          icon: 'i-lucide-play',
-          to: sectionPath(id, 'runs'),
-          isActive: sectionActive('runs', id)
-        },
-        {
-          id: 'cf-findings',
-          label: 'Achados',
-          icon: 'i-lucide-search',
-          to: sectionPath(id, 'findings'),
-          isActive: sectionActive('findings', id)
-        },
-        {
-          id: 'cf-pending',
-          label: 'Pendências',
-          icon: 'i-lucide-circle-alert',
-          to: sectionPath(id, 'pending'),
-          isActive: sectionActive('pending', id)
-        }
-      ]
-    },
-    {
-      id: 'cf-obligations',
-      label: 'Obrigações',
-      icon: 'i-lucide-file-check-2',
-      children: [
-        {
-          id: 'cf-declarations',
-          label: 'Declarações',
-          icon: 'i-lucide-file-check-2',
-          to: sectionPath(id, 'declarations'),
-          isActive: sectionActive('declarations', id)
-        },
-        {
-          id: 'cf-pgdasd',
-          label: 'PGDAS-D',
-          icon: 'i-lucide-badge-percent',
-          to: sectionPath(id, 'pgdasd'),
-          isActive: sectionActive('pgdasd', id)
-        },
-        {
-          id: 'cf-fgts',
-          label: 'FGTS',
-          icon: 'i-lucide-landmark',
-          to: sectionPath(id, 'fgts'),
-          isActive: sectionActive('fgts', id)
-        }
-      ]
-    },
-    {
-      id: 'cf-finance',
-      label: 'Financeiro',
-      icon: 'i-lucide-wallet',
-      children: [
-        {
-          id: 'cf-installments',
-          label: 'Parcelamentos',
-          icon: 'i-lucide-calendar-range',
-          to: sectionPath(id, 'installments'),
-          isActive: sectionActive('installments', id)
-        },
-        {
-          id: 'cf-guides',
-          label: 'Guias',
-          icon: 'i-lucide-receipt',
-          to: sectionPath(id, 'guides'),
-          isActive: sectionActive('guides', id)
-        }
-      ]
-    },
-    {
-      id: 'cf-regularity',
-      label: 'Regularidade',
-      icon: 'i-lucide-clipboard-check',
-      children: [
-        {
-          id: 'cf-sitfis',
-          label: 'SITFIS',
-          icon: 'i-lucide-clipboard-check',
-          to: sectionPath(id, 'sitfis'),
-          isActive: sectionActive('sitfis', id)
-        },
-        {
-          id: 'cf-registrations',
-          label: 'Cadastro e Vínculos',
-          icon: 'i-lucide-link-2',
-          to: sectionPath(id, 'registrations'),
-          isActive: sectionActive('registrations', id)
-        },
-        {
-          id: 'cf-ccmei',
-          label: 'CCMEI',
-          icon: 'i-lucide-badge-check',
-          to: sectionPath(id, 'ccmei'),
-          isActive: sectionActive('ccmei', id)
-        },
-        {
-          id: 'cf-renunciations',
-          label: 'Renúncias',
-          icon: 'i-lucide-unlink',
-          to: sectionPath(id, 'renunciations'),
-          isActive: sectionActive('renunciations', id)
-        },
-        {
-          id: 'cf-tax-processes',
-          label: 'Processos Fiscais',
-          icon: 'i-lucide-scale',
-          to: sectionPath(id, 'tax_processes'),
-          isActive: sectionActive('tax_processes', id)
-        }
-      ]
-    }
-  ]
-  validateNavCatalog(items)
+  const items = FISCAL_SECTIONS.map(def => sectionLeaf(clientId, def))
+  validateNavCatalog(items, FISCAL_SECTIONS.length)
   return items
+}
+
+export function clientFiscalDetailLeaves(clientId: string | number): NavLeafDestination[] {
+  return flattenNavLeaves(clientFiscalDetailNav(clientId))
+}
+
+/** Links para UNavigationMenu da toolbar (grupo único, como o template settings). */
+export function clientFiscalNavigationMenu(
+  clientId: string | number,
+  currentPath?: string
+): NavigationMenuItem[][] {
+  const path = currentPath || ''
+  const items = FISCAL_SECTIONS.map((def): NavigationMenuItem => {
+    const leaf = sectionLeaf(clientId, def)
+    return {
+      label: leaf.label,
+      icon: leaf.icon,
+      to: leaf.to,
+      exact: leaf.exact === true,
+      active: path ? sectionActive(def.key, clientId)(path) : undefined
+    }
+  })
+  return [items]
 }
 
 export function sectionKeyFromFiscalPath(path: string): ClientFiscalSectionKey {

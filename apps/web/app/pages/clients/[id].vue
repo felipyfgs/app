@@ -6,6 +6,7 @@
  */
 import type { Client, ClientCredential, Establishment } from '~/types/api'
 import { clientDetailKey, clientSectionPath } from '~/composables/useClientDetail'
+import { clientFiscalHref } from '~/utils/client-cross-links'
 import { clientNavigationMenu } from '~/utils/client-detail-navigation'
 import type { ClientDetailPanel, ClientDetailTab } from '~/utils/client-detail-tabs'
 import {
@@ -202,28 +203,49 @@ onMounted(async () => {
     </template>
 
     <template
-      v-if="item && canManageClients"
+      v-if="item"
       #navbar-right
     >
       <UButton
-        color="primary"
+        :to="clientFiscalHref(clientId)"
+        color="neutral"
         variant="soft"
-        icon="i-lucide-pencil"
-        label="Editar cliente"
+        icon="i-lucide-radar"
+        label="Monitoramento"
         class="hidden sm:inline-flex"
-        data-testid="client-page-edit"
-        @click="goEditCadastro"
+        data-testid="client-page-to-fiscal"
       />
       <UButton
-        color="primary"
+        :to="clientFiscalHref(clientId)"
+        color="neutral"
         variant="soft"
-        icon="i-lucide-pencil"
+        icon="i-lucide-radar"
         square
         class="sm:hidden"
-        aria-label="Editar cliente"
-        data-testid="client-page-edit-mobile"
-        @click="goEditCadastro"
+        aria-label="Monitoramento fiscal"
+        data-testid="client-page-to-fiscal-mobile"
       />
+      <template v-if="canManageClients">
+        <UButton
+          color="primary"
+          variant="soft"
+          icon="i-lucide-pencil"
+          label="Editar cliente"
+          class="hidden sm:inline-flex"
+          data-testid="client-page-edit"
+          @click="goEditCadastro"
+        />
+        <UButton
+          color="primary"
+          variant="soft"
+          icon="i-lucide-pencil"
+          square
+          class="sm:hidden"
+          aria-label="Editar cliente"
+          data-testid="client-page-edit-mobile"
+          @click="goEditCadastro"
+        />
+      </template>
     </template>
 
     <template

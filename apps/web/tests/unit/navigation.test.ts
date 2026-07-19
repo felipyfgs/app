@@ -131,23 +131,26 @@ describe('navegação global no sidebar', () => {
 })
 
 describe('navegação contextual Tabs → Subtabs', () => {
-  it('detalhe do cliente: 4 destinos planos path-based e mantém cliente fiscal', () => {
+  it('detalhe do cliente: 4 destinos CRM path-based + detalhe fiscal plano (settings)', () => {
     const nav = clientDetailNav(7)
     expect(nav.map(item => item.id)).toEqual([
       'client-cadastro',
-      'client-estabelecimentos',
-      'client-fiscal',
-      'client-integracoes'
+      'client-contato',
+      'client-departamento',
+      'client-configuracao'
     ])
     expect(nav.every(item => !('children' in item))).toBe(true)
-    const fiscal = nav.find(item => item.id === 'client-fiscal')
-    expect(fiscal && 'to' in fiscal ? fiscal.to : null).toBe('/clients/7/fiscal')
+    const cadastro = nav.find(item => item.id === 'client-cadastro')
+    expect(cadastro && 'to' in cadastro ? cadastro.to : null).toBe('/clients/7/cadastro')
 
+    const fiscalNav = clientFiscalDetailNav(8)
+    expect(fiscalNav.every(item => !('children' in item))).toBe(true)
+    expect(fiscalNav.map(item => item.id)).toContain('cf-pgdasd')
     const fiscalClient = resolveNavSelection(
-      clientFiscalDetailNav(8),
+      fiscalNav,
       '/monitoring/clients/8/tax_processes'
     )
-    expect(fiscalClient.group?.id).toBe('cf-regularity')
+    expect(fiscalClient.group).toBeNull()
     expect(fiscalClient.leaf?.id).toBe('cf-tax-processes')
   })
 
