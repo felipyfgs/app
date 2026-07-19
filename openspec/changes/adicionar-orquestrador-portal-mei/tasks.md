@@ -10,9 +10,9 @@
   Depende de: 1.1
 - [x] 2.2 Implementar Celery worker, ciclo de estados, executor fixture e limpeza de contexto/artefato com testes.
   Depende de: 1.1
-- [ ] 2.3 Implementar client HMAC Laravel e DTOs do microserviço com testes de assinatura, replay e erros.
+- [x] 2.3 Implementar client HMAC Laravel e DTOs do microserviço com testes de assinatura, replay e erros.
   Depende de: 1.2
-- [ ] 2.4 Implementar repositório/service de tentativas e redaction de metadados no Laravel.
+- [x] 2.4 Implementar repositório/service de tentativas e redaction de metadados no Laravel.
   Depende de: 1.2, 1.3
 
 ## 3. N2 — Roteamento e operação

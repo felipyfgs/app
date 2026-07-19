@@ -30,7 +30,7 @@ alterar o contrato.
 
 ## Inventário e gaps
 
-Inventário realizado em 2026-07-19 para a fronteira Laravel/MEI:
+Inventário realizado em 2026-07-18 para a fronteira Laravel/MEI:
 
 | Ponto | Estado encontrado | Gap tratado por `alinhar-fronteiras-responsabilidades-stack` |
 |---|---|---|
