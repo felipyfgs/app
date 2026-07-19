@@ -22,7 +22,7 @@ class MeiAutomationArtifactIngestorTest extends TestCase
     public function test_validates_and_ingests_artifact_without_exposing_vault_object_id(): void
     {
         $attempt = $this->attempt();
-        $content = '%PDF-1.7 artifact fixture';
+        $content = "%PDF-1.7\nartifact fixture\n%%EOF";
         $descriptor = $this->descriptor($content);
         Http::fake([
             'http://mei.test/v1/jobs/*/artifacts/*' => Http::response(
@@ -80,6 +80,29 @@ class MeiAutomationArtifactIngestorTest extends TestCase
         $this->app->instance(SecureObjectStore::class, $objects);
 
         $failed = app(MeiAutomationArtifactIngestor::class)->ingest($attempt, $descriptor);
+
+        self::assertSame('ARTIFACT_VALIDATION_FAILED', $failed->error_code);
+    }
+
+    public function test_rejects_html_disguised_as_pdf_before_writing_vault(): void
+    {
+        $attempt = $this->attempt();
+        $content = '<html>portal error</html>';
+        Http::fake([
+            'http://mei.test/v1/jobs/*/artifacts/*' => Http::response(
+                $content,
+                200,
+                ['Content-Type' => 'application/pdf'],
+            ),
+        ]);
+        $objects = Mockery::mock(SecureObjectStore::class);
+        $objects->shouldNotReceive('put');
+        $this->app->instance(SecureObjectStore::class, $objects);
+
+        $failed = app(MeiAutomationArtifactIngestor::class)->ingest(
+            $attempt,
+            $this->descriptor($content),
+        );
 
         self::assertSame('ARTIFACT_VALIDATION_FAILED', $failed->error_code);
     }

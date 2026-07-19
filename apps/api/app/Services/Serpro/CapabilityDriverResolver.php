@@ -2,12 +2,11 @@
 
 namespace App\Services\Serpro;
 
+use App\Enums\FiscalProfile;
 use App\Enums\SerproCapabilityDriver;
-use RuntimeException;
 
 /**
- * Resolve driver por capacidade sem fallback.
- * O valor legado simulated é recusado explicitamente, sem cliente local.
+ * O perfil fiscal é a única seleção de transporte: dev=fixture, trial/prod=real.
  */
 final class CapabilityDriverResolver
 {
@@ -60,23 +59,10 @@ final class CapabilityDriverResolver
 
     public function forCapability(string $capability): SerproCapabilityDriver
     {
-        $raw = (string) config(
-            'serpro.capabilities.'.$capability,
-            config('serpro.capabilities.default', 'disabled'),
-        );
-        $normalized = strtolower(trim($raw));
-        if ($normalized === 'simulated') {
-            throw new RuntimeException(
-                "Driver simulated não é executável (capacidade: {$capability}); use disabled ou real."
-            );
-        }
-
-        $driver = SerproCapabilityDriver::tryFrom($normalized);
-        if ($driver === null) {
-            throw new RuntimeException("Driver SERPRO inválido para capacidade {$capability}: {$raw}");
-        }
-
-        return $driver;
+        return match (FiscalProfile::configured()) {
+            FiscalProfile::Dev => SerproCapabilityDriver::Fixture,
+            FiscalProfile::Trial, FiscalProfile::Production => SerproCapabilityDriver::Real,
+        };
     }
 
     /**
@@ -86,28 +72,12 @@ final class CapabilityDriverResolver
      */
     public function preflightProduction(): array
     {
-        $problems = [];
-        $caps = (array) config('serpro.capabilities', []);
-        foreach ($caps as $name => $value) {
-            if ($name === 'default') {
-                continue;
-            }
-            if (strtolower((string) $value) === 'simulated') {
-                $problems[] = "serpro.capabilities.{$name}=simulated não é executável";
-            }
-        }
-
-        return $problems;
+        return [];
     }
 
     public function assertProductionSafe(): void
     {
-        $problems = $this->preflightProduction();
-        if ($problems !== []) {
-            throw new RuntimeException(
-                'Preflight SERPRO falhou: '.implode('; ', $problems)
-            );
-        }
+        FiscalProfile::configured();
     }
 
     /**

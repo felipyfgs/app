@@ -16,6 +16,33 @@ final class ProxyPowerMatrixService
 
     private ?array $cached = null;
 
+    /**
+     * Nomes oficiais retornados por OBTERPROCURACAO41 → códigos e-CAC.
+     * Fonte: tabela oficial Serviços x Procurações, revisão 2026-06-01.
+     *
+     * @var array<string, list<string>>
+     */
+    private const ECAC_SERVICE_POWERS = [
+        'PGDAS-D - A PARTIR DE 01/2018' => ['00146'],
+        'ACESSAR O SISTEMA DCTFWEB' => ['00103'],
+        'CAIXA POSTAL - MENSAGENS' => ['00006'],
+        'PAGAMENTOS - COMPROVANTE DE ARRECADAÇÃO' => ['00004'],
+        'SITUAÇÃO FISCAL DO CONTRIBUINTE' => ['00002'],
+        'SIMPLES NACIONAL - OPÇÃO PELO REGIME DE APURAÇÃO DE RECEITAS' => ['00060'],
+        'CAIXA POSTAL - TERMO DE OPÇÃO PELO DOMICÍLIO TRIBUTÁRIO ELETRÔNICO' => ['00050'],
+        'CONSULTA DECLARAÇÃO DO MICROEMPREENDEDOR INDIVIDUAL' => ['00229'],
+        'PARCELAMENTO DE DÉBITOS DO SIMPLES NACIONAL' => ['00076'],
+        'SOLICITAR, ACOMPANHAR E EMITIR DAS DE PARCELAMENTO' => ['00188'],
+        'PARCELAMENTO ESPECIAL SIMPLES NACIONAL' => ['00125'],
+        'PROGRAMA ESPECIAL REGULARIZAÇÃO TRIBUTÁRIA - PERT-SN' => ['00149', '10011'],
+        'PARCELAR DÍVIDAS DO SN PELA LC 193/2022 (RELP)' => ['00210', '10036'],
+        'PARCELAMENTO - MICROEMPREENDEDOR INDIVIDUAL' => ['00134'],
+        'PARCELAMENTO ESPECIAL - MICROEMPREENDEDOR INDIVIDUAL' => ['00133'],
+        'PROGRAMA ESPECIAL DE REGULARIZAÇÃO TRIBUTÁRIA - PERT-MEI' => ['00152', '10012'],
+        'PARCELAR DÍVIDAS DO MEI PELA LC 193/2022 (RELP)' => ['00209', '10035'],
+        'PROCESSOS DIGITAIS (E-PROCESSO)' => ['00051'],
+    ];
+
     public function __construct(
         private readonly SerproOfficialSourceIntegrity $integrity,
     ) {}
@@ -206,6 +233,51 @@ final class ProxyPowerMatrixService
                 $byCode[$code] = [
                     'power_code' => $code,
                     'system_code' => $sistema,
+                    'service_code' => null,
+                ];
+            }
+        }
+
+        ksort($byCode);
+
+        return array_values($byCode);
+    }
+
+    /**
+     * Resolve qualquer nome oficial de serviço e-CAC usando a matriz completa,
+     * sem transformar texto desconhecido em poder ativo.
+     *
+     * @return list<array{power_code: string, system_code: string, service_code: null}>
+     */
+    public function grantsForEcacSystemName(string $name): array
+    {
+        $normalized = mb_strtoupper((string) preg_replace('/\s+/u', ' ', trim($name)));
+        if ($normalized === 'TODOS') {
+            return $this->hubTodosPowerGrants();
+        }
+
+        // Alguns retornos prefixam o nome com o próprio código da procuração.
+        $normalized = (string) preg_replace('/^\d{5}\s*-?\s*/', '', $normalized);
+        $wanted = self::ECAC_SERVICE_POWERS[$normalized] ?? [];
+        if ($wanted === []) {
+            return [];
+        }
+
+        $wantedLookup = array_fill_keys($wanted, true);
+        $byCode = [];
+        foreach ($this->load()['entries'] as $entry) {
+            if (! is_array($entry)
+                || strtoupper((string) ($entry['official_state'] ?? '')) !== 'PRODUCTION') {
+                continue;
+            }
+            foreach ((array) ($entry['required_proxy_powers'] ?? []) as $rawCode) {
+                $code = strtoupper(trim((string) $rawCode));
+                if (! isset($wantedLookup[$code]) || isset($byCode[$code])) {
+                    continue;
+                }
+                $byCode[$code] = [
+                    'power_code' => $code,
+                    'system_code' => strtoupper((string) ($entry['id_sistema'] ?? '')),
                     'service_code' => null,
                 ];
             }

@@ -2,18 +2,23 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\ClientProcuracaoSyncStatus;
 use App\Enums\SyncCursorStatus;
+use App\Enums\TaxRegimeCode;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Clients\BulkUpdateClientStatusRequest;
 use App\Http\Requests\Clients\StoreClientRequest;
 use App\Http\Requests\Clients\UpdateClientRequest;
 use App\Models\Client;
 use App\Models\ClientContact;
+use App\Models\ClientCustomField;
 use App\Models\Establishment;
 use App\Models\SyncCursor;
 use App\Services\Audit\AuditLogger;
 use App\Services\Clients\CaptureEligibilityService;
 use App\Services\Clients\ClientRootConflictException;
 use App\Services\Clients\CreateClientWithEstablishment;
+use App\Services\Clients\RefreshClientRegistration;
 use App\Services\Integra\ClientProcuracaoValidityResolver;
 use App\Support\CurrentOffice;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,6 +27,8 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
 class ClientController extends Controller
@@ -125,6 +132,14 @@ class ClientController extends Controller
                             ->orWhereBetween('valid_to', [now(), now()->addDays(30)]);
                     });
             }),
+            'credential_expired' => $base->whereHas('credentials', function ($q): void {
+                $q->where(function ($inner): void {
+                    $inner->where('status', 'EXPIRED')
+                        ->orWhere(function ($expired): void {
+                            $expired->where('status', 'ACTIVE')->where('valid_to', '<', now());
+                        });
+                });
+            }),
             'capture_problem' => $base->whereHas('establishments.syncCursors', function ($q): void {
                 $q->whereIn('status', [
                     SyncCursorStatus::Blocked->value,
@@ -134,10 +149,42 @@ class ClientController extends Controller
             default => null,
         };
 
+        $categoryIds = $this->positiveIntegerCsv($request->query('category_ids'), 25);
+        if ($categoryIds !== []) {
+            // OR: qualquer categoria selecionada inclui o cliente.
+            $base->whereHas('categories', fn (Builder $query) => $query->whereIn(
+                'client_categories.id',
+                $categoryIds,
+            ));
+        }
+
+        $taxRegimes = $this->taxRegimeCsv($request->query('tax_regimes'));
+        if ($taxRegimes !== []) {
+            $includeNotInformed = in_array('NOT_INFORMED', $taxRegimes, true);
+            $canonical = array_values(array_diff($taxRegimes, ['NOT_INFORMED']));
+            $storageValues = $this->taxRegimeStorageValues($canonical);
+            $base->where(function (Builder $query) use ($storageValues, $includeNotInformed): void {
+                if ($storageValues !== []) {
+                    $query->whereIn('tax_regime', $storageValues);
+                }
+                if ($includeNotInformed) {
+                    $storageValues !== []
+                        ? $query->orWhereNull('tax_regime')
+                        : $query->whereNull('tax_regime');
+                }
+            });
+        }
+
+        $procuracaoStatuses = $this->procuracaoStatusCsv($request->query('procuracao_statuses'));
+        if ($procuracaoStatuses !== []) {
+            $this->applyProcuracaoStatusesFilter($base, $procuracaoStatuses);
+        }
+
         $sort = match ($request->string('sort')->toString()) {
             'cnpj' => 'root_cnpj',
             'is_active' => 'is_active',
             'created_at' => 'created_at',
+            'tax_regime' => 'tax_regime',
             default => 'legal_name',
         };
         // LFU-07: aceita `sort_direction` ou `direction`.
@@ -154,6 +201,7 @@ class ClientController extends Controller
                     'environment',
                     (string) config('serpro.default_environment', 'TRIAL'),
                 ),
+                'categories' => fn ($q) => $q->orderBy('name')->orderBy('id'),
                 // Estabelecimentos + cursores para resumo de captura/sync sem N+1.
                 'establishments' => fn ($q) => $q->orderBy('id')->with('syncCursors'),
             ])
@@ -325,6 +373,8 @@ class ClientController extends Controller
             'establishments' => fn ($q) => $q->orderBy('cnpj'),
             'contacts' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('name'),
             'customFields' => fn ($q) => $q->orderBy('id'),
+            'categories' => fn ($q) => $q->orderBy('name')->orderBy('id'),
+            'workDepartment',
             'matrix.establishments' => fn ($q) => $q->orderBy('id')->limit(1),
             'branches' => fn ($q) => $q->orderBy('legal_name')
                 ->with(['establishments' => fn ($eq) => $eq->orderBy('id')->limit(1), 'credential']),
@@ -383,7 +433,102 @@ class ClientController extends Controller
             'fields' => $changed,
         ]);
 
-        return response()->json(['data' => $this->serializeClient($client->fresh() ?? $client)]);
+        $fresh = $client->fresh()?->load([
+            'categories' => fn ($query) => $query->orderBy('name')->orderBy('id'),
+            'workDepartment',
+        ]) ?? $client;
+
+        return response()->json(['data' => $this->serializeClient($fresh)]);
+    }
+
+    public function updateCustomField(
+        \Illuminate\Http\Request $request,
+        Client $client,
+        ClientCustomField $customField,
+        AuditLogger $audit,
+    ): JsonResponse {
+        $this->authorize('update', $client);
+
+        if ((int) $customField->client_id !== (int) $client->id) {
+            abort(404);
+        }
+
+        $data = $request->validate([
+            'label' => ['sometimes', 'string', 'max:100'],
+            'is_active' => ['sometimes', 'boolean'],
+            'value' => ['nullable', 'string', 'max:10000'],
+        ]);
+
+        if (array_key_exists('label', $data)) {
+            $customField->label = $data['label'];
+        }
+        if (array_key_exists('is_active', $data)) {
+            $customField->is_active = (bool) $data['is_active'];
+        }
+        if (array_key_exists('value', $data) && $customField->type === 'TEXT') {
+            $customField->value_text = $data['value'];
+        }
+        $customField->save();
+
+        $audit->record('client.custom_field.update', 'SUCCESS', $client, [
+            'custom_field_id' => $customField->id,
+            'fields' => array_keys($data),
+        ]);
+
+        return response()->json(['data' => $customField->toPublicArray()]);
+    }
+
+    public function bulkStatus(BulkUpdateClientStatusRequest $request, AuditLogger $audit): JsonResponse
+    {
+        $data = $request->validated();
+        $clientIds = array_values(array_map('intval', $data['client_ids']));
+        $isActive = (bool) $data['is_active'];
+        $inactiveReason = $isActive
+            ? null
+            : trim((string) $data['inactive_reason']);
+
+        /** @var Collection<int, Client> $clients */
+        $clients = DB::transaction(function () use ($clientIds, $isActive, $inactiveReason): Collection {
+            $clients = Client::query()
+                ->whereNull('matrix_client_id')
+                ->whereKey($clientIds)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            if ($clients->count() !== count($clientIds)) {
+                throw ValidationException::withMessages([
+                    'client_ids' => ['Um ou mais clientes não pertencem ao escritório atual ou não estão disponíveis.'],
+                ]);
+            }
+
+            foreach ($clientIds as $clientId) {
+                /** @var Client $client */
+                $client = $clients->get($clientId);
+                $this->authorize('update', $client);
+                $client->forceFill([
+                    'is_active' => $isActive,
+                    'inactive_reason' => $inactiveReason,
+                ])->save();
+            }
+
+            return $clients->values();
+        });
+
+        foreach ($clients as $client) {
+            $audit->record('client.bulk_status_update', 'SUCCESS', $client, [
+                'is_active' => $isActive,
+                'batch_size' => count($clientIds),
+            ]);
+        }
+
+        return response()->json([
+            'data' => [
+                'updated' => $clients->count(),
+                'client_ids' => $clientIds,
+                'is_active' => $isActive,
+            ],
+        ]);
     }
 
     /**
@@ -409,6 +554,9 @@ class ClientController extends Controller
         Client $client,
         ?ClientProcuracaoValidityResolver $procuracoes = null,
     ): array {
+        $taxRegime = TaxRegimeCode::fromInput(
+            is_string($client->tax_regime) ? $client->tax_regime : null
+        );
         $payload = [
             'id' => $client->id,
             'office_id' => $client->office_id,
@@ -421,7 +569,28 @@ class ClientController extends Controller
             'legal_nature_name' => $client->legal_nature_name,
             'company_size_code' => $client->company_size_code,
             'company_size_name' => $client->company_size_name,
-            'tax_regime' => $client->tax_regime,
+            'capital_social' => $client->capital_social !== null ? (string) $client->capital_social : null,
+            'responsible_qualification_code' => $client->responsible_qualification_code,
+            'responsible_qualification_name' => $client->responsible_qualification_name,
+            'tax_regime' => $taxRegime?->value,
+            'tax_regime_label' => $taxRegime?->label(),
+            'work_department_id' => $client->work_department_id,
+            'work_department' => $client->relationLoaded('workDepartment') && $client->workDepartment
+                ? [
+                    'id' => (int) $client->workDepartment->id,
+                    'name' => (string) $client->workDepartment->name,
+                    'code' => (string) $client->workDepartment->code,
+                ]
+                : null,
+            'categories' => $client->relationLoaded('categories')
+
+                ? $client->categories->map(static fn ($category): array => [
+                    'id' => (int) $category->id,
+                    'name' => (string) $category->name,
+                    'color' => (string) $category->color,
+                    'is_active' => (bool) $category->is_active,
+                ])->values()->all()
+                : [],
             'notes' => $client->notes,
             'is_active' => $client->is_active,
             'inactive_reason' => $client->inactive_reason,
@@ -443,6 +612,205 @@ class ClientController extends Controller
         }
 
         return $payload;
+    }
+
+    /** @return list<int> */
+    private function positiveIntegerCsv(mixed $raw, int $limit): array
+    {
+        $parts = is_array($raw) ? $raw : explode(',', is_scalar($raw) ? (string) $raw : '');
+        $ids = [];
+        foreach ($parts as $part) {
+            $text = trim((string) $part);
+            if ($text === '' || ! ctype_digit($text) || (int) $text < 1) {
+                continue;
+            }
+            $ids[(int) $text] = (int) $text;
+            if (count($ids) >= $limit) {
+                break;
+            }
+        }
+
+        return array_values($ids);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function procuracaoStatusCsv(mixed $raw): array
+    {
+        $parts = is_array($raw) ? $raw : explode(',', is_scalar($raw) ? (string) $raw : '');
+        $allowed = ['authorized', 'expiring', 'expired', 'missing', 'unverified', 'verifying', 'failed'];
+        $values = [];
+        foreach ($parts as $part) {
+            $value = strtolower(trim((string) $part));
+            if ($value !== '' && in_array($value, $allowed, true)) {
+                $values[$value] = $value;
+            }
+            if (count($values) >= 10) {
+                break;
+            }
+        }
+
+        return array_values($values);
+    }
+
+    /**
+     * Filtra pela projeção operacional de procuração (sync oficial; snapshot só como fallback).
+     *
+     * @param  Builder<Client>  $base
+     * @param  list<string>  $statuses
+     */
+    private function applyProcuracaoStatusesFilter(Builder $base, array $statuses): void
+    {
+        $environment = (string) config('serpro.default_environment', 'TRIAL');
+        $now = now();
+        $horizon = now()->addDays(30);
+
+        $base->where(function (Builder $outer) use ($statuses, $environment, $now, $horizon): void {
+            foreach ($statuses as $status) {
+                $outer->orWhere(function (Builder $branch) use ($status, $environment, $now, $horizon): void {
+                    match ($status) {
+                        'authorized' => $this->whereProjectedProcuracao(
+                            $branch,
+                            $environment,
+                            fn (Builder $source) => $source
+                                ->where('status', ClientProcuracaoSyncStatus::Authorized->value)
+                                ->where(function (Builder $valid) use ($horizon): void {
+                                    $valid->whereNull('valid_to')
+                                        ->orWhere('valid_to', '>', $horizon);
+                                }),
+                        ),
+                        'expiring' => $this->whereProjectedProcuracao(
+                            $branch,
+                            $environment,
+                            fn (Builder $source) => $source
+                                ->where('status', ClientProcuracaoSyncStatus::Authorized->value)
+                                ->where('valid_to', '>', $now)
+                                ->where('valid_to', '<=', $horizon),
+                        ),
+                        'expired' => $this->whereProjectedProcuracao(
+                            $branch,
+                            $environment,
+                            fn (Builder $source) => $source->where(function (Builder $expired) use ($now): void {
+                                $expired->where('status', ClientProcuracaoSyncStatus::Expired->value)
+                                    ->orWhere(function (Builder $authorizedExpired) use ($now): void {
+                                        $authorizedExpired
+                                            ->where('status', ClientProcuracaoSyncStatus::Authorized->value)
+                                            ->whereNotNull('valid_to')
+                                            ->where('valid_to', '<=', $now);
+                                    });
+                            }),
+                        ),
+                        'missing' => $this->whereProjectedProcuracao(
+                            $branch,
+                            $environment,
+                            fn (Builder $source) => $source->where(
+                                'status',
+                                ClientProcuracaoSyncStatus::Missing->value,
+                            ),
+                        ),
+                        'unverified' => $branch->where(function (Builder $unverified) use ($environment): void {
+                            $unverified
+                                ->where(function (Builder $absent) use ($environment): void {
+                                    $absent->whereDoesntHave('procuracaoSync')
+                                        ->whereDoesntHave('procuracaoSnapshots', function (Builder $snap) use ($environment): void {
+                                            $snap->where('environment', $environment);
+                                        });
+                                })
+                                ->orWhere(function (Builder $explicit) use ($environment): void {
+                                    $this->whereProjectedProcuracao(
+                                        $explicit,
+                                        $environment,
+                                        fn (Builder $source) => $source->where(
+                                            'status',
+                                            ClientProcuracaoSyncStatus::Unverified->value,
+                                        ),
+                                    );
+                                });
+                        }),
+                        'verifying' => $this->whereProjectedProcuracao(
+                            $branch,
+                            $environment,
+                            fn (Builder $source) => $source->where(
+                                'status',
+                                ClientProcuracaoSyncStatus::Verifying->value,
+                            ),
+                        ),
+                        'failed' => $this->whereProjectedProcuracao(
+                            $branch,
+                            $environment,
+                            fn (Builder $source) => $source->where(
+                                'status',
+                                ClientProcuracaoSyncStatus::Failed->value,
+                            ),
+                        ),
+                        default => null,
+                    };
+                });
+            }
+        });
+    }
+
+    /**
+     * Preferência: procuracaoSync; sem sync, usa snapshot do environment default.
+     *
+     * @param  Builder<Client>  $branch
+     * @param  callable(Builder): void  $constrain
+     */
+    private function whereProjectedProcuracao(Builder $branch, string $environment, callable $constrain): void
+    {
+        $branch->where(function (Builder $outer) use ($environment, $constrain): void {
+            $outer->whereHas('procuracaoSync', function (Builder $sync) use ($constrain): void {
+                $constrain($sync);
+            })->orWhere(function (Builder $fallback) use ($environment, $constrain): void {
+                $fallback->whereDoesntHave('procuracaoSync')
+                    ->whereHas('procuracaoSnapshots', function (Builder $snap) use ($environment, $constrain): void {
+                        $snap->where('environment', $environment);
+                        $constrain($snap);
+                    });
+            });
+        });
+    }
+
+    /** @return list<string> */
+    private function taxRegimeCsv(mixed $raw): array
+    {
+        $parts = is_array($raw) ? $raw : explode(',', is_scalar($raw) ? (string) $raw : '');
+        $allowed = [...TaxRegimeCode::currentProjectionValues(), 'NOT_INFORMED'];
+        $values = [];
+        foreach ($parts as $part) {
+            $value = strtoupper(trim((string) $part));
+            if ($value !== '' && in_array($value, $allowed, true)) {
+                $values[$value] = $value;
+            }
+        }
+
+        return array_values($values);
+    }
+
+    /**
+     * Expande códigos canônicos para formas legadas ainda possíveis em clients.tax_regime.
+     *
+     * @param  list<string>  $canonical
+     * @return list<string>
+     */
+    private function taxRegimeStorageValues(array $canonical): array
+    {
+        $values = [];
+        foreach ($canonical as $code) {
+            $regime = TaxRegimeCode::tryFrom($code);
+            if ($regime === null) {
+                $values[$code] = $code;
+
+                continue;
+            }
+
+            foreach ($regime->storageFilterValues() as $value) {
+                $values[$value] = $value;
+            }
+        }
+
+        return array_values($values);
     }
 
     /**
@@ -499,15 +867,47 @@ class ClientController extends Controller
             'activity_started_at' => $est->activity_started_at?->toDateString(),
             'main_cnae_code' => $est->main_cnae_code,
             'main_cnae_name' => $est->main_cnae_name,
+            'secondary_cnaes' => is_array($est->secondary_cnaes) ? $est->secondary_cnaes : [],
+            'state_registrations' => is_array($est->state_registrations) ? $est->state_registrations : [],
+            'shareholders' => is_array($est->shareholders) ? $est->shareholders : [],
             'address' => $est->addressPayload(),
             'public_email' => $est->public_email,
             'public_phone' => $est->public_phone,
+            'public_phone_secondary' => $est->public_phone_secondary,
+            'public_fax' => $est->public_fax,
+            'special_situation' => $est->special_situation,
+            'special_situation_at' => $est->special_situation_at?->toDateString(),
+            'simples_optant' => $est->simples_optant,
+            'mei_optant' => $est->mei_optant,
             'capture_enabled' => $est->capture_enabled,
             'registration_source' => $est->registration_source?->value ?? $est->registration_source,
             'registration_refreshed_at' => $est->registration_refreshed_at?->toIso8601String(),
             'created_at' => $est->created_at?->toIso8601String(),
             'updated_at' => $est->updated_at?->toIso8601String(),
         ];
+    }
+
+    public function refreshRegistration(
+        Client $client,
+        RefreshClientRegistration $refresher,
+    ): JsonResponse {
+        $this->authorize('update', $client);
+
+        $result = $refresher->handle($client);
+        $fresh = $result['client']->load([
+            'establishments' => fn ($q) => $q->orderByDesc('is_matrix')->orderBy('id'),
+            'contacts',
+            'categories',
+        ]);
+
+        $payload = $this->serializeClient($fresh);
+        $payload['establishments'] = $fresh->establishments
+            ->map(fn (Establishment $est): array => $this->serializeEstablishment($est))
+            ->values()
+            ->all();
+        $payload['lookup'] = $result['lookup'];
+
+        return response()->json(['data' => $payload]);
     }
 
     /**

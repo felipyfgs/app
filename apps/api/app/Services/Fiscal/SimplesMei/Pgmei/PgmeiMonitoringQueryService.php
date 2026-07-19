@@ -300,9 +300,12 @@ final class PgmeiMonitoringQueryService
         foreach ($models as $run) {
             ExecuteFiscalMonitoringRunJob::dispatch($run->id)
                 ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
-            $out[] = method_exists($run, 'toPublicArray')
-                ? $run->toPublicArray()
-                : [
+            if (method_exists($run, 'toPublicArray')) {
+                $data = $run->toPublicArray();
+                unset($data['office_id'], $data['idempotency_key']);
+                $out[] = $data;
+            } else {
+                $out[] = [
                     'id' => $run->id,
                     'client_id' => $run->client_id,
                     'status' => $run->status?->value ?? (string) $run->status,
@@ -310,6 +313,7 @@ final class PgmeiMonitoringQueryService
                     'operation_code' => $run->operation_code,
                     'progress' => $run->progress,
                 ];
+            }
         }
 
         return $out;

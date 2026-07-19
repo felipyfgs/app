@@ -261,6 +261,40 @@ final class TaxProxyPowerService
             );
         }
 
+        // Preserva evidência oficial ainda não mapeada sem conceder poder algum.
+        foreach ($result->unmappedSystems as $systemName) {
+            $code = 'UNMAPPED_'.strtoupper(substr(hash('sha256', $systemName), 0, 16));
+            $seenCodes[] = $code;
+            $saved[] = TaxProxyPower::query()->updateOrCreate(
+                [
+                    'office_id' => $office->id,
+                    'client_id' => $client->id,
+                    'power_code' => $code,
+                    'author_identity' => $auth->author_identity,
+                    'source' => TaxProxyPowerSource::IntegraProcuracoes->value,
+                ],
+                [
+                    'office_serpro_authorization_id' => $auth->id,
+                    'environment' => $environment->value,
+                    'contributor_cnpj' => $contributor,
+                    'system_code' => 'UNMAPPED',
+                    'service_code' => null,
+                    'status' => TaxProxyPowerStatus::Pending,
+                    'provenance' => self::PROVENANCE_API_VERIFIED,
+                    'segregation_class' => SerproDataSegregationClass::Production->value,
+                    'valid_from' => null,
+                    'valid_to' => null,
+                    'accepted_at' => null,
+                    'freshness_checked_at' => now(),
+                    'closed_at' => null,
+                    'evidence_ref' => $result->evidenceRef,
+                    'verified_at' => now(),
+                    'last_check_result' => 'UNMAPPED_OFFICIAL_SYSTEM',
+                    'metadata' => ['official_system_name' => mb_substr($systemName, 0, 180)],
+                ],
+            );
+        }
+
         // Sync completo autenticado: encerra poderes da mesma fonte que sumiram
         $closed = 0;
         if ($isFullSync && ! $result->simulated) {

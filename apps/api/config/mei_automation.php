@@ -36,11 +36,21 @@ return [
     ],
     'provider_policy' => [
         'default' => env('MEI_AUTOMATION_PROVIDER_DEFAULT', 'serpro'),
-        'operations' => [],
+        'operations' => [
+            'pgmei.gerardaspdf' => env('MEI_AUTOMATION_PROVIDER_PGMEI_DAS_PDF'),
+            'pgmei.gerardascodbarra' => env('MEI_AUTOMATION_PROVIDER_PGMEI_DAS_BARCODE'),
+            'pgmei.dividaativa' => env('MEI_AUTOMATION_PROVIDER_PGMEI_DEBT'),
+            'dasnsimei.consultimadecrec' => env('MEI_AUTOMATION_PROVIDER_DASN_HISTORY'),
+        ],
     ],
     'captcha' => [
         'driver' => env('MEI_AUTOMATION_CAPTCHA_DRIVER', 'manual'),
         'budget_micros' => (int) env('MEI_AUTOMATION_CAPTCHA_BUDGET_MICROS', 0),
         'nopecha_enabled' => filter_var(env('MEI_AUTOMATION_NOPECHA_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'nopecha_operation_allowlist' => array_values(array_filter(array_map(
+            static fn (string $operation): string => strtolower(trim($operation)),
+            explode(',', (string) env('MEI_AUTOMATION_NOPECHA_OPERATION_ALLOWLIST', '')),
+        ))),
+        'nopecha_unit_cost_micros' => (int) env('MEI_AUTOMATION_NOPECHA_UNIT_COST_MICROS', 0),
     ],
 ];

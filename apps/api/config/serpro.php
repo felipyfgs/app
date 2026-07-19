@@ -1,11 +1,7 @@
 <?php
 
-$configuredEnvironment = strtoupper((string) env('SERPRO_DEFAULT_ENVIRONMENT', 'TRIAL'));
-if (! in_array($configuredEnvironment, ['TRIAL', 'PRODUCTION'], true)) {
-    throw new InvalidArgumentException(
-        'SERPRO_DEFAULT_ENVIRONMENT deve ser TRIAL ou PRODUCTION; HOMOLOGATION não é um ambiente SERPRO suportado.',
-    );
-}
+$fiscalProfile = strtolower((string) env('FISCAL_PROFILE', 'dev'));
+$configuredEnvironment = $fiscalProfile === 'production' ? 'PRODUCTION' : 'TRIAL';
 
 $defaultEnvironment = $configuredEnvironment;
 
@@ -96,23 +92,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Drivers por capacidade — default universal fail-closed
+    | Drivers derivados do perfil fiscal
     |--------------------------------------------------------------------------
-    | Apenas disabled e real são valores operacionais. Configuração legada
-    | simulated é rejeitada pelo resolver, sem fallback local.
+    | Mantido como snapshot compatível; CapabilityDriverResolver usa apenas
+    | FISCAL_PROFILE e ignora as antigas flags SERPRO_CAPABILITY_*.
     */
     'capabilities' => [
-        'sitfis' => env('SERPRO_CAPABILITY_SITFIS', 'disabled'),
-        'autentica_procurador' => env('SERPRO_CAPABILITY_AUTENTICA_PROCURADOR', 'disabled'),
-        'authorization' => env('SERPRO_CAPABILITY_AUTHORIZATION', 'disabled'),
-        'mailbox' => env('SERPRO_CAPABILITY_MAILBOX', 'disabled'),
-        'dctfweb' => env('SERPRO_CAPABILITY_DCTFWEB', 'disabled'),
-        'simples_mei' => env('SERPRO_CAPABILITY_SIMPLES_MEI', 'disabled'),
-        'installments' => env('SERPRO_CAPABILITY_INSTALLMENTS', 'disabled'),
-        'guides' => env('SERPRO_CAPABILITY_GUIDES', 'disabled'),
-        'registrations' => env('SERPRO_CAPABILITY_REGISTRATIONS', 'disabled'),
-        'tax_processes' => env('SERPRO_CAPABILITY_TAX_PROCESSES', 'disabled'),
-        'default' => env('SERPRO_CAPABILITY_DEFAULT', 'disabled'),
+        'sitfis' => $fiscalProfile === 'dev' ? 'fixture' : 'real',
+        'autentica_procurador' => $fiscalProfile === 'dev' ? 'fixture' : 'real',
+        'authorization' => $fiscalProfile === 'dev' ? 'fixture' : 'real',
+        'mailbox' => $fiscalProfile === 'dev' ? 'fixture' : 'real',
+        'dctfweb' => $fiscalProfile === 'dev' ? 'fixture' : 'real',
+        'simples_mei' => $fiscalProfile === 'dev' ? 'fixture' : 'real',
+        'installments' => $fiscalProfile === 'dev' ? 'fixture' : 'real',
+        'guides' => $fiscalProfile === 'dev' ? 'fixture' : 'real',
+        'registrations' => $fiscalProfile === 'dev' ? 'fixture' : 'real',
+        'tax_processes' => $fiscalProfile === 'dev' ? 'fixture' : 'real',
+        'default' => $fiscalProfile === 'dev' ? 'fixture' : 'real',
     ],
 
     /*
@@ -341,10 +337,10 @@ return [
     |--------------------------------------------------------------------------
     | Lifecycle / alertas de expiração (somente verificação — sem assinar/mutar)
     |--------------------------------------------------------------------------
-    | Janelas em dias antes do vencimento: 90, 60, 30, 15, 7, 1.
+    | Janelas únicas do produto em dias antes do vencimento: 30, 7, 1.
     */
     'lifecycle' => [
-        'alert_days' => [90, 60, 30, 15, 7, 1],
+        'alert_days' => [30, 7, 1],
         'token_renewal_skew_seconds' => (int) env('SERPRO_TOKEN_RENEWAL_SKEW_SECONDS', 300),
         'lock_seconds' => (int) env('SERPRO_LIFECYCLE_LOCK_SECONDS', 120),
         'queue' => env('SERPRO_LIFECYCLE_QUEUE', 'default'),

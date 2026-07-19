@@ -6,8 +6,8 @@ use App\Contracts\PfxReaderInterface;
 use App\Contracts\SecureObjectStore;
 use App\Domain\Cnpj;
 use App\Enums\CredentialStatus;
+use App\Enums\FiscalProfile;
 use App\Enums\OfficeCredentialPurpose;
-use App\Enums\SerproEnvironment;
 use App\Enums\SyncCursorStatus;
 use App\Models\Office;
 use App\Models\OfficeCredential;
@@ -349,7 +349,7 @@ final class OfficeCredentialService
         if ($triggerReonboarding) {
             $office = Office::query()->find($officeId);
             if ($office !== null) {
-                foreach (SerproEnvironment::cases() as $env) {
+                foreach ([FiscalProfile::configured()->serproEnvironment()] as $env) {
                     $this->onboarding->reactToProfileOrCredentialChange(
                         $office,
                         $env,
@@ -697,7 +697,7 @@ final class OfficeCredentialService
         }
 
         // Reonboarding das finalidades derivadas (Termo/token).
-        foreach (SerproEnvironment::cases() as $env) {
+        foreach ([FiscalProfile::configured()->serproEnvironment()] as $env) {
             $this->onboarding->reactToProfileOrCredentialChange(
                 $office,
                 $env,

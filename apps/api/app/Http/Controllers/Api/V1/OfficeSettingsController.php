@@ -2,10 +2,18 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\ClientProcuracaoSyncStatus;
+use App\Enums\FiscalControlModule;
+use App\Enums\FiscalOperationClass;
+use App\Enums\FiscalProfile;
+use App\Enums\OfficeSerproOnboardingStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Office\GrantOfficeTechnicalConsentRequest;
 use App\Http\Requests\Office\RemoveOfficeCanonicalCredentialRequest;
 use App\Http\Requests\Office\UpdateOfficeInstitutionalProfileRequest;
+use App\Models\Client;
+use App\Models\ClientProcuracaoSnapshot;
+use App\Models\FiscalMonitoringRun;
 use App\Models\OfficeCredential;
 use App\Models\OfficeCredentialPurposeLink;
 use App\Models\OfficeMonitorSchedulePolicy;
@@ -14,6 +22,7 @@ use App\Services\Audit\AuditLogger;
 use App\Services\Certificates\OfficeCredentialService;
 use App\Services\Certificates\OfficeInstitutionalProfileService;
 use App\Services\Certificates\OfficeTechnicalConsentService;
+use App\Services\Fiscal\Availability\FiscalModuleAvailabilityService;
 use App\Services\Integra\SerproTenantActionableStatusService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
@@ -68,6 +77,7 @@ class OfficeSettingsController extends Controller
         private readonly OfficeCredentialService $credentials,
         private readonly OfficeTechnicalConsentService $consents,
         private readonly SerproTenantActionableStatusService $actionableStatus,
+        private readonly FiscalModuleAvailabilityService $moduleAvailability,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -200,6 +210,7 @@ class OfficeSettingsController extends Controller
         $data = $request->validate([
             'pfx' => ['required', 'file', 'max:5120'],
             'password' => ['required', 'string'],
+            'consent_accepted' => ['required', 'accepted'],
             'office_id' => ['prohibited'],
         ]);
 
@@ -209,6 +220,10 @@ class OfficeSettingsController extends Controller
                 throw new RuntimeException('Falha ao ler arquivo PFX.');
             }
 
+            // Consentimento antes do cutover: se grant falhar, o A1 não fica ativo sem registro.
+            if (($this->consents->currentStatus()['requires_consent'] ?? true) === true) {
+                $this->consents->grant(true, $request->user()?->id);
+            }
             $credential = $this->credentials->activateCanonical(
                 $binary,
                 $data['password'],
@@ -241,9 +256,13 @@ class OfficeSettingsController extends Controller
             'purpose' => $credential->purpose->value,
         ], $request->user()?->id);
 
+        $office = $this->currentOffice->office();
+
         return response()->json([
-            'data' => $this->credentialPayload($credential),
-        ], 201);
+            'data' => array_merge($this->credentialPayload($credential), [
+                'onboarding' => $this->actionableStatus->forOffice($office)['onboarding'] ?? null,
+            ]),
+        ], 202);
     }
 
     public function replaceCredential(Request $request): JsonResponse
@@ -254,6 +273,7 @@ class OfficeSettingsController extends Controller
         $data = $request->validate([
             'pfx' => ['required', 'file', 'max:5120'],
             'password' => ['required', 'string'],
+            'consent_accepted' => ['required', 'accepted'],
             'office_id' => ['prohibited'],
         ]);
 
@@ -266,6 +286,10 @@ class OfficeSettingsController extends Controller
                 throw new RuntimeException('Falha ao ler arquivo PFX.');
             }
 
+            // Consentimento antes do cutover: se grant falhar, o A1 não fica ativo sem registro.
+            if (($this->consents->currentStatus()['requires_consent'] ?? true) === true) {
+                $this->consents->grant(true, $request->user()?->id);
+            }
             $credential = $this->credentials->replaceCanonical(
                 $binary,
                 $data['password'],
@@ -305,9 +329,13 @@ class OfficeSettingsController extends Controller
             'valid_to' => $credential->valid_to?->toIso8601String(),
         ], $request->user()?->id);
 
+        $office = $this->currentOffice->office();
+
         return response()->json([
-            'data' => $this->credentialPayload($credential),
-        ]);
+            'data' => array_merge($this->credentialPayload($credential), [
+                'onboarding' => $this->actionableStatus->forOffice($office)['onboarding'] ?? null,
+            ]),
+        ], 202);
     }
 
     public function removeCredential(RemoveOfficeCanonicalCredentialRequest $request): JsonResponse
@@ -421,7 +449,7 @@ class OfficeSettingsController extends Controller
             ];
         }
 
-        if ($actions === [] && (($onboarding['status'] ?? null) === 'incomplete')) {
+        if ($actions === [] && in_array(($onboarding['status'] ?? null), ['incomplete', 'configuring'], true)) {
             $prereq = $status['prerequisites'] ?? [];
             if (! ($prereq['profile'] ?? true)) {
                 $actions[] = [
@@ -456,14 +484,72 @@ class OfficeSettingsController extends Controller
             $message = (string) ($actions[0]['description'] ?? null);
         }
 
+        $environment = FiscalProfile::configured()->serproEnvironment();
+        $procuracaoCounts = ClientProcuracaoSnapshot::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->where('environment', $environment->value)
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status')
+            ->map(fn ($count): int => (int) $count)
+            ->all();
+        $moduleDecisions = array_map(
+            fn (FiscalControlModule $module): array => $this->moduleAvailability
+                ->resolve($module, $office, FiscalOperationClass::Read)
+                ->toArray(),
+            FiscalControlModule::cases(),
+        );
+        $initialRuns = FiscalMonitoringRun::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->where('trigger', 'SCHEDULED');
+
         return response()->json([
             'data' => [
                 'status' => $onboarding['status'] ?? 'incomplete',
+                'stage' => $this->onboardingStage((string) ($onboarding['status'] ?? 'incomplete')),
                 'actions' => $actions,
                 'correlation_id' => $status['correlation_id'] ?? null,
                 'message' => $message,
+                'modules' => $moduleDecisions,
+                'procuracoes' => [
+                    'total_clients' => Client::query()->withoutGlobalScopes()
+                        ->where('office_id', $office->id)->where('is_active', true)->count(),
+                    'by_status' => $procuracaoCounts,
+                    'verified' => collect([
+                        ClientProcuracaoSyncStatus::Authorized->value,
+                        ClientProcuracaoSyncStatus::Missing->value,
+                        ClientProcuracaoSyncStatus::Expired->value,
+                    ])->sum(fn (string $status): int => (int) ($procuracaoCounts[$status] ?? 0)),
+                ],
+                'initial_collection' => [
+                    'queued_at' => $onboarding['initial_collection_queued_at'] ?? null,
+                    'runs_total' => (clone $initialRuns)->count(),
+                    'runs_pending' => (clone $initialRuns)->whereIn('status', ['QUEUED', 'RUNNING'])->count(),
+                    'runs_finished' => (clone $initialRuns)->whereIn('status', ['COMPLETED', 'BLOCKED', 'FAILED', 'SKIPPED'])->count(),
+                ],
             ],
         ]);
+    }
+
+    private function onboardingStage(string $status): string
+    {
+        return match (OfficeSerproOnboardingStatus::tryFrom($status)) {
+            OfficeSerproOnboardingStatus::Configuring,
+            OfficeSerproOnboardingStatus::Incomplete => 'CONFIGURANDO',
+            OfficeSerproOnboardingStatus::Validating => 'VALIDANDO',
+            OfficeSerproOnboardingStatus::Authorizing,
+            OfficeSerproOnboardingStatus::Provisioning => 'AUTORIZANDO',
+            OfficeSerproOnboardingStatus::LoadingProxyPowers => 'CARREGANDO_PROCURACOES',
+            OfficeSerproOnboardingStatus::Syncing => 'SINCRONIZANDO',
+            OfficeSerproOnboardingStatus::Ready,
+            OfficeSerproOnboardingStatus::Authorized => 'PRONTO',
+            OfficeSerproOnboardingStatus::ActionRequired => 'ACAO_NECESSARIA',
+            OfficeSerproOnboardingStatus::TechnicalError => 'FALHA_TECNICA',
+            OfficeSerproOnboardingStatus::Revoked => 'REVOGADO',
+            default => 'CONFIGURANDO',
+        };
     }
 
     /**

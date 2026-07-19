@@ -95,6 +95,7 @@ return [
      */
     'operations' => [
         'INTEGRA_SN.PGDASD.TRANSMITIR' => $operationDefaults('FEATURE_MUT_PGDASD_TRANSMITIR'),
+        'INTEGRA_MEI.PGMEI.GERAR_DAS' => $operationDefaults('FEATURE_MUT_PGMEI_GERAR_DAS'),
         'INTEGRA_PAGAMENTO.SICALC.EMITIR_GUIA' => $operationDefaults('FEATURE_MUT_SICALC_EMITIR_GUIA'),
         'INTEGRA_DCTFWEB.DCTFWEB.TRANSMITIR' => $operationDefaults('FEATURE_MUT_DCTFWEB_TRANSMITIR'),
         'INTEGRA_MIT.MIT.ENCERRAR' => $operationDefaults('FEATURE_MUT_MIT_ENCERRAR'),

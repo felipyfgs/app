@@ -70,6 +70,11 @@ class User extends Authenticatable
         return $this->hasMany(PlatformMembership::class);
     }
 
+    public function updatedFiscalModuleControls(): HasMany
+    {
+        return $this->hasMany(FiscalModuleControl::class, 'updated_by_user_id');
+    }
+
     /**
      * PLATFORM_ADMIN é autorização global separada — NÃO implica membership de office
      * nem leitura fiscal de qualquer tenant.

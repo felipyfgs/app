@@ -77,6 +77,9 @@ class OfficeSerproOnboardingState extends Model
             'correlation_id' => $this->correlation_id,
             'ready_at' => $this->ready_at?->toIso8601String(),
             'authorized_at' => $this->authorized_at?->toIso8601String(),
+            'initial_collection_queued_at' => is_array($this->metadata)
+                ? ($this->metadata['initial_collection_queued_at'] ?? null)
+                : null,
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
     }

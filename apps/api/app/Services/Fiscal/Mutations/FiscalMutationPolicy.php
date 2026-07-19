@@ -4,6 +4,7 @@ namespace App\Services\Fiscal\Mutations;
 
 use App\Enums\FiscalMutationDenialCode;
 use App\Enums\FiscalMutationStatus;
+use App\Enums\MeiProvider;
 use App\Enums\OfficeRole;
 use App\Enums\SerproEnvironment;
 use App\Models\Client;
@@ -17,7 +18,9 @@ use App\Services\Auth\RecentPasswordConfirmationGate;
 use App\Services\Fiscal\Demo\FiscalDataOriginResolver;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\TaxProxyPowerService;
+use App\Services\MeiAutomation\MeiProviderPolicy;
 use App\Services\Platform\OfficeSubscriptionGate;
+use App\Services\Serpro\Catalog\OperationKeyMap;
 use App\Services\Serpro\SerproKillSwitchService;
 use App\Services\Serpro\Usage\OperationCatalog;
 use App\Services\Serpro\Usage\PriceCalculator;
@@ -43,6 +46,7 @@ final class FiscalMutationPolicy
         private readonly PriceCalculator $prices,
         private readonly UsageBudgetGate $budget,
         private readonly FiscalDataOriginResolver $dataOrigin,
+        private readonly MeiProviderPolicy $meiProviders,
     ) {}
 
     /**
@@ -53,6 +57,7 @@ final class FiscalMutationPolicy
      *     skip_anti_repeat?: bool,
      *     skip_uncertain_check?: bool,
      *     exclude_operation_id?: int|null,
+     *     provider_operation_key?: string|null,
      * }  $options
      */
     public function evaluate(
@@ -72,6 +77,16 @@ final class FiscalMutationPolicy
         $excludeOperationId = isset($options['exclude_operation_id'])
             ? (int) $options['exclude_operation_id']
             : null;
+        $providerOperationKey = is_string($options['provider_operation_key'] ?? null)
+            ? $options['provider_operation_key']
+            : null;
+        $portalFirst = $this->isPortalFirst(
+            $office,
+            $solutionCode,
+            $serviceCode,
+            $operationCode,
+            $providerOperationKey,
+        );
         $context = [
             'office_id' => $office->id,
             'client_id' => $client->id,
@@ -82,6 +97,7 @@ final class FiscalMutationPolicy
             'environment' => $environment->value,
             'competence' => $competencePeriodKey,
             'exclude_operation_id' => $excludeOperationId,
+            'provider_route' => $portalFirst ? 'RECEITA_PORTAL' : 'SERPRO',
         ];
 
         // 0. Modo demonstração / office demo — bloqueio explícito sem sucesso fiscal fictício
@@ -96,7 +112,7 @@ final class FiscalMutationPolicy
             FeatureFlags::isKillSwitchActive()
             || (bool) config('features.mutating.kill_switch', false)
             || (bool) config('fiscal_mutations.kill_switch', false)
-            || $this->serproKillSwitch->isSolutionBlocked($solutionCode)
+            || (! $portalFirst && $this->serproKillSwitch->isSolutionBlocked($solutionCode))
         ) {
             $codes[] = FiscalMutationDenialCode::KillSwitch;
         }
@@ -172,7 +188,7 @@ final class FiscalMutationPolicy
 
             // 8. Procuração / poder (revalidação pontual)
             $requiredPower = $catalog->required_proxy_power;
-            if ($requiredPower !== null && $requiredPower !== '') {
+            if (! $portalFirst && $requiredPower !== null && $requiredPower !== '') {
                 $auth = OfficeSerproAuthorization::query()
                     ->where('office_id', $office->id)
                     ->where('environment', $environment->value)
@@ -208,7 +224,7 @@ final class FiscalMutationPolicy
         }
 
         // 9. Elegibilidade Integra (contrato, termo, token, breaker…)
-        $elig = $this->eligibility->evaluate(
+        $elig = $portalFirst ? null : $this->eligibility->evaluate(
             office: $office,
             client: $client,
             solutionCode: strtoupper($solutionCode),
@@ -218,8 +234,12 @@ final class FiscalMutationPolicy
             user: $user,
             module: $module,
         );
-        $context['eligibility'] = $elig->toArray();
-        if (! $elig->eligible) {
+        $context['eligibility'] = $elig?->toArray() ?? [
+            'eligible' => true,
+            'provider' => 'RECEITA_PORTAL',
+            'serpro_credentials_required' => false,
+        ];
+        if ($elig !== null && ! $elig->eligible) {
             // Já cobertos acima em parte; agrega como EligibilityBlocked se ainda elegível parcialmente
             $already = array_map(fn (FiscalMutationDenialCode $c) => $c->value, $codes);
             $mapped = false;
@@ -248,20 +268,29 @@ final class FiscalMutationPolicy
         }
 
         // 10. Custo / franquia
-        $classified = $this->operationCatalog->classify(
+        $classified = $portalFirst ? null : $this->operationCatalog->classify(
             strtoupper($solutionCode),
             strtoupper($serviceCode),
             strtoupper($operationCode),
         );
-        $class = $classified['class'];
-        $estimate = $this->prices->estimate(
+        $class = $classified['class'] ?? null;
+        $estimate = $portalFirst ? [
+            'provider' => 'RECEITA_PORTAL',
+            'quantity' => 1,
+            'estimated_cost_micros' => 0,
+        ] : $this->prices->estimate(
             class: $class,
             quantity: 1,
             systemCode: strtoupper($solutionCode),
             serviceCode: strtoupper($serviceCode),
             operationCode: strtoupper($operationCode),
         );
-        $budgetEval = $this->budget->evaluate(
+        $budgetEval = $portalFirst ? [
+            'allowed' => true,
+            'would_block' => false,
+            'block_reason' => null,
+            'remaining' => null,
+        ] : $this->budget->evaluate(
             officeId: $office->id,
             class: $class,
             quantity: 1,
@@ -362,6 +391,30 @@ final class FiscalMutationPolicy
         }
 
         return MutationPolicyResult::allow($context, confirmationRequired: true);
+    }
+
+    private function isPortalFirst(
+        Office $office,
+        string $solutionCode,
+        string $serviceCode,
+        string $operationCode,
+        ?string $providerOperationKey,
+    ): bool {
+        if (strtoupper($solutionCode) !== 'INTEGRA_MEI') {
+            return false;
+        }
+        $operationKey = $providerOperationKey ?? OperationKeyMap::resolve(
+            null,
+            $solutionCode,
+            $serviceCode,
+            $operationCode,
+        );
+        if ($operationKey === null) {
+            return false;
+        }
+
+        return ($this->meiProviders->providers($office, $operationKey)[0] ?? MeiProvider::Serpro)
+            !== MeiProvider::Serpro;
     }
 
     /**

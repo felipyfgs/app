@@ -3,7 +3,6 @@
 namespace App\Services\Fiscal\Mutations;
 
 use App\Contracts\FiscalMutationTransport;
-use App\DTO\Serpro\IntegraRequest;
 use App\Enums\FiscalMutationDenialCode;
 use App\Enums\FiscalMutationStatus;
 use App\Enums\SerproEnvironment;
@@ -11,12 +10,8 @@ use App\Models\Client;
 use App\Models\FiscalMutationOperation;
 use App\Models\FiscalMutationOperationEvent;
 use App\Models\Office;
-use App\Models\OfficeSerproAuthorization;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
-use App\Services\Integra\ContributorCnpjResolver;
-use App\Services\Serpro\Catalog\OperationKeyMap;
-use App\Services\Serpro\SerproContractService;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -29,9 +24,8 @@ final class FiscalMutationService
         private readonly FiscalMutationPolicy $policy,
         private readonly FiscalMutationStateMachine $stateMachine,
         private readonly FiscalMutationTransport $transport,
-        private readonly SerproContractService $contracts,
+        private readonly FiscalMutationIntegraRequestFactory $requests,
         private readonly AuditLogger $audit,
-        private readonly ContributorCnpjResolver $contributors,
     ) {}
 
     /**
@@ -103,6 +97,12 @@ final class FiscalMutationService
             options: [
                 'require_totp' => true,
                 'skip_anti_repeat' => false,
+                'provider_operation_key' => $this->meiProviderOperationKey(
+                    $solutionCode,
+                    $serviceCode,
+                    $operationCode,
+                    $requestPayload,
+                ),
             ],
         );
 
@@ -292,6 +292,12 @@ final class FiscalMutationService
                 'require_confirmation' => true,
                 'confirmed' => $confirmed,
                 'exclude_operation_id' => (int) $operation->id,
+                'provider_operation_key' => $this->meiProviderOperationKey(
+                    (string) $operation->solution_code,
+                    (string) $operation->service_code,
+                    (string) $operation->operation_code,
+                    $operation->request_sanitized ?? [],
+                ),
             ],
         );
 
@@ -365,7 +371,7 @@ final class FiscalMutationService
             );
         }
 
-        $request = $this->buildIntegraRequest($operation);
+        $request = $this->requests->make($operation);
 
         try {
             $response = $this->transport->reconcile($request);
@@ -485,7 +491,7 @@ final class FiscalMutationService
         }
 
         $operation = $claimed;
-        $request = $this->buildIntegraRequest($operation);
+        $request = $this->requests->make($operation);
 
         try {
             $response = $this->transport->execute($request);
@@ -521,6 +527,26 @@ final class FiscalMutationService
 
         $sanitized = $response->toSanitizedArray();
         $bodyStatus = strtoupper((string) ($response->body['status'] ?? ''));
+
+        if ($response->isStillProcessing()) {
+            $operation->forceFill([
+                'result_code' => 'MEI_PORTAL_PROCESSING',
+                'result_message' => 'Automação do portal em processamento.',
+                'result_sanitized' => $sanitized,
+                'external_correlation' => $response->correlationId,
+                'latency_ms' => $response->latencyMs,
+            ])->save();
+            $this->audit->record(
+                'fiscal.mutation.processing',
+                'SUCCESS',
+                $operation,
+                ['provider' => $response->sourceProvenance, 'http' => $response->httpStatus],
+                $user->id,
+                (int) $operation->office_id,
+            );
+
+            return $operation->refresh();
+        }
 
         if ($response->errorCode === 'GATEWAY_TIMEOUT' || $bodyStatus === 'UNKNOWN') {
             return $this->stateMachine->transition(
@@ -577,58 +603,6 @@ final class FiscalMutationService
             ],
             actorUserId: $user->id,
             result: 'REJECTED',
-        );
-    }
-
-    private function buildIntegraRequest(FiscalMutationOperation $operation): IntegraRequest
-    {
-        $env = $operation->environment ?? SerproEnvironment::Trial;
-        $contract = $this->contracts->activeFor($env);
-        $auth = OfficeSerproAuthorization::query()
-            ->where('office_id', $operation->office_id)
-            ->where('environment', $env->value)
-            ->first();
-
-        $client = Client::query()->withoutGlobalScopes()->findOrFail($operation->client_id);
-        $contributor = $this->resolveContributorMaskedRef($client);
-
-        // Identidades reais só no transporte — não logar
-        $contributorCnpj = $this->resolveContributorCnpj($client);
-        if ($contract === null || ! $contract->isUsable()) {
-            throw new \RuntimeException('Contrato SERPRO indisponível para mutação fiscal.');
-        }
-        $contractorCnpj = (string) $contract->contractor_cnpj;
-        $authorIdentity = trim((string) ($auth?->author_identity ?? ''));
-        if ($authorIdentity === '' || $authorIdentity === '00000000000000') {
-            throw new \RuntimeException('Autor do Pedido não configurado para mutação fiscal.');
-        }
-
-        $operationKey = OperationKeyMap::require(
-            null,
-            $operation->solution_code,
-            $operation->service_code,
-            $operation->operation_code,
-        );
-
-        return new IntegraRequest(
-            officeId: (int) $operation->office_id,
-            clientId: (int) $operation->client_id,
-            environment: $env->value,
-            contractorCnpj: $contractorCnpj,
-            authorIdentity: $authorIdentity,
-            contributorCnpj: $contributorCnpj,
-            operationKey: $operationKey,
-            payload: [
-                'competence' => $operation->competence_period_key,
-                'request_keys' => array_keys($operation->request_sanitized ?? []),
-                'contributor_ref' => $contributor,
-            ],
-            idempotencyKey: $operation->idempotency_key,
-            correlationId: $operation->correlation_id,
-            isMutating: true,
-            solutionCode: $operation->solution_code,
-            serviceCode: $operation->service_code,
-            operationCode: $operation->operation_code,
         );
     }
 
@@ -778,18 +752,21 @@ final class FiscalMutationService
         return mb_substr($key, 0, 160);
     }
 
-    private function resolveContributorCnpj(Client $client): string
-    {
-        return $this->contributors->resolve($client);
-    }
-
-    private function resolveContributorMaskedRef(Client $client): string
-    {
-        $cnpj = $this->resolveContributorCnpj($client);
-        if (strlen($cnpj) <= 4) {
-            return str_repeat('*', strlen($cnpj));
+    /** @param array<string, mixed> $payload */
+    private function meiProviderOperationKey(
+        string $solution,
+        string $service,
+        string $operation,
+        array $payload,
+    ): ?string {
+        if (strtoupper($solution) !== 'INTEGRA_MEI'
+            || strtoupper($service) !== 'PGMEI'
+            || strtoupper($operation) !== 'GERAR_DAS') {
+            return null;
         }
 
-        return substr($cnpj, 0, 2).str_repeat('*', max(0, strlen($cnpj) - 6)).substr($cnpj, -4);
+        return strtoupper((string) ($payload['output_format'] ?? 'PDF')) === 'BARCODE'
+            ? 'pgmei.gerardascodbarra'
+            : 'pgmei.gerardaspdf';
     }
 }

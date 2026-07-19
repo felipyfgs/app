@@ -64,17 +64,26 @@ class ClientProcuracaoSnapshot extends Model
      */
     public function toClientProjection(): array
     {
+        $expiringSoon = $this->status === ClientProcuracaoSyncStatus::Authorized
+            && $this->valid_to !== null
+            && $this->valid_to->isFuture()
+            && $this->valid_to->lessThanOrEqualTo(now()->addDays(30));
+
         return [
             'status' => $this->status->value,
-            'label' => match ($this->status) {
+            'display_status' => $expiringSoon ? 'expiring_soon' : $this->status->value,
+            'label' => $expiringSoon ? 'Vence em breve' : match ($this->status) {
                 ClientProcuracaoSyncStatus::Authorized => 'Autorizada',
-                ClientProcuracaoSyncStatus::Missing => 'Sem procuração',
+                ClientProcuracaoSyncStatus::Missing => 'Não encontrada',
                 ClientProcuracaoSyncStatus::Expired => 'Vencida',
                 ClientProcuracaoSyncStatus::Unverified => 'Não verificada',
+                ClientProcuracaoSyncStatus::Verifying => 'Verificando',
+                ClientProcuracaoSyncStatus::Failed => 'Falha ao verificar',
             },
             'valid_from' => $this->valid_from?->toIso8601String(),
             'valid_to' => $this->valid_to?->toIso8601String(),
             'last_verified_at' => $this->last_verified_at?->toIso8601String(),
+            'covered_modules' => $this->power_codes ?? [],
         ];
     }
 }

@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'field_key',
     'label',
     'type',
+    'is_active',
     'value_text',
     'vault_object_id',
 ])]
@@ -23,13 +24,20 @@ class ClientCustomField extends Model
 {
     use BelongsToOffice, SoftDeletes;
 
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+        ];
+    }
+
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
     }
 
     /**
-     * @return array{id:int,label:string,type:string,value:string|null,has_value:bool}
+     * @return array{id:int,label:string,type:string,is_active:bool,value:string|null,has_value:bool}
      */
     public function toPublicArray(): array
     {
@@ -39,6 +47,7 @@ class ClientCustomField extends Model
             'id' => $this->id,
             'label' => $this->label,
             'type' => $this->type,
+            'is_active' => (bool) $this->is_active,
             'value' => $isSecret ? null : $this->value_text,
             'has_value' => $isSecret ? $this->vault_object_id !== null : filled($this->value_text),
         ];

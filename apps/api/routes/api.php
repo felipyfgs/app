@@ -3,6 +3,8 @@
 use App\Http\Controllers\Api\V1\Activation\PublicActivationController;
 use App\Http\Controllers\Api\V1\Auth\ConfirmPasswordController;
 use App\Http\Controllers\Api\V1\Auth\UpdateAccountController;
+use App\Http\Controllers\Api\V1\ClientCategoryAssignmentController;
+use App\Http\Controllers\Api\V1\ClientCategoryController;
 use App\Http\Controllers\Api\V1\ClientContactController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\ClientCredentialController;
@@ -15,6 +17,7 @@ use App\Http\Controllers\Api\V1\DteCanaryTenantController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\Fiscal\CcmeiMonitoringController;
+use App\Http\Controllers\Api\V1\Fiscal\DasnSimeiController;
 use App\Http\Controllers\Api\V1\Fiscal\DctfwebController;
 use App\Http\Controllers\Api\V1\Fiscal\DctfwebMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\DeclarationHubController;
@@ -29,6 +32,8 @@ use App\Http\Controllers\Api\V1\Fiscal\FiscalMutationController;
 use App\Http\Controllers\Api\V1\Fiscal\FiscalSnapshotController;
 use App\Http\Controllers\Api\V1\Fiscal\MailboxMessageController;
 use App\Http\Controllers\Api\V1\Fiscal\ManualConsultController;
+use App\Http\Controllers\Api\V1\Fiscal\MeiAutomationAttemptController;
+use App\Http\Controllers\Api\V1\Fiscal\MeiDasController;
 use App\Http\Controllers\Api\V1\Fiscal\MitController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebArrecadacaoReceiptController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebPaymentCountController;
@@ -57,6 +62,7 @@ use App\Http\Controllers\Api\V1\OperationsInboxController;
 use App\Http\Controllers\Api\V1\OperationsSummaryController;
 use App\Http\Controllers\Api\V1\OutboundCaptureController;
 use App\Http\Controllers\Api\V1\OutboundDeadlineController;
+use App\Http\Controllers\Api\V1\Platform\FiscalModuleControlController;
 use App\Http\Controllers\Api\V1\Platform\InitialOnboardingController;
 use App\Http\Controllers\Api\V1\Platform\PlatformOfficeController;
 use App\Http\Controllers\Api\V1\Platform\PlatformOfficeSelectController;
@@ -158,6 +164,11 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/tenants', [TenantAdminController::class, 'index']);
             Route::get('/tenants/{office}', [TenantAdminController::class, 'show']);
             Route::patch('/tenants/{office}/subscription', [TenantAdminController::class, 'updateSubscription']);
+
+            Route::get('/fiscal/modules', [FiscalModuleControlController::class, 'globalIndex']);
+            Route::patch('/fiscal/modules/{module}/restriction', [FiscalModuleControlController::class, 'updateGlobal']);
+            Route::get('/tenants/{office}/fiscal/modules', [FiscalModuleControlController::class, 'officeIndex']);
+            Route::patch('/tenants/{office}/fiscal/modules/{module}/restriction', [FiscalModuleControlController::class, 'updateOffice']);
 
             // Consolidação e conciliação de consumo SERPRO (ledger)
             Route::get('/serpro-usage/consolidation', [SerproUsageAdminController::class, 'consolidation']);
@@ -267,6 +278,8 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/fiscal/runs', [FiscalMonitoringRunController::class, 'index']);
             Route::post('/fiscal/runs', [FiscalMonitoringRunController::class, 'store']);
             Route::get('/fiscal/runs/{run}', [FiscalMonitoringRunController::class, 'show']);
+            Route::get('/fiscal/mei-automation/attempts/{attempt}', [MeiAutomationAttemptController::class, 'show']);
+            Route::get('/fiscal/mei-automation/attempts/{attempt}/artifacts/{artifact}/download', [MeiAutomationAttemptController::class, 'download']);
             Route::get('/fiscal/snapshots', [FiscalSnapshotController::class, 'index']);
             Route::get('/fiscal/snapshots/{snapshot}', [FiscalSnapshotController::class, 'show']);
             Route::get('/fiscal/findings', [FiscalSnapshotController::class, 'findings']);
@@ -414,10 +427,18 @@ Route::prefix('v1')->group(function (): void {
             // PGMEI — dívida ativa (histórico local + consulta manual + comunicação template)
             Route::get('/fiscal/simples-mei/pgmei/clients/{client}/history', [PgmeiMonitoringController::class, 'history']);
             Route::post('/fiscal/simples-mei/pgmei/consult', [PgmeiMonitoringController::class, 'consult']);
+            Route::post('/fiscal/simples-mei/pgmei/das/preflight', [MeiDasController::class, 'preflight'])
+                ->middleware('throttle:30,1');
+            Route::post('/fiscal/simples-mei/pgmei/das', [MeiDasController::class, 'store'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
             Route::patch('/fiscal/simples-mei/pgmei/clients/{client}/communication-preference', [PgmeiMonitoringController::class, 'updatePreferences']);
             Route::patch('/fiscal/simples-mei/pgmei/communication-preferences/bulk', [PgmeiMonitoringController::class, 'batchPreferences']);
             Route::get('/fiscal/simples-mei/pgmei/clients/{client}/communication-preview', [PgmeiMonitoringController::class, 'preview']);
             Route::get('/fiscal/simples-mei/pgmei/clients/{client}/communications', [PgmeiMonitoringController::class, 'tracking']);
+
+            // DASN-SIMEI — histórico público com cobertura explícita e consulta assíncrona.
+            Route::get('/fiscal/simples-mei/dasn-simei/clients/{client}/history', [DasnSimeiController::class, 'history']);
+            Route::post('/fiscal/simples-mei/dasn-simei/consult', [DasnSimeiController::class, 'consult']);
 
             // CCMEI — consulta explícita e histórico sanitizado, ambos tenant-scoped.
             Route::get('/fiscal/simples-mei/ccmei/clients/{client}/history', [CcmeiMonitoringController::class, 'history']);
@@ -462,8 +483,17 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/clients', [ClientController::class, 'index']);
             Route::get('/cnpj/{cnpj}/lookup', CnpjLookupController::class)->middleware('throttle:30,1');
             Route::post('/clients', [ClientController::class, 'store']);
+            Route::patch('/clients/bulk-status', [ClientController::class, 'bulkStatus']);
+            Route::patch('/clients/bulk-categories', [ClientCategoryAssignmentController::class, 'bulk']);
+            Route::get('/client-categories', [ClientCategoryController::class, 'index']);
+            Route::post('/client-categories', [ClientCategoryController::class, 'store']);
+            Route::patch('/client-categories/{clientCategory}', [ClientCategoryController::class, 'update']);
+            Route::put('/clients/{client}/categories', [ClientCategoryAssignmentController::class, 'replace']);
             Route::get('/clients/{client}', [ClientController::class, 'show']);
             Route::patch('/clients/{client}', [ClientController::class, 'update']);
+            Route::patch('/clients/{client}/custom-fields/{customField}', [ClientController::class, 'updateCustomField']);
+            Route::post('/clients/{client}/refresh-registration', [ClientController::class, 'refreshRegistration'])
+                ->middleware('throttle:20,1');
 
             Route::post('/clients/{client}/establishments', [EstablishmentController::class, 'store']);
             Route::patch('/establishments/{establishment}', [EstablishmentController::class, 'update']);

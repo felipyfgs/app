@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Fiscal;
 use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\EnsureOfficeContext;
+use App\Http\Requests\Fiscal\Mei\ConsultMeiDebtRequest;
 use App\Models\Client;
 use App\Models\User;
 use App\Services\Authorization\TenantAuthorization;
@@ -58,7 +59,7 @@ class PgmeiMonitoringController extends Controller
         return response()->json(['data' => $data]);
     }
 
-    public function consult(Request $request): JsonResponse
+    public function consult(ConsultMeiDebtRequest $request): JsonResponse
     {
         $this->assertCanSync();
         $this->assertModuleEnabled();
@@ -66,12 +67,7 @@ class PgmeiMonitoringController extends Controller
             return $rejection;
         }
 
-        $data = $request->validate([
-            'client_ids' => ['required', 'array', 'min:1', 'max:100'],
-            'client_ids.*' => ['integer', 'distinct'],
-            'year' => ['required', 'integer', 'min:2000', 'max:2100'],
-            'confirmed' => ['required', 'accepted'],
-        ]);
+        $data = $request->validated();
 
         $office = $this->currentOffice->office();
 
@@ -79,7 +75,7 @@ class PgmeiMonitoringController extends Controller
             $runs = $this->queries->enqueueManualConsult(
                 $office,
                 $data['client_ids'],
-                (int) $data['year'],
+                (int) $data['calendar_year'],
                 true,
                 $request->user()?->id,
             );
@@ -92,7 +88,8 @@ class PgmeiMonitoringController extends Controller
         return response()->json([
             'data' => $runs,
             'enqueued_count' => count($runs),
-            'year' => PgmeiYear::assertValid((int) $data['year']),
+            'year' => PgmeiYear::assertValid((int) $data['calendar_year']),
+            'calendar_year' => PgmeiYear::assertValid((int) $data['calendar_year']),
         ], 201);
     }
 

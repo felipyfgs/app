@@ -8,6 +8,8 @@ use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
 use App\DTO\Serpro\MutationAuthorization;
 use App\DTO\Serpro\SerproOperationCommand;
+use App\Enums\FiscalControlModule;
+use App\Enums\FiscalProfile;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\SerproEnvironment;
 use App\Enums\SerproFunctionalRoute;
@@ -15,9 +17,12 @@ use App\Enums\SerproUsageResult;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
+use App\Services\Fiscal\Availability\FiscalModuleAvailabilityService;
+use App\Services\Fiscal\Availability\FiscalOperationClassifier;
 use App\Services\Fiscal\Guides\PagtowebEphemeralResponseRedactor;
 use App\Services\Integra\ClientProcuracaoSyncService;
 use App\Services\Integra\ContributorCnpjResolver;
+use App\Services\Integra\FixtureIntegraContadorClient;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\SerproTechnicalParameterGuard;
 use App\Services\Platform\OfficeSubscriptionGate;
@@ -25,7 +30,6 @@ use App\Services\Serpro\Catalog\OperationCoordinateResolver;
 use App\Services\Serpro\Catalog\OperationCoverageMatrix;
 use App\Services\Serpro\Usage\UsageLedgerService;
 use App\Services\Serpro\Usage\UsageReserveRequest;
-use App\Support\FeatureFlags;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -64,6 +68,8 @@ final class SerproOperationService implements SerproOperationExecutor
         private readonly ClientProcuracaoSyncService $procuracaoGate,
         private readonly PreAckDocumentCaptureDispatcher $preAckDocuments,
         private readonly PagtowebEphemeralResponseRedactor $pagtowebResponseRedactor,
+        private readonly FiscalModuleAvailabilityService $moduleAvailability,
+        private readonly FixtureIntegraContadorClient $fixtureClient,
     ) {}
 
     /**
@@ -130,7 +136,7 @@ final class SerproOperationService implements SerproOperationExecutor
         $idSistema = (string) ($coords['id_sistema'] ?? '');
 
         // 4. Kill switches
-        if ($this->killSwitch->isGlobalActive() || FeatureFlags::isKillSwitchActive()) {
+        if ($this->killSwitch->isGlobalActive() || (bool) config('fiscal.kill_switch', false)) {
             return $this->blocked($operationKey, 'KILL_SWITCH', 'Kill switch SERPRO ativo.', $correlationId, 503);
         }
         if ($idSistema !== '' && $this->killSwitch->isSolutionBlocked($idSistema)) {
@@ -147,27 +153,54 @@ final class SerproOperationService implements SerproOperationExecutor
             return $this->blocked($operationKey, 'CAPABILITY_DISABLED', 'Capacidade SERPRO desabilitada.', $correlationId, 503);
         }
 
-        // 6. Feature flags / allowlist — somente egress real (fail-closed)
+        // 6. Disponibilidade provider-neutral — todos disponíveis, restritos por exceção.
         $module = $command->module ?? $this->moduleForOperation($operationKey, $coords);
-        // "authorization" é uma classificação de catálogo para fluxos técnicos
-        // (procuração/eventos), não um módulo registrado em FeatureFlags.
+        // "authorization" é uma classificação técnica de onboarding, não um módulo fiscal.
         if ($module === 'authorization') {
             $module = null;
         }
-        if ($module !== null && $driver->value === 'real') {
+        if ($module !== null) {
             try {
-                if (! FeatureFlags::isModuleEnabled($module, (int) $office->id)) {
+                $decision = $this->moduleAvailability->resolve(
+                    FiscalControlModule::fromRuntimeKey($module),
+                    $office,
+                    FiscalOperationClassifier::forSerpro($operationKey, $coords),
+                );
+                if (! $decision->allowed) {
                     return $this->blocked(
                         $operationKey,
-                        'FEATURE_DISABLED',
-                        "Módulo {$module} desabilitado ou office fora da allowlist.",
+                        $decision->reasonCode ?? 'MODULE_UNAVAILABLE',
+                        $decision->reason ?? 'Operação fiscal indisponível.',
                         $correlationId,
                         423,
                     );
                 }
             } catch (\InvalidArgumentException) {
-                // módulo sem chave em FeatureFlags — não inventar enable
+                return $this->blocked(
+                    $operationKey,
+                    'MODULE_UNKNOWN',
+                    "Módulo fiscal desconhecido: {$module}.",
+                    $correlationId,
+                    422,
+                );
             }
+        }
+
+        if ($driver->value === 'fixture') {
+            return $this->fixtureClient->execute(new IntegraRequest(
+                officeId: (int) $office->id,
+                clientId: (int) ($client?->id ?? 0),
+                environment: 'DEV',
+                contractorCnpj: '11222333000181',
+                authorIdentity: '11222333000181',
+                contributorCnpj: '11222333000181',
+                operationKey: $operationKey,
+                businessData: $command->businessData,
+                idempotencyKey: $command->idempotencyKey,
+                correlationId: $correlationId,
+                requestTag: null,
+                isMutating: $isMutating,
+            ));
         }
 
         // 7. Subscription — egress real fail-closed (simulado/tests sem assinatura não bloqueiam)
@@ -711,9 +744,7 @@ final class SerproOperationService implements SerproOperationExecutor
 
     private function resolveEnvironment(?string $raw): SerproEnvironment
     {
-        $value = strtoupper((string) ($raw ?? config('serpro.default_environment', 'TRIAL')));
-
-        return SerproEnvironment::tryFrom($value) ?? SerproEnvironment::Trial;
+        return FiscalProfile::configured()->serproEnvironment();
     }
 
     /**
@@ -735,15 +766,15 @@ final class SerproOperationService implements SerproOperationExecutor
             'simples_mei' => 'simples_mei',
             'installments' => 'parcelamentos',
             'guides' => 'guias',
-            // Consulta de procuração / redesim / e-processo: sem módulo FeatureFlags dedicado
-            // (null = não aplicar gate de módulo; capability/auth ainda valem).
-            'registrations', 'tax_processes', 'authorization' => null,
+            'registrations' => 'cadastros',
+            'tax_processes' => 'processos_fiscais',
+            'authorization' => null,
             default => null,
         });
     }
 
     /**
-     * Catálogo usa aliases (dctfweb, installments, guides…) — FeatureFlags usa chaves estáveis.
+     * Normaliza aliases do catálogo para as dez chaves provider-neutral.
      */
     private function normalizeFeatureModule(?string $module): ?string
     {
@@ -752,18 +783,17 @@ final class SerproOperationService implements SerproOperationExecutor
         }
 
         return match ($module) {
-            'dctfweb', 'dctfweb_mit', 'mit' => 'dctfweb_mit',
+            'dctfweb', 'dctfweb_mit', 'mit' => 'dctfweb',
             'installments', 'parcelamentos', 'parcelamento' => 'parcelamentos',
             'guides', 'guias', 'sicalc', 'pagtoweb' => 'guias',
             'simples_mei', 'pgdasd', 'pgmei', 'defis', 'regimeapuracao', 'ccmei' => 'simples_mei',
-            'sitfis' => 'sitfis',
-            'mailbox', 'caixa_postal', 'dte' => 'mailbox',
+            'sitfis', 'situacao_fiscal' => 'situacao_fiscal',
+            'mailbox', 'caixa_postal', 'dte' => 'caixa_postal',
             'declaracoes' => 'declaracoes',
             'fgts' => 'fgts',
-            'mutacoes' => 'mutacoes',
-            // Sem chave em FeatureFlags: não aplicar isModuleEnabled (evita InvalidArgumentException).
-            'tax_processes', 'registrations', 'eprocesso', 'pnr_contador' => null,
-            default => in_array($module, FeatureFlags::MODULES, true) ? $module : null,
+            'tax_processes', 'eprocesso' => 'processos_fiscais',
+            'registrations', 'pnr_contador' => 'cadastros',
+            default => FiscalControlModule::tryFrom($module)?->value,
         };
     }
 

@@ -27,6 +27,7 @@ enum TenantPermission: string
     // ── Clientes / credenciais ───────────────────────────────────────────
     case ClientsView = 'clients.view';
     case ClientsManage = 'clients.manage';
+    case ClientCategoriesManage = 'clients.categories.manage';
     case CredentialsStatusView = 'credentials.status.view';
     case CredentialsManage = 'credentials.manage';
 
@@ -67,6 +68,7 @@ enum TenantPermission: string
             self::TenantRolesAssignAdmin => 'Atribuir administrador do tenant',
             self::ClientsView => 'Ver clientes',
             self::ClientsManage => 'Gerenciar clientes',
+            self::ClientCategoriesManage => 'Gerenciar categorias de clientes',
             self::CredentialsStatusView => 'Ver status de credenciais',
             self::CredentialsManage => 'Gerenciar credenciais',
             self::FiscalDocumentsView => 'Ver documentos fiscais',
@@ -105,7 +107,8 @@ enum TenantPermission: string
             self::TenantPermissionProfilesManage,
             self::TenantRolesAssignAdmin => 'tenant',
             self::ClientsView,
-            self::ClientsManage => 'clients',
+            self::ClientsManage,
+            self::ClientCategoriesManage => 'clients',
             self::CredentialsStatusView,
             self::CredentialsManage => 'credentials',
             self::FiscalDocumentsView,
@@ -151,6 +154,7 @@ enum TenantPermission: string
             self::TenantUsersManage,
             self::TenantModulesManage,
             self::ClientsManage,
+            self::ClientCategoriesManage,
             self::FiscalSyncTrigger,
             self::FiscalNfeManifest,
             self::DocumentsImport,

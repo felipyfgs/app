@@ -25,6 +25,7 @@ use App\Contracts\SefazOutboundInutilizationClient;
 use App\Contracts\SefazOutboundMutatingProbeClient;
 use App\Contracts\SefazOutboundProtocolQueryClient;
 use App\Contracts\SerproContractAuthenticator;
+use App\Contracts\SerproFiscalMutationTransport;
 use App\Contracts\SerproOperationExecutor;
 use App\Contracts\SvrsNfceDownloadResponseParser as SvrsNfceDownloadResponseParserContract;
 use App\Contracts\SvrsNfceOutboundXmlRetrievalClient;
@@ -33,6 +34,7 @@ use App\Contracts\SvrsPortalEgressGovernor;
 use App\Contracts\TaxGuideEnrollment;
 use App\Enums\SerproCapabilityDriver;
 use App\Models\Client;
+use App\Models\ClientCategory;
 use App\Models\ClientContact;
 use App\Models\ClientCredential;
 use App\Models\Establishment;
@@ -46,6 +48,7 @@ use App\Models\ProcessTemplate;
 use App\Models\SavedListFilter;
 use App\Models\User;
 use App\Models\WorkDepartment;
+use App\Policies\ClientCategoryPolicy;
 use App\Policies\ClientContactPolicy;
 use App\Policies\ClientCredentialPolicy;
 use App\Policies\ClientPolicy;
@@ -63,7 +66,13 @@ use App\Services\Adn\CurlMtlsTransport;
 use App\Services\Adn\HttpAdnContributorClient;
 use App\Services\Authorization\TenantAuthorization;
 use App\Services\Certificates\PfxReader;
+use App\Services\Clients\CcmeiDadosFetcher;
+use App\Services\Clients\CcmeiRegistrationEnricher;
 use App\Services\Clients\CnpjWsRegistrationLookup;
+use App\Services\Clients\NullCcmeiDadosFetcher;
+use App\Services\Clients\RegistrationLookupMerger;
+use App\Services\Clients\RegistrationLookupOrchestrator;
+use App\Services\Clients\SerproConsultaCnpjLookup;
 use App\Services\Esocial\DisabledEsocialEventClient;
 use App\Services\Esocial\FgtsEsocialSourceAdapter;
 use App\Services\Fiscal\Guides\PagtowebArrecadacaoReceiptAdapter;
@@ -110,6 +119,12 @@ use App\Services\Integra\Parcelamento\ParcelamentoReadAdapter;
 use App\Services\Integra\Parcelamento\SerproParcelamentoSource;
 use App\Services\Integra\Parcelamento\StubTaxGuideEnrollment;
 use App\Services\Integra\Sitfis\SitfisSourceAdapter;
+use App\Services\MeiAutomation\MeiAutomationAttemptRepository;
+use App\Services\MeiAutomation\MeiPortalFiscalMutationTransport;
+use App\Services\MeiAutomation\MeiProviderPolicy;
+use App\Services\MeiAutomation\MeiProviderRouter;
+use App\Services\MeiAutomation\Providers\ReceitaPortalProvider;
+use App\Services\MeiAutomation\Providers\SerproMeiProvider;
 use App\Services\Outbound\DisabledMaOutboundXmlRetrievalClient;
 use App\Services\Outbound\DisabledSefazOutboundInutilizationClient;
 use App\Services\Outbound\DisabledSefazOutboundMutatingProbeClient;
@@ -232,8 +247,13 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(PfxReaderInterface::class, PfxReader::class);
-        $this->app->singleton(CnpjRegistrationLookup::class, CnpjWsRegistrationLookup::class);
         $this->app->singleton(CnpjWsRegistrationLookup::class);
+        $this->app->singleton(SerproConsultaCnpjLookup::class);
+        $this->app->singleton(RegistrationLookupMerger::class);
+        $this->app->singleton(CcmeiDadosFetcher::class, NullCcmeiDadosFetcher::class);
+        $this->app->singleton(CcmeiRegistrationEnricher::class);
+        $this->app->singleton(RegistrationLookupOrchestrator::class);
+        $this->app->singleton(CnpjRegistrationLookup::class, RegistrationLookupOrchestrator::class);
 
         // MA outbound — defaults seguros (M2M/mutação desabilitados; consulta HTTP real)
         $this->app->singleton(ProtocolQueryResponseParser::class);
@@ -303,7 +323,8 @@ class AppServiceProvider extends ServiceProvider
             $driver = $app->make(CapabilityDriverResolver::class)->forCapability('autentica_procurador');
 
             return match ($driver) {
-                SerproCapabilityDriver::Disabled => $app->make(DisabledAutenticarProcuradorClient::class),
+                SerproCapabilityDriver::Disabled,
+                SerproCapabilityDriver::Fixture => $app->make(DisabledAutenticarProcuradorClient::class),
                 SerproCapabilityDriver::Real => $app->make(HttpAutenticarProcuradorClient::class),
             };
         });
@@ -311,7 +332,8 @@ class AppServiceProvider extends ServiceProvider
             $driver = $app->make(CapabilityDriverResolver::class)->forCapability('authorization');
 
             return match ($driver) {
-                SerproCapabilityDriver::Disabled => $app->make(DisabledIntegraProcuracoesClient::class),
+                SerproCapabilityDriver::Disabled,
+                SerproCapabilityDriver::Fixture => $app->make(DisabledIntegraProcuracoesClient::class),
                 SerproCapabilityDriver::Real => $app->make(HttpIntegraProcuracoesClient::class),
             };
         });
@@ -329,7 +351,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(DteIndicatorClient::class, SerproDteIndicatorClient::class);
 
         // Mutações fiscais — transporte oficial; doubles são registrados apenas em tests/Support.
-        $this->app->bind(FiscalMutationTransport::class, IntegraFiscalMutationTransport::class);
+        $this->app->bind(FiscalMutationTransport::class, MeiPortalFiscalMutationTransport::class);
+        $this->app->bind(SerproFiscalMutationTransport::class, IntegraFiscalMutationTransport::class);
 
         // Guias fiscais — o adapter SERPRO falha fechado quando a capability não for real.
         $this->app->singleton(SerproGuideEmissionClient::class);
@@ -363,6 +386,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Gate::policy(Client::class, ClientPolicy::class);
+        Gate::policy(ClientCategory::class, ClientCategoryPolicy::class);
         Gate::policy(Establishment::class, EstablishmentPolicy::class);
         Gate::policy(ClientCredential::class, ClientCredentialPolicy::class);
         Gate::policy(ClientContact::class, ClientContactPolicy::class);
@@ -417,7 +441,7 @@ class AppServiceProvider extends ServiceProvider
 
         // Integra-SN / Integra-MEI — um adapter por operação do catálogo
         foreach (SimplesMeiCatalog::all() as $def) {
-            $registry->register(new SimplesMeiAdapter(
+            $serproAdapter = new SimplesMeiAdapter(
                 definition: $def,
                 eligibility: $this->app->make(IntegraEligibilityService::class),
                 operations: $this->app->make(SerproOperationService::class),
@@ -439,7 +463,17 @@ class AppServiceProvider extends ServiceProvider
                 defisLatestDeclarationPost: $this->app->make(DefisLatestDeclarationPostConsultService::class),
                 defisSpecificDeclarationPost: $this->app->make(DefisSpecificDeclarationPostConsultService::class),
                 defisReferences: $this->app->make(DefisDeclarationReferenceStore::class),
-            ));
+            );
+
+            $registry->register(strtoupper($def->systemCode) === 'INTEGRA_MEI'
+                ? new MeiProviderRouter(
+                    definition: $def,
+                    serpro: new SerproMeiProvider($serproAdapter),
+                    portal: $this->app->make(ReceitaPortalProvider::class),
+                    policy: $this->app->make(MeiProviderPolicy::class),
+                    attempts: $this->app->make(MeiAutomationAttemptRepository::class),
+                )
+                : $serproAdapter);
         }
 
         // Integra-DCTFWeb / MIT (adapters somente-leitura + mutantes atrás de flags OFF)

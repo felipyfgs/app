@@ -4,10 +4,14 @@ namespace App\Services\Integra;
 
 use App\Contracts\SecureObjectStore;
 use App\Enums\AuthorCertificateMode;
+use App\Enums\FiscalControlModule;
+use App\Enums\FiscalProfile;
 use App\Enums\OfficeSerproOnboardingStatus;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproEnvironment;
 use App\Enums\TermoAuthorizationState;
+use App\Jobs\Fiscal\RecoverFiscalModuleJob;
+use App\Jobs\Serpro\BeginOfficeFiscalReadinessJob;
 use App\Jobs\Serpro\ProcessOfficeSerproOnboardingJob;
 use App\Jobs\Serpro\SignTermoWithManagedA1Job;
 use App\Models\Office;
@@ -75,7 +79,7 @@ final class OfficeSerproOnboardingService
             return ['state' => $state, 'enqueued' => false, 'prerequisites' => $prereq];
         }
 
-        if ($state->status === OfficeSerproOnboardingStatus::Authorized && ! $force) {
+        if (in_array($state->status, [OfficeSerproOnboardingStatus::Authorized, OfficeSerproOnboardingStatus::Ready], true) && ! $force) {
             $this->clearActionable($state);
 
             return ['state' => $state->refresh(), 'enqueued' => false, 'prerequisites' => $prereq];
@@ -84,7 +88,7 @@ final class OfficeSerproOnboardingService
         if (! $prereq['complete']) {
             $this->transition(
                 $state,
-                OfficeSerproOnboardingStatus::Incomplete,
+                OfficeSerproOnboardingStatus::Configuring,
                 lastStep: 'prerequisites',
                 actionableCode: $prereq['missing_code'],
                 actionableMessage: $prereq['missing_message'],
@@ -94,10 +98,32 @@ final class OfficeSerproOnboardingService
             return ['state' => $state->refresh(), 'enqueued' => false, 'prerequisites' => $prereq];
         }
 
+        if (FiscalProfile::configured() === FiscalProfile::Dev) {
+            $idempotencyKey = $this->buildIdempotencyKey($office, $environment, $prereq['fingerprint']);
+            $this->transition(
+                $state,
+                OfficeSerproOnboardingStatus::Ready,
+                lastStep: 'ready_fixture',
+                correlationId: $correlationId,
+                idempotencyKey: $idempotencyKey,
+                readyAt: now(),
+                authorizedAt: now(),
+                clearTechnical: true,
+                clearActionable: true,
+            );
+
+            return ['state' => $state->refresh(), 'enqueued' => false, 'prerequisites' => $prereq];
+        }
+
         if (
             in_array($state->status, [
                 OfficeSerproOnboardingStatus::Provisioning,
+                OfficeSerproOnboardingStatus::Validating,
+                OfficeSerproOnboardingStatus::Authorizing,
+                OfficeSerproOnboardingStatus::LoadingProxyPowers,
+                OfficeSerproOnboardingStatus::Syncing,
                 OfficeSerproOnboardingStatus::Authorized,
+                OfficeSerproOnboardingStatus::Ready,
             ], true)
             && ! $force
         ) {
@@ -108,19 +134,24 @@ final class OfficeSerproOnboardingService
         $idempotencyKey = $this->buildIdempotencyKey($office, $environment, $prereq['fingerprint']);
 
         if (! $force && $state->idempotency_key === $idempotencyKey
-            && $state->status === OfficeSerproOnboardingStatus::Provisioning
+            && in_array($state->status, [
+                OfficeSerproOnboardingStatus::Validating,
+                OfficeSerproOnboardingStatus::Authorizing,
+                OfficeSerproOnboardingStatus::LoadingProxyPowers,
+                OfficeSerproOnboardingStatus::Syncing,
+            ], true)
         ) {
             return ['state' => $state, 'enqueued' => false, 'prerequisites' => $prereq];
         }
 
-        // Pré-requisitos ok → Ready (auditável) e em seguida Provisioning + enqueue.
-        if ($state->status !== OfficeSerproOnboardingStatus::Ready
+        // Pré-requisitos ok → validação auditável e enqueue.
+        if ($state->status !== OfficeSerproOnboardingStatus::Validating
             || $state->idempotency_key !== $idempotencyKey
         ) {
             $this->transition(
                 $state,
-                OfficeSerproOnboardingStatus::Ready,
-                lastStep: 'ready',
+                OfficeSerproOnboardingStatus::Validating,
+                lastStep: 'validating',
                 correlationId: $correlationId,
                 idempotencyKey: $idempotencyKey,
                 readyAt: $state->ready_at ?? now(),
@@ -131,7 +162,7 @@ final class OfficeSerproOnboardingService
 
         $this->transition(
             $state,
-            OfficeSerproOnboardingStatus::Provisioning,
+            OfficeSerproOnboardingStatus::Validating,
             lastStep: 'enqueued',
             correlationId: $correlationId,
             idempotencyKey: $idempotencyKey,
@@ -176,17 +207,8 @@ final class OfficeSerproOnboardingService
             $state = $this->getOrCreateState($office, $environment);
 
             if (
-                $state->status === OfficeSerproOnboardingStatus::Authorized
+                $state->status === OfficeSerproOnboardingStatus::Ready
                 && $state->idempotency_key === $idempotencyKey
-            ) {
-                return $state;
-            }
-
-            if (
-                $state->status === OfficeSerproOnboardingStatus::Provisioning
-                && $state->idempotency_key === $idempotencyKey
-                && $state->last_step === 'token_refresh'
-                && $state->authorized_at !== null
             ) {
                 return $state;
             }
@@ -195,7 +217,7 @@ final class OfficeSerproOnboardingService
             if (! $prereq['complete']) {
                 $this->transition(
                     $state,
-                    OfficeSerproOnboardingStatus::Incomplete,
+                    OfficeSerproOnboardingStatus::Configuring,
                     lastStep: 'prerequisites',
                     actionableCode: $prereq['missing_code'],
                     actionableMessage: $prereq['missing_message'],
@@ -207,8 +229,8 @@ final class OfficeSerproOnboardingService
 
             $this->transition(
                 $state,
-                OfficeSerproOnboardingStatus::Provisioning,
-                lastStep: 'provisioning_start',
+                OfficeSerproOnboardingStatus::Authorizing,
+                lastStep: 'authorizing',
                 correlationId: $correlationId,
                 idempotencyKey: $idempotencyKey,
                 provisioningStartedAt: $state->provisioning_started_at ?? now(),
@@ -325,8 +347,8 @@ final class OfficeSerproOnboardingService
 
             $this->transition(
                 $state,
-                OfficeSerproOnboardingStatus::Authorized,
-                lastStep: 'authorized',
+                OfficeSerproOnboardingStatus::LoadingProxyPowers,
+                lastStep: 'loading_proxy_powers',
                 correlationId: $correlationId,
                 idempotencyKey: $idempotencyKey,
                 authorizedAt: now(),
@@ -334,7 +356,15 @@ final class OfficeSerproOnboardingService
                 clearActionable: true,
             );
 
-            $this->audit->record('serpro.onboarding.authorized', 'SUCCESS', $state, [
+            BeginOfficeFiscalReadinessJob::dispatch(
+                (int) $office->id,
+                $environment->value,
+                $idempotencyKey,
+                $actorUserId,
+                $correlationId,
+            );
+
+            $this->audit->record('serpro.onboarding.authorization_ready', 'SUCCESS', $state, [
                 'environment' => $environment->value,
                 'authorization_status' => $auth->status->value,
             ], $actorUserId, $office->id);
@@ -343,6 +373,57 @@ final class OfficeSerproOnboardingService
         } finally {
             $lock->release();
         }
+    }
+
+    public function finalizeReadiness(
+        Office $office,
+        SerproEnvironment $environment,
+        string $idempotencyKey,
+        ?int $actorUserId = null,
+        ?string $correlationId = null,
+        ?string $batchId = null,
+    ): OfficeSerproOnboardingState {
+        $state = $this->getOrCreateState($office, $environment);
+        if ($state->idempotency_key !== $idempotencyKey) {
+            return $state;
+        }
+
+        $this->transition(
+            $state,
+            OfficeSerproOnboardingStatus::Syncing,
+            lastStep: 'initial_collection',
+            correlationId: $correlationId,
+            clearTechnical: true,
+            clearActionable: true,
+        );
+
+        foreach (FiscalControlModule::cases() as $module) {
+            RecoverFiscalModuleJob::dispatch($module->value, (int) $office->id, (int) ($actorUserId ?? 0));
+        }
+
+        $metadata = is_array($state->metadata) ? $state->metadata : [];
+        $metadata['procuracao_batch_id'] = $batchId;
+        $metadata['initial_collection_queued_at'] = now()->toIso8601String();
+        $state->metadata = $metadata;
+        $state->save();
+
+        $this->transition(
+            $state,
+            OfficeSerproOnboardingStatus::Ready,
+            lastStep: 'ready',
+            correlationId: $correlationId,
+            authorizedAt: $state->authorized_at ?? now(),
+            clearTechnical: true,
+            clearActionable: true,
+        );
+
+        $this->audit->record('serpro.onboarding.ready', 'SUCCESS', $state, [
+            'environment' => $environment->value,
+            'procuracao_batch_id' => $batchId,
+            'initial_modules_queued' => count(FiscalControlModule::cases()),
+        ], $actorUserId, (int) $office->id);
+
+        return $state->refresh();
     }
 
     public function reactToProfileOrCredentialChange(
@@ -356,6 +437,10 @@ final class OfficeSerproOnboardingService
         if (in_array($state->status, [
             OfficeSerproOnboardingStatus::Authorized,
             OfficeSerproOnboardingStatus::Provisioning,
+            OfficeSerproOnboardingStatus::Validating,
+            OfficeSerproOnboardingStatus::Authorizing,
+            OfficeSerproOnboardingStatus::LoadingProxyPowers,
+            OfficeSerproOnboardingStatus::Syncing,
             OfficeSerproOnboardingStatus::Ready,
         ], true)) {
             $this->transition(

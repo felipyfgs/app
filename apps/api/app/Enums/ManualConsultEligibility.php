@@ -12,6 +12,7 @@ enum ManualConsultEligibility: string
     case CapabilityOff = 'capability_off';
     case TokenMissing = 'token_missing';
     case PowerMissing = 'power_missing';
+    case PowerRefreshing = 'power_refreshing';
     case AdapterMissing = 'adapter_missing';
     case MutatingBlocked = 'mutating_blocked';
 
@@ -23,6 +24,7 @@ enum ManualConsultEligibility: string
             self::CapabilityOff => 'Capability SERPRO desabilitada',
             self::TokenMissing => 'Token do procurador ausente ou expirado',
             self::PowerMissing => 'Poder e-CAC exigido ausente',
+            self::PowerRefreshing => 'Verificando procuração no e-CAC',
             self::AdapterMissing => 'Adapter de consulta não implementado',
             self::MutatingBlocked => 'Operação mutante bloqueada neste explorador',
         };

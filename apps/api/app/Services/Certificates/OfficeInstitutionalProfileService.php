@@ -4,8 +4,8 @@ namespace App\Services\Certificates;
 
 use App\Domain\Cnpj;
 use App\Enums\CredentialStatus;
+use App\Enums\FiscalProfile;
 use App\Enums\OfficeCredentialPurpose;
-use App\Enums\SerproEnvironment;
 use App\Models\Office;
 use App\Models\OfficeCredential;
 use App\Models\OfficeCredentialPurposeLink;
@@ -155,7 +155,7 @@ final class OfficeInstitutionalProfileService
         }
 
         if ($cnpjChanging) {
-            foreach (SerproEnvironment::cases() as $env) {
+            foreach ([FiscalProfile::configured()->serproEnvironment()] as $env) {
                 $this->onboarding->reactToProfileOrCredentialChange(
                     $office,
                     $env,

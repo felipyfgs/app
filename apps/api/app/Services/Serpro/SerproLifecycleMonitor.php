@@ -2,7 +2,11 @@
 
 namespace App\Services\Serpro;
 
+use App\Enums\ClientProcuracaoSyncStatus;
 use App\Enums\SerproAuthorizationStatus;
+use App\Enums\TaxProxyPowerStatus;
+use App\Models\ClientProcuracaoSnapshot;
+use App\Models\ClientProcuracaoSync;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\SerproContract;
 use App\Models\TaxProxyPower;
@@ -42,9 +46,9 @@ final class SerproLifecycleMonitor
         }
 
         try {
-            $alertDays = config('serpro.lifecycle.alert_days', [90, 60, 30, 15, 7, 1]);
+            $alertDays = config('serpro.lifecycle.alert_days', [30, 7, 1]);
             if (! is_array($alertDays)) {
-                $alertDays = [90, 60, 30, 15, 7, 1];
+                $alertDays = [30, 7, 1];
             }
             $alertDays = array_values(array_unique(array_map('intval', $alertDays)));
             sort($alertDays); // menor janela aplicável primeiro (1,7,15,30,60,90)
@@ -125,6 +129,12 @@ final class SerproLifecycleMonitor
             foreach (TaxProxyPower::query()->whereNull('closed_at')->orderBy('id')->cursor() as $power) {
                 $powers++;
                 if ($power->valid_to !== null) {
+                    if ($power->valid_to->lessThanOrEqualTo($now)
+                        && $power->status === TaxProxyPowerStatus::Active) {
+                        $power->status = TaxProxyPowerStatus::Expired;
+                        $power->last_check_result = 'EXPIRED_LOCAL';
+                        $power->save();
+                    }
                     $alerts = array_merge($alerts, $this->windowAlerts(
                         kind: 'PROXY_POWER',
                         subjectId: (int) $power->id,
@@ -138,6 +148,28 @@ final class SerproLifecycleMonitor
                         ],
                     ));
                 }
+            }
+
+            $snapshotsExpired = 0;
+            foreach (ClientProcuracaoSnapshot::query()
+                ->where('status', ClientProcuracaoSyncStatus::Authorized->value)
+                ->whereNotNull('valid_to')
+                ->where('valid_to', '<=', $now)
+                ->orderBy('id')
+                ->cursor() as $snapshot) {
+                $snapshot->status = ClientProcuracaoSyncStatus::Expired;
+                $snapshot->last_check_result = 'EXPIRED_LOCAL';
+                $snapshot->save();
+                ClientProcuracaoSync::query()
+                    ->where('office_id', $snapshot->office_id)
+                    ->where('client_id', $snapshot->client_id)
+                    ->where('status', ClientProcuracaoSyncStatus::Authorized->value)
+                    ->update([
+                        'status' => ClientProcuracaoSyncStatus::Expired->value,
+                        'last_check_result' => 'EXPIRED_LOCAL',
+                        'updated_at' => now(),
+                    ]);
+                $snapshotsExpired++;
             }
 
             foreach ($alerts as $alert) {
@@ -164,6 +196,7 @@ final class SerproLifecycleMonitor
                     'contracts' => $contracts,
                     'authorizations' => $auths,
                     'proxy_powers' => $powers,
+                    'procuracao_snapshots_expired' => $snapshotsExpired,
                 ],
                 'lock_acquired' => true,
             ];

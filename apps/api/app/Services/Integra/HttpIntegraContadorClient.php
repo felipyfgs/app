@@ -190,12 +190,18 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
 
         if ($env === SerproEnvironment::Trial) {
             $scenario = $this->trialScenario($operationKey);
-            if ($scenario !== null) {
-                $envelopeContractor = $scenario['identity'];
-                $envelopeAuthor = $scenario['identity'];
-                $envelopeContributor = $scenario['identity'];
-                $dadosString = json_encode($scenario['business_data'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            if ($scenario === null) {
+                return $this->fail(
+                    $request,
+                    422,
+                    'TRIAL_SCENARIO_UNAVAILABLE',
+                    'A operação não possui cenário oficial publicado para o gateway Trial.',
+                );
             }
+            $envelopeContractor = $scenario['identity'];
+            $envelopeAuthor = $scenario['identity'];
+            $envelopeContributor = $scenario['identity'];
+            $dadosString = json_encode($scenario['business_data'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         }
 
         $envelope = [

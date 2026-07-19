@@ -3,6 +3,8 @@
 namespace App\Services\FiscalMonitoring;
 
 use App\Enums\DctfwebCategory;
+use App\Enums\FiscalControlModule;
+use App\Enums\FiscalOperationClass;
 use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\FiscalTrigger;
@@ -19,6 +21,7 @@ use App\Models\MonitorCommercialLedgerEntry;
 use App\Models\Office;
 use App\Models\OfficeMonitorSchedulePolicy;
 use App\Models\OfficeSubscription;
+use App\Services\Fiscal\Availability\FiscalModuleAvailabilityService;
 use App\Services\Fiscal\Dctfweb\DctfwebPeriod;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPeriod;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiYear;
@@ -26,7 +29,6 @@ use App\Services\Serpro\CapabilityDriverResolver;
 use App\Services\Usage\CommercialMonitorCatalog;
 use App\Services\Usage\MonitorCommercialLedgerService;
 use App\Services\Usage\SubscriptionPeriodService;
-use App\Support\FeatureFlags;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Collection;
@@ -45,17 +47,12 @@ final class FiscalMonitoringScheduler
     public function __construct(
         private readonly MonitorCommercialLedgerService $commercialLedger,
         private readonly SubscriptionPeriodService $periods,
+        private readonly FiscalModuleAvailabilityService $availability,
     ) {}
 
     public function isCoreEnabled(): bool
     {
-        if ((bool) config('fiscal_monitoring.kill_switch', false)) {
-            return false;
-        }
-        if (FeatureFlags::isKillSwitchActive()) {
-            return false;
-        }
-        if (! FeatureFlags::isGloballyEnabled() && ! (bool) config('fiscal_monitoring.enabled', false)) {
+        if ((bool) config('fiscal.kill_switch', false) || (bool) config('fiscal_monitoring.kill_switch', false)) {
             return false;
         }
 
@@ -204,6 +201,17 @@ final class FiscalMonitoringScheduler
             foreach ($monitorKeys as $monitorKey) {
                 if ($dispatched >= $max) {
                     break;
+                }
+
+                $decision = $this->availability->resolve(
+                    FiscalControlModule::fromRuntimeKey($monitorKey),
+                    $office,
+                    FiscalOperationClass::Read,
+                );
+                if (! $decision->allowed) {
+                    $blocked++;
+
+                    continue;
                 }
 
                 $policy = OfficeMonitorSchedulePolicy::ensureDefault((int) $officeId, $monitorKey);
@@ -395,6 +403,19 @@ final class FiscalMonitoringScheduler
                     continue;
                 }
 
+                $module = $this->moduleForSchedule($schedule);
+                $office = Office::query()->find((int) $officeId);
+                if ($module !== null && ($office === null || ! $this->availability
+                    ->resolve($module, $office, FiscalOperationClass::Read)->allowed)) {
+                    $blocked++;
+                    $schedule->forceFill([
+                        'last_skip_reason' => 'MODULE_UNAVAILABLE',
+                        'next_run_at' => $this->nextRunAfter($schedule, $now),
+                    ])->save();
+
+                    continue;
+                }
+
                 $outcome = $this->claimAndEnqueue($schedule, $now);
                 if ($outcome === 'dispatched') {
                     $dispatched++;
@@ -454,6 +475,15 @@ final class FiscalMonitoringScheduler
         MonitorCommercialLedgerEntry $entry,
         CarbonImmutable $now,
     ): string {
+        $office = Office::query()->find($officeId);
+        if ($office === null || ! $this->availability->resolve(
+            FiscalControlModule::fromRuntimeKey($monitorKey),
+            $office,
+            FiscalOperationClass::Read,
+        )->allowed) {
+            return 'blocked';
+        }
+
         $systemService = match ($monitorKey) {
             'sitfis' => ['INTEGRA_SITFIS', 'SITFIS', 'MONITOR'],
             'simples_mei' => $this->simplesMeiSystemServiceForClient($officeId, $clientId),
@@ -554,6 +584,18 @@ final class FiscalMonitoringScheduler
      */
     public function claimAndEnqueue(FiscalMonitoringSchedule $schedule, CarbonImmutable $now): string
     {
+        $office = Office::query()->find((int) $schedule->office_id);
+        $module = $this->moduleForSchedule($schedule);
+        if ($module !== null && ($office === null || ! $this->availability
+            ->resolve($module, $office, FiscalOperationClass::Read)->allowed)) {
+            $schedule->forceFill([
+                'last_skip_reason' => 'MODULE_UNAVAILABLE',
+                'next_run_at' => $this->nextRunAfter($schedule, $now),
+            ])->save();
+
+            return 'blocked';
+        }
+
         $run = null;
 
         $created = DB::transaction(function () use ($schedule, $now, &$run) {
@@ -670,6 +712,16 @@ final class FiscalMonitoringScheduler
         }
 
         return $created;
+    }
+
+    private function moduleForSchedule(FiscalMonitoringSchedule $schedule): ?FiscalControlModule
+    {
+        $monitorKey = CommercialMonitorCatalog::resolveMonitorKey(
+            (string) $schedule->system_code,
+            (string) $schedule->service_code,
+        );
+
+        return $monitorKey === null ? null : FiscalControlModule::fromRuntimeKey($monitorKey);
     }
 
     /**

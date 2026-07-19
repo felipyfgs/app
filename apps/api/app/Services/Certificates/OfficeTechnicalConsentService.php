@@ -2,8 +2,8 @@
 
 namespace App\Services\Certificates;
 
+use App\Enums\FiscalProfile;
 use App\Enums\OfficeCredentialPurpose;
-use App\Enums\SerproEnvironment;
 use App\Models\Office;
 use App\Models\OfficeTechnicalConsent;
 use App\Services\Audit\AuditLogger;
@@ -112,7 +112,7 @@ final class OfficeTechnicalConsentService
         ], $actorUserId, $office->id);
 
         // Consentimento novo pode desbloquear onboarding (evaluate).
-        foreach (SerproEnvironment::cases() as $env) {
+        foreach ([FiscalProfile::configured()->serproEnvironment()] as $env) {
             $this->onboarding->evaluateAndMaybeEnqueue($office, $env, $actorUserId);
         }
 
@@ -137,7 +137,7 @@ final class OfficeTechnicalConsentService
             'version_code' => $active->version_code,
         ], $actorUserId, $office->id);
 
-        foreach (SerproEnvironment::cases() as $env) {
+        foreach ([FiscalProfile::configured()->serproEnvironment()] as $env) {
             $this->onboarding->reactToProfileOrCredentialChange(
                 $office,
                 $env,

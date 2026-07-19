@@ -9,6 +9,11 @@ namespace App\Enums;
 enum OfficeSerproOnboardingStatus: string
 {
     case Incomplete = 'incomplete';
+    case Configuring = 'configuring';
+    case Validating = 'validating';
+    case Authorizing = 'authorizing';
+    case LoadingProxyPowers = 'loading_proxy_powers';
+    case Syncing = 'syncing';
     case Ready = 'ready';
     case Provisioning = 'provisioning';
     case Authorized = 'authorized';
@@ -23,6 +28,6 @@ enum OfficeSerproOnboardingStatus: string
 
     public function allowsExternalCalls(): bool
     {
-        return $this === self::Authorized;
+        return in_array($this, [self::Authorized, self::Ready], true);
     }
 }

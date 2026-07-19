@@ -4,6 +4,7 @@ namespace App\Http\Requests\Clients;
 
 use App\Enums\OfficeRole;
 use App\Enums\RegistrationStatus;
+use App\Enums\TaxRegimeCode;
 use App\Rules\ValidCnpj;
 use App\Support\CurrentOffice;
 use Illuminate\Foundation\Http\FormRequest;
@@ -14,6 +15,16 @@ class StoreClientRequest extends FormRequest
     public function authorize(): bool
     {
         return true; // policy no controller
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if (array_key_exists('tax_regime', $this->all())) {
+            $raw = $this->input('tax_regime');
+            if ($raw === null || is_string($raw)) {
+                $this->merge(['tax_regime' => TaxRegimeCode::fromInput($raw)?->value]);
+            }
+        }
     }
 
     /**
@@ -32,7 +43,10 @@ class StoreClientRequest extends FormRequest
             'legal_nature_name' => ['nullable', 'string', 'max:255'],
             'company_size_code' => ['nullable', 'string', 'max:16'],
             'company_size_name' => ['nullable', 'string', 'max:255'],
-            'tax_regime' => ['nullable', 'string', 'max:64'],
+            'capital_social' => ['nullable', 'numeric', 'min:0'],
+            'responsible_qualification_code' => ['nullable', 'string', 'max:16'],
+            'responsible_qualification_name' => ['nullable', 'string', 'max:255'],
+            'tax_regime' => ['nullable', 'string', Rule::in(TaxRegimeCode::currentProjectionValues())],
             // vínculo matriz → filial (cadastro próprio; só o link)
             'matrix_client_id' => ['nullable', 'integer', 'min:1'],
             // primeiro estabelecimento (1:1 com o cliente)
@@ -42,11 +56,31 @@ class StoreClientRequest extends FormRequest
             'registration_status' => ['nullable', 'string', Rule::enum(RegistrationStatus::class)],
             'registration_status_at' => ['nullable', 'date'],
             'registration_status_reason' => ['nullable', 'string', 'max:255'],
+            'special_situation' => ['nullable', 'string', 'max:255'],
+            'special_situation_at' => ['nullable', 'date'],
             'activity_started_at' => ['nullable', 'date'],
             'main_cnae_code' => ['nullable', 'string', 'max:16'],
             'main_cnae_name' => ['nullable', 'string', 'max:255'],
+            'secondary_cnaes' => ['nullable', 'array', 'max:100'],
+            'secondary_cnaes.*.code' => ['required_with:secondary_cnaes', 'string', 'max:16'],
+            'secondary_cnaes.*.name' => ['nullable', 'string', 'max:255'],
+            'state_registrations' => ['nullable', 'array', 'max:50'],
+            'state_registrations.*.number' => ['required_with:state_registrations', 'string', 'max:32'],
+            'state_registrations.*.state' => ['nullable', 'string', 'size:2'],
+            'state_registrations.*.active' => ['nullable', 'boolean'],
+            'shareholders' => ['nullable', 'array', 'max:200'],
+            'shareholders.*.name' => ['required_with:shareholders', 'string', 'max:255'],
+            'shareholders.*.type' => ['nullable', 'string', 'max:64'],
+            'shareholders.*.qualification_code' => ['nullable', 'string', 'max:16'],
+            'shareholders.*.qualification_name' => ['nullable', 'string', 'max:255'],
+            'shareholders.*.entered_at' => ['nullable', 'date'],
+            'shareholders.*.document_masked' => ['nullable', 'string', 'max:32'],
             'public_email' => ['nullable', 'email', 'max:255'],
             'public_phone' => ['nullable', 'string', 'max:32'],
+            'public_phone_secondary' => ['nullable', 'string', 'max:32'],
+            'public_fax' => ['nullable', 'string', 'max:32'],
+            'simples_optant' => ['nullable', 'boolean'],
+            'mei_optant' => ['nullable', 'boolean'],
             'capture_enabled' => ['sometimes', 'boolean'],
             'address' => ['nullable', 'array'],
             'address.postal_code' => ['nullable', 'string', 'max:16'],

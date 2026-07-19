@@ -94,6 +94,11 @@ class Office extends Model
         return $this->hasMany(OfficeSerproOnboardingState::class);
     }
 
+    public function fiscalModuleControls(): HasMany
+    {
+        return $this->hasMany(FiscalModuleControl::class);
+    }
+
     public function accountActivations(): HasMany
     {
         return $this->hasMany(AccountActivation::class);

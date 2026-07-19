@@ -6716,25 +6716,25 @@
                         "field": "outorgante",
                         "description": "Número identificador de pessoa física ou jurídica do outorgante.",
                         "type": "String (11) - CPF / String (14) - CNPJ",
-                        "required": false
+                        "required": true
                     },
                     {
                         "field": "tipoOutorgante",
                         "description": "Identificador de pessoa física ou jurídica.",
                         "type": "String (1)",
-                        "required": false
+                        "required": true
                     },
                     {
                         "field": "outorgado",
                         "description": "Número identificador de pessoa física ou jurídica do procurador.",
                         "type": "String (11) - CPF / String (14) - CNPJ",
-                        "required": false
+                        "required": true
                     },
                     {
                         "field": "tipoOutorgado",
                         "description": "Identificador de pessoa física ou jurídica.",
                         "type": "String (1)",
-                        "required": false
+                        "required": true
                     }
                 ],
                 "documented": true

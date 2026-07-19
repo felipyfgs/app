@@ -25,6 +25,7 @@ final class CadastroCollapseService
         'establishments',
         'client_contacts',
         'client_custom_fields',
+        'client_category_assignments',
         'client_tax_regime_periods',
         'client_credentials',
         'document_import_batches',
@@ -308,8 +309,15 @@ final class CadastroCollapseService
 
     private function remapClientForeignKeys(int $fromClientId, int $toClientId, int $officeId): void
     {
+        $this->mergeClientCategoryAssignments($fromClientId, $toClientId, $officeId);
+
         foreach (self::CLIENT_FK_TABLES as $table) {
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'client_id')) {
+                continue;
+            }
+
+            // Pivot possui unique por cliente/categoria e já foi mesclado sem colisão.
+            if ($table === 'client_category_assignments') {
                 continue;
             }
 
@@ -343,6 +351,38 @@ final class CadastroCollapseService
                 'matrix_client_id' => $toClientId,
                 'updated_at' => now(),
             ]);
+    }
+
+    /**
+     * Mescla tags do cliente-filial no cliente-raiz sem violar o unique composto.
+     */
+    private function mergeClientCategoryAssignments(int $fromClientId, int $toClientId, int $officeId): void
+    {
+        if (! Schema::hasTable('client_category_assignments')) {
+            return;
+        }
+
+        $assignments = DB::table('client_category_assignments')
+            ->where('office_id', $officeId)
+            ->where('client_id', $fromClientId)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($assignments as $assignment) {
+            DB::table('client_category_assignments')->insertOrIgnore([
+                'office_id' => $officeId,
+                'client_id' => $toClientId,
+                'client_category_id' => $assignment->client_category_id,
+                'assigned_by' => $assignment->assigned_by,
+                'created_at' => $assignment->created_at,
+                'updated_at' => now(),
+            ]);
+        }
+
+        DB::table('client_category_assignments')
+            ->where('office_id', $officeId)
+            ->where('client_id', $fromClientId)
+            ->delete();
     }
 
     private function ensureSingleMatrix(int $clientId, int $officeId): void

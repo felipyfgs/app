@@ -5,6 +5,7 @@ namespace App\Jobs\MeiAutomation;
 use App\Enums\MeiAutomationStatus;
 use App\Services\MeiAutomation\MeiAutomationAttemptRepository;
 use App\Services\MeiAutomation\MeiAutomationSyncService;
+use App\Services\MeiAutomation\MeiDasMutationReconciler;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -28,9 +29,11 @@ final class SyncMeiAutomationAttemptJob implements ShouldQueue
     public function handle(
         MeiAutomationAttemptRepository $attempts,
         MeiAutomationSyncService $sync,
+        MeiDasMutationReconciler $mutations,
     ): void {
         $attempt = $attempts->findForOffice($this->officeId, $this->attemptId);
         $attempt = $sync->synchronize($attempt);
+        $mutations->reconcile($attempt);
         $status = $attempt->status;
         if ($status instanceof MeiAutomationStatus && $status->shouldPoll()) {
             $sync->schedule($attempt);

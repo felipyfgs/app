@@ -27,6 +27,8 @@ final class ProcuracaoLookupResult
     public function __construct(
         public readonly bool $success,
         public readonly array $powers = [],
+        /** @var list<string> */
+        public readonly array $unmappedSystems = [],
         public readonly ?string $errorCode = null,
         public readonly ?string $errorMessage = null,
         public readonly bool $simulated = false,
@@ -42,6 +44,7 @@ final class ProcuracaoLookupResult
             'success' => $this->success,
             'powers_count' => count($this->powers),
             'powers' => $this->powers,
+            'unmapped_systems_count' => count($this->unmappedSystems),
             'error_code' => $this->errorCode,
             'error_message' => $this->errorMessage,
             'simulated' => $this->simulated,

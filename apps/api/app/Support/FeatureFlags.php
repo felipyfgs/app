@@ -2,6 +2,10 @@
 
 namespace App\Support;
 
+use App\Enums\FiscalControlModule;
+use App\Enums\FiscalOperationClass;
+use App\Models\Office;
+use App\Services\Fiscal\Availability\FiscalModuleAvailabilityService;
 use InvalidArgumentException;
 
 /**
@@ -33,7 +37,7 @@ final class FeatureFlags
 
     public static function isKillSwitchActive(): bool
     {
-        return (bool) config('features.kill_switch', false);
+        return (bool) config('fiscal.kill_switch', false);
     }
 
     public static function isGloballyEnabled(): bool
@@ -42,7 +46,7 @@ final class FeatureFlags
             return false;
         }
 
-        return (bool) config('features.global_enabled', false);
+        return true;
     }
 
     /**
@@ -152,21 +156,18 @@ final class FeatureFlags
      */
     public static function isModuleEnabled(string $module, ?int $officeId = null): bool
     {
-        self::assertKnownModule($module);
-
-        if (! self::isGloballyEnabled()) {
+        if ($module === 'mutacoes') {
             return false;
         }
 
-        if (! (bool) config("features.modules.{$module}.enabled", false)) {
-            return false;
-        }
+        $canonical = FiscalControlModule::fromRuntimeKey($module);
+        $office = $officeId === null
+            ? null
+            : Office::query()->withoutGlobalScopes()->find($officeId);
 
-        if ($officeId === null) {
-            return true;
-        }
-
-        return self::isOfficeAllowedForModule($module, $officeId);
+        return app(FiscalModuleAvailabilityService::class)
+            ->resolve($canonical, $office, FiscalOperationClass::Read)
+            ->allowed;
     }
 
     /**
@@ -174,42 +175,12 @@ final class FeatureFlags
      */
     public static function isMutatingEnabled(string $module, ?int $officeId = null): bool
     {
-        self::assertKnownModule($module);
-
-        if (self::isKillSwitchActive()) {
-            return false;
-        }
-
-        if ((bool) config('features.mutating.kill_switch', false)) {
-            return false;
-        }
-
-        if (! (bool) config('features.mutating.enabled', false)) {
-            return false;
-        }
-
-        if (! self::isModuleEnabled($module, $officeId)) {
-            return false;
-        }
-
-        return (bool) config("features.modules.{$module}.mutating_enabled", false);
+        return false;
     }
 
     public static function isOfficeAllowedForModule(string $module, int $officeId): bool
     {
-        self::assertKnownModule($module);
-
-        /** @var list<int> $allowlist */
-        $allowlist = config("features.modules.{$module}.office_allowlist", []);
-        if (! is_array($allowlist)) {
-            $allowlist = [];
-        }
-
-        if ($allowlist === []) {
-            return (bool) config("features.modules.{$module}.allow_all_offices", false);
-        }
-
-        return in_array($officeId, $allowlist, true);
+        return self::isModuleEnabled($module, $officeId);
     }
 
     /**

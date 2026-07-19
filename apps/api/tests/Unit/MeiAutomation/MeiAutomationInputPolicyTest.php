@@ -8,6 +8,17 @@ use PHPUnit\Framework\TestCase;
 
 class MeiAutomationInputPolicyTest extends TestCase
 {
+    public function test_pgmei_das_preserves_valid_due_date(): void
+    {
+        $input = (new MeiAutomationInputPolicy)->sanitize('pgmei.gerardaspdf', [
+            'cnpj' => '11.222.333/0001-81',
+            'competencies' => ['2026-07'],
+            'due_date' => '2026-07-20',
+        ]);
+
+        self::assertSame('2026-07-20', $input['due_date']);
+    }
+
     public function test_normalizes_only_fields_allowed_for_operation(): void
     {
         $input = (new MeiAutomationInputPolicy)->sanitize('pgmei.dividaativa', [

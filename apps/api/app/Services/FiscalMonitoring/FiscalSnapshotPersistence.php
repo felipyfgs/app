@@ -54,7 +54,9 @@ final class FiscalSnapshotPersistence
         // Fase 1 (transação): evidência + snapshot + status da run
         $phase1 = DB::transaction(function () use ($payload, $run, $hasEvidence, $guarded) {
             $locked = FiscalMonitoringRun::query()
+                ->withoutGlobalScopes()
                 ->whereKey($run->id)
+                ->where('office_id', $run->office_id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
@@ -180,6 +182,7 @@ final class FiscalSnapshotPersistence
         // não podem deixar o cliente sem snapshot is_current válido.
         if ($isCurrentEligible) {
             FiscalSnapshot::query()
+                ->withoutGlobalScopes()
                 ->where('office_id', $run->office_id)
                 ->where('client_id', $run->client_id)
                 ->where('system_code', $run->system_code)
@@ -194,6 +197,7 @@ final class FiscalSnapshotPersistence
         }
 
         $version = (int) FiscalSnapshot::query()
+            ->withoutGlobalScopes()
             ->where('office_id', $run->office_id)
             ->where('client_id', $run->client_id)
             ->where('system_code', $run->system_code)
@@ -205,7 +209,7 @@ final class FiscalSnapshotPersistence
             )
             ->max('version');
 
-        return FiscalSnapshot::query()->create([
+        return FiscalSnapshot::query()->withoutGlobalScopes()->create([
             'office_id' => $run->office_id,
             'run_id' => $run->id,
             'client_id' => $run->client_id,

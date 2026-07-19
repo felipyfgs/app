@@ -2,6 +2,7 @@
 
 namespace App\Services\Clients;
 
+use App\Contracts\CnpjRegistrationLookup;
 use App\Contracts\SecureObjectStore;
 use App\Domain\Cnpj;
 use App\Enums\RegistrationSource;
@@ -28,7 +29,7 @@ use Throwable;
 final class CreateClientWithEstablishment
 {
     public function __construct(
-        private readonly CnpjWsRegistrationLookup $lookup,
+        private readonly CnpjRegistrationLookup $lookup,
         private readonly AuditLogger $audit,
         private readonly SecureObjectStore $secureObjectStore,
         private readonly CommercialEntitlementService $commercialEntitlements,
@@ -74,7 +75,11 @@ final class CreateClientWithEstablishment
                 }
 
                 $cached = $this->lookup->getCached($cnpj->value());
-                $source = $cached !== null ? RegistrationSource::CnpjWs : RegistrationSource::Manual;
+                $source = match ($cached?->source) {
+                    SerproConsultaCnpjLookup::SOURCE => RegistrationSource::SerproConsulta,
+                    CnpjWsRegistrationLookup::SOURCE => RegistrationSource::CnpjWs,
+                    default => $cached !== null ? RegistrationSource::CnpjWs : RegistrationSource::Manual,
+                };
                 $refreshedAt = null;
                 if ($cached?->sourceUpdatedAt !== null) {
                     try {
@@ -118,6 +123,11 @@ final class CreateClientWithEstablishment
                         'legal_nature_name' => $payload['legal_nature_name'] ?? null,
                         'company_size_code' => $payload['company_size_code'] ?? null,
                         'company_size_name' => $payload['company_size_name'] ?? null,
+                        'capital_social' => $payload['capital_social'] ?? $cached?->client->capitalSocial,
+                        'responsible_qualification_code' => $payload['responsible_qualification_code']
+                            ?? $cached?->client->responsibleQualificationCode,
+                        'responsible_qualification_name' => $payload['responsible_qualification_name']
+                            ?? $cached?->client->responsibleQualificationName,
                         'tax_regime' => $payload['tax_regime'] ?? null,
                         'notes' => $payload['notes'] ?? null,
                         'is_active' => $payload['is_active'] ?? true,
@@ -141,6 +151,19 @@ final class CreateClientWithEstablishment
 
                 $address = is_array($payload['address'] ?? null) ? $payload['address'] : [];
 
+                $secondaryCnaes = $payload['secondary_cnaes']
+                    ?? ($cached !== null
+                        ? array_map(static fn ($item) => $item->toArray(), $cached->establishment->secondaryCnaes)
+                        : null);
+                $stateRegistrations = $payload['state_registrations']
+                    ?? ($cached !== null
+                        ? array_map(static fn ($item) => $item->toArray(), $cached->establishment->stateRegistrations)
+                        : null);
+                $shareholders = $payload['shareholders']
+                    ?? ($cached !== null
+                        ? array_map(static fn ($item) => $item->toArray(), $cached->establishment->shareholders)
+                        : null);
+
                 $establishment = Establishment::query()->create([
                     'office_id' => $officeId,
                     'client_id' => $client->id,
@@ -151,9 +174,14 @@ final class CreateClientWithEstablishment
                     'registration_status' => $status,
                     'registration_status_at' => $payload['registration_status_at'] ?? null,
                     'registration_status_reason' => $payload['registration_status_reason'] ?? null,
+                    'special_situation' => $payload['special_situation'] ?? $cached?->establishment->specialSituation,
+                    'special_situation_at' => $payload['special_situation_at'] ?? $cached?->establishment->specialSituationAt,
                     'activity_started_at' => $payload['activity_started_at'] ?? null,
                     'main_cnae_code' => $payload['main_cnae_code'] ?? null,
                     'main_cnae_name' => $payload['main_cnae_name'] ?? null,
+                    'secondary_cnaes' => is_array($secondaryCnaes) ? $secondaryCnaes : null,
+                    'state_registrations' => is_array($stateRegistrations) ? $stateRegistrations : null,
+                    'shareholders' => is_array($shareholders) ? $shareholders : null,
                     'address_postal_code' => $address['postal_code'] ?? $payload['address_postal_code'] ?? null,
                     'address_street_type' => $address['street_type'] ?? $payload['address_street_type'] ?? null,
                     'address_street' => $address['street'] ?? $payload['address_street'] ?? null,
@@ -166,6 +194,15 @@ final class CreateClientWithEstablishment
                     'address_country' => $address['country'] ?? $payload['address_country'] ?? 'BR',
                     'public_email' => $payload['public_email'] ?? null,
                     'public_phone' => $payload['public_phone'] ?? null,
+                    'public_phone_secondary' => $payload['public_phone_secondary']
+                        ?? $cached?->establishment->publicPhoneSecondary,
+                    'public_fax' => $payload['public_fax'] ?? $cached?->establishment->publicFax,
+                    'simples_optant' => array_key_exists('simples_optant', $payload)
+                        ? $payload['simples_optant']
+                        : $cached?->establishment->simplesOptant,
+                    'mei_optant' => array_key_exists('mei_optant', $payload)
+                        ? $payload['mei_optant']
+                        : $cached?->establishment->meiOptant,
                     'capture_enabled' => $captureEnabled,
                     'registration_source' => $source,
                     'registration_refreshed_at' => $refreshedAt,

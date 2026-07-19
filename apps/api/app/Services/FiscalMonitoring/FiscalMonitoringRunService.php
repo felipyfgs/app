@@ -6,6 +6,7 @@ use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
 use App\DTO\Fiscal\FiscalPersistPayload;
 use App\Enums\FiscalCoverage;
+use App\Enums\FiscalModuleAvailabilityState;
 use App\Enums\FiscalMutability;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalRunStatus;
@@ -20,6 +21,9 @@ use App\Models\FiscalMonitoringSchedule;
 use App\Models\MonitorCommercialLedgerEntry;
 use App\Models\Office;
 use App\Services\Audit\AuditLogger;
+use App\Services\Fiscal\Availability\FiscalModuleAvailabilityService;
+use App\Services\Fiscal\Availability\FiscalModuleControlService;
+use App\Services\Fiscal\Availability\FiscalOperationClassifier;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPostConsultService;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdRbt12Service;
 use App\Services\Operations\OperationsMetrics;
@@ -27,7 +31,6 @@ use App\Services\Operations\StructuredLogger;
 use App\Services\Platform\OfficeSubscriptionGate;
 use App\Services\Usage\CommercialMonitorCatalog;
 use App\Services\Usage\MonitorCommercialLedgerService;
-use App\Support\FeatureFlags;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
@@ -50,6 +53,8 @@ final class FiscalMonitoringRunService
         private readonly MonitorCommercialLedgerService $commercialLedger,
         private readonly PgdasdPostConsultService $pgdasdPostConsult,
         private readonly PgdasdRbt12Service $pgdasdRbt12,
+        private readonly FiscalModuleAvailabilityService $availability,
+        private readonly FiscalModuleControlService $moduleControls,
     ) {}
 
     /**
@@ -242,42 +247,54 @@ final class FiscalMonitoringRunService
 
             $adapter = $this->registry->resolve($request);
 
-            // Mutações desabilitadas por padrão
-            if ($adapter->mutability()->isMutating() && ! (bool) config('fiscal_monitoring.mutating_enabled', false)) {
+            $module = $adapter->moduleKey();
+            $operationClass = FiscalOperationClassifier::forMonitoring(
+                $adapter->mutability(),
+                (string) $run->system_code,
+                (string) $run->service_code,
+                (string) $run->operation_code,
+            );
+            $decision = $module === null
+                ? null
+                : $this->availability->resolve($module, $office, $operationClass);
+
+            if ($decision !== null && ! $decision->allowed) {
+                if (in_array($decision->state, [
+                    FiscalModuleAvailabilityState::GloballyRestricted,
+                    FiscalModuleAvailabilityState::OfficeRestricted,
+                ], true)) {
+                    $this->moduleControls->recordBlockedJob(
+                        $decision->module,
+                        $office,
+                        $decision->reasonCode ?? 'MODULE_RESTRICTED',
+                        (int) $run->id,
+                    );
+                }
                 $result = FiscalAdapterResult::blocked(
-                    'Operações mutantes desabilitadas no núcleo fiscal.',
-                    'MUTATING_DISABLED',
+                    $decision->reason ?? 'Operação fiscal indisponível.',
+                    $decision->reasonCode ?? 'MODULE_UNAVAILABLE',
                 );
             } else {
-                $module = $adapter->moduleKey();
-                if ($module !== null && ! FeatureFlags::isModuleEnabled($module, $office->id)
-                    && ! (bool) config('fiscal_monitoring.enabled', false)) {
+                // Franquia comercial: débito só no primeiro despacho remoto real.
+                $commercialBlock = $this->authorizeCommercialBeforeRemote(
+                    $office,
+                    $client,
+                    $run,
+                    $module,
+                );
+                if ($commercialBlock !== null) {
                     $result = FiscalAdapterResult::blocked(
-                        "Módulo {$module} desabilitado.",
-                        'FEATURE_DISABLED',
+                        $commercialBlock['message'],
+                        $commercialBlock['code'],
                     );
                 } else {
-                    // Franquia comercial: débito só no primeiro despacho remoto real.
-                    $commercialBlock = $this->authorizeCommercialBeforeRemote(
-                        $office,
-                        $client,
-                        $run,
-                        $module,
-                    );
-                    if ($commercialBlock !== null) {
-                        $result = FiscalAdapterResult::blocked(
-                            $commercialBlock['message'],
-                            $commercialBlock['code'],
+                    $result = $adapter->execute($request);
+                    if ($transientContext !== [] && $result->shouldRequeue) {
+                        $result = FiscalAdapterResult::failed(
+                            'A solicitação manual não pode ser repetida automaticamente; informe o dado novamente.',
+                            'EPHEMERAL_CONTEXT_RETRY_FORBIDDEN',
+                            $result->coverage,
                         );
-                    } else {
-                        $result = $adapter->execute($request);
-                        if ($transientContext !== [] && $result->shouldRequeue) {
-                            $result = FiscalAdapterResult::failed(
-                                'A solicitação manual não pode ser repetida automaticamente; informe o dado novamente.',
-                                'EPHEMERAL_CONTEXT_RETRY_FORBIDDEN',
-                                $result->coverage,
-                            );
-                        }
                     }
                 }
             }
@@ -433,12 +450,8 @@ final class FiscalMonitoringRunService
      */
     private function preflightBlockReason(Office $office, Client $client, FiscalMonitoringRun $run): ?array
     {
-        if ((bool) config('fiscal_monitoring.kill_switch', false) || FeatureFlags::isKillSwitchActive()) {
+        if ((bool) config('fiscal.kill_switch', false) || (bool) config('fiscal_monitoring.kill_switch', false)) {
             return ['code' => 'KILL_SWITCH', 'message' => 'Kill switch ativo.'];
-        }
-
-        if (! FeatureFlags::isGloballyEnabled() && ! (bool) config('fiscal_monitoring.enabled', false)) {
-            return ['code' => 'FEATURE_DISABLED', 'message' => 'Monitoramento fiscal desabilitado.'];
         }
 
         if (! $this->subscriptionGate->allowsExternalCalls($office)) {

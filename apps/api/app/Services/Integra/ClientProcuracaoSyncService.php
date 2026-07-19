@@ -105,7 +105,7 @@ final class ClientProcuracaoSyncService
                     $allowBillableLookup,
                 );
             } catch (RuntimeException $e) {
-                $snapshot->status = ClientProcuracaoSyncStatus::Unverified;
+                $snapshot->status = ClientProcuracaoSyncStatus::Failed;
                 $snapshot->last_check_result = 'SYNC_FAILED';
                 $snapshot->last_verified_at = now();
                 $snapshot->metadata = [
@@ -139,6 +139,12 @@ final class ClientProcuracaoSyncService
         ?string $correlationId = null,
         bool $automatic = false,
     ): void {
+        $snapshot = $this->getOrCreateSnapshot($office, $client, $environment);
+        $snapshot->forceFill([
+            'status' => ClientProcuracaoSyncStatus::Verifying,
+            'last_check_result' => 'QUEUED',
+        ])->save();
+
         SyncClientProcuracaoJob::dispatch(
             officeId: (int) $office->id,
             clientId: (int) $client->id,
@@ -147,6 +153,64 @@ final class ClientProcuracaoSyncService
             correlationId: $correlationId,
             automatic: $automatic,
         );
+    }
+
+    /**
+     * @return array{fresh: bool, code: string, snapshot: ?ClientProcuracaoSnapshot}
+     */
+    public function freshness(
+        Office $office,
+        Client $client,
+        SerproEnvironment $environment,
+    ): array {
+        if ((int) $client->office_id !== (int) $office->id) {
+            throw new RuntimeException('Cliente não pertence ao escritório.');
+        }
+
+        $snapshot = ClientProcuracaoSnapshot::query()
+            ->where('office_id', $office->id)
+            ->where('client_id', $client->id)
+            ->where('environment', $environment->value)
+            ->first();
+        if ($snapshot === null || $snapshot->last_verified_at === null) {
+            return ['fresh' => false, 'code' => 'SNAPSHOT_MISSING', 'snapshot' => $snapshot];
+        }
+
+        $days = max(1, (int) config('fiscal.procuracao.freshness_days', 7));
+        $terminalEvidence = in_array($snapshot->status, [
+            ClientProcuracaoSyncStatus::Authorized,
+            ClientProcuracaoSyncStatus::Missing,
+            ClientProcuracaoSyncStatus::Expired,
+        ], true);
+        $fresh = $terminalEvidence && $snapshot->last_verified_at->greaterThan(now()->subDays($days));
+
+        return [
+            'fresh' => $fresh,
+            'code' => $fresh ? 'SNAPSHOT_FRESH' : 'SNAPSHOT_STALE',
+            'snapshot' => $snapshot,
+        ];
+    }
+
+    /**
+     * Agenda atualização somente quando ausente/antiga; nunca duplica trabalho fresh.
+     *
+     * @return array{queued: bool, code: string, snapshot: ?ClientProcuracaoSnapshot}
+     */
+    public function enqueueRefreshIfNeeded(
+        Office $office,
+        Client $client,
+        SerproEnvironment $environment,
+        ?int $actorUserId = null,
+        ?string $correlationId = null,
+    ): array {
+        $freshness = $this->freshness($office, $client, $environment);
+        if ($freshness['fresh']) {
+            return ['queued' => false, 'code' => $freshness['code'], 'snapshot' => $freshness['snapshot']];
+        }
+
+        $this->enqueueSync($office, $client, $environment, $actorUserId, $correlationId, automatic: true);
+
+        return ['queued' => true, 'code' => $freshness['code'], 'snapshot' => $freshness['snapshot']];
     }
 
     /**

@@ -9,8 +9,8 @@ final class MeiAutomationInputPolicy
     /** @var array<string, list<string>> */
     private const ALLOWED_FIELDS = [
         'fixture.health' => [],
-        'pgmei.gerardaspdf' => ['cnpj', 'competencies'],
-        'pgmei.gerardascodbarra' => ['cnpj', 'competencies'],
+        'pgmei.gerardaspdf' => ['cnpj', 'competencies', 'due_date'],
+        'pgmei.gerardascodbarra' => ['cnpj', 'competencies', 'due_date'],
         'pgmei.atubeneficio' => ['cnpj', 'benefit_code', 'start_competence', 'end_competence', 'confirmation_ref'],
         'pgmei.dividaativa' => ['cnpj', 'calendar_year'],
         'ccmei.emitirccmei' => ['cnpj'],
@@ -24,7 +24,7 @@ final class MeiAutomationInputPolicy
             'has_employee',
             'confirmation_ref',
         ],
-        'dasnsimei.consultimadecrec' => ['cnpj', 'calendar_year'],
+        'dasnsimei.consultimadecrec' => ['cnpj', 'calendar_year', 'include_full_receipt'],
         'dasnsimei.gerardasexcesso' => ['cnpj', 'calendar_year', 'excess_amount', 'due_date'],
     ];
 
@@ -64,7 +64,7 @@ final class MeiAutomationInputPolicy
             'competencies' => $this->competencies($value),
             'start_competence', 'end_competence' => $this->competence($value),
             'due_date' => $this->date($value),
-            'has_employee' => $this->boolean($value, $field),
+            'has_employee', 'include_full_receipt' => $this->boolean($value, $field),
             'commerce_revenue', 'service_revenue', 'excess_amount' => $this->decimal($value, $field),
             default => $this->shortString($value, $field),
         };

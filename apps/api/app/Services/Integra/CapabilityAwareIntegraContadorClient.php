@@ -18,6 +18,7 @@ final class CapabilityAwareIntegraContadorClient implements IntegraContadorClien
 {
     public function __construct(
         private readonly CapabilityDriverResolver $drivers,
+        private readonly FixtureIntegraContadorClient $fixture,
         private readonly HttpIntegraContadorClient $real,
     ) {}
 
@@ -39,6 +40,7 @@ final class CapabilityAwareIntegraContadorClient implements IntegraContadorClien
                 requestTag: $request->resolvedRequestTag(),
                 sourceProvenance: FiscalSourceProvenance::Unverified->value,
             ),
+            SerproCapabilityDriver::Fixture => $this->fixture->execute($request),
             SerproCapabilityDriver::Real => $this->real->execute($request),
         };
     }

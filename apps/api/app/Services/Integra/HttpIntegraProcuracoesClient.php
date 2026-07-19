@@ -21,19 +21,6 @@ final class HttpIntegraProcuracoesClient implements IntegraProcuracoesClient
     public const OPERATION_KEY = 'procuracoes.obter';
 
     /**
-     * Nomes oficiais da coluna "Serviço no e-CAC" → poder(es) do hub.
-     * "TODOS" é resolvido dinamicamente via power-matrix (ProxyPowerMatrixService).
-     * Texto desconhecido nunca vira ACTIVE.
-     *
-     * @var array<string, list<array{power_code: string, system_code: string, service_code: ?string}>>
-     */
-    private const NAMED_SYSTEM_POWER_MAP = [
-        'PGDAS-D - A PARTIR DE 01/2018' => [
-            ['power_code' => '00146', 'system_code' => 'PGDASD', 'service_code' => null],
-        ],
-    ];
-
-    /**
      * Resolve o executor somente no momento da chamada.
      *
      * A resolução eager cria um ciclo quando authorization=real:
@@ -110,7 +97,8 @@ final class HttpIntegraProcuracoesClient implements IntegraProcuracoesClient
             );
         }
 
-        $powers = $this->mapPowers($response->dados);
+        $mapped = $this->mapPowers($response->dados);
+        $powers = $mapped['powers'];
         if ($request->powerCode !== null && trim($request->powerCode) !== '') {
             $requestedPower = strtoupper(trim($request->powerCode));
             $powers = array_values(array_filter(
@@ -122,6 +110,7 @@ final class HttpIntegraProcuracoesClient implements IntegraProcuracoesClient
         return new ProcuracaoLookupResult(
             success: true,
             powers: $powers,
+            unmappedSystems: $mapped['unmapped_systems'],
             simulated: $response->simulated,
             evidenceRef: $response->requestTag ?? ('PROCURACAO-'.$request->officeId),
         );
@@ -146,20 +135,21 @@ final class HttpIntegraProcuracoesClient implements IntegraProcuracoesClient
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * @return array{powers: list<array<string, mixed>>, unmapped_systems: list<string>}
      */
     private function mapPowers(mixed $dados): array
     {
         if (! is_array($dados)) {
-            return [];
+            return ['powers' => [], 'unmapped_systems' => []];
         }
 
         $rows = $dados['procuracoes'] ?? $dados;
         if (! is_array($rows) || ! array_is_list($rows)) {
-            return [];
+            return ['powers' => [], 'unmapped_systems' => []];
         }
 
         $out = [];
+        $unmapped = [];
         foreach ($rows as $row) {
             if (! is_array($row)) {
                 continue;
@@ -186,6 +176,9 @@ final class HttpIntegraProcuracoesClient implements IntegraProcuracoesClient
 
                 $normalizedSystem = $this->normalizeSystemName($system);
                 $grants = $this->grantsForSystemName($normalizedSystem);
+                if ($grants === []) {
+                    $unmapped[$normalizedSystem] = true;
+                }
                 foreach ($grants as $mapped) {
                     $powerCode = $mapped['power_code'];
                     $current = $out[$powerCode] ?? null;
@@ -211,7 +204,10 @@ final class HttpIntegraProcuracoesClient implements IntegraProcuracoesClient
             }
         }
 
-        return array_values($out);
+        return [
+            'powers' => array_values($out),
+            'unmapped_systems' => array_keys($unmapped),
+        ];
     }
 
     private function parseExpiration(mixed $value): ?CarbonImmutable
@@ -245,11 +241,6 @@ final class HttpIntegraProcuracoesClient implements IntegraProcuracoesClient
      */
     private function grantsForSystemName(string $normalizedSystem): array
     {
-        if ($normalizedSystem === 'TODOS') {
-            // União PRODUCTION da matriz versionada — evita hardcode e colapso em 00146.
-            return app(ProxyPowerMatrixService::class)->hubTodosPowerGrants();
-        }
-
-        return self::NAMED_SYSTEM_POWER_MAP[$normalizedSystem] ?? [];
+        return app(ProxyPowerMatrixService::class)->grantsForEcacSystemName($normalizedSystem);
     }
 }

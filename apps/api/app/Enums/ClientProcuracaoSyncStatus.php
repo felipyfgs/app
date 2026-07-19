@@ -12,6 +12,8 @@ enum ClientProcuracaoSyncStatus: string
     case Missing = 'missing';
     case Expired = 'expired';
     case Unverified = 'unverified';
+    case Verifying = 'verifying';
+    case Failed = 'failed';
 
     public function isUsable(): bool
     {

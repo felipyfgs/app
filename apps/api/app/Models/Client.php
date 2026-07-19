@@ -3,13 +3,17 @@
 namespace App\Models;
 
 use App\Enums\CredentialStatus;
+use App\Enums\FiscalProfile;
+use App\Enums\OfficeSerproOnboardingStatus;
 use App\Enums\RegistrationSource;
+use App\Jobs\Serpro\SyncClientProcuracaoJob;
 use App\Models\Concerns\BelongsToOffice;
 use Database\Factories\ClientFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -25,7 +29,11 @@ use Illuminate\Support\Facades\DB;
     'legal_nature_name',
     'company_size_code',
     'company_size_name',
+    'capital_social',
+    'responsible_qualification_code',
+    'responsible_qualification_name',
     'tax_regime',
+    'work_department_id',
     'notes',
     'is_active',
     'inactive_reason',
@@ -39,6 +47,39 @@ class Client extends Model
 
     protected static function booted(): void
     {
+        static::created(function (Client $client): void {
+            if (! FiscalProfile::configured()->usesNetwork()) {
+                return;
+            }
+
+            $state = OfficeSerproOnboardingState::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $client->office_id)
+                ->whereIn('status', [
+                    OfficeSerproOnboardingStatus::Ready->value,
+                    OfficeSerproOnboardingStatus::Authorized->value,
+                ])
+                ->orderByDesc('id')
+                ->first();
+            if ($state === null || ! $client->is_active) {
+                return;
+            }
+
+            // afterCommit: CreateClientWithEstablishment (e afins) criam o cliente
+            // dentro de DB::transaction — evita job contra registro ainda não commitado/revertido.
+            $officeId = (int) $client->office_id;
+            $clientId = (int) $client->id;
+            $environment = $state->environment->value;
+            DB::afterCommit(static function () use ($officeId, $clientId, $environment): void {
+                SyncClientProcuracaoJob::dispatch(
+                    $officeId,
+                    $clientId,
+                    $environment,
+                    automatic: false,
+                );
+            });
+        });
+
         // Evidência fiscal/financeira: exclusão física bloqueada (retenção explícita).
         static::forceDeleting(function (Client $client): void {
             // Sem depender do global scope da request (fail-closed / sem CurrentOffice).
@@ -82,6 +123,7 @@ class Client extends Model
     {
         return [
             'is_active' => 'boolean',
+            'capital_social' => 'decimal:2',
             'registration_source' => RegistrationSource::class,
             'registration_refreshed_at' => 'datetime',
         ];
@@ -90,6 +132,11 @@ class Client extends Model
     public function establishments(): HasMany
     {
         return $this->hasMany(Establishment::class);
+    }
+
+    public function workDepartment(): BelongsTo
+    {
+        return $this->belongsTo(WorkDepartment::class);
     }
 
     /** Matriz à qual esta filial está vinculada (null se for raiz/matriz). */
@@ -127,6 +174,14 @@ class Client extends Model
     public function customFields(): HasMany
     {
         return $this->hasMany(ClientCustomField::class);
+    }
+
+    /** Categorias livres do escritório usadas para organização da carteira. */
+    public function categories(): BelongsToMany
+    {
+        return $this->belongsToMany(ClientCategory::class, 'client_category_assignments')
+            ->withPivot(['office_id', 'assigned_by'])
+            ->withTimestamps();
     }
 
     public function primaryContact(): HasOne

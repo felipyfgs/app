@@ -10,6 +10,7 @@ enum FiscalSourceProvenance: string
 {
     case SerproTrial = 'SERPRO_TRIAL';
     case SerproReal = 'SERPRO_REAL';
+    case Fixture = 'FIXTURE';
     case ReceitaPortal = 'RECEITA_PORTAL';
     case Unverified = 'UNVERIFIED';
 
@@ -17,7 +18,7 @@ enum FiscalSourceProvenance: string
     {
         return match ($this) {
             self::SerproReal, self::ReceitaPortal => true,
-            self::SerproTrial, self::Unverified => false,
+            self::SerproTrial, self::Fixture, self::Unverified => false,
         };
     }
 

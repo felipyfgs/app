@@ -2,7 +2,7 @@
 
 namespace App\Services\Fiscal\Mutations;
 
-use App\Contracts\FiscalMutationTransport;
+use App\Contracts\SerproFiscalMutationTransport;
 use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
 use App\DTO\Serpro\MutationAuthorization;
@@ -13,7 +13,7 @@ use App\Services\Serpro\SerproOperationService;
  * Transporte mutante via executor central.
  * Nesta change, mutações permanecem bloqueadas por MutationAuthorization tipada.
  */
-final class IntegraFiscalMutationTransport implements FiscalMutationTransport
+final class IntegraFiscalMutationTransport implements SerproFiscalMutationTransport
 {
     public function __construct(
         private readonly SerproOperationService $operations,

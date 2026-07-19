@@ -54,7 +54,8 @@ final class MeiAutomationArtifactIngestor
         $contentType = strtolower(trim(explode(';', (string) $response->header('Content-Type'))[0]));
         if ($contentType !== $artifact['content_type']
             || strlen($content) !== $artifact['byte_size']
-            || ! hash_equals($artifact['sha256'], hash('sha256', $content))) {
+            || ! hash_equals($artifact['sha256'], hash('sha256', $content))
+            || ! $this->validContent($contentType, $content)) {
             return $this->attempts->markArtifactFailure(
                 $attempt,
                 'ARTIFACT_VALIDATION_FAILED',
@@ -82,6 +83,21 @@ final class MeiAutomationArtifactIngestor
             $this->objects->delete($objectId);
             throw $error;
         }
+    }
+
+    private function validContent(string $contentType, string $content): bool
+    {
+        if ($contentType === 'application/pdf') {
+            return str_starts_with($content, '%PDF-')
+                && str_contains(substr($content, -1024), '%%EOF');
+        }
+        if ($contentType === 'text/plain') {
+            $normalized = preg_replace('/\D/', '', $content) ?? '';
+
+            return in_array(strlen($normalized), [44, 47, 48], true);
+        }
+
+        return true;
     }
 
     /** @param array<string, mixed> $descriptor

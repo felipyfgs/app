@@ -8,6 +8,7 @@ use App\Models\Office;
 use App\Services\Audit\AuditLogger;
 use App\Services\Integra\ClientProcuracaoAutoSyncPolicy;
 use App\Services\Integra\ClientProcuracaoSyncService;
+use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -21,7 +22,7 @@ use Throwable;
  */
 final class SyncClientProcuracaoJob implements ShouldBeUnique, ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Batchable, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
 
@@ -48,6 +49,10 @@ final class SyncClientProcuracaoJob implements ShouldBeUnique, ShouldQueue
         AuditLogger $audit,
         ClientProcuracaoAutoSyncPolicy $automaticPolicy,
     ): void {
+        if ($this->batch()?->cancelled()) {
+            return;
+        }
+
         $office = Office::query()->findOrFail($this->officeId);
         $client = Client::query()
             ->where('office_id', $this->officeId)

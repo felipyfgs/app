@@ -11,16 +11,22 @@ use App\Enums\FiscalMutability;
 use App\Enums\MeiProvider;
 use App\Services\Fiscal\SimplesMei\SimplesMeiCatalog;
 use App\Services\MeiAutomation\Providers\MeiOperationProvider;
-use App\Services\MeiAutomation\Providers\ReceitaPortalProvider;
-use App\Services\MeiAutomation\Providers\SerproMeiProvider;
 use App\Services\Serpro\Catalog\OperationKeyMap;
 
 final readonly class MeiProviderRouter implements FiscalSourceAdapter
 {
+    /** @var list<string> */
+    private const FALLBACK_REASONS = [
+        'PORTAL_UNAVAILABLE',
+        'PORTAL_DRIFT',
+        'CAPTCHA_EXHAUSTED',
+        'PORTAL_CNPJ_FORMAT_UNSUPPORTED',
+    ];
+
     public function __construct(
         private SimplesMeiOperationDef $definition,
-        private SerproMeiProvider $serpro,
-        private ReceitaPortalProvider $portal,
+        private MeiOperationProvider $serpro,
+        private MeiOperationProvider $portal,
         private MeiProviderPolicy $policy,
         private MeiAutomationAttemptRepository $attempts,
     ) {}
@@ -75,7 +81,9 @@ final readonly class MeiProviderRouter implements FiscalSourceAdapter
         foreach ($providers as $index => $providerName) {
             $outcome = $this->provider($providerName)->execute($request, $operationKey);
             $hasNext = array_key_exists($index + 1, $providers);
-            if (! $hasNext || ! $outcome->fallbackEligible || $outcome->submitted) {
+            $classified = $outcome->fallbackReason !== null
+                && in_array($outcome->fallbackReason, self::FALLBACK_REASONS, true);
+            if (! $hasNext || ! $outcome->fallbackEligible || ! $classified || $outcome->submitted) {
                 return $outcome->result;
             }
             if ($outcome->attempt !== null && $outcome->fallbackReason !== null) {

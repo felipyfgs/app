@@ -32,8 +32,15 @@ final class FiscalMutationCohort
         }
 
         $key = self::operationKey($solution, $service, $operation);
-        /** @var array<string, mixed>|null $cfg */
-        $cfg = config("fiscal_mutations.operations.{$key}");
+        /**
+         * As chaves do catálogo contêm pontos (ex.: INTEGRA_MEI.PGMEI.GERAR_DAS).
+         * O helper config() interpreta pontos como separadores de caminho, portanto
+         * precisamos buscar a chave literal no mapa de operações.
+         *
+         * @var array<string, mixed> $operations
+         */
+        $operations = (array) config('fiscal_mutations.operations', []);
+        $cfg = $operations[$key] ?? null;
 
         if (! is_array($cfg)) {
             // Operação sem coorte explícita permanece bloqueada

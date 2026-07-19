@@ -16,6 +16,7 @@ final class MeiAutomationAttemptRepository
 {
     public function __construct(
         private readonly MeiAutomationMetadataSanitizer $sanitizer,
+        private readonly MeiPortalResultValidator $results,
     ) {}
 
     /** @param array<string, mixed> $attributes */
@@ -76,6 +77,19 @@ final class MeiAutomationAttemptRepository
         $provider = $attempt->provider;
         $submitted = ($job->error['submitted'] ?? false) === true
             || ($job->result['submitted'] ?? false) === true;
+        $result = $this->results->validate((string) $attempt->operation_key, $job->result);
+        $safeResultMetadata = is_array($result) ? array_filter([
+            'coverage' => $result['coverage'] ?? null,
+            'parser_version' => $result['parser_version'] ?? null,
+            'portal_version' => $result['portal_version'] ?? null,
+        ], static fn (mixed $value): bool => $value !== null) : [];
+        $safeMetadata = $this->sanitizer->sanitize([
+            ...(array) ($attempt->safe_metadata ?? []),
+            ...$metadata,
+            ...$safeResultMetadata,
+            'action_type' => $job->actionType,
+            'artifact_count' => count($job->artifacts),
+        ]);
 
         $attempt->forceFill([
             'external_job_id' => $job->id,
@@ -88,11 +102,14 @@ final class MeiAutomationAttemptRepository
                 : ($provider === MeiProvider::Serpro ? FiscalVerificationKind::SerproApi : null),
             'error_code' => $errorCode === null ? null : mb_substr($errorCode, 0, 80),
             'error_message' => $this->sanitizer->error($errorMessage),
-            'safe_metadata' => $this->sanitizer->sanitize([
-                ...$metadata,
-                'action_type' => $job->actionType,
-                'artifact_count' => count($job->artifacts),
-            ]),
+            'portal_version' => $safeMetadata['portal_version'] ?? $attempt->portal_version,
+            'parser_version' => $safeMetadata['parser_version'] ?? $attempt->parser_version,
+            'captcha_driver' => $job->captchaDriver === null
+                ? $attempt->captcha_driver
+                : mb_substr($job->captchaDriver, 0, 32),
+            'captcha_cost_micros' => $job->captchaCostMicros,
+            'safe_metadata' => $safeMetadata,
+            'result_payload_encrypted' => $result,
             'started_at' => $attempt->started_at ?? now(),
             'last_synced_at' => now(),
             'submitted_at' => $submitted ? ($attempt->submitted_at ?? now()) : $attempt->submitted_at,

@@ -4,6 +4,7 @@ namespace App\Services\Fiscal\ManualConsult;
 
 use App\DTO\Integra\MitListaApuracoesRequest;
 use App\Enums\ManualConsultEligibility;
+use App\Enums\SerproEnvironment;
 use App\Enums\SerproOfficialState;
 use App\Enums\SerproPlatformSupport;
 use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
@@ -23,6 +24,7 @@ use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\SimplesMeiQueryService;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
+use App\Services\Integra\ClientProcuracaoSyncService;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebDeclarationService;
 use App\Services\Integra\Dctfweb\MitApuracaoService;
@@ -60,6 +62,7 @@ final class ManualConsultExecutionService
         private readonly DctfwebDeclarationService $dctfwebDeclarations,
         private readonly MitApuracaoService $mit,
         private readonly MitListaApuracoesQueryService $mitLista,
+        private readonly ClientProcuracaoSyncService $procuracoes,
     ) {}
 
     /**
@@ -88,6 +91,30 @@ final class ManualConsultExecutionService
 
         $def = $this->catalog->get($actionId);
         $this->assertNotMutating($def->operationKey);
+
+        if ($def->requiredProxyPowers !== []
+            && $this->eligibility->environment() === SerproEnvironment::Production
+        ) {
+            $refresh = $this->procuracoes->enqueueRefreshIfNeeded(
+                $office,
+                $client,
+                $this->eligibility->environment(),
+                $actorUserId,
+                (string) Str::uuid(),
+            );
+            if ($refresh['queued']) {
+                return [
+                    'action_id' => $def->actionId,
+                    'eligibility' => ManualConsultEligibility::PowerRefreshing->value,
+                    'async' => true,
+                    'module_route' => $def->moduleRoute,
+                    'result' => null,
+                    'serpro_call' => 'PROCURACAO_QUEUED',
+                    'retry_after_seconds' => 3,
+                    'procuracao_status' => $refresh['snapshot']?->toClientProjection(),
+                ];
+            }
+        }
 
         $eligibility = $this->eligibility->evaluate($office, $def, $client);
         if ($eligibility !== ManualConsultEligibility::Ready) {
