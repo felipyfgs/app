@@ -1,9 +1,11 @@
 import hashlib
 import json
 import time
-from typing import Any
+from typing import Any, cast
 
 from fastapi.testclient import TestClient
+from httpx import Response
+from pydantic import SecretStr
 
 from mei.api import create_app
 from mei.artifacts import ArtifactStore
@@ -26,7 +28,7 @@ SECRET = "test-secret-with-at-least-32-bytes"  # noqa: S105 - fixture de teste
 def build_client(
     artifact_store: ArtifactStore | None = None,
 ) -> tuple[TestClient, InMemoryJobStore, InMemoryDispatcher]:
-    settings = Settings(environment="testing", hmac_secret=SECRET)
+    settings = Settings(environment="testing", hmac_secret=SecretStr(SECRET))
     store = InMemoryJobStore()
     dispatcher = InMemoryDispatcher()
     authenticator = HmacAuthenticator(settings, InMemoryReplayStore())
@@ -45,7 +47,7 @@ def signed_request(
     *,
     nonce: str = "nonce-1234567890123456",
     timestamp: str | None = None,
-):
+) -> Response:
     body = b"" if payload is None else json.dumps(payload, separators=(",", ":")).encode()
     timestamp = timestamp or str(int(time.time()))
     headers = {
@@ -54,11 +56,14 @@ def signed_request(
         NONCE_HEADER: nonce,
         SIGNATURE_HEADER: calculate_signature(SECRET, method, path, body, timestamp, nonce),
     }
-    return client.request(
-        method,
-        path,
-        content=body or None,
-        headers={**headers, **({"Content-Type": "application/json"} if body else {})},
+    return cast(
+        Response,
+        client.request(
+            method,
+            path,
+            content=body or None,
+            headers={**headers, **({"Content-Type": "application/json"} if body else {})},
+        ),
     )
 
 

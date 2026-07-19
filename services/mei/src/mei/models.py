@@ -3,7 +3,9 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from mei.operations.registry import OperationNotRegisteredError, operation_registry
 
 OFFICIAL_OPERATION_KEYS = frozenset(
     {
@@ -69,6 +71,15 @@ class JobCreate(BaseModel):
             raise ValueError("operation_key nao catalogada")
         return normalized
 
+    @model_validator(mode="after")
+    def validate_catalogued_input(self) -> "JobCreate":
+        try:
+            parsed = operation_registry.parse_input(self.operation_key, self.input)
+        except OperationNotRegisteredError:
+            return self
+        self.input = parsed.model_dump(mode="json", exclude_none=True)
+        return self
+
 
 class ArtifactDescriptor(BaseModel):
     id: UUID = Field(default_factory=uuid4)
@@ -106,6 +117,8 @@ class JobRecord(BaseModel):
     error: PublicError | None = None
     artifacts: list[ArtifactDescriptor] = Field(default_factory=list)
     action_type: str | None = None
+    captcha_driver: str | None = None
+    captcha_cost_micros: int = Field(default=0, ge=0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
@@ -124,6 +137,8 @@ class JobRecord(BaseModel):
             error=self.error,
             artifacts=self.artifacts,
             action_type=self.action_type,
+            captcha_driver=self.captcha_driver,
+            captcha_cost_micros=self.captcha_cost_micros,
             created_at=self.created_at,
             updated_at=self.updated_at,
             started_at=self.started_at,
@@ -139,6 +154,8 @@ class JobResponse(BaseModel):
     error: PublicError | None = None
     artifacts: list[ArtifactDescriptor] = Field(default_factory=list)
     action_type: str | None = None
+    captcha_driver: str | None = None
+    captcha_cost_micros: int = Field(default=0, ge=0)
     created_at: datetime
     updated_at: datetime
     started_at: datetime | None = None

@@ -1,6 +1,21 @@
-from mei.executor import ExecutionOutcome, JobRunner
+from mei.browser import LAUNCH_ARGS, chromium_launch_kwargs
+from mei.config import Settings
+from mei.executor import CHROMIUM_LAUNCH_ARGS, ExecutionOutcome, JobRunner
 from mei.models import JobCreate, JobRecord, JobStatus
 from mei.store import InMemoryJobStore
+
+
+def test_chromium_launch_matches_docapi() -> None:
+    assert CHROMIUM_LAUNCH_ARGS == LAUNCH_ARGS
+    assert "--disable-blink-features=AutomationControlled" in LAUNCH_ARGS
+    assert "--no-sandbox" in LAUNCH_ARGS
+    assert "--disable-dev-shm-usage" in LAUNCH_ARGS
+    kwargs = chromium_launch_kwargs(
+        Settings(browser_headless=False, browser_channel="chrome")
+    )
+    assert kwargs["headless"] is False
+    assert kwargs["channel"] == "chrome"
+    assert kwargs["args"] == list(LAUNCH_ARGS)
 
 
 class SuccessExecutor:

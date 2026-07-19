@@ -3,6 +3,7 @@ from uuid import UUID
 
 from redis.asyncio import Redis
 
+from mei.artifacts import LocalArtifactStore
 from mei.celery_app import celery_app
 from mei.config import get_settings
 from mei.executor import JobRunner, PlaywrightOperationExecutor
@@ -15,7 +16,13 @@ async def _run(job_id: UUID) -> None:
     try:
         store = RedisJobStore(redis, settings.result_ttl_seconds)
         record = await store.get(job_id)
-        await JobRunner(store, PlaywrightOperationExecutor(settings)).run(record)
+        await JobRunner(
+            store,
+            PlaywrightOperationExecutor(
+                settings,
+                LocalArtifactStore(settings.artifact_root),
+            ),
+        ).run(record)
     finally:
         await redis.aclose()
 

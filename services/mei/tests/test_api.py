@@ -1,6 +1,8 @@
 import hashlib
 import time
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from conftest import build_client, job_payload, signed_request
@@ -127,7 +129,7 @@ def test_downloads_only_artifact_linked_to_job(tmp_path: Path) -> None:
     assert unknown.status_code == 404
 
 
-def _run(coroutine):
+def _run[T](coroutine: Coroutine[Any, Any, T]) -> T:
     import asyncio
 
     return asyncio.run(coroutine)

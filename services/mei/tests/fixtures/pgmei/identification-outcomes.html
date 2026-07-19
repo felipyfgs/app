@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head><title>PGMEI - resultados de identificação sanitizados</title></head>
+  <body data-portal-version="fixture-identification-v1">
+    <form id="identification-form">
+      <input type="hidden" name="__RequestVerificationToken" value="fixture-token">
+      <label for="cnpj">CNPJ completo</label>
+      <input id="cnpj" name="cnpj" type="text" autocomplete="off">
+      <div class="h-captcha" data-sitekey="public-fixture"></div>
+      <textarea name="h-captcha-response" hidden></textarea>
+      <button id="continuar" type="submit">Continuar</button>
+    </form>
+    <div id="identification-validation" role="alert" hidden>
+      A identificação informada não foi aceita.
+    </div>
+    <div id="public-captcha-rejection" class="alert-danger" role="alert" hidden>
+      13896 - Impedido por proteção Captcha. Comportamento de Robô.
+    </div>
+    <div data-hcaptcha-challenge hidden>
+      <iframe title="Desafio hCaptcha" style="width: 300px; height: 200px"></iframe>
+    </div>
+    <script>
+      window.identificationSubmitCount = 0
+      const outcome = new URLSearchParams(window.location.search).get('outcome') || 'auto-pass'
+      document.querySelector('[name="h-captcha-response"]').addEventListener('change', (event) => {
+        if (!event.target.value || outcome !== 'challenge') return
+        document.querySelector('[data-hcaptcha-challenge]').hidden = true
+        document.body.insertAdjacentHTML(
+          'afterbegin',
+          '<nav id="pgmei-dashboard"><a href="/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/emissao">Emitir Guia de Pagamento (DAS)</a><a href="/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/divida-ativa">Dívida ativa</a></nav>'
+        )
+      })
+      document.querySelector('#identification-form').addEventListener('submit', (event) => {
+        event.preventDefault()
+        window.identificationSubmitCount += 1
+        const token = (document.querySelector('[name="h-captcha-response"]') || {}).value || ''
+        if (outcome === 'auto-pass') {
+          document.querySelector('#identification-form').remove()
+          document.body.insertAdjacentHTML(
+            'afterbegin',
+            '<nav id="pgmei-dashboard"><a href="/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/emissao">Emitir Guia de Pagamento (DAS)</a><a href="/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/divida-ativa">Dívida ativa</a></nav>'
+          )
+        } else if (outcome === 'challenge') {
+          document.querySelector('[data-hcaptcha-challenge]').hidden = false
+        } else if (outcome === 'captcha-rejection') {
+          // Primeiro submit: 13896. Com token NoPeCHA no re-clique: aprova.
+          if (token && window.identificationSubmitCount >= 2) {
+            document.querySelector('#public-captcha-rejection').hidden = true
+            document.querySelector('#identification-form').remove()
+            document.body.insertAdjacentHTML(
+              'afterbegin',
+              '<nav id="pgmei-dashboard"><a href="/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/emissao">Emitir Guia de Pagamento (DAS)</a><a href="/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/divida-ativa">Dívida ativa</a></nav>'
+            )
+          } else {
+            document.querySelector('#public-captcha-rejection').hidden = false
+          }
+        } else if (outcome === 'validation') {
+          document.querySelector('#identification-validation').hidden = false
+        }
+      })
+    </script>
+  </body>
+</html>

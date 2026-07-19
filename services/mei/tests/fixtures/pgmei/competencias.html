@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head><title>PGMEI - Selecao de competencias</title></head>
+  <body data-portal-version="fixture-1">
+    <main>
+      <h1>Periodos de apuracao</h1>
+      <form method="post" action="/pgmei.app/Emissao/EmitirDas">
+        <input type="hidden" name="__RequestVerificationToken" value="fixture-token">
+        <table aria-label="Competencias disponiveis">
+          <thead><tr><th>Selecionar</th><th>Competencia</th><th>Situacao</th><th>Vencimento</th></tr></thead>
+          <tbody>
+            <tr data-competencia="2026-01"><td><input type="checkbox" name="competencias" value="2026-01"></td><td>01/2026</td><td>Em aberto</td><td>20/02/2026</td></tr>
+            <tr data-competencia="2026-02"><td><input type="checkbox" name="competencias" value="2026-02"></td><td>02/2026</td><td>Pago</td><td>20/03/2026</td></tr>
+          </tbody>
+        </table>
+        <button type="submit" name="formato" value="pdf">Gerar DAS</button>
+        <button type="submit" name="formato" value="barcode">Gerar codigo de barras</button>
+      </form>
+    </main>
+  </body>
+</html>
