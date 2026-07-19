@@ -9,7 +9,7 @@ x-php: &php
       RELEASE_SHA: ${RELEASE_SHA:-unknown}
       BUILD_DATE: ${BUILD_DATE:-}
   env_file:
-    - path: ${PROD_ENV_FILE:-.env.prod}
+    - path: ${PROD_ENV_FILE:-.env}
       required: true
   environment:
     APP_ENV: production
@@ -21,7 +21,7 @@ x-php: &php
     DB_PORT: 5432
     DB_DATABASE: ${DB_DATABASE:-nfse}
     DB_USERNAME: ${DB_USERNAME:-nfse}
-    DB_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD em .env.prod}
+    DB_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD em .env}
     REDIS_HOST: redis
     REDIS_PORT: 6379
     QUEUE_CONNECTION: redis
@@ -82,7 +82,7 @@ services:
       - --entrypoints.web.http.redirections.entrypoint.permanent=true
       - --entrypoints.websecure.address=:443
       - --entrypoints.websecure.forwardedheaders.insecure=false
-      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?defina ACME_EMAIL em .env.prod}
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?defina ACME_EMAIL em .env}
       - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
       - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
@@ -210,7 +210,7 @@ services:
     environment:
       POSTGRES_DB: ${DB_DATABASE:-nfse}
       POSTGRES_USER: ${DB_USERNAME:-nfse}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD em .env.prod}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD em .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

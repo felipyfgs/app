@@ -8,7 +8,7 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 PHASE="${PHASE:-all}"
-PROD_ENV="${PROD_ENV:-.env.prod}"
+PROD_ENV="${PROD_ENV:-.env}"
 BACKUP_ENV="${BACKUP_ENV:-/etc/fiscal-hub/backup.env}"
 EVIDENCE_DIR="${EVIDENCE_DIR:-/var/lib/fiscal-hub/readiness}"
 RELEASE_SHA="${RELEASE_SHA:-}"
@@ -110,7 +110,7 @@ phase_source() {
   fi
 
   if PROD_ENV_FILE="${PROD_ENV}" docker compose --env-file "${PROD_ENV}" -f compose.prod.yml -p "$STACK_PROJECT" config --quiet 2>/dev/null \
-     || PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example -f compose.prod.yml -p "$STACK_PROJECT" config --quiet 2>/dev/null; then
+     || PROD_ENV_FILE=.env.example docker compose --env-file .env.example -f compose.prod.yml -p "$STACK_PROJECT" config --quiet 2>/dev/null; then
     record_check "compose_prod" "true" "valid"
   else
     record_check "compose_prod" "false" "invalid"
@@ -391,7 +391,7 @@ usage() {
 Uso: PHASE=source|predeploy|postdeploy|all docker/ops/prod-readiness.sh
 
 Variáveis:
-  PROD_ENV          (default .env.prod)
+  PROD_ENV          (default .env)
   BACKUP_ENV        (default /etc/fiscal-hub/backup.env)
   EVIDENCE_DIR      (default /var/lib/fiscal-hub/readiness)
   RELEASE_SHA       (default: git HEAD)

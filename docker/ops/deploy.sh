@@ -3,7 +3,7 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 STACK_FILE=${STACK_FILE:-compose.prod.yml}
-STACK_ENV=${STACK_ENV:-.env.prod}
+STACK_ENV=${STACK_ENV:-.env}
 STACK_PROJECT=${STACK_PROJECT:-fiscal-hub}
 RELEASE_SHA=${RELEASE_SHA:-}
 RELEASE_TAG=${RELEASE_TAG:-}

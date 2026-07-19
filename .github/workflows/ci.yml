@@ -96,7 +96,7 @@ jobs:
         run: |
           docker compose config --quiet
           RELEASE_SHA=ci-synthetic RELEASE_TAG=sha-ci-synthetic \
-            PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
+            PROD_ENV_FILE=.env.example docker compose --env-file .env.example \
             -f compose.prod.yml -p fiscal-hub config --quiet
       - name: Construir imagens de desenvolvimento e conferir extensões críticas
         run: |
@@ -109,11 +109,11 @@ jobs:
           export RELEASE_TAG="sha-${RELEASE_SHA:0:12}"
           export BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           RELEASE_SHA="$RELEASE_SHA" RELEASE_TAG="$RELEASE_TAG" BUILD_DATE="$BUILD_DATE" \
-            PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
+            PROD_ENV_FILE=.env.example docker compose --env-file .env.example \
             -f compose.prod.yml -p fiscal-hub \
             build acme-init traefik web php
           RELEASE_SHA="$RELEASE_SHA" RELEASE_TAG="$RELEASE_TAG" \
-            PROD_ENV_FILE=.env.prod.example docker compose --env-file .env.prod.example \
+            PROD_ENV_FILE=.env.example docker compose --env-file .env.example \
             -f compose.prod.yml -p fiscal-hub pull socket-proxy
           docker tag "fiscal-hub-php:${RELEASE_TAG}" fiscal-hub-php:prod
           docker tag "fiscal-hub-web:${RELEASE_TAG}" fiscal-hub-web:prod
@@ -158,4 +158,3 @@ jobs:
               fi
             done
           fi
-

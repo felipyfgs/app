@@ -36,20 +36,27 @@ else
   echo "    worktree dirty: source fail-closed OK"
 fi
 
-echo "==> predeploy com .env.prod.example (placeholders) deve falhar"
+echo "==> predeploy com .env.example (placeholders) deve falhar"
 set +e
-PHASE=predeploy PROD_ENV=.env.prod.example ./docker/ops/prod-readiness.sh
+PHASE=predeploy PROD_ENV=.env.example ./docker/ops/prod-readiness.sh
 rc=$?
 set -e
 test "$rc" -ne 0
 
 echo "==> predeploy com env sanitizado (pode falhar só por portas dev)"
-cp .env.prod.example "$TMP/env.prod"
-chmod 600 "$TMP/env.prod"
+cp .env.example "$TMP/env"
+chmod 600 "$TMP/env"
 app_key="base64:$(openssl rand -base64 32)"
 vault_key="$(openssl rand -base64 32)"
 db_pass="$(openssl rand -hex 24)"
 sed -i \
+  -e 's|^APP_ENV=.*|APP_ENV=production|' \
+  -e 's|^APP_DEBUG=.*|APP_DEBUG=false|' \
+  -e 's|^APP_URL=.*|APP_URL=https://app.inovaicontabil.com.br|' \
+  -e 's|^SESSION_DOMAIN=.*|SESSION_DOMAIN=app.inovaicontabil.com.br|' \
+  -e 's|^SESSION_SECURE_COOKIE=.*|SESSION_SECURE_COOKIE=true|' \
+  -e 's|^SANCTUM_STATEFUL_DOMAINS=.*|SANCTUM_STATEFUL_DOMAINS=app.inovaicontabil.com.br|' \
+  -e 's|^AUTH_TWO_FACTOR_REQUIRED=.*|AUTH_TWO_FACTOR_REQUIRED=true|' \
   -e "s|^APP_KEY=.*|APP_KEY=$app_key|" \
   -e "s|^VAULT_MASTER_KEY=.*|VAULT_MASTER_KEY=$vault_key|" \
   -e "s|^DB_PASSWORD=.*|DB_PASSWORD=$db_pass|" \
@@ -58,26 +65,30 @@ sed -i \
   -e 's|^MAIL_USERNAME=.*|MAIL_USERNAME=ops-mail|' \
   -e 's|^MAIL_PASSWORD=.*|MAIL_PASSWORD=smtp-test-secret-value-xyz|' \
   -e 's|^MAIL_FROM_ADDRESS=.*|MAIL_FROM_ADDRESS=noreply@inovaicontabil.com.br|' \
-  "$TMP/env.prod"
+  -e 's|^MAIL_MAILER=.*|MAIL_MAILER=smtp|' \
+  -e 's|^LOG_LEVEL=.*|LOG_LEVEL=warning|' \
+  -e 's|^SERPRO_DEFAULT_ENVIRONMENT=.*|SERPRO_DEFAULT_ENVIRONMENT=PRODUCTION|' \
+  -e 's|^SERPRO_PROD_CHECK_STRICT=.*|SERPRO_PROD_CHECK_STRICT=true|' \
+  "$TMP/env"
 # strip residual placeholders
-grep -Evi 'substitua|example\.com|change-me' "$TMP/env.prod" >"$TMP/env.prod.clean" || true
-mv "$TMP/env.prod.clean" "$TMP/env.prod"
-chmod 600 "$TMP/env.prod"
+grep -Evi 'substitua|example\.com|change-me' "$TMP/env" >"$TMP/env.clean" || true
+mv "$TMP/env.clean" "$TMP/env"
+chmod 600 "$TMP/env"
 # ensure required lines survived
 for line in 'APP_ENV=production' 'LOG_CHANNEL=stderr' 'MAIL_MAILER=smtp' 'SERPRO_KILL_SWITCH=true'; do
-  grep -qx "$line" "$TMP/env.prod" || echo "$line" >>"$TMP/env.prod"
+  grep -qx "$line" "$TMP/env" || echo "$line" >>"$TMP/env"
 done
-grep -q '^APP_KEY=base64:' "$TMP/env.prod" || echo "APP_KEY=$app_key" >>"$TMP/env.prod"
-grep -q '^VAULT_MASTER_KEY=' "$TMP/env.prod" || echo "VAULT_MASTER_KEY=$vault_key" >>"$TMP/env.prod"
-grep -q '^DB_PASSWORD=' "$TMP/env.prod" || echo "DB_PASSWORD=$db_pass" >>"$TMP/env.prod"
-grep -q '^MAIL_HOST=' "$TMP/env.prod" || echo 'MAIL_HOST=smtp.inovaicontabil.com.br' >>"$TMP/env.prod"
-grep -q '^MAIL_USERNAME=' "$TMP/env.prod" || echo 'MAIL_USERNAME=ops-mail' >>"$TMP/env.prod"
-grep -q '^MAIL_PASSWORD=' "$TMP/env.prod" || echo 'MAIL_PASSWORD=smtp-test-secret-value-xyz' >>"$TMP/env.prod"
-grep -q '^MAIL_FROM_ADDRESS=' "$TMP/env.prod" || echo 'MAIL_FROM_ADDRESS=noreply@inovaicontabil.com.br' >>"$TMP/env.prod"
-grep -q '^ACME_EMAIL=' "$TMP/env.prod" || echo 'ACME_EMAIL=ops@inovaicontabil.com.br' >>"$TMP/env.prod"
-grep -q '^MAIL_PORT=' "$TMP/env.prod" || echo 'MAIL_PORT=587' >>"$TMP/env.prod"
-grep -q '^MAIL_SCHEME=' "$TMP/env.prod" || echo 'MAIL_SCHEME=smtp' >>"$TMP/env.prod"
-chmod 600 "$TMP/env.prod"
+grep -q '^APP_KEY=base64:' "$TMP/env" || echo "APP_KEY=$app_key" >>"$TMP/env"
+grep -q '^VAULT_MASTER_KEY=' "$TMP/env" || echo "VAULT_MASTER_KEY=$vault_key" >>"$TMP/env"
+grep -q '^DB_PASSWORD=' "$TMP/env" || echo "DB_PASSWORD=$db_pass" >>"$TMP/env"
+grep -q '^MAIL_HOST=' "$TMP/env" || echo 'MAIL_HOST=smtp.inovaicontabil.com.br' >>"$TMP/env"
+grep -q '^MAIL_USERNAME=' "$TMP/env" || echo 'MAIL_USERNAME=ops-mail' >>"$TMP/env"
+grep -q '^MAIL_PASSWORD=' "$TMP/env" || echo 'MAIL_PASSWORD=smtp-test-secret-value-xyz' >>"$TMP/env"
+grep -q '^MAIL_FROM_ADDRESS=' "$TMP/env" || echo 'MAIL_FROM_ADDRESS=noreply@inovaicontabil.com.br' >>"$TMP/env"
+grep -q '^ACME_EMAIL=' "$TMP/env" || echo 'ACME_EMAIL=ops@inovaicontabil.com.br' >>"$TMP/env"
+grep -q '^MAIL_PORT=' "$TMP/env" || echo 'MAIL_PORT=587' >>"$TMP/env"
+grep -q '^MAIL_SCHEME=' "$TMP/env" || echo 'MAIL_SCHEME=smtp' >>"$TMP/env"
+chmod 600 "$TMP/env"
 
 cat >"$TMP/backup.env" <<EOF
 BACKUP_PACKAGE_KEY=$(openssl rand -base64 32)
@@ -92,7 +103,7 @@ EOF
 chmod 600 "$TMP/backup.env"
 
 set +e
-PHASE=predeploy PROD_ENV="$TMP/env.prod" BACKUP_ENV="$TMP/backup.env" \
+PHASE=predeploy PROD_ENV="$TMP/env" BACKUP_ENV="$TMP/backup.env" \
   ./docker/ops/prod-readiness.sh
 set -e
 test -d "$EVIDENCE_DIR"

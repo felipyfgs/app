@@ -8,7 +8,6 @@
 **/.env
 **/.env.*
 !**/.env.example
-!.env.prod.example
 **/auth.json
 
 **/node_modules

@@ -22,7 +22,7 @@ This is a Docker-orchestrated monorepo with no root `package.json`. The Laravel 
 
 ## Coding Style & Naming Conventions
 
-Follow existing Laravel PSR-4 structure: services in `app/Services`, contracts in `app/Contracts`, jobs in `app/Jobs`, and tests named `*Test.php`. Use Laravel Pint for PHP style. Frontend code is TypeScript/Vue with Nuxt auto-imports; keep components in PascalCase and composables as `useXxx`. ESLint enforces Vue attribute layout.
+Follow Laravel PSR-4 structure: `app/Models`, `app/Http`, `app/Providers`, services in `app/Services`, contracts in `app/Contracts`, jobs in `app/Jobs`, and tests named `*Test.php`. Use Pint for PHP. Frontend follows the local Nuxt dashboard template: components `PascalCase.vue`, pages `kebab-case.vue` or `[param].vue`, composables `useXxx.ts`, API factories `createXxxApi.ts`, and utils `kebab-case.ts`. Run `make audit-names` before broad renames.
 
 ## Testing Guidelines
 
@@ -34,4 +34,4 @@ Git history uses Conventional Commits, often with scopes: `fix(frontend): ...`, 
 
 ## Security & Configuration Tips
 
-Never commit `.env`, `.env.prod`, PFX files, tokens, `VAULT_MASTER_KEY`, SERPRO secrets, or full fiscal XML payloads. Use `.env.example`, `backend/.env.example`, and `.env.prod.example` as templates. Treat SERPRO, SEFAZ, mutating fiscal flows, and production deploy/restore targets as guarded operations requiring explicit flags, allowlists, or `CONFIRM_*=SIM`.
+Never commit `.env`, PFX files, tokens, `VAULT_MASTER_KEY`, SERPRO secrets, or full fiscal XML payloads. Use `.env.example`, `backend/.env.example`, and `frontend/.env.example` as templates. Treat SERPRO, SEFAZ, mutating fiscal flows, and production deploy/restore targets as guarded operations requiring explicit flags, allowlists, or `CONFIRM_*=SIM`.

@@ -6,7 +6,7 @@ umask 077
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 project="fiscal-hub-restore-smoke-$$"
 work_dir=$(mktemp -d)
-env_file="$work_dir/.env.prod"
+env_file="$work_dir/.env"
 backup_root="$work_dir/backups"
 
 compose() {
@@ -32,17 +32,25 @@ command -v openssl >/dev/null 2>&1 || {
     exit 1
 }
 
-cp "$ROOT_DIR/.env.prod.example" "$env_file"
+cp "$ROOT_DIR/.env.example" "$env_file"
 chmod 600 "$env_file"
 app_key="base64:$(openssl rand -base64 32)"
 vault_key=$(openssl rand -base64 32)
 package_key=$(openssl rand -base64 32)
 db_password=$(openssl rand -hex 24)
 sed -i \
+    -e 's|^APP_ENV=.*|APP_ENV=production|' \
+    -e 's|^APP_DEBUG=.*|APP_DEBUG=false|' \
+    -e 's|^APP_URL=.*|APP_URL=https://app.inovaicontabil.com.br|' \
     -e "s|^APP_KEY=.*|APP_KEY=$app_key|" \
     -e "s|^VAULT_MASTER_KEY=.*|VAULT_MASTER_KEY=$vault_key|" \
     -e "s|^DB_PASSWORD=.*|DB_PASSWORD=$db_password|" \
     -e 's|^ACME_EMAIL=.*|ACME_EMAIL=restore-smoke@invalid.local|' \
+    -e 's|^MAIL_MAILER=.*|MAIL_MAILER=smtp|' \
+    -e 's|^MAIL_HOST=.*|MAIL_HOST=smtp.invalid.local|' \
+    -e 's|^MAIL_USERNAME=.*|MAIL_USERNAME=restore-smoke|' \
+    -e 's|^MAIL_PASSWORD=.*|MAIL_PASSWORD=restore-smoke-password|' \
+    -e 's|^MAIL_FROM_ADDRESS=.*|MAIL_FROM_ADDRESS=noreply@invalid.local|' \
     "$env_file"
 export BACKUP_PACKAGE_KEY="$package_key"
 printf '%s\n' \

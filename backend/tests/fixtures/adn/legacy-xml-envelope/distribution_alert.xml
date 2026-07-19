@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<retDistDFeInt xmlns="http://www.sped.fazenda.gov.br/nfse">
-  <tpAmb>1</tpAmb>
-  <cStat>656</cStat>
-  <xMotivo>Consumo indevido - aguarde</xMotivo>
-  <dhResp>2026-07-13T12:00:00-03:00</dhResp>
-  <ultNSU>3</ultNSU>
-  <maxNSU>10</maxNSU>
-</retDistDFeInt>

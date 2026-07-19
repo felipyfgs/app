@@ -1,5 +1,0 @@
-{
-  "person_type": "PF",
-  "contribuinte": { "numero": "<lista-cpf-sanitizada>", "tipo": 3 },
-  "dados": { "evento": "E0301" }
-}

@@ -9,7 +9,7 @@ cd "$ROOT_DIR"
 RELEASE_SHA="${RELEASE_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
 RELEASE_TAG="${RELEASE_TAG:-sha-${RELEASE_SHA:0:12}}"
 MANIFEST_DIR="${MANIFEST_DIR:-/var/lib/fiscal-hub/releases}"
-PROD_ENV="${PROD_ENV:-.env.prod}"
+PROD_ENV="${PROD_ENV:-.env}"
 STACK_PROJECT="${STACK_PROJECT:-fiscal-hub}"
 MIGRATION_BATCH="${MIGRATION_BATCH:-}"
 

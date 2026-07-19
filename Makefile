@@ -1,8 +1,8 @@
-.PHONY: help init-env setup up dev down build logs shell-php composer-install migrate seed seed-dev seed-pilot horizon-status frontend-prepare-generated frontend-install frontend-generate frontend-dev backup backup-verify restore prod-check prod-config prod-build prod-up prod-down prod-backup prod-backup-verify prod-restore prod-restore-smoke prod-readiness prod-release-manifest
+.PHONY: help init-env setup up dev down build logs shell-php composer-install migrate seed seed-dev seed-pilot horizon-status audit-names frontend-prepare-generated frontend-install frontend-generate frontend-dev backup backup-verify restore prod-check prod-config prod-build prod-up prod-down prod-backup prod-backup-verify prod-restore prod-restore-smoke prod-readiness prod-release-manifest
 
 LOCAL_UID := $(shell id -u)
 LOCAL_GID := $(shell id -g)
-PROD_ENV ?= .env.prod
+PROD_ENV ?= .env
 BACKUP_ENV ?= /etc/fiscal-hub/backup.env
 RELEASE_SHA ?= $(shell git rev-parse HEAD 2>/dev/null)
 RELEASE_TAG ?= sha-$(shell printf '%s' '$(RELEASE_SHA)' | cut -c1-12)
@@ -23,6 +23,7 @@ help:
 	@echo "  make migrate            Roda migrations"
 	@echo "  make seed / seed-dev    Seed de desenvolvimento (exemplos)"
 	@echo "  make seed-pilot         Seed piloto (dados reais de dados/)"
+	@echo "  make audit-names        Audita padrao de nomes de arquivos"
 	@echo "  make frontend-install   Instala deps do frontend"
 	@echo "  make frontend-generate  Gera SPA estática"
 	@echo "  make frontend-dev       Sobe Nuxt dev (perfil dev)"
@@ -91,6 +92,9 @@ seed seed-dev:
 seed-pilot:
 	docker compose exec php php artisan db:seed --class=PilotSeeder --force
 
+audit-names:
+	./scripts/audit-file-names.sh
+
 frontend-prepare-generated:
 	@set -eu; \
 	for path in frontend/.nuxt frontend/.output frontend/test-results frontend/playwright-report; do \
@@ -125,7 +129,7 @@ restore:
 	./docker/ops/restore.sh --force "$(BACKUP)"
 
 prod-check:
-	@test -f "$(PROD_ENV)" || { echo "Crie $(PROD_ENV) a partir de .env.prod.example" >&2; exit 2; }
+	@test -f "$(PROD_ENV)" || { echo "Crie $(PROD_ENV) a partir de .env.example" >&2; exit 2; }
 	@test "$$(stat -c '%a' "$(PROD_ENV)")" = "600" || { echo "$(PROD_ENV) deve usar permissão 600" >&2; exit 2; }
 	@grep -Eq '^ACME_EMAIL=[^[:space:]@]+@[^[:space:]@]+$$' "$(PROD_ENV)" || { echo "Defina ACME_EMAIL válido em $(PROD_ENV)" >&2; exit 2; }
 	@grep -Eq '^APP_KEY=base64:.{32,}$$' "$(PROD_ENV)" || { echo "Defina APP_KEY válida em $(PROD_ENV)" >&2; exit 2; }

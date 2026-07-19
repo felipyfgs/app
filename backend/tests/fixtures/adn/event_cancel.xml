@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<eventoNFSe xmlns="http://www.sped.fazenda.gov.br/nfse">
-  <chNFSe>35260711222333000181550010000000011123456789</chNFSe>
-  <tpEvento>CANCELAMENTO</tpEvento>
-  <dhEvento>2026-07-12T10:00:00-03:00</dhEvento>
-  <cStat>135</cStat>
-</eventoNFSe>
