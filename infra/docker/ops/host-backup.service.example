@@ -1,0 +1,25 @@
+# systemd service — /etc/systemd/system/fiscal-hub-backup.service
+# EnvironmentFile root-only com BACKUP_PACKAGE_KEY (ex.: /etc/fiscal-hub/backup.env).
+# Executa make prod-backup no host; a chave do pacote não entra nos containers.
+
+[Unit]
+Description=Backup completo diário Fiscal Hub (Postgres+vault+private)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/fiscal-hub
+# Arquivo modo 600, root-only — ver infra/docker/ops/backup.env.example
+EnvironmentFile=/etc/fiscal-hub/backup.env
+# Exporta apenas o necessário para o script de backup no host
+ExecStart=/usr/bin/make prod-backup
+# Retenção local (opcional): remove pacotes além de BACKUP_RETENTION_LOCAL
+ExecStartPost=/bin/bash -c 'set -euo pipefail; dir="${BACKUP_DIR:-/var/backups/fiscal-hub}"; keep="${BACKUP_RETENTION_LOCAL:-7}"; [ -d "$dir" ] || exit 0; cd "$dir"; ls -1dt nfse-backup-* 2>/dev/null | tail -n +$((keep+1)) | xargs -r rm -rf --'
+
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target

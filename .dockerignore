@@ -1,6 +1,6 @@
 .git
 .github
-.reference
+.local
 .codex
 .opencode
 .grok
@@ -12,13 +12,13 @@
 
 **/node_modules
 **/.pnpm-store
-backend/vendor
-frontend/.nuxt
-frontend/.output
-frontend/.data
-frontend/.cache
-frontend/coverage
-backend/coverage
+apps/api/vendor
+apps/web/.nuxt
+apps/web/.output
+apps/web/.data
+apps/web/.cache
+apps/web/coverage
+apps/api/coverage
 
 backups
 data

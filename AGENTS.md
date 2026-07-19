@@ -6,7 +6,14 @@ Comunique-se sempre com o usuário em português do Brasil (pt-BR). Preserve ide
 
 ## Project Structure & Module Organization
 
-This is a Docker-orchestrated monorepo with no root `package.json`. The Laravel backend lives in `backend/` (`app/`, `config/`, `database/`, `tests/`). The Nuxt 4 SPA lives in `frontend/` (`app/components`, `app/pages`, `app/composables`, `tests/unit`) and uses Nuxt UI plus pnpm. Docker and ops scripts are under `docker/`; production compose is `compose.prod.yml`. OpenSpec artifacts live in `openspec/`, and reference docs belong in `docs/`.
+This is a Docker-orchestrated monorepo with no root `package.json`.
+
+- `apps/api/` — Laravel API (`app/`, `config/`, `database/`, `tests/`)
+- `apps/web/` — Nuxt 4 SPA (`app/components`, `app/pages`, `app/composables`, `tests/unit`) with Nuxt UI + pnpm
+- `services/` — sidecars (ex.: `services/mei/`)
+- `infra/docker/` — imagens e scripts ops; produção via `compose.prod.yml`
+- `openspec/` — specs e changes; `docs/` — documentação de referência
+- `.local/` — só máquina local (ignorado): `.local/dados/` (piloto), `.local/reference/` (templates)
 
 ## Build, Test, and Development Commands
 
@@ -15,10 +22,10 @@ This is a Docker-orchestrated monorepo with no root `package.json`. The Laravel 
 - `make dev`: run the full stack with Nuxt HMR on port 3000.
 - `make up` / `make down`: start or stop the local stack.
 - `make migrate`, `make seed`, `make seed-pilot`: manage database state.
-- `cd backend && php artisan test`: run Laravel PHPUnit suites.
-- `cd backend && vendor/bin/pint --test`: check PHP formatting.
-- `cd frontend && pnpm run test:gate`: run ESLint, Nuxt typecheck, and Vitest.
-- `cd frontend && pnpm run generate`: build the static SPA.
+- `cd apps/api && php artisan test`: run Laravel PHPUnit suites.
+- `cd apps/api && vendor/bin/pint --test`: check PHP formatting.
+- `cd apps/web && pnpm run test:gate`: run ESLint, Nuxt typecheck, and Vitest.
+- `cd apps/web && pnpm run generate`: build the static SPA.
 
 ## Coding Style & Naming Conventions
 
@@ -26,12 +33,12 @@ Follow Laravel PSR-4 structure: `app/Models`, `app/Http`, `app/Providers`, servi
 
 ## Testing Guidelines
 
-Backend tests are organized into `tests/Unit`, `tests/Feature`, and `tests/Architecture`; PHPUnit uses sqlite `:memory:` and fail-closed integration defaults. Frontend tests live in `frontend/tests/unit` and are named `*.test.ts` or `*.nuxt.test.ts`. Add regression tests for tenancy, fiscal integrations, feature flags, and UI contracts when touching those areas.
+API tests live under `apps/api/tests/{Unit,Feature,Architecture}`; PHPUnit uses sqlite `:memory:` and fail-closed integration defaults. Web tests live in `apps/web/tests/unit` and are named `*.test.ts` or `*.nuxt.test.ts`. Add regression tests for tenancy, fiscal integrations, feature flags, and UI contracts when touching those areas.
 
 ## Commit & Pull Request Guidelines
 
-Git history uses Conventional Commits, often with scopes: `fix(frontend): ...`, `feat(fiscal): ...`, `docs(openspec): ...`. Keep commits small and focused. PRs should include a summary, linked issue or OpenSpec change when relevant, test evidence, screenshots for UI changes, and notes for migrations, env changes, or production-impacting flags.
+Git history uses Conventional Commits, often with scopes: `fix(web): ...`, `feat(api): ...`, `feat(fiscal): ...`, `docs(openspec): ...`. Keep commits small and focused. PRs should include a summary, linked issue or OpenSpec change when relevant, test evidence, screenshots for UI changes, and notes for migrations, env changes, or production-impacting flags.
 
 ## Security & Configuration Tips
 
-Never commit `.env`, PFX files, tokens, `VAULT_MASTER_KEY`, SERPRO secrets, or full fiscal XML payloads. Use `.env.example`, `backend/.env.example`, and `frontend/.env.example` as templates. Treat SERPRO, SEFAZ, mutating fiscal flows, and production deploy/restore targets as guarded operations requiring explicit flags, allowlists, or `CONFIRM_*=SIM`.
+Never commit `.env`, PFX files, tokens, `VAULT_MASTER_KEY`, SERPRO secrets, or full fiscal XML payloads. Use `.env.example`, `apps/api/.env.example`, and `apps/web/.env.example` as templates. Treat SERPRO, SEFAZ, mutating fiscal flows, and production deploy/restore targets as guarded operations requiring explicit flags, allowlists, or `CONFIRM_*=SIM`.

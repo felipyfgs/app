@@ -1,0 +1,37 @@
+<?php
+
+$parseIdList = static function (?string $raw): array {
+    if ($raw === null || trim($raw) === '') {
+        return [];
+    }
+
+    return array_values(array_unique(array_map(
+        'intval',
+        array_filter(array_map('trim', explode(',', $raw)), 'ctype_digit'),
+    )));
+};
+
+return [
+    'enabled' => filter_var(env('MEI_AUTOMATION_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'kill_switch' => filter_var(env('MEI_AUTOMATION_KILL_SWITCH', false), FILTER_VALIDATE_BOOL),
+    'live_egress_enabled' => filter_var(env('MEI_AUTOMATION_LIVE_EGRESS_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'office_allowlist' => $parseIdList(env('MEI_AUTOMATION_OFFICE_ALLOWLIST')),
+    'allow_all_offices' => filter_var(env('MEI_AUTOMATION_ALLOW_ALL_OFFICES', false), FILTER_VALIDATE_BOOL),
+    'base_url' => env('MEI_AUTOMATION_URL', 'http://mei:8080'),
+    'timeout_seconds' => (int) env('MEI_AUTOMATION_HTTP_TIMEOUT', 15),
+    'poll_interval_seconds' => (int) env('MEI_AUTOMATION_POLL_INTERVAL', 10),
+    'hmac' => [
+        'key_id' => env('MEI_AUTOMATION_HMAC_KEY_ID', 'laravel'),
+        'secret' => env('MEI_AUTOMATION_HMAC_SECRET'),
+        'max_clock_skew_seconds' => (int) env('MEI_AUTOMATION_HMAC_MAX_CLOCK_SKEW', 60),
+    ],
+    'provider_policy' => [
+        'default' => env('MEI_AUTOMATION_PROVIDER_DEFAULT', 'serpro'),
+        'operations' => [],
+    ],
+    'captcha' => [
+        'driver' => env('MEI_AUTOMATION_CAPTCHA_DRIVER', 'manual'),
+        'budget_micros' => (int) env('MEI_AUTOMATION_CAPTCHA_BUDGET_MICROS', 0),
+        'nopecha_enabled' => filter_var(env('MEI_AUTOMATION_NOPECHA_ENABLED', false), FILTER_VALIDATE_BOOL),
+    ],
+];

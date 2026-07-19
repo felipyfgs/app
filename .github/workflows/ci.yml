@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: apps/api
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -27,7 +27,7 @@ jobs:
           extensions: curl, dom, mbstring, pcntl, pdo_sqlite, sodium, zip
       - uses: ramsey/composer-install@v3
         with:
-          working-directory: backend
+          working-directory: apps/api
       - name: Validar dependências
         run: composer validate --strict --no-check-publish
       - name: Validar estilo
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: apps/web
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -50,7 +50,7 @@ jobs:
         with:
           node-version: '24'
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: apps/web/pnpm-lock.yaml
       - name: Instalar dependências
         run: pnpm install --frozen-lockfile
       - name: Validar lint
@@ -81,15 +81,15 @@ jobs:
       - name: Validar scripts operacionais
         run: |
           for script in \
-            docker/php/entrypoint.sh docker/traefik/init.sh \
-            docker/ops/backup.sh docker/ops/restore.sh docker/ops/deploy.sh \
-            docker/ops/restore-smoke.sh; do
+            infra/docker/php/entrypoint.sh infra/docker/traefik/init.sh \
+            infra/docker/ops/backup.sh infra/docker/ops/restore.sh infra/docker/ops/deploy.sh \
+            infra/docker/ops/restore-smoke.sh; do
             sh -n "$script"
           done
           for script in \
-            docker/frontend/entrypoint.sh docker/ops/verify.sh \
-            docker/ops/secret-scan.sh docker/ops/prod-readiness.sh \
-            docker/ops/release-manifest.sh docker/ops/host-backup-run.sh; do
+            infra/docker/frontend/entrypoint.sh infra/docker/ops/verify.sh \
+            infra/docker/ops/secret-scan.sh infra/docker/ops/prod-readiness.sh \
+            infra/docker/ops/release-manifest.sh infra/docker/ops/host-backup-run.sh; do
             bash -n "$script"
           done
       - name: Validar Docker Compose de desenvolvimento e produção
@@ -127,16 +127,16 @@ jobs:
         run: |
           docker run --rm --add-host php:127.0.0.1 fiscal-hub-web:prod nginx -t
           docker run --rm --entrypoint php-fpm fiscal-hub-php:prod -t
-          ./docker/ops/restore-smoke.sh
+          ./infra/docker/ops/restore-smoke.sh
       - name: Gates fail-closed de readiness e secret-scan
         run: |
           set -euo pipefail
           export RELEASE_SHA="${GITHUB_SHA}"
-          ./docker/ops/test-prod-readiness.sh
+          ./infra/docker/ops/test-prod-readiness.sh
           # manifesto sanitizado
           MANIFEST_DIR="$(mktemp -d)"
           RELEASE_SHA="$RELEASE_SHA" RELEASE_TAG="sha-${RELEASE_SHA:0:12}" \
-            MANIFEST_DIR="$MANIFEST_DIR" ./docker/ops/release-manifest.sh
+            MANIFEST_DIR="$MANIFEST_DIR" ./infra/docker/ops/release-manifest.sh
           # scanner: manifesto não deve conter padrões sensíveis
           ! grep -Eiq 'password|private_key|BEGIN ' "$MANIFEST_DIR"/*.json
       - name: Validar OpenSpec (main specs + changes com delta)

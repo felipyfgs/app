@@ -1,25 +1,25 @@
 # =============================================================================
 # Monorepo hub fiscal — fonte única de ignore na raiz
-# backend/ e frontend/ mantêm .gitignore locais (Laravel/Nuxt); este arquivo
+# apps/api/ e apps/web/ mantêm .gitignore locais (Laravel/Nuxt); este arquivo
 # cobre o repositório central e reforça o que nunca deve entrar no git.
 # =============================================================================
 
-# --- Referência local (templates clonados; NÃO versionar, sem nested .git) ---
-.reference/
+# --- Local-only (templates, massa piloto, artefatos de máquina; NÃO versionar) ---
+.local/
 
 # --- Secrets e ambiente ---
 .env
 .env.*
 !.env.example
-backend/.env
-backend/.env.*
-!backend/.env.example
-frontend/.env
-frontend/.env.*
-!frontend/.env.example
+apps/api/.env
+apps/api/.env.*
+!apps/api/.env.example
+apps/web/.env
+apps/web/.env.*
+!apps/web/.env.example
 **/.env
 !**/.env.example
-backend/auth.json
+apps/api/auth.json
 **/auth.json
 # Chaves e segredos soltos
 **/secrets/
@@ -29,63 +29,63 @@ backend/auth.json
 
 # --- Dependências ---
 **/node_modules/
-backend/vendor/
+apps/api/vendor/
 # Store local do pnpm (nunca versionar; regenera com install)
 **/.pnpm-store/
 .pnpm-store/
 **/composer.phar
 composer.phar
 
-# --- Backend (Laravel) ---
-backend/public/build
-backend/public/hot
-backend/public/storage
-backend/public/fonts-manifest.dev.json
-backend/storage/*.key
-backend/storage/pail
-backend/storage/logs/*
-!backend/storage/logs/.gitignore
+# --- API Laravel (apps/api) ---
+apps/api/public/build
+apps/api/public/hot
+apps/api/public/storage
+apps/api/public/fonts-manifest.dev.json
+apps/api/storage/*.key
+apps/api/storage/pail
+apps/api/storage/logs/*
+!apps/api/storage/logs/.gitignore
 # XML de smoke/fiscal em logs (defesa além de *)
-backend/storage/logs/*.xml
-backend/storage/app/certs/
-backend/storage/app/tmp-manual-nfce/
-backend/storage/app/backups/
-backend/storage/framework/cache/data/*
-!backend/storage/framework/cache/data/.gitignore
-backend/storage/framework/sessions/*
-!backend/storage/framework/sessions/.gitignore
-backend/storage/framework/testing/*
-!backend/storage/framework/testing/.gitignore
-backend/storage/framework/views/*
-!backend/storage/framework/views/.gitignore
+apps/api/storage/logs/*.xml
+apps/api/storage/app/certs/
+apps/api/storage/app/tmp-manual-nfce/
+apps/api/storage/app/backups/
+apps/api/storage/framework/cache/data/*
+!apps/api/storage/framework/cache/data/.gitignore
+apps/api/storage/framework/sessions/*
+!apps/api/storage/framework/sessions/.gitignore
+apps/api/storage/framework/testing/*
+!apps/api/storage/framework/testing/.gitignore
+apps/api/storage/framework/views/*
+!apps/api/storage/framework/views/.gitignore
 # Private disk (volume Docker / artefatos locais)
-backend/storage/app/private/*
-!backend/storage/app/private/.gitignore
-backend/bootstrap/cache/*.php
-!backend/bootstrap/cache/.gitignore
-backend/.phpunit.result.cache
-backend/.phpunit.cache
-backend/_ide_helper.php
-backend/_ide_helper_models.php
-backend/.phpstorm.meta.php
-backend/Homestead.json
-backend/Homestead.yaml
-backend/.phpactor.json
-backend/.php-cs-fixer.cache
-backend/.phpstan.result.cache
+apps/api/storage/app/private/*
+!apps/api/storage/app/private/.gitignore
+apps/api/bootstrap/cache/*.php
+!apps/api/bootstrap/cache/.gitignore
+apps/api/.phpunit.result.cache
+apps/api/.phpunit.cache
+apps/api/_ide_helper.php
+apps/api/_ide_helper_models.php
+apps/api/.phpstorm.meta.php
+apps/api/Homestead.json
+apps/api/Homestead.yaml
+apps/api/.phpactor.json
+apps/api/.php-cs-fixer.cache
+apps/api/.phpstan.result.cache
 
-# --- Frontend (Nuxt) ---
-frontend/.nuxt/
-frontend/.output/
-frontend/.data/
-frontend/.nitro/
-frontend/.cache/
-frontend/dist/
-frontend/.fleet/
-frontend/.history/
-frontend/.eslintcache
-frontend/.vite/
-frontend/**/*.tsbuildinfo
+# --- Web Nuxt (apps/web) ---
+apps/web/.nuxt/
+apps/web/.output/
+apps/web/.data/
+apps/web/.nitro/
+apps/web/.cache/
+apps/web/dist/
+apps/web/.fleet/
+apps/web/.history/
+apps/web/.eslintcache
+apps/web/.vite/
+apps/web/**/*.tsbuildinfo
 
 # --- Docker / runtime local ---
 docker-compose.override.yml
@@ -103,7 +103,7 @@ letsencrypt/
 **/letsencrypt/
 
 # --- Vault, dados fiscais e certificados (NUNCA versionar) ---
-# Credenciais / PFX / senhas de smoke SERPRO (contador + plataforma)
+# Massa piloto: .local/dados/ (já coberto por .local/). Defesa se recriar na raiz:
 dados/
 data/
 vault/
@@ -123,7 +123,7 @@ private_storage/
 **/*contrato-serpro*
 !docker/**/*.conf
 !**/.gitkeep
-# Fixtures de teste PEM/PFX ficam em backend/tests/fixtures (git may track if mode allows)
+# Fixtures de teste PEM/PFX ficam em apps/api/tests/fixtures (git may track if mode allows)
 
 # --- Documentos locais soltos na raiz (contratos, dumps de sessão) ---
 /*.pdf
@@ -189,13 +189,18 @@ Thumbs.db
 # Evidências visuais geradas localmente — regeneráveis e não versionadas
 /docs/ui-screenshots/
 /storage/app/serpro-e2e-ui/
-frontend/pw-clients.mjs
-frontend/test-results/
-frontend/playwright-report/
-frontend/blob-report/
+apps/web/pw-clients.mjs
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
 # Baselines de regressão visual Playwright — só local (pesados; regenerar com
 # PLAYWRIGHT_INCLUDE_VISUAL=1 pnpm test:e2e:visual --update-snapshots)
-frontend/tests/e2e/__screenshots__/
+apps/web/tests/e2e/__screenshots__/
 # merge/patch leftovers
 *.orig
 *.rej
+
+# OpenSpec: archive vai pro git; changes ativas (fora de archive/) ficam só locais.
+openspec/changes/*
+!openspec/changes/archive/
+!openspec/changes/archive/**

@@ -18,42 +18,42 @@ while IFS= read -r file; do
   base="${file##*/}"
 
   case "$file" in
-    backend/app/*.php|backend/tests/*.php)
+    apps/api/app/*.php|apps/api/tests/*.php)
       [[ "$base" =~ ^[A-Z][A-Za-z0-9]*\.php$ ]] \
         || failure "$file deve usar PascalCase.php"
       ;;
-    backend/config/*.php)
+    apps/api/config/*.php)
       [[ "$base" =~ ^[a-z0-9]+(_[a-z0-9]+)*\.php$ ]] \
         || failure "$file deve usar snake_case.php"
       ;;
-    backend/database/migrations/*.php)
+    apps/api/database/migrations/*.php)
       [[ "$base" =~ ^[0-9]{4}_[0-9]{2}_[0-9]{2}_[0-9]{6}_[a-z0-9]+(_[a-z0-9]+)*\.php$ ]] \
         || failure "$file deve usar timestamp_snake_case.php"
       ;;
-    frontend/app/components/*.vue)
+    apps/web/app/components/*.vue)
       [[ "$base" =~ ^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)*\.vue$ ]] \
         || failure "$file deve usar PascalCase.vue"
       ;;
-    frontend/app/pages/*.vue)
+    apps/web/app/pages/*.vue)
       if [[ "$base" =~ ^\[.*[A-Z].*\]\.vue$ ]]; then
         warning "$file usa parametro de rota camelCase; padronizar exige ajustar route.params"
       fi
       [[ "$base" =~ ^([a-z0-9]+(-[a-z0-9]+)*|\[[A-Za-z0-9-]+\])\.vue$ ]] \
         || failure "$file deve usar kebab-case.vue ou [param].vue"
       ;;
-    frontend/app/composables/api/*.ts)
+    apps/web/app/composables/api/*.ts)
       [[ "$base" =~ ^create[A-Z][A-Za-z0-9]*Api\.ts$ || "$base" == "types.ts" ]] \
         || warning "$file foge do padrao createXxxApi.ts"
       ;;
-    frontend/app/composables/*.ts)
+    apps/web/app/composables/*.ts)
       [[ "$base" =~ ^use[A-Z][A-Za-z0-9]*\.ts$ || "$base" == "types.ts" ]] \
         || failure "$file deve usar useXxx.ts"
       ;;
-    frontend/app/utils/*.ts)
+    apps/web/app/utils/*.ts)
       [[ "$base" =~ ^[a-z0-9]+(-[a-z0-9]+)*\.ts$ ]] \
         || failure "$file deve usar kebab-case.ts"
       ;;
-    frontend/tests/unit/*.ts)
+    apps/web/tests/unit/*.ts)
       [[ "$base" =~ ^[a-z0-9]+(-[a-z0-9]+)*(\.nuxt)?\.test\.ts$ || "$base" == "fiscal-fixtures.ts" || "$base" == "nuxt.config.ts" ]] \
         || warning "$file foge do padrao kebab-case.test.ts"
       ;;

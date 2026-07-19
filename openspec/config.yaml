@@ -49,15 +49,15 @@ context: |
     somente gates integrados e evidências de prontidão; sync/archive/commit acontecem
     depois do checklist concluído, no fechamento do workflow.
 
-  Stack: backend Laravel 13 / PHP 8.4 / Horizon; frontend Nuxt 4 SPA (ssr:false) + Nuxt UI;
-  nginx same-origin; make dev para HMR.
+  Stack: apps/api Laravel 13 / PHP 8.4 / Horizon; apps/web Nuxt 4 SPA (ssr:false) + Nuxt UI;
+  services/* sidecars; infra/docker; nginx same-origin; make dev para HMR.
 
   Tenancy: Office + CurrentOffice; nunca confiar office_id do client;
   PLATFORM_ADMIN sem acesso fiscal implícito a tenants.
 
   Segurança: vault SecureObjectStore; flags default OFF; sem PFX/tokens/XML em JSON.
 
-  UI: panel-ui → ui-archetype; template .reference/nuxt-dashboard-template @ 0f30c09.
+  UI: panel-ui → ui-archetype; template .local/reference/nuxt-dashboard-template @ 0f30c09.
 
   Specs principais incluem `schema-conventions`; consultar o CLI para o inventário atual.
 

@@ -1,5 +1,0 @@
-# Crontab root — alternativa a systemd.
-# 0 2 * * * /opt/fiscal-hub/docker/ops/host-backup-run.sh
-#
-# O script host-backup-run.sh carrega /etc/fiscal-hub/backup.env (600)
-# e chama make prod-backup sem injetar a chave nos containers.
