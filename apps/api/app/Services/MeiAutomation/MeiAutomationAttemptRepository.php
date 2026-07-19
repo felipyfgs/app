@@ -130,7 +130,8 @@ final class MeiAutomationAttemptRepository
                 ->whereKey($attempt->id)
                 ->lockForUpdate()
                 ->firstOrFail();
-            $artifacts = collect($locked->vault_artifacts ?? [])->filter('is_array');
+            $artifacts = collect($locked->vault_artifacts ?? [])
+                ->filter(static fn (mixed $item): bool => is_array($item));
             if (! $artifacts->contains(fn (array $item): bool => ($item['id'] ?? null) === $artifact['id'])) {
                 $artifacts->push($artifact);
             }

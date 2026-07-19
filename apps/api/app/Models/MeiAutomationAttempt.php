@@ -97,7 +97,7 @@ class MeiAutomationAttempt extends Model
             'error_message' => $this->error_message,
             'metadata' => app(MeiAutomationMetadataSanitizer::class)->sanitize($this->safe_metadata ?? []),
             'artifacts' => collect($this->vault_artifacts ?? [])
-                ->filter('is_array')
+                ->filter(static fn (mixed $artifact): bool => is_array($artifact))
                 ->map(static fn (array $artifact): array => [
                     'id' => $artifact['id'] ?? null,
                     'name' => $artifact['name'] ?? null,
