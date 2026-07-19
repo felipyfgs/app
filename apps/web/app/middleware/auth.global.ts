@@ -11,12 +11,26 @@ import {
   isPlatformAdminPath,
   requiresPlatformAdminHome
 } from '~/utils/auth-redirect'
+import {
+  fetchInitialOnboardingAvailable,
+  guestAuthPathWhenOnboardingAvailable,
+  onboardingNavigateTarget
+} from '~/utils/initial-onboarding-gate'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   const { isAuthenticated, refreshIdentity, user } = useSanctumAuth()
   // Rotas públicas de auth/ativação/onboarding; 2FA legado redireciona.
   const guestOnly = isAuthPublicPath(to.path)
   const legacyTwoFactor = to.path === '/two-factor/setup' || to.path.startsWith('/two-factor/')
+
+  // Instalação pristine: redireciona antes de /me (evita 401 no console do browser).
+  if (!isAuthenticated.value) {
+    const apiBase = String(useRuntimeConfig().public.apiBase || '')
+    const onboardingAvailable = await fetchInitialOnboardingAvailable(apiBase)
+    if (guestAuthPathWhenOnboardingAvailable(to.path, onboardingAvailable)) {
+      return navigateTo(onboardingNavigateTarget(to.hash))
+    }
+  }
 
   if (!guestOnly || isAuthenticated.value) {
     try {

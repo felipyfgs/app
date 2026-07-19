@@ -1,11 +1,15 @@
 <script setup lang="ts">
 /**
  * Onboarding inicial da plataforma (instalação vazia).
- * Token só no fragmento `#token=` → memória → body do POST.
+ * Token preferencialmente via `#token=` (removido da URL); se ausente e
+ * a instalação ainda estiver pristine, permite colar o token de deploy.
  */
 import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
-import { consumeActivationTokenFromLocation } from '~/utils/activation'
+import {
+  consumeActivationTokenFromLocation,
+  extractActivationTokenFromHash
+} from '~/utils/activation'
 import { apiErrorMessage } from '~/utils/api-error'
 
 definePageMeta({ layout: 'auth' })
@@ -19,10 +23,12 @@ const api = useApi()
 const { refreshIdentity } = useSanctumAuth()
 
 const token = ref<string | null>(null)
+const tokenDraft = ref('')
 const checking = ref(true)
 const available = ref(false)
 const error = ref('')
 const loading = ref(false)
+const tokenError = ref('')
 
 const schema = z.object({
   organization_name: z.string('Informe o nome da organização').min(2, 'Informe o nome da organização').max(255),
@@ -55,22 +61,30 @@ onMounted(async () => {
   }
 })
 
-const blocked = computed(() => {
-  if (checking.value) return false
-  if (!available.value) return true
-  if (!token.value) return true
-  return false
-})
+/** Instalação já configurada — não há o que criar aqui. */
+const trulyUnavailable = computed(() => !checking.value && !available.value)
 
-const blockReason = computed(() => {
-  if (!available.value) {
-    return 'Este onboarding não está disponível. Use o login se a plataforma já foi configurada.'
+/** Instalação pristine, mas ainda falta o token de deploy. */
+const needsToken = computed(() => !checking.value && available.value && !token.value)
+
+function applyTokenDraft() {
+  tokenError.value = ''
+  const raw = tokenDraft.value.trim()
+  // Aceita URL completa com #token=…, fragmento token=… ou o token puro.
+  let value = raw
+  const hashIdx = raw.indexOf('#')
+  if (hashIdx >= 0) {
+    value = extractActivationTokenFromHash(raw.slice(hashIdx)) || raw
+  } else if (raw.startsWith('token=') || raw.includes('token=')) {
+    value = extractActivationTokenFromHash(`#${raw.includes('#') ? raw.split('#').pop() : raw}`) || raw
   }
-  if (!token.value) {
-    return 'Abra o link completo fornecido no deploy (com #token=…). O segredo não deve aparecer em favoritos ou histórico de servidor.'
+  if (value.length < 32) {
+    tokenError.value = 'Token inválido. Cole o token completo do deploy (mínimo 32 caracteres) ou o link com #token=…'
+    return
   }
-  return ''
-})
+  token.value = value
+  tokenDraft.value = ''
+}
 
 async function onSubmit(_event: FormSubmitEvent<Schema>) {
   if (!token.value || !available.value) return
@@ -127,11 +141,11 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
       </div>
 
       <UAlert
-        v-else-if="blocked"
+        v-else-if="trulyUnavailable"
         color="warning"
         icon="i-lucide-shield-off"
-        title="Onboarding indisponível"
-        :description="blockReason"
+        title="Onboarding já concluído"
+        description="Esta instalação já tem administrador. Use o login para entrar."
         data-testid="onboarding-blocked"
       >
         <template #actions>
@@ -145,13 +159,63 @@ async function onSubmit(_event: FormSubmitEvent<Schema>) {
         </template>
       </UAlert>
 
+      <div
+        v-else-if="needsToken"
+        class="space-y-4"
+        data-testid="onboarding-token-step"
+      >
+        <div class="space-y-1">
+          <h2 class="text-lg font-semibold text-highlighted">
+            Token de deploy
+          </h2>
+          <p class="text-sm text-muted">
+            A instalação está pronta para o primeiro admin. Cole o token gerado no deploy
+            (ou o link completo com <code class="text-xs">#token=…</code>).
+          </p>
+        </div>
+
+        <UAlert
+          v-if="tokenError"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-circle-alert"
+          :title="tokenError"
+          data-testid="onboarding-token-error"
+        />
+
+        <UFormField
+          label="Token ou link de onboarding"
+          name="deploy_token"
+          required
+        >
+          <UTextarea
+            v-model="tokenDraft"
+            :rows="3"
+            autoresize
+            placeholder="Cole o token ou https://…/onboarding#token=…"
+            data-testid="onboarding-token-input"
+            class="w-full font-mono text-sm"
+          />
+        </UFormField>
+
+        <UButton
+          label="Continuar"
+          color="primary"
+          block
+          size="lg"
+          icon="i-lucide-arrow-right"
+          data-testid="onboarding-token-continue"
+          @click="applyTokenDraft"
+        />
+      </div>
+
       <template v-else>
         <div class="space-y-1">
           <h2 class="text-lg font-semibold text-highlighted">
             Primeiro administrador
           </h2>
           <p class="text-sm text-muted">
-            Organização, e-mail e senha. O token de deploy já foi lido e removido da URL.
+            Organização, e-mail e senha do PLATFORM_ADMIN. Em seguida você cria o escritório e conclui o onboarding fiscal.
           </p>
         </div>
 
