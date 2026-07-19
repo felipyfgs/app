@@ -95,6 +95,10 @@ seed-pilot:
 audit-names:
 	./scripts/audit-file-names.sh
 
+# Fronteira MEI: falha se Compose publicar porta do sidecar; SKIP se ainda não houver serviço.
+check-mei-compose-boundary:
+	node scripts/check-mei-compose-boundary.mjs
+
 frontend-prepare-generated:
 	@set -eu; \
 	for path in apps/web/.nuxt apps/web/.output apps/web/test-results apps/web/playwright-report; do \

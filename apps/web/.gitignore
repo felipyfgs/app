@@ -32,5 +32,8 @@ test-results
 playwright-report
 blob-report
 coverage
+# Fixture Vitest regenerável
+tests/unit/nuxt-fixture/.nuxtrc
+tests/unit/nuxt-fixture/.nuxt/
 # Baselines visuais Playwright — só local (não versionar; regenerar com --update-snapshots)
 tests/e2e/__screenshots__/
