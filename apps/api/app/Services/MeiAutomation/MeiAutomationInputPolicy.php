@@ -29,7 +29,7 @@ final class MeiAutomationInputPolicy
     ];
 
     /** @param array<string, mixed> $input
-     *  @return array<string, mixed>
+     * @return array<string, mixed>
      */
     public function sanitize(string $operationKey, array $input): array
     {

@@ -85,7 +85,7 @@ final class MeiAutomationArtifactIngestor
     }
 
     /** @param array<string, mixed> $descriptor
-     *  @return array{id:string,name:string,content_type:string,byte_size:int,sha256:string}
+     * @return array{id:string,name:string,content_type:string,byte_size:int,sha256:string}
      */
     private function validateDescriptor(array $descriptor): array
     {
@@ -102,7 +102,9 @@ final class MeiAutomationArtifactIngestor
         if (! preg_match('/^[0-9a-f-]{36}$/', $id)
             || $name === ''
             || mb_strlen($name) > 120
-            || preg_match('/[\\\/\x00]/', $name)
+            || str_contains($name, '/')
+            || str_contains($name, '\\')
+            || str_contains($name, "\0")
             || ! in_array($contentType, $allowed, true)
             || ! is_int($byteSize)
             || $byteSize < 1

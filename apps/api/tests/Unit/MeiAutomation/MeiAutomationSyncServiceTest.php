@@ -5,6 +5,7 @@ namespace Tests\Unit\MeiAutomation;
 use App\Enums\MeiAutomationStatus;
 use App\Enums\MeiProvider;
 use App\Models\Client;
+use App\Models\MeiAutomationAttempt;
 use App\Models\Office;
 use App\Services\MeiAutomation\MeiAutomationAttemptService;
 use App\Services\MeiAutomation\MeiAutomationSyncService;
@@ -51,7 +52,7 @@ class MeiAutomationSyncServiceTest extends TestCase
         app(MeiAutomationSyncService::class)->assertPollingContract();
     }
 
-    private function attempt(): \App\Models\MeiAutomationAttempt
+    private function attempt(): MeiAutomationAttempt
     {
         config()->set('mei_automation.base_url', 'http://mei.test');
         config()->set('mei_automation.hmac.key_id', 'laravel');
