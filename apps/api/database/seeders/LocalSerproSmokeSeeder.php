@@ -184,6 +184,10 @@ class LocalSerproSmokeSeeder extends Seeder
         }
     }
 
+    /**
+     * AUTO CENTER (.local/dados/contador/cliene) — campos estruturais de LTDA automotiva.
+     * Endereço/QSA/capital completos via “Atualizar cadastro RFB” ou docs locais (não inventar).
+     */
     private function seedAutoCenterClient(Office $office): void
     {
         $root = substr(self::AUTO_CENTER_CNPJ, 0, 8);
@@ -197,6 +201,12 @@ class LocalSerproSmokeSeeder extends Seeder
                 'legal_name' => self::AUTO_CENTER_LEGAL_NAME,
                 'display_name' => self::AUTO_CENTER_TRADE_NAME,
                 'tax_regime' => TaxRegimeCode::SimplesNacional->value,
+                'legal_nature_code' => '2062',
+                'legal_nature_name' => 'Sociedade Empresária Limitada',
+                'company_size_code' => '03',
+                'company_size_name' => 'Empresa de Pequeno Porte',
+                'responsible_qualification_code' => '49',
+                'responsible_qualification_name' => 'Sócio-Administrador',
                 'notes' => self::MARKER.' Cliente LTDA (.local/dados/contador/cliene). CNPJ '
                     .self::AUTO_CENTER_CNPJ.'.',
                 'is_active' => true,
@@ -217,6 +227,16 @@ class LocalSerproSmokeSeeder extends Seeder
                 'capture_enabled' => true,
                 'registration_status' => RegistrationStatus::Active,
                 'registration_source' => RegistrationSource::Manual,
+                'main_cnae_code' => '4520001',
+                'main_cnae_name' => 'Serviços de manutenção e reparação mecânica de veículos automotores',
+                'secondary_cnaes' => [
+                    [
+                        'code' => '4530703',
+                        'name' => 'Comércio a varejo de peças e acessórios novos para veículos automotores',
+                    ],
+                ],
+                'simples_optant' => true,
+                'mei_optant' => false,
                 'address_country' => 'BR',
             ],
         );
