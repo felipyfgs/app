@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mei-automation"
+name = "mei"
 version = "0.1.0"
 description = "Executor interno de automacao dos portais oficiais do MEI"
 requires-python = ">=3.12,<3.13"
@@ -26,7 +26,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mei_automation"]
+packages = ["src/mei"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
@@ -44,5 +44,4 @@ ignore = ["S101"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["mei_automation"]
-
+packages = ["mei"]

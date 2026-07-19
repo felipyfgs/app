@@ -3,7 +3,7 @@ import hashlib
 import pytest
 from pydantic import ValidationError
 
-from mei_automation.models import JobCreate, JobRecord, JobStatus, TaxpayerIdentifier
+from mei.models import JobCreate, JobRecord, JobStatus, TaxpayerIdentifier
 
 
 def test_cnpj_accepts_numeric_and_alphanumeric_values() -> None:

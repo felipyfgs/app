@@ -1,17 +1,24 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi.responses import FileResponse
 from redis.asyncio import Redis
 
-from mei_automation.celery_app import celery_app
-from mei_automation.config import Settings, get_settings
-from mei_automation.dispatcher import CeleryJobDispatcher, JobDispatcher
-from mei_automation.models import HealthResponse, JobCreate, JobRecord, JobResponse, JobStatus
-from mei_automation.security import HmacAuthenticator, RedisReplayStore, require_hmac
-from mei_automation.store import (
+from mei.artifacts import (
+    ArtifactNotFoundError,
+    ArtifactStore,
+    LocalArtifactStore,
+)
+from mei.celery_app import celery_app
+from mei.config import Settings, get_settings
+from mei.dispatcher import CeleryJobDispatcher, JobDispatcher
+from mei.models import HealthResponse, JobCreate, JobRecord, JobResponse, JobStatus
+from mei.security import HmacAuthenticator, RedisReplayStore, require_hmac
+from mei.store import (
     IdempotencyConflictError,
     JobNotFoundError,
     JobStore,
@@ -24,6 +31,7 @@ def create_app(
     store: JobStore | None = None,
     authenticator: HmacAuthenticator | None = None,
     dispatcher: JobDispatcher | None = None,
+    artifact_store: ArtifactStore | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
     injected = store is not None and authenticator is not None and dispatcher is not None
@@ -31,6 +39,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         redis: Redis | None = None
+        cleanup_task: asyncio.Task[None] | None = None
         if injected:
             app.state.store = store
             app.state.authenticator = authenticator
@@ -43,12 +52,22 @@ def create_app(
                 RedisReplayStore(redis),
             )
             app.state.dispatcher = CeleryJobDispatcher(celery_app)
-        yield
-        if redis is not None:
-            await redis.aclose()
+        app.state.artifact_store = artifact_store or LocalArtifactStore(
+            resolved_settings.artifact_root
+        )
+        cleanup_task = asyncio.create_task(
+            _artifact_cleanup_loop(app, resolved_settings.artifact_ttl_seconds)
+        )
+        try:
+            yield
+        finally:
+            cleanup_task.cancel()
+            await asyncio.gather(cleanup_task, return_exceptions=True)
+            if redis is not None:
+                await redis.aclose()
 
     app = FastAPI(
-        title="MEI Automation",
+        title="MEI Service",
         version="0.1.0",
         docs_url=None,
         redoc_url=None,
@@ -133,6 +152,30 @@ def create_app(
         _dispatcher(app).dispatch(job_id)
         return record.public()
 
+    @app.get(
+        "/v1/jobs/{job_id}/artifacts/{artifact_id}",
+        response_class=FileResponse,
+        dependencies=[Depends(require_hmac)],
+    )
+    async def download_artifact(job_id: UUID, artifact_id: UUID) -> FileResponse:
+        record = await _get_job(app, job_id)
+        descriptor = next(
+            (artifact for artifact in record.artifacts if artifact.id == artifact_id),
+            None,
+        )
+        if descriptor is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Artefato nao encontrado")
+        try:
+            path = _artifact_store(app).resolve(job_id, artifact_id)
+        except ArtifactNotFoundError as error:
+            raise HTTPException(status.HTTP_410_GONE, "Artefato expirado") from error
+        return FileResponse(
+            path,
+            media_type=descriptor.content_type,
+            filename=descriptor.name,
+            headers={"Cache-Control": "private, no-store, max-age=0"},
+        )
+
     return app
 
 
@@ -144,11 +187,22 @@ def _dispatcher(app: FastAPI) -> JobDispatcher:
     return cast(JobDispatcher, app.state.dispatcher)
 
 
+def _artifact_store(app: FastAPI) -> ArtifactStore:
+    return cast(ArtifactStore, app.state.artifact_store)
+
+
 async def _get_job(app: FastAPI, job_id: UUID) -> JobRecord:
     try:
         return await _store(app).get(job_id)
     except JobNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Job nao encontrado") from error
+
+
+async def _artifact_cleanup_loop(app: FastAPI, ttl_seconds: int) -> None:
+    interval_seconds = max(30, min(300, ttl_seconds // 2))
+    while True:
+        _artifact_store(app).purge_expired(ttl_seconds)
+        await asyncio.sleep(interval_seconds)
 
 
 app = create_app()

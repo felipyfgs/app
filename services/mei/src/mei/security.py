@@ -7,7 +7,7 @@ from typing import Protocol
 from fastapi import HTTPException, Request, status
 from redis.asyncio import Redis
 
-from mei_automation.config import Settings
+from mei.config import Settings
 
 KEY_ID_HEADER = "X-MEI-Key-Id"
 TIMESTAMP_HEADER = "X-MEI-Timestamp"

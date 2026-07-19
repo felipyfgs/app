@@ -1,6 +1,6 @@
-from mei_automation.executor import ExecutionOutcome, JobRunner
-from mei_automation.models import JobCreate, JobRecord, JobStatus
-from mei_automation.store import InMemoryJobStore
+from mei.executor import ExecutionOutcome, JobRunner
+from mei.models import JobCreate, JobRecord, JobStatus
+from mei.store import InMemoryJobStore
 
 
 class SuccessExecutor:

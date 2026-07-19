@@ -16,7 +16,7 @@ class CeleryJobDispatcher:
 
     def dispatch(self, job_id: UUID) -> None:
         self._celery.send_task(
-            "mei_automation.execute_job",
+            "mei.execute_job",
             args=[str(job_id)],
             task_id=str(job_id),
         )

@@ -3,10 +3,10 @@ from uuid import UUID
 
 from redis.asyncio import Redis
 
-from mei_automation.celery_app import celery_app
-from mei_automation.config import get_settings
-from mei_automation.executor import JobRunner, PlaywrightOperationExecutor
-from mei_automation.store import RedisJobStore
+from mei.celery_app import celery_app
+from mei.config import get_settings
+from mei.executor import JobRunner, PlaywrightOperationExecutor
+from mei.store import RedisJobStore
 
 
 async def _run(job_id: UUID) -> None:
@@ -20,6 +20,6 @@ async def _run(job_id: UUID) -> None:
         await redis.aclose()
 
 
-@celery_app.task(name="mei_automation.execute_job", bind=True, max_retries=0)  # type: ignore[untyped-decorator]
+@celery_app.task(name="mei.execute_job", bind=True, max_retries=0)  # type: ignore[untyped-decorator]
 def execute_job(_task: object, job_id: str) -> None:
     asyncio.run(_run(UUID(job_id)))

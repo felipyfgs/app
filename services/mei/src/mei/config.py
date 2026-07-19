@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/4"
     result_ttl_seconds: int = Field(default=900, ge=60, le=86_400)
     artifact_ttl_seconds: int = Field(default=300, ge=60, le=3_600)
-    artifact_root: Path = Path("/tmp/mei-automation")  # noqa: S108 - volume efemero dedicado
+    artifact_root: Path = Path("/tmp/mei")  # noqa: S108 - volume efemero dedicado
     hmac_key_id: str = "laravel"
     hmac_secret: SecretStr = SecretStr("")
     hmac_max_clock_skew_seconds: int = Field(default=60, ge=10, le=300)

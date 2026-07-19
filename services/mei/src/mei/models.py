@@ -77,6 +77,13 @@ class ArtifactDescriptor(BaseModel):
     byte_size: int = Field(ge=0, le=10_485_760)
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        if value in {".", ".."} or any(character in value for character in ("/", "\\", "\0")):
+            raise ValueError("Nome de artefato invalido")
+        return value
+
 
 class PublicError(BaseModel):
     code: str = Field(min_length=3, max_length=80)

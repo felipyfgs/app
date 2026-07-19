@@ -1,6 +1,12 @@
+import hashlib
 import time
+from pathlib import Path
+from uuid import UUID
 
 from conftest import build_client, job_payload, signed_request
+
+from mei.artifacts import LocalArtifactStore
+from mei.models import ArtifactDescriptor
 
 
 def test_create_get_and_cancel_job() -> None:
@@ -81,3 +87,47 @@ def test_ready_requires_hmac_and_store() -> None:
         response = client.get("/health/ready")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "redis": True, "hmac_ready": True}
+
+
+def test_downloads_only_artifact_linked_to_job(tmp_path: Path) -> None:
+    artifact_store = LocalArtifactStore(tmp_path)
+    client, store, _dispatcher = build_client(artifact_store=artifact_store)
+    content = b"%PDF-1.7\nfixture"
+    with client:
+        created = signed_request(client, "POST", "/v1/jobs", job_payload())
+        job_id = UUID(created.json()["id"])
+        artifact = ArtifactDescriptor(
+            name="das.pdf",
+            content_type="application/pdf",
+            byte_size=len(content),
+            sha256=hashlib.sha256(content).hexdigest(),
+        )
+        artifact_store.write(job_id, artifact.id, content)
+
+        record = _run(store.get(job_id))
+        record.artifacts.append(artifact)
+        _run(store.save(record))
+
+        response = signed_request(
+            client,
+            "GET",
+            f"/v1/jobs/{job_id}/artifacts/{artifact.id}",
+            nonce="nonce-artifact-12345678",
+        )
+        unknown = signed_request(
+            client,
+            "GET",
+            f"/v1/jobs/{job_id}/artifacts/0f82d5ec-d69f-4b2b-a2d6-b2c52e0e1b92",
+            nonce="nonce-artifact-unknown12",
+        )
+
+    assert response.status_code == 200
+    assert response.content == content
+    assert response.headers["cache-control"] == "private, no-store, max-age=0"
+    assert unknown.status_code == 404
+
+
+def _run(coroutine):
+    import asyncio
+
+    return asyncio.run(coroutine)

@@ -4,9 +4,9 @@ from typing import Any, Protocol
 from playwright.async_api import async_playwright
 from pydantic import BaseModel
 
-from mei_automation.config import Settings
-from mei_automation.models import JobRecord, JobStatus, PublicError
-from mei_automation.store import JobStore
+from mei.config import Settings
+from mei.models import JobRecord, JobStatus, PublicError
+from mei.store import JobStore
 
 
 class ExecutionOutcome(BaseModel):
@@ -49,7 +49,7 @@ class PlaywrightOperationExecutor:
             try:
                 page = await context.new_page()
                 page.set_default_timeout(self._settings.browser_timeout_ms)
-                await page.set_content("<title>mei-automation-ready</title><main>ready</main>")
+                await page.set_content("<title>mei-ready</title><main>ready</main>")
                 title = await page.title()
             finally:
                 await context.close()

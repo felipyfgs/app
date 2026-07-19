@@ -5,10 +5,11 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from mei_automation.api import create_app
-from mei_automation.config import Settings
-from mei_automation.dispatcher import InMemoryDispatcher
-from mei_automation.security import (
+from mei.api import create_app
+from mei.artifacts import ArtifactStore
+from mei.config import Settings
+from mei.dispatcher import InMemoryDispatcher
+from mei.security import (
     KEY_ID_HEADER,
     NONCE_HEADER,
     SIGNATURE_HEADER,
@@ -17,17 +18,23 @@ from mei_automation.security import (
     InMemoryReplayStore,
     calculate_signature,
 )
-from mei_automation.store import InMemoryJobStore
+from mei.store import InMemoryJobStore
 
 SECRET = "test-secret-with-at-least-32-bytes"  # noqa: S105 - fixture de teste
 
 
-def build_client() -> tuple[TestClient, InMemoryJobStore, InMemoryDispatcher]:
+def build_client(
+    artifact_store: ArtifactStore | None = None,
+) -> tuple[TestClient, InMemoryJobStore, InMemoryDispatcher]:
     settings = Settings(environment="testing", hmac_secret=SECRET)
     store = InMemoryJobStore()
     dispatcher = InMemoryDispatcher()
     authenticator = HmacAuthenticator(settings, InMemoryReplayStore())
-    return TestClient(create_app(settings, store, authenticator, dispatcher)), store, dispatcher
+    return (
+        TestClient(create_app(settings, store, authenticator, dispatcher, artifact_store)),
+        store,
+        dispatcher,
+    )
 
 
 def signed_request(

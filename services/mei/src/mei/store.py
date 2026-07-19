@@ -5,7 +5,7 @@ from uuid import UUID
 
 from redis.asyncio import Redis
 
-from mei_automation.models import JobCreate, JobRecord
+from mei.models import JobCreate, JobRecord
 
 
 class JobNotFoundError(LookupError):
