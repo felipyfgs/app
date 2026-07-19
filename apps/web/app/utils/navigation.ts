@@ -6,9 +6,7 @@ import { DOCS_NAV_ITEMS, OPERATIONS_NAV_ITEMS } from '~/utils/docs-operations-na
 import { fiscalNavigationItems } from '~/utils/fiscal-navigation'
 import {
   flattenNavLeaves,
-  groupEntryTo,
   isNavLeaf,
-  isNavTabGroup,
   pathMatchesLeaf,
   type NavLeafDestination
 } from '~/utils/navigation-hierarchy'
@@ -18,7 +16,6 @@ import {
   canManageClients,
   canViewWork
 } from '~/utils/permissions'
-import { SERPRO_NAV_ITEMS } from '~/utils/serpro-navigation'
 import { workNavigationItems } from '~/utils/work-navigation'
 
 export interface NavDestination {
@@ -99,19 +96,7 @@ function platformAdminDestinations(path = ''): NavDestination[] {
         label: 'Módulos fiscais',
         icon: 'i-lucide-blocks',
         to: '/admin/fiscal-modules'
-      },
-      ...SERPRO_NAV_ITEMS.map(item => ({
-        id: `platform-${item.id}`,
-        label: `SERPRO · ${item.label}`,
-        icon: item.icon || 'i-lucide-gauge',
-        to: isNavTabGroup(item) ? groupEntryTo(item) : item.to,
-        exact: !isNavTabGroup(item) ? item.exact : undefined,
-        active: path
-          ? (isNavTabGroup(item)
-              ? item.children.some(child => pathMatchesLeaf(path, child))
-              : pathMatchesLeaf(path, item))
-          : undefined
-      }))
+      }
     ]
   }]
 }

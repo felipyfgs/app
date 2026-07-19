@@ -109,24 +109,20 @@ describe('navegação global no sidebar', () => {
     }
   })
 
-  it('expõe as três superfícies SERPRO diretamente dentro de Admin', () => {
+  it('expõe somente Escritórios e Módulos fiscais dentro de Admin', () => {
     const user = {
       id: 1,
       is_platform_admin: true,
       context_status: 'office_context_required'
     } as MeUser
-    const admin = mainDestinations(user, { path: '/admin/serpro/contracts' })[0]
+    const admin = mainDestinations(user, { path: '/admin/offices' })[0]
 
     expect(admin).toMatchObject({ id: 'platform-admin', type: 'trigger', defaultOpen: true })
     expect(admin?.children?.map(item => item.label)).toEqual([
       'Escritórios',
-      'Módulos fiscais',
-      'SERPRO · Operação',
-      'SERPRO · Integração',
-      'SERPRO · Canário DTE'
+      'Módulos fiscais'
     ])
-    expect(admin?.children?.find(item => item.label === 'SERPRO · Integração'))
-      .toMatchObject({ active: true, to: '/admin/serpro/configuration' })
+    expect(admin?.children?.some(item => item.label?.startsWith('SERPRO'))).toBe(false)
   })
 })
 
