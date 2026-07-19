@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Wizard de criação de Office pendente.
- * UStepper: Escritório → Plano → 1º admin → Entrega → Revisão.
+ * Wizard enxuto: Dados → 1º admin → Revisão.
+ * Plano (STARTER) e entrega (MANUAL_LINK) ficam default; ajustáveis depois.
  */
 import type { StepperItem } from '@nuxt/ui'
 import type {
@@ -10,7 +10,6 @@ import type {
   SubscriptionPlanCode
 } from '~/types/api'
 import { apiErrorMessage } from '~/utils/api-error'
-import { normalizeCnpj } from '~/utils/format'
 
 const api = useApi()
 const toast = useToast()
@@ -30,15 +29,16 @@ const idempotencyKey = ref(
 
 const form = reactive({
   name: '',
-  cnpj: '',
   legal_name: '',
   institutional_email: '',
   institutional_phone: '',
-  plan: 'STARTER' as SubscriptionPlanCode,
   admin_name: '',
-  admin_email: '',
-  method: 'MANUAL_LINK' as ActivationMethod
+  admin_email: ''
 })
+
+/** Defaults silenciosos — não pedidos no wizard. */
+const defaultPlan = 'STARTER' as SubscriptionPlanCode
+const defaultMethod = 'MANUAL_LINK' as ActivationMethod
 
 const steps = computed<StepperItem[]>(() => [
   {
@@ -47,44 +47,18 @@ const steps = computed<StepperItem[]>(() => [
     value: 0
   },
   {
-    title: 'Plano',
-    icon: 'i-lucide-badge-check',
-    value: 1
-  },
-  {
     title: 'Administrador',
     icon: 'i-lucide-user-cog',
-    value: 2
-  },
-  {
-    title: 'Entrega',
-    icon: 'i-lucide-key-round',
-    value: 3
+    value: 1
   },
   {
     title: 'Revisão',
     icon: 'i-lucide-check-check',
-    value: 4
+    value: 2
   }
 ])
 
-const planItems = [
-  { label: 'Starter (5 usuários)', value: 'STARTER' as SubscriptionPlanCode },
-  { label: 'Professional (25 usuários)', value: 'PROFESSIONAL' as SubscriptionPlanCode },
-  { label: 'Enterprise (200 usuários)', value: 'ENTERPRISE' as SubscriptionPlanCode }
-]
-
-const methodItems = [
-  { label: 'Link manual (7 dias)', value: 'MANUAL_LINK' as ActivationMethod },
-  { label: 'Senha provisória (7 dias)', value: 'TEMPORARY_PASSWORD' as ActivationMethod }
-]
-
-const planLabel = computed(() =>
-  planItems.find(p => p.value === form.plan)?.label || form.plan
-)
-const methodLabel = computed(() =>
-  methodItems.find(m => m.value === form.method)?.label || form.method
-)
+const lastStep = computed(() => steps.value.length - 1)
 
 const secretDelivered = computed(() =>
   result.value?.credential_delivery === 'delivered'
@@ -94,17 +68,14 @@ const secretDelivered = computed(() =>
 function validateStep(index: number): string | null {
   if (index === 0) {
     if (!form.name.trim()) return 'Informe o nome do escritório.'
-    if (!form.cnpj.trim()) return 'Informe o CNPJ.'
     if (!form.legal_name.trim()) return 'Informe a razão social.'
     if (!form.institutional_email.trim()) return 'Informe o e-mail institucional.'
     if (!form.institutional_phone.trim()) return 'Informe o telefone institucional.'
   }
-  if (index === 1 && !form.plan) return 'Selecione o plano.'
-  if (index === 2) {
+  if (index === 1) {
     if (!form.admin_name.trim()) return 'Informe o nome do administrador.'
     if (!form.admin_email.trim()) return 'Informe o e-mail do administrador.'
   }
-  if (index === 3 && !form.method) return 'Selecione o método de entrega.'
   return null
 }
 
@@ -115,7 +86,7 @@ function next() {
     formError.value = err
     return
   }
-  if (step.value < 4) step.value += 1
+  if (step.value < lastStep.value) step.value += 1
 }
 
 function back() {
@@ -125,7 +96,7 @@ function back() {
 
 async function submit() {
   formError.value = ''
-  for (let i = 0; i <= 3; i++) {
+  for (let i = 0; i < lastStep.value; i++) {
     const err = validateStep(i)
     if (err) {
       formError.value = err
@@ -144,15 +115,15 @@ async function submit() {
     const res = await api.platform.offices.create({
       name: form.name.trim(),
       profile: {
-        cnpj: normalizeCnpj(form.cnpj),
+        cnpj: '',
         legal_name: form.legal_name.trim(),
         institutional_email: form.institutional_email.trim(),
         institutional_phone: form.institutional_phone.trim()
       },
-      plan: form.plan,
+      plan: defaultPlan,
       admin_name: form.admin_name.trim(),
       admin_email: form.admin_email.trim(),
-      method: form.method,
+      method: defaultMethod,
       idempotency_key: idempotencyKey.value
     })
     result.value = res.data
@@ -216,8 +187,10 @@ onBeforeUnmount(() => {
     </template>
 
     <template #body>
-      <DashboardContent width="comfortable" class="gap-4 sm:gap-6">
-        <!-- Resultado único pós-criação -->
+      <DashboardContent
+        width="comfortable"
+        class="gap-4 sm:gap-6"
+      >
         <template v-if="result && secretDelivered">
           <UPageCard
             title="Escritório criado"
@@ -290,7 +263,6 @@ onBeforeUnmount(() => {
             variant="subtle"
             :ui="{ container: 'sm:p-6 gap-y-5' }"
           >
-            <!-- 0 Escritório -->
             <div
               v-if="step === 0"
               class="space-y-4"
@@ -305,17 +277,6 @@ onBeforeUnmount(() => {
                   class="w-full"
                   autocomplete="organization"
                   data-testid="wizard-office-name"
-                />
-              </UFormField>
-              <UFormField
-                label="CNPJ"
-                required
-              >
-                <UInput
-                  v-model="form.cnpj"
-                  class="w-full"
-                  inputmode="numeric"
-                  data-testid="wizard-office-cnpj"
                 />
               </UFormField>
               <UFormField
@@ -354,30 +315,8 @@ onBeforeUnmount(() => {
               </UFormField>
             </div>
 
-            <!-- 1 Plano -->
             <div
               v-else-if="step === 1"
-              class="space-y-4"
-              data-testid="wizard-step-plan"
-            >
-              <UFormField
-                label="Plano"
-                required
-              >
-                <USelect
-                  v-model="form.plan"
-                  :items="planItems"
-                  value-key="value"
-                  label-key="label"
-                  class="w-full"
-                  data-testid="wizard-office-plan"
-                />
-              </UFormField>
-            </div>
-
-            <!-- 2 Admin -->
-            <div
-              v-else-if="step === 2"
               class="space-y-4"
               data-testid="wizard-step-admin"
             >
@@ -406,29 +345,6 @@ onBeforeUnmount(() => {
               </UFormField>
             </div>
 
-            <!-- 3 Entrega -->
-            <div
-              v-else-if="step === 3"
-              class="space-y-4"
-              data-testid="wizard-step-delivery"
-            >
-              <UFormField
-                label="Método de entrega"
-                hint="Segredo exibido uma vez"
-                required
-              >
-                <USelect
-                  v-model="form.method"
-                  :items="methodItems"
-                  value-key="value"
-                  label-key="label"
-                  class="w-full"
-                  data-testid="wizard-delivery-method"
-                />
-              </UFormField>
-            </div>
-
-            <!-- 4 Revisão -->
             <div
               v-else
               class="space-y-4"
@@ -445,42 +361,18 @@ onBeforeUnmount(() => {
                 </div>
                 <div>
                   <dt class="text-muted">
-                    CNPJ
-                  </dt>
-                  <dd class="text-highlighted">
-                    {{ form.cnpj }}
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-muted">
                     Razão social
                   </dt>
                   <dd class="text-highlighted">
                     {{ form.legal_name }}
                   </dd>
                 </div>
-                <div>
-                  <dt class="text-muted">
-                    Plano
-                  </dt>
-                  <dd class="text-highlighted">
-                    {{ planLabel }}
-                  </dd>
-                </div>
-                <div>
+                <div class="sm:col-span-2">
                   <dt class="text-muted">
                     1º admin
                   </dt>
                   <dd class="text-highlighted">
                     {{ form.admin_name }} · {{ form.admin_email }}
-                  </dd>
-                </div>
-                <div>
-                  <dt class="text-muted">
-                    Entrega
-                  </dt>
-                  <dd class="text-highlighted">
-                    {{ methodLabel }}
                   </dd>
                 </div>
               </dl>
@@ -513,7 +405,7 @@ onBeforeUnmount(() => {
                 class="flex-1"
               />
               <UButton
-                v-if="step < 4"
+                v-if="step < lastStep"
                 label="Continuar"
                 color="primary"
                 trailing-icon="i-lucide-arrow-right"

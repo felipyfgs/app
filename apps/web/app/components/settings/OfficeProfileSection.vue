@@ -31,7 +31,10 @@ const emit = defineEmits<{
 }>()
 
 const schema = z.object({
-  cnpj: z.string().min(14, 'Informe o CNPJ com 14 caracteres.').max(18),
+  cnpj: z.string().max(18).refine((value) => {
+    const normalized = value.replace(/[^0-9A-Za-z]/g, '')
+    return normalized.length === 0 || normalized.length === 14
+  }, 'Se informado, o CNPJ deve ter 14 caracteres.'),
   legal_name: z.string().min(2, 'Informe a razão social.').max(200),
   institutional_email: z.string().email('E-mail institucional inválido.'),
   institutional_phone: z.string().min(8, 'Informe o telefone institucional.').max(32)
@@ -152,13 +155,13 @@ function confirmCnpjChange() {
           <UFormField
             name="cnpj"
             label="CNPJ"
-            required
+            hint="Opcional — pode preencher depois"
             class="flex max-sm:flex-col justify-between items-start gap-4"
           >
             <UInput
               v-model="state.cnpj"
               autocomplete="off"
-              placeholder="14 caracteres"
+              placeholder="Opcional"
               class="w-full sm:w-64"
               :disabled="readonly"
               data-testid="settings-profile-cnpj"
