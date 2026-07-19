@@ -17,14 +17,14 @@
 
 ## 3. N2 — Roteamento e operação
 
-- [ ] 3.1 Implementar `MeiProviderRouter`, provider SERPRO compatível e provider portal desabilitado/fixture com testes de fallback.
+- [x] 3.1 Implementar `MeiProviderRouter`, provider SERPRO compatível e provider portal desabilitado/fixture com testes de fallback.
   Depende de: 2.3, 2.4
-- [ ] 3.2 Integrar API/worker aos Compose local e produção, healthchecks, rede interna e exemplos de ambiente.
+- [x] 3.2 Integrar API/worker aos Compose local e produção, healthchecks, rede interna e exemplos de ambiente.
   Depende de: 2.1, 2.2
-- [ ] 3.3 Expor metadados públicos seguros de tentativa/proveniência sem permitir `office_id` fornecido pelo cliente.
+- [x] 3.3 Expor metadados públicos seguros de tentativa/proveniência sem permitir `office_id` fornecido pelo cliente.
   Depende de: 2.4, 3.1
 
 ## 4. N3 — Gates integrados
 
-- [ ] 4.1 Executar validação OpenSpec, testes Python, testes Laravel/Pint e smoke Docker interno, registrando somente evidências sem segredos.
+- [x] 4.1 Executar validação OpenSpec, testes Python, testes Laravel/Pint e smoke Docker interno, registrando somente evidências sem segredos.
   Depende de: 3.1, 3.2, 3.3
