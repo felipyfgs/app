@@ -25,18 +25,122 @@ const PAYMENT_STATUS_ITEMS: Array<{ label: string, value: string }> = [
 ]
 
 const api = useApi()
+const route = useRoute()
+const router = useRouter()
 const { sessionEpoch, canAccessAdministration } = useDashboard()
 const toast = useToast()
 const {
   page, perPage, total, lastPage, clientId, competence, q,
-  loading, loadError, applyPaginator, syncUrl
+  loading, loadError, applyPaginator
 } = useServerPage()
+
+/** Coluna UI → campo aceito por `GET /api/v1/fiscal/guides`. */
+const GUIDE_SORT_COLUMN_TO_API = Object.freeze<Record<string, 'client_id' | 'competence' | 'due_at' | 'amount' | 'payment_status'>>({
+  client: 'client_id',
+  competence: 'competence',
+  due: 'due_at',
+  amount: 'amount',
+  payment: 'payment_status'
+})
+
+const GUIDE_SORT_API_TO_COLUMN = Object.freeze<Record<string, string>>(
+  Object.fromEntries(
+    Object.entries(GUIDE_SORT_COLUMN_TO_API).map(([column, apiField]) => [apiField, column])
+  )
+)
+
+function resolveGuideSortApi(columnId: string | undefined): 'client_id' | 'competence' | 'due_at' | 'amount' | 'payment_status' {
+  if (!columnId) return 'due_at'
+  return GUIDE_SORT_COLUMN_TO_API[columnId] ?? 'due_at'
+}
+
+function hydrateGuideSortingFromQuery() {
+  const raw = String(route.query.sort || 'due_at')
+  const columnId = GUIDE_SORT_API_TO_COLUMN[raw] ?? (GUIDE_SORT_COLUMN_TO_API[raw] ? raw : 'due')
+  const desc = String(route.query.sort_direction ?? route.query.direction ?? 'desc') !== 'asc'
+  return [{ id: columnId, desc }] as { id: string, desc: boolean }[]
+}
+
+const sorting = ref<{ id: string, desc: boolean }[]>(hydrateGuideSortingFromQuery())
 
 const paymentStatus = ref('all')
 
 const rows = ref<Record<string, unknown>[]>([])
 const overview = ref<FiscalModuleOverview | null>(null)
 const overviewError = ref<string | null>(null)
+/** Contadores de payment_status do read-model unificado (office/cliente). */
+const paymentCounters = ref<{
+  UNKNOWN: number
+  NOT_CONFIRMED: number
+  CONFIRMED: number
+  PARTIAL: number
+}>({
+  UNKNOWN: 0,
+  NOT_CONFIRMED: 0,
+  CONFIRMED: 0,
+  PARTIAL: 0
+})
+
+/** KPI strip: mapeia pagamento → situação operacional da faixa. */
+const guideKpiCounters = computed(() => ({
+  up_to_date: paymentCounters.value.CONFIRMED,
+  processing: 0,
+  pending: paymentCounters.value.NOT_CONFIRMED,
+  attention: paymentCounters.value.PARTIAL,
+  unknown: paymentCounters.value.UNKNOWN,
+  error: 0,
+  blocked: 0,
+  unsupported: 0,
+  not_applicable: 0
+}))
+
+const guideKpiTotal = computed(() =>
+  paymentCounters.value.UNKNOWN
+  + paymentCounters.value.NOT_CONFIRMED
+  + paymentCounters.value.CONFIRMED
+  + paymentCounters.value.PARTIAL
+)
+
+function paymentStatusFromSituation(situation: string | null | undefined): string {
+  const sit = String(situation || '').trim().toUpperCase()
+  if (!sit || sit === 'ALL') return 'all'
+  switch (sit) {
+    case 'UP_TO_DATE':
+      return 'CONFIRMED'
+    case 'PENDING':
+      return 'NOT_CONFIRMED'
+    case 'ATTENTION':
+      return 'PARTIAL'
+    case 'UNKNOWN':
+      return 'UNKNOWN'
+    default:
+      return 'all'
+  }
+}
+
+function situationFromPaymentStatus(status: string): string {
+  switch (String(status || '').toUpperCase()) {
+    case 'CONFIRMED':
+      return 'UP_TO_DATE'
+    case 'NOT_CONFIRMED':
+      return 'PENDING'
+    case 'PARTIAL':
+      return 'ATTENTION'
+    case 'UNKNOWN':
+      return 'UNKNOWN'
+    default:
+      return 'all'
+  }
+}
+
+function isNumericGuideId(id: unknown): id is number {
+  return typeof id === 'number' && Number.isFinite(id) && id > 0
+}
+
+function isVirtualGuideRow(row: Record<string, unknown>): boolean {
+  const source = String(row.source || '')
+  return source === 'PGDASD_CONSULT' || source === 'DCTFWEB_DARF' || !isNumericGuideId(row.id as number)
+}
 
 const detailOpen = ref(false)
 const detail = ref<Record<string, unknown> | null>(null)
@@ -60,7 +164,9 @@ const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters
   // Competência não é filtro da UI de Guias (endpoint não aplica).
   competence: '',
   clientIds: Number(clientId.value) >= 1 ? [Number(clientId.value)] : [],
-  paymentStatus: paymentStatus.value
+  paymentStatus: paymentStatus.value,
+  // Espelha payment → situation para o KPI strip destacar a faixa ativa.
+  situation: situationFromPaymentStatus(paymentStatus.value)
 }))
 const filterConfig: MonitoringFilterConfig = {
   // List API de guias não aceita `q` — busca rápida ficaria decorativa.
@@ -123,23 +229,49 @@ async function loadOverview() {
   }
 }
 
+async function syncGuidesUrl() {
+  const sort = sorting.value[0]
+  const apiSort = resolveGuideSortApi(sort?.id)
+  const query: Record<string, string> = {
+    sort: apiSort,
+    sort_direction: sort?.desc ? 'desc' : 'asc'
+  }
+  if (clientId.value) query.client_id = clientId.value
+  if (paymentStatus.value !== 'all') query.payment_status = paymentStatus.value
+  if (page.value > 1) query.page = String(page.value)
+  if (perPage.value !== 20) query.per_page = String(perPage.value)
+  await router.replace({ path: route.path, query })
+}
+
 async function load() {
   const seq = ++listSeq
   const epoch = sessionEpoch.value
   loading.value = true
   loadError.value = null
   try {
-    await syncUrl()
+    await syncGuidesUrl()
     if (!stillCurrent(seq, 'list', epoch)) return
+    const sort = sorting.value[0]
     const res = await api.fiscal.guides.list({
       page: page.value,
       per_page: perPage.value,
       client_id: clientId.value ? Number(clientId.value) : undefined,
-      payment_status: paymentStatus.value !== 'all' ? paymentStatus.value : undefined
+      payment_status: paymentStatus.value !== 'all' ? paymentStatus.value : undefined,
+      sort: resolveGuideSortApi(sort?.id),
+      direction: sort?.desc ? 'desc' : 'asc'
     }) as Record<string, unknown>
     if (!stillCurrent(seq, 'list', epoch)) return
     rows.value = (res.data as Record<string, unknown>[]) || []
     applyPaginator(res)
+    const counters = res.payment_counters as Partial<typeof paymentCounters.value> | undefined
+    if (counters && typeof counters === 'object') {
+      paymentCounters.value = {
+        UNKNOWN: Number(counters.UNKNOWN) || 0,
+        NOT_CONFIRMED: Number(counters.NOT_CONFIRMED) || 0,
+        CONFIRMED: Number(counters.CONFIRMED) || 0,
+        PARTIAL: Number(counters.PARTIAL) || 0
+      }
+    }
     if (res.total == null && !(res.meta as { total?: number } | undefined)?.total) {
       total.value = rows.value.length
       lastPage.value = 1
@@ -149,6 +281,12 @@ async function load() {
     rows.value = []
     total.value = 0
     loadError.value = apiErrorMessage(caught, 'Falha ao carregar guias.')
+    paymentCounters.value = {
+      UNKNOWN: 0,
+      NOT_CONFIRMED: 0,
+      CONFIRMED: 0,
+      PARTIAL: 0
+    }
   } finally {
     if (stillCurrent(seq, 'list', epoch)) loading.value = false
   }
@@ -185,14 +323,19 @@ async function downloadGuide(id: number) {
   }
 }
 
-const sorting = ref<{ id: string, desc: boolean }[]>([{ id: 'id', desc: true }])
-
 const columns: TableColumn<Record<string, unknown>>[] = [
   {
     id: 'id',
     accessorKey: 'id',
-    header: ({ column }) => sortHeader('ID', column),
-    meta: { class: { th: 'w-16', td: 'w-16' } }
+    header: 'ID',
+    enableSorting: false,
+    meta: { class: { th: 'w-16', td: 'w-16' } },
+    cell: ({ row }) => {
+      const id = row.original.id
+      if (isNumericGuideId(id as number)) return String(id)
+      const code = row.original.identifier_code || row.original.das_number
+      return code ? String(code).slice(-8) : '—'
+    }
   },
   {
     id: 'client',
@@ -213,8 +356,16 @@ const columns: TableColumn<Record<string, unknown>>[] = [
     id: 'system',
     header: 'Sistema / tipo',
     enableSorting: false,
-    cell: ({ row }) =>
-      [row.original.system_code, row.original.service_code].filter(Boolean).join(' / ') || '—'
+    cell: ({ row }) => {
+      const source = String(row.original.source || '')
+      if (source === 'PGDASD_CONSULT') {
+        return 'PGDAS-D / DAS'
+      }
+      if (source === 'DCTFWEB_DARF') {
+        return 'DCTFWeb / DARF'
+      }
+      return [row.original.system_code, row.original.service_code].filter(Boolean).join(' / ') || '—'
+    }
   },
   {
     id: 'competence',
@@ -229,8 +380,7 @@ const columns: TableColumn<Record<string, unknown>>[] = [
   },
   {
     id: 'due',
-    header: 'Vencimento',
-    enableSorting: false,
+    header: ({ column }) => sortHeader('Vencimento', column),
     cell: ({ row }) => formatDateTime(String(row.original.due_at || '') || null)
   },
   {
@@ -279,45 +429,73 @@ const columns: TableColumn<Record<string, unknown>>[] = [
     enableHiding: false,
     enableSorting: false,
     cell: ({ row }) => {
-      const id = Number(row.original.id)
-      const children = [
-        h(UButton, {
-          size: 'xs',
-          color: 'neutral',
-          variant: 'ghost',
-          label: 'Detalhe',
-          onClick: () => openDetail(id)
-        }),
-        h(UButton, {
-          size: 'xs',
-          color: 'neutral',
-          variant: 'ghost',
-          label: 'Download',
-          onClick: () => downloadGuide(id)
-        })
-      ]
-      const emissionCodes = canAccessAdministration.value
-        ? resolveGuideEmissionCodes(row.original)
-        : null
-      if (emissionCodes) {
+      const original = row.original
+      const cid = getGuideClientId(original)
+      const children = []
+
+      if (cid) {
         children.push(h(UButton, {
           size: 'xs',
-          color: 'warning',
+          color: 'neutral',
           variant: 'ghost',
-          label: 'Emitir',
-          onClick: () => {
-            mutationRequest.value = {
-              client_id: Number(row.original.client_id),
-              solution_code: emissionCodes.solution_code,
-              service_code: emissionCodes.service_code,
-              operation_code: emissionCodes.operation_code,
-              competence_period_key: String(row.original.competence_period_key || '') || null,
-              module: emissionCodes.module || 'guides'
-            }
-            mutationOpen.value = true
-          }
+          label: 'Cliente',
+          to: `/monitoring/clients/${cid}/guides`
         }))
       }
+
+      if (!isVirtualGuideRow(original) && isNumericGuideId(original.id as number)) {
+        const id = original.id as number
+        children.push(
+          h(UButton, {
+            size: 'xs',
+            color: 'neutral',
+            variant: 'ghost',
+            label: 'Detalhe',
+            onClick: () => openDetail(id)
+          }),
+          h(UButton, {
+            size: 'xs',
+            color: 'neutral',
+            variant: 'ghost',
+            label: 'Download',
+            onClick: () => downloadGuide(id)
+          })
+        )
+        const emissionCodes = canAccessAdministration.value
+          ? resolveGuideEmissionCodes(original)
+          : null
+        if (emissionCodes) {
+          children.push(h(UButton, {
+            size: 'xs',
+            color: 'warning',
+            variant: 'ghost',
+            label: 'Emitir',
+            onClick: () => {
+              mutationRequest.value = {
+                client_id: Number(original.client_id),
+                solution_code: emissionCodes.solution_code,
+                service_code: emissionCodes.service_code,
+                operation_code: emissionCodes.operation_code,
+                competence_period_key: String(original.competence_period_key || '') || null,
+                module: emissionCodes.module || 'guides'
+              }
+              mutationOpen.value = true
+            }
+          }))
+        }
+      } else {
+        const doc = original.document as { href?: string | null, available?: boolean } | null
+        if (doc?.available && doc.href) {
+          children.push(h(UButton, {
+            size: 'xs',
+            color: 'neutral',
+            variant: 'ghost',
+            label: 'Documento',
+            to: doc.href
+          }))
+        }
+      }
+
       return h('div', { class: 'flex justify-end gap-1' }, children)
     }
   }
@@ -347,10 +525,15 @@ async function applyModuleFilters(nextValue: MonitoringFilterValue) {
   // UI de Guias não expõe competência — sempre limpar residual.
   next.competence = ''
   const nextClientId = next.clientIds[0] ? String(next.clientIds[0]) : ''
+  // KPI strip emite `situation`; filtro estruturado usa `paymentStatus`.
+  const resolvedPayment = next.situation && next.situation !== 'all'
+    ? paymentStatusFromSituation(next.situation)
+    : (next.paymentStatus || 'all')
+
   if (
     q.value === next.q
     && clientId.value === nextClientId
-    && paymentStatus.value === next.paymentStatus
+    && paymentStatus.value === resolvedPayment
   ) return
 
   filterTransactionDepth += 1
@@ -358,7 +541,7 @@ async function applyModuleFilters(nextValue: MonitoringFilterValue) {
     q.value = next.q
     competence.value = ''
     clientId.value = nextClientId
-    paymentStatus.value = next.paymentStatus
+    paymentStatus.value = resolvedPayment
     page.value = 1
     await nextTick()
   } finally {
@@ -388,6 +571,14 @@ watch(page, () => {
   if (filterTransactionDepth > 0) return
   void load()
 })
+watch(sorting, () => {
+  if (filterTransactionDepth > 0) return
+  if (page.value !== 1) {
+    page.value = 1
+    return
+  }
+  void load()
+}, { deep: true })
 watch(sessionEpoch, () => {
   filterTransactionDepth += 1
   try {
@@ -395,11 +586,18 @@ watch(sessionEpoch, () => {
     competence.value = ''
     clientId.value = ''
     paymentStatus.value = 'all'
+    sorting.value = [{ id: 'due', desc: true }]
     rows.value = []
     total.value = 0
     lastPage.value = 1
     page.value = 1
     overview.value = null
+    paymentCounters.value = {
+      UNKNOWN: 0,
+      NOT_CONFIRMED: 0,
+      CONFIRMED: 0,
+      PARTIAL: 0
+    }
     detail.value = null
     detailOpen.value = false
     mutationOpen.value = false
@@ -435,8 +633,8 @@ onMounted(() => {
     :sorting="sorting"
     :get-row-id="getGuideRowId"
     :get-client-id="getGuideClientId"
-    :total-clients="overview?.total_clients"
-    :counters="overview?.counters"
+    :total-clients="guideKpiTotal"
+    :counters="guideKpiCounters"
     :surface-summary="overview?.surface ?? null"
     :data-origin="overview?.data_origin"
     :data-origin-label="overview?.data_origin_label"

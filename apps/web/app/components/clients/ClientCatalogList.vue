@@ -263,7 +263,8 @@ function hydrateClientsFromQuery() {
   kpiFilter.value = (CLIENT_KPI_KEYS.has(op) ? op : 'total') as KpiFilter
   page.value = Math.max(1, Number(state.page) || 1)
   perPage.value = Math.max(1, Number(state.per_page) || 20)
-  const sortId = String(state.sort ?? 'legal_name')
+  const sortIdRaw = String(state.sort ?? 'legal_name')
+  const sortId = sortIdRaw === 'is_active' || sortIdRaw === 'tax_regime' ? sortIdRaw : 'legal_name'
   const desc = String(state.sort_direction ?? 'asc') === 'desc'
   sorting.value = [{ id: sortId, desc }]
   syncClientChips()
@@ -280,7 +281,7 @@ async function syncClientsUrl() {
     category_ids: categoryIdsFilter.value,
     tax_regimes: taxRegimesFilter.value,
     procuracao_statuses: procuracaoStatusesFilter.value,
-    sort: sort?.id === 'cnpj' || sort?.id === 'is_active' || sort?.id === 'tax_regime'
+    sort: sort?.id === 'is_active' || sort?.id === 'tax_regime'
       ? sort.id
       : 'legal_name',
     sort_direction: sort?.desc ? 'desc' : 'asc'
@@ -678,7 +679,7 @@ async function load() {
   try {
     await syncClientsUrl()
     const sort = sorting.value[0]
-    const sortId = sort?.id === 'cnpj' || sort?.id === 'is_active' || sort?.id === 'tax_regime'
+    const sortId = sort?.id === 'is_active' || sort?.id === 'tax_regime'
       ? sort.id
       : 'legal_name'
     const response = await api.clients.list({

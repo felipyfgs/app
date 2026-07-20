@@ -25,7 +25,35 @@ import {
 
 const search = defineModel<string>('search', { default: '' })
 const operationalFilter = defineModel<string>('operationalFilter', { default: 'total' })
-const sorting = ref<{ id: string, desc: boolean }[]>([{ id: 'legal_name', desc: false }])
+
+const route = useRoute()
+const router = useRouter()
+
+function hydrateByClientSortingFromQuery() {
+  const raw = String(route.query.sort || 'legal_name')
+  const id = raw === 'cnpj' ? 'cnpj' : 'legal_name'
+  const desc = String(route.query.sort_direction ?? route.query.direction ?? 'asc') === 'desc'
+  return [{ id, desc }] as { id: string, desc: boolean }[]
+}
+
+const sorting = ref<{ id: string, desc: boolean }[]>(hydrateByClientSortingFromQuery())
+
+async function syncByClientSortUrl() {
+  const sort = sorting.value[0]
+  const sortId = sort?.id === 'cnpj' ? 'cnpj' : 'legal_name'
+  const nextQuery: Record<string, string | string[] | null | undefined> = {
+    ...route.query,
+    sort: sortId,
+    sort_direction: sort?.desc ? 'desc' : 'asc'
+  }
+  // Defaults omitidos (legal_name + asc)
+  if (sortId === 'legal_name' && !sort?.desc) {
+    delete nextQuery.sort
+    delete nextQuery.sort_direction
+    delete nextQuery.direction
+  }
+  await router.replace({ path: route.path, query: nextQuery })
+}
 
 const emit = defineEmits<{
   openClient: [client: Client]
@@ -55,6 +83,7 @@ const clientsFeed = usePagedTable<Client>({
   getKey: client => client.id,
   pageSize: 20,
   load: async ({ page, pageSize }) => {
+    await syncByClientSortUrl()
     const sort = sorting.value[0]
     const response = await api.clients.list({
       page,
@@ -315,7 +344,6 @@ defineExpose({ reload })
     />
 
     <ShellDataTable
-      v-if="loading || rows.length"
       ref="table"
       v-model:column-visibility="columnVisibility"
       v-model:sorting="sorting"
@@ -331,6 +359,9 @@ defineExpose({ reload })
       :total="clientsFeedTotal"
       :items-per-page="clientsFeedPageSize"
       :manual-sorting="true"
+      :error="loadError"
+      empty-title="Nenhum cliente encontrado"
+      empty-description="Ajuste a busca ou o filtro de captura."
       per-page-aria-label="Clientes por página"
       @update:page="(p) => clientsFeed.setPage(p)"
       @update:items-per-page="(n) => clientsFeed.setPageSize(n)"
@@ -441,21 +472,21 @@ defineExpose({ reload })
       <template #footer>
         <span class="tabular-nums">{{ clientsFeedTotal }}</span> cliente(s)
       </template>
+      <template #empty>
+        <UEmpty
+          icon="i-lucide-building-2"
+          title="Nenhum cliente encontrado"
+          description="Ajuste a busca ou o filtro de captura."
+        >
+          <UButton
+            v-if="search || operationalFilter !== 'total'"
+            label="Limpar filtros"
+            color="neutral"
+            variant="outline"
+            @click="clearSearch"
+          />
+        </UEmpty>
+      </template>
     </ShellDataTable>
-
-    <UEmpty
-      v-if="!loading && !loadError && !rows.length"
-      icon="i-lucide-building-2"
-      title="Nenhum cliente encontrado"
-      description="Ajuste a busca ou o filtro de captura."
-    >
-      <UButton
-        v-if="search || operationalFilter !== 'total'"
-        label="Limpar filtros"
-        color="neutral"
-        variant="outline"
-        @click="clearSearch"
-      />
-    </UEmpty>
   </div>
 </template>

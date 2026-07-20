@@ -364,7 +364,6 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
     />
 
     <ShellDataTable
-      v-if="loading || notes.length"
       v-model:row-selection="rowSelection"
       ui-preset="dashboard"
       test-id="docs-catalog-table"
@@ -503,6 +502,14 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
         </div>
         <span v-else class="text-muted">—</span>
       </template>
+      <template #empty>
+        <UEmpty
+          v-if="!error"
+          icon="i-lucide-file-search"
+          title="Nenhum documento encontrado"
+          description="Revise os filtros ou aguarde a próxima sincronização do ADN."
+        />
+      </template>
     </ShellDataTable>
 
     <div
@@ -517,12 +524,5 @@ const columns = computed<TableColumn<NfseNote>[]>(() => {
         @click="emit('loadMore')"
       />
     </div>
-
-    <UEmpty
-      v-if="!loading && !error && !notes.length"
-      icon="i-lucide-file-search"
-      title="Nenhum documento encontrado"
-      description="Revise os filtros ou aguarde a próxima sincronização do ADN."
-    />
   </div>
 </template>

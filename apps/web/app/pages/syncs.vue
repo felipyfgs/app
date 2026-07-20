@@ -406,7 +406,6 @@ onMounted(refreshAll)
       />
 
       <ShellDataTable
-        v-if="loading || items.length"
         test-id="data-table"
         ui-preset="monitoring-compact"
         primary-column-id="id"
@@ -455,13 +454,14 @@ onMounted(refreshAll)
             @click.stop="openDetail(row.original)"
           />
         </template>
+        <template #empty>
+          <UEmpty
+            v-if="!loadError"
+            icon="i-lucide-history"
+            title="Nenhuma execução registrada"
+          />
+        </template>
       </ShellDataTable>
-
-      <UEmpty
-        v-if="!loading && !loadError && !items.length"
-        icon="i-lucide-history"
-        title="Nenhuma execução registrada"
-      />
 
       <div v-if="cursor" class="flex justify-center border-t border-default pt-4">
         <UButton

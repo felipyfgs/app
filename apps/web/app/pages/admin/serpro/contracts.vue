@@ -206,16 +206,16 @@ onMounted(load)
             />
           </div>
         </template>
+        <template #empty>
+          <div
+            class="flex min-h-40 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted"
+            role="status"
+          >
+            <UIcon name="i-lucide-file-search" class="size-7" aria-hidden="true" />
+            Nenhum contrato neste filtro.
+          </div>
+        </template>
       </ShellDataTable>
-
-      <div
-        v-if="!loading && !rows.length"
-        class="flex min-h-40 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted"
-        role="status"
-      >
-        <UIcon name="i-lucide-file-search" class="size-7" aria-hidden="true" />
-        Nenhum contrato neste filtro.
-      </div>
     </UPageCard>
   </div>
 </template>

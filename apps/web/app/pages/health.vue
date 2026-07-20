@@ -309,14 +309,7 @@ watch([severityFilter, typeFilter], () => {
         :actions="[{ label: 'Tentar novamente', color: 'neutral', variant: 'subtle', onClick: () => load(true) }]"
       />
 
-      <UEmpty
-        v-if="!loading && !loadError && !items.length"
-        icon="i-lucide-circle-check"
-        title="Nenhum problema operacional"
-      />
-
       <ShellDataTable
-        v-else
         test-id="data-table"
         ui-preset="monitoring-compact"
         table-class="min-w-0 w-full"
@@ -376,6 +369,13 @@ watch([severityFilter, typeFilter], () => {
             :to="itemLink(row.original)"
             aria-label="Abrir item"
             @click.stop
+          />
+        </template>
+        <template #empty>
+          <UEmpty
+            v-if="!loadError"
+            icon="i-lucide-circle-check"
+            title="Nenhum problema operacional"
           />
         </template>
       </ShellDataTable>

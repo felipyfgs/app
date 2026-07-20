@@ -9,7 +9,6 @@ import type {
   MonitoringFilterConfig,
   MonitoringFilterValue
 } from '~/types/fiscal-modules'
-import { sortHeader } from '~/utils/table-sort'
 import { tableCellBadgeProps } from '~/utils/table-ui'
 
 const UButton = resolveComponent('UButton')
@@ -30,7 +29,7 @@ const total = ref(0)
 const q = ref('')
 const status = ref('all')
 const clientId = ref<number | null>(null)
-const sorting = ref<{ id: string, desc: boolean }[]>([{ id: 'client', desc: false }])
+const sorting = ref<{ id: string, desc: boolean }[]>([])
 let loadSeq = 0
 let filterTransactionDepth = 0
 
@@ -143,7 +142,8 @@ const columns: TableColumn<FiscalRegistrationLink>[] = [
   {
     id: 'client',
     accessorKey: 'client_id',
-    header: ({ column }) => sortHeader('Cliente', column),
+    header: 'Cliente',
+    enableSorting: false,
     enableHiding: false,
     cell: ({ row }) => h(UButton, {
       variant: 'link',
