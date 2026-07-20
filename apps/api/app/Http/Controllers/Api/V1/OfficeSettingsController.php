@@ -23,6 +23,8 @@ use App\Services\Certificates\OfficeCredentialService;
 use App\Services\Certificates\OfficeInstitutionalProfileService;
 use App\Services\Certificates\OfficeTechnicalConsentService;
 use App\Services\Fiscal\Availability\FiscalModuleAvailabilityService;
+use App\Services\Integra\OfficeSerproAuthorizationService;
+use App\Services\Integra\OfficeSerproOnboardingService;
 use App\Services\Integra\SerproTenantActionableStatusService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
@@ -78,6 +80,8 @@ class OfficeSettingsController extends Controller
         private readonly OfficeTechnicalConsentService $consents,
         private readonly SerproTenantActionableStatusService $actionableStatus,
         private readonly FiscalModuleAvailabilityService $moduleAvailability,
+        private readonly OfficeSerproOnboardingService $onboarding,
+        private readonly OfficeSerproAuthorizationService $authorizations,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -366,6 +370,105 @@ class OfficeSettingsController extends Controller
             'data' => [
                 'credential' => $credential->toPublicArray(),
                 'removed' => true,
+            ],
+        ]);
+    }
+
+    /**
+     * Regenera a integração SERPRO do escritório sem reenviar o A1.
+     * Usa o certificado e o consentimento já ativos.
+     */
+    public function refreshIntegration(Request $request): JsonResponse
+    {
+        $this->authorizeManage();
+        $office = $this->currentOffice->office();
+        $env = FiscalProfile::configured()->serproEnvironment();
+
+        if ($this->credentials->activeCanonicalForCurrentOffice() === null) {
+            return response()->json([
+                'message' => 'Envie o certificado A1 do escritório antes de atualizar a integração.',
+            ], 422);
+        }
+
+        try {
+            $this->onboarding->ensureAuthorFromCanonicalSetup(
+                $office,
+                $env,
+                $request->user()?->id,
+            );
+        } catch (RuntimeException $e) {
+            $this->audit->record('office.integration.refresh', 'FAILED', null, [
+                'message' => $e->getMessage(),
+                'environment' => $env->value,
+                'stage' => 'ensure_author',
+            ], $request->user()?->id, $office->id);
+
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $auth = null;
+        $refreshError = null;
+        try {
+            $auth = $this->authorizations->refreshProcuradorToken(
+                $office,
+                $env,
+                $request->user()?->id,
+                force: true,
+            );
+        } catch (RuntimeException $e) {
+            // Termo ausente etc.: ainda avalia onboarding para enfileirar assinatura/reparo.
+            $refreshError = $e;
+        }
+
+        try {
+            $this->onboarding->evaluateAndMaybeEnqueue(
+                $office,
+                $env,
+                $request->user()?->id,
+                force: true,
+            );
+        } catch (RuntimeException $e) {
+            $this->audit->record('office.integration.refresh', 'FAILED', null, [
+                'message' => $e->getMessage(),
+                'environment' => $env->value,
+                'stage' => 'onboarding',
+                'refresh_error' => $refreshError?->getMessage(),
+            ], $request->user()?->id, $office->id);
+
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $auth ??= $this->authorizations->getOrCreate($office, $env);
+
+        if ($refreshError !== null) {
+            $this->audit->record('office.integration.refresh', 'PARTIAL', $auth, [
+                'environment' => $env->value,
+                'status' => $auth->status->value,
+                'message' => $refreshError->getMessage(),
+                'onboarding_evaluated' => true,
+            ], $request->user()?->id, $office->id);
+
+            return response()->json([
+                'message' => $refreshError->getMessage(),
+                'data' => [
+                    'status' => $auth->status->value,
+                    'procurador_token_expires_at' => $auth->procurador_token_expires_at?->toIso8601String(),
+                    'has_procurador_token' => $auth->procurador_token_vault_object_id !== null,
+                    'onboarding_evaluated' => true,
+                ],
+            ], 422);
+        }
+
+        $this->audit->record('office.integration.refresh', 'SUCCESS', $auth, [
+            'environment' => $env->value,
+            'status' => $auth->status->value,
+        ], $request->user()?->id, $office->id);
+
+        return response()->json([
+            'data' => [
+                'status' => $auth->status->value,
+                'procurador_token_expires_at' => $auth->procurador_token_expires_at?->toIso8601String(),
+                'has_procurador_token' => $auth->procurador_token_vault_object_id !== null,
             ],
         ]);
     }

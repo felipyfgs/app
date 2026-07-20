@@ -48,11 +48,22 @@ class CnpjRegistrationLookupApiTest extends TestCase
 
         $data = $response->json('data');
         $this->assertNotEmpty($data['client']['capital_social'] ?? null);
-        $this->assertNotEmpty($data['establishment']['secondary_cnaes'] ?? []);
+        $secondaryCnaes = $data['establishment']['secondary_cnaes'] ?? [];
+        $this->assertIsArray($secondaryCnaes);
+        $this->assertGreaterThanOrEqual(26, count($secondaryCnaes));
         $this->assertNotEmpty($data['establishment']['state_registrations'] ?? []);
-        $this->assertNotEmpty($data['establishment']['shareholders'] ?? []);
 
-        foreach ($data['establishment']['shareholders'] as $shareholder) {
+        $shareholders = $data['establishment']['shareholders'] ?? [];
+        $this->assertIsArray($shareholders);
+        $this->assertNotEmpty($shareholders);
+        $uniqueNames = array_unique(array_map(
+            static fn (array $row): string => mb_strtolower(trim((string) ($row['name'] ?? ''))),
+            $shareholders,
+        ));
+        $this->assertLessThanOrEqual(6, count($uniqueNames));
+        $this->assertCount(count($uniqueNames), $shareholders);
+
+        foreach ($shareholders as $shareholder) {
             $doc = $shareholder['document_masked'] ?? null;
             if ($doc !== null) {
                 $this->assertStringContainsString('*', $doc);
@@ -209,6 +220,74 @@ class CnpjRegistrationLookupApiTest extends TestCase
         $this->assertSame('SIMPLES_NACIONAL', $response['tax_regime']);
         $this->assertNotSame('ANTIGA RAZAO', $response['legal_name']);
         $this->assertNotEmpty($response['establishments'][0]['shareholders'] ?? []);
+    }
+
+    public function test_refresh_registration_applies_confirmed_lookup_snapshot(): void
+    {
+        [$user, $office] = $this->actor(OfficeRole::Admin);
+        Sanctum::actingAs($user);
+
+        $client = Client::factory()->forOffice($office)->create([
+            'legal_name' => 'ANTIGA RAZAO',
+            'display_name' => 'Apelido Interno',
+            'tax_regime' => 'SIMPLES_NACIONAL',
+            'notes' => 'nota interna',
+            'root_cnpj' => '27865757',
+        ]);
+        Establishment::factory()->forClient($client)->create([
+            'cnpj' => self::CNPJ,
+            'trade_name' => 'VELHO',
+            'is_matrix' => true,
+        ]);
+
+        Http::fake([
+            'https://publica.cnpj.ws/cnpj/*' => Http::response($this->fixture('publica_cnpj_ws_27865757000102.json'), 200),
+        ]);
+
+        $lookup = $this->getJson('/api/v1/cnpj/'.self::CNPJ.'/lookup')
+            ->assertOk()
+            ->json('data');
+
+        $lookup['client']['legal_name'] = 'RAZAO CONFIRMADA PELO USUARIO';
+
+        $response = $this->postJson("/api/v1/clients/{$client->id}/refresh-registration", [
+            'lookup' => $lookup,
+        ])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('RAZAO CONFIRMADA PELO USUARIO', $response['legal_name']);
+        $this->assertSame('Apelido Interno', $response['display_name']);
+        $this->assertSame('nota interna', $response['notes']);
+        $this->assertSame('SIMPLES_NACIONAL', $response['tax_regime']);
+    }
+
+    public function test_refresh_registration_rejects_confirmed_snapshot_with_mismatched_cnpj(): void
+    {
+        [$user, $office] = $this->actor(OfficeRole::Admin);
+        Sanctum::actingAs($user);
+
+        $client = Client::factory()->forOffice($office)->create([
+            'root_cnpj' => '27865757',
+        ]);
+        Establishment::factory()->forClient($client)->create([
+            'cnpj' => self::CNPJ,
+            'is_matrix' => true,
+        ]);
+
+        Http::fake([
+            'https://publica.cnpj.ws/cnpj/*' => Http::response($this->fixture('publica_cnpj_ws_27865757000102.json'), 200),
+        ]);
+
+        $lookup = $this->getJson('/api/v1/cnpj/'.self::CNPJ.'/lookup')
+            ->assertOk()
+            ->json('data');
+        $lookup['establishment']['cnpj'] = '11222333000181';
+
+        $this->postJson("/api/v1/clients/{$client->id}/refresh-registration", [
+            'lookup' => $lookup,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['lookup']);
     }
 
     public function test_document_mask_never_keeps_plain_cpf(): void

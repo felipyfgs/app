@@ -3,6 +3,7 @@
 namespace App\Services\Clients;
 
 use App\Domain\Cnpj;
+use App\DTO\Cnpj\CnpjRegistrationLookupResult;
 use App\Enums\RegistrationSource;
 use App\Enums\RegistrationStatus;
 use App\Models\Client;
@@ -25,9 +26,10 @@ final class RefreshClientRegistration
     ) {}
 
     /**
+     * @param  array<string, mixed>|null  $lookupPayload  Snapshot confirmado pelo usuário (opcional). Sem payload, reconsulta a fonte.
      * @return array{client: Client, establishment: Establishment, lookup: array<string, mixed>}
      */
-    public function handle(Client $client): array
+    public function handle(Client $client, ?array $lookupPayload = null): array
     {
         $establishment = Establishment::query()
             ->where('client_id', $client->id)
@@ -43,7 +45,26 @@ final class RefreshClientRegistration
         }
 
         try {
-            $result = $this->lookup->findForClient($establishment->cnpj, $client);
+            $confirmedSnapshot = $lookupPayload !== null;
+            $result = $confirmedSnapshot
+                ? CnpjRegistrationLookupResult::fromArray($lookupPayload)
+                : $this->lookup->findForClient($establishment->cnpj, $client);
+
+            if ($confirmedSnapshot) {
+                $snapshotCnpj = Cnpj::tryParse((string) $result->establishment->cnpj);
+                $matrixCnpj = Cnpj::tryParse((string) $establishment->cnpj);
+                if (
+                    $snapshotCnpj === null
+                    || $matrixCnpj === null
+                    || $snapshotCnpj->value() !== $matrixCnpj->value()
+                ) {
+                    throw ValidationException::withMessages([
+                        'lookup' => ['O CNPJ do snapshot confirmado não corresponde ao estabelecimento do cliente.'],
+                    ]);
+                }
+            }
+        } catch (ValidationException $exception) {
+            throw $exception;
         } catch (RuntimeException $exception) {
             throw ValidationException::withMessages([
                 'cnpj' => [$exception->getMessage()],
@@ -64,7 +85,7 @@ final class RefreshClientRegistration
             }
         }
 
-        return DB::transaction(function () use ($client, $establishment, $result, $source, $refreshedAt): array {
+        return DB::transaction(function () use ($client, $establishment, $result, $source, $refreshedAt, $confirmedSnapshot): array {
             $client->forceFill([
                 'legal_name' => $result->client->legalName,
                 'legal_nature_code' => $result->client->legalNatureCode,
@@ -134,6 +155,7 @@ final class RefreshClientRegistration
                 'registration_source' => $source->value,
                 'sources_used' => $result->sourcesUsed,
                 'cnpj' => Cnpj::parse($establishment->cnpj)->root(),
+                'confirmed_snapshot' => $confirmedSnapshot,
             ]);
 
             return [
