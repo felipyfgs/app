@@ -44,10 +44,10 @@ export function createClientsApi(client: ApiClient) {
           `/api/v1/clients/${clientId}/custom-fields/${fieldId}`,
           { method: 'PATCH', body }
         ),
-      refreshRegistration: (id: number) =>
+      refreshRegistration: (id: number, body?: { lookup?: CnpjLookupResult }) =>
         client<{ data: Client & { lookup?: CnpjLookupResult } }>(
           `/api/v1/clients/${id}/refresh-registration`,
-          { method: 'POST' }
+          { method: 'POST', body: body ?? {} }
         ),
       bulkStatus: (body: {
         client_ids: number[]

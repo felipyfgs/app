@@ -67,8 +67,9 @@ async function confirmQuery() {
       color="primary"
       variant="soft"
       icon="i-lucide-refresh-cw"
-      label="Consultar dívida"
+      label="Consultar"
       :disabled="querying"
+      data-testid="pgmei-bulk-consult"
       @click="openQueryConfirmation"
     >
       <template #trailing>

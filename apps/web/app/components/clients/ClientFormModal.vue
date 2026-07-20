@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Client } from '~/types/api'
+import { formatCnpj } from '~/utils/format'
 
 const open = defineModel<boolean>('open', { default: false })
 
@@ -22,16 +23,29 @@ const formRef = ref<{ reset: () => void, clearSensitive: () => void } | null>(nu
 
 const isEdit = computed(() => !!props.client?.id)
 
+const editLegalName = computed(() =>
+  props.client?.legal_name || props.client?.display_name || props.client?.name || null
+)
+
+const editCnpjLabel = computed(() => {
+  const raw = props.client?.cnpj
+    || props.client?.establishments?.find(e => e.is_matrix)?.cnpj
+    || props.client?.establishments?.[0]?.cnpj
+    || props.client?.root_cnpj
+  return raw ? formatCnpj(raw) : null
+})
+
 const title = computed(() => {
   if (isEdit.value) {
-    return props.client?.display_name || props.client?.legal_name || props.client?.name || 'Editar cliente'
+    return 'Editar cliente'
   }
   return props.matrixClientId ? 'Nova filial (cliente próprio)' : 'Novo cliente'
 })
 
 const description = computed(() => {
   if (isEdit.value) {
-    return 'Atualize o cadastro. CNPJ não pode ser alterado.'
+    const parts = [editLegalName.value, editCnpjLabel.value].filter(Boolean)
+    return parts.length ? parts.join(' · ') : 'Atualize o cadastro. CNPJ não pode ser alterado.'
   }
   if (props.matrixClientId) {
     return 'Cadastre a filial com CNPJ completo. Ela terá cadastro, certificado e sync próprios e aparecerá na matriz.'
@@ -69,7 +83,7 @@ watch(open, (value) => {
     v-model:open="open"
     :title="title"
     :description="description"
-    content-class="w-[calc(100vw-1.5rem)] sm:max-w-2xl max-h-[min(90dvh,44rem)] overflow-hidden flex flex-col"
+    content-class="w-[calc(100vw-1.5rem)] sm:max-w-4xl max-h-[min(92dvh,52rem)] overflow-hidden flex flex-col"
     :show-default-footer="false"
     test-id="client-form-modal"
     @cancel="onCancel"

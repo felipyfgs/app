@@ -229,6 +229,17 @@ export function createOfficeApi(client: ApiClient) {
           client<{ data: null }>('/api/v1/office/settings/credential/remove', {
             method: 'POST',
             body: { confirm: true, ...body }
+          }),
+        refreshIntegration: () =>
+          client<{
+            data: {
+              status: string
+              procurador_token_expires_at?: string | null
+              has_procurador_token: boolean
+            }
+          }>('/api/v1/office/settings/refresh-integration', {
+            method: 'POST',
+            body: {}
           })
       },
       monitorSchedules: {

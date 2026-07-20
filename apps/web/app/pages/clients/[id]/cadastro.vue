@@ -1,21 +1,72 @@
 <script setup lang="ts">
 /**
- * Cadastro do cliente — chrome: ShellSectionHeader (template settings).
+ * Cadastro do cliente — chrome: ShellSectionHeader + dossiê somente-leitura.
+ * Atualizar RFB: busca → revisão/confirmação → grava.
  */
-import { clientFiscalHref } from '~/utils/client-cross-links'
+import type { CnpjLookupResult } from '~/types/api'
 
 const {
-  clientId,
   item,
   canManageClients,
-  registrationEditRequested,
   load
 } = useClientDetail()
 
-const fiscalHref = computed(() => clientFiscalHref(clientId.value))
+const api = useApi()
+const toast = useToast()
+const lookingUp = ref(false)
+const applying = ref(false)
+const refreshOpen = ref(false)
+const refreshLookup = ref<CnpjLookupResult | null>(null)
 
-function onEditingChange(value: boolean) {
-  registrationEditRequested.value = value
+function clientCnpj(): string | null {
+  if (!item.value) return null
+  const raw = item.value.cnpj
+    || item.value.establishments?.find(e => e.is_matrix)?.cnpj
+    || item.value.establishments?.[0]?.cnpj
+    || null
+  if (!raw) return null
+  const normalized = raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+  return normalized.length ? normalized : null
+}
+
+async function startRefreshLookup() {
+  if (!item.value || !canManageClients.value || lookingUp.value || applying.value) return
+  const cnpj = clientCnpj()
+  if (!cnpj) {
+    toast.add({ title: 'Cliente sem CNPJ para consultar.', color: 'error' })
+    return
+  }
+
+  lookingUp.value = true
+  try {
+    const response = await api.cnpj.lookup(cnpj)
+    refreshLookup.value = response.data
+    refreshOpen.value = true
+  } catch (caught) {
+    toast.add({ title: apiErrorMessage(caught, 'Não foi possível consultar o cadastro RFB.'), color: 'error' })
+  } finally {
+    lookingUp.value = false
+  }
+}
+
+async function applyRefresh(lookup: CnpjLookupResult) {
+  if (!item.value || !canManageClients.value || applying.value) return
+  applying.value = true
+  try {
+    await api.clients.refreshRegistration(item.value.id, { lookup })
+    toast.add({ title: 'Cadastro atualizado com a RFB.', color: 'success' })
+    refreshOpen.value = false
+    refreshLookup.value = null
+    await load()
+  } catch (caught) {
+    toast.add({ title: apiErrorMessage(caught, 'Não foi possível aplicar a atualização.'), color: 'error' })
+  } finally {
+    applying.value = false
+  }
+}
+
+function onRefreshCancel() {
+  refreshLookup.value = null
 }
 </script>
 
@@ -26,27 +77,37 @@ function onEditingChange(value: boolean) {
     data-testid="client-page-cadastro"
   >
     <ShellSectionHeader
-      title="Cadastro"
-      description="Dossiê RFB: identificação, situação, atividades, QSA e filiais do contribuinte."
+      title="Dados cadastrais"
+      description="Veja as informações essenciais deste cliente de forma clara e organizada."
       test-id="client-section-cadastro"
     >
       <UButton
-        :to="fiscalHref"
-        color="primary"
+        v-if="canManageClients"
+        color="neutral"
         variant="soft"
-        icon="i-lucide-radar"
-        label="Monitoramento fiscal"
-        data-testid="client-cadastro-to-fiscal"
+        icon="i-lucide-refresh-cw"
+        label="Atualizar"
+        :loading="lookingUp"
+        data-testid="client-cadastro-refresh"
+        @click="startRefreshLookup"
       />
     </ShellSectionHeader>
 
     <ClientsClientRegistration
       :client="item"
       :can-manage-clients="canManageClients"
-      :start-editing="registrationEditRequested"
       panel="all"
-      @editing-change="onEditingChange"
       @updated="load"
+    />
+
+    <ClientsClientRegistrationRefreshModal
+      v-model:open="refreshOpen"
+      :client="item"
+      :lookup="refreshLookup"
+      :can-manage-clients="canManageClients"
+      :applying="applying"
+      @confirm="applyRefresh"
+      @cancel="onRefreshCancel"
     />
   </div>
 </template>

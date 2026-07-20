@@ -76,15 +76,15 @@ withDefaults(defineProps<{
             data-testid="monitoring-client-to-cadastro"
           />
         </UTooltip>
-        <UTooltip text="Certificado / config">
+        <UTooltip text="Dados adicionais">
           <UButton
             size="xs"
             color="neutral"
             variant="soft"
-            icon="i-lucide-sliders-horizontal"
-            :label="collapsed ? undefined : 'Config'"
+            icon="i-lucide-list"
+            :label="collapsed ? undefined : 'Adicionais'"
             :square="collapsed"
-            :to="clientCrmHref(clientId, 'configuracao')"
+            :to="clientCrmHref(clientId, 'dados-adicionais')"
             data-testid="monitoring-client-to-config"
           />
         </UTooltip>

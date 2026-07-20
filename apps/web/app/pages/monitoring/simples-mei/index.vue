@@ -137,6 +137,7 @@ const previewOpen = ref(false)
 const trackingOpen = ref(false)
 const prefsOpen = ref(false)
 const consultOpen = ref(false)
+const consultKind = ref<'pgdasd' | 'pgmei'>('pgmei')
 const publicServicesOpen = ref(false)
 const publicServicesClientId = ref<number | null>(null)
 const publicServicesClientName = ref<string | null>(null)
@@ -168,6 +169,7 @@ const modalCnpjMasked = ref<string | null>(null)
 const modalPreference = ref<PgdasdCommunicationPreference | null>(null)
 
 const { requestConsult } = usePgmeiMonitoring()
+const { enqueueReadUpdate } = useMonitoringActions('simples_mei')
 const { requestConsult: requestRegimeCalendar } = useRegimeCalendarMonitoring()
 const { requestConsult: requestRegimeOption } = useRegimeOptionMonitoring()
 const { requestConsult: requestRegimeResolution } = useRegimeResolutionMonitoring()
@@ -195,10 +197,33 @@ function openPgdasdHistory(row: SimplesMeiClientRow) {
   void navigateTo(`/monitoring/clients/${row.client_id}/pgdasd`)
 }
 
-function openConsultConfirm(row: SimplesMeiClientRow) {
+function openConsultConfirm(row: SimplesMeiClientRow, kind: 'pgdasd' | 'pgmei' = 'pgmei') {
+  consultKind.value = kind
   consultClientId.value = row.client_id
   consultClientName.value = row.legal_name || row.name || `Cliente #${row.client_id}`
   consultOpen.value = true
+}
+
+async function confirmRowConsult() {
+  if (consultKind.value === 'pgdasd') {
+    await confirmPgdasdRowConsult()
+    return
+  }
+  await confirmPgmeiConsult()
+}
+
+async function confirmPgdasdRowConsult() {
+  if (consultQuerying.value || !consultClientId.value) return
+  consultQuerying.value = true
+  try {
+    const run = await enqueueReadUpdate({ client_id: consultClientId.value })
+    if (run) {
+      consultOpen.value = false
+      await refresh()
+    }
+  } finally {
+    consultQuerying.value = false
+  }
 }
 
 function openMeiPublicServices(clientId: number) {
@@ -407,16 +432,19 @@ const pgdasdColumns = computed(() => buildPgdasdColumns({
   onPreview: row => openFor(row, 'preview'),
   onTracking: row => openFor(row, 'tracking'),
   onConfigure: row => openFor(row, 'prefs'),
-  onPublicServices: row => openMeiPublicServices(row.client_id)
+  onConsult: row => openConsultConfirm(row, 'pgdasd'),
+  canConsult: canTriggerSync.value
 }))
 
 const pgmeiColumns = computed(() => buildPgmeiColumns({
   year: pgmeiYear.value,
   onHistory: row => openFor(row, 'history'),
-  onConsult: openConsultConfirm,
+  onConsult: row => openConsultConfirm(row, 'pgmei'),
   onPreview: row => openFor(row, 'preview'),
   onTracking: row => openFor(row, 'tracking'),
-  onConfigure: row => openFor(row, 'prefs')
+  onConfigure: row => openFor(row, 'prefs'),
+  onPublicServices: row => openMeiPublicServices(row.client_id),
+  canConsult: canTriggerSync.value
 }))
 
 const columns = computed(() => {
@@ -501,7 +529,6 @@ watch(submodule, (next, prev) => {
     :as-of="asOf"
     :surface-summary="surface"
     :show-pending-search="false"
-    :show-synthetic-alert="false"
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
@@ -542,6 +569,7 @@ watch(submodule, (next, prev) => {
         :selected-count="count"
         :rows="rows"
         :handlers="pgdasdActionHandlers"
+        :can-consult="canTriggerSync"
         @clear="clear"
         @refresh="refresh"
       />
@@ -656,16 +684,17 @@ watch(submodule, (next, prev) => {
   />
 
   <ShellConfirmModal
-    v-if="isPgmei"
     v-model:open="consultOpen"
-    title="Confirmar consulta de dívida ativa"
-    :description="`A consulta à SERPRO para ${consultClientName || 'o cliente'}, ano ${pgmeiYear}, é explícita e pode ser faturável.`"
+    :title="consultKind === 'pgdasd' ? 'Confirmar consulta PGDAS-D' : 'Confirmar consulta de dívida ativa'"
+    :description="consultKind === 'pgdasd'
+      ? `A consulta PGDAS-D à SERPRO para ${consultClientName || 'o cliente'} é explícita e pode ser faturável.`
+      : `A consulta à SERPRO para ${consultClientName || 'o cliente'}, ano ${pgmeiYear}, é explícita e pode ser faturável.`"
     content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
     confirm-label="Confirmar consulta"
     confirm-icon="i-lucide-refresh-cw"
     :loading="consultQuerying"
-    confirm-test-id="pgmei-consult-confirm"
-    @confirm="confirmPgmeiConsult"
+    :confirm-test-id="consultKind === 'pgdasd' ? 'pgdasd-row-consult-confirm' : 'pgmei-consult-confirm'"
+    @confirm="confirmRowConsult"
   >
     <template #body>
       <UAlert

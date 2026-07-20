@@ -88,7 +88,7 @@ describe('navegação global no sidebar', () => {
   })
 
   it('alinha os nomes do sidebar aos títulos das 11 superfícies', () => {
-    const pageContracts: Array<[string, string]> = [
+    const pageContracts: Array<[string, string | RegExp]> = [
       ['app/pages/monitoring/index.vue', 'title="Dashboard"'],
       ['app/pages/monitoring/simples-mei/index.vue', 'title="Simples Nacional | MEI"'],
       ['app/pages/monitoring/dctfweb/index.vue', 'title="DCTFWeb"'],
@@ -96,44 +96,57 @@ describe('navegação global no sidebar', () => {
       ['app/pages/monitoring/installments.vue', 'title="Parcelamentos"'],
       ['app/pages/monitoring/sitfis.vue', 'title="Situação Fiscal"'],
       ['app/pages/monitoring/mailbox.vue', 'title="Caixas Postais"'],
-      ['app/pages/monitoring/declarations.vue', 'title="Declarações"'],
+      // Hub Declarações: título dinâmico por aba (`PGDAS - Declarações`).
+      ['app/pages/monitoring/declarations.vue', /:title="surfaceTitle"|declarationsSurfaceTitle/],
       ['app/pages/monitoring/guides.vue', 'title="Guias"'],
       ['app/pages/monitoring/registrations.vue', 'title="Cadastro e Vínculos"'],
       ['app/pages/monitoring/tax-processes.vue', 'title="Processos Fiscais"']
     ]
 
-    expect(pageContracts.map(([, title]) => title.replace('title="', '').replace('"', '')))
-      .toEqual(MONITORING_NAV_ITEMS.map(item => item.label))
+    const navLabels = MONITORING_NAV_ITEMS.map(item => item.label)
+    expect(navLabels).toContain('Declarações')
+    expect(pageContracts.map(([path]) => path)).toHaveLength(11)
     for (const [path, title] of pageContracts) {
-      expect(readFileSync(resolve(process.cwd(), path), 'utf8')).toContain(title)
+      const source = readFileSync(resolve(process.cwd(), path), 'utf8')
+      if (typeof title === 'string') {
+        expect(source).toContain(title)
+        expect(navLabels).toContain(title.replace('title="', '').replace('"', ''))
+      } else {
+        expect(source).toMatch(title)
+      }
     }
   })
 
-  it('expõe somente Escritórios e Módulos fiscais dentro de Admin', () => {
+  it('expõe Escritórios, Módulos fiscais e um único SERPRO dentro de Admin', () => {
     const user = {
       id: 1,
       is_platform_admin: true,
       context_status: 'office_context_required'
     } as MeUser
-    const admin = mainDestinations(user, { path: '/admin/offices' })[0]
+    const admin = mainDestinations(user, { path: '/admin/serpro/contracts' })[0]
 
     expect(admin).toMatchObject({ id: 'platform-admin', type: 'trigger', defaultOpen: true })
     expect(admin?.children?.map(item => item.label)).toEqual([
       'Escritórios',
-      'Módulos fiscais'
+      'Módulos fiscais',
+      'SERPRO'
     ])
-    expect(admin?.children?.some(item => item.label?.startsWith('SERPRO'))).toBe(false)
+    expect(admin?.children?.some(item => item.label?.startsWith('SERPRO ·'))).toBe(false)
+    expect(admin?.children?.find(item => item.label === 'SERPRO'))
+      .toMatchObject({ active: true, to: '/admin/serpro' })
   })
 })
 
 describe('navegação contextual Tabs → Subtabs', () => {
-  it('detalhe do cliente: 4 destinos CRM path-based + detalhe fiscal plano (settings)', () => {
+  it('detalhe do cliente: abas CRM path-based + detalhe fiscal plano', () => {
     const nav = clientDetailNav(7)
     expect(nav.map(item => item.id)).toEqual([
       'client-cadastro',
+      'client-dados-adicionais',
       'client-contato',
       'client-departamento',
-      'client-configuracao'
+      'client-observacoes',
+      'client-contratos'
     ])
     expect(nav.every(item => !('children' in item))).toBe(true)
     const cadastro = nav.find(item => item.id === 'client-cadastro')
@@ -186,12 +199,10 @@ describe('tabs locais', () => {
     expect(SCROLLABLE_TABS_UI.trigger).not.toMatch(/text-|bg-|rounded|shadow/)
   })
 
-  it('aplica cápsulas compactas às quatro alternâncias locais', () => {
+  it('aplica cápsulas compactas às alternâncias locais de monitoramento', () => {
     const sources = [
       'app/pages/monitoring/simples-mei/index.vue',
-      'app/pages/monitoring/dctfweb/index.vue',
-      'app/pages/admin/serpro/index.vue',
-      'app/pages/admin/serpro/configuration.vue'
+      'app/pages/monitoring/dctfweb/index.vue'
     ].map(path => readFileSync(resolve(process.cwd(), path), 'utf8'))
 
     for (const source of sources) {
@@ -204,6 +215,35 @@ describe('tabs locais', () => {
     )
     expect(wrapper).toContain('props.variant === \'link\' ? LINK_TABS_UI : SCROLLABLE_TABS_UI')
     expect(wrapper).toContain('activation-mode="automatic"')
+  })
+
+  it('console SERPRO usa só Visão geral e Configuração no shell, sem tabs locais nas hubs', () => {
+    const nav = readFileSync(resolve(process.cwd(), 'app/utils/serpro-navigation.ts'), 'utf8')
+    expect(nav).toContain('label: \'Visão geral\'')
+    expect(nav).toContain('label: \'Configuração\'')
+    expect(nav).not.toContain('label: \'Canário DTE\'')
+    expect(nav).not.toContain('label: \'Operação\'')
+    expect(nav).not.toContain('label: \'Integração\'')
+
+    const overview = readFileSync(resolve(process.cwd(), 'app/pages/admin/serpro/index.vue'), 'utf8')
+    const configuration = readFileSync(
+      resolve(process.cwd(), 'app/pages/admin/serpro/configuration.vue'),
+      'utf8'
+    )
+    expect(overview).not.toContain('ShellScrollableTabs')
+    expect(configuration).not.toContain('ShellScrollableTabs')
+    expect(overview).toContain('admin-serpro-overview-secondary-links')
+    expect(configuration).toContain('admin-serpro-config-secondary-links')
+    expect(configuration).not.toContain('serpro-config-pending-offices')
+    expect(configuration).not.toContain('serpro-config-history')
+    expect(configuration).toContain('serpro-config-credentials')
+    expect(configuration).not.toContain('serpro-production-onboarding')
+    expect(configuration).not.toContain('serpro-prod-step-')
+    expect(configuration).toContain('serpro-prod-consent')
+    expect(configuration).not.toContain('serpro-config-gates')
+    expect(configuration).not.toContain('Liberações externas')
+    expect(configuration).toContain('serpro-config-pfx')
+    expect(configuration).not.toContain('environment !== \'PRODUCTION\' || productionOnboarding?.enabled')
   })
 
   it('mantém filtros e indicadores no preset pill padrão', () => {
@@ -230,10 +270,12 @@ describe('tabs locais', () => {
     )
 
     expect(source).toContain(':show-pending-search="false"')
-    expect(source).toContain(':show-synthetic-alert="false"')
+    expect(source).not.toContain('show-synthetic-alert')
     expect(source).not.toContain('>\n          Regime\n        </p>')
     expect(source).not.toContain('class="w-full min-w-0"')
     expect(moduleTable).toContain('showPendingSearch: true')
-    expect(moduleTable).toContain('showSyntheticAlert: true')
+    expect(moduleTable).not.toContain('showSyntheticAlert')
+    expect(moduleTable).not.toContain('MonitoringSerproCoveragePanel')
+    expect(moduleTable).not.toContain('fiscal-synthetic-alert')
   })
 })

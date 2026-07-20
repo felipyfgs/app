@@ -8,14 +8,23 @@ import type { ClientFiscalSectionKey } from '~/utils/client-fiscal-detail-naviga
 
 export type { ClientFiscalSectionKey }
 
-export type ClientCrmTab = 'cadastro' | 'contato' | 'departamento' | 'configuracao'
+export type ClientCrmTab
+  = 'cadastro'
+    | 'dados-adicionais'
+    | 'contato'
+    | 'departamento'
+    | 'observacoes'
+    | 'contratos'
+    /** @deprecated use dados-adicionais */
+    | 'configuracao'
 
-/** Destino CRM: `/clients/:id/:tab`. */
+/** Destino CRM: `/clients/:id/:tab` (configuracao → dados-adicionais). */
 export function clientCrmHref(
   clientId: string | number,
   tab: ClientCrmTab = 'cadastro'
 ): string {
-  return `/clients/${clientId}/${tab}`
+  const segment = tab === 'configuracao' ? 'dados-adicionais' : tab
+  return `/clients/${clientId}/${segment}`
 }
 
 /** Destino fiscal: `/monitoring/clients/:id` ou `.../:section`. */

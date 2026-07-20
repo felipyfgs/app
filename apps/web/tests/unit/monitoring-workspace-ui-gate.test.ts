@@ -60,13 +60,14 @@ describe('fundação visual do workspace fiscal', () => {
       'utf8'
     )
 
-    expect(moduleTable).toContain('<MonitoringSerproCoveragePanel compact />')
-    expect(dashboard).toContain('<MonitoringSerproCoveragePanel all-surfaces')
-    expect(mailbox).toContain('<MonitoringSerproCoveragePanel compact')
-    expect(client).toContain('<MonitoringSerproCoveragePanel compact />')
+    // Painel de cobertura SERPRO e banner de dados demonstrativos saíram do chrome
+    // das superfícies de monitoramento (ruído visual; contrato permanece no componente).
     for (const source of [moduleTable, dashboard, mailbox, client]) {
-      expect(source).not.toMatch(/canTriggerSync[^\n]*MonitoringSerproCoveragePanel/u)
+      expect(source).not.toContain('MonitoringSerproCoveragePanel')
+      expect(source).not.toContain('fiscal-synthetic-alert')
+      expect(source).not.toContain('dashboard-synthetic-alert')
     }
+    expect(moduleTable).not.toContain('fiscal-provenance')
   })
 
   it('não oferece editor de payload ou renderer de JSON no explorador', () => {

@@ -1,42 +1,38 @@
 <script setup lang="ts">
 /**
- * Cadastro do cliente — dossiê RFB (Cartão CNPJ / QSA / filiais / origem).
- * Arquétipo settings + ShellPanelAccordion.
+ * Cadastro do cliente — dossiê RFB (grid + QSA / filiais / origem).
+ * Somente-leitura; edição via ClientFormModal no shell da ficha (ou emit edit).
  */
 import type { AccordionItem } from '@nuxt/ui'
-import type { Client, ShareholderPayload } from '~/types/api'
-import { clientCrmHref, clientFiscalHref } from '~/utils/client-cross-links'
-import { formatCnpj } from '~/utils/format'
+import type { Client, CnaePayload, ShareholderPayload, StateRegistrationPayload } from '~/types/api'
+import { clientDetailKey } from '~/composables/useClientDetail'
+import { clientCrmHref } from '~/utils/client-cross-links'
+import { formatCnpj, formatCurrency, formatDate } from '~/utils/format'
 import {
   formatSourceDate,
   registrationSourceLabel,
-  registrationStatusColor,
   registrationStatusLabel
 } from '~/utils/registration-labels'
 
 const props = withDefaults(defineProps<{
   client: Client
   canManageClients: boolean
-  startEditing?: boolean
   /** Painel: dados | contatos | all (modal / legado). */
   panel?: 'dados' | 'contatos' | 'all'
 }>(), {
-  startEditing: false,
   panel: 'all'
 })
 
 const useAccordion = computed(() => props.panel === 'all')
 const showDados = computed(() => props.panel === 'all' || props.panel === 'dados')
 const showContatos = computed(() => props.panel === 'contatos')
-const showSummary = computed(() => showDados.value)
 
 const emit = defineEmits<{
   updated: []
-  editingChange: [value: boolean]
+  edit: []
 }>()
 
-const formRef = ref<{ reset: () => void, saving: { value: boolean } } | null>(null)
-const editing = ref(false)
+const detailCtx = inject(clientDetailKey, null)
 
 const primaryEstablishment = computed(() =>
   props.client.establishments?.find(e => e.is_matrix)
@@ -63,24 +59,63 @@ const cnpjLabel = computed(() => {
 })
 
 const registrationStatus = computed(() => primaryEstablishment.value?.registration_status || null)
-const mainCnae = computed(() => {
-  const est = primaryEstablishment.value
-  if (!est?.main_cnae_code) return null
-  return est.main_cnae_name
-    ? `${est.main_cnae_code} — ${est.main_cnae_name}`
-    : est.main_cnae_code
+
+const mainCnaeCode = computed(() => primaryEstablishment.value?.main_cnae_code || '—')
+const mainCnaeName = computed(() => primaryEstablishment.value?.main_cnae_name || '—')
+
+const secondaryCnaes = computed((): CnaePayload[] =>
+  (primaryEstablishment.value?.secondary_cnaes || []) as CnaePayload[]
+)
+
+const stateRegistrations = computed((): StateRegistrationPayload[] => {
+  const rows = (primaryEstablishment.value?.state_registrations || []) as StateRegistrationPayload[]
+  return [...rows].sort((a, b) => {
+    const aActive = a.active === true ? 0 : a.active === false ? 1 : 2
+    const bActive = b.active === true ? 0 : b.active === false ? 1 : 2
+    if (aActive !== bActive) return aActive - bActive
+    return String(a.state || '').localeCompare(String(b.state || ''), 'pt-BR')
+  })
 })
 
-const fiscalHref = computed(() => clientFiscalHref(props.client.id))
-const configHref = computed(() => clientCrmHref(props.client.id, 'configuracao'))
+const companyFields = computed(() => [
+  { label: 'CNPJ', value: cnpjLabel.value },
+  { label: 'Razão social', value: props.client.legal_name || props.client.name || '—' },
+  { label: 'ID interno', value: String(props.client.id) },
+  { label: 'Nome fantasia', value: props.client.trade_name || '—' },
+  {
+    label: 'Início da atividade',
+    value: formatDate(primaryEstablishment.value?.activity_started_at)
+  },
+  {
+    label: 'Situação cadastral',
+    value: registrationStatusLabel(registrationStatus.value)
+  },
+  {
+    label: 'Capital social',
+    value: formatCurrency(props.client.capital_social)
+  }
+])
+
+const fiscalFields = computed(() => [
+  {
+    label: 'Regime tributário',
+    value: props.client.tax_regime_label || props.client.tax_regime || '—'
+  },
+  {
+    label: 'Porte',
+    value: props.client.company_size_name || props.client.company_size_code || '—'
+  },
+  {
+    label: 'Natureza jurídica',
+    value: props.client.legal_nature_name
+      ? `${props.client.legal_nature_code || ''} ${props.client.legal_nature_name}`.trim()
+      : (props.client.legal_nature_code || '—')
+  }
+])
+
+const adicionaisHref = computed(() => clientCrmHref(props.client.id, 'dados-adicionais'))
 
 const accordionItems = computed((): AccordionItem[] => [
-  {
-    label: 'Cadastro RFB',
-    icon: 'i-lucide-building-2',
-    value: 'identificacao',
-    slot: 'identificacao' as const
-  },
   {
     label: 'Quadro societário',
     icon: 'i-lucide-users',
@@ -101,44 +136,14 @@ const accordionItems = computed((): AccordionItem[] => [
   }
 ])
 
-function startEdit() {
+function onEdit() {
   if (!props.canManageClients) return
-  editing.value = true
+  if (detailCtx?.openClientEdit) {
+    detailCtx.openClientEdit()
+    return
+  }
+  emit('edit')
 }
-
-function cancelEdit() {
-  editing.value = false
-  formRef.value?.reset()
-}
-
-function onSaved() {
-  editing.value = false
-  emit('updated')
-}
-
-watch(
-  () => props.startEditing,
-  (start) => {
-    if (props.canManageClients && start) {
-      editing.value = true
-    }
-  },
-  { immediate: true }
-)
-
-watch(editing, value => emit('editingChange', value))
-
-watch(
-  () => props.client,
-  () => {
-    if (!editing.value) {
-      nextTick(() => formRef.value?.reset())
-    }
-  },
-  { deep: true }
-)
-
-defineExpose({ startEdit, cancelEdit, editing })
 </script>
 
 <template>
@@ -153,137 +158,155 @@ defineExpose({ startEdit, cancelEdit, editing })
       @updated="emit('updated')"
     />
 
-    <template v-else>
-      <UPageCard
-        v-if="showSummary"
-        variant="subtle"
-        :title="client.legal_name || client.name"
-        :description="client.trade_name || client.display_name || undefined"
-        data-testid="client-registration-summary"
+    <template v-else-if="showDados">
+      <div
+        v-if="canManageClients"
+        class="flex flex-wrap justify-end gap-2"
       >
-        <div class="flex flex-col gap-3">
-          <p class="font-mono text-sm text-highlighted">
-            {{ cnpjLabel }}
-          </p>
-          <div class="flex flex-wrap gap-2">
-            <UBadge
-              :color="client.is_active ? 'success' : 'neutral'"
-              variant="subtle"
+        <UButton
+          icon="i-lucide-pencil"
+          label="Editar"
+          color="primary"
+          variant="soft"
+          data-testid="client-registration-edit"
+          @click="onEdit"
+        />
+      </div>
+
+      <UCard
+        variant="subtle"
+        :ui="{ body: 'space-y-4 p-4 sm:p-5' }"
+        data-testid="client-registration-company"
+      >
+        <h3 class="text-sm font-semibold text-highlighted">
+          Dados da empresa
+        </h3>
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <UFormField
+            v-for="field in companyFields"
+            :key="field.label"
+            :label="field.label"
+          >
+            <UInput
+              :model-value="field.value"
+              readonly
+              class="w-full"
+            />
+          </UFormField>
+        </div>
+      </UCard>
+
+      <UCard
+        variant="subtle"
+        :ui="{ body: 'space-y-4 p-4 sm:p-5' }"
+        data-testid="client-registration-fiscal"
+      >
+        <h3 class="text-sm font-semibold text-highlighted">
+          Informações fiscais
+        </h3>
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <UFormField
+            v-for="field in fiscalFields"
+            :key="field.label"
+            :label="field.label"
+          >
+            <UInput
+              :model-value="field.value"
+              readonly
+              class="w-full"
+            />
+          </UFormField>
+        </div>
+      </UCard>
+
+      <UCard
+        variant="subtle"
+        :ui="{ body: 'space-y-4 p-4 sm:p-5' }"
+        data-testid="client-registration-activities"
+      >
+        <h3 class="text-sm font-semibold text-highlighted">
+          Atividades
+        </h3>
+        <div class="space-y-3 text-sm">
+          <div>
+            <p class="text-muted">
+              CNAE principal
+            </p>
+            <p class="font-medium text-highlighted">
+              {{ mainCnaeCode !== '—' ? `${mainCnaeCode} — ${mainCnaeName !== '—' ? mainCnaeName : ''}` : '—' }}
+            </p>
+          </div>
+          <div v-if="secondaryCnaes.length">
+            <p class="mb-1 text-muted">
+              CNAEs secundários
+            </p>
+            <ul
+              class="max-h-40 space-y-1 overflow-y-auto"
+              data-testid="client-registration-secondary-cnaes"
             >
-              {{ client.is_active ? 'Ativo' : 'Inativo' }}
-            </UBadge>
-            <UBadge
-              :color="registrationStatusColor(registrationStatus)"
-              variant="subtle"
-            >
-              {{ registrationStatusLabel(registrationStatus) }}
-            </UBadge>
-            <UBadge
-              v-if="client.tax_regime_label || client.tax_regime"
-              color="primary"
-              variant="subtle"
-            >
-              {{ client.tax_regime_label || client.tax_regime }}
-            </UBadge>
-            <UBadge
-              v-if="primaryEstablishment?.simples_optant === true"
-              color="info"
-              variant="subtle"
-            >
-              Simples Nacional
-            </UBadge>
-            <UBadge
-              v-if="primaryEstablishment?.mei_optant === true"
-              color="info"
-              variant="subtle"
-            >
-              MEI
-            </UBadge>
+              <li
+                v-for="cnae in secondaryCnaes"
+                :key="cnae.code"
+                class="font-medium text-highlighted"
+              >
+                {{ cnae.code }} — {{ cnae.name || '' }}
+              </li>
+            </ul>
           </div>
           <p
-            v-if="mainCnae"
-            class="text-sm text-muted"
+            v-else
+            class="text-muted"
           >
-            <span class="font-medium text-default">CNAE:</span>
-            {{ mainCnae }}
+            Nenhum CNAE secundário informado.
           </p>
-          <div
-            v-if="useAccordion"
-            class="flex flex-wrap gap-2"
-          >
-            <UButton
-              :to="fiscalHref"
-              color="primary"
-              variant="soft"
-              icon="i-lucide-radar"
-              label="Monitoramento fiscal"
-              data-testid="client-registration-to-fiscal"
-            />
-            <UButton
-              :to="configHref"
-              color="neutral"
-              variant="soft"
-              icon="i-lucide-sliders-horizontal"
-              label="Configuração"
-              data-testid="client-registration-to-config"
-            />
-          </div>
         </div>
-      </UPageCard>
+      </UCard>
+
+      <UCard
+        variant="subtle"
+        :ui="{ body: 'space-y-4 p-4 sm:p-5' }"
+        data-testid="client-registration-state-registrations"
+      >
+        <h3 class="text-sm font-semibold text-highlighted">
+          Inscrições estaduais
+        </h3>
+        <ul
+          v-if="stateRegistrations.length"
+          class="space-y-2 text-sm"
+          data-testid="client-registration-ies"
+        >
+          <li
+            v-for="(ie, index) in stateRegistrations"
+            :key="`${ie.number}-${index}`"
+            class="flex flex-wrap items-baseline gap-x-2 gap-y-1"
+            :class="ie.active === true ? 'font-medium text-highlighted' : 'text-muted'"
+          >
+            <span>{{ ie.state || '—' }} · {{ ie.number }}</span>
+            <span
+              v-if="ie.active === true"
+              class="text-xs text-success"
+            >(ativa)</span>
+            <span
+              v-else-if="ie.active === false"
+              class="text-xs"
+            >(inativa)</span>
+          </li>
+        </ul>
+        <p
+          v-else
+          class="text-sm text-muted"
+        >
+          Nenhuma inscrição estadual no cadastro.
+        </p>
+      </UCard>
 
       <ShellPanelAccordion
         v-if="useAccordion"
         :items="accordionItems"
         type="multiple"
-        :default-value="['identificacao']"
+        :default-value="[]"
         test-id="client-registration-accordion"
       >
-        <template #identificacao-body>
-          <div class="space-y-3">
-            <div
-              v-if="canManageClients"
-              class="flex flex-wrap justify-end gap-2"
-            >
-              <template v-if="!editing">
-                <UButton
-                  icon="i-lucide-pencil"
-                  label="Editar"
-                  color="primary"
-                  variant="soft"
-                  data-testid="client-registration-edit"
-                  @click="startEdit"
-                />
-              </template>
-              <template v-else>
-                <UButton
-                  color="neutral"
-                  variant="subtle"
-                  label="Cancelar"
-                  @click="cancelEdit"
-                />
-                <UButton
-                  form="client-registration-form"
-                  type="submit"
-                  color="primary"
-                  icon="i-lucide-save"
-                  label="Salvar alterações"
-                />
-              </template>
-            </div>
-            <ClientsClientForm
-              ref="formRef"
-              form-id="client-registration-form"
-              :client="client"
-              :can-manage-clients="canManageClients"
-              :can-manage-credentials="false"
-              :locked="!editing"
-              hide-actions
-              @saved="onSaved"
-              @cancel="cancelEdit"
-            />
-          </div>
-        </template>
-
         <template #socios-body>
           <div
             v-if="client.responsible_qualification_name"
@@ -382,63 +405,16 @@ defineExpose({ startEdit, cancelEdit, editing })
             </div>
           </div>
           <p class="mt-3 text-sm text-muted">
-            Certificado A1 e canais de captura ficam em
+            Certificado A1 fica no painel lateral; campos extras em
             <NuxtLink
-              :to="configHref"
+              :to="adicionaisHref"
               class="font-medium text-primary"
             >
-              Configuração
+              Dados adicionais
             </NuxtLink>.
-            Não armazenamos senha de PFX nesta tela.
           </p>
         </template>
       </ShellPanelAccordion>
-
-      <template v-else-if="showDados">
-        <div class="flex flex-wrap justify-end gap-2">
-          <template v-if="canManageClients && !editing">
-            <UButton
-              icon="i-lucide-pencil"
-              label="Editar"
-              color="primary"
-              variant="soft"
-              data-testid="client-registration-edit"
-              @click="startEdit"
-            />
-          </template>
-          <template v-else-if="canManageClients && editing">
-            <UButton
-              color="neutral"
-              variant="subtle"
-              label="Cancelar"
-              @click="cancelEdit"
-            />
-            <UButton
-              form="client-registration-form"
-              type="submit"
-              color="primary"
-              icon="i-lucide-save"
-              label="Salvar alterações"
-            />
-          </template>
-        </div>
-        <UPageCard
-          variant="subtle"
-          :ui="{ body: 'sm:p-5' }"
-        >
-          <ClientsClientForm
-            ref="formRef"
-            form-id="client-registration-form"
-            :client="client"
-            :can-manage-clients="canManageClients"
-            :can-manage-credentials="false"
-            :locked="!editing"
-            hide-actions
-            @saved="onSaved"
-            @cancel="cancelEdit"
-          />
-        </UPageCard>
-      </template>
     </template>
   </div>
 </template>

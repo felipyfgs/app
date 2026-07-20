@@ -91,16 +91,16 @@ describe('painel-responsivo-mobile-gate', () => {
     expect(conta).not.toContain('AccountDetailTabNav')
   })
 
-  it('detalhe do cliente segue arquétipo settings (4 destinos + NuxtPage)', () => {
+  it('detalhe do cliente segue layout master (header + abas + aside + NuxtPage)', () => {
     const client = readFileSync(root('app/pages/clients/[id].vue'), 'utf8')
-    expect(client).toContain('ShellSettingsShell')
+    expect(client).toContain('ShellPagePanel')
     expect(client).toContain('UNavigationMenu')
     expect(client).toContain('client-section-navigation')
     expect(client).not.toContain('client-hub-navigation')
     expect(client).toContain('<NuxtPage')
-    expect(client).toContain('width="comfortable"')
+    expect(client).toContain('ClientsClientIdentityHeader')
+    expect(client).toContain('ClientsClientDetailAside')
     expect(client).not.toContain('ClientDetailTabNav')
-    expect(client).not.toContain('ClientDetailAside')
   })
 
   it('detalhe fiscal do cliente usa rail fino com expand no hover + slideover', () => {
@@ -127,7 +127,9 @@ describe('painel-responsivo-mobile-gate', () => {
       'app/pages/clients/[id]/cadastro.vue',
       'app/pages/clients/[id]/contato.vue',
       'app/pages/clients/[id]/departamento.vue',
-      'app/pages/clients/[id]/configuracao.vue',
+      'app/pages/clients/[id]/dados-adicionais.vue',
+      'app/pages/clients/[id]/observacoes.vue',
+      'app/pages/clients/[id]/contratos.vue',
       'app/pages/settings/team.vue',
       'app/pages/settings/departments.vue',
       'app/pages/settings/subscription.vue',
@@ -142,23 +144,51 @@ describe('painel-responsivo-mobile-gate', () => {
     expect(team).toContain('ShellFilterToolbarLite')
   })
 
-  it('organização Nuxt UI: 4 páginas densas + accordion cadastro/config/escritório', () => {
+  it('organização Nuxt UI: abas master + accordion cadastro/adicionais/escritório', () => {
     const registration = readFileSync(root('app/components/clients/ClientRegistration.vue'), 'utf8')
     expect(registration).toContain('ShellPanelAccordion')
     expect(registration).toContain('panel === \'all\'')
+    expect(registration).not.toContain('ClientsClientForm')
+    expect(registration).not.toContain('startEditing')
 
-    const config = readFileSync(root('app/components/clients/ClientConfigPanel.vue'), 'utf8')
-    expect(config).toContain('ShellPanelAccordion')
-    expect(config).toContain('USwitch')
+    const detailShell = readFileSync(root('app/pages/clients/[id].vue'), 'utf8')
+    expect(detailShell).toContain('ClientsClientFormModal')
+    expect(detailShell).toContain('openClientEdit')
+    expect(detailShell).not.toContain('registrationEditRequested')
+
+    const cadastro = readFileSync(root('app/pages/clients/[id]/cadastro.vue'), 'utf8')
+    expect(cadastro).toContain('client-cadastro-refresh')
+    expect(cadastro).toContain('startRefreshLookup')
+    expect(cadastro).toContain('ClientsClientRegistrationRefreshModal')
+    expect(cadastro).toContain('api.cnpj.lookup')
+    expect(cadastro).not.toMatch(/refreshRegistration\(item\.value\.id\)\s*$/m)
+
+    const refreshModal = readFileSync(root('app/components/clients/ClientRegistrationRefreshModal.vue'), 'utf8')
+    expect(refreshModal).toContain('ShellFormModal')
+    expect(refreshModal).toContain('client-refresh-diff')
+    expect(refreshModal).toContain('review-mode')
+
+    const adicionais = readFileSync(root('app/components/clients/ClientAdditionalDataPanel.vue'), 'utf8')
+    expect(adicionais).toContain('ShellPanelAccordion')
+    expect(adicionais).toContain('USwitch')
 
     const office = readFileSync(root('app/components/settings/OfficeSettingsPanel.vue'), 'utf8')
     expect(office).toContain('ShellPanelAccordion')
-    expect(office).toContain('UStepper')
+    expect(office).toContain('SettingsOfficeCredentialSection')
+    expect(office).toContain('refreshIntegration')
+    expect(office).not.toContain('settings-onboarding-status')
+    expect(office).not.toContain('UStepper')
+    expect(office).not.toContain('consentimento')
+
+    const credential = readFileSync(root('app/components/settings/OfficeCredentialSection.vue'), 'utf8')
+    expect(credential).toContain('Atualizar integração')
+    expect(credential).toContain('settings-credential-refresh-integration')
 
     const tabs = readFileSync(root('app/utils/client-detail-tabs.ts'), 'utf8')
     expect(tabs).toContain('\'contato\'')
     expect(tabs).toContain('\'departamento\'')
-    expect(tabs).toContain('\'configuracao\'')
+    expect(tabs).toContain('\'dados-adicionais\'')
+    expect(tabs).toContain('\'observacoes\'')
     expect(tabs).not.toContain('value: \'fiscal\'')
   })
 

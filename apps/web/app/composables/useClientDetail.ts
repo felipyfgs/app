@@ -11,7 +11,6 @@ export interface ClientDetailContext {
   establishments: ComputedRef<Establishment[]>
   triggeringId: Ref<number | null>
   triggeredIds: Ref<number[]>
-  registrationEditRequested: Ref<boolean>
   canManageClients: ComputedRef<boolean>
   canManageCredentials: ComputedRef<boolean>
   canTriggerSync: ComputedRef<boolean>
@@ -20,11 +19,13 @@ export interface ClientDetailContext {
   onCredentialActivated: (value: ClientCredential) => void
   sectionPath: (section?: string) => string
   goToTab: (tab: ClientDetailTab, panel?: ClientDetailPanel) => void
+  /** Abre o modal único de editar cadastro geral. */
+  openClientEdit: () => void
 }
 
 export const clientDetailKey: InjectionKey<ClientDetailContext> = Symbol('clientDetail')
 
-/** Contexto do detalhe de cliente (pai Settings + NuxtPage). */
+/** Contexto do detalhe de cliente (pai master-detail + NuxtPage). */
 export function useClientDetail(): ClientDetailContext {
   const ctx = inject(clientDetailKey, null)
   if (!ctx) {

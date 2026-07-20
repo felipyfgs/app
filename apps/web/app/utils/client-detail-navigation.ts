@@ -1,5 +1,5 @@
 /**
- * Navegação do detalhe do cliente — 4 páginas densas (settings/Conta).
+ * Navegação do detalhe do cliente — abas do layout master (main + sidebar).
  */
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { NavLayerItem, NavLeafDestination } from '~/utils/navigation-hierarchy'
@@ -13,7 +13,7 @@ import {
 
 /** Seções do modal (subconjunto). */
 export type ClientModalSection
-  = 'resumo' | 'cadastro' | 'contato' | 'configuracao' | 'estabelecimentos' | 'certificado' | 'sincronizacao'
+  = 'resumo' | 'cadastro' | 'contato' | 'configuracao' | 'dados-adicionais' | 'estabelecimentos' | 'certificado' | 'sincronizacao'
 
 export function clientDetailNav(clientId: string | number): NavLayerItem[] {
   const items: NavLayerItem[] = CLIENT_DETAIL_TABS.map((tab): NavLeafDestination => ({
@@ -24,18 +24,19 @@ export function clientDetailNav(clientId: string | number): NavLayerItem[] {
     exact: true,
     isActive: (path: string) => clientToolbarTabForPath(path) === tab.value
   }))
-  validateNavCatalog(items)
+  validateNavCatalog(items, 6)
   return items
 }
 
 const MODAL_SECTION_HREF: Record<ClientModalSection, { tab: ClientDetailTab }> = {
-  resumo: { tab: 'cadastro' },
-  cadastro: { tab: 'cadastro' },
-  contato: { tab: 'contato' },
-  configuracao: { tab: 'configuracao' },
-  estabelecimentos: { tab: 'cadastro' },
-  certificado: { tab: 'configuracao' },
-  sincronizacao: { tab: 'configuracao' }
+  'resumo': { tab: 'cadastro' },
+  'cadastro': { tab: 'cadastro' },
+  'contato': { tab: 'contato' },
+  'configuracao': { tab: 'dados-adicionais' },
+  'dados-adicionais': { tab: 'dados-adicionais' },
+  'estabelecimentos': { tab: 'cadastro' },
+  'certificado': { tab: 'dados-adicionais' },
+  'sincronizacao': { tab: 'dados-adicionais' }
 }
 
 export function clientModalNav(): NavLayerItem[] {
@@ -54,10 +55,10 @@ export function clientModalNav(): NavLayerItem[] {
       to: '#contato'
     },
     {
-      id: 'modal-configuracao',
-      label: 'Configuração',
-      icon: 'i-lucide-sliders-horizontal',
-      to: '#configuracao'
+      id: 'modal-dados-adicionais',
+      label: 'Dados adicionais',
+      icon: 'i-lucide-list',
+      to: '#dados-adicionais'
     }
   ]
 }
@@ -80,9 +81,13 @@ export function clientNavigationMenu(
   const items = CLIENT_DETAIL_TABS.map((tab): NavigationMenuItem => ({
     label: tab.label,
     icon: tab.icon,
-    to: clientDetailHref(clientId, tab.value),
+    to: tab.disabled ? undefined : clientDetailHref(clientId, tab.value),
     exact: true,
-    active: activeTab === tab.value
+    active: activeTab === tab.value,
+    disabled: tab.disabled,
+    badge: tab.badge
+      ? { label: tab.badge, color: 'success' as const, variant: 'subtle' as const }
+      : undefined
   }))
   return [items]
 }

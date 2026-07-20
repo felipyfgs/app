@@ -1,56 +1,17 @@
 <script setup lang="ts">
 /**
- * Readiness + kill switch + visão de contrato ativo (console global).
- * Sem exibir Consumer Secret, PFX, token ou vault id.
+ * Visão geral SERPRO: readiness + kill switch + contrato ativo.
+ * Consumo / Liberação / Canário ficam em deep-links secundários.
  */
-import type { TabsItem } from '@nuxt/ui'
 import type { SerproGlobalHealth, SerproKillSwitchStatus, SerproReadinessSnapshot } from '~/types/api'
 import {
   buildKillSwitchOffBody,
   expectedOwnerConfirmationPhrase
 } from '~/utils/serpro-owner-confirmation'
-import ShellScrollableTabs from '~/components/shell/ScrollableTabs.vue'
-import RolloutView from './rollout.vue'
-import UsageView from './usage.vue'
 
 const api = useApi()
 const toast = useToast()
 const { sessionEpoch } = useDashboard()
-const route = useRoute()
-
-type OperationSection = 'status' | 'usage' | 'rollout'
-
-const operationSections = [{
-  label: 'Status',
-  icon: 'i-lucide-heart-pulse',
-  value: 'status'
-}, {
-  label: 'Consumo',
-  icon: 'i-lucide-wallet',
-  value: 'usage'
-}, {
-  label: 'Liberação',
-  icon: 'i-lucide-rocket',
-  value: 'rollout'
-}] satisfies TabsItem[]
-
-const activeSection = computed<OperationSection>(() => {
-  const section = Array.isArray(route.query.section)
-    ? route.query.section[0]
-    : route.query.section
-
-  return section === 'usage' || section === 'rollout' ? section : 'status'
-})
-
-function selectSection(value: string | number) {
-  const section = String(value) as OperationSection
-  const query = { ...route.query }
-
-  if (section === 'status') delete query.section
-  else query.section = section
-
-  void navigateTo({ path: '/admin/serpro', query }, { replace: true })
-}
 
 const loading = ref(false)
 const loadError = ref<string | null>(null)
@@ -127,8 +88,6 @@ function deriveReadiness(h: SerproGlobalHealth | null): SerproReadinessSnapshot 
 let loadSeq = 0
 
 async function load() {
-  if (activeSection.value !== 'status') return
-
   const seq = ++loadSeq
   const epoch = sessionEpoch.value
   const requestedEnvironment = environment.value
@@ -303,30 +262,17 @@ watch(sessionEpoch, () => {
   resetOverviewState()
   void load()
 })
-watch(activeSection, (section) => {
-  resetOverviewState()
-  if (section === 'status') void load()
-})
 onMounted(() => {
-  if (activeSection.value === 'status') void load()
+  void load()
 })
 </script>
 
 <template>
-  <div class="flex flex-col gap-6" data-testid="admin-serpro-operation">
-    <ShellScrollableTabs
-      :model-value="activeSection"
-      :items="operationSections"
-      color="neutral"
-      variant="pill"
-      class="w-full"
-      aria-label="Seções da operação SERPRO"
-      test-id="admin-serpro-operation-sections"
-      @update:model-value="selectSection"
-    />
-
+  <div
+    class="flex flex-col gap-6"
+    data-testid="admin-serpro-operation"
+  >
     <div
-      v-if="activeSection === 'status'"
       data-testid="admin-serpro-readiness"
       class="space-y-6"
     >
@@ -355,6 +301,31 @@ onMounted(() => {
           />
         </div>
       </UPageCard>
+
+      <nav
+        class="flex flex-wrap gap-x-4 gap-y-1 text-sm"
+        aria-label="Atalhos operacionais SERPRO"
+        data-testid="admin-serpro-overview-secondary-links"
+      >
+        <ULink
+          to="/admin/serpro/usage"
+          class="text-muted hover:text-highlighted"
+        >
+          Consumo
+        </ULink>
+        <ULink
+          to="/admin/serpro/rollout"
+          class="text-muted hover:text-highlighted"
+        >
+          Liberação
+        </ULink>
+        <ULink
+          to="/admin/serpro/dte-canary"
+          class="text-muted hover:text-highlighted"
+        >
+          Canário DTE
+        </ULink>
+      </nav>
 
       <UAlert
         v-if="loadError"
@@ -448,10 +419,6 @@ onMounted(() => {
           </dl>
         </UPageCard>
 
-        <!--
-          Distribuição settings/dashboard: overview full → 2 cards equilibrados → lista full.
-          Evita grid 3+2 assimétrico (card curto + coluna alta = vazio em L).
-        -->
         <div class="grid gap-6 sm:grid-cols-2">
           <UPageCard
             variant="subtle"
@@ -485,9 +452,7 @@ onMounted(() => {
               v-if="killStateKnown"
               class="mt-4"
             >
-              <UFormField
-                label="Motivo para auditoria"
-              >
+              <UFormField label="Motivo para auditoria">
                 <UInput
                   v-model="killReason"
                   class="w-full"
@@ -592,7 +557,11 @@ onMounted(() => {
               class="mt-4 flex items-center gap-3 text-sm text-muted"
               role="status"
             >
-              <UIcon name="i-lucide-file-x-2" class="size-5" aria-hidden="true" />
+              <UIcon
+                name="i-lucide-file-x-2"
+                class="size-5"
+                aria-hidden="true"
+              />
               Nenhum contrato ativo neste ambiente.
             </div>
             <div
@@ -600,7 +569,11 @@ onMounted(() => {
               class="mt-4 flex items-center gap-3 text-sm text-muted"
               role="status"
             >
-              <UIcon name="i-lucide-circle-help" class="size-5" aria-hidden="true" />
+              <UIcon
+                name="i-lucide-circle-help"
+                class="size-5"
+                aria-hidden="true"
+              />
               Estado do contrato indisponível.
             </div>
           </UPageCard>
@@ -641,7 +614,11 @@ onMounted(() => {
             class="flex items-center gap-3 py-2 text-sm text-muted"
             role="status"
           >
-            <UIcon name="i-lucide-list-checks" class="size-5" aria-hidden="true" />
+            <UIcon
+              name="i-lucide-list-checks"
+              class="size-5"
+              aria-hidden="true"
+            />
             Nenhuma verificação disponível para este ambiente.
           </div>
         </UPageCard>
@@ -655,8 +632,5 @@ onMounted(() => {
         title="Demonstração SERPRO — resultados e checks não constituem evidência fiscal nem confirmação de operação real na SERPRO."
       />
     </div>
-
-    <UsageView v-else-if="activeSection === 'usage'" />
-    <RolloutView v-else />
   </div>
 </template>

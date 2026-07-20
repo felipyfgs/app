@@ -1,15 +1,15 @@
 <script setup lang="ts">
 /**
- * Modal de cliente — subset: Cadastro · Contato · Configuração.
+ * Modal de cliente — subset: Cadastro · Contato · Dados adicionais.
  */
-import type { Client, ClientCredential } from '~/types/api'
+import type { Client } from '~/types/api'
 import type { ClientDetailTab, ClientModalTab } from '~/utils/client-detail-tabs'
 import {
   clientDetailHref,
   clientModalTabItems
 } from '~/utils/client-detail-tabs'
 
-type ModalSection = 'resumo' | 'cadastro' | 'contato' | 'configuracao' | 'estabelecimentos' | 'certificado' | 'sincronizacao'
+type ModalSection = 'resumo' | 'cadastro' | 'contato' | 'configuracao' | 'dados-adicionais' | 'estabelecimentos' | 'certificado' | 'sincronizacao'
 
 const open = defineModel<boolean>('open', { default: false })
 
@@ -24,16 +24,12 @@ const emit = defineEmits<{
 
 const api = useApi()
 const toast = useToast()
-const {
-  canManageClients,
-  canManageCredentials
-} = useDashboard()
+const { canManageClients } = useDashboard()
 
 const activeTab = ref<ClientModalTab>('cadastro')
 const item = ref<Client | null>(null)
-const credential = ref<ClientCredential | null>(null)
 const loading = ref(false)
-const cadastroStartEditing = ref(false)
+const formOpen = ref(false)
 
 const title = computed(() =>
   item.value?.display_name || item.value?.legal_name || item.value?.name || 'Cliente'
@@ -55,9 +51,10 @@ function mapInitialSection(section?: ModalSection) {
       activeTab.value = 'contato'
       break
     case 'configuracao':
+    case 'dados-adicionais':
     case 'certificado':
     case 'sincronizacao':
-      activeTab.value = 'configuracao'
+      activeTab.value = 'dados-adicionais'
       break
     case 'estabelecimentos':
     case 'cadastro':
@@ -69,7 +66,6 @@ function mapInitialSection(section?: ModalSection) {
 
 function onPrimaryChange(value: string | number) {
   activeTab.value = value as ClientModalTab
-  cadastroStartEditing.value = false
 }
 
 async function load() {
@@ -80,11 +76,6 @@ async function load() {
   loading.value = true
   try {
     item.value = (await api.clients.get(props.clientId)).data
-    if (canManageCredentials.value) {
-      credential.value = (await api.credentials.get(props.clientId)).data
-    } else {
-      credential.value = null
-    }
   } catch (caught) {
     item.value = null
     toast.add({ title: apiErrorMessage(caught, 'Não foi possível carregar o cliente.'), color: 'error' })
@@ -99,25 +90,14 @@ async function reload() {
 }
 
 function openEditForm() {
-  if (!canManageClients.value) return
+  if (!canManageClients.value || !item.value) return
   activeTab.value = 'cadastro'
-  cadastroStartEditing.value = true
+  formOpen.value = true
 }
 
-function onCredentialActivated(value: ClientCredential) {
-  credential.value = value
-  if (item.value) {
-    item.value = {
-      ...item.value,
-      credential_summary: {
-        status: value.status,
-        valid_to: value.valid_to,
-        expires_alert_30: value.expires_alert_30,
-        expires_alert_7: value.expires_alert_7,
-        expires_alert_1: value.expires_alert_1
-      }
-    }
-  }
+async function onFormSaved() {
+  formOpen.value = false
+  await reload()
 }
 
 watch(
@@ -125,7 +105,7 @@ watch(
   ([isOpen]) => {
     if (!isOpen) return
     mapInitialSection(props.initialSection)
-    cadastroStartEditing.value = false
+    formOpen.value = false
     void load()
   }
 )
@@ -172,9 +152,9 @@ watch(
             v-if="activeTab === 'cadastro'"
             :client="item"
             :can-manage-clients="canManageClients"
-            :start-editing="cadastroStartEditing"
             panel="dados"
-            @updated="() => { cadastroStartEditing = false; reload() }"
+            @edit="openEditForm"
+            @updated="reload"
           />
 
           <ClientsClientContactsSection
@@ -184,14 +164,11 @@ watch(
             @updated="reload"
           />
 
-          <ClientsClientConfigPanel
+          <ClientsClientAdditionalDataPanel
             v-else
             :client="item"
-            :credential="credential"
             :can-manage-clients="canManageClients"
-            :can-manage-credentials="canManageCredentials"
             @updated="reload"
-            @credential-activated="onCredentialActivated"
           />
         </template>
       </div>
@@ -235,4 +212,12 @@ watch(
       </div>
     </template>
   </ShellScrollableModal>
+
+  <ClientsClientFormModal
+    v-model:open="formOpen"
+    :client="item"
+    :can-manage-clients="canManageClients"
+    :can-manage-credentials="false"
+    @saved="onFormSaved"
+  />
 </template>

@@ -13,7 +13,6 @@ import UButton from '@nuxt/ui/components/Button.vue'
 import UIcon from '@nuxt/ui/components/Icon.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type { SimplesMeiClientRow } from '~/types/fiscal-modules'
-import { documentActionVisible } from '~/types/fiscal-modules'
 import { formatDate, formatDateTime } from '~/utils/format'
 import { pgdasdTrackingMeta } from '~/utils/pgdasd'
 import {
@@ -32,15 +31,12 @@ import {
   MONITORING_CONSULTED_LABEL,
   MONITORING_CONSULTED_META,
   MONITORING_HISTORY_LABEL,
-  MONITORING_TRACKING_LABEL,
-  MONITORING_TRACKING_META
+  MONITORING_TRACKING_LABEL
 } from '~/utils/monitoring-table-columns'
 
 /**
- * Renderer PGMEI — colunas de negócio (densidade compacta):
- * Cliente · Situação · Ações informativas · Histórico local de comunicação · Última consulta ·
- * Histórico. Sem colunas mensais do PGDAS-D.
- * Seleção é acrescentada pelo shell autorizado antes de Cliente.
+ * Renderer PGMEI — densidade minimalista:
+ * Cliente · Situação · Ações · Hist. comunicação · Consulta · Histórico.
  */
 export function buildPgmeiColumns(options: {
   year: number
@@ -50,9 +46,9 @@ export function buildPgmeiColumns(options: {
   onTracking: (row: SimplesMeiClientRow) => void
   onConfigure: (row: SimplesMeiClientRow) => void
   onPublicServices: (row: SimplesMeiClientRow) => void
+  canConsult?: boolean
 }): TableColumn<SimplesMeiClientRow>[] {
   function rowActions(row: SimplesMeiClientRow) {
-    // Comunicação é somente informativa; não há switch nem envio nesta coluna.
     return tableIconGroup([
       tableIconButton({
         label: 'Ver destinatários cadastrados',
@@ -78,35 +74,13 @@ export function buildPgmeiColumns(options: {
   function trackingCell(row: SimplesMeiClientRow) {
     const summary = pgmeiSummary(row, options.year)
     const meta = pgdasdTrackingMeta(summary?.communication?.tracking_status)
-    const artifactHref = documentActionVisible(row.document)
-      ? row.document?.href?.trim() || null
-      : null
-
-    return tableIconGroup([
-      tableIconButton({
-        label: `Histórico local de comunicação: ${meta.label}`,
-        icon: meta.icon,
-        color: meta.color,
-        testId: 'pgmei-tracking-status',
-        onClick: () => options.onTracking(row)
-      }),
-      tableIconButton({
-        label: artifactHref
-          ? (row.document?.label || 'Baixar anexo local')
-          : 'Nenhum anexo local disponível',
-        icon: 'i-lucide-download',
-        color: artifactHref ? 'primary' : 'neutral',
-        testId: 'pgmei-tracking-attachment',
-        href: artifactHref,
-        disabled: !artifactHref
-      }),
-      tableIconButton({
-        label: 'Abrir histórico local de comunicação',
-        icon: 'i-lucide-search',
-        testId: 'pgmei-tracking',
-        onClick: () => options.onTracking(row)
-      })
-    ], 'pgmei-tracking-group')
+    return tableIconButton({
+      label: `Histórico local de comunicação: ${meta.label}`,
+      icon: meta.icon,
+      color: meta.color,
+      testId: 'pgmei-tracking',
+      onClick: () => options.onTracking(row)
+    })
   }
 
   return [
@@ -168,7 +142,7 @@ export function buildPgmeiColumns(options: {
       id: 'tracking',
       header: MONITORING_TRACKING_LABEL,
       enableSorting: false,
-      meta: { ...MONITORING_TRACKING_META },
+      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
       cell: ({ row }) => trackingCell(row.original)
     },
     {
@@ -177,7 +151,7 @@ export function buildPgmeiColumns(options: {
       meta: { ...MONITORING_CONSULTED_META },
       cell: ({ row }) => {
         const lastQuery = pgmeiSummary(row.original, options.year)?.last_valid_query_at
-        return h(UTooltip, {
+        const dateNode = h(UTooltip, {
           text: lastQuery
             ? `Última consulta válida: ${formatDateTime(lastQuery)}`
             : `Nenhuma consulta produtiva válida para ${options.year}`
@@ -187,6 +161,23 @@ export function buildPgmeiColumns(options: {
             'data-testid': 'pgmei-last-query'
           }, formatDate(lastQuery))
         })
+        if (options.canConsult === false) {
+          return dateNode
+        }
+        return h('div', { class: 'flex items-center gap-0.5' }, [
+          dateNode,
+          h(UTooltip, { text: 'Consultar dívida PGMEI deste cliente' }, {
+            default: () => h(UButton, {
+              'size': 'xs',
+              'color': 'primary',
+              'variant': 'ghost',
+              'icon': 'i-lucide-refresh-cw',
+              'aria-label': 'Consultar dívida PGMEI',
+              'data-testid': 'pgmei-row-consult',
+              'onClick': () => options.onConsult(row.original)
+            })
+          })
+        ])
       }
     },
     {

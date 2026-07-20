@@ -147,4 +147,14 @@ describe('list-table-layout (customers.vue @ 0f30c09)', () => {
       expect(source, rel).not.toContain('Última Busca')
     }
   })
+
+  it('Simples MEI tracking é um único atalho (sem trio status+download+search)', () => {
+    for (const rel of ['app/utils/pgdasd-table.ts', 'app/utils/pgmei-table.ts']) {
+      const source = readFileSync(resolve(process.cwd(), rel), 'utf8')
+      expect(source, rel).not.toContain('pgdasd-tracking-attachment')
+      expect(source, rel).not.toContain('pgmei-tracking-attachment')
+      expect(source, rel).not.toContain('pgdasd-artifacts-menu')
+      expect(source, rel).toMatch(/testId: 'pgdasd-tracking'|testId: 'pgmei-tracking'/)
+    }
+  })
 })

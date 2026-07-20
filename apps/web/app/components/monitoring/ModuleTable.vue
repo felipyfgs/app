@@ -10,16 +10,11 @@ import type {
   MonitoringFilterValue
 } from '~/types/fiscal-modules'
 import {
-  fiscalAsOfLabel,
-  fiscalDataOriginLabel,
   fiscalKpiSituationFilter,
   fiscalSituationToKpiKey,
-  isSurfaceUnavailable,
-  isSyntheticFiscalOrigin
+  isSurfaceUnavailable
 } from '~/types/fiscal-modules'
 import { resolveMonitoringSurface } from '~/types/saved-list-filters'
-import { dataOriginMeta } from '~/utils/fiscal-status'
-import { formatDateTime } from '~/utils/format'
 import { monitoringFilterSignature } from '~/utils/monitoring-filters'
 import { monitoringSelectionScope } from '~/utils/monitoring-selection'
 import { COMPACT_BUTTON_LABEL_UI } from '~/utils/list-filter-layout'
@@ -70,8 +65,6 @@ const props = withDefaults(defineProps<{
   showKpis?: boolean
   /** Exibe a ação de consulta em lote no navbar. */
   showPendingSearch?: boolean
-  /** Exibe o aviso de dados demonstrativos; proveniência LIVE permanece visível. */
-  showSyntheticAlert?: boolean
   showColumnVisibility?: boolean
   emptyTitle?: string
   emptyDescription?: string
@@ -112,7 +105,6 @@ const props = withDefaults(defineProps<{
   asOf: null,
   showKpis: true,
   showPendingSearch: true,
-  showSyntheticAlert: true,
   showColumnVisibility: true,
   emptyTitle: undefined,
   emptyDescription: undefined,
@@ -159,25 +151,6 @@ const selectionScope = computed(() => monitoringSelectionScope({
   submodule: props.submodule || ''
 }))
 
-const originMeta = computed(() => dataOriginMeta(props.dataOrigin))
-const isSyntheticOrigin = computed(() => isSyntheticFiscalOrigin(props.dataOrigin))
-const originLabel = computed(() =>
-  props.dataOriginLabel?.trim()
-  || fiscalDataOriginLabel(props.dataOrigin)
-  || originMeta.value.label
-)
-const provenanceSource = computed(() =>
-  props.sourceLabel?.trim() || null
-)
-const asOfDisplay = computed(() => fiscalAsOfLabel(props.asOf))
-const asOfFormatted = computed(() => {
-  if (!props.asOf) return asOfDisplay.value
-  try {
-    return formatDateTime(props.asOf)
-  } catch {
-    return asOfDisplay.value
-  }
-})
 const surfaceIsUnavailable = computed(() => isSurfaceUnavailable(props.surfaceSummary))
 const surfaceUnavailableTitle = computed(() => {
   const label = props.surfaceSummary?.official_state_label?.trim()
@@ -265,8 +238,6 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
           :surface="resolvedSurface"
         />
 
-        <MonitoringSerproCoveragePanel compact />
-
         <div
           v-if="$slots.submodules"
           class="w-full min-w-0 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]"
@@ -284,48 +255,6 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
           :title="surfaceUnavailableTitle"
           data-testid="fiscal-surface-unavailable-alert"
         />
-
-        <!-- Proveniência / frescor fiscal — antes dos KPIs; sintético persiste em filtro/paginação. -->
-        <div
-          v-if="(showSyntheticAlert || !isSyntheticOrigin) && (counters != null || dataOrigin != null || dataOriginLabel)"
-          data-testid="fiscal-provenance"
-          class="flex min-w-0 flex-col gap-2"
-        >
-          <UAlert
-            v-if="isSyntheticOrigin"
-            color="warning"
-            variant="subtle"
-            icon="i-lucide-flask-conical"
-            :title="`Dados demonstrativos — sem validade fiscal (${originLabel})`"
-            data-testid="fiscal-synthetic-alert"
-          />
-          <div
-            v-else
-            class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted sm:gap-x-3 sm:text-xs"
-            data-testid="fiscal-live-meta"
-          >
-            <span
-              class="inline-flex items-center gap-1"
-              data-testid="fiscal-origin-label"
-            >
-              <UIcon
-                :name="originMeta.icon"
-                class="size-3.5 shrink-0"
-              />
-              {{ originLabel }}
-            </span>
-            <span
-              v-if="provenanceSource"
-              class="max-sm:truncate"
-              data-testid="fiscal-source-label"
-            >
-              Fonte: {{ provenanceSource }}
-            </span>
-            <span data-testid="fiscal-as-of">
-              {{ props.asOf ? `Observado: ${asOfFormatted}` : asOfDisplay }}
-            </span>
-          </div>
-        </div>
 
         <div
           v-if="showKpis || $slots.kpis"

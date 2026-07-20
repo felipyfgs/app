@@ -1,64 +1,23 @@
 <script setup lang="ts">
 /**
- * Configuração global SERPRO (Proprietário).
- * Arquétipo Settings: seções com UPageCard naked + subtle.
+ * Configuração SERPRO: credenciais, onboarding PRODUÇÃO e limites.
+ * Contratos / cobertura ficam em deep-links secundários.
  * Sem preenchimento de segredo em re-leitura; sem download de vault.
  */
-import type { AccordionItem, TabsItem } from '@nuxt/ui'
 import type {
   SerproCredentialVersionSanitized,
-  SerproExternalGateSanitized,
   SerproPlatformConfiguration,
   SerproProductionOnboardingEnvelope,
-  SerproProductionOnboardingState,
-  SerproProductionOnboardingStep
+  SerproProductionOnboardingState
 } from '~/types/api'
 import {
   defaultChangeWindow,
   expectedOwnerConfirmationPhrase
 } from '~/utils/serpro-owner-confirmation'
-import ShellScrollableTabs from '~/components/shell/ScrollableTabs.vue'
-import CatalogView from './catalog.vue'
-import ContractsView from './contracts.vue'
 
 const api = useApi()
 const toast = useToast()
 const { sessionEpoch } = useDashboard()
-const route = useRoute()
-
-type IntegrationSection = 'access' | 'contracts' | 'coverage'
-
-const integrationSections = [{
-  label: 'Acesso',
-  icon: 'i-lucide-key-round',
-  value: 'access'
-}, {
-  label: 'Contratos',
-  icon: 'i-lucide-file-badge',
-  value: 'contracts'
-}, {
-  label: 'Cobertura',
-  icon: 'i-lucide-layout-grid',
-  value: 'coverage'
-}] satisfies TabsItem[]
-
-const activeSection = computed<IntegrationSection>(() => {
-  const section = Array.isArray(route.query.section)
-    ? route.query.section[0]
-    : route.query.section
-
-  return section === 'contracts' || section === 'coverage' ? section : 'access'
-})
-
-function selectSection(value: string | number) {
-  const section = String(value) as IntegrationSection
-  const query = { ...route.query }
-
-  if (section === 'access') delete query.section
-  else query.section = section
-
-  void navigateTo({ path: '/admin/serpro/configuration', query }, { replace: true })
-}
 
 const loading = ref(false)
 const acting = ref(false)
@@ -87,14 +46,7 @@ const upload = reactive({
   password: '',
   consumer_key: '',
   consumer_secret: '',
-  notes: ''
-})
-
-const productionUpload = reactive({
-  certificate: null as File | null,
-  certificate_password: '',
-  consumer_key: '',
-  consumer_secret: '',
+  notes: '',
   consent_granted: false
 })
 
@@ -104,27 +56,13 @@ const limitsForm = reactive({
   global_limit_quantity: null as number | null
 })
 
-const gateDrafts = ref<Record<string, {
-  ticket_ref: string
-  answer_summary: string
-  responsible_name: string
-  reference_date: string
-}>>({})
-
 function clearUpload() {
   upload.pfx = null
   upload.password = ''
   upload.consumer_key = ''
   upload.consumer_secret = ''
   upload.notes = ''
-}
-
-function clearProductionUpload() {
-  productionUpload.certificate = null
-  productionUpload.certificate_password = ''
-  productionUpload.consumer_key = ''
-  productionUpload.consumer_secret = ''
-  productionUpload.consent_granted = false
+  upload.consent_granted = false
 }
 
 function resetLimits() {
@@ -133,15 +71,9 @@ function resetLimits() {
   limitsForm.global_limit_quantity = null
 }
 
-interface GateAccordionItem extends AccordionItem {
-  gate: SerproExternalGateSanitized
-}
-
 let loadSeq = 0
 
 async function load() {
-  if (activeSection.value !== 'access') return
-
   const seq = ++loadSeq
   const epoch = sessionEpoch.value
   const requestedEnvironment = environment.value
@@ -173,17 +105,6 @@ async function load() {
         ? Number(cfg.global_limit_quantity)
         : null
     }
-    const gates = res.data?.external_gates || []
-    const drafts: typeof gateDrafts.value = {}
-    for (const g of gates) {
-      drafts[g.kind] = {
-        ticket_ref: g.ticket_ref || '',
-        answer_summary: g.answer_summary || '',
-        responsible_name: g.responsible_name || '',
-        reference_date: g.reference_date || ''
-      }
-    }
-    gateDrafts.value = drafts
   } catch (caught) {
     if (
       seq !== loadSeq
@@ -238,6 +159,12 @@ function submitUpload() {
     toast.add({ title: 'Preencha PFX, senha, Key e Secret.', color: 'warning' })
     return
   }
+
+  if (environment.value === 'PRODUCTION') {
+    submitProductionOnboarding()
+    return
+  }
+
   requestPasswordThen(async () => {
     try {
       const body = new FormData()
@@ -250,12 +177,8 @@ function submitUpload() {
       const created = await api.platform.serpro.credentialVersions.store(body)
       clearUpload()
 
-      if (environment.value === 'TRIAL') {
-        await activateTrialCredential(created.data)
-        toast.add({ title: 'Credenciais salvas e ativadas na Demonstração SERPRO.', color: 'success' })
-      } else {
-        toast.add({ title: 'Versão PENDING cadastrada no vault.', color: 'success' })
-      }
+      await activateTrialCredential(created.data)
+      toast.add({ title: 'Credenciais salvas e ativadas na Demonstração SERPRO.', color: 'success' })
       await load()
     } catch (caught) {
       toast.add({ title: apiErrorMessage(caught, 'Falha ao salvar e ativar as credenciais.'), color: 'error' })
@@ -264,27 +187,22 @@ function submitUpload() {
 }
 
 function submitProductionOnboarding() {
-  if (
-    !productionUpload.certificate
-    || !productionUpload.certificate_password
-    || !productionUpload.consumer_key
-    || !productionUpload.consumer_secret
-  ) {
-    toast.add({ title: 'Preencha Key, Secret, certificado e senha do certificado.', color: 'warning' })
+  if (!upload.consent_granted) {
+    toast.add({ title: 'Confirme o consentimento para ativar a produção.', color: 'warning' })
     return
   }
-  if (!productionUpload.consent_granted) {
-    toast.add({ title: 'Confirme o consentimento para ativar a produção.', color: 'warning' })
+  if (productionOnboarding.value && productionOnboarding.value.enabled === false) {
+    toast.add({ title: 'Onboarding produtivo desabilitado por feature flag.', color: 'warning' })
     return
   }
 
   requestPasswordThen(async () => {
     try {
       const body = new FormData()
-      body.append('consumer_key', productionUpload.consumer_key)
-      body.append('consumer_secret', productionUpload.consumer_secret)
-      body.append('certificate', productionUpload.certificate!)
-      body.append('certificate_password', productionUpload.certificate_password)
+      body.append('consumer_key', upload.consumer_key)
+      body.append('consumer_secret', upload.consumer_secret)
+      body.append('certificate', upload.pfx!)
+      body.append('certificate_password', upload.password)
       body.append('consent_granted', '1')
 
       const res = await api.platform.serpro.productionOnboarding.submit(
@@ -292,11 +210,11 @@ function submitProductionOnboarding() {
         makeOnboardingIdempotencyKey()
       )
       productionOnboarding.value = res.data || null
-      clearProductionUpload()
+      clearUpload()
       toast.add({ title: productionOnboardingToastTitle(res.data?.onboarding), color: 'success' })
       await load()
     } catch (caught) {
-      clearProductionUpload()
+      clearUpload()
       toast.add({ title: apiErrorMessage(caught, 'Falha ao ativar Produção SERPRO.'), color: 'error' })
     }
   })
@@ -418,26 +336,6 @@ async function executeCredentialCutover(
   })
 }
 
-function acceptGate(g: SerproExternalGateSanitized) {
-  const draft = gateDrafts.value[g.kind]
-  if (!draft?.ticket_ref || !draft.answer_summary || !draft.responsible_name || !draft.reference_date) {
-    toast.add({ title: 'Referência, resumo, responsável e data são obrigatórios.', color: 'warning' })
-    return
-  }
-  requestPasswordThen(async () => {
-    try {
-      await api.platform.serpro.externalGates.update(g.kind, {
-        ...draft,
-        environment: 'PRODUCTION'
-      })
-      toast.add({ title: `Gate ${g.kind} aceito.`, color: 'success' })
-      await load()
-    } catch (caught) {
-      toast.add({ title: apiErrorMessage(caught, 'Falha ao aceitar gate.'), color: 'error' })
-    }
-  })
-}
-
 function saveLimits() {
   requestPasswordThen(async () => {
     try {
@@ -457,49 +355,8 @@ function saveLimits() {
 
 const summary = computed(() => configuration.value?.summary)
 const pendingVersions = computed(() => configuration.value?.pending_credential_versions || [])
-const history = computed(() => configuration.value?.credential_history || [])
-const gates = computed(() => configuration.value?.external_gates || [])
-const pendingOffices = computed(() => configuration.value?.pending_offices?.items || [])
 const productionState = computed(() => productionOnboarding.value?.onboarding || null)
-const productionCompletedSteps = computed(() => new Set(productionState.value?.completed_steps || []))
 const productionConsent = computed(() => productionOnboarding.value?.consent || null)
-const productionStepItems = computed(() => {
-  const state = productionState.value
-  const completed = productionCompletedSteps.value
-  return productionSteps.map((step) => {
-    const done = completed.has(step.value)
-      || state?.current_step === 'COMPLETED'
-      || state?.status === 'ACTIVE'
-      || state?.status === 'ACTIVE_SYNC_PENDING'
-    const current = state?.current_step === step.value
-      || (!state && step.value === 'VALIDATE_INPUT')
-
-    return {
-      ...step,
-      done,
-      current,
-      blocked: state?.status === 'FAILED' && state.current_step === step.value
-    }
-  })
-})
-const gateItems = computed<GateAccordionItem[]>(() => gates.value.map(gate => ({
-  label: gate.label || gate.kind,
-  value: gate.kind,
-  icon: gate.status === 'ACCEPTED' ? 'i-lucide-circle-check' : 'i-lucide-circle-dashed',
-  gate
-})))
-
-const productionSteps = [
-  { value: 'VALIDATE_INPUT', label: 'Certificado' },
-  { value: 'STORE_PENDING', label: 'Vault' },
-  { value: 'VERIFY_VAULT', label: 'Verificação' },
-  { value: 'TEST_OAUTH', label: 'OAuth' },
-  { value: 'CONFIRM_CUTOVER', label: 'Contrato' },
-  { value: 'ACTIVATE_AUTHORIZATION', label: 'Autorização' },
-  { value: 'QUEUE_READ_SYNC', label: 'Caixa Postal' },
-  { value: 'COMPLETED', label: 'Concluído' }
-] satisfies Array<{ value: SerproProductionOnboardingStep, label: string }>
-
 function makeOnboardingIdempotencyKey(): string {
   const bytes = new Uint32Array(2)
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
@@ -557,10 +414,6 @@ function credentialStatusColor(status: string): 'success' | 'warning' | 'error' 
   return 'neutral'
 }
 
-function gateStatusLabel(status: string): string {
-  return status === 'ACCEPTED' ? 'Aceito' : 'Pendente'
-}
-
 function cancelPasswordConfirmation() {
   passwordModalOpen.value = false
   passwordInput.value = ''
@@ -574,9 +427,7 @@ function resetEnvironmentState() {
   productionOnboarding.value = null
   loadError.value = null
   onboardingLoadError.value = null
-  gateDrafts.value = {}
   clearUpload()
-  clearProductionUpload()
   resetLimits()
   cancelPasswordConfirmation()
 }
@@ -589,33 +440,35 @@ watch(sessionEpoch, () => {
   resetEnvironmentState()
   void load()
 })
-watch(activeSection, (section) => {
-  resetEnvironmentState()
-  if (section === 'access') void load()
-})
 onMounted(() => {
-  if (activeSection.value === 'access') void load()
+  void load()
 })
 </script>
 
 <template>
   <div class="flex flex-col gap-6" data-testid="admin-serpro-integration">
-    <ShellScrollableTabs
-      :model-value="activeSection"
-      :items="integrationSections"
-      color="neutral"
-      variant="pill"
-      class="w-full"
-      aria-label="Seções da integração SERPRO"
-      test-id="admin-serpro-integration-sections"
-      @update:model-value="selectSection"
-    />
-
     <div
-      v-if="activeSection === 'access'"
       data-testid="admin-serpro-configuration"
       class="space-y-8"
     >
+      <nav
+        class="flex flex-wrap gap-x-4 gap-y-1 text-sm"
+        aria-label="Atalhos de configuração SERPRO"
+        data-testid="admin-serpro-config-secondary-links"
+      >
+        <ULink
+          to="/admin/serpro/contracts"
+          class="text-muted hover:text-highlighted"
+        >
+          Contratos
+        </ULink>
+        <ULink
+          to="/admin/serpro/catalog"
+          class="text-muted hover:text-highlighted"
+        >
+          Cobertura
+        </ULink>
+      </nav>
       <UPageCard
         title="Configuração por ambiente"
         variant="naked"
@@ -729,14 +582,6 @@ onMounted(() => {
                 {{ summary ? (summary.kill_switch_active ? 'Ativo' : 'Desligado') : 'Indisponível' }}
               </dd>
             </div>
-            <div v-if="environment === 'PRODUCTION'">
-              <dt class="text-muted">
-                Liberações externas
-              </dt>
-              <dd class="mt-1 font-medium text-highlighted">
-                {{ summary ? (summary.gates_blocking ? 'Pendentes' : 'Concluídas') : 'Indisponível' }}
-              </dd>
-            </div>
             <div>
               <dt class="text-muted">
                 Limite de uso
@@ -781,19 +626,29 @@ onMounted(() => {
         />
 
         <UPageCard
-          v-if="environment === 'PRODUCTION'"
-          title="Ativação de Produção"
+          title="Credenciais"
           variant="subtle"
-          data-testid="serpro-production-onboarding"
+          data-testid="serpro-config-credentials"
         >
-          <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
+          <div
+            v-if="environment === 'PRODUCTION'"
+            class="mb-4 flex flex-wrap items-start justify-between gap-3"
+            data-testid="serpro-production-status"
+          >
+            <div class="min-w-0">
               <p class="text-sm text-muted">
-                Escritório atual
-              </p>
-              <h3 class="mt-1 text-base font-semibold text-highlighted">
                 {{ productionOnboarding?.office_id ? `Office #${productionOnboarding.office_id}` : 'Contexto não selecionado' }}
-              </h3>
+              </p>
+              <p
+                v-if="productionState?.status === 'ACTION_REQUIRED' || productionState?.status === 'FAILED'"
+                class="mt-1 text-sm text-muted"
+                :data-testid="productionState?.status === 'FAILED' ? 'serpro-prod-failed' : 'serpro-prod-action-required'"
+              >
+                {{ productionState.error?.message
+                  || (productionState.status === 'FAILED'
+                    ? 'Ativação não concluída. Revise os dados e tente novamente.'
+                    : 'Há uma ação operacional pendente antes da leitura inicial.') }}
+              </p>
             </div>
             <UBadge
               :color="productionStatusColor(productionState?.status)"
@@ -804,192 +659,16 @@ onMounted(() => {
             </UBadge>
           </div>
 
-          <ol class="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <li
-              v-for="step in productionStepItems"
-              :key="step.value"
-              class="flex min-h-14 items-center gap-3 rounded-md border border-default px-3 py-2 text-sm"
-              :class="step.done ? 'bg-success/5' : step.blocked ? 'bg-error/5' : step.current ? 'bg-elevated' : ''"
-              :data-testid="`serpro-prod-step-${step.value}`"
-            >
-              <UIcon
-                :name="step.done ? 'i-lucide-circle-check' : step.blocked ? 'i-lucide-circle-x' : 'i-lucide-circle'"
-                class="size-4 shrink-0"
-                :class="step.done ? 'text-success' : step.blocked ? 'text-error' : 'text-muted'"
-                aria-hidden="true"
-              />
-              <span class="font-medium text-highlighted">{{ step.label }}</span>
-            </li>
-          </ol>
-
           <UAlert
-            v-if="productionState?.status === 'ACTION_REQUIRED'"
-            class="mt-5"
-            color="warning"
-            variant="subtle"
-            icon="i-lucide-circle-alert"
-            title="Há uma ação operacional pendente antes da leitura inicial."
-            data-testid="serpro-prod-action-required"
-          />
-          <p
-            v-if="productionState?.status === 'ACTION_REQUIRED'"
-            class="mt-2 text-sm text-muted"
-          >
-            {{ productionState.error?.message || 'Revise autorização e gates de Produção antes de tentar novamente.' }}
-          </p>
-
-          <UAlert
-            v-else-if="productionState?.status === 'FAILED'"
-            class="mt-5"
-            color="error"
-            variant="subtle"
-            icon="i-lucide-circle-x"
-            title="Ativação não concluída"
-            data-testid="serpro-prod-failed"
-          />
-          <p
-            v-if="productionState?.status === 'FAILED'"
-            class="mt-2 text-sm text-muted"
-          >
-            {{ productionState.error?.message || 'Revise os dados e tente novamente.' }}
-          </p>
-
-          <div
-            v-if="productionState"
-            class="mt-5 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4"
-          >
-            <div>
-              <p class="text-muted">
-                Key
-              </p>
-              <p class="mt-1 font-medium text-highlighted">
-                {{ productionState.hints?.consumer_key_hint || 'Não informada' }}
-              </p>
-            </div>
-            <div>
-              <p class="text-muted">
-                CNPJ contratante
-              </p>
-              <p class="mt-1 font-medium text-highlighted">
-                {{ productionState.hints?.contractor_cnpj_masked || 'Não validado' }}
-              </p>
-            </div>
-            <div>
-              <p class="text-muted">
-                Certificado até
-              </p>
-              <p class="mt-1 font-medium text-highlighted">
-                {{ productionState.hints?.certificate_valid_to ? formatDateTime(productionState.hints.certificate_valid_to) : 'Não informado' }}
-              </p>
-            </div>
-            <div>
-              <p class="text-muted">
-                Sync inicial
-              </p>
-              <p class="mt-1 font-medium text-highlighted">
-                {{ productionState.initial_mailbox_run_id ? `Run #${productionState.initial_mailbox_run_id}` : 'Aguardando' }}
-              </p>
-            </div>
-          </div>
-
-          <USeparator class="my-5" />
-
-          <div
-            v-if="productionOnboarding?.enabled"
-            class="grid gap-4 sm:grid-cols-2"
-          >
-            <UFormField
-              label="Consumer Key"
-              required
-            >
-              <UInput
-                v-model="productionUpload.consumer_key"
-                class="w-full"
-                autocomplete="off"
-                data-testid="serpro-prod-consumer-key"
-              />
-            </UFormField>
-            <UFormField
-              label="Consumer Secret"
-              required
-            >
-              <UInput
-                v-model="productionUpload.consumer_secret"
-                type="password"
-                class="w-full"
-                autocomplete="new-password"
-                data-testid="serpro-prod-consumer-secret"
-              />
-            </UFormField>
-            <UFormField
-              label="Certificado do contratante (.pfx ou .p12)"
-              required
-              class="sm:col-span-2"
-            >
-              <UFileUpload
-                v-model="productionUpload.certificate"
-                accept=".pfx,.p12,application/x-pkcs12"
-                label="Selecione ou arraste o arquivo"
-                icon="i-lucide-file-key-2"
-                layout="list"
-                position="inside"
-                class="w-full"
-                :ui="{ base: 'min-h-28' }"
-                data-testid="serpro-prod-certificate"
-              />
-            </UFormField>
-            <UFormField
-              label="Senha do certificado"
-              required
-            >
-              <UInput
-                v-model="productionUpload.certificate_password"
-                type="password"
-                class="w-full"
-                autocomplete="new-password"
-                data-testid="serpro-prod-certificate-password"
-              />
-            </UFormField>
-            <div class="flex items-end">
-              <UButton
-                label="Ativar Produção"
-                icon="i-lucide-shield-check"
-                :loading="acting"
-                data-testid="serpro-prod-submit"
-                @click="submitProductionOnboarding"
-              />
-            </div>
-            <div class="sm:col-span-2 rounded-md border border-default p-3">
-              <UCheckbox
-                v-model="productionUpload.consent_granted"
-                :label="productionConsent?.text || 'Autorizo a ativação de Produção SERPRO para o escritório selecionado.'"
-                data-testid="serpro-prod-consent"
-              />
-              <p
-                v-if="productionConsent?.version"
-                class="mt-2 font-mono text-xs text-muted"
-              >
-                {{ productionConsent.version }} · {{ productionConsent.text_sha256 }}
-              </p>
-            </div>
-          </div>
-
-          <UAlert
-            v-else
+            v-if="environment === 'PRODUCTION' && productionOnboarding && !productionOnboarding.enabled"
+            class="mb-4"
             color="warning"
             variant="subtle"
             icon="i-lucide-lock"
-            title="Onboarding produtivo desabilitado por feature flag."
+            title="Onboarding produtivo desabilitado por feature flag — o formulário permanece visível; a ativação só conclui com a flag ligada."
             data-testid="serpro-prod-disabled"
           />
-        </UPageCard>
 
-        <UPageCard
-          v-if="environment === 'TRIAL'"
-          title="Credenciais"
-          variant="subtle"
-          data-testid="serpro-config-credentials"
-        >
           <div class="mb-4 grid gap-4 sm:grid-cols-2">
             <UFormField
               label="Certificado do contratante (.pfx ou .p12)"
@@ -1044,9 +723,27 @@ onMounted(() => {
               />
             </UFormField>
           </div>
+
+          <div
+            v-if="environment === 'PRODUCTION'"
+            class="mb-4 rounded-md border border-default p-3"
+          >
+            <UCheckbox
+              v-model="upload.consent_granted"
+              :label="productionConsent?.text || 'Autorizo a ativação de Produção SERPRO para o escritório selecionado.'"
+              data-testid="serpro-prod-consent"
+            />
+            <p
+              v-if="productionConsent?.version"
+              class="mt-2 font-mono text-xs text-muted"
+            >
+              {{ productionConsent.version }} · {{ productionConsent.text_sha256 }}
+            </p>
+          </div>
+
           <UButton
-            :label="environment === 'TRIAL' ? 'Salvar e ativar' : 'Cadastrar nova versão'"
-            :icon="environment === 'TRIAL' ? 'i-lucide-circle-check' : 'i-lucide-upload'"
+            :label="environment === 'TRIAL' ? 'Salvar e ativar' : 'Ativar Produção'"
+            :icon="environment === 'TRIAL' ? 'i-lucide-circle-check' : 'i-lucide-shield-check'"
             :loading="acting"
             data-testid="serpro-config-upload"
             @click="submitUpload"
@@ -1150,86 +847,6 @@ onMounted(() => {
         </UPageCard>
 
         <UPageCard
-          v-if="environment === 'PRODUCTION'"
-          title="Liberações externas"
-          variant="subtle"
-          data-testid="serpro-config-gates"
-        >
-          <UAccordion
-            v-if="gateItems.length"
-            :items="gateItems"
-            :unmount-on-hide="false"
-            :ui="{ label: 'w-full', body: 'pb-4' }"
-          >
-            <template #default="{ item }">
-              <span class="flex w-full items-center justify-between gap-3 pe-2">
-                <span>{{ item.label }}</span>
-                <UBadge
-                  :color="item.gate.status === 'ACCEPTED' ? 'success' : 'warning'"
-                  variant="subtle"
-                >
-                  {{ gateStatusLabel(item.gate.status) }}
-                </UBadge>
-              </span>
-            </template>
-
-            <template #body="{ item }">
-              <div class="grid gap-3 sm:grid-cols-2">
-                <UFormField label="Referência externa">
-                  <UInput
-                    v-model="gateDrafts[item.gate.kind]!.ticket_ref"
-                    class="w-full"
-                    :disabled="item.gate.status === 'ACCEPTED'"
-                  />
-                </UFormField>
-                <UFormField label="Responsável">
-                  <UInput
-                    v-model="gateDrafts[item.gate.kind]!.responsible_name"
-                    class="w-full"
-                    :disabled="item.gate.status === 'ACCEPTED'"
-                  />
-                </UFormField>
-                <UFormField label="Data de referência">
-                  <UInput
-                    v-model="gateDrafts[item.gate.kind]!.reference_date"
-                    type="date"
-                    class="w-full"
-                    :disabled="item.gate.status === 'ACCEPTED'"
-                  />
-                </UFormField>
-                <UFormField label="Resumo da evidência">
-                  <UTextarea
-                    v-model="gateDrafts[item.gate.kind]!.answer_summary"
-                    class="w-full"
-                    autoresize
-                    :rows="2"
-                    :maxrows="4"
-                    :disabled="item.gate.status === 'ACCEPTED'"
-                  />
-                </UFormField>
-              </div>
-              <UButton
-                v-if="item.gate.status !== 'ACCEPTED'"
-                class="mt-3"
-                size="sm"
-                label="Registrar liberação"
-                :loading="acting"
-                @click="acceptGate(item.gate)"
-              />
-            </template>
-          </UAccordion>
-
-          <div
-            v-else
-            class="flex items-center gap-3 py-4 text-sm text-muted"
-            role="status"
-          >
-            <UIcon name="i-lucide-clipboard-check" class="size-5" aria-hidden="true" />
-            Nenhuma liberação externa foi listada.
-          </div>
-        </UPageCard>
-
-        <UPageCard
           title="Limites de uso"
           variant="subtle"
           data-testid="serpro-config-limits"
@@ -1273,73 +890,6 @@ onMounted(() => {
             @click="saveLimits"
           />
         </UPageCard>
-
-        <div class="grid items-start gap-6 lg:grid-cols-2">
-          <UPageCard
-            title="Histórico de versões"
-            variant="subtle"
-            data-testid="serpro-config-history"
-          >
-            <ul
-              v-if="history.length"
-              class="space-y-2 text-sm"
-            >
-              <li
-                v-for="h in history"
-                :key="h.id"
-                class="flex flex-wrap gap-2 border-b border-default pb-2 last:border-0"
-              >
-                <span>v{{ h.version_number }}</span>
-                <UBadge
-                  variant="subtle"
-                  :color="credentialStatusColor(h.status)"
-                >
-                  {{ credentialStatusLabel(h.status) }}
-                </UBadge>
-                <span class="text-muted">…{{ h.consumer_key_last4 || '—' }}</span>
-                <span class="text-muted">{{ h.created_at ? formatDateTime(h.created_at) : '' }}</span>
-              </li>
-            </ul>
-            <p
-              v-else
-              class="text-sm text-muted"
-            >
-              Sem histórico neste ambiente.
-            </p>
-          </UPageCard>
-
-          <UPageCard
-            title="Aguardando ADMIN local"
-            variant="subtle"
-            data-testid="serpro-config-pending-offices"
-          >
-            <ul
-              v-if="pendingOffices.length"
-              class="space-y-2 text-sm"
-            >
-              <li
-                v-for="o in pendingOffices"
-                :key="o.office_id"
-                class="flex flex-wrap items-center justify-between gap-2"
-              >
-                <span>{{ o.office_name || o.office_slug || `#${o.office_id}` }} · {{ o.status }}</span>
-                <UButton
-                  size="xs"
-                  variant="ghost"
-                  label="Ver escritório"
-                  :to="`/admin/offices/${o.office_id}`"
-                  icon="i-lucide-arrow-right"
-                />
-              </li>
-            </ul>
-            <p
-              v-else
-              class="text-sm text-muted"
-            >
-              Nenhum escritório pendente.
-            </p>
-          </UPageCard>
-        </div>
       </template>
 
       <div
@@ -1396,8 +946,5 @@ onMounted(() => {
         @confirm="confirmCutover"
       />
     </div>
-
-    <ContractsView v-else-if="activeSection === 'contracts'" />
-    <CatalogView v-else />
   </div>
 </template>

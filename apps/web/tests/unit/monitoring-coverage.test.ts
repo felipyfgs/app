@@ -71,11 +71,11 @@ describe('cobertura documental do monitor', () => {
     expect(monitoringWorkspaceRequestIsCurrent(token, 4, 8)).toBe(false)
   })
 
-  it('monta o painel central pelo workspace e não renderiza coordenadas internas SERPRO', () => {
+  it('mantém o painel de cobertura como componente reutilizável sem coordenadas internas SERPRO', () => {
     const dashboard = readFileSync(resolve(process.cwd(), 'app/pages/monitoring/index.vue'), 'utf8')
     const panel = readFileSync(resolve(process.cwd(), 'app/components/monitoring/SerproCoveragePanel.vue'), 'utf8')
 
-    expect(dashboard).toContain('<MonitoringSerproCoveragePanel all-surfaces')
+    expect(dashboard).not.toContain('MonitoringSerproCoveragePanel')
     expect(panel).toContain('useMonitoringWorkspace')
     expect(panel).not.toContain('api.fiscal.monitoringCoverage()')
     expect(panel).toContain('Trial valida transporte e schema, não a situação fiscal')

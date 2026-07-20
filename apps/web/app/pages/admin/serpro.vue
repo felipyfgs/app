@@ -1,10 +1,12 @@
 <script setup lang="ts">
 /**
  * Shell do console global SERPRO (PLATFORM_ADMIN).
- * Arquétipo: settings.vue do template; navegação global exclusiva no sidebar.
- * Fonte: .local/reference/nuxt-dashboard-template/app/pages/settings.vue
- * Largura: comfortable (max-w-5xl, centralizado) — mesma linha de /conta e do shell settings oficial.
+ * Sidebar: um destino Admin → SERPRO. Operação / Integração / Canário ficam
+ * na toolbar (SectionNavigation + SERPRO_NAV_ITEMS).
  */
+import SectionNavigation from '~/components/navigation/SectionNavigation.vue'
+import { SERPRO_NAV_ITEMS } from '~/utils/serpro-navigation'
+
 const { canAccessPlatformSerpro } = useDashboard()
 </script>
 
@@ -23,6 +25,14 @@ const { canAccessPlatformSerpro } = useDashboard()
           <UDashboardSidebarCollapse />
         </template>
       </UDashboardNavbar>
+
+      <UDashboardToolbar v-if="canAccessPlatformSerpro">
+        <SectionNavigation
+          :items="SERPRO_NAV_ITEMS"
+          aria-label="Navegação do console SERPRO"
+          test-id="admin-serpro-section-navigation"
+        />
+      </UDashboardToolbar>
     </template>
 
     <template #body>

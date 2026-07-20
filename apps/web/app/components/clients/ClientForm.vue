@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import * as z from 'zod'
-import type { FormSubmitEvent } from '@nuxt/ui'
+import type { AccordionItem, FormSubmitEvent } from '@nuxt/ui'
 import type {
   AddressPayload,
   Client,
@@ -21,18 +21,25 @@ const props = defineProps<{
   matrixLabel?: string | null
   locked?: boolean
   hideActions?: boolean
+  /** Revisão de consulta RFB antes de gravar (campos RFB editáveis). */
+  reviewMode?: boolean
+  reviewLookup?: CnpjLookupResult | null
 }>()
 
 const emit = defineEmits<{
   saved: [payload: { id: number, mode: 'create' | 'edit', section?: 'resumo' | 'certificado' }]
   cancel: []
   openExisting: [id: number]
+  confirmRefresh: [lookup: CnpjLookupResult]
 }>()
 
 const isEdit = computed(() => !!props.client?.id)
+const isReview = computed(() => props.reviewMode === true)
 const canEdit = computed(() => props.canManageClients === true)
 const fieldsLocked = computed(() => props.locked === true || !canEdit.value)
-const cnpjLocked = computed(() => isEdit.value || fieldsLocked.value)
+const cnpjLocked = computed(() => isEdit.value || fieldsLocked.value || isReview.value)
+/** Em revisão RFB, endereço/contato/nome fantasia ficam editáveis. */
+const rfbLocked = computed(() => fieldsLocked.value || (isEdit.value && !isReview.value))
 
 const optionalEmail = z.string().refine(
   value => !value || z.string().email().safeParse(value).success,
@@ -113,7 +120,6 @@ const api = useApi()
 const toast = useToast()
 const saving = ref(false)
 const lookingUp = ref(false)
-const refreshing = ref(false)
 const fieldErrors = ref<Record<string, string[]>>({})
 const preview = ref<CnpjLookupResult | null>(null)
 const lookupWarning = ref<string | null>(null)
@@ -170,7 +176,6 @@ const state = reactive<Schema>({
 
 const normalizedCnpj = computed(() => normalizeCnpj(state.cnpj || ''))
 const canLookup = computed(() => !isEdit.value && /^\d{14}$/.test(normalizedCnpj.value))
-const canRefresh = computed(() => isEdit.value && !!props.client?.id && canEdit.value && !fieldsLocked.value)
 const hasContact = computed(() => Boolean(state.contact_name || state.contact_email || state.contact_phone))
 const sourceLabel = computed(() => {
   const sources = sourcesUsed.value.length
@@ -184,6 +189,72 @@ const sourceLabel = computed(() => {
     return source
   }).join(' + ')
 })
+
+const formSectionItems = computed((): AccordionItem[] => {
+  const items: AccordionItem[] = [
+    {
+      label: 'Identificação',
+      icon: 'i-lucide-fingerprint',
+      value: 'identificacao',
+      slot: 'identificacao' as const
+    },
+    {
+      label: 'Situação cadastral',
+      icon: 'i-lucide-badge-check',
+      value: 'situacao',
+      slot: 'situacao' as const
+    },
+    {
+      label: 'Qualificação',
+      icon: 'i-lucide-building-2',
+      value: 'qualificacao',
+      slot: 'qualificacao' as const
+    },
+    {
+      label: 'Atividades',
+      icon: 'i-lucide-layers',
+      value: 'atividades',
+      slot: 'atividades' as const
+    },
+    {
+      label: 'Endereço',
+      icon: 'i-lucide-map-pin',
+      value: 'endereco',
+      slot: 'endereco' as const
+    },
+    {
+      label: 'Contato RFB',
+      icon: 'i-lucide-phone',
+      value: 'contato-rfb',
+      slot: 'contato-rfb' as const
+    },
+    {
+      label: 'Inscrições estaduais',
+      icon: 'i-lucide-scroll-text',
+      value: 'inscricoes',
+      slot: 'inscricoes' as const
+    },
+    {
+      label: 'Quadro societário',
+      icon: 'i-lucide-users',
+      value: 'qsa',
+      slot: 'qsa' as const
+    }
+  ]
+
+  if (!isReview.value) {
+    items.push({
+      label: 'Dados internos do escritório',
+      icon: 'i-lucide-notebook-pen',
+      value: 'escritorio',
+      slot: 'escritorio' as const
+    })
+  }
+
+  return items
+})
+
+const formSectionsOpen = ref<string[]>(['identificacao', 'escritorio'])
 
 function normalizeCnpj(value: string): string {
   return value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
@@ -399,36 +470,6 @@ async function lookupCnpj() {
   }
 }
 
-async function refreshRegistration() {
-  if (!canRefresh.value || !props.client?.id || refreshing.value) return
-
-  const confirmed = window.confirm(
-    'Atualizar o cadastro RFB com a consulta pública? Nome interno, regime e notas do escritório serão preservados.'
-  )
-  if (!confirmed) return
-
-  refreshing.value = true
-  try {
-    const response = await api.clients.refreshRegistration(props.client.id)
-    if (response.data.lookup) {
-      applyLookupSnapshot(response.data.lookup)
-    }
-    state.display_name = response.data.display_name || state.display_name
-    state.notes = response.data.notes || state.notes
-    state.tax_regime = response.data.tax_regime || state.tax_regime || 'none'
-    state.is_active = response.data.is_active
-    toast.add({ title: 'Cadastro RFB atualizado.', color: 'success' })
-    emit('saved', { id: props.client.id, mode: 'edit' })
-  } catch (caught) {
-    toast.add({
-      title: apiErrorMessage(caught, 'Não foi possível atualizar o cadastro RFB.'),
-      color: 'error'
-    })
-  } finally {
-    refreshing.value = false
-  }
-}
-
 function extractExistingClientId(caught: unknown): number | null {
   const error = caught as {
     data?: { data?: { existing_client_id?: number }, existing_client_id?: number }
@@ -459,10 +500,73 @@ function buildAddressPayload(): AddressPayload | null {
   }
 }
 
+function buildLookupFromState(): CnpjLookupResult {
+  const base = preview.value
+  if (!base) {
+    throw new Error('Sem snapshot de consulta para confirmar.')
+  }
+
+  return {
+    source: base.source,
+    source_updated_at: base.source_updated_at,
+    sources_used: sourcesUsed.value.length ? [...sourcesUsed.value] : (base.sources_used || [base.source]),
+    client: {
+      ...base.client,
+      legal_name: state.legal_name.trim(),
+      legal_nature_code: state.legal_nature_code?.trim() || null,
+      legal_nature_name: state.legal_nature_name?.trim() || null,
+      company_size_code: state.company_size_code?.trim() || null,
+      company_size_name: state.company_size_name?.trim() || null,
+      capital_social: state.capital_social?.trim() || null
+    },
+    establishment: {
+      ...base.establishment,
+      trade_name: state.trade_name?.trim() || null,
+      public_email: state.public_email?.trim() || null,
+      public_phone: state.public_phone?.trim() || null,
+      public_phone_secondary: state.public_phone_secondary?.trim() || null,
+      main_cnae_code: mainCnaeCode.value,
+      main_cnae_name: mainCnaeName.value,
+      secondary_cnaes: [...secondaryCnaes.value],
+      state_registrations: [...stateRegistrations.value],
+      shareholders: [...shareholders.value],
+      simples_optant: simplesOptant.value,
+      mei_optant: meiOptant.value,
+      registration_status: registrationStatus.value,
+      registration_status_at: registrationStatusAt.value,
+      registration_status_reason: registrationStatusReason.value,
+      special_situation: specialSituation.value,
+      activity_started_at: activityStartedAt.value,
+      address: {
+        postal_code: state.address_postal_code || null,
+        street_type: state.address_street_type || null,
+        street: state.address_street || null,
+        number: state.address_number || null,
+        complement: state.address_complement || null,
+        district: state.address_district || null,
+        city: state.address_city || null,
+        city_ibge_code: base.establishment.address?.city_ibge_code ?? null,
+        state: state.address_state || null,
+        country: base.establishment.address?.country ?? 'BR'
+      }
+    }
+  }
+}
+
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   if (!canEdit.value || fieldsLocked.value) return
   fieldErrors.value = {}
   existingClientId.value = null
+
+  if (isReview.value) {
+    saving.value = true
+    try {
+      emit('confirmRefresh', buildLookupFromState())
+    } finally {
+      saving.value = false
+    }
+    return
+  }
 
   if (!isEdit.value && credentialFile.value && !event.data.credential_password) {
     fieldErrors.value = { credential_password: ['Informe a senha do certificado.'] }
@@ -594,6 +698,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 watch(
   () => props.client,
   (client) => {
+    if (isReview.value) return
     if (client?.id) {
       hydrateFromClient(client)
     } else {
@@ -601,6 +706,16 @@ watch(
     }
   },
   { immediate: true, deep: true }
+)
+
+watch(
+  () => [props.reviewMode, props.reviewLookup] as const,
+  ([review, lookup]) => {
+    if (!review || !lookup) return
+    applyLookupSnapshot(lookup)
+    formSectionsOpen.value = ['identificacao', 'qualificacao', 'endereco', 'situacao']
+  },
+  { immediate: true }
 )
 
 defineExpose({ reset, clearSensitive, saving })
@@ -623,657 +738,605 @@ defineExpose({ reset, clearSensitive, saving })
         title="Filial vinculada à matriz"
       />
 
-      <UPageCard variant="subtle">
-        <template #header>
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="text-sm font-semibold">
-              Identificação
-            </h3>
+      <ShellPanelAccordion
+        v-model="formSectionsOpen"
+        :items="formSectionItems"
+        type="multiple"
+        test-id="client-form-sections"
+      >
+        <template #identificacao-body>
+          <div class="grid gap-4 sm:grid-cols-[1fr_auto]">
+            <UFormField
+              :label="isEdit ? 'CNPJ' : 'CNPJ completo'"
+              name="cnpj"
+              :required="!isEdit"
+              :help="isEdit ? 'Identificador imutável — não pode ser alterado.' : 'Numérico ou alfanumérico, com ou sem máscara.'"
+              :error="fieldErrors.cnpj?.[0]"
+            >
+              <UInput
+                v-model="state.cnpj"
+                class="w-full font-mono"
+                autocomplete="off"
+                :disabled="cnpjLocked"
+                :autofocus="!isEdit && !fieldsLocked"
+                @blur="lookupCnpj"
+                @keydown.enter.prevent="lookupCnpj"
+              />
+            </UFormField>
             <UButton
-              v-if="canRefresh"
+              v-if="!isEdit && !fieldsLocked"
               type="button"
               color="neutral"
               variant="subtle"
-              size="sm"
-              label="Atualizar cadastro RFB"
-              icon="i-lucide-refresh-cw"
-              :loading="refreshing"
-              @click="refreshRegistration"
+              label="Buscar"
+              icon="i-lucide-search"
+              class="self-end"
+              :loading="lookingUp"
+              :disabled="!canLookup"
+              @mousedown.prevent
+              @click="lookupCnpj"
             />
           </div>
-        </template>
 
-        <div class="grid gap-4 sm:grid-cols-[1fr_auto]">
           <UFormField
-            :label="isEdit ? 'CNPJ' : 'CNPJ completo'"
-            name="cnpj"
-            :required="!isEdit"
-            :help="isEdit ? 'Identificador imutável — não pode ser alterado.' : 'Numérico ou alfanumérico, com ou sem máscara.'"
-            :error="fieldErrors.cnpj?.[0]"
+            v-if="isEdit && client?.root_cnpj"
+            class="mt-4"
+            label="Raiz CNPJ"
+            name="root_cnpj"
+            help="Derivada do CNPJ — somente leitura."
           >
             <UInput
-              v-model="state.cnpj"
+              :model-value="client.root_cnpj"
               class="w-full font-mono"
-              autocomplete="off"
-              :disabled="cnpjLocked"
-              :autofocus="!isEdit && !fieldsLocked"
-              @blur="lookupCnpj"
-              @keydown.enter.prevent="lookupCnpj"
+              disabled
+              readonly
             />
           </UFormField>
-          <UButton
-            v-if="!isEdit && !fieldsLocked"
-            type="button"
-            color="neutral"
+
+          <UAlert
+            v-if="preview && !isEdit"
+            class="mt-4"
+            color="success"
             variant="subtle"
-            label="Buscar"
-            icon="i-lucide-search"
-            class="self-end"
-            :loading="lookingUp"
-            :disabled="!canLookup"
-            @mousedown.prevent
-            @click="lookupCnpj"
+            icon="i-lucide-database-zap"
+            :title="`Dados sugeridos: ${registrationStatusLabel(preview.establishment.registration_status)}`"
+            :description="sourceLabel ? `Fonte: ${sourceLabel}` : undefined"
+            data-testid="cnpj-lookup-preview"
           />
-        </div>
-
-        <UFormField
-          v-if="isEdit && client?.root_cnpj"
-          class="mt-4"
-          label="Raiz CNPJ"
-          name="root_cnpj"
-          help="Derivada do CNPJ — somente leitura."
-        >
-          <UInput
-            :model-value="client.root_cnpj"
-            class="w-full font-mono"
-            disabled
-            readonly
+          <UAlert
+            v-if="lookupWarning && !isEdit"
+            class="mt-4"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-pencil-line"
+            :title="lookupWarning"
           />
-        </UFormField>
-
-        <UAlert
-          v-if="preview && !isEdit"
-          class="mt-4"
-          color="success"
-          variant="subtle"
-          icon="i-lucide-database-zap"
-          :title="`Dados sugeridos: ${registrationStatusLabel(preview.establishment.registration_status)}`"
-          :description="sourceLabel ? `Fonte: ${sourceLabel}` : undefined"
-          data-testid="cnpj-lookup-preview"
-        />
-        <UAlert
-          v-if="lookupWarning && !isEdit"
-          class="mt-4"
-          color="warning"
-          variant="subtle"
-          icon="i-lucide-pencil-line"
-          :title="lookupWarning"
-        />
-        <UAlert
-          v-if="existingClientId && !isEdit"
-          class="mt-4"
-          color="warning"
-          variant="subtle"
-          icon="i-lucide-link"
-          title="Cliente já existe"
-        >
-          <template #actions>
-            <UButton
-              size="sm"
-              label="Abrir cliente"
-              @click="emit('openExisting', existingClientId)"
-            />
-          </template>
-        </UAlert>
-
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-          <UFormField
-            label="Razão social"
-            name="legal_name"
-            required
-            :error="fieldErrors.legal_name?.[0]"
+          <UAlert
+            v-if="existingClientId && !isEdit"
+            class="mt-4"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-link"
+            title="Cliente já existe"
           >
-            <UInput
-              v-model="state.legal_name"
-              class="w-full"
-              autocomplete="organization"
-              :disabled="fieldsLocked"
-            />
-          </UFormField>
-          <UFormField
-            label="Nome fantasia"
-            name="trade_name"
-            :error="fieldErrors.trade_name?.[0]"
-          >
-            <UInput
-              v-model="state.trade_name"
-              class="w-full"
-              :disabled="fieldsLocked || isEdit"
-            />
-          </UFormField>
-        </div>
-      </UPageCard>
-
-      <UPageCard variant="subtle">
-        <template #header>
-          <h3 class="text-sm font-semibold">
-            Situação cadastral
-          </h3>
-        </template>
-        <div class="grid gap-3 text-sm sm:grid-cols-2">
-          <div>
-            <p class="text-muted">
-              Situação
-            </p>
-            <p class="font-medium">
-              {{ registrationStatus ? registrationStatusLabel(registrationStatus) : '—' }}
-            </p>
-          </div>
-          <div>
-            <p class="text-muted">
-              Data da situação
-            </p>
-            <p class="font-medium">
-              {{ registrationStatusAt || '—' }}
-            </p>
-          </div>
-          <div class="sm:col-span-2">
-            <p class="text-muted">
-              Motivo
-            </p>
-            <p class="font-medium">
-              {{ registrationStatusReason || '—' }}
-            </p>
-          </div>
-          <div>
-            <p class="text-muted">
-              Situação especial
-            </p>
-            <p class="font-medium">
-              {{ specialSituation || '—' }}
-            </p>
-          </div>
-          <div>
-            <p class="text-muted">
-              Início das atividades
-            </p>
-            <p class="font-medium">
-              {{ activityStartedAt || '—' }}
-            </p>
-          </div>
-          <div>
-            <p class="text-muted">
-              Simples Nacional
-            </p>
-            <p class="font-medium">
-              {{ simplesOptant === true ? 'Optante' : simplesOptant === false ? 'Não optante' : '—' }}
-            </p>
-          </div>
-          <div>
-            <p class="text-muted">
-              MEI
-            </p>
-            <p class="font-medium">
-              {{ meiOptant === true ? 'Optante' : meiOptant === false ? 'Não optante' : '—' }}
-            </p>
-          </div>
-        </div>
-      </UPageCard>
-
-      <UPageCard variant="subtle">
-        <template #header>
-          <h3 class="text-sm font-semibold">
-            Qualificação
-          </h3>
-        </template>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField
-            label="Natureza jurídica (cód.)"
-            name="legal_nature_code"
-            :error="fieldErrors.legal_nature_code?.[0]"
-          >
-            <UInput v-model="state.legal_nature_code" class="w-full" :disabled="fieldsLocked" />
-          </UFormField>
-          <UFormField
-            label="Natureza jurídica"
-            name="legal_nature_name"
-            :error="fieldErrors.legal_nature_name?.[0]"
-          >
-            <UInput v-model="state.legal_nature_name" class="w-full" :disabled="fieldsLocked" />
-          </UFormField>
-          <UFormField
-            label="Porte (cód.)"
-            name="company_size_code"
-            :error="fieldErrors.company_size_code?.[0]"
-          >
-            <UInput v-model="state.company_size_code" class="w-full" :disabled="fieldsLocked" />
-          </UFormField>
-          <UFormField
-            label="Porte"
-            name="company_size_name"
-            :error="fieldErrors.company_size_name?.[0]"
-          >
-            <UInput v-model="state.company_size_name" class="w-full" :disabled="fieldsLocked" />
-          </UFormField>
-          <UFormField
-            label="Capital social"
-            name="capital_social"
-            class="sm:col-span-2"
-          >
-            <UInput v-model="state.capital_social" class="w-full" :disabled="fieldsLocked || isEdit" />
-          </UFormField>
-        </div>
-      </UPageCard>
-
-      <UPageCard variant="subtle">
-        <template #header>
-          <h3 class="text-sm font-semibold">
-            Atividades
-          </h3>
-        </template>
-        <div class="space-y-3 text-sm">
-          <div>
-            <p class="text-muted">
-              CNAE principal
-            </p>
-            <p class="font-medium">
-              {{ mainCnaeCode ? `${mainCnaeCode} — ${mainCnaeName || ''}` : '—' }}
-            </p>
-          </div>
-          <div v-if="secondaryCnaes.length">
-            <p class="mb-1 text-muted">
-              CNAEs secundários
-            </p>
-            <ul class="max-h-40 space-y-1 overflow-y-auto">
-              <li
-                v-for="cnae in secondaryCnaes"
-                :key="cnae.code"
-                class="font-medium"
-              >
-                {{ cnae.code }} — {{ cnae.name || '' }}
-              </li>
-            </ul>
-          </div>
-          <p
-            v-else
-            class="text-muted"
-          >
-            Nenhum CNAE secundário informado.
-          </p>
-        </div>
-      </UPageCard>
-
-      <UPageCard variant="subtle">
-        <template #header>
-          <h3 class="text-sm font-semibold">
-            Endereço
-          </h3>
-        </template>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField label="CEP" name="address_postal_code">
-            <UInput v-model="state.address_postal_code" class="w-full font-mono" :disabled="fieldsLocked || isEdit" />
-          </UFormField>
-          <UFormField label="Tipo logradouro" name="address_street_type">
-            <UInput v-model="state.address_street_type" class="w-full" :disabled="fieldsLocked || isEdit" />
-          </UFormField>
-          <UFormField label="Logradouro" name="address_street" class="sm:col-span-2">
-            <UInput v-model="state.address_street" class="w-full" :disabled="fieldsLocked || isEdit" />
-          </UFormField>
-          <UFormField label="Número" name="address_number">
-            <UInput v-model="state.address_number" class="w-full" :disabled="fieldsLocked || isEdit" />
-          </UFormField>
-          <UFormField label="Complemento" name="address_complement">
-            <UInput v-model="state.address_complement" class="w-full" :disabled="fieldsLocked || isEdit" />
-          </UFormField>
-          <UFormField label="Bairro" name="address_district">
-            <UInput v-model="state.address_district" class="w-full" :disabled="fieldsLocked || isEdit" />
-          </UFormField>
-          <UFormField label="Cidade" name="address_city">
-            <UInput v-model="state.address_city" class="w-full" :disabled="fieldsLocked || isEdit" />
-          </UFormField>
-          <UFormField label="UF" name="address_state">
-            <UInput
-              v-model="state.address_state"
-              class="w-full"
-              maxlength="2"
-              :disabled="fieldsLocked || isEdit"
-            />
-          </UFormField>
-        </div>
-      </UPageCard>
-
-      <UPageCard variant="subtle">
-        <template #header>
-          <h3 class="text-sm font-semibold">
-            Contato RFB
-          </h3>
-        </template>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField label="E-mail público" name="public_email" class="sm:col-span-2">
-            <UInput
-              v-model="state.public_email"
-              type="email"
-              class="w-full"
-              :disabled="fieldsLocked || isEdit"
-            />
-          </UFormField>
-          <UFormField label="Telefone" name="public_phone">
-            <UInput v-model="state.public_phone" class="w-full" :disabled="fieldsLocked || isEdit" />
-          </UFormField>
-          <UFormField label="Telefone 2" name="public_phone_secondary">
-            <UInput v-model="state.public_phone_secondary" class="w-full" :disabled="fieldsLocked || isEdit" />
-          </UFormField>
-        </div>
-      </UPageCard>
-
-      <UPageCard variant="subtle">
-        <template #header>
-          <h3 class="text-sm font-semibold">
-            Inscrições estaduais
-          </h3>
-        </template>
-        <ul
-          v-if="stateRegistrations.length"
-          class="space-y-1 text-sm"
-        >
-          <li
-            v-for="(ie, index) in stateRegistrations"
-            :key="`${ie.number}-${index}`"
-            class="font-medium"
-          >
-            {{ ie.state || '—' }} · {{ ie.number }}
-            <span class="text-muted">{{ ie.active === false ? '(inativa)' : ie.active === true ? '(ativa)' : '' }}</span>
-          </li>
-        </ul>
-        <p
-          v-else
-          class="text-sm text-muted"
-        >
-          Nenhuma inscrição estadual na consulta.
-        </p>
-      </UPageCard>
-
-      <UPageCard variant="subtle">
-        <template #header>
-          <h3 class="text-sm font-semibold">
-            Quadro societário
-          </h3>
-        </template>
-        <ul
-          v-if="shareholders.length"
-          class="space-y-2 text-sm"
-        >
-          <li
-            v-for="(socio, index) in shareholders"
-            :key="`${socio.name}-${index}`"
-            class="rounded-md border border-default px-3 py-2"
-          >
-            <p class="font-medium">
-              {{ socio.name }}
-            </p>
-            <p class="text-muted">
-              {{ socio.qualification_name || socio.type || 'Sócio' }}
-              <template v-if="socio.document_masked">
-                · {{ socio.document_masked }}
-              </template>
-              <template v-if="socio.entered_at">
-                · desde {{ socio.entered_at }}
-              </template>
-            </p>
-          </li>
-        </ul>
-        <p
-          v-else
-          class="text-sm text-muted"
-        >
-          Nenhum sócio retornado pela consulta.
-        </p>
-      </UPageCard>
-
-      <UPageCard variant="subtle">
-        <template #header>
-          <h3 class="text-sm font-semibold">
-            Dados internos do escritório
-          </h3>
-        </template>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField
-            label="Nome interno"
-            name="display_name"
-            help="Opcional. Rótulo curto no painel."
-            :error="fieldErrors.display_name?.[0]"
-          >
-            <UInput v-model="state.display_name" class="w-full" :disabled="fieldsLocked" />
-          </UFormField>
-          <UFormField
-            label="Regime tributário"
-            name="tax_regime"
-            :error="fieldErrors.tax_regime?.[0]"
-          >
-            <USelect
-              v-model="state.tax_regime"
-              :items="[
-                { label: 'Não informado', value: 'none' },
-                ...CLIENT_TAX_REGIME_ITEMS
-              ]"
-              value-key="value"
-              class="w-full"
-              :disabled="fieldsLocked"
-              placeholder="Selecione o regime"
-            />
-          </UFormField>
-        </div>
-
-        <template v-if="isEdit">
-          <USeparator
-            class="my-4"
-            label="Estado no escritório"
-          />
-          <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField
-              name="is_active"
-              label="Cliente ativo"
-            >
-              <USwitch
-                v-model="state.is_active"
-                :disabled="fieldsLocked"
+            <template #actions>
+              <UButton
+                size="sm"
+                label="Abrir cliente"
+                @click="emit('openExisting', existingClientId)"
               />
-            </UFormField>
-            <UFormField
-              name="inactive_reason"
-              label="Motivo de inativação"
-              :error="fieldErrors.inactive_reason?.[0]"
-            >
-              <UTextarea
-                v-model="state.inactive_reason"
-                class="w-full"
-                :rows="2"
-                :disabled="fieldsLocked"
-              />
-            </UFormField>
-          </div>
-        </template>
+            </template>
+          </UAlert>
 
-        <template v-if="!isEdit">
-          <USeparator
-            class="my-4"
-            label="Contato do escritório (opcional)"
-          />
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
             <UFormField
-              label="Nome do contato"
-              name="contact_name"
-              :error="fieldErrors['initial_contact.name']?.[0]"
+              label="Razão social"
+              name="legal_name"
+              required
+              :error="fieldErrors.legal_name?.[0]"
             >
               <UInput
-                v-model="state.contact_name"
+                v-model="state.legal_name"
                 class="w-full"
-                autocomplete="name"
+                autocomplete="organization"
                 :disabled="fieldsLocked"
               />
             </UFormField>
             <UFormField
-              label="E-mail"
-              name="contact_email"
-              :error="fieldErrors['initial_contact.email']?.[0]"
+              label="Nome fantasia"
+              name="trade_name"
+              :error="fieldErrors.trade_name?.[0]"
             >
               <UInput
-                v-model="state.contact_email"
+                v-model="state.trade_name"
+                class="w-full"
+                :disabled="rfbLocked"
+              />
+            </UFormField>
+          </div>
+        </template>
+
+        <template #situacao-body>
+          <div class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <p class="text-muted">
+                Situação
+              </p>
+              <p class="font-medium">
+                {{ registrationStatus ? registrationStatusLabel(registrationStatus) : '—' }}
+              </p>
+            </div>
+            <div>
+              <p class="text-muted">
+                Data da situação
+              </p>
+              <p class="font-medium">
+                {{ registrationStatusAt || '—' }}
+              </p>
+            </div>
+            <div class="sm:col-span-2 lg:col-span-1">
+              <p class="text-muted">
+                Motivo
+              </p>
+              <p class="font-medium">
+                {{ registrationStatusReason || '—' }}
+              </p>
+            </div>
+            <div>
+              <p class="text-muted">
+                Situação especial
+              </p>
+              <p class="font-medium">
+                {{ specialSituation || '—' }}
+              </p>
+            </div>
+            <div>
+              <p class="text-muted">
+                Início das atividades
+              </p>
+              <p class="font-medium">
+                {{ activityStartedAt || '—' }}
+              </p>
+            </div>
+            <div>
+              <p class="text-muted">
+                Simples Nacional
+              </p>
+              <p class="font-medium">
+                {{ simplesOptant === true ? 'Optante' : simplesOptant === false ? 'Não optante' : '—' }}
+              </p>
+            </div>
+            <div>
+              <p class="text-muted">
+                MEI
+              </p>
+              <p class="font-medium">
+                {{ meiOptant === true ? 'Optante' : meiOptant === false ? 'Não optante' : '—' }}
+              </p>
+            </div>
+          </div>
+        </template>
+
+        <template #qualificacao-body>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField
+              label="Natureza jurídica (cód.)"
+              name="legal_nature_code"
+              :error="fieldErrors.legal_nature_code?.[0]"
+            >
+              <UInput v-model="state.legal_nature_code" class="w-full" :disabled="fieldsLocked" />
+            </UFormField>
+            <UFormField
+              label="Natureza jurídica"
+              name="legal_nature_name"
+              :error="fieldErrors.legal_nature_name?.[0]"
+            >
+              <UInput v-model="state.legal_nature_name" class="w-full" :disabled="fieldsLocked" />
+            </UFormField>
+            <UFormField
+              label="Porte (cód.)"
+              name="company_size_code"
+              :error="fieldErrors.company_size_code?.[0]"
+            >
+              <UInput v-model="state.company_size_code" class="w-full" :disabled="fieldsLocked" />
+            </UFormField>
+            <UFormField
+              label="Porte"
+              name="company_size_name"
+              :error="fieldErrors.company_size_name?.[0]"
+            >
+              <UInput v-model="state.company_size_name" class="w-full" :disabled="fieldsLocked" />
+            </UFormField>
+            <UFormField
+              label="Capital social"
+              name="capital_social"
+              class="sm:col-span-2"
+            >
+              <UInput v-model="state.capital_social" class="w-full" :disabled="rfbLocked" />
+            </UFormField>
+          </div>
+        </template>
+
+        <template #atividades-body>
+          <div class="space-y-3 text-sm">
+            <div>
+              <p class="text-muted">
+                CNAE principal
+              </p>
+              <p class="font-medium">
+                {{ mainCnaeCode ? `${mainCnaeCode} — ${mainCnaeName || ''}` : '—' }}
+              </p>
+            </div>
+            <div v-if="secondaryCnaes.length">
+              <p class="mb-1 text-muted">
+                CNAEs secundários
+              </p>
+              <ul class="max-h-40 space-y-1 overflow-y-auto">
+                <li
+                  v-for="cnae in secondaryCnaes"
+                  :key="cnae.code"
+                  class="font-medium"
+                >
+                  {{ cnae.code }} — {{ cnae.name || '' }}
+                </li>
+              </ul>
+            </div>
+            <p
+              v-else
+              class="text-muted"
+            >
+              Nenhum CNAE secundário informado.
+            </p>
+          </div>
+        </template>
+
+        <template #endereco-body>
+          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <UFormField label="CEP" name="address_postal_code">
+              <UInput v-model="state.address_postal_code" class="w-full font-mono" :disabled="rfbLocked" />
+            </UFormField>
+            <UFormField label="Tipo logradouro" name="address_street_type">
+              <UInput v-model="state.address_street_type" class="w-full" :disabled="rfbLocked" />
+            </UFormField>
+            <UFormField label="Logradouro" name="address_street" class="sm:col-span-2 lg:col-span-1">
+              <UInput v-model="state.address_street" class="w-full" :disabled="rfbLocked" />
+            </UFormField>
+            <UFormField label="Número" name="address_number">
+              <UInput v-model="state.address_number" class="w-full" :disabled="rfbLocked" />
+            </UFormField>
+            <UFormField label="Complemento" name="address_complement">
+              <UInput v-model="state.address_complement" class="w-full" :disabled="rfbLocked" />
+            </UFormField>
+            <UFormField label="Bairro" name="address_district">
+              <UInput v-model="state.address_district" class="w-full" :disabled="rfbLocked" />
+            </UFormField>
+            <UFormField label="Cidade" name="address_city">
+              <UInput v-model="state.address_city" class="w-full" :disabled="rfbLocked" />
+            </UFormField>
+            <UFormField label="UF" name="address_state">
+              <UInput
+                v-model="state.address_state"
+                class="w-full"
+                maxlength="2"
+                :disabled="rfbLocked"
+              />
+            </UFormField>
+          </div>
+        </template>
+
+        <template #contato-rfb-body>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField label="E-mail público" name="public_email" class="sm:col-span-2">
+              <UInput
+                v-model="state.public_email"
                 type="email"
                 class="w-full"
-                autocomplete="email"
-                :disabled="fieldsLocked"
+                :disabled="rfbLocked"
               />
+            </UFormField>
+            <UFormField label="Telefone" name="public_phone">
+              <UInput v-model="state.public_phone" class="w-full" :disabled="rfbLocked" />
+            </UFormField>
+            <UFormField label="Telefone 2" name="public_phone_secondary">
+              <UInput v-model="state.public_phone_secondary" class="w-full" :disabled="rfbLocked" />
+            </UFormField>
+          </div>
+        </template>
+
+        <template #inscricoes-body>
+          <ul
+            v-if="stateRegistrations.length"
+            class="space-y-1 text-sm"
+          >
+            <li
+              v-for="(ie, index) in stateRegistrations"
+              :key="`${ie.number}-${index}`"
+              class="font-medium"
+            >
+              {{ ie.state || '—' }} · {{ ie.number }}
+              <span class="text-muted">{{ ie.active === false ? '(inativa)' : ie.active === true ? '(ativa)' : '' }}</span>
+            </li>
+          </ul>
+          <p
+            v-else
+            class="text-sm text-muted"
+          >
+            Nenhuma inscrição estadual na consulta.
+          </p>
+        </template>
+
+        <template #qsa-body>
+          <ul
+            v-if="shareholders.length"
+            class="grid gap-2 text-sm sm:grid-cols-2"
+          >
+            <li
+              v-for="(socio, index) in shareholders"
+              :key="`${socio.name}-${index}`"
+              class="rounded-md border border-default px-3 py-2"
+            >
+              <p class="font-medium">
+                {{ socio.name }}
+              </p>
+              <p class="text-muted">
+                {{ socio.qualification_name || socio.type || 'Sócio' }}
+                <template v-if="socio.document_masked">
+                  · {{ socio.document_masked }}
+                </template>
+                <template v-if="socio.entered_at">
+                  · desde {{ socio.entered_at }}
+                </template>
+              </p>
+            </li>
+          </ul>
+          <p
+            v-else
+            class="text-sm text-muted"
+          >
+            Nenhum sócio retornado pela consulta.
+          </p>
+        </template>
+
+        <template #escritorio-body>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField
+              label="Nome interno"
+              name="display_name"
+              help="Opcional. Rótulo curto no painel."
+              :error="fieldErrors.display_name?.[0]"
+            >
+              <UInput v-model="state.display_name" class="w-full" :disabled="fieldsLocked" />
             </UFormField>
             <UFormField
-              label="Telefone / WhatsApp"
-              name="contact_phone"
-              :error="fieldErrors['initial_contact.phone']?.[0]"
+              label="Regime tributário"
+              name="tax_regime"
+              :error="fieldErrors.tax_regime?.[0]"
             >
-              <UInput
-                v-model="state.contact_phone"
-                type="tel"
+              <USelect
+                v-model="state.tax_regime"
+                :items="[
+                  { label: 'Não informado', value: 'none' },
+                  ...CLIENT_TAX_REGIME_ITEMS
+                ]"
+                value-key="value"
                 class="w-full"
-                autocomplete="tel"
                 :disabled="fieldsLocked"
+                placeholder="Selecione o regime"
               />
             </UFormField>
-            <UCheckbox
-              v-model="state.contact_is_whatsapp"
-              label="Este número usa WhatsApp"
-              name="contact_is_whatsapp"
-              class="self-end pb-2"
-              :disabled="fieldsLocked"
-            />
           </div>
 
-          <USeparator
-            class="my-4"
-            label="Informações adicionais"
-          />
-          <div class="space-y-3">
-            <div
-              v-for="(field, index) in state.custom_fields"
-              :key="index"
-              class="grid gap-2 rounded-lg border border-default p-3 sm:grid-cols-[1fr_9rem_1fr_auto]"
-            >
-              <UFormField
-                :name="`custom_fields.${index}.label`"
-                label="Nome do campo"
-                :error="fieldErrors[`custom_fields.${index}.label`]?.[0] || fieldErrors['custom_fields']?.[0]"
-              >
-                <UInput
-                  v-model="field.label"
-                  class="w-full"
-                  placeholder="Ex.: Acesso prefeitura"
-                  :disabled="fieldsLocked"
-                />
-              </UFormField>
-              <UFormField
-                :name="`custom_fields.${index}.type`"
-                label="Tipo"
-                :error="fieldErrors[`custom_fields.${index}.type`]?.[0]"
-              >
-                <USelect
-                  v-model="field.type"
-                  :items="canManageCredentials
-                    ? [{ label: 'Texto', value: 'TEXT' }, { label: 'Segredo', value: 'SECRET' }]
-                    : [{ label: 'Texto', value: 'TEXT' }]"
-                  class="w-full"
-                  :disabled="fieldsLocked"
-                />
-              </UFormField>
-              <UFormField
-                :name="`custom_fields.${index}.value`"
-                label="Valor"
-                :error="fieldErrors[`custom_fields.${index}.value`]?.[0]"
-              >
-                <UInput
-                  v-model="field.value"
-                  :type="field.type === 'SECRET' ? 'password' : 'text'"
-                  class="w-full"
-                  :autocomplete="field.type === 'SECRET' ? 'new-password' : 'off'"
-                  :disabled="fieldsLocked"
-                />
-              </UFormField>
-              <UButton
-                type="button"
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-trash-2"
-                square
-                class="self-end"
-                :aria-label="`Remover campo ${index + 1}`"
-                :disabled="fieldsLocked"
-                @click="removeCustomField(index)"
-              />
-            </div>
-            <UButton
-              type="button"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-plus"
-              label="Adicionar campo"
-              :disabled="fieldsLocked || state.custom_fields.length >= 20"
-              @click="addCustomField"
-            />
-          </div>
-
-          <template v-if="canManageCredentials">
+          <template v-if="isEdit">
             <USeparator
               class="my-4"
-              label="Certificado A1 (opcional)"
+              label="Estado no escritório"
             />
             <div class="grid gap-4 sm:grid-cols-2">
               <UFormField
-                label="Arquivo PFX"
-                name="pfx"
-                help=".pfx ou .p12, máximo de 5 MB."
+                name="is_active"
+                label="Cliente ativo"
               >
-                <input
-                  :key="fileInputKey"
-                  type="file"
-                  accept=".pfx,.p12,application/x-pkcs12"
-                  class="block w-full rounded-md border border-default bg-default px-3 py-2 text-sm"
+                <USwitch
+                  v-model="state.is_active"
                   :disabled="fieldsLocked"
-                  @change="selectCredentialFile"
-                >
+                />
               </UFormField>
               <UFormField
-                label="Senha do certificado"
-                name="credential_password"
-                :error="fieldErrors.credential_password?.[0]"
+                name="inactive_reason"
+                label="Motivo de inativação"
+                :error="fieldErrors.inactive_reason?.[0]"
               >
-                <UInput
-                  v-model="state.credential_password"
-                  type="password"
+                <UTextarea
+                  v-model="state.inactive_reason"
                   class="w-full"
-                  autocomplete="new-password"
-                  :disabled="fieldsLocked || !credentialFile"
+                  :rows="2"
+                  :disabled="fieldsLocked"
                 />
               </UFormField>
             </div>
           </template>
-        </template>
 
-        <USeparator
-          class="my-4"
-          label="Notas"
-        />
-        <UFormField
-          label="Observações"
-          name="notes"
-          help="Informações gerais sem senhas, tokens ou material do certificado."
-          :error="fieldErrors.notes?.[0]"
-        >
-          <UTextarea
-            v-model="state.notes"
-            class="w-full"
-            :rows="3"
-            :disabled="fieldsLocked"
+          <template v-if="!isEdit">
+            <USeparator
+              class="my-4"
+              label="Contato do escritório (opcional)"
+            />
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField
+                label="Nome do contato"
+                name="contact_name"
+                :error="fieldErrors['initial_contact.name']?.[0]"
+              >
+                <UInput
+                  v-model="state.contact_name"
+                  class="w-full"
+                  autocomplete="name"
+                  :disabled="fieldsLocked"
+                />
+              </UFormField>
+              <UFormField
+                label="E-mail"
+                name="contact_email"
+                :error="fieldErrors['initial_contact.email']?.[0]"
+              >
+                <UInput
+                  v-model="state.contact_email"
+                  type="email"
+                  class="w-full"
+                  autocomplete="email"
+                  :disabled="fieldsLocked"
+                />
+              </UFormField>
+              <UFormField
+                label="Telefone / WhatsApp"
+                name="contact_phone"
+                :error="fieldErrors['initial_contact.phone']?.[0]"
+              >
+                <UInput
+                  v-model="state.contact_phone"
+                  type="tel"
+                  class="w-full"
+                  autocomplete="tel"
+                  :disabled="fieldsLocked"
+                />
+              </UFormField>
+              <UCheckbox
+                v-model="state.contact_is_whatsapp"
+                label="Este número usa WhatsApp"
+                name="contact_is_whatsapp"
+                class="self-end pb-2"
+                :disabled="fieldsLocked"
+              />
+            </div>
+
+            <USeparator
+              class="my-4"
+              label="Informações adicionais"
+            />
+            <div class="space-y-3">
+              <div
+                v-for="(field, index) in state.custom_fields"
+                :key="index"
+                class="grid gap-2 rounded-lg border border-default p-3 sm:grid-cols-[1fr_9rem_1fr_auto]"
+              >
+                <UFormField
+                  :name="`custom_fields.${index}.label`"
+                  label="Nome do campo"
+                  :error="fieldErrors[`custom_fields.${index}.label`]?.[0] || fieldErrors['custom_fields']?.[0]"
+                >
+                  <UInput
+                    v-model="field.label"
+                    class="w-full"
+                    placeholder="Ex.: Acesso prefeitura"
+                    :disabled="fieldsLocked"
+                  />
+                </UFormField>
+                <UFormField
+                  :name="`custom_fields.${index}.type`"
+                  label="Tipo"
+                  :error="fieldErrors[`custom_fields.${index}.type`]?.[0]"
+                >
+                  <USelect
+                    v-model="field.type"
+                    :items="canManageCredentials
+                      ? [{ label: 'Texto', value: 'TEXT' }, { label: 'Segredo', value: 'SECRET' }]
+                      : [{ label: 'Texto', value: 'TEXT' }]"
+                    class="w-full"
+                    :disabled="fieldsLocked"
+                  />
+                </UFormField>
+                <UFormField
+                  :name="`custom_fields.${index}.value`"
+                  label="Valor"
+                  :error="fieldErrors[`custom_fields.${index}.value`]?.[0]"
+                >
+                  <UInput
+                    v-model="field.value"
+                    :type="field.type === 'SECRET' ? 'password' : 'text'"
+                    class="w-full"
+                    :autocomplete="field.type === 'SECRET' ? 'new-password' : 'off'"
+                    :disabled="fieldsLocked"
+                  />
+                </UFormField>
+                <UButton
+                  type="button"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-trash-2"
+                  square
+                  class="self-end"
+                  :aria-label="`Remover campo ${index + 1}`"
+                  :disabled="fieldsLocked"
+                  @click="removeCustomField(index)"
+                />
+              </div>
+              <UButton
+                type="button"
+                color="neutral"
+                variant="subtle"
+                icon="i-lucide-plus"
+                label="Adicionar campo"
+                :disabled="fieldsLocked || state.custom_fields.length >= 20"
+                @click="addCustomField"
+              />
+            </div>
+
+            <template v-if="canManageCredentials">
+              <USeparator
+                class="my-4"
+                label="Certificado A1 (opcional)"
+              />
+              <div class="grid gap-4 sm:grid-cols-2">
+                <UFormField
+                  label="Arquivo PFX"
+                  name="pfx"
+                  help=".pfx ou .p12, máximo de 5 MB."
+                >
+                  <input
+                    :key="fileInputKey"
+                    type="file"
+                    accept=".pfx,.p12,application/x-pkcs12"
+                    class="block w-full rounded-md border border-default bg-default px-3 py-2 text-sm"
+                    :disabled="fieldsLocked"
+                    @change="selectCredentialFile"
+                  >
+                </UFormField>
+                <UFormField
+                  label="Senha do certificado"
+                  name="credential_password"
+                  :error="fieldErrors.credential_password?.[0]"
+                >
+                  <UInput
+                    v-model="state.credential_password"
+                    type="password"
+                    class="w-full"
+                    autocomplete="new-password"
+                    :disabled="fieldsLocked || !credentialFile"
+                  />
+                </UFormField>
+              </div>
+            </template>
+          </template>
+
+          <USeparator
+            class="my-4"
+            label="Notas"
           />
-        </UFormField>
-      </UPageCard>
+          <UFormField
+            label="Observações"
+            name="notes"
+            help="Informações gerais sem senhas, tokens ou material do certificado."
+            :error="fieldErrors.notes?.[0]"
+          >
+            <UTextarea
+              v-model="state.notes"
+              class="w-full"
+              :rows="3"
+              :disabled="fieldsLocked"
+            />
+          </UFormField>
+        </template>
+      </ShellPanelAccordion>
     </div>
 
     <div
@@ -1292,8 +1355,8 @@ defineExpose({ reset, clearSensitive, saving })
         v-if="canEdit"
         type="submit"
         color="primary"
-        :label="isEdit ? 'Salvar alterações' : 'Salvar cliente'"
-        icon="i-lucide-save"
+        :label="isReview ? 'Aplicar atualização' : (isEdit ? 'Salvar alterações' : 'Salvar cliente')"
+        :icon="isReview ? 'i-lucide-check' : 'i-lucide-save'"
         :loading="saving"
       />
     </div>

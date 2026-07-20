@@ -4,13 +4,6 @@
  */
 import type { SerproGlobalHealth, SerproRolloutState } from '~/types/api'
 
-definePageMeta({
-  redirect: {
-    path: '/admin/serpro',
-    query: { section: 'rollout' }
-  }
-})
-
 const api = useApi()
 const { sessionEpoch } = useDashboard()
 

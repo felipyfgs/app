@@ -13,7 +13,7 @@ const {
     data-testid="client-page-contato"
   >
     <ShellSectionHeader
-      title="Contato"
+      title="Contatos"
       description="Contatos operacionais internos do escritório para este cliente."
       test-id="client-section-contato"
     />

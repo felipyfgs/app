@@ -1,19 +1,17 @@
 <script setup lang="ts">
 /**
- * Shell do detalhe do cliente — arquétipo settings (Conta).
- * Fonte: `.local/reference/nuxt-dashboard-template/app/pages/settings.vue`
- * 4 destinos de toolbar; Fiscal/Integrações são hubs.
+ * Shell do detalhe do cliente — header de identidade + abas + sidebar.
+ * Layout master (main ~2/3 + aside ~1/3), não settings puro.
  */
 import type { Client, ClientCredential, Establishment } from '~/types/api'
 import { clientDetailKey, clientSectionPath } from '~/composables/useClientDetail'
-import { clientFiscalHref } from '~/utils/client-cross-links'
-import { clientNavigationMenu } from '~/utils/client-detail-navigation'
-import type { ClientDetailPanel, ClientDetailTab } from '~/utils/client-detail-tabs'
 import {
   clientDetailHref,
   legacySectionToHref,
   queryToClientDetailHref
 } from '~/utils/client-detail-tabs'
+import { clientNavigationMenu } from '~/utils/client-detail-navigation'
+import type { ClientDetailPanel, ClientDetailTab } from '~/utils/client-detail-tabs'
 
 const route = useRoute()
 const router = useRouter()
@@ -31,16 +29,16 @@ const credential = ref<ClientCredential | null>(null)
 const loading = ref(true)
 const triggeringId = ref<number | null>(null)
 const triggeredIds = ref<number[]>([])
-const registrationEditRequested = ref(false)
+const clientFormOpen = ref(false)
+const credentialSlideoverOpen = ref(false)
 
 const establishments = computed(() => item.value?.establishments || [])
 
-const navbarTitle = computed(() =>
-  item.value?.display_name
-  || item.value?.legal_name
-  || item.value?.name
-  || 'Cliente'
-)
+const shareholdersCount = computed(() => {
+  const primary = item.value?.establishments?.find(e => e.is_matrix)
+    || item.value?.establishments?.[0]
+  return (primary?.shareholders || []).length
+})
 
 const links = computed(() =>
   clientNavigationMenu(clientId.value, route.path)
@@ -113,10 +111,14 @@ function goToTab(tab: ClientDetailTab, panel?: ClientDetailPanel) {
   void navigateTo(clientDetailHref(clientId.value, tab, panel))
 }
 
-function goEditCadastro() {
+function openClientEdit() {
   if (!item.value || !canManageClients.value) return
-  registrationEditRequested.value = true
-  goToTab('cadastro')
+  clientFormOpen.value = true
+}
+
+async function onClientFormSaved() {
+  clientFormOpen.value = false
+  await load()
 }
 
 provide(clientDetailKey, {
@@ -127,7 +129,6 @@ provide(clientDetailKey, {
   establishments,
   triggeringId,
   triggeredIds,
-  registrationEditRequested,
   canManageClients,
   canManageCredentials,
   canTriggerSync,
@@ -135,7 +136,8 @@ provide(clientDetailKey, {
   triggerSync,
   onCredentialActivated,
   sectionPath,
-  goToTab
+  goToTab,
+  openClientEdit
 })
 
 /** `/clients/:id` → `/clients/:id/cadastro` */
@@ -186,89 +188,48 @@ onMounted(async () => {
 </script>
 
 <template>
-  <ShellSettingsShell
+  <ShellPagePanel
     id="client-detail"
-    :title="navbarTitle"
-    width="comfortable"
     test-id="client-detail-panel"
-    toolbar-test-id="client-section-tabs"
+    body-class="lg:py-8"
   >
-    <template #navbar-leading>
-      <ShellNavbarBack
-        to="/clients"
-        label="Voltar aos clientes"
-        aria-label="Voltar aos clientes"
-        test-id="client-detail-back"
-      />
-    </template>
+    <template #header>
+      <ShellPageNavbar title="Cliente">
+        <template #leading>
+          <ShellNavbarBack
+            to="/clients"
+            label="Voltar aos clientes"
+            aria-label="Voltar aos clientes"
+            test-id="client-detail-back"
+          />
+        </template>
+      </ShellPageNavbar>
 
-    <template
-      v-if="item"
-      #navbar-right
-    >
-      <UButton
-        :to="clientFiscalHref(clientId)"
-        color="neutral"
-        variant="soft"
-        icon="i-lucide-radar"
-        label="Monitoramento"
-        class="hidden sm:inline-flex"
-        data-testid="client-page-to-fiscal"
-      />
-      <UButton
-        :to="clientFiscalHref(clientId)"
-        color="neutral"
-        variant="soft"
-        icon="i-lucide-radar"
-        square
-        class="sm:hidden"
-        aria-label="Monitoramento fiscal"
-        data-testid="client-page-to-fiscal-mobile"
-      />
-      <template v-if="canManageClients">
-        <UButton
-          color="primary"
-          variant="soft"
-          icon="i-lucide-pencil"
-          label="Editar cliente"
-          class="hidden sm:inline-flex"
-          data-testid="client-page-edit"
-          @click="goEditCadastro"
+      <UDashboardToolbar
+        v-if="item"
+        data-testid="client-section-tabs"
+      >
+        <UNavigationMenu
+          :items="links"
+          highlight
+          class="-mx-1 flex-1"
+          data-testid="client-section-navigation"
+          aria-label="Navegação do cliente"
         />
-        <UButton
-          color="primary"
-          variant="soft"
-          icon="i-lucide-pencil"
-          square
-          class="sm:hidden"
-          aria-label="Editar cliente"
-          data-testid="client-page-edit-mobile"
-          @click="goEditCadastro"
-        />
-      </template>
-    </template>
-
-    <template
-      v-if="item"
-      #toolbar
-    >
-      <UNavigationMenu
-        :items="links"
-        highlight
-        class="-mx-1 flex-1"
-        data-testid="client-section-navigation"
-        aria-label="Navegação do cliente"
-      />
+      </UDashboardToolbar>
     </template>
 
     <div
       v-if="loading && !item"
-      class="space-y-4"
+      class="mx-auto w-full max-w-none space-y-4 px-4 py-4 sm:px-6"
       role="status"
       aria-label="Carregando cliente"
     >
-      <USkeleton class="h-10 w-48 rounded-lg" />
-      <USkeleton class="h-96 w-full rounded-lg" />
+      <USkeleton class="h-24 w-full rounded-xl" />
+      <div class="grid gap-4 lg:grid-cols-12">
+        <USkeleton class="h-96 rounded-xl lg:col-span-8" />
+        <USkeleton class="h-96 rounded-xl lg:col-span-4" />
+      </div>
     </div>
 
     <UEmpty
@@ -276,6 +237,7 @@ onMounted(async () => {
       icon="i-lucide-building-2"
       title="Cliente não encontrado"
       description="O registro não existe ou pertence a outro escritório."
+      class="mx-auto max-w-lg py-16"
     >
       <UButton
         to="/clients"
@@ -283,6 +245,56 @@ onMounted(async () => {
       />
     </UEmpty>
 
-    <NuxtPage v-else />
-  </ShellSettingsShell>
+    <div
+      v-else
+      class="mx-auto flex w-full max-w-none flex-col gap-4 px-4 py-4 sm:gap-6 sm:px-6 lg:px-8"
+    >
+      <ClientsClientIdentityHeader
+        :client="item"
+        :can-manage-clients="canManageClients"
+        @edit="openClientEdit"
+      />
+
+      <div class="grid min-w-0 gap-4 lg:grid-cols-12 lg:gap-6">
+        <div class="min-w-0 lg:col-span-8">
+          <NuxtPage />
+        </div>
+        <div class="min-w-0 lg:col-span-4">
+          <ClientsClientDetailAside
+            :client="item"
+            :credential="credential"
+            :can-manage-credentials="canManageCredentials"
+            :shareholders-count="shareholdersCount"
+            @manage-credential="credentialSlideoverOpen = true"
+          />
+        </div>
+      </div>
+    </div>
+
+    <USlideover
+      v-model:open="credentialSlideoverOpen"
+      title="Certificado A1"
+      description="Upload e gestão do certificado digital deste cliente."
+    >
+      <template #body>
+        <ClientsClientCredentialPanel
+          v-if="item"
+          :client-id="item.id"
+          :credential="credential"
+          :credential-summary="item.credential_summary"
+          :can-manage-credentials="canManageCredentials"
+          :show-header="false"
+          @activated="onCredentialActivated"
+        />
+      </template>
+    </USlideover>
+
+    <ClientsClientFormModal
+      v-model:open="clientFormOpen"
+      :client="item"
+      :can-manage-clients="canManageClients"
+      :can-manage-credentials="false"
+      @saved="onClientFormSaved"
+    />
+  </ShellPagePanel>
 </template>

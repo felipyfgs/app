@@ -44,17 +44,19 @@ describe('section-navigation mappers', () => {
     expect(subtabs).toEqual([])
   })
 
-  it('cliente: 4 páginas densas na toolbar', () => {
+  it('cliente: abas do layout master na toolbar', () => {
     const nav = clientDetailNav(7)
     expect(nav.map(item => ('label' in item ? item.label : ''))).toEqual([
-      'Cadastro',
-      'Contato',
-      'Departamento',
-      'Configuração'
+      'Dados cadastrais',
+      'Dados adicionais',
+      'Contatos',
+      'Departamentos',
+      'Observações',
+      'Contratos'
     ])
     expect(nav.every(item => !('children' in item))).toBe(true)
-    const config = nav.find(item => item.id === 'client-configuracao')
-    expect(config && 'to' in config ? config.to : null).toBe('/clients/7/configuracao')
+    const adicionais = nav.find(item => item.id === 'client-dados-adicionais')
+    expect(adicionais && 'to' in adicionais ? adicionais.to : null).toBe('/clients/7/dados-adicionais')
   })
 
   it('mobile Conta: labels planos (sem Grupo · Folha)', () => {

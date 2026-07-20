@@ -1,27 +1,16 @@
 <script setup lang="ts">
 /**
- * Configuração do escritório.
- * Seções: perfil · consentimento · A1 canônico · agendas.
- * Sem campos técnicos SERPRO (autor, Termo, tokens ou ambiente).
- * UAlert apenas para erro real; estados normais usam badge/empty state.
+ * Configuração do escritório (contador).
+ * Superfície mínima: perfil · certificado A1 (aceite no modal) · agendas.
+ * SERPRO (Termo/token/procurações) roda automático após o upload — sem onboarding visível.
  */
-import type { AccordionItem, StepperItem } from '@nuxt/ui'
+import type { AccordionItem } from '@nuxt/ui'
 import type {
   OfficeCanonicalCredential,
   OfficeInstitutionalProfile,
-  OfficeMonitorSchedulePolicy,
-  OfficeOnboardingActionable,
-  OfficeTechnicalConsent
+  OfficeMonitorSchedulePolicy
 } from '~/types/api'
-import {
-  actionableOfficeError,
-  emptyOnboarding,
-  OFFICE_ONBOARDING_STAGES,
-  onboardingIsInProgress,
-  onboardingStageIndex,
-  onboardingStatusColor,
-  onboardingStatusLabel
-} from '~/utils/office-settings'
+import { actionableOfficeError } from '~/utils/office-settings'
 
 const api = useApi()
 const toast = useToast()
@@ -29,30 +18,15 @@ const { sessionEpoch, canManageCredentials } = useDashboard()
 
 const loading = ref(true)
 const saving = ref(false)
+const refreshing = ref(false)
 const savingScheduleKey = ref<string | null>(null)
 const loadError = ref<string | null>(null)
-const apiUnavailable = ref(false)
 
 const profile = ref<OfficeInstitutionalProfile | null>(null)
-const consent = ref<OfficeTechnicalConsent | null>(null)
 const credential = ref<OfficeCanonicalCredential | null>(null)
 const policies = ref<OfficeMonitorSchedulePolicy[]>([])
-const onboarding = ref<OfficeOnboardingActionable | null>(null)
 
 const readonly = computed(() => !canManageCredentials.value)
-const onboardingStagePosition = computed(() => onboardingStageIndex(onboarding.value?.stage))
-
-const onboardingStepperItems = computed((): StepperItem[] =>
-  OFFICE_ONBOARDING_STAGES.map((stage, index) => ({
-    title: stage.label,
-    icon: index < onboardingStagePosition.value
-      ? 'i-lucide-circle-check'
-      : index === onboardingStagePosition.value
-        ? 'i-lucide-loader-circle'
-        : 'i-lucide-circle',
-    value: index
-  }))
-)
 
 const officeAccordionItems: AccordionItem[] = [
   {
@@ -60,12 +34,6 @@ const officeAccordionItems: AccordionItem[] = [
     icon: 'i-lucide-building-2',
     value: 'perfil',
     slot: 'perfil'
-  },
-  {
-    label: 'Consentimento',
-    icon: 'i-lucide-shield-check',
-    value: 'consentimento',
-    slot: 'consentimento'
   },
   {
     label: 'Certificado A1',
@@ -80,63 +48,6 @@ const officeAccordionItems: AccordionItem[] = [
     slot: 'agendas'
   }
 ]
-const onboardingAvailableModules = computed(() =>
-  onboarding.value?.modules?.filter(module => module.allowed).length || 0
-)
-const onboardingUnavailableModules = computed(() =>
-  onboarding.value?.modules?.filter(module => !module.allowed) || []
-)
-const shouldPollOnboarding = computed(() =>
-  onboardingIsInProgress(onboarding.value?.status)
-  && !(onboarding.value?.actions?.length)
-)
-
-function procuracaoStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    authorized: 'Autorizadas',
-    missing: 'Não encontradas',
-    expired: 'Vencidas',
-    unverified: 'Não verificadas',
-    verifying: 'Verificando',
-    failed: 'Falha ao verificar'
-  }
-  return labels[status] || status
-}
-
-function procuracaoStatusColor(status: string) {
-  if (status === 'authorized') return 'success' as const
-  if (status === 'verifying' || status === 'unverified') return 'info' as const
-  if (status === 'missing' || status === 'expired') return 'warning' as const
-  return 'error' as const
-}
-
-let onboardingPollTimer: ReturnType<typeof setInterval> | null = null
-
-function stopOnboardingPolling() {
-  if (onboardingPollTimer !== null) {
-    clearInterval(onboardingPollTimer)
-    onboardingPollTimer = null
-  }
-}
-
-async function refreshOnboarding() {
-  const epoch = sessionEpoch.value
-  try {
-    const response = await api.office.onboardingStatus()
-    if (epoch !== sessionEpoch.value) return
-    onboarding.value = response.data
-  } catch {
-    // O carregamento completo já apresenta erros; polling é silencioso e tenta novamente.
-  }
-}
-
-function syncOnboardingPolling(active: boolean) {
-  stopOnboardingPolling()
-  if (!active) return
-  onboardingPollTimer = setInterval(() => {
-    void refreshOnboarding()
-  }, 3000)
-}
 
 let loadSeq = 0
 
@@ -152,23 +63,15 @@ async function load() {
   const epoch = sessionEpoch.value
   loading.value = true
   loadError.value = null
-  apiUnavailable.value = false
 
   try {
-    const [profileRes, consentRes, credRes, schedRes, onboardRes] = await Promise.allSettled([
+    const [profileRes, credRes, schedRes] = await Promise.allSettled([
       api.office.profile.show(),
-      api.office.technicalConsent.show(),
       api.office.canonicalCredential.show(),
-      api.office.monitorSchedules.list(),
-      api.office.onboardingStatus()
+      api.office.monitorSchedules.list()
     ])
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
 
-    const notFoundCount = [profileRes, consentRes, credRes, schedRes].filter(
-      r => r.status === 'rejected' && isNotFound(r.reason)
-    ).length
-
-    // Fallback legado: identidade fiscal se profile unificado ainda não existe.
     if (profileRes.status === 'fulfilled') {
       profile.value = profileRes.value.data
     } else if (isNotFound(profileRes.reason)) {
@@ -206,20 +109,6 @@ async function load() {
       )
     }
 
-    if (consentRes.status === 'fulfilled') {
-      consent.value = consentRes.value.data
-    } else {
-      consent.value = {
-        version: '1',
-        accepted: false,
-        purposes: [],
-        requires_reacceptance: true,
-        text_summary: notFoundCount >= 2
-          ? 'API de consentimento ainda não publicada neste ambiente.'
-          : undefined
-      }
-    }
-
     if (credRes.status === 'fulfilled') {
       credential.value = credRes.value.data
     }
@@ -228,16 +117,6 @@ async function load() {
       policies.value = schedRes.value.data || []
     } else {
       policies.value = []
-    }
-
-    if (onboardRes.status === 'fulfilled') {
-      onboarding.value = onboardRes.value.data
-    } else {
-      onboarding.value = emptyOnboarding()
-    }
-
-    if (notFoundCount >= 3) {
-      apiUnavailable.value = true
     }
   } catch (caught) {
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
@@ -265,7 +144,6 @@ async function saveProfile(payload: {
       profile.value = res.data
     } catch (err) {
       if (!isNotFound(err)) throw err
-      // Fallback legado (somente CNPJ/razão).
       const res = await api.officeFiscal.upsertIdentity({
         cnpj: payload.cnpj,
         legal_name: payload.legal_name
@@ -289,51 +167,11 @@ async function saveProfile(payload: {
   }
 }
 
-async function acceptConsent() {
-  saving.value = true
-  try {
-    const res = await api.office.technicalConsent.accept()
-    consent.value = res.data
-    toast.add({ title: 'Consentimento registrado', color: 'success' })
-  } catch (caught) {
-    if (isNotFound(caught)) {
-      toast.add({
-        title: 'API de consentimento ainda não disponível neste ambiente.',
-        color: 'warning'
-      })
-    } else {
-      toast.add({
-        title: actionableOfficeError(apiErrorMessage(caught, 'Falha ao registrar consentimento.')),
-        color: 'error'
-      })
-    }
-  } finally {
-    saving.value = false
-  }
-}
-
-async function revokeConsent() {
-  saving.value = true
-  try {
-    const res = await api.office.technicalConsent.revoke()
-    consent.value = res.data
-    toast.add({ title: 'Consentimento revogado', color: 'warning' })
-  } catch (caught) {
-    toast.add({
-      title: actionableOfficeError(apiErrorMessage(caught, 'Falha ao revogar consentimento.')),
-      color: 'error'
-    })
-  } finally {
-    saving.value = false
-  }
-}
-
 async function uploadCredential(payload: {
   file: File
   password: string
   consent_accepted: boolean
 }) {
-  // Um único formulário inicia consentimento, validação e onboarding assíncrono.
   const cnpj = (profile.value?.cnpj || '').replace(/\D/g, '')
   if (!cnpj) {
     toast.add({
@@ -358,12 +196,12 @@ async function uploadCredential(payload: {
       if (!isNotFound(err)) throw err
       await api.officeFiscal.uploadCredential(payload.file, payload.password)
       await load()
-      toast.add({ title: 'Certificado A1 armazenado (sem recuperação)', color: 'success' })
+      toast.add({ title: 'Certificado A1 armazenado', color: 'success' })
       return
     }
     toast.add({
-      title: 'Ativação iniciada',
-      description: 'Agora o sistema valida, autoriza, carrega procurações e executa a primeira coleta.',
+      title: 'Certificado ativo',
+      description: 'O escritório fica pronto automaticamente — sem etapas extras.',
       color: 'success'
     })
     await load()
@@ -382,7 +220,7 @@ async function removeCredential(_payload: { reconfirm_password?: string } = {}) 
   try {
     await api.office.canonicalCredential.remove({ confirm: true })
     credential.value = null
-    toast.add({ title: 'Certificado removido — finalidades bloqueadas', color: 'warning' })
+    toast.add({ title: 'Certificado removido', color: 'warning' })
     await load()
   } catch (caught) {
     toast.add({
@@ -391,6 +229,28 @@ async function removeCredential(_payload: { reconfirm_password?: string } = {}) 
     })
   } finally {
     saving.value = false
+  }
+}
+
+async function refreshIntegration() {
+  refreshing.value = true
+  try {
+    const res = await api.office.canonicalCredential.refreshIntegration()
+    toast.add({
+      title: 'Integração atualizada',
+      description: res.data.has_procurador_token
+        ? 'Token regenerado com o certificado já cadastrado.'
+        : 'Solicitação enviada; acompanhe o status em alguns instantes.',
+      color: 'success'
+    })
+    await load()
+  } catch (caught) {
+    toast.add({
+      title: actionableOfficeError(apiErrorMessage(caught, 'Falha ao atualizar a integração.')),
+      color: 'error'
+    })
+  } finally {
+    refreshing.value = false
   }
 }
 
@@ -418,14 +278,11 @@ async function saveSchedule(payload: { monitor_key: string, day_of_month: number
 
 watch(sessionEpoch, () => {
   profile.value = null
-  consent.value = null
   credential.value = null
   policies.value = []
   void load()
 })
-watch(shouldPollOnboarding, syncOnboardingPolling, { immediate: true })
 onMounted(load)
-onBeforeUnmount(stopOnboardingPolling)
 </script>
 
 <template>
@@ -440,123 +297,10 @@ onBeforeUnmount(stopOnboardingPolling)
         data-testid="settings-load-error"
       />
 
-      <UPageCard
-        v-if="onboarding"
-        variant="subtle"
-        data-testid="settings-onboarding-status"
-      >
-        <div class="space-y-5">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="flex flex-wrap items-center gap-2">
-              <UBadge
-                :color="onboardingStatusColor(onboarding.status)"
-                variant="subtle"
-              >
-                {{ onboardingStatusLabel(onboarding.status) }}
-              </UBadge>
-              <span
-                v-if="onboarding.correlation_id"
-                class="font-mono text-xs text-muted"
-              >
-                ref {{ onboarding.correlation_id }}
-              </span>
-            </div>
-            <UButton
-              color="neutral"
-              variant="ghost"
-              size="sm"
-              icon="i-lucide-refresh-cw"
-              label="Atualizar estado"
-              @click="refreshOnboarding"
-            />
-          </div>
-
-          <div
-            v-if="!['incomplete', 'action_required', 'technical_error', 'revoked'].includes(onboarding.status)"
-            class="min-w-0 overflow-x-auto"
-            data-testid="settings-onboarding-stepper"
-          >
-            <UStepper
-              :model-value="onboardingStagePosition"
-              :items="onboardingStepperItems"
-              color="primary"
-              size="sm"
-              class="w-full min-w-[36rem]"
-              disabled
-            />
-          </div>
-
-          <p v-if="onboarding.message" class="text-sm text-muted">
-            {{ onboarding.message }}
-          </p>
-
-          <ul
-            v-if="onboarding.actions?.length"
-            class="space-y-1 text-sm text-muted"
-          >
-            <li
-              v-for="action in onboarding.actions"
-              :key="action.code"
-              class="flex items-center gap-2"
-            >
-              <UIcon name="i-lucide-circle" class="size-1.5 shrink-0" />
-              <span>{{ action.label }}</span>
-            </li>
-          </ul>
-
-          <div
-            v-if="onboarding.procuracoes || onboarding.modules?.length || onboarding.initial_collection"
-            class="grid gap-3 sm:grid-cols-3"
-          >
-            <div class="rounded-lg border border-default p-3">
-              <p class="text-xs font-medium text-muted">
-                Procurações verificadas
-              </p>
-              <p class="mt-1 text-lg font-semibold tabular-nums">
-                {{ onboarding.procuracoes?.verified || 0 }} / {{ onboarding.procuracoes?.total_clients || 0 }}
-              </p>
-              <div class="mt-2 flex flex-wrap gap-1">
-                <UBadge
-                  v-for="(count, status) in onboarding.procuracoes?.by_status || {}"
-                  :key="status"
-                  :color="procuracaoStatusColor(String(status))"
-                  variant="subtle"
-                  size="sm"
-                >
-                  {{ procuracaoStatusLabel(String(status)) }}: {{ count }}
-                </UBadge>
-              </div>
-            </div>
-            <div class="rounded-lg border border-default p-3">
-              <p class="text-xs font-medium text-muted">
-                Módulos consultivos
-              </p>
-              <p class="mt-1 text-lg font-semibold tabular-nums">
-                {{ onboardingAvailableModules }} / {{ onboarding.modules?.length || 0 }} disponíveis
-              </p>
-              <p v-if="onboardingUnavailableModules.length" class="mt-2 text-xs text-muted">
-                Pausados: {{ onboardingUnavailableModules.map(module => module.label).join(', ') }}
-              </p>
-            </div>
-            <div class="rounded-lg border border-default p-3">
-              <p class="text-xs font-medium text-muted">
-                Primeira coleta
-              </p>
-              <p class="mt-1 text-lg font-semibold tabular-nums">
-                {{ onboarding.initial_collection?.runs_finished || 0 }} / {{ onboarding.initial_collection?.runs_total || 0 }} concluídas
-              </p>
-              <p v-if="onboarding.initial_collection?.runs_pending" class="mt-2 text-xs text-muted">
-                {{ onboarding.initial_collection.runs_pending }} execução(ões) em andamento
-              </p>
-            </div>
-          </div>
-        </div>
-      </UPageCard>
-
       <ShellPanelAccordion
         :items="officeAccordionItems"
-        type="multiple"
-        :default-value="['perfil']"
+        multiple
+        :default-open="['perfil', 'certificado']"
         test-id="settings-office-accordion"
       >
         <template #perfil-body>
@@ -569,27 +313,18 @@ onBeforeUnmount(stopOnboardingPolling)
             @save="saveProfile"
           />
         </template>
-        <template #consentimento-body>
-          <SettingsOfficeConsentSection
-            :consent="consent"
-            :loading="loading"
-            :saving="saving"
-            :readonly="readonly"
-            :show-header="false"
-            @accept="acceptConsent"
-            @revoke="revokeConsent"
-          />
-        </template>
         <template #certificado-body>
           <SettingsOfficeCredentialSection
             :credential="credential"
             :loading="loading"
             :saving="saving"
+            :refreshing="refreshing"
             :readonly="readonly"
             :require-password-reconfirm="false"
             :show-header="false"
             @upload="uploadCredential"
             @remove="removeCredential"
+            @refresh-integration="refreshIntegration"
           />
         </template>
         <template #agendas-body>

@@ -96,6 +96,13 @@ function platformAdminDestinations(path = ''): NavDestination[] {
         label: 'Módulos fiscais',
         icon: 'i-lucide-blocks',
         to: '/admin/fiscal-modules'
+      },
+      {
+        id: 'platform-serpro',
+        label: 'SERPRO',
+        icon: 'i-lucide-gauge',
+        to: '/admin/serpro',
+        active: path === '/admin/serpro' || path.startsWith('/admin/serpro/')
       }
     ]
   }]

@@ -7,13 +7,6 @@ import type { TableColumn } from '@nuxt/ui'
 import type { SerproUsageConsolidation, SerproUsageReconciliation } from '~/types/api'
 import ShellDataTable from '~/components/shell/DataTable.vue'
 
-definePageMeta({
-  redirect: {
-    path: '/admin/serpro',
-    query: { section: 'usage' }
-  }
-})
-
 const api = useApi()
 const toast = useToast()
 const { sessionEpoch } = useDashboard()

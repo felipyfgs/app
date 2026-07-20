@@ -43,6 +43,7 @@ import type {
   FiscalPnrRenunciation,
   MonitoringCoverageContract
 } from '~/types/fiscal-modules'
+import type { MonitoringInsightsPayload } from '~/types/monitoring-insights'
 import type { ApiClient, ApiUrl } from './types'
 import { createMeiPublicServicesApi } from './createMeiPublicServicesApi'
 
@@ -54,6 +55,10 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
       meiPublicServices,
       monitoringCoverage: (options?: { signal?: AbortSignal }) =>
         client<{ data: MonitoringCoverageContract }>('/api/v1/fiscal/monitoring/coverage', {
+          signal: options?.signal
+        }),
+      monitoringInsights: (options?: { signal?: AbortSignal }) =>
+        client<{ data: MonitoringInsightsPayload }>('/api/v1/fiscal/monitoring/insights', {
           signal: options?.signal
         }),
       categories: () =>

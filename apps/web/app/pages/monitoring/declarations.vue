@@ -1,22 +1,23 @@
 <script setup lang="ts">
 /**
- * Declarações — carteira operacional agregada por cliente.
- * A lista usa somente o contrato do portfolio; a projeção completa é carregada
- * sob demanda, evitando resumo paralelo e N+1 de detalhes.
+ * Declarações — hub por obrigação (abas locais; URL fixa /monitoring/declarations).
+ * Default PGDAS; DIRF unsupported honesto; FGTS cobertura parcial.
  */
-import type { TableColumn } from '@nuxt/ui'
-import type { DeclarationsClientDetail, DeclarationsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
-import { sortHeader } from '~/utils/table-sort'
+import type { DeclarationsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
 import {
-  buildMonitoringConsultedColumn,
-  MONITORING_SHARED_COLUMN_LABELS
-} from '~/utils/monitoring-table-columns'
+  DECLARATIONS_TABS,
+  declarationsSurfaceTitle,
+  normalizeDeclarationsSubmodule
+} from '~/types/fiscal-modules'
+import {
+  buildDeclarationsFgtsColumns,
+  buildDeclarationsObligationColumns,
+  buildDeclarationsPgdasColumns,
+  DECLARATIONS_PGDAS_COLUMN_LABELS
+} from '~/utils/declarations-table'
+import { MONITORING_SHARED_COLUMN_LABELS } from '~/utils/monitoring-table-columns'
 
-const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
-const FiscalClientCell = resolveComponent('FiscalClientCell')
-const FiscalDocumentAction = resolveComponent('FiscalDocumentAction')
-const UButton = resolveComponent('UButton')
-const api = useApi()
+const submodule = ref(normalizeDeclarationsSubmodule('PGDAS'))
 
 const {
   page,
@@ -37,7 +38,6 @@ const {
   sourceLabel,
   asOf,
   surface,
-  allowsDocument,
   sorting,
   setPage,
   setPerPage,
@@ -45,196 +45,147 @@ const {
   applyFilters,
   applyQuickFilters,
   resetFilters
-} = useFiscalModulePortfolio('declarations')
+} = useFiscalModulePortfolio('declarations', {
+  submodule
+})
 
-const detailOpen = ref(false)
-const detailLoading = ref(false)
-const detailError = ref<string | null>(null)
-const detailProjection = ref<Record<string, unknown> | null>(null)
-const detailEvidences = ref<Array<Record<string, unknown>>>([])
+const isPgdas = computed(() => submodule.value === 'PGDAS')
+const isDctfweb = computed(() => submodule.value === 'DCTFWEB')
+const isDefis = computed(() => submodule.value === 'DEFIS')
+const isFgts = computed(() => submodule.value === 'FGTS')
+const isDirf = computed(() => submodule.value === 'DIRF')
 
-const deliveryStatusItems = [
-  { label: 'Todas as entregas', value: 'all' },
-  { label: 'Desconhecido', value: 'UNKNOWN' },
-  { label: 'Pendente', value: 'PENDING' },
-  { label: 'Processando', value: 'PROCESSING' },
-  { label: 'Em atenção', value: 'ATTENTION' },
-  { label: 'Em dia', value: 'UP_TO_DATE' },
-  { label: 'Erro', value: 'ERROR' },
-  { label: 'Bloqueado', value: 'BLOCKED' },
-  { label: 'Não aplicável', value: 'NOT_APPLICABLE' },
-  { label: 'Não suportado', value: 'UNSUPPORTED' }
-]
+const surfaceTitle = computed(() => declarationsSurfaceTitle(submodule.value))
 
-const filterConfig: MonitoringFilterConfig = {
-  fields: [
-    { key: 'situation', kind: 'option', label: 'Situação' },
-    { key: 'clientId', kind: 'client', label: 'Cliente' },
-    { key: 'competence', kind: 'month', label: 'Competência' },
-    { key: 'deliveryStatus', kind: 'option', label: 'Status de entrega', items: deliveryStatusItems }
-  ]
-}
+const tabItems = DECLARATIONS_TABS.map(t => ({ label: t.label, value: t.value }))
+
+const filterConfig = computed<MonitoringFilterConfig>(() => {
+  if (isDirf.value) {
+    return { fields: [] }
+  }
+  if (isFgts.value) {
+    return {
+      fields: [
+        { key: 'situation', kind: 'option', label: 'Situação' },
+        { key: 'clientId', kind: 'client', label: 'Cliente' },
+        { key: 'competence', kind: 'month', label: 'Competência' }
+      ]
+    }
+  }
+  return {
+    fields: [
+      { key: 'situation', kind: 'option', label: 'Situação' },
+      { key: 'clientId', kind: 'client', label: 'Cliente' },
+      { key: 'competence', kind: 'month', label: 'Competência' }
+    ]
+  }
+})
 
 function getRowId(row: DeclarationsClientRow) {
   return `c:${row.client_id}`
 }
 
-function clientHref(id: number) {
-  return `/monitoring/clients/${id}/declarations`
+// —— Modais ——
+const pgdasHistoryOpen = ref(false)
+const dctfwebHistoryOpen = ref(false)
+const defisHistoryOpen = ref(false)
+const modalClientId = ref<number | null>(null)
+const modalClientName = ref<string | null>(null)
+const modalCnpjMasked = ref<string | null>(null)
+
+function closeModals() {
+  pgdasHistoryOpen.value = false
+  dctfwebHistoryOpen.value = false
+  defisHistoryOpen.value = false
+  modalClientId.value = null
+  modalClientName.value = null
+  modalCnpjMasked.value = null
 }
 
-function detailOf(row: DeclarationsClientRow): DeclarationsClientDetail {
-  return row.detail || {}
+function openModalClient(row: DeclarationsClientRow) {
+  modalClientId.value = row.client_id
+  modalClientName.value = row.legal_name || row.name || null
+  modalCnpjMasked.value = row.cnpj_masked || null
 }
 
-function applicabilityLabel(code?: string | null) {
-  const map: Record<string, string> = {
-    APPLICABLE: 'Aplicável',
-    NOT_APPLICABLE: 'Não aplicável',
-    UNKNOWN: 'Desconhecida',
-    UNSUPPORTED: 'Não suportada'
+function openPgdasHistory(row: DeclarationsClientRow) {
+  openModalClient(row)
+  pgdasHistoryOpen.value = true
+}
+
+function openDctfwebHistory(row: DeclarationsClientRow) {
+  openModalClient(row)
+  dctfwebHistoryOpen.value = true
+}
+
+function openDefisHistory(row: DeclarationsClientRow) {
+  openModalClient(row)
+  defisHistoryOpen.value = true
+}
+
+const columns = computed(() => {
+  if (isPgdas.value) {
+    return buildDeclarationsPgdasColumns({ onHistory: openPgdasHistory })
   }
-  const k = String(code || '').toUpperCase()
-  return map[k] || (k || '—')
-}
-
-async function openProjection(row: DeclarationsClientRow) {
-  const id = detailOf(row).next_projection_id
-  if (!id) return
-  detailOpen.value = true
-  detailLoading.value = true
-  detailError.value = null
-  detailProjection.value = null
-  detailEvidences.value = []
-  try {
-    const res = await api.fiscal.declarations.get(id)
-    const data = (res.data || {}) as Record<string, unknown>
-    detailProjection.value = data
-    detailEvidences.value = Array.isArray(data.evidences)
-      ? (data.evidences as Array<Record<string, unknown>>)
-      : []
-  } catch (caught) {
-    detailError.value = apiErrorMessage(caught, 'Falha ao carregar projeção de declaração.')
-  } finally {
-    detailLoading.value = false
-  }
-}
-
-const columns: TableColumn<DeclarationsClientRow>[] = [
-  {
-    id: 'client',
-    header: ({ column }) => sortHeader('Cliente', column),
-    enableHiding: false,
-    meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
-    cell: ({ row }) => h(FiscalClientCell, {
-      clientId: row.original.client_id,
-      name: row.original.name || row.original.display_name,
-      legalName: row.original.legal_name,
-      cnpjMasked: row.original.cnpj_masked,
-      to: clientHref(row.original.client_id)
+  if (isDctfweb.value) {
+    return buildDeclarationsObligationColumns({
+      onHistory: openDctfwebHistory,
+      historyLabel: 'Histórico'
     })
-  },
-  {
-    id: 'obligation',
-    header: 'Obrigação',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const d = detailOf(row.original)
-      return String(d.next_obligation_code || '—')
-    }
-  },
-  {
-    id: 'competence',
-    header: ({ column }) => sortHeader('Competência', column),
-    cell: ({ row }) => String(
-      row.original.competence
-      || detailOf(row.original).next_period_key
-      || '—'
-    )
-  },
-  {
-    id: 'due',
-    header: 'Vencimento',
-    enableSorting: false,
-    cell: ({ row }) => formatDateTime(
-      String(
-        detailOf(row.original).next_due_at
-        || row.original.next_deadline_at
-        || ''
-      ) || null
-    )
-  },
-  {
-    id: 'delivery',
-    header: 'Entrega',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const status = String(
-        detailOf(row.original).next_delivery_status
-        || '—'
-      )
-      return status === '—' ? '—' : h(FiscalStatusBadge, { fill: true, status })
-    }
-  },
-  {
-    id: 'open',
-    header: 'Abertas',
-    enableSorting: false,
-    cell: ({ row }) => String(detailOf(row.original).open_count ?? '—')
-  },
-  {
-    id: 'situation',
-    header: ({ column }) => sortHeader('Situação', column),
-    cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(
-      detailOf(row.original).next_situation
-      || row.original.situation
-    ) })
-  },
-  buildMonitoringConsultedColumn<DeclarationsClientRow>({
-    getAt: row => row.last_consulted_at || row.last_snapshot_at,
-    format: 'datetime',
-    testId: 'declarations-last-consulted'
-  }),
-  {
-    id: 'actions',
-    header: 'Ações',
-    enableHiding: false,
-    enableSorting: false,
-    meta: { class: { th: 'w-28', td: 'w-28' } },
-    cell: ({ row }) => {
-      const children = [
-        h(FiscalDocumentAction, {
-          document: row.original.document,
-          disabled: !allowsDocument.value
-        }),
-        h(UButton, {
-          'size': 'xs',
-          'color': 'neutral',
-          'variant': 'ghost',
-          'icon': 'i-lucide-building-2',
-          'aria-label': `Abrir cliente ${row.original.client_id}`,
-          'to': clientHref(row.original.client_id)
-        })
-      ]
-      if (detailOf(row.original).next_projection_id) {
-        children.unshift(h(UButton, {
-          'size': 'xs',
-          'color': 'primary',
-          'variant': 'ghost',
-          'icon': 'i-lucide-panel-right-open',
-          'aria-label': `Abrir projeção do cliente ${row.original.client_id}`,
-          'onClick': () => openProjection(row.original)
-        }))
-      }
-      return h('div', { class: 'flex justify-end gap-1 items-center' }, children)
+  }
+  if (isDefis.value) {
+    return buildDeclarationsObligationColumns({
+      onHistory: openDefisHistory,
+      historyLabel: 'Histórico DEFIS'
+    })
+  }
+  if (isFgts.value) {
+    return buildDeclarationsFgtsColumns()
+  }
+  // DIRF: colunas mínimas (tabela vazia + empty unsupported)
+  return buildDeclarationsObligationColumns({})
+})
+
+const columnLabels = computed(() => {
+  if (isPgdas.value) return { ...DECLARATIONS_PGDAS_COLUMN_LABELS }
+  if (isFgts.value) {
+    return {
+      competence: 'Competência',
+      closure: 'Fechamento',
+      totalization: 'Totalização',
+      coverage: 'Cobertura',
+      ...MONITORING_SHARED_COLUMN_LABELS
     }
   }
-]
+  return {
+    obligation: 'Obrigação',
+    history: 'Histórico',
+    ...MONITORING_SHARED_COLUMN_LABELS
+  }
+})
+
+const emptyTitle = computed(() => {
+  if (isDirf.value) return 'DIRF não suportada'
+  if (isFgts.value) return 'Nenhum status FGTS na carteira'
+  if (isPgdas.value) return 'Nenhuma declaração PGDAS'
+  if (isDctfweb.value) return 'Nenhuma declaração DCTFWeb'
+  if (isDefis.value) return 'Nenhuma declaração DEFIS'
+  return 'Nenhuma declaração'
+})
+
+const emptyKind = computed(() => (isDirf.value ? 'unsupported' as const : null))
+
+watch(submodule, (next, prev) => {
+  if (next === prev) return
+  closeModals()
+  setPage(1)
+  resetFilters()
+})
 </script>
 
 <template>
   <MonitoringModuleTable
-    title="Declarações"
+    :title="surfaceTitle"
     panel-id="monitoring-declarations"
     module-key="declarations"
     :columns="columns"
@@ -259,15 +210,11 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
+    :submodule="submodule"
     :horizontal-scroll="true"
-    empty-title="Nenhuma declaração"
-    :column-labels="{
-      obligation: 'Obrigação',
-      due: 'Vencimento',
-      delivery: 'Entrega',
-      open: 'Abertas',
-      ...MONITORING_SHARED_COLUMN_LABELS
-    }"
+    :empty-title="emptyTitle"
+    :empty-kind="emptyKind"
+    :column-labels="columnLabels"
     @update:page="setPage"
     @update:per-page="setPerPage"
     @update:sorting="sorting = $event"
@@ -276,6 +223,27 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
     @reset-filters="resetFilters"
     @refresh="refresh"
   >
+    <template #submodules>
+      <div
+        class="flex min-w-0 flex-col gap-2"
+        data-testid="declarations-obligation-control"
+      >
+        <p class="text-xs font-medium text-muted">
+          Obrigação
+        </p>
+        <ShellScrollableTabs
+          v-model="submodule"
+          :items="tabItems"
+          size="sm"
+          color="primary"
+          variant="pill"
+          class="w-full min-w-0"
+          aria-label="Obrigação: PGDAS, DCTFWeb, FGTS, DEFIS ou DIRF"
+          test-id="declarations-submodule-tabs"
+        />
+      </div>
+    </template>
+
     <template #utilities>
       <UAlert
         v-if="overviewError"
@@ -284,158 +252,47 @@ const columns: TableColumn<DeclarationsClientRow>[] = [
         :title="overviewError"
         class="w-full"
       />
-    </template>
-
-    <template #detail>
-      <USlideover
-        v-model:open="detailOpen"
-        title="Projeção de declaração"
-      >
-        <template #body>
-          <div
-            v-if="detailLoading"
-            class="py-8 text-sm text-muted"
-          >
-            Carregando projeção…
-          </div>
-          <UAlert
-            v-else-if="detailError"
-            color="error"
-            :title="detailError"
-          />
-          <div
-            v-else-if="detailProjection"
-            class="flex flex-col gap-4"
-          >
-            <dl class="grid gap-2 text-sm sm:grid-cols-2">
-              <div>
-                <dt class="text-muted">
-                  Obrigação
-                </dt>
-                <dd class="font-medium">
-                  {{ detailProjection.obligation_code || detailProjection.obligation_name || '—' }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Aplicabilidade
-                </dt>
-                <dd>
-                  <UBadge
-                    color="neutral"
-                    variant="subtle"
-                    size="sm"
-                  >
-                    {{ applicabilityLabel(String(detailProjection.applicability || '')) }}
-                  </UBadge>
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Competência
-                </dt>
-                <dd class="font-medium">
-                  {{ detailProjection.period_key || '—' }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Vencimento
-                </dt>
-                <dd class="font-medium">
-                  {{ formatDateTime(String(detailProjection.due_at || '') || null) }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Entrega
-                </dt>
-                <dd>
-                  <FiscalStatusBadge
-                    v-if="detailProjection.delivery_status"
-                    :status="String(detailProjection.delivery_status)"
-                    show-hint
-                  />
-                  <span v-else>—</span>
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Situação
-                </dt>
-                <dd>
-                  <FiscalStatusBadge
-                    v-if="detailProjection.situation"
-                    :status="String(detailProjection.situation)"
-                  />
-                  <span v-else>—</span>
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Evidência conclusiva
-                </dt>
-                <dd class="font-medium">
-                  {{ detailProjection.conclusive_evidence_id ? `#${detailProjection.conclusive_evidence_id}` : '—' }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-muted">
-                  Artefato
-                </dt>
-                <dd class="font-medium">
-                  {{ detailProjection.evidence_artifact_id ? `#${detailProjection.evidence_artifact_id}` : '—' }}
-                </dd>
-              </div>
-            </dl>
-            <p
-              v-if="detailProjection.applicability_basis"
-              class="text-xs text-muted"
-            >
-              Base: {{ detailProjection.applicability_basis }}
-            </p>
-            <div>
-              <h3 class="mb-2 text-sm font-medium">
-                Evidências
-              </h3>
-              <div
-                v-if="!detailEvidences.length"
-                class="text-sm text-muted"
-              >
-                Nenhuma evidência anexada retornada.
-              </div>
-              <ul
-                v-else
-                class="divide-y divide-default text-sm"
-              >
-                <li
-                  v-for="ev in detailEvidences"
-                  :key="String(ev.id)"
-                  class="flex items-center justify-between gap-2 py-2"
-                >
-                  <span>
-                    #{{ ev.id }}
-                    · {{ ev.kind || ev.source || 'evidência' }}
-                    · {{ formatDateTime(String(ev.observed_at || ev.created_at || '') || null) }}
-                  </span>
-                  <FiscalStatusBadge
-                    v-if="ev.status || ev.situation"
-                    :status="String(ev.status || ev.situation)"
-                  />
-                </li>
-              </ul>
-            </div>
-            <UButton
-              v-if="detailProjection.client_id"
-              size="sm"
-              color="neutral"
-              variant="outline"
-              label="Painel do cliente"
-              :to="clientHref(Number(detailProjection.client_id))"
-            />
-          </div>
-        </template>
-      </USlideover>
+      <UAlert
+        v-if="isDirf"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-ban"
+        title="DIRF não suportada"
+        description="Não há catálogo nem integração SERPRO para DIRF nesta superfície. A carteira permanece vazia sem dados inventados."
+        class="w-full"
+        data-testid="declarations-dirf-unsupported"
+      />
+      <UAlert
+        v-else-if="isFgts"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-triangle-alert"
+        title="Cobertura parcial FGTS"
+        description="Esta aba lista status FGTS já observados. Guia e pagamento produtivos não são inventados aqui."
+        class="w-full"
+        data-testid="declarations-fgts-partial"
+      />
     </template>
   </MonitoringModuleTable>
+
+  <MonitoringPgdasdDasHistoryModal
+    v-if="isPgdas"
+    v-model:open="pgdasHistoryOpen"
+    :client-id="modalClientId"
+    :client-name="modalClientName"
+    :cnpj-masked="modalCnpjMasked"
+  />
+  <MonitoringDctfwebHistoryModal
+    v-if="isDctfweb"
+    v-model:open="dctfwebHistoryOpen"
+    :client-id="modalClientId"
+    :client-name="modalClientName"
+    :cnpj-masked="modalCnpjMasked"
+  />
+  <MonitoringDefisDeclarationsModal
+    v-if="isDefis"
+    v-model:open="defisHistoryOpen"
+    :client-id="modalClientId"
+    :client-name="modalClientName"
+  />
 </template>

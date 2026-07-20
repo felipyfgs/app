@@ -71,7 +71,7 @@ onMounted(() => {
     data-testid="client-page-departamento"
   >
     <ShellSectionHeader
-      title="Departamento"
+      title="Departamentos"
       description="Departamento do escritório responsável por este cliente."
       test-id="client-section-departamento"
     >

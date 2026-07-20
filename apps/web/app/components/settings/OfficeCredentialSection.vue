@@ -12,6 +12,7 @@ const props = withDefaults(defineProps<{
   credential: OfficeCanonicalCredential | null
   loading?: boolean
   saving?: boolean
+  refreshing?: boolean
   readonly?: boolean
   /** Reconfirmação de senha (todos os perfis em ações sensíveis). */
   requirePasswordReconfirm?: boolean
@@ -19,6 +20,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   loading: false,
   saving: false,
+  refreshing: false,
   readonly: false,
   requirePasswordReconfirm: true,
   showHeader: true
@@ -32,6 +34,7 @@ const emit = defineEmits<{
     reconfirm_password?: string
   }]
   remove: [payload: { reconfirm_password?: string }]
+  refreshIntegration: []
 }>()
 
 const open = ref(false)
@@ -194,13 +197,24 @@ watch(removeOpen, (v) => {
         </dl>
         <div
           v-if="!readonly"
-          class="flex justify-end border-t border-default pt-3"
+          class="flex flex-wrap items-center justify-end gap-2 border-t border-default pt-3"
         >
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-refresh-cw"
+            label="Atualizar integração"
+            :loading="refreshing"
+            :disabled="saving"
+            data-testid="settings-credential-refresh-integration"
+            @click="emit('refreshIntegration')"
+          />
           <UButton
             color="error"
             variant="ghost"
             icon="i-lucide-trash-2"
             label="Remover"
+            :disabled="saving || refreshing"
             data-testid="settings-credential-remove"
             @click="() => { removeOpen = true }"
           />
@@ -258,7 +272,7 @@ watch(removeOpen, (v) => {
           <UCheckbox
             v-model="consentAccepted"
             label="Autorizo o uso deste A1 pelo sistema"
-            description="O sistema validará o certificado, assinará o Termo, carregará procurações e iniciará a primeira coleta automaticamente."
+            description="Com o aceite, o sistema ativa o escritório automaticamente (sem etapas extras)."
             data-testid="settings-credential-consent"
           />
           <UFormField

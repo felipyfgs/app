@@ -10,13 +10,6 @@ import {
   LIST_FILTER_TOOLBAR_STACK
 } from '~/utils/list-filter-layout'
 
-definePageMeta({
-  redirect: {
-    path: '/admin/serpro/configuration',
-    query: { section: 'coverage' }
-  }
-})
-
 const api = useApi()
 const { sessionEpoch } = useDashboard()
 

@@ -1,26 +1,24 @@
 <script setup lang="ts">
 /**
- * Configuração específica do cliente — estado, certificado, campos, captura.
+ * Campos personalizados + estado/canais (captura).
+ * Extraído do antigo ClientConfigPanel (certificado vive na sidebar).
  */
 import type { AccordionItem } from '@nuxt/ui'
-import type { Client, ClientCredential, ClientCustomField } from '~/types/api'
+import type { Client, ClientCustomField } from '~/types/api'
 
 const props = defineProps<{
   client: Client
-  credential: ClientCredential | null
   canManageClients: boolean
-  canManageCredentials: boolean
 }>()
 
 const emit = defineEmits<{
   updated: []
-  credentialActivated: [value: ClientCredential]
 }>()
 
 const api = useApi()
 const toast = useToast()
 
-const openItems = ref<string | string[]>(['estado'])
+const openItems = ref<string | string[]>(['estado', 'campos'])
 const savingCapture = ref(false)
 const savingFieldId = ref<number | null>(null)
 
@@ -31,14 +29,7 @@ const primaryEstablishment = computed(() =>
 )
 
 const captureEnabled = computed(() => Boolean(primaryEstablishment.value?.capture_enabled))
-
 const customFields = computed(() => props.client.custom_fields || [])
-
-const credentialStatus = computed(() =>
-  props.credential?.status
-  || props.client.credential_summary?.status
-  || 'missing'
-)
 
 const accordionItems = computed((): AccordionItem[] => [
   {
@@ -48,22 +39,12 @@ const accordionItems = computed((): AccordionItem[] => [
     slot: 'estado' as const
   },
   {
-    label: 'Certificado A1',
-    icon: 'i-lucide-badge-check',
-    value: 'certificado',
-    slot: 'certificado' as const
-  },
-  {
     label: 'Campos personalizados',
     icon: 'i-lucide-list',
     value: 'campos',
     slot: 'campos' as const
   }
 ])
-
-function openCertificado() {
-  openItems.value = ['estado', 'certificado']
-}
 
 async function toggleCapture(enabled: boolean) {
   const est = primaryEstablishment.value
@@ -72,7 +53,7 @@ async function toggleCapture(enabled: boolean) {
   try {
     await api.establishments.update(est.id, {
       capture_enabled: enabled,
-      ...(enabled ? { capture_enable_reason: 'Habilitado na configuração do cliente.' } : {})
+      ...(enabled ? { capture_enable_reason: 'Habilitado nos dados adicionais do cliente.' } : {})
     })
     toast.add({
       title: enabled ? 'Captura de documentos habilitada.' : 'Captura de documentos desabilitada.',
@@ -99,26 +80,6 @@ async function toggleFieldActive(field: ClientCustomField, active: boolean) {
     savingFieldId.value = null
   }
 }
-
-function procuracaoLabel(status?: string | null) {
-  switch (status) {
-    case 'authorized': return 'Autorizada'
-    case 'expiring': return 'Expirando'
-    case 'expired': return 'Expirada'
-    case 'missing': return 'Ausente'
-    case 'unverified': return 'Não verificada'
-    default: return 'Desconhecida'
-  }
-}
-
-function credentialLabel(status: string) {
-  switch (status) {
-    case 'active': return 'Ativo'
-    case 'expired': return 'Expirado'
-    case 'revoked': return 'Revogado'
-    default: return 'Não cadastrado'
-  }
-}
 </script>
 
 <template>
@@ -126,80 +87,26 @@ function credentialLabel(status: string) {
     v-model="openItems"
     :items="accordionItems"
     type="multiple"
-    :default-value="['estado']"
-    test-id="client-config-accordion"
+    :default-value="['estado', 'campos']"
+    test-id="client-additional-data-accordion"
   >
     <template #estado-body>
-      <div class="space-y-4">
-        <div class="grid gap-3 sm:grid-cols-2">
-          <UPageCard
-            title="Certificado A1"
-            :description="credentialLabel(credentialStatus)"
-            icon="i-lucide-badge-check"
-            variant="subtle"
-          >
-            <template #footer>
-              <div class="flex flex-wrap items-center gap-2">
-                <UBadge
-                  :color="credentialStatus === 'active' ? 'success' : 'neutral'"
-                  variant="subtle"
-                >
-                  {{ credentialLabel(credentialStatus) }}
-                </UBadge>
-                <UButton
-                  size="sm"
-                  color="neutral"
-                  variant="ghost"
-                  label="Gerenciar"
-                  trailing-icon="i-lucide-chevron-down"
-                  @click="openCertificado"
-                />
-              </div>
-            </template>
-          </UPageCard>
-
-          <UPageCard
-            title="Procuração e-CAC"
-            :description="procuracaoLabel(client.procuracao_status)"
-            icon="i-lucide-file-key-2"
-            variant="subtle"
-          >
-            <template #footer>
-              <UBadge
-                color="neutral"
-                variant="subtle"
-              >
-                {{ procuracaoLabel(client.procuracao_status) }}
-              </UBadge>
-            </template>
-          </UPageCard>
-        </div>
-
-        <div class="space-y-3 rounded-lg border border-default p-4">
-          <UFormField
-            label="Captura de documentos (ADN)"
-            description="Habilita sincronização de documentos de entrada para o estabelecimento principal."
-            class="flex items-center justify-between gap-4"
-          >
-            <USwitch
-              :model-value="captureEnabled"
-              :disabled="!canManageClients || !primaryEstablishment || savingCapture"
-              @update:model-value="toggleCapture"
-            />
-          </UFormField>
-        </div>
+      <div class="space-y-3 rounded-lg border border-default p-4">
+        <UFormField
+          label="Captura de documentos (ADN)"
+          description="Habilita sincronização de documentos de entrada para o estabelecimento principal."
+          class="flex items-center justify-between gap-4"
+        >
+          <USwitch
+            :model-value="captureEnabled"
+            :disabled="!canManageClients || !primaryEstablishment || savingCapture"
+            @update:model-value="toggleCapture"
+          />
+        </UFormField>
+        <p class="text-sm text-muted">
+          Certificado A1 e procuração e-CAC ficam no painel lateral.
+        </p>
       </div>
-    </template>
-
-    <template #certificado-body>
-      <ClientsClientCredentialPanel
-        :client-id="client.id"
-        :credential="credential"
-        :credential-summary="client.credential_summary"
-        :can-manage-credentials="canManageCredentials"
-        :show-header="false"
-        @activated="emit('credentialActivated', $event)"
-      />
     </template>
 
     <template #campos-body>

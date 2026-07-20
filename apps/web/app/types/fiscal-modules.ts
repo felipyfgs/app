@@ -1314,6 +1314,8 @@ export interface MailboxClientDetail {
 
 export interface DeclarationsClientDetail {
   module_key?: 'declarations' | string
+  /** Aba ativa do hub (PGDAS, DCTFWEB, …). */
+  submodule?: string | null
   open_count?: number
   next_projection_id?: number | null
   next_obligation_code?: string | null
@@ -1321,6 +1323,15 @@ export interface DeclarationsClientDetail {
   next_due_at?: string | null
   next_delivery_status?: string | null
   next_situation?: string | null
+  /** Enriquecimento PGDAS (reuso do domínio PGDAS-D). */
+  declaration_state?: PgdasdDeclarationState | string | null
+  declaration_state_reason?: string | null
+  last_declaration?: PgdasdLatestDeclaration | null
+  last_valid_query_at?: string | null
+  pgdasd?: PgdasdClientSummary | null
+  /** Enriquecimento parcial FGTS (sem inventar guia/pagamento). */
+  fgts?: FgtsClientDetail | null
+  partial_coverage_notice?: string | null
   links?: Record<string, string | null>
 }
 
@@ -1541,6 +1552,38 @@ export const DCTFWEB_TABS = [
   { label: 'DCTFWeb', value: 'DCTFWEB' },
   { label: 'MIT', value: 'MIT' }
 ] as const
+
+/** Abas locais do hub Declarações (não entram na URL). Default: PGDAS. */
+export const DECLARATIONS_TABS = [
+  { label: 'PGDAS', value: 'PGDAS' },
+  { label: 'DCTFWeb', value: 'DCTFWEB' },
+  { label: 'FGTS', value: 'FGTS' },
+  { label: 'DEFIS', value: 'DEFIS' },
+  { label: 'DIRF', value: 'DIRF' }
+] as const
+
+export type DeclarationsSubmodule = (typeof DECLARATIONS_TABS)[number]['value']
+
+export function normalizeDeclarationsSubmodule(raw?: unknown): DeclarationsSubmodule {
+  const value = String(Array.isArray(raw) ? raw[0] : raw || '')
+    .trim()
+    .toUpperCase()
+    .replaceAll('-', '_')
+  if (value === 'PGDASD' || value === 'PGDAS_D') return 'PGDAS'
+  if (value === 'DCTF') return 'DCTFWEB'
+  const found = DECLARATIONS_TABS.find(tab => tab.value === value)
+  return found?.value ?? 'PGDAS'
+}
+
+export function declarationsSubmoduleLabel(submodule?: string | null): string {
+  const normalized = normalizeDeclarationsSubmodule(submodule)
+  return DECLARATIONS_TABS.find(tab => tab.value === normalized)?.label ?? normalized
+}
+
+/** Título da superfície: `PGDAS - Declarações`. */
+export function declarationsSurfaceTitle(submodule?: string | null): string {
+  return `${declarationsSubmoduleLabel(submodule)} - Declarações`
+}
 
 export const MAILBOX_TRIAGE_ITEMS = [
   { label: 'Todas', value: 'all' },

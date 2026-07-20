@@ -126,6 +126,11 @@ const tab = computed({
 })
 
 const client = ref<Client | null>(null)
+const pgdasdDasHistoryOpen = ref(false)
+
+function openPgdasdDasHistory() {
+  pgdasdDasHistoryOpen.value = true
+}
 const clientLoading = ref(false)
 const clientError = ref<string | null>(null)
 
@@ -811,10 +816,10 @@ onMounted(async () => {
             icon: 'i-lucide-clipboard-list',
             to: clientCrmHref(clientId, 'cadastro')
           }, {
-            id: 'client-configuracao',
-            label: 'Configuração',
-            icon: 'i-lucide-sliders-horizontal',
-            to: clientCrmHref(clientId, 'configuracao')
+            id: 'client-dados-adicionais',
+            label: 'Dados adicionais',
+            icon: 'i-lucide-list',
+            to: clientCrmHref(clientId, 'dados-adicionais')
           }]"
         />
       </template>
@@ -858,8 +863,6 @@ onMounted(async () => {
         :ui="{ body: 'gap-4 sm:gap-6 lg:py-8' }"
       >
         <template #body>
-          <MonitoringSerproCoveragePanel compact />
-
           <UAlert
             v-if="clientError"
             color="error"
@@ -945,10 +948,27 @@ onMounted(async () => {
                 :can-consult="canTriggerSync"
               />
 
-              <section v-else-if="tab === 'pgdasd'">
+              <section v-else-if="tab === 'pgdasd'" class="space-y-3">
+                <div class="flex flex-wrap items-center justify-end gap-2">
+                  <UButton
+                    size="sm"
+                    color="primary"
+                    variant="soft"
+                    icon="i-lucide-history"
+                    label="Histórico DAS"
+                    data-testid="client-pgdasd-das-history"
+                    @click="openPgdasdDasHistory"
+                  />
+                </div>
                 <MonitoringPgdasdHistoryView
                   :client-id="clientId"
                   :can-collect-documents="canTriggerSync"
+                />
+                <MonitoringPgdasdDasHistoryModal
+                  v-model:open="pgdasdDasHistoryOpen"
+                  :client-id="clientId"
+                  :client-name="client?.legal_name || client?.display_name || client?.name"
+                  :cnpj-masked="client?.cnpj || client?.root_cnpj || null"
                 />
               </section>
 

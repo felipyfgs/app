@@ -1,8 +1,8 @@
 /**
- * Taxonomia do detalhe do cliente — 4 páginas densas (settings/Conta).
- * Cadastro · Contato · Departamento · Configuração.
+ * Taxonomia do detalhe do cliente — layout master (main + sidebar).
+ * Dados cadastrais · Dados adicionais · Contatos · Departamentos · Observações · Contratos.
  * Paths legados de operação fiscal redirecionam para /monitoring/clients/:id
- * via {@link legacyFiscalSegmentToHref}; certificado/sync ficam em Configuração.
+ * via {@link legacyFiscalSegmentToHref}; certificado/config → dados-adicionais.
  */
 import {
   isLegacyFiscalSegment,
@@ -11,9 +11,11 @@ import {
 
 export type ClientDetailTab
   = 'cadastro'
+    | 'dados-adicionais'
     | 'contato'
     | 'departamento'
-    | 'configuracao'
+    | 'observacoes'
+    | 'contratos'
 
 /** Painéis legados ainda aceitos em helpers/query (redirecionam). */
 export type ClientDetailPanel
@@ -37,66 +39,87 @@ export type ClientDetailTabDef = {
   value: ClientDetailTab
   label: string
   icon: string
+  /** Badge opcional na toolbar (ex.: Em breve). */
+  badge?: string
+  /** Tab desabilitada (placeholder). */
+  disabled?: boolean
   panels: Array<{ value: ClientDetailPanel, label: string, icon: string, description?: string }>
 }
 
-/** Segmento de path → destino canônico (sempre um dos 4 paths). */
+/** Segmento de path → destino canônico. */
 const SEGMENT_MAP: Record<string, { tab: ClientDetailTab, path: string }> = {
-  resumo: { tab: 'cadastro', path: 'cadastro' },
-  cadastro: { tab: 'cadastro', path: 'cadastro' },
-  dados: { tab: 'cadastro', path: 'cadastro' },
-  socios: { tab: 'cadastro', path: 'cadastro' },
-  contato: { tab: 'contato', path: 'contato' },
-  contatos: { tab: 'contato', path: 'contato' },
-  departamento: { tab: 'departamento', path: 'departamento' },
-  configuracao: { tab: 'configuracao', path: 'configuracao' },
-  // Legado → Cadastro / Configuração (CRM)
-  estabelecimentos: { tab: 'cadastro', path: 'cadastro' },
-  integracoes: { tab: 'configuracao', path: 'configuracao' },
-  certificado: { tab: 'configuracao', path: 'configuracao' },
-  sincronizacao: { tab: 'configuracao', path: 'configuracao' },
-  saidas: { tab: 'configuracao', path: 'configuracao' },
+  'resumo': { tab: 'cadastro', path: 'cadastro' },
+  'cadastro': { tab: 'cadastro', path: 'cadastro' },
+  'dados': { tab: 'cadastro', path: 'cadastro' },
+  'socios': { tab: 'cadastro', path: 'cadastro' },
+  'dados-adicionais': { tab: 'dados-adicionais', path: 'dados-adicionais' },
+  'contato': { tab: 'contato', path: 'contato' },
+  'contatos': { tab: 'contato', path: 'contato' },
+  'departamento': { tab: 'departamento', path: 'departamento' },
+  'observacoes': { tab: 'observacoes', path: 'observacoes' },
+  'contratos': { tab: 'contratos', path: 'contratos' },
+  // Legado Configuração → Dados adicionais
+  'configuracao': { tab: 'dados-adicionais', path: 'dados-adicionais' },
+  'estabelecimentos': { tab: 'cadastro', path: 'cadastro' },
+  'integracoes': { tab: 'dados-adicionais', path: 'dados-adicionais' },
+  'certificado': { tab: 'dados-adicionais', path: 'dados-adicionais' },
+  'sincronizacao': { tab: 'dados-adicionais', path: 'dados-adicionais' },
+  'saidas': { tab: 'dados-adicionais', path: 'dados-adicionais' },
   // Legado fiscal → monitoring (toolbar só até o redirect da página stub)
-  fiscal: { tab: 'cadastro', path: 'cadastro' },
-  ccmei: { tab: 'cadastro', path: 'cadastro' },
-  sicalc: { tab: 'cadastro', path: 'cadastro' },
-  pagamentos: { tab: 'cadastro', path: 'cadastro' },
-  comprovantes: { tab: 'cadastro', path: 'cadastro' },
-  renuncias: { tab: 'cadastro', path: 'cadastro' }
+  'fiscal': { tab: 'cadastro', path: 'cadastro' },
+  'ccmei': { tab: 'cadastro', path: 'cadastro' },
+  'sicalc': { tab: 'cadastro', path: 'cadastro' },
+  'pagamentos': { tab: 'cadastro', path: 'cadastro' },
+  'comprovantes': { tab: 'cadastro', path: 'cadastro' },
+  'renuncias': { tab: 'cadastro', path: 'cadastro' }
 }
 
 const LEGACY_SECTION_MAP: Record<string, string> = {
   resumo: 'cadastro',
   cadastro: 'cadastro',
   estabelecimentos: 'cadastro',
-  certificado: 'configuracao',
-  sincronizacao: 'configuracao',
-  contatos: 'contato'
+  certificado: 'dados-adicionais',
+  sincronizacao: 'dados-adicionais',
+  contatos: 'contato',
+  configuracao: 'dados-adicionais'
 }
 
 export const CLIENT_DETAIL_TABS: ClientDetailTabDef[] = [
   {
     value: 'cadastro',
-    label: 'Cadastro',
+    label: 'Dados cadastrais',
     icon: 'i-lucide-clipboard-list',
     panels: []
   },
   {
+    value: 'dados-adicionais',
+    label: 'Dados adicionais',
+    icon: 'i-lucide-list',
+    panels: []
+  },
+  {
     value: 'contato',
-    label: 'Contato',
+    label: 'Contatos',
     icon: 'i-lucide-contact',
     panels: []
   },
   {
     value: 'departamento',
-    label: 'Departamento',
+    label: 'Departamentos',
     icon: 'i-lucide-network',
     panels: []
   },
   {
-    value: 'configuracao',
-    label: 'Configuração',
-    icon: 'i-lucide-sliders-horizontal',
+    value: 'observacoes',
+    label: 'Observações',
+    icon: 'i-lucide-sticky-note',
+    panels: []
+  },
+  {
+    value: 'contratos',
+    label: 'Contratos',
+    icon: 'i-lucide-file-text',
+    badge: 'Em breve',
     panels: []
   }
 ]
@@ -154,10 +177,14 @@ export function parseClientDetailQuery(query: Record<string, unknown>): {
   if (rawTab === 'estabelecimentos' || rawPanel === 'estabelecimentos') {
     return { tab: 'cadastro' }
   }
-  if (rawTab === 'integracoes' || rawPanel === 'certificado' || rawPanel === 'sincronizacao') {
-    return { tab: 'configuracao' }
+  if (
+    rawTab === 'integracoes'
+    || rawTab === 'configuracao'
+    || rawPanel === 'certificado'
+    || rawPanel === 'sincronizacao'
+  ) {
+    return { tab: 'dados-adicionais' }
   }
-  // Query legada fiscal: o shell usa queryToClientDetailHref → monitoring.
   if (isLegacyFiscalSegment(rawTab) || isLegacyFiscalSegment(rawPanel)) {
     return { tab: 'cadastro' }
   }
@@ -228,14 +255,14 @@ export function clientLeafCrumbs(
   clientId: string | number,
   _leaf: string
 ): Array<{ label: string, to?: string }> {
-  return clientPageCrumbs(clientId, 'configuracao')
+  return clientPageCrumbs(clientId, 'dados-adicionais')
 }
 
 export function clientHubCrumbs(
   clientId: string | number,
   _hub: 'fiscal' | 'integracoes'
 ): Array<{ label: string, to?: string }> {
-  return clientPageCrumbs(clientId, 'configuracao')
+  return clientPageCrumbs(clientId, 'dados-adicionais')
 }
 
 export function clientHubTabForPath(_path: string): 'fiscal' | 'integracoes' | null {
@@ -250,7 +277,9 @@ export function primaryTabItems() {
   return CLIENT_DETAIL_TABS.map(t => ({
     label: t.label,
     value: t.value,
-    icon: t.icon
+    icon: t.icon,
+    badge: t.badge,
+    disabled: t.disabled
   }))
 }
 
@@ -258,13 +287,13 @@ export function panelTabItems(_tab: ClientDetailTab) {
   return []
 }
 
-export type ClientModalTab = 'cadastro' | 'contato' | 'configuracao'
+export type ClientModalTab = 'cadastro' | 'contato' | 'dados-adicionais'
 
 export function clientModalTabItems() {
   return [
     { label: 'Cadastro', value: 'cadastro' as const, icon: 'i-lucide-clipboard-list' },
     { label: 'Contato', value: 'contato' as const, icon: 'i-lucide-contact' },
-    { label: 'Configuração', value: 'configuracao' as const, icon: 'i-lucide-sliders-horizontal' }
+    { label: 'Dados adicionais', value: 'dados-adicionais' as const, icon: 'i-lucide-list' }
   ]
 }
 

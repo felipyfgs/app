@@ -8,6 +8,7 @@ const aliases = {
 }
 
 const nuxtProject = await defineVitestProject({
+  resolve: { alias: aliases },
   test: {
     name: 'nuxt',
     environment: 'nuxt',

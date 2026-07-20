@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Ações PGDAS-D / REGIMEAPURACAO / DEFIS na toolbar ao selecionar linhas.
- * Consultas SERPRO em lote = uma chamada por CNPJ (catálogo Integra Contador).
+ * Ações PGDAS-D na toolbar ao selecionar linhas.
+ * Consultar (PGDASD) é o atalho primário; menu Ações cobre regime/DEFIS/locais.
  */
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { SimplesMeiClientRow } from '~/types/fiscal-modules'
@@ -17,6 +17,7 @@ const props = defineProps<{
   selectedCount: number
   rows: SimplesMeiClientRow[]
   handlers: PgdasdActionHandlers
+  canConsult?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -31,12 +32,16 @@ const { requestConsult: requestRegimeOption } = useRegimeOptionMonitoring()
 const { requestConsult: requestRegimeResolution } = useRegimeResolutionMonitoring()
 const { requestConsult: requestDefisConsult } = useDefisDeclarationsMonitoring()
 const { requestConsult: requestDefisLatestConsult } = useDefisLatestDeclarationMonitoring()
+const { enqueueReadUpdate, canTriggerSync } = useMonitoringActions('simples_mei')
 const toast = useToast()
 
 const busy = ref(false)
 const confirmOpen = ref(false)
+const pgdasdConfirmOpen = ref(false)
 const pendingKind = ref<PgdasdBatchConsultKind | null>(null)
 const pendingIds = ref<number[]>([])
+
+const showConsult = computed(() => props.canConsult !== false && canTriggerSync.value)
 
 const pendingLabel = computed(() => {
   switch (pendingKind.value) {
@@ -58,6 +63,15 @@ function openBatchConfirm(kind: PgdasdBatchConsultKind, clientIds: number[]) {
   pendingKind.value = kind
   pendingIds.value = [...clientIds]
   confirmOpen.value = true
+}
+
+function openPgdasdConsultConfirm() {
+  if (!showConsult.value || !props.selectedCount || busy.value) return
+  if (props.selectedClientIds.length > 100) {
+    toast.add({ title: 'Selecione no máximo 100 clientes.', color: 'warning' })
+    return
+  }
+  pgdasdConfirmOpen.value = true
 }
 
 const handlersWithBatch = computed<PgdasdActionHandlers>(() => ({
@@ -127,22 +141,67 @@ async function confirmBatch() {
     busy.value = false
   }
 }
+
+async function confirmPgdasdConsult() {
+  if (!showConsult.value || busy.value || !props.selectedClientIds.length) return
+  busy.value = true
+  let ok = 0
+  let fail = 0
+  try {
+    for (const clientId of props.selectedClientIds) {
+      const run = await enqueueReadUpdate({ client_id: clientId, silent: true })
+      if (run) ok++
+      else fail++
+    }
+    toast.add({
+      title: 'Consultas PGDAS-D enfileiradas',
+      description: `${ok} ok${fail ? ` · ${fail} falha(s)` : ''} de ${props.selectedClientIds.length}`,
+      color: fail && !ok ? 'error' : fail ? 'warning' : 'success'
+    })
+    pgdasdConfirmOpen.value = false
+    if (ok) {
+      emit('clear')
+      emit('refresh')
+    }
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
   <div
     v-if="selectedCount > 0"
+    class="flex flex-wrap items-center gap-1.5"
     data-testid="pgdasd-selection-actions"
   >
+    <UButton
+      v-if="showConsult"
+      size="sm"
+      color="primary"
+      variant="soft"
+      icon="i-lucide-refresh-cw"
+      label="Consultar"
+      aria-label="Consultar PGDAS-D dos selecionados"
+      :ui="COMPACT_BUTTON_LABEL_UI"
+      :loading="busy"
+      data-testid="pgdasd-bulk-consult"
+      @click="openPgdasdConsultConfirm"
+    >
+      <template #trailing>
+        <UKbd>{{ selectedCount }}</UKbd>
+      </template>
+    </UButton>
+
     <UDropdownMenu
       :items="items"
       :content="{ align: 'start' }"
     >
       <UButton
-        color="primary"
-        variant="soft"
+        color="neutral"
+        variant="outline"
         icon="i-lucide-list-checks"
-        label="Ações"
+        label="Mais ações"
         aria-label="Ações PGDAS-D, regime e DEFIS da seleção"
         :ui="COMPACT_BUTTON_LABEL_UI"
         :loading="busy"
@@ -153,6 +212,31 @@ async function confirmBatch() {
         </template>
       </UButton>
     </UDropdownMenu>
+
+    <ShellConfirmModal
+      v-model:open="pgdasdConfirmOpen"
+      title="Confirmar consulta PGDAS-D"
+      :description="`Será enfileirada 1 consulta PGDAS-D por cliente (${selectedCount}). Pode ser faturável.`"
+      content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
+      confirm-label="Confirmar consulta"
+      confirm-icon="i-lucide-refresh-cw"
+      :loading="busy"
+      confirm-test-id="pgdasd-bulk-consult-confirm"
+      @confirm="confirmPgdasdConsult"
+    >
+      <template #body>
+        <UAlert
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          title="Uma chamada por CNPJ (Integra Contador)"
+        >
+          <template #description>
+            O hub enfileira MONITOR PGDAS-D por contribuinte selecionado.
+          </template>
+        </UAlert>
+      </template>
+    </ShellConfirmModal>
 
     <ShellConfirmModal
       v-model:open="confirmOpen"

@@ -1,4 +1,4 @@
-import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+import type { TableColumn } from '@nuxt/ui'
 import { h } from 'vue'
 /**
  * Imports estáticos — NÃO usar resolveComponent aqui.
@@ -15,8 +15,6 @@ import UBadge from '@nuxt/ui/components/Badge.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type { SimplesMeiClientRow } from '~/types/fiscal-modules'
-import { documentActionVisible } from '~/types/fiscal-modules'
-import { resolveApiUrl } from '~/utils/api-url'
 import { formatDate, formatDateTime } from '~/utils/format'
 import {
   pgdasdDeclarationMeta,
@@ -24,7 +22,7 @@ import {
   pgdasdSummary,
   pgdasdTrackingMeta
 } from '~/utils/pgdasd'
-import { tableIconButton, tableIconGroup, tableIconMenu } from '~/utils/table-icon-slots'
+import { tableIconButton, tableIconGroup } from '~/utils/table-icon-slots'
 import { sortHeader } from '~/utils/table-sort'
 import { tableCellBadgeProps } from '~/utils/table-ui'
 import {
@@ -34,16 +32,12 @@ import {
   MONITORING_CONSULTED_LABEL,
   MONITORING_CONSULTED_META,
   MONITORING_HISTORY_LABEL,
-  MONITORING_TRACKING_LABEL,
-  MONITORING_TRACKING_META
+  MONITORING_TRACKING_LABEL
 } from '~/utils/monitoring-table-columns'
 
-/** Handlers fiscais ficam na toolbar (SelectionActions); a linha só mantém atalho de prévia. */
-
 /**
- * Renderer PGDAS-D — colunas de negócio (densidade compacta):
- * Cliente · Situação · Últ. Declaração · RBT12 · Ações informativas ·
- * Histórico local de comunicação · Consulta · Histórico fiscal.
+ * Renderer PGDAS-D — densidade minimalista:
+ * Cliente · Situação · Últ. Declaração · RBT12 · Ações · Hist. comunicação · Consulta · Histórico.
  * Seleção é acrescentada pelo shell autorizado antes de Cliente.
  */
 export function buildPgdasdColumns(options: {
@@ -51,6 +45,8 @@ export function buildPgdasdColumns(options: {
   onPreview: (row: SimplesMeiClientRow) => void
   onTracking: (row: SimplesMeiClientRow) => void
   onConfigure: (row: SimplesMeiClientRow) => void
+  onConsult?: (row: SimplesMeiClientRow) => void
+  canConsult?: boolean
 }): TableColumn<SimplesMeiClientRow>[] {
   const DeclarationIndicator = MonitoringPgdasdDeclarationIndicator
   const Rbt12Value = MonitoringPgdasdRbt12Value
@@ -72,7 +68,6 @@ export function buildPgdasdColumns(options: {
   }
 
   function rowActions(row: SimplesMeiClientRow) {
-    // Comunicação é somente informativa; não há switch nem envio nesta coluna.
     return tableIconGroup([
       tableIconButton({
         label: 'Ver destinatários e documentos locais',
@@ -92,70 +87,13 @@ export function buildPgdasdColumns(options: {
   function trackingCell(row: SimplesMeiClientRow) {
     const summary = pgdasdSummary(row)
     const meta = pgdasdTrackingMeta(summary?.communication?.tracking_status)
-    const documents = (summary?.documents || []).filter(document =>
-      Boolean(document.download_path?.trim())
-    )
-    const artifactHref = documentActionVisible(row.document)
-      ? row.document?.href?.trim() || null
-      : null
-
-    const documentLabel = (kind?: string | null): string => {
-      switch (String(kind || '').toUpperCase()) {
-        case 'DECLARACAO': return 'Declaração'
-        case 'RECIBO': return 'Recibo'
-        case 'NOTIFICACAO_MAED': return 'Notificação MAED'
-        case 'DARF_MAED': return 'DARF MAED'
-        case 'EXTRATO': return 'Extrato'
-        default: return 'Documento PGDAS-D'
-      }
-    }
-
-    const artifactsSlot = documents.length
-      ? tableIconMenu({
-          label: `${documents.length} documento(s) PGDAS-D disponível(is)`,
-          icon: 'i-lucide-files',
-          color: 'primary',
-          testId: 'pgdasd-artifacts-menu',
-          items: [documents.map(document => ({
-            label: documentLabel(document.kind),
-            icon: 'i-lucide-download',
-            to: document.download_path
-              ? resolveApiUrl(
-                  document.download_path,
-                  String(useRuntimeConfig().public.apiBase || '')
-                )
-              : undefined,
-            external: true,
-            target: '_blank'
-          }))] as DropdownMenuItem[][]
-        })
-      : tableIconButton({
-          label: artifactHref
-            ? (row.document?.label || 'Baixar anexo local')
-            : 'Nenhum anexo local disponível',
-          icon: 'i-lucide-download',
-          color: artifactHref ? 'primary' : 'neutral',
-          testId: 'pgdasd-tracking-attachment',
-          href: artifactHref,
-          disabled: !artifactHref
-        })
-
-    return tableIconGroup([
-      tableIconButton({
-        label: `Histórico local de comunicação: ${meta.label}`,
-        icon: meta.icon,
-        color: meta.color,
-        testId: 'pgdasd-tracking-status',
-        onClick: () => options.onTracking(row)
-      }),
-      artifactsSlot,
-      tableIconButton({
-        label: 'Abrir histórico local de comunicação',
-        icon: 'i-lucide-search',
-        testId: 'pgdasd-tracking',
-        onClick: () => options.onTracking(row)
-      })
-    ], 'pgdasd-tracking-group')
+    return tableIconButton({
+      label: `Histórico local de comunicação: ${meta.label}`,
+      icon: meta.icon,
+      color: meta.color,
+      testId: 'pgdasd-tracking',
+      onClick: () => options.onTracking(row)
+    })
   }
 
   return [
@@ -234,7 +172,7 @@ export function buildPgdasdColumns(options: {
       id: 'tracking',
       header: MONITORING_TRACKING_LABEL,
       enableSorting: false,
-      meta: { ...MONITORING_TRACKING_META },
+      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
       cell: ({ row }) => trackingCell(row.original)
     },
     {
@@ -243,7 +181,7 @@ export function buildPgdasdColumns(options: {
       meta: { ...MONITORING_CONSULTED_META },
       cell: ({ row }) => {
         const lastQuery = pgdasdSummary(row.original)?.last_valid_query_at
-        return h(UTooltip, {
+        const dateNode = h(UTooltip, {
           text: lastQuery
             ? `Última consulta válida: ${formatDateTime(lastQuery)}`
             : 'Nenhuma consulta produtiva válida'
@@ -253,6 +191,23 @@ export function buildPgdasdColumns(options: {
             'data-testid': 'pgdasd-last-query'
           }, formatDate(lastQuery))
         })
+        if (!options.canConsult || !options.onConsult) {
+          return dateNode
+        }
+        return h('div', { class: 'flex items-center gap-0.5' }, [
+          dateNode,
+          h(UTooltip, { text: 'Consultar PGDAS-D deste cliente' }, {
+            default: () => h(UButton, {
+              'size': 'xs',
+              'color': 'primary',
+              'variant': 'ghost',
+              'icon': 'i-lucide-refresh-cw',
+              'aria-label': 'Consultar PGDAS-D',
+              'data-testid': 'pgdasd-row-consult',
+              'onClick': () => options.onConsult?.(row.original)
+            })
+          })
+        ])
       }
     },
     {
