@@ -1,20 +1,106 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# Contexto e regras injetados pelo OpenSpec CLI nas instruções de artefatos.
+# Detalhe operacional do monorepo: AGENTS.md na raiz (não duplicar aqui).
+# Estado de specs/changes é dinâmico: consultar o CLI antes de criar ou alterar.
+# C<n>/N<n> são convenções documentais do time — o OpenSpec 1.6.0 não as valida.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+context: |
+  Idioma: conteúdo narrativo em pt-BR em proposal, design, specs, tasks, archive
+  e comunicação com o usuário. Preservar em inglês os headings/tokens estruturais
+  do schema OpenSpec (`## Why`, `## ADDED Requirements`, `### Requirement:`,
+  `#### Scenario:`, `**WHEN**`/`**THEN**`, checkboxes `- [ ] X.Y`), além de
+  identificadores de código, paths e nomes reais de API.
+
+  Produto: hub fiscal multi-escritório (NFS-e ADN, SEFAZ, SERPRO Integra Contador,
+  monitoramento MEI/Simples). Orquestração: Makefile + Docker Compose na raiz —
+  não trate `apps/api` ou `apps/web` como apps standalone fora do Compose.
+
+  Layout OpenSpec (versionado):
+  - openspec/specs/<capability>/spec.md — contrato permanente (SHALL do produto agora)
+  - openspec/changes/<change>/ — change ativa
+  - openspec/changes/archive/YYYY-MM-DD-<change>/ — pós-archive
+
+  Antes de propor/aplicar/sincronizar/arquivar: `openspec list --json`,
+  `openspec list --specs --json` e status da change; nunca presumir diretórios vazios
+  nem inventar inventário de capabilities.
+
+  Ciclo: propose → apply → verify → archive → commit no mesmo dia.
+  Unidade de change: um resultado implantável e verificável; slug kebab-case com
+  verbo no infinitivo; preferir 1 capability (máx. 2). Exceção transversal exige
+  justificativa no design — não omitir capabilities modificadas para caber no limite.
+  Mais de ~20 tasks, tasks que não cabem numa sessão focada ou fluxos implantáveis
+  de forma independente → dividir a change.
+
+  Dependências entre changes (DAG / ondas C<n>):
+  - C0: não depende de nenhuma change ativa.
+  - Cn: 1 + o maior nível C das changes ativas das quais depende.
+  - Main specs e archive são bases estáveis (fora do DAG ativo). Ciclos proibidos.
+  - Mesmo nível só em paralelo sem dependência nem conflito de ownership de capability.
+  - Toda dependência declara: slug, capability/contrato, marco (`specs`|`apply`|`verify`|`archive`)
+    e relação (`coordenada`|`bloqueante`). C<n> é ordem por dependência, nunca prioridade.
+
+  Dependências internas em tasks.md (níveis N<n>):
+  - N0 sem pré-requisito; Nn = 1 + max(N das dependências).
+  - Mesmo nível = paralelizável; dependências só para IDs de níveis menores; sem ciclos.
+  - Evidência/teste no mesmo nível da implementação. Último nível = só gates integrados.
+  - sync/archive/commit acontecem depois do checklist, no fechamento do workflow.
+
+  Stack:
+  - apps/api — Laravel 13, PHP 8.4, Horizon, Sanctum/Fortify, Postgres, Redis
+  - apps/web — Nuxt 4 SPA (ssr:false) + Nuxt UI 4, pnpm 11.9, Node 24
+  - services/mei — automação de portais MEI quando versionada (nunca serviço Compose)
+  - infra/docker — Dockerfiles/entrypoints; nginx same-origin em up/prod
+  - Dev HMR: `make dev` (API :8080, Nuxt :3000). Estático: `make up`.
+
+  Tenancy: tenant = Office via CurrentOffice; nunca confiar office_id do client HTTP;
+  PLATFORM_ADMIN global sem acesso fiscal implícito a tenants; rotas platform em
+  /api/v1/platform/* sem office context.
+
+  Segurança: SecureObjectStore (vault); VAULT_MASTER_KEY/APP_KEY fora do git;
+  sem PFX/tokens/XML bruto em JSON/logs; feature flags e canais SEFAZ/SERPRO/MEI
+  fail-closed (default OFF); never serviços mei/mei-worker no Compose.
+
+  UI: skills panel-ui → ui-archetype; template .local/reference/nuxt-dashboard-template
+  @ 0f30c09; locale/copy pt_BR; não redesenhar o shell do dashboard.
+
+  Verificação (espelhar CI da área tocada):
+  - API: composer validate --strict --no-check-publish; vendor/bin/pint --test; php artisan test
+  - Web: pnpm lint; typecheck; generate; test (+ fidelity/artifacts quando aplicável)
+  - Infra/OpenSpec: docker compose config --quiet; openspec validate --specs --strict
+    (+ change ativa com delta). Nunca validar path em archive/.
+
+rules:
+  proposal:
+    - "Escrever o conteúdo em pt-BR, preservando exatamente os headings estruturais do template (`## Why`, `## What Changes`, `## Capabilities`, `## Impact` e subtítulos estruturais)."
+    - "Declarar com fidelidade todas as capabilities novas e modificadas. Preferir 1 e limitar a 2; se transversal, dividir ou justificar a exceção no design."
+    - "Capabilities em kebab-case; consultar `openspec list --specs --json` antes de inventar nomes (reusar MODIFIED quando o contrato já existe)."
+    - "Dentro de `## Impact`, incluir `### Dependências entre changes` com: nível `C<n>`; bases estáveis; `Depende de` (slugs ou `nenhuma`); capability/contrato; marco exigido; relação (`coordenada`|`bloqueante`); `Desbloqueia`; condições de paralelismo."
+    - "Calcular `C0` sem upstream ativo e `Cn = 1 + max(C upstream)` nos demais; proibir ciclos; não usar o nível como prioridade."
+    - "Manter Non-goals explícitos (SERPRO live, parecer jurídico, mutações fiscais, flags ON, canais SEFAZ, mei no Compose, ops backup/restore indisponíveis) quando fora de escopo."
+    - "Proposal enxuta (por quê/o quê); o como fica em design. Se for só tooling/docs/ops sem novo SHALL, declarar e preferir archive com --skip-specs."
+  specs:
+    - "Conteúdo em pt-BR; preservar tokens estruturais: `## ADDED|MODIFIED|REMOVED|RENAMED Requirements`, `### Requirement:`, `#### Scenario:`, `**WHEN**`/`**THEN**`; em main specs: `## Purpose` e `## Requirements`."
+    - "Cada requirement com SHALL/MUST e ao menos um Scenario (`####`). MODIFIED copia o bloco inteiro do main antes de editar."
+    - "Declarar em delta toda capability realmente alterada; não esconder mudança de contrato para evitar dependência entre changes."
+    - "Main specs só com SHALL que o código + testes já atendem; ordem C/N e plano de implementação ficam em proposal/design/tasks."
+    - "Cobrir isolamento de tenant, papéis e fail-closed de flags/canais quando aplicável; nunca exigir defaults ON."
+  design:
+    - "Conteúdo em pt-BR; headings estruturais do template; decisões, trade-offs, riscos e non-goals — sem copiar o proposal."
+    - "Mapear apps/api (Domain|Services|Http|Jobs) vs apps/web (pages|composables|components) e, se couber, services/mei ou infra/docker."
+    - "Decidir Sanctum platform vs office context; jobs assíncronos via Horizon; UI via ui-archetype (não redesenhar shell)."
+    - "Com dependência entre changes ou ≥3 blocos de execução: incluir `## Mapa de dependências` (DAG, ownership, marcos, paralelo, rollout/rollback)."
+    - "Para cada upstream ativo: compatibilidade de contrato, arquivos compartilhados, gate coordenado/bloqueante e como não editar artefatos de outra change."
+    - "Riscos obrigatórios quando aplicável: vazamento entre offices, segredos em log/API, kill switches, bilhetagem SERPRO acidental, mei no Compose."
+  tasks:
+    - "Tasks em pt-BR; formato exato `- [ ] X.Y ...`; `[x]` só com implementação e evidência reais."
+    - "Agrupar por nível topológico `## <seq>. N<n> — <resultado>`: N0 sem deps; Nn só depende de IDs em níveis menores; omitir níveis vazios; sem ciclos nem deps no mesmo nível."
+    - "Em task dependente: linha indentada `Depende de: X.Y[, ...]`; dependência externa inclui slug da change e marco. Mesmo nível = paralelizável."
+    - "Cada task verificável e cabível numa sessão focada; evidência junto (ex.: `php artisan test --filter=…`, `pnpm lint|typecheck`, `openspec validate …`)."
+    - "Ordem típica: migrations/domínio → API/policies → jobs → UI → testes/gates. Não misturar plataforma global com mutação fiscal tenant sem seções claras."
+    - "Último nível = só gates integrados e evidências de prontidão. Não criar checkbox de sync/archive/commit — executar depois do checklist, com autorização."
+  apply:
+    - "Trabalhar só tasks pendentes da change ativa; marcar `[x]` somente com evidência real no mesmo passo."
+    - "Respeitar fail-closed (flags/SERPRO/MEI/SEFAZ) e nunca adicionar serviços mei/mei-worker ao Compose."
+    - "Não commitar .env, certs, vault, auth.json nem artefatos em storage privado."
+    - "Após bloco de tasks da área tocada, rodar o gate CI correspondente (api e/ou web e/ou compose/openspec)."
