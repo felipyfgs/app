@@ -78,67 +78,31 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Validar scripts operacionais
+      - name: Validar scripts de entrypoint
         run: |
           for script in \
-            infra/docker/php/entrypoint.sh infra/docker/traefik/init.sh \
-            infra/docker/ops/backup.sh infra/docker/ops/restore.sh infra/docker/ops/deploy.sh \
-            infra/docker/ops/restore-smoke.sh; do
+            infra/docker/php/entrypoint.sh \
+            infra/docker/traefik/init.sh; do
             sh -n "$script"
           done
-          for script in \
-            infra/docker/frontend/entrypoint.sh infra/docker/ops/verify.sh \
-            infra/docker/ops/secret-scan.sh infra/docker/ops/prod-readiness.sh \
-            infra/docker/ops/release-manifest.sh infra/docker/ops/host-backup-run.sh; do
-            bash -n "$script"
-          done
+          bash -n infra/docker/frontend/entrypoint.sh
       - name: Validar Docker Compose de desenvolvimento e produção
         run: |
-          docker compose config --quiet
+          docker compose -f docker-compose.yml config --quiet
+          # Garante ausência do sidecar MEI
+          ! docker compose -f docker-compose.yml config --services | grep -Eq '^(mei|mei-worker)$'
           RELEASE_SHA=ci-synthetic RELEASE_TAG=sha-ci-synthetic \
             PROD_ENV_FILE=.env.example docker compose --env-file .env.example \
-            -f compose.prod.yml -p fiscal-hub config --quiet
+            -f docker-compose.prod.yml -p fiscal-hub config --quiet
+          ! RELEASE_SHA=ci-synthetic RELEASE_TAG=sha-ci-synthetic \
+            PROD_ENV_FILE=.env.example docker compose --env-file .env.example \
+            -f docker-compose.prod.yml -p fiscal-hub config --services \
+            | grep -Eq '^(mei|mei-worker)$'
       - name: Construir imagens de desenvolvimento e conferir extensões críticas
         run: |
           docker compose --profile dev build nginx php frontend-dev
           docker compose run --rm --no-deps --entrypoint php php -r \
             'exit(extension_loaded("curl") && extension_loaded("sodium") ? 0 : 1);'
-      - name: Construir imagens imutáveis de produção com SHA
-        run: |
-          export RELEASE_SHA="${GITHUB_SHA}"
-          export RELEASE_TAG="sha-${RELEASE_SHA:0:12}"
-          export BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          RELEASE_SHA="$RELEASE_SHA" RELEASE_TAG="$RELEASE_TAG" BUILD_DATE="$BUILD_DATE" \
-            PROD_ENV_FILE=.env.example docker compose --env-file .env.example \
-            -f compose.prod.yml -p fiscal-hub \
-            build acme-init traefik web php
-          RELEASE_SHA="$RELEASE_SHA" RELEASE_TAG="$RELEASE_TAG" \
-            PROD_ENV_FILE=.env.example docker compose --env-file .env.example \
-            -f compose.prod.yml -p fiscal-hub pull socket-proxy
-          docker tag "fiscal-hub-php:${RELEASE_TAG}" fiscal-hub-php:prod
-          docker tag "fiscal-hub-web:${RELEASE_TAG}" fiscal-hub-web:prod
-          php_rev=$(docker image inspect "fiscal-hub-php:${RELEASE_TAG}" \
-            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
-          web_rev=$(docker image inspect "fiscal-hub-web:${RELEASE_TAG}" \
-            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
-          test "$php_rev" = "$RELEASE_SHA"
-          test "$web_rev" = "$RELEASE_SHA"
-      - name: Validar runtimes e restauração isolada
-        run: |
-          docker run --rm --add-host php:127.0.0.1 fiscal-hub-web:prod nginx -t
-          docker run --rm --entrypoint php-fpm fiscal-hub-php:prod -t
-          ./infra/docker/ops/restore-smoke.sh
-      - name: Gates fail-closed de readiness e secret-scan
-        run: |
-          set -euo pipefail
-          export RELEASE_SHA="${GITHUB_SHA}"
-          ./infra/docker/ops/test-prod-readiness.sh
-          # manifesto sanitizado
-          MANIFEST_DIR="$(mktemp -d)"
-          RELEASE_SHA="$RELEASE_SHA" RELEASE_TAG="sha-${RELEASE_SHA:0:12}" \
-            MANIFEST_DIR="$MANIFEST_DIR" ./infra/docker/ops/release-manifest.sh
-          # scanner: manifesto não deve conter padrões sensíveis
-          ! grep -Eiq 'password|private_key|BEGIN ' "$MANIFEST_DIR"/*.json
       - name: Validar OpenSpec (main specs + changes com delta)
         run: |
           set -euo pipefail

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM php:8.4-fpm-bookworm AS runtime
+FROM php:8.4-fpm-bookworm AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -35,7 +35,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-COPY app.ini /usr/local/etc/php/conf.d/99-app.ini
+COPY conf.d/php.ini /usr/local/etc/php/conf.d/99-app.ini
+COPY conf.d/opcache.ini /usr/local/etc/php/conf.d/99-opcache.ini
 COPY fpm.conf /usr/local/etc/php-fpm.d/zz-app.conf
 COPY --chmod=755 entrypoint.sh /usr/local/bin/app-entrypoint
 
@@ -48,7 +49,7 @@ RUN usermod -u 1000 www-data && groupmod -g 1000 www-data \
 ENTRYPOINT ["app-entrypoint"]
 CMD ["php-fpm"]
 
-FROM runtime AS prod
+FROM base AS prod
 
 ARG RELEASE_SHA=unknown
 ARG BUILD_DATE=
@@ -76,4 +77,4 @@ RUN composer install \
       /var/www/html/bootstrap/cache \
       /var/www/html/storage
 
-FROM runtime AS dev
+FROM base AS dev

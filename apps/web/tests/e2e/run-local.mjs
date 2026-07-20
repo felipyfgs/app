@@ -6,7 +6,7 @@ import process from 'node:process'
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const repoRoot = resolve(webRoot, '../..')
 const project = process.env.E2E_COMPOSE_PROJECT || 'fiscal-monitor-e2e'
-const composeArgs = ['compose', '-p', project, '-f', 'docker-compose.yml', '-f', 'docker-compose.e2e.yml']
+const composeArgs = ['compose', '-p', project, '-f', 'docker-compose.yml']
 const env = {
   ...process.env,
   COMPOSE_PROJECT_NAME: project,

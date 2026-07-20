@@ -48,54 +48,6 @@ x-php: &php
   security_opt:
     - no-new-privileges:true
 
-x-mei: &mei
-  build:
-    context: ./services/mei
-    target: runtime
-  env_file:
-    - path: ${PROD_ENV_FILE:-.env}
-      required: true
-  environment:
-    MEI_AUTOMATION_ENVIRONMENT: production
-    MEI_AUTOMATION_REDIS_URL: redis://redis:6379/4
-    MEI_AUTOMATION_HMAC_KEY_ID: ${MEI_AUTOMATION_HMAC_KEY_ID:-laravel}
-    MEI_AUTOMATION_HMAC_SECRET: ${MEI_AUTOMATION_HMAC_SECRET:-}
-    MEI_AUTOMATION_RESULT_TTL_SECONDS: ${MEI_AUTOMATION_RESULT_TTL_SECONDS:-900}
-    MEI_AUTOMATION_ARTIFACT_TTL_SECONDS: ${MEI_AUTOMATION_ARTIFACT_TTL_SECONDS:-300}
-    MEI_AUTOMATION_ARTIFACT_ROOT: /tmp/mei
-    MEI_AUTOMATION_LIVE_EGRESS_ENABLED: ${MEI_AUTOMATION_LIVE_EGRESS_ENABLED:-false}
-    MEI_AUTOMATION_FIXTURE_ENABLED: "false"
-    MEI_AUTOMATION_FIXTURE_ROOT: /app/fixtures
-    MEI_AUTOMATION_CAPTCHA_DRIVER: ${MEI_AUTOMATION_CAPTCHA_DRIVER:-manual}
-    MEI_AUTOMATION_CAPTCHA_BUDGET_MICROS: ${MEI_AUTOMATION_CAPTCHA_BUDGET_MICROS:-0}
-    MEI_AUTOMATION_NOPECHA_ENABLED: ${MEI_AUTOMATION_NOPECHA_ENABLED:-false}
-    MEI_AUTOMATION_NOPECHA_API_KEY: ${MEI_AUTOMATION_NOPECHA_API_KEY:-}
-    MEI_AUTOMATION_NOPECHA_OPERATION_ALLOWLIST: ${MEI_AUTOMATION_NOPECHA_OPERATION_ALLOWLIST:-}
-    MEI_AUTOMATION_NOPECHA_UNIT_COST_MICROS: ${MEI_AUTOMATION_NOPECHA_UNIT_COST_MICROS:-0}
-    MEI_AUTOMATION_NOPECHA_TIMEOUT_SECONDS: ${MEI_AUTOMATION_NOPECHA_TIMEOUT_SECONDS:-180}
-    MEI_AUTOMATION_NOPECHA_POLL_INTERVAL_SECONDS: ${MEI_AUTOMATION_NOPECHA_POLL_INTERVAL_SECONDS:-1}
-    # Mesmo padrao docapi: Chrome headed sob Xvfb (entrypoint). Override so via env.
-    MEI_AUTOMATION_BROWSER_HEADLESS: ${MEI_AUTOMATION_BROWSER_HEADLESS:-false}
-    MEI_AUTOMATION_BROWSER_CHANNEL: ${MEI_AUTOMATION_BROWSER_CHANNEL:-chrome}
-  volumes:
-    - mei_artifacts:/tmp/mei
-  read_only: true
-  tmpfs:
-    - /tmp:size=256m,mode=1777
-  init: true
-  restart: unless-stopped
-  pids_limit: 256
-  shm_size: 256mb
-  logging:
-    driver: json-file
-    options:
-      max-size: "10m"
-      max-file: "5"
-  security_opt:
-    - no-new-privileges:true
-  networks:
-    - app
-
 services:
   acme-init:
     build:
@@ -255,37 +207,6 @@ services:
       redis:
         condition: service_healthy
 
-  mei:
-    <<: *mei
-    image: fiscal-hub-mei:${RELEASE_TAG:-prod}
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      app:
-        aliases:
-          - mei
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=3)"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  mei-worker:
-    <<: *mei
-    image: fiscal-hub-mei-worker:${RELEASE_TAG:-prod}
-    command: ["celery", "-A", "mei.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=1", "--max-tasks-per-child=50"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "celery -A mei.celery_app:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 45s
-
   postgres:
     image: postgres:17-alpine
     environment:
@@ -329,7 +250,6 @@ volumes:
   redis_data:
   vault_data:
   private_storage:
-  mei_artifacts:
 
 networks:
   edge:
