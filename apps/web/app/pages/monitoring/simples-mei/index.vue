@@ -15,7 +15,7 @@ import { pgdasdSummary } from '~/utils/pgdasd'
 import { pgmeiSummary } from '~/utils/pgmei'
 import { MONITORING_SHARED_COLUMN_LABELS } from '~/utils/monitoring-table-columns'
 
-const { canExecuteHighRiskMutation, canManageClients, canTriggerSync } = useDashboard()
+const { canManageClients, canTriggerSync } = useDashboard()
 
 // Tab local (PGDASD default). URL permanece /monitoring/simples-mei.
 const submodule = ref(normalizeMonitoringSubmodule('simples_mei', undefined))
@@ -131,27 +131,6 @@ function clearSelection() {
   selectedCount.value = 0
 }
 
-function getSelectedClientIds() {
-  return selectedClientIds.value
-}
-
-function getSelectedCount() {
-  return selectedCount.value
-}
-
-function getSelectedAutomaticRequested() {
-  if (selectedClientIds.value.length === 0) return false
-  const idSet = new Set(selectedClientIds.value)
-  const selected = rows.value.filter(row => idSet.has(row.client_id))
-  if (selected.length === 0) return false
-  return selected.every((row) => {
-    if (isPgmei.value) {
-      return pgmeiSummary(row, pgmeiYear.value)?.communication?.automatic_requested === true
-    }
-    return pgdasdSummary(row)?.communication?.automatic_requested === true
-  })
-}
-
 // —— Modais compartilhados por cápsula ——
 const historyOpen = ref(false)
 const previewOpen = ref(false)
@@ -214,25 +193,6 @@ function openFor(row: SimplesMeiClientRow, kind: 'history' | 'preview' | 'tracki
 
 function openPgdasdHistory(row: SimplesMeiClientRow) {
   void navigateTo(`/monitoring/clients/${row.client_id}/pgdasd`)
-}
-
-function onPreferenceSaved(
-  row: SimplesMeiClientRow,
-  preference: PgdasdCommunicationPreference
-) {
-  if (isPgmei.value) {
-    if (row.detail.pgmei) row.detail.pgmei.communication = preference
-  } else if (row.detail.pgdasd) {
-    row.detail.pgdasd.communication = preference
-  }
-  row.detail.communication = preference
-  if (modalClientId.value === row.client_id) modalPreference.value = preference
-  void refresh()
-}
-
-function onModalPreferenceSaved(preference: PgdasdCommunicationPreference) {
-  const row = rows.value.find(item => item.client_id === modalClientId.value)
-  if (row) onPreferenceSaved(row, preference)
 }
 
 function openConsultConfirm(row: SimplesMeiClientRow) {
@@ -423,19 +383,8 @@ async function confirmPgmeiConsult() {
   }
 }
 
-const bulkHandlers = {
-  getSelectedClientIds,
-  getSelectedCount,
-  getSelectedAutomaticRequested,
-  onBulkClear: clearSelection,
-  onBulkRefresh: () => {
-    void refresh()
-  }
-}
-
 // Colunas só reagem a permissões/cápsula — não à seleção.
 const pgdasdActionHandlers = computed(() => ({
-  canManage: canManageClients.value,
   canQueryRegime: canTriggerSync.value,
   canQueryRegimeOption: canTriggerSync.value,
   canQueryRegimeResolution: canTriggerSync.value,
@@ -454,26 +403,20 @@ const pgdasdActionHandlers = computed(() => ({
 }))
 
 const pgdasdColumns = computed(() => buildPgdasdColumns({
-  canManage: canManageClients.value,
-  ...bulkHandlers,
   onHistory: openPgdasdHistory,
   onPreview: row => openFor(row, 'preview'),
   onTracking: row => openFor(row, 'tracking'),
   onConfigure: row => openFor(row, 'prefs'),
-  onPreferenceSaved
+  onPublicServices: row => openMeiPublicServices(row.client_id)
 }))
 
 const pgmeiColumns = computed(() => buildPgmeiColumns({
   year: pgmeiYear.value,
-  canManage: canManageClients.value,
-  canQueryDebt: canTriggerSync.value,
-  ...bulkHandlers,
   onHistory: row => openFor(row, 'history'),
   onConsult: openConsultConfirm,
   onPreview: row => openFor(row, 'preview'),
   onTracking: row => openFor(row, 'tracking'),
-  onConfigure: row => openFor(row, 'prefs'),
-  onPreferenceSaved
+  onConfigure: row => openFor(row, 'prefs')
 }))
 
 const columns = computed(() => {
@@ -607,7 +550,7 @@ watch(submodule, (next, prev) => {
         :selected-client-ids="ids"
         :selected-count="count"
         :year="pgmeiYear"
-        :can-use-public-services="canTriggerSync || canExecuteHighRiskMutation"
+        :can-use-public-services="canTriggerSync"
         @clear="clear"
         @refresh="refresh"
         @public-services="openMeiPublicServices"
@@ -645,8 +588,6 @@ watch(submodule, (next, prev) => {
     :client-id="modalClientId"
     :client-name="modalClientName"
     :preference="modalPreference"
-    :can-manage="canManageClients"
-    @saved="onModalPreferenceSaved"
   />
   <MonitoringRegimeCalendarModal
     v-if="isPgdasd"
@@ -694,7 +635,7 @@ watch(submodule, (next, prev) => {
     :cnpj-masked="modalCnpjMasked"
     :year="pgmeiYear"
   />
-  <MonitoringPgmeiCommunicationModals
+  <MonitoringPgdasdCommunicationModals
     v-if="isPgmei"
     v-model:preview-open="previewOpen"
     v-model:tracking-open="trackingOpen"
@@ -702,8 +643,8 @@ watch(submodule, (next, prev) => {
     :client-id="modalClientId"
     :client-name="modalClientName"
     :preference="modalPreference"
-    :can-manage="canManageClients"
-    @saved="onModalPreferenceSaved"
+    context="PGMEI"
+    :year="pgmeiYear"
   />
   <MonitoringMeiPublicServicesModal
     v-if="isPgmei"
@@ -711,8 +652,7 @@ watch(submodule, (next, prev) => {
     :client-id="publicServicesClientId"
     :client-name="publicServicesClientName"
     :cnpj-masked="publicServicesCnpjMasked"
-    :can-generate-das="canExecuteHighRiskMutation"
-    :can-consult-dasn="canTriggerSync"
+    :can-refresh="canTriggerSync"
   />
 
   <ShellConfirmModal

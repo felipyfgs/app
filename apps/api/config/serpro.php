@@ -80,6 +80,27 @@ return [
                     ],
                     'source_url' => 'https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/cenarios_trial/cenarios_dctfweb/',
                 ],
+                'mit.situacaoenc' => [
+                    'identity' => ['numero' => '00000000000000', 'tipo' => 2],
+                    'business_data' => [
+                        'protocoloEncerramento' => 'AuYb4wuDp0GvCij3GDOAsA==',
+                    ],
+                    'source_url' => 'https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/cenarios_trial/cenarios_mit/',
+                ],
+                'mit.consapuracao' => [
+                    'identity' => ['numero' => '00000000000000', 'tipo' => 2],
+                    'business_data' => ['IdApuracao' => 0],
+                    'source_url' => 'https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/cenarios_trial/cenarios_mit/',
+                ],
+                'mit.listaapuracoes' => [
+                    'identity' => ['numero' => '00000000000000', 'tipo' => 2],
+                    'business_data' => [
+                        'mesApuracao' => 1,
+                        'anoApuracao' => 2025,
+                        'situacaoApuracao' => 3,
+                    ],
+                    'source_url' => 'https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/cenarios_trial/cenarios_mit/',
+                ],
             ],
         ],
         'PRODUCTION' => [

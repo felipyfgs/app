@@ -2,7 +2,7 @@
  * Contrato transversal das colunas de carteira monitoring.
  *
  * Ordem canônica (quando o domínio tem comunicação):
- *   Cliente · Situação · [domínio] · Ações (prévia+envio) · Rastreio · Última consulta · Histórico
+ *   Cliente · Situação · [domínio] · Ações informativas · Histórico local · Última consulta · Histórico
  *
  * Módulos sem pipeline de comunicação (FGTS, declarações, …) usam só
  * `consulted` com o mesmo id/label — sem inventar switch/rastreio vazio.
@@ -17,7 +17,7 @@ export const MONITORING_CONSULTED_ID = 'consulted'
 /** Cabeçalho curto (tabela); tooltip/célula mantêm o sentido completo. */
 export const MONITORING_CONSULTED_LABEL = 'Consulta'
 export const MONITORING_TRACKING_ID = 'tracking'
-export const MONITORING_TRACKING_LABEL = 'Rastreio de envio'
+export const MONITORING_TRACKING_LABEL = 'Hist. comunicação'
 export const MONITORING_ACTIONS_ID = 'actions'
 export const MONITORING_ACTIONS_LABEL = 'Ações'
 export const MONITORING_HISTORY_ID = 'history'

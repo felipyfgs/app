@@ -100,30 +100,11 @@ function openFor(row: DctfwebClientRow, kind: 'history' | 'preview' | 'tracking'
   prefsOpen.value = kind === 'prefs'
 }
 
-function onPreferenceSaved(
-  row: DctfwebClientRow,
-  preference: PgdasdCommunicationPreference
-) {
-  if (row.detail.dctfweb) {
-    row.detail.dctfweb.communication = preference
-  }
-  row.detail.communication = preference
-  if (modalClientId.value === row.client_id) modalPreference.value = preference
-  void refresh()
-}
-
-function onModalPreferenceSaved(preference: PgdasdCommunicationPreference) {
-  const row = rows.value.find(item => item.client_id === modalClientId.value)
-  if (row) onPreferenceSaved(row, preference)
-}
-
 const dctfwebColumns = computed(() => buildDctfwebColumns({
-  canManage: canManageClients.value,
   onHistory: row => openFor(row, 'history'),
   onPreview: row => openFor(row, 'preview'),
   onTracking: row => openFor(row, 'tracking'),
-  onConfigure: row => openFor(row, 'prefs'),
-  onPreferenceSaved
+  onConfigure: row => openFor(row, 'prefs')
 }))
 
 const mitColumns = computed(() => buildMitColumns({
@@ -259,9 +240,7 @@ watch(submodule, (next, prev) => {
     :client-id="modalClientId"
     :client-name="modalClientName"
     :preference="modalPreference"
-    :can-manage="canManageClients"
     context="DCTFWEB"
-    @saved="onModalPreferenceSaved"
   />
   <MonitoringMitListaApuracoesModal
     v-if="isMit"

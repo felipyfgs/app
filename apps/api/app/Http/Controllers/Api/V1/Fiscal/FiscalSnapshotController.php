@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers\Api\V1\Fiscal;
 
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Services\Authorization\TenantAuthorization;
 use App\Services\FiscalMonitoring\FiscalEvidenceStore;
 use App\Services\FiscalMonitoring\FiscalQueryService;
 use App\Support\CurrentOffice;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -17,6 +21,7 @@ class FiscalSnapshotController extends Controller
         private readonly CurrentOffice $currentOffice,
         private readonly FiscalQueryService $queries,
         private readonly FiscalEvidenceStore $evidenceStore,
+        private readonly TenantAuthorization $authorization,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -62,6 +67,7 @@ class FiscalSnapshotController extends Controller
         if ($artifact === null) {
             return response()->json(['message' => 'Evidência não encontrada.'], 404);
         }
+        $this->assertCanRead($artifact);
 
         try {
             $bytes = $this->evidenceStore->readAuthorized($artifact, (int) $office->id);
@@ -122,10 +128,20 @@ class FiscalSnapshotController extends Controller
         return response()->json($page);
     }
 
-    private function assertCanRead(): void
+    private function assertCanRead(?Model $target = null): void
     {
-        if ($this->currentOffice->role() === null) {
-            abort(403, 'Perfil não resolvido.');
+        $actor = auth()->user();
+        $membership = $this->currentOffice->realMembership();
+        if (! $actor instanceof User
+            || $membership === null
+            || ! $membership->is_active
+            || ! $this->authorization->allows(
+                $actor,
+                TenantPermission::FiscalMonitoringView,
+                $target,
+            )
+        ) {
+            abort(403, 'Sem permissão para monitoramento fiscal.');
         }
     }
 }

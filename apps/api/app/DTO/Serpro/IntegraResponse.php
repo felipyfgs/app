@@ -107,11 +107,19 @@ final class IntegraResponse
                     return max(1, (int) ceil($raw / 1000));
                 }
 
+                if ($key === 'tempoEspera' && $raw > 180) {
+                    return max(1, (int) ceil($raw / 1000));
+                }
+
                 return max(1, $raw);
             }
             if (is_array($this->dados) && isset($this->dados[$key]) && is_numeric($this->dados[$key])) {
                 $raw = (int) $this->dados[$key];
                 if (str_contains($key, 'Ms') || str_contains($key, 'ms')) {
+                    return max(1, (int) ceil($raw / 1000));
+                }
+
+                if ($key === 'tempoEspera' && $raw > 180) {
                     return max(1, (int) ceil($raw / 1000));
                 }
 
@@ -121,7 +129,9 @@ final class IntegraResponse
 
         // ETag pode carregar tempoEspera em alguns fluxos SITFIS
         if ($this->etag !== null && preg_match('/tempoEspera[=:](\d+)/i', $this->etag, $m)) {
-            return max(1, (int) $m[1]);
+            $raw = (int) $m[1];
+
+            return $raw > 180 ? max(1, (int) ceil($raw / 1000)) : max(1, $raw);
         }
 
         return null;

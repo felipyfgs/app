@@ -5,7 +5,10 @@ namespace App\Services\Fiscal\ManualConsult;
 use App\Enums\ManualConsultEligibility;
 use App\Models\Client;
 use App\Models\FiscalMonitoringRun;
+use App\Models\FiscalSnapshot;
 use App\Models\Office;
+use App\Models\User;
+use App\Services\FiscalMonitoring\Projection\MonitoringQueryProjectionFactory;
 
 /**
  * Inventário tenant-scoped de consultas manuais + elegibilidade sanitizada.
@@ -16,6 +19,8 @@ final class ManualConsultInventoryService
     public function __construct(
         private readonly ManualConsultActionCatalog $catalog,
         private readonly ManualConsultEligibilityGate $eligibility,
+        private readonly MonitoringQueryProjectionFactory $projectionFactory,
+        private readonly ManualConsultReadPolicy $readPolicy,
     ) {}
 
     /**
@@ -29,6 +34,7 @@ final class ManualConsultInventoryService
         ?Client $client = null,
         ?string $surfaceKey = null,
         ?string $moduleKey = null,
+        ?User $actor = null,
     ): array {
         $environment = $this->eligibility->environment();
         $auth = $this->eligibility->authorizationFor($office, $environment);
@@ -36,6 +42,8 @@ final class ManualConsultInventoryService
 
         $actions = [];
         $ready = 0;
+        $canTrigger = $actor instanceof User
+            && $this->readPolicy->canTrigger($office, $client, $actor);
 
         foreach ($this->catalog->all() as $def) {
             if ($surfaceKey !== null && $surfaceKey !== '' && $def->surfaceKey !== $surfaceKey) {
@@ -53,6 +61,9 @@ final class ManualConsultInventoryService
                 $auth,
                 $environment,
             );
+            if ($status === ManualConsultEligibility::Ready && ! $canTrigger) {
+                $status = ManualConsultEligibility::PermissionDenied;
+            }
             if ($status === ManualConsultEligibility::Ready) {
                 $ready++;
             }
@@ -102,13 +113,10 @@ final class ManualConsultInventoryService
             'last_result_summary' => $client !== null
                 ? $this->lastResultSummary($office, $client, $def)
                 : null,
-            'operation_hint' => $def->operationKey,
         ];
     }
 
-    /**
-     * @return array{status: string|null, observed_at: string|null, run_id: int|null}|null
-     */
+    /** @return array<string, mixed>|null */
     private function lastResultSummary(
         Office $office,
         Client $client,
@@ -130,15 +138,25 @@ final class ManualConsultInventoryService
         }
         $run = $q->orderByDesc('id')->first();
 
-        if ($run === null) {
+        $snapshotQuery = FiscalSnapshot::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->where('client_id', $client->id)
+            ->where('system_code', $codes['system'])
+            ->where('service_code', $codes['service']);
+        if (($codes['operation'] ?? '') !== '') {
+            $snapshotQuery->where('operation_code', $codes['operation']);
+        }
+        $lastSnapshot = $snapshotQuery
+            ->where('is_current', true)
+            ->orderByDesc('observed_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($run === null && $lastSnapshot === null) {
             return null;
         }
 
-        return [
-            'status' => $run->status?->value ?? (string) $run->status,
-            'observed_at' => $run->finished_at?->toIso8601String()
-                ?? $run->updated_at?->toIso8601String(),
-            'run_id' => $run->id,
-        ];
+        return $this->projectionFactory->fromModels($run, $lastSnapshot)->toArray();
     }
 }

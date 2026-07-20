@@ -215,6 +215,7 @@ onMounted(load)
 
     <div class="shrink-0 px-4 pt-4 sm:px-6">
       <FiscalModuleAvailabilityBanner module-key="mailbox" />
+      <MonitoringSerproCoveragePanel compact class="mt-4" />
     </div>
 
     <!-- Inbox abaixo do navbar; navegação fiscal fica no sidebar. -->

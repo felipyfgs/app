@@ -12,9 +12,8 @@ const emit = defineEmits<{
   publicServices: [clientId: number]
 }>()
 
-const { batchAutomatic, requestConsult } = usePgmeiMonitoring()
+const { requestConsult } = usePgmeiMonitoring()
 const toast = useToast()
-const savingAutomatic = ref(false)
 const querying = ref(false)
 const confirmOpen = ref(false)
 
@@ -25,28 +24,6 @@ function validateSelection(): boolean {
     return false
   }
   return true
-}
-
-async function updateAutomatic(automaticRequested: boolean) {
-  if (savingAutomatic.value || !validateSelection()) return
-  savingAutomatic.value = true
-  try {
-    const updated = await batchAutomatic(props.selectedClientIds, automaticRequested)
-    toast.add({
-      title: `${updated.length} preferência(s) atualizada(s).`,
-      description: 'Modo template: nenhum envio foi realizado.',
-      color: 'success'
-    })
-    emit('clear')
-    emit('refresh')
-  } catch (caught) {
-    toast.add({
-      title: apiErrorMessage(caught, 'Nenhuma preferência do lote foi alterada.'),
-      color: 'error'
-    })
-  } finally {
-    savingAutomatic.value = false
-  }
 }
 
 function openQueryConfirmation() {
@@ -91,7 +68,7 @@ async function confirmQuery() {
       variant="soft"
       icon="i-lucide-refresh-cw"
       label="Consultar dívida"
-      :disabled="savingAutomatic"
+      :disabled="querying"
       @click="openQueryConfirmation"
     >
       <template #trailing>
@@ -107,24 +84,6 @@ async function confirmQuery() {
       label="Serviços MEI"
       data-testid="mei-public-services-open"
       @click="emit('publicServices', selectedClientIds[0]!)"
-    />
-    <UButton
-      size="sm"
-      color="primary"
-      variant="soft"
-      icon="i-lucide-toggle-right"
-      label="Ligar automático"
-      :loading="savingAutomatic"
-      @click="updateAutomatic(true)"
-    />
-    <UButton
-      size="sm"
-      color="neutral"
-      variant="outline"
-      icon="i-lucide-toggle-left"
-      label="Desligar"
-      :disabled="savingAutomatic"
-      @click="updateAutomatic(false)"
     />
   </div>
 

@@ -12,11 +12,9 @@ import {
 import UBadge from '@nuxt/ui/components/Badge.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UDropdownMenu from '@nuxt/ui/components/DropdownMenu.vue'
-import USwitch from '@nuxt/ui/components/Switch.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type {
-  DctfwebClientRow,
-  PgdasdCommunicationPreference
+  DctfwebClientRow
 } from '~/types/fiscal-modules'
 import {
   dctfwebDeclarationMeta,
@@ -41,19 +39,14 @@ import {
 
 /**
  * Renderer DCTFWeb — alinhado ao padrão PGDAS-D:
- * Cliente · Situação · Últ. Declaração · Ações (prévia+envio) · Rastreio ·
+ * Cliente · Situação · Últ. Declaração · Ações informativas · Histórico local ·
  * Última consulta · Histórico.
  */
 export function buildDctfwebColumns(options: {
-  canManage: boolean
   onHistory: (row: DctfwebClientRow) => void
   onPreview: (row: DctfwebClientRow) => void
   onTracking: (row: DctfwebClientRow) => void
   onConfigure: (row: DctfwebClientRow) => void
-  onPreferenceSaved: (
-    row: DctfwebClientRow,
-    preference: PgdasdCommunicationPreference
-  ) => void
 }): TableColumn<DctfwebClientRow>[] {
   function iconAction(args: {
     label: string
@@ -87,9 +80,8 @@ export function buildDctfwebColumns(options: {
         to: `/monitoring/clients/${row.client_id}`
       },
       {
-        label: 'Preferências de envio',
-        icon: 'i-lucide-settings-2',
-        disabled: !options.canManage,
+        label: 'Preferências registradas',
+        icon: 'i-lucide-info',
         onSelect: () => options.onConfigure(row)
       }
     ]
@@ -186,41 +178,20 @@ export function buildDctfwebColumns(options: {
       enableSorting: false,
       meta: { ...MONITORING_ACTIONS_META },
       cell: ({ row }) => {
-        const summary = dctfwebSummary(row.original)
-        const preference = summary?.communication
         const name = row.original.name || row.original.legal_name || `cliente ${row.original.client_id}`
         return tableIconGroup([
           tableIconButton({
-            label: 'Abrir prévia de envio',
-            icon: 'i-lucide-send',
-            color: 'primary',
-            testId: 'dctfweb-send-preview',
+            label: 'Ver destinatários e documentos locais',
+            icon: 'i-lucide-message-square-text',
+            testId: 'dctfweb-communication-info',
             onClick: () => options.onPreview(row.original)
           }),
-          h('div', {
-            'class': 'inline-flex size-8 items-center justify-center',
-            'data-testid': 'dctfweb-send-slot'
-          }, [
-            h(UTooltip, {
-              text: options.canManage
-                ? 'Registra intenção de envio (template). Nenhum envio real.'
-                : 'Somente ADMIN ou OPERATOR pode alterar.'
-            }, {
-              default: () => h(USwitch, {
-                'modelValue': preference?.automatic_requested === true,
-                'disabled': !options.canManage,
-                'size': 'sm',
-                'ariaLabel': preference?.automatic_requested
-                  ? 'Desativar envio automático'
-                  : 'Ativar envio automático',
-                'data-testid': 'dctfweb-send-switch',
-                'onUpdate:modelValue': () => {
-                  if (!options.canManage) return
-                  options.onConfigure(row.original)
-                }
-              })
-            })
-          ]),
+          tableIconButton({
+            label: 'Ver preferências registradas',
+            icon: 'i-lucide-info',
+            testId: 'dctfweb-communication-preferences',
+            onClick: () => options.onConfigure(row.original)
+          }),
           h(UDropdownMenu, {
             items: actionItems(row.original),
             content: { align: 'end' }
@@ -250,7 +221,7 @@ export function buildDctfwebColumns(options: {
             && summary.communication.tracking_status !== 'NOT_CONFIGURED')
         const tracking = dctfwebTrackingMeta(summary?.communication?.tracking_status)
         return iconAction({
-          label: hasTracking ? `Rastreio: ${tracking.label}` : 'Sem rastreio local',
+          label: hasTracking ? `Histórico local: ${tracking.label}` : 'Sem histórico local',
           icon: tracking.icon,
           color: hasTracking ? tracking.color : 'neutral',
           testId: 'dctfweb-tracking',

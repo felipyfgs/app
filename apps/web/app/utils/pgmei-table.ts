@@ -6,18 +6,13 @@ import { h } from 'vue'
  * e as células ficam vazias. @see table-sort.ts / pgdasd-table.ts
  */
 import {
-  FiscalClientCell,
-  MonitoringPgmeiAutomaticSwitch,
-  MonitoringPgmeiBulkAutomaticActions
+  FiscalClientCell
 } from '#components'
 import UBadge from '@nuxt/ui/components/Badge.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UIcon from '@nuxt/ui/components/Icon.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
-import type {
-  PgdasdCommunicationPreference,
-  SimplesMeiClientRow
-} from '~/types/fiscal-modules'
+import type { SimplesMeiClientRow } from '~/types/fiscal-modules'
 import { documentActionVisible } from '~/types/fiscal-modules'
 import { formatDate, formatDateTime } from '~/utils/format'
 import { pgdasdTrackingMeta } from '~/utils/pgdasd'
@@ -43,56 +38,40 @@ import {
 
 /**
  * Renderer PGMEI — colunas de negócio (densidade compacta):
- * Cliente · Situação · Ações (prévia+auto) · Rastreio de envio · Última consulta ·
+ * Cliente · Situação · Ações informativas · Histórico local de comunicação · Última consulta ·
  * Histórico. Sem colunas mensais do PGDAS-D.
  * Seleção é acrescentada pelo shell autorizado antes de Cliente.
  */
 export function buildPgmeiColumns(options: {
   year: number
-  canManage: boolean
-  canQueryDebt: boolean
-  /** Lidos no render do header (não no build) para não recriar colunas a cada seleção. */
-  getSelectedClientIds: () => number[]
-  getSelectedCount: () => number
-  getSelectedAutomaticRequested: () => boolean
-  onBulkClear: () => void
-  onBulkRefresh: () => void
   onHistory: (row: SimplesMeiClientRow) => void
   onConsult: (row: SimplesMeiClientRow) => void
   onPreview: (row: SimplesMeiClientRow) => void
   onTracking: (row: SimplesMeiClientRow) => void
   onConfigure: (row: SimplesMeiClientRow) => void
-  onPreferenceSaved: (
-    row: SimplesMeiClientRow,
-    preference: PgdasdCommunicationPreference
-  ) => void
+  onPublicServices: (row: SimplesMeiClientRow) => void
 }): TableColumn<SimplesMeiClientRow>[] {
-  const AutomaticSwitch = MonitoringPgmeiAutomaticSwitch
-  const BulkAutomaticSwitch = MonitoringPgmeiBulkAutomaticActions
-
   function rowActions(row: SimplesMeiClientRow) {
-    // Prévia + automático na mesma coluna; regimes/bulk ficam na toolbar.
+    // Comunicação é somente informativa; não há switch nem envio nesta coluna.
     return tableIconGroup([
       tableIconButton({
-        label: 'Abrir prévia de envio',
-        icon: 'i-lucide-send',
-        color: 'primary',
-        testId: 'pgmei-send-preview',
+        label: 'Ver destinatários cadastrados',
+        icon: 'i-lucide-message-square-text',
+        testId: 'pgmei-communication-info',
         onClick: () => options.onPreview(row)
       }),
-      h('div', {
-        'class': 'inline-flex size-8 items-center justify-center',
-        'data-testid': 'pgmei-send-slot'
-      }, [
-        h(AutomaticSwitch, {
-          clientId: row.client_id,
-          preference: pgmeiSummary(row, options.year)?.communication,
-          canManage: options.canManage,
-          onConfigure: () => options.onConfigure(row),
-          onSaved: (preference: PgdasdCommunicationPreference) =>
-            options.onPreferenceSaved(row, preference)
-        })
-      ])
+      tableIconButton({
+        label: 'Ver preferências registradas',
+        icon: 'i-lucide-info',
+        testId: 'pgmei-communication-preferences',
+        onClick: () => options.onConfigure(row)
+      }),
+      tableIconButton({
+        label: 'Abrir consultas CCMEI e DASN-SIMEI',
+        icon: 'i-lucide-badge-check',
+        testId: 'pgmei-public-consults',
+        onClick: () => options.onPublicServices(row)
+      })
     ], 'pgmei-actions-group')
   }
 
@@ -105,7 +84,7 @@ export function buildPgmeiColumns(options: {
 
     return tableIconGroup([
       tableIconButton({
-        label: `Status do envio: ${meta.label}`,
+        label: `Histórico local de comunicação: ${meta.label}`,
         icon: meta.icon,
         color: meta.color,
         testId: 'pgmei-tracking-status',
@@ -122,7 +101,7 @@ export function buildPgmeiColumns(options: {
         disabled: !artifactHref
       }),
       tableIconButton({
-        label: 'Abrir rastreio de envio',
+        label: 'Abrir histórico local de comunicação',
         icon: 'i-lucide-search',
         testId: 'pgmei-tracking',
         onClick: () => options.onTracking(row)
@@ -180,18 +159,7 @@ export function buildPgmeiColumns(options: {
     },
     {
       id: 'actions',
-      header: () => h('div', { class: 'flex items-center gap-1' }, [
-        h('span', MONITORING_ACTIONS_LABEL),
-        options.canManage
-          ? h(BulkAutomaticSwitch, {
-              selectedClientIds: options.getSelectedClientIds(),
-              selectedCount: options.getSelectedCount(),
-              modelValue: options.getSelectedAutomaticRequested(),
-              onClear: options.onBulkClear,
-              onRefresh: options.onBulkRefresh
-            })
-          : null
-      ]),
+      header: MONITORING_ACTIONS_LABEL,
       enableSorting: false,
       meta: { ...MONITORING_ACTIONS_META },
       cell: ({ row }) => rowActions(row.original)

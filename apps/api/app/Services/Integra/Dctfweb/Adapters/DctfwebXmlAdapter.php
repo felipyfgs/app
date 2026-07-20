@@ -11,6 +11,8 @@ use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebCompetenceResolver;
 use App\Services\Integra\Dctfweb\DctfwebDeclarationService;
 use App\Services\Integra\Dctfweb\DctfwebIntegraCaller;
+use App\Services\Integra\Dctfweb\DctfwebOfficialCodec;
+use RuntimeException;
 
 final class DctfwebXmlAdapter extends AbstractDctfwebAdapter
 {
@@ -18,6 +20,7 @@ final class DctfwebXmlAdapter extends AbstractDctfwebAdapter
         DctfwebIntegraCaller $caller,
         DctfwebCompetenceResolver $competences,
         private readonly DctfwebDeclarationService $declarations,
+        private readonly DctfwebOfficialCodec $codec,
     ) {
         parent::__construct($caller, $competences);
     }
@@ -40,24 +43,22 @@ final class DctfwebXmlAdapter extends AbstractDctfwebAdapter
     public function execute(FiscalAdapterRequest $request): FiscalAdapterResult
     {
         $periodKey = $this->resolvePeriodKey($request);
-        $response = $this->callUpstream($request, [
-            'competencia' => $periodKey,
-            'periodo' => $periodKey,
-        ]);
+        $response = $this->callUpstream($request, $this->codec->periodPayload($periodKey));
 
         if (! $response->success) {
             return $this->failedFromResponse($response);
         }
 
-        // Preferência por XML bruto no body; senão serializa JSON
-        $xml = $response->body['xml'] ?? $response->body['conteudo'] ?? null;
-        if (is_string($xml) && $xml !== '') {
-            $bytes = $xml;
-            $contentType = 'application/xml';
-        } else {
-            $bytes = DctfwebIntegraCaller::evidenceBytes($response->body);
-            $contentType = 'application/json';
+        if (! is_array($response->dados)) {
+            return FiscalAdapterResult::failed('Resposta CONSXMLDECLARACAO38 sem dados estruturados.', 'DCTFWEB_DADOS_INVALID');
         }
+        try {
+            $bytes = $this->codec->decodeXml($response->dados);
+        } catch (RuntimeException $e) {
+            return FiscalAdapterResult::failed($e->getMessage(), 'DCTFWEB_DOCUMENT_INVALID');
+        }
+        $contentType = 'application/xml';
+        $metadata = $this->codec->sanitize($response->dados);
 
         $projected = $this->declarations->projectArtifact(
             run: $request->run,
@@ -66,9 +67,9 @@ final class DctfwebXmlAdapter extends AbstractDctfwebAdapter
             periodKey: $periodKey,
             kind: DctfwebArtifactKind::Xml,
             evidenceBytes: $bytes,
-            body: $response->body,
+            body: $metadata,
             contentType: $contentType,
-            sourceVersion: isset($response->body['versao']) ? (string) $response->body['versao'] : null,
+            sourceVersion: isset($metadata['versao']) ? (string) $metadata['versao'] : null,
         );
 
         $situation = $response->simulated

@@ -65,7 +65,7 @@ final class MitListaApuracoesAdapter extends AbstractDctfwebAdapter
         }
 
         try {
-            $items = $this->codec->decode($response->body);
+            $items = $this->codec->decode(is_array($response->dados) ? $response->dados : []);
         } catch (InvalidArgumentException $e) {
             return FiscalAdapterResult::failed($e->getMessage(), 'MIT_LISTA_APURACOES_RESPONSE_INVALID', $this->coverage());
         }

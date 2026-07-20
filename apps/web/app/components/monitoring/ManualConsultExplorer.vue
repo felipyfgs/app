@@ -116,6 +116,14 @@ function openConfirm(action: ManualConsultAction) {
     })
     return
   }
+  if (requiresStructuredModuleUi(action)) {
+    toast.add({
+      title: 'Use os filtros da tela do módulo',
+      description: 'Esta consulta exige filtros estruturados e não aceita payload livre.',
+      color: 'warning'
+    })
+    return
+  }
   if (!clientId.value) {
     toast.add({ title: 'Selecione um cliente antes de consultar.', color: 'warning' })
     return
@@ -139,19 +147,25 @@ function buildParams(action: ManualConsultAction): Record<string, unknown> {
       }
       continue
     }
-    if (field.type === 'integer') {
+    if (field.type === 'object') {
+      throw new Error('Abra o módulo para preencher os filtros estruturados desta consulta.')
+    } else if (field.type === 'integer') {
       out[field.name] = Number(raw)
-    } else if (field.type === 'object') {
-      try {
-        out[field.name] = JSON.parse(String(raw))
-      } catch {
-        throw new Error(`${field.label}: JSON inválido`)
-      }
     } else {
       out[field.name] = String(raw)
     }
   }
   return out
+}
+
+function requiresStructuredModuleUi(action: ManualConsultAction): boolean {
+  return action.params_schema.some(field => field.type === 'object')
+}
+
+function actionControlTitle(action: ManualConsultAction): string {
+  if (!action.executable) return action.eligibility_label
+  if (requiresStructuredModuleUi(action)) return 'Preencha os filtros estruturados na tela do módulo'
+  return 'Confirmar consulta de leitura bilhetável'
 }
 
 async function confirmExecute() {
@@ -185,7 +199,7 @@ async function confirmExecute() {
 
 function eligibilityColor(action: ManualConsultAction): 'success' | 'warning' | 'error' | 'neutral' {
   if (action.executable) return 'success'
-  if (action.eligibility === 'adapter_missing') return 'neutral'
+  if (action.eligibility === 'adapter_missing' || action.eligibility === 'permission_denied') return 'neutral'
   if (action.eligibility === 'capability_off' || action.eligibility === 'module_off') return 'warning'
   return 'error'
 }
@@ -292,11 +306,13 @@ onMounted(async () => {
             {{ action.label }}
           </p>
           <p class="truncate text-xs text-muted">
-            {{ action.surface_key }}
-            <span v-if="action.last_result_summary?.status">
-              · última: {{ action.last_result_summary.status }}
-            </span>
+            {{ action.module_route }}
           </p>
+          <MonitoringQueryStateBadge
+            v-if="action.last_result_summary"
+            :projection="action.last_result_summary"
+            class="mt-1"
+          />
         </div>
         <div class="flex items-center gap-2">
           <UBadge
@@ -306,14 +322,22 @@ onMounted(async () => {
           >
             {{ action.eligibility_label }}
           </UBadge>
+          <UBadge
+            v-if="requiresStructuredModuleUi(action)"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            label="Filtros na tela do módulo"
+          />
           <UButton
+            v-if="canTriggerSync"
             size="sm"
             color="primary"
             variant="soft"
             icon="i-lucide-search"
             label="Consultar"
-            :disabled="!action.executable || !canTriggerSync || !clientId"
-            :title="action.executable ? 'Confirmar consulta bilhetável' : action.eligibility_label"
+            :disabled="!action.executable || !clientId || requiresStructuredModuleUi(action)"
+            :title="actionControlTitle(action)"
             data-testid="manual-consult-run"
             @click="openConfirm(action)"
           />
@@ -351,7 +375,7 @@ onMounted(async () => {
             Cliente #{{ clientId }} · {{ selected.eligibility_label }}
           </p>
           <div
-            v-for="field in selected.params_schema"
+            v-for="field in selected.params_schema.filter(item => item.type !== 'object')"
             :key="field.name"
             class="space-y-1"
           >
@@ -362,7 +386,7 @@ onMounted(async () => {
               <UInput
                 v-model="paramValues[field.name]"
                 class="w-full"
-                :placeholder="field.type === 'object' ? '{ ... }' : field.pattern || field.type"
+                :placeholder="field.pattern || field.type"
               />
             </UFormField>
           </div>

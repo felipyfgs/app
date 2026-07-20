@@ -23,6 +23,10 @@ const emit = defineEmits<{
 }>()
 
 const isControlled = computed(() => props.modelValue !== undefined)
+
+function updateModel(value: string | string[] | undefined): void {
+  if (value !== undefined) emit('update:modelValue', value)
+}
 </script>
 
 <template>
@@ -41,7 +45,7 @@ const isControlled = computed(() => props.modelValue !== undefined)
       label: 'min-w-0 truncate'
     }"
     :data-testid="testId"
-    @update:model-value="emit('update:modelValue', $event)"
+    @update:model-value="updateModel"
   >
     <template
       v-for="(_, name) in $slots"

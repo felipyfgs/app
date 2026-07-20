@@ -80,6 +80,7 @@ use App\Services\Fiscal\Guides\PagtowebPaymentCountAdapter;
 use App\Services\Fiscal\Guides\PagtowebPaymentListAdapter;
 use App\Services\Fiscal\Guides\SerproGuideEmissionClient;
 use App\Services\Fiscal\Guides\SicalcRevenueSupportAdapter;
+use App\Services\Fiscal\ManualConsult\ManualConsultExecutionContext;
 use App\Services\Fiscal\Mutations\IntegraFiscalMutationTransport;
 use App\Services\Fiscal\SimplesMei\CcmeiPostConsultService;
 use App\Services\Fiscal\SimplesMei\CcmeiRegistrationStatusPostConsultService;
@@ -183,6 +184,7 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(EffectivePermissionsResolver::class),
             ),
         );
+        $this->app->scoped(ManualConsultExecutionContext::class);
 
         $this->app->singleton(EnvelopeCrypto::class, function () {
             $masterKey = (string) config('vault.master_key', '');

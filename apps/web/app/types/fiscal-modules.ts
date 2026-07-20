@@ -283,6 +283,9 @@ export type FiscalDocumentUnavailableReason
     | 'NOT_SUPPORTED'
     | 'NOT_PRODUCTION'
     | 'NOT_COLLECTED'
+    | 'NOT_AVAILABLE'
+    | 'EXPIRED'
+    | 'INTEGRITY_REJECTED'
 
 /**
  * Descritor público de documento/evidência tenant-scoped.
@@ -308,6 +311,92 @@ export type FiscalMonitoringResultKind
     | 'AGGREGATE'
     | 'UNAVAILABLE'
 
+/** Classe pública da action; somente READ pode ser executada pelo workspace. */
+export type FiscalMonitoringOperationClass
+  = | 'READ'
+    | 'DOCUMENT_GENERATION'
+    | 'FISCAL_MUTATION'
+
+export type FiscalMonitoringDocumentPolicy
+  = | 'NEVER'
+    | 'WHEN_ARTIFACT'
+    | 'ASYNC_WHEN_READY'
+
+/** Estado público uniforme das consultas do workspace. */
+export type FiscalMonitoringQueryState
+  = | 'IDLE'
+    | 'QUEUED'
+    | 'PROCESSING'
+    | 'READY'
+    | 'NO_DATA'
+    | 'FAILED'
+    | 'BLOCKED'
+    | 'UNSUPPORTED'
+
+export type FiscalMonitoringFreshnessState = 'FRESH' | 'STALE' | 'UNKNOWN'
+
+export interface FiscalMonitoringFreshness {
+  state: FiscalMonitoringFreshnessState
+  age_seconds: number | null
+  ttl_seconds: number
+}
+
+export interface FiscalMonitoringSnapshotReference {
+  snapshot_id: number
+  observed_at: string | null
+  source_provenance: string
+  coverage: FiscalCoverageCode | string
+  freshness: FiscalMonitoringFreshness
+}
+
+export interface FiscalMonitoringQueryProjection {
+  state: FiscalMonitoringQueryState
+  /** Alias transitório emitido pelo backend; deve coincidir com state. */
+  status: FiscalMonitoringQueryState
+  state_label: string
+  observed_at: string | null
+  source_provenance: string
+  coverage: FiscalCoverageCode | string
+  reason_code: string | null
+  run_id: number | null
+  freshness: FiscalMonitoringFreshness
+  last_snapshot: FiscalMonitoringSnapshotReference | null
+  has_preserved_snapshot: boolean
+}
+
+export interface MonitoringCoverageParameterField {
+  name: string
+  type: string
+  required: boolean
+  label: string
+  pattern?: string | null
+}
+
+export interface MonitoringCoverageAction {
+  action_key: string
+  label: string
+  operation_class: FiscalMonitoringOperationClass
+  params_schema: MonitoringCoverageParameterField[]
+  result_kind: FiscalMonitoringResultKind
+  document_policy: FiscalMonitoringDocumentPolicy
+  available: boolean
+  official_state: string
+  source_label: string
+  async: boolean
+  output_fields: MonitoringCoverageOutputField[]
+  trial_scenario_available: boolean
+  request_documented: boolean
+  response_documented: boolean
+}
+
+export interface MonitoringCoverageCapability {
+  capability_key: string
+  label: string
+  actions_total: number
+  available_actions: number
+  actions: MonitoringCoverageAction[]
+}
+
 /**
  * Resumo público da superfície no overview (`data.surface`).
  * Sem idSistema/idServico/operation_key.
@@ -320,6 +409,47 @@ export interface FiscalMonitoringSurfaceSummary {
   allows_document: boolean
   official_state_label: string
   channel_label: string
+  source_label: string
+  capabilities?: MonitoringCoverageCapability[]
+}
+
+export interface MonitoringCoverageOutputField {
+  name: string
+  type: string
+}
+
+export interface MonitoringCoverageOperation {
+  action_key: string
+  label: string
+  route: string
+  official_state: string
+  is_mutating: boolean
+  trial_scenario_available: boolean
+  request_documented: boolean
+  response_documented: boolean
+  output_fields: MonitoringCoverageOutputField[]
+}
+
+export interface MonitoringCoverageSurface extends FiscalMonitoringSurfaceSummary {
+  capabilities: MonitoringCoverageCapability[]
+  operations_total: number
+  production_operations: number
+  mutating_operations: number
+  trial_scenarios: number
+  operations: MonitoringCoverageOperation[]
+}
+
+export interface MonitoringCoverageContract {
+  manifest_version: string
+  verified_at: string
+  truth_note: string
+  totals: {
+    surfaces: number
+    catalog_operations: number
+    surface_operations: number
+    trial_scenarios: number
+  }
+  surfaces: MonitoringCoverageSurface[]
 }
 
 /** true somente com artefato real: available + href não vazio. */
@@ -327,6 +457,7 @@ export function documentActionVisible(
   doc?: FiscalDocumentDescriptor | null
 ): boolean {
   if (!doc || doc.available !== true) return false
+  if (doc.unavailable_reason != null && String(doc.unavailable_reason).trim() !== '') return false
   const href = typeof doc.href === 'string' ? doc.href.trim() : ''
   return href.length > 0
 }
@@ -347,6 +478,12 @@ export function documentUnavailableLabel(
       return 'Operação não produtiva'
     case 'NOT_COLLECTED':
       return 'Documento ainda não coletado'
+    case 'NOT_AVAILABLE':
+      return 'Documento não disponível'
+    case 'EXPIRED':
+      return 'Documento expirado pela política de retenção'
+    case 'INTEGRITY_REJECTED':
+      return 'Documento rejeitado pela verificação de integridade'
     default:
       return null
   }
@@ -1501,8 +1638,10 @@ export type ManualConsultEligibility
     | 'capability_off'
     | 'token_missing'
     | 'power_missing'
+    | 'power_refreshing'
     | 'adapter_missing'
     | 'mutating_blocked'
+    | 'permission_denied'
 
 export interface ManualConsultParamField {
   name: string
@@ -1513,9 +1652,31 @@ export interface ManualConsultParamField {
 }
 
 export interface ManualConsultLastResultSummary {
+  state?: 'IDLE' | 'QUEUED' | 'PROCESSING' | 'READY' | 'NO_DATA' | 'FAILED' | 'BLOCKED' | 'UNSUPPORTED'
   status?: string | null
+  state_label?: string | null
   observed_at?: string | null
+  source_provenance?: string | null
+  coverage?: string | null
+  reason_code?: string | null
   run_id?: number | null
+  freshness?: {
+    state: 'FRESH' | 'STALE' | 'UNKNOWN'
+    age_seconds?: number | null
+    ttl_seconds: number
+  }
+  last_snapshot?: {
+    snapshot_id: number
+    observed_at?: string | null
+    source_provenance: string
+    coverage: string
+    freshness: {
+      state: 'FRESH' | 'STALE' | 'UNKNOWN'
+      age_seconds?: number | null
+      ttl_seconds: number
+    }
+  } | null
+  has_preserved_snapshot?: boolean
 }
 
 export interface ManualConsultAction {
@@ -1530,7 +1691,6 @@ export interface ManualConsultAction {
   async: boolean
   params_schema: ManualConsultParamField[]
   last_result_summary?: ManualConsultLastResultSummary | null
-  operation_hint?: string | null
 }
 
 export interface ManualConsultInventory {

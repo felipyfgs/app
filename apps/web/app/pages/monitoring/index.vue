@@ -325,6 +325,8 @@ onMounted(load)
         data-testid="monitoring-manual-consult-explorer"
       />
 
+      <MonitoringSerproCoveragePanel all-surfaces class="mb-6" />
+
       <ShellPanelAccordion
         class="mb-4 lg:mb-6"
         :items="panelItems"

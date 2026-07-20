@@ -10,14 +10,11 @@ use App\DTO\Fiscal\Module\ModuleClientRowDto;
 use App\DTO\Fiscal\Module\ModuleCountersDto;
 use App\DTO\Fiscal\Module\ModuleOverviewDto;
 use App\DTO\Fiscal\Module\ModulePortfolioFilters;
-use App\Enums\DocumentUnavailableReason;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalDataOrigin;
 use App\Enums\FiscalLinkStatus;
 use App\Enums\FiscalModuleKey;
 use App\Enums\FiscalSituation;
-use App\Enums\MonitoringDocumentPolicy;
-use App\Enums\MonitoringResultKind;
 use App\Enums\TaxInstallmentParcelStatus;
 use App\Models\Client;
 use App\Models\FgtsCompetenceStatus;
@@ -39,6 +36,8 @@ use App\Models\TaxObligationProjection;
 use App\Services\Fiscal\Dctfweb\DctfwebMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiMonitoringQueryService;
+use App\Services\FiscalMonitoring\FiscalCoverageAggregator;
+use App\Services\FiscalMonitoring\FiscalDocumentDescriptorFactory;
 use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceContract;
 use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceRegistry;
 use Carbon\CarbonImmutable;
@@ -58,6 +57,8 @@ final class ModulePortfolioQueryService
     public function __construct(
         private readonly DataOriginResolver $dataOrigin,
         private readonly MonitoringSurfaceRegistry $surfaces,
+        private readonly FiscalDocumentDescriptorFactory $documentDescriptors,
+        private readonly FiscalCoverageAggregator $coverageAggregator,
     ) {}
 
     public function overview(
@@ -76,6 +77,11 @@ final class ModulePortfolioQueryService
         $categorySummaries = $this->categorySummaries($office, $categories, $filters);
         $asOf = $this->latestObservedAt($office, $module, $filters);
         $coverage = $this->moduleDefaultCoverage($categories);
+        if ($module === FiscalModuleKey::Fgts
+            && $coverage === FiscalCoverage::Full->value
+        ) {
+            $coverage = FiscalCoverage::Partial->value;
+        }
 
         return new ModuleOverviewDto(
             moduleKey: $module,
@@ -159,8 +165,13 @@ final class ModulePortfolioQueryService
             $competence = $client->getAttribute('portfolio_competence');
             $lastConsulted = $client->getAttribute('portfolio_last_consulted_at');
             $cnpj = $matrixCnpjs[$id] ?? null;
-            $coverage = $coverages[$id] ?? FiscalCoverage::Unknown->value;
             $detail = $details[$id] ?? ['module_key' => $module->value];
+            $coverage = $coverages[$id] ?? FiscalCoverage::Unknown->value;
+            if ($module === FiscalModuleKey::Fgts
+                && is_string($detail['coverage'] ?? null)
+            ) {
+                $coverage = (string) $detail['coverage'];
+            }
             $deadline = $deadlines[$id] ?? null;
 
             return new ModuleClientRowDto(
@@ -429,17 +440,24 @@ final class ModulePortfolioQueryService
         $categoryIds = $this->categoryIdsForModule($module, $filters->submodule);
         $sysList = $this->quoteList($systemCodes);
 
-        // COALESCE(snapshot.coverage, link.coverage, 'UNKNOWN') IN (…)
+        // Agrega todas as dimensões correntes com a mesma política do payload.
         $snapshotCoverage = <<<SQL
 (
-    SELECT fs.coverage
+    SELECT CASE
+        WHEN SUM(CASE WHEN fs.coverage = 'PARTIAL' THEN 1 ELSE 0 END) > 0 THEN 'PARTIAL'
+        WHEN SUM(CASE WHEN fs.coverage = 'FULL' THEN 1 ELSE 0 END) > 0
+         AND SUM(CASE WHEN fs.coverage IN ('UNSUPPORTED', 'UNKNOWN') THEN 1 ELSE 0 END) > 0 THEN 'PARTIAL'
+        WHEN SUM(CASE WHEN fs.coverage = 'FULL' THEN 1 ELSE 0 END) > 0 THEN 'FULL'
+        WHEN SUM(CASE WHEN fs.coverage = 'UNKNOWN' THEN 1 ELSE 0 END) > 0 THEN 'UNKNOWN'
+        WHEN SUM(CASE WHEN fs.coverage = 'UNSUPPORTED' THEN 1 ELSE 0 END) > 0 THEN 'UNSUPPORTED'
+        WHEN SUM(CASE WHEN fs.coverage = 'NOT_APPLICABLE' THEN 1 ELSE 0 END) > 0 THEN 'NOT_APPLICABLE'
+        ELSE NULL
+    END
     FROM fiscal_snapshots fs
     WHERE fs.office_id = {$office->id}
       AND fs.client_id = clients.id
       AND fs.is_current = true
       AND fs.system_code IN ({$sysList})
-    ORDER BY fs.observed_at DESC, fs.id DESC
-    LIMIT 1
 )
 SQL;
 
@@ -449,14 +467,21 @@ SQL;
 
         $linkCoverage = <<<SQL
 (
-    SELECT ofcl.coverage
+    SELECT CASE
+        WHEN SUM(CASE WHEN ofcl.coverage = 'PARTIAL' THEN 1 ELSE 0 END) > 0 THEN 'PARTIAL'
+        WHEN SUM(CASE WHEN ofcl.coverage = 'FULL' THEN 1 ELSE 0 END) > 0
+         AND SUM(CASE WHEN ofcl.coverage IN ('UNSUPPORTED', 'UNKNOWN') THEN 1 ELSE 0 END) > 0 THEN 'PARTIAL'
+        WHEN SUM(CASE WHEN ofcl.coverage = 'FULL' THEN 1 ELSE 0 END) > 0 THEN 'FULL'
+        WHEN SUM(CASE WHEN ofcl.coverage = 'UNKNOWN' THEN 1 ELSE 0 END) > 0 THEN 'UNKNOWN'
+        WHEN SUM(CASE WHEN ofcl.coverage = 'UNSUPPORTED' THEN 1 ELSE 0 END) > 0 THEN 'UNSUPPORTED'
+        WHEN SUM(CASE WHEN ofcl.coverage = 'NOT_APPLICABLE' THEN 1 ELSE 0 END) > 0 THEN 'NOT_APPLICABLE'
+        ELSE NULL
+    END
     FROM office_fiscal_category_links ofcl
     WHERE ofcl.office_id = {$office->id}
       AND ofcl.client_id = clients.id
       AND ofcl.status = 'ACTIVE'
       AND ofcl.fiscal_category_id IN ({$catList})
-    ORDER BY ofcl.id DESC
-    LIMIT 1
 )
 SQL;
 
@@ -1116,20 +1141,9 @@ SQL);
             return FiscalCoverage::Unknown->value;
         }
 
-        // Se qualquer categoria for PARTIAL/UNSUPPORTED, expõe o pior
-        $values = $categories->map(fn (FiscalCategory $c) => $c->default_coverage?->value)->filter();
-        foreach ([
-            FiscalCoverage::Unsupported->value,
-            FiscalCoverage::Partial->value,
-            FiscalCoverage::Unknown->value,
-            FiscalCoverage::Full->value,
-        ] as $candidate) {
-            if ($values->contains($candidate)) {
-                return $candidate;
-            }
-        }
-
-        return FiscalCoverage::Unknown->value;
+        return $this->coverageAggregator->aggregate(
+            $categories->map(fn (FiscalCategory $category) => $category->default_coverage),
+        )->value;
     }
 
     /**
@@ -1149,54 +1163,17 @@ SQL);
         }
 
         $surface = $this->surfaces->resolveForModule($module, $filters->submodule);
-        $unavailable = $this->unavailableReasonForSurface($surface);
-
-        if (! $surface->allowsDocument || $unavailable !== null) {
-            $reason = $unavailable ?? DocumentUnavailableReason::NotSupported;
-            $map = [];
-            foreach ($clientIds as $cid) {
-                $map[$cid] = FiscalDocumentDescriptorDto::unavailable($reason, $surface);
-            }
-
-            return $map;
-        }
-
         $artifactsByClient = $this->latestArtifactsByClient($office, $clientIds, $surface);
         $map = [];
         foreach ($clientIds as $cid) {
-            $artifact = $artifactsByClient[$cid] ?? null;
-            if ($artifact === null) {
-                $map[$cid] = FiscalDocumentDescriptorDto::unavailable(
-                    DocumentUnavailableReason::NotCollected,
-                    $surface,
-                );
-
-                continue;
-            }
-
-            $map[$cid] = FiscalDocumentDescriptorDto::fromArtifact($artifact, $surface, $office);
+            $map[$cid] = $this->documentDescriptors->forSurface(
+                $office,
+                $surface,
+                $artifactsByClient[$cid] ?? null,
+            );
         }
 
         return $map;
-    }
-
-    private function unavailableReasonForSurface(MonitoringSurfaceContract $surface): ?DocumentUnavailableReason
-    {
-        if ($surface->resultKind === MonitoringResultKind::Unavailable) {
-            return DocumentUnavailableReason::NotProduction;
-        }
-
-        if (! $surface->allowsDocument
-            || $surface->documentPolicy === MonitoringDocumentPolicy::Never
-        ) {
-            return match ($surface->resultKind) {
-                MonitoringResultKind::Structured => DocumentUnavailableReason::StructuredOnly,
-                MonitoringResultKind::Unavailable => DocumentUnavailableReason::NotProduction,
-                default => DocumentUnavailableReason::NotSupported,
-            };
-        }
-
-        return null;
     }
 
     /**
@@ -1303,11 +1280,10 @@ SQL);
             ->get(['client_id', 'coverage']);
 
         $map = [];
-        foreach ($rows as $row) {
-            $cid = (int) $row->client_id;
-            if (! isset($map[$cid])) {
-                $map[$cid] = $row->coverage?->value ?? FiscalCoverage::Unknown->value;
-            }
+        foreach ($rows->groupBy('client_id') as $clientId => $clientRows) {
+            $map[(int) $clientId] = $this->coverageAggregator->aggregate(
+                $clientRows->map(fn (FiscalSnapshot $snapshot) => $snapshot->coverage),
+            )->value;
         }
 
         // Cobertura do vínculo quando não há snapshot
@@ -1319,10 +1295,12 @@ SQL);
             ->whereIn('fiscal_category_id', $this->categoryIdsForModule($module, $filters->submodule))
             ->get(['client_id', 'coverage']);
 
-        foreach ($linkCoverages as $link) {
-            $cid = (int) $link->client_id;
+        foreach ($linkCoverages->groupBy('client_id') as $clientId => $links) {
+            $cid = (int) $clientId;
             if (! isset($map[$cid])) {
-                $map[$cid] = $link->coverage?->value ?? FiscalCoverage::Unknown->value;
+                $map[$cid] = $this->coverageAggregator->aggregate(
+                    $links->map(fn (OfficeFiscalCategoryLink $link) => $link->coverage),
+                )->value;
             }
         }
 

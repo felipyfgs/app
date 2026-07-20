@@ -19,13 +19,12 @@ export type PgdasdBatchConsultKind
     | 'defis_latest'
 
 export type PgdasdActionHandlers = {
-  canManage: boolean
   canQueryRegime: boolean
   canQueryRegimeOption: boolean
   canQueryRegimeResolution: boolean
   canQueryDefis: boolean
   canQueryDefisLatest: boolean
-  /** Cliente único (histórico local / preferências / prévia). */
+  /** Cliente único (histórico local / preferências registradas / destinatários). */
   onConfigure: (row: SimplesMeiClientRow) => void
   onRegimeHistory: (row: SimplesMeiClientRow) => void
   onRegimeOptionHistory: (row: SimplesMeiClientRow) => void
@@ -67,21 +66,21 @@ export function buildPgdasdSelectionMenu(args: {
 
   const hub: DropdownMenuItem[] = [
     {
-      label: 'Hub · comunicação',
+      label: 'Comunicação · somente leitura',
       type: 'label'
     },
     {
-      label: 'Configurar comunicação',
-      icon: 'i-lucide-settings-2',
-      disabled: !handlers.canManage || singleOnly,
+      label: 'Preferências registradas',
+      icon: 'i-lucide-info',
+      disabled: singleOnly,
       description: singleOnly ? singleHint : undefined,
       onSelect: () => single && handlers.onConfigure(single)
     }
   ]
   if (handlers.onPreview) {
     hub.push({
-      label: 'Prévia de envio',
-      icon: 'i-lucide-send',
+      label: 'Destinatários e documentos locais',
+      icon: 'i-lucide-message-square-text',
       disabled: singleOnly,
       description: singleOnly ? singleHint : undefined,
       onSelect: () => single && handlers.onPreview?.(single)
@@ -89,7 +88,7 @@ export function buildPgdasdSelectionMenu(args: {
   }
   if (handlers.onTracking) {
     hub.push({
-      label: 'Rastreio de envio',
+      label: 'Histórico local de comunicação',
       icon: 'i-lucide-search',
       disabled: singleOnly,
       description: singleOnly ? singleHint : undefined,

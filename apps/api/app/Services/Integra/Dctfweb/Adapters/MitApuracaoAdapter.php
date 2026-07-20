@@ -7,6 +7,7 @@ use App\DTO\Fiscal\FiscalAdapterResult;
 use App\Enums\DctfwebArtifactKind;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalSituation;
+use App\Enums\SerproEnvironment;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebCompetenceResolver;
 use App\Services\Integra\Dctfweb\DctfwebDeclarationService;
@@ -47,21 +48,41 @@ final class MitApuracaoAdapter extends AbstractDctfwebAdapter
     public function execute(FiscalAdapterRequest $request): FiscalAdapterResult
     {
         $periodKey = $this->resolvePeriodKey($request);
-        $response = $this->callUpstream($request, [
-            'competencia' => $periodKey,
-            'periodo' => $periodKey,
-        ]);
+        $existing = $this->mit->findOrCreate($request->office, $request->client, $periodKey);
+        $metadata = is_array($existing->metadata) ? $existing->metadata : [];
+        $listMetadata = is_array($metadata['lista_apuracoes_317'] ?? null)
+            ? $metadata['lista_apuracoes_317']
+            : [];
+        $idApuracao = $request->progress['idApuracao']
+            ?? $request->progress['id_apuracao']
+            ?? $request->context['idApuracao']
+            ?? $request->context['id_apuracao']
+            ?? ($listMetadata['id_apuracao'] ?? null);
+
+        if (! is_numeric($idApuracao) && $this->caller->resolveEnvironment() === SerproEnvironment::Production) {
+            return FiscalAdapterResult::failed(
+                'CONSAPURACAO316 exige idApuracao obtido por LISTAAPURACOES317.',
+                'MIT_ID_APURACAO_REQUIRED',
+                $this->coverage(),
+            );
+        }
+
+        $payload = is_numeric($idApuracao) ? ['IdApuracao' => (int) $idApuracao] : [];
+        $response = $this->callUpstream($request, $payload);
 
         if (! $response->success) {
             return $this->failedFromResponse($response);
         }
 
-        $bytes = DctfwebIntegraCaller::evidenceBytes($response->body);
+        if (! is_array($response->dados)) {
+            return FiscalAdapterResult::failed('Resposta CONSAPURACAO316 sem dados estruturados.', 'MIT_DADOS_INVALID', $this->coverage());
+        }
+        $bytes = DctfwebIntegraCaller::evidenceBytes($response->dados);
         $mit = $this->mit->projectApuracao(
             $request->office,
             $request->client,
             $periodKey,
-            $response->body,
+            $response->dados,
         );
 
         $this->declarations->projectArtifact(
@@ -71,7 +92,7 @@ final class MitApuracaoAdapter extends AbstractDctfwebAdapter
             periodKey: $periodKey,
             kind: DctfwebArtifactKind::ApuracaoMit,
             evidenceBytes: $bytes,
-            body: $response->body,
+            body: $response->dados,
         );
 
         $situation = $response->simulated

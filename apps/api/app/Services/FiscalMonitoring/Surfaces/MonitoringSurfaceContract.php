@@ -2,6 +2,7 @@
 
 namespace App\Services\FiscalMonitoring\Surfaces;
 
+use App\Enums\FiscalOperationClass;
 use App\Enums\MonitoringChannel;
 use App\Enums\MonitoringDocumentPolicy;
 use App\Enums\MonitoringOfficialStateSummary;
@@ -15,6 +16,7 @@ final readonly class MonitoringSurfaceContract
 {
     /**
      * @param  list<string>  $operationKeys
+     * @param  list<MonitoringCapabilityContract>  $capabilityContracts
      */
     public function __construct(
         public string $surfaceKey,
@@ -27,6 +29,7 @@ final readonly class MonitoringSurfaceContract
         public bool $allowsDocument,
         public MonitoringDocumentPolicy $documentPolicy,
         public string $sourceLabel,
+        public array $capabilityContracts = [],
     ) {}
 
     /**
@@ -39,7 +42,8 @@ final readonly class MonitoringSurfaceContract
      *   result_kind: string,
      *   allows_document: bool,
      *   official_state_label: string,
-     *   channel_label: string
+     *   channel_label: string,
+     *   source_label: string
      * }
      */
     public function toPublicArray(): array
@@ -52,6 +56,74 @@ final readonly class MonitoringSurfaceContract
             'allows_document' => $this->allowsDocument,
             'official_state_label' => $this->officialState->label(),
             'channel_label' => $this->channel->label(),
+            'source_label' => $this->sourceLabel,
+            'capabilities' => array_map(
+                static fn (MonitoringCapabilityContract $capability): array => $capability->toPublicArray(),
+                $this->capabilities(),
+            ),
         ];
+    }
+
+    /**
+     * Projeção hierárquica canônica. O prefixo da operation_key é o
+     * identificador público estável da capability; coordenadas permanecem
+     * exclusivamente no manifesto interno.
+     *
+     * @return list<MonitoringCapabilityContract>
+     */
+    public function capabilities(): array
+    {
+        if ($this->capabilityContracts !== []) {
+            return $this->capabilityContracts;
+        }
+
+        $grouped = [];
+        foreach ($this->operationKeys as $operationKey) {
+            [$capabilityKey] = explode('.', $operationKey, 2);
+            $grouped[$capabilityKey][] = new MonitoringActionContract(
+                actionKey: str_replace('.', '_', $operationKey),
+                operationKey: $operationKey,
+                label: $operationKey,
+                operationClass: FiscalOperationClass::Read,
+                paramsSchema: [],
+                resultKind: $this->resultKind,
+                documentPolicy: $this->documentPolicy,
+                handler: 'none',
+                available: false,
+                officialState: $this->officialState->value,
+                sourceLabel: $this->sourceLabel,
+                moduleKey: 'unknown',
+                featureModule: null,
+                requiredProxyPowers: [],
+                runCodes: null,
+                async: $this->resultKind === MonitoringResultKind::AsyncPdf,
+                outputFields: [],
+                officialRoute: '',
+                trialScenarioAvailable: false,
+                requestDocumented: false,
+                responseDocumented: false,
+            );
+        }
+
+        return array_values(array_map(
+            static fn (array $actions, string $key): MonitoringCapabilityContract => new MonitoringCapabilityContract(
+                capabilityKey: $key,
+                label: match ($key) {
+                    'pgdasd' => 'PGDAS-D',
+                    'pgmei' => 'PGMEI',
+                    'defis' => 'DEFIS',
+                    'ccmei' => 'CCMEI',
+                    'regimeapuracao' => 'Regime de Apuração',
+                    'dctfweb' => 'DCTFWeb',
+                    'mit' => 'MIT',
+                    'sicalc' => 'Sicalc',
+                    'pagtoweb' => 'PagtoWeb',
+                    default => strtoupper(str_replace('_', ' ', $key)),
+                },
+                actions: $actions,
+            ),
+            $grouped,
+            array_keys($grouped),
+        ));
     }
 }

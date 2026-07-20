@@ -78,7 +78,7 @@ final class MitApuracaoService
         $mit = $this->findOrCreate($office, $client, $periodKey);
 
         $encerrado = $this->isEncerrado($body);
-        $situacao = strtoupper((string) ($body['situacao'] ?? $body['status'] ?? 'UNKNOWN'));
+        $situacao = strtoupper((string) ($body['textoSituacao'] ?? $body['situacao'] ?? $body['status'] ?? 'UNKNOWN'));
         if (strlen($situacao) > 30) {
             $situacao = substr($situacao, 0, 30);
         }
@@ -134,9 +134,12 @@ final class MitApuracaoService
         $mit = $this->projectSituacao($office, $client, $periodKey, $body);
         $meta = $mit->metadata ?? [];
         $meta['apuracao'] = [
-            'valor' => $body['valor'] ?? $body['valorTotal'] ?? null,
-            'periodo' => $body['periodo'] ?? $periodKey,
+            'valor' => $body['valor'] ?? $body['valorTotal'] ?? $body['valorTotalApurado'] ?? null,
+            'periodo' => $body['periodoApuracao'] ?? $body['periodo'] ?? $periodKey,
             'keys' => array_keys($body),
+            'dados_apuracao_count' => is_array($body['dadosApuracaoMit'] ?? null)
+                ? count($body['dadosApuracaoMit'])
+                : null,
         ];
         $mit->forceFill(['metadata' => $meta])->save();
 
@@ -254,9 +257,9 @@ final class MitApuracaoService
             }
         }
 
-        $status = strtoupper((string) ($body['status'] ?? $body['situacao'] ?? ''));
+        $status = strtoupper((string) ($body['textoSituacao'] ?? $body['status'] ?? $body['situacao'] ?? ''));
 
-        return in_array($status, ['ENCERRADO', 'CLOSED', 'FECHADO'], true);
+        return in_array($status, ['ENCERRADO', 'ENCERRADA', 'CLOSED', 'FECHADO', 'FECHADA'], true);
     }
 
     /**

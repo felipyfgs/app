@@ -3,6 +3,8 @@
 namespace App\Jobs\Fiscal;
 
 use App\Models\FiscalMonitoringRun;
+use App\Services\Fiscal\ManualConsult\ManualConsultReadPolicy;
+use App\Services\Fiscal\ManualConsult\ManualConsultReadPolicyException;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdRbt12Service;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -29,10 +31,24 @@ class ExecuteFiscalMonitoringRunJob implements ShouldQueue
         $this->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
     }
 
-    public function handle(FiscalMonitoringRunService $runs): void
-    {
+    public function handle(
+        FiscalMonitoringRunService $runs,
+        ManualConsultReadPolicy $manualConsultPolicy,
+    ): void {
         try {
+            $run = FiscalMonitoringRun::query()
+                ->withoutGlobalScopes()
+                ->find($this->fiscalMonitoringRunId);
+            if ($run !== null && ! $run->status->isTerminal()) {
+                $manualConsultPolicy->assertRunMayExecute($run);
+            }
             $runs->execute($this->fiscalMonitoringRunId);
+        } catch (ManualConsultReadPolicyException $e) {
+            $runs->blockBeforeExecution(
+                $this->fiscalMonitoringRunId,
+                $e->reasonCode,
+                'Consulta bloqueada antes do transporte remoto.',
+            );
         } catch (Throwable $e) {
             Log::warning('fiscal_monitoring.run_job_failed', [
                 'run_id' => $this->fiscalMonitoringRunId,

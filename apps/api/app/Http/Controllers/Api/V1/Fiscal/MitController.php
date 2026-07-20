@@ -6,6 +6,7 @@ use App\DTO\Integra\MitListaApuracoesRequest;
 use App\Enums\OfficeRole;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\EnsureOfficeContext;
+use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
 use App\Models\Client;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
@@ -63,8 +64,10 @@ class MitController extends Controller
 
         $data = $request->validate([
             'client_id' => ['required', 'integer'],
-            'period_key' => ['required', 'string', 'max:20'],
+            'period_key' => ['required', 'string', 'regex:/^(20\\d{2}|2100)-(0[1-9]|1[0-2])$/'],
             'operation_code' => ['sometimes', 'string', 'max:80'],
+            'id_apuracao' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'protocolo_encerramento' => ['sometimes', 'nullable', 'string', 'max:512'],
             'correlation_id' => ['sometimes', 'string', 'max:64'],
         ]);
 
@@ -73,6 +76,12 @@ class MitController extends Controller
             return response()->json([
                 'message' => 'Use o endpoint de encerramento para mutação MIT.',
                 'code' => 'USE_MUTATION_ENDPOINT',
+            ], 422);
+        }
+        if (! in_array($operation, [DctfwebCodes::OP_MIT_APURACAO, DctfwebCodes::OP_MIT_SITUACAO], true)) {
+            return response()->json([
+                'message' => 'Operação de consulta MIT desconhecida.',
+                'code' => 'MIT_OPERATION_INVALID',
             ], 422);
         }
 
@@ -87,6 +96,27 @@ class MitController extends Controller
         }
 
         $apuracao = $this->mit->findOrCreate($office, $client, $data['period_key']);
+        $metadata = is_array($apuracao->metadata) ? $apuracao->metadata : [];
+        $listMetadata = is_array($metadata['lista_apuracoes_317'] ?? null)
+            ? $metadata['lista_apuracoes_317']
+            : [];
+        $idApuracao = $data['id_apuracao'] ?? $listMetadata['id_apuracao'] ?? null;
+        $protocol = isset($data['protocolo_encerramento'])
+            ? trim((string) $data['protocolo_encerramento'])
+            : '';
+
+        if ($operation === DctfwebCodes::OP_MIT_APURACAO && ! is_numeric($idApuracao)) {
+            return response()->json([
+                'message' => 'Consulte LISTAAPURACOES317 ou informe id_apuracao.',
+                'code' => 'MIT_ID_APURACAO_REQUIRED',
+            ], 422);
+        }
+        if ($operation === DctfwebCodes::OP_MIT_SITUACAO && $protocol === '') {
+            return response()->json([
+                'message' => 'Informe protocolo_encerramento retornado pelo encerramento MIT.',
+                'code' => 'MIT_PROTOCOL_REQUIRED',
+            ], 422);
+        }
 
         try {
             $run = $this->runs->enqueueManual(
@@ -98,8 +128,19 @@ class MitController extends Controller
                 competence: $apuracao->competence,
                 actorId: $request->user()?->id,
                 correlationId: $data['correlation_id'] ?? null,
-                dispatch: true,
+                dispatch: false,
             );
+            $progress = is_array($run->progress) ? $run->progress : [];
+            $progress['period_key'] = (string) $data['period_key'];
+            if (is_numeric($idApuracao)) {
+                $progress['idApuracao'] = (int) $idApuracao;
+            }
+            if ($protocol !== '') {
+                $progress['protocoloEncerramento'] = $protocol;
+            }
+            $run->forceFill(['progress' => $progress])->save();
+            ExecuteFiscalMonitoringRunJob::dispatch($run->id)
+                ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

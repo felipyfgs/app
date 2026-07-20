@@ -21,7 +21,6 @@ use App\Services\Serpro\SerproContractService;
 use App\Services\Serpro\SerproHttpTransport;
 use App\Services\Serpro\SerproKillSwitchService;
 use App\Services\Serpro\SerproRateLimiter;
-use App\Support\LogSanitizer;
 use RuntimeException;
 use Throwable;
 
@@ -57,6 +56,7 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
         private readonly SecureObjectStore $store,
         private readonly ?OperationCoordinateResolver $coordinates = null,
         private readonly ?SerproRateLimiter $rateLimiter = null,
+        private readonly ?IntegraResponseNormalizer $responseNormalizer = null,
     ) {}
 
     public function execute(IntegraRequest $request): IntegraResponse
@@ -241,7 +241,6 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                     $request->correlationId,
                 );
             } catch (Throwable $e) {
-                $this->breaker->recordFailure($solutionForBreaker, 'transport');
                 // Timeout/falha ambígua em mutação: NÃO retry automático
                 if ($isMutating) {
                     return new IntegraResponse(
@@ -285,13 +284,12 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             break;
         }
 
-        return $this->normalizeResponse(
+        return ($this->responseNormalizer ?? app(IntegraResponseNormalizer::class))->normalize(
             $lastResponse ?? ['status' => 0, 'body' => '', 'headers' => [], 'retry_after' => null, 'latency_ms' => null],
             $request,
             $operationKey,
             $requestTag,
             $routeName,
-            $solutionForBreaker,
             $env,
         );
     }
@@ -455,197 +453,13 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             if (! in_array($ln, self::HEADER_ALLOWLIST, true)) {
                 continue; // descarta header arbitrário
             }
+            if (preg_match('/[\x00-\x1F\x7F]/', (string) $name.(string) $value) === 1) {
+                continue; // impede header injection por CR/LF ou controles
+            }
             $headers[] = $name.': '.$value;
         }
 
         return $headers;
-    }
-
-    /**
-     * @param  array{status: int, body: string, headers: array<string, string>, retry_after: ?int, latency_ms: ?int}  $response
-     */
-    private function normalizeResponse(
-        array $response,
-        IntegraRequest $request,
-        string $operationKey,
-        string $requestTag,
-        string $route,
-        string $solutionForBreaker,
-        SerproEnvironment $environment,
-    ): IntegraResponse {
-        // Trial é inelegível para produção pela proveniência, não por ser fake.
-        $simulated = false;
-        $provenance = $this->provenanceFor($environment);
-        $status = $response['status'];
-        $headers = $response['headers'] ?? [];
-        $etag = $this->sanitizeEtag($this->headerValue($headers, 'etag'));
-        $expires = $this->headerValue($headers, 'expires');
-
-        if ($status === 429) {
-            $this->breaker->recordFailure($solutionForBreaker, '429');
-
-            return new IntegraResponse(
-                success: false,
-                httpStatus: 429,
-                body: [],
-                headers: $this->publicHeaders($headers),
-                errorCode: 'RATE_LIMITED',
-                errorMessage: 'Rate limit SERPRO.',
-                simulated: $simulated,
-                retryAfterSeconds: $response['retry_after'] ?? 60,
-                correlationId: $request->correlationId,
-                latencyMs: $response['latency_ms'],
-                etag: $etag,
-                expiresHeader: $expires,
-                operationKey: $operationKey,
-                requestTag: $requestTag,
-                functionalRoute: $route,
-                sourceProvenance: $provenance,
-            );
-        }
-
-        if ($status === 503) {
-            $this->breaker->recordFailure($solutionForBreaker, '503');
-
-            return new IntegraResponse(
-                success: false,
-                httpStatus: 503,
-                body: [],
-                headers: $this->publicHeaders($headers),
-                errorCode: 'UPSTREAM_UNAVAILABLE',
-                errorMessage: 'SERPRO temporariamente indisponível.',
-                simulated: $simulated,
-                retryAfterSeconds: $response['retry_after'] ?? 30,
-                correlationId: $request->correlationId,
-                latencyMs: $response['latency_ms'],
-                operationKey: $operationKey,
-                requestTag: $requestTag,
-                functionalRoute: $route,
-                sourceProvenance: $provenance,
-            );
-        }
-
-        if ($status === 304) {
-            return new IntegraResponse(
-                success: true,
-                httpStatus: 304,
-                body: [],
-                headers: $this->publicHeaders($headers),
-                errorCode: 'NOT_MODIFIED',
-                errorMessage: 'Conteúdo não modificado (cache/ETag).',
-                simulated: $simulated,
-                correlationId: $request->correlationId,
-                latencyMs: $response['latency_ms'],
-                etag: $etag,
-                expiresHeader: $expires,
-                businessStatus: 'NOT_MODIFIED',
-                operationKey: $operationKey,
-                requestTag: $requestTag,
-                functionalRoute: $route,
-                sourceProvenance: $provenance,
-            );
-        }
-
-        if ($status >= 500) {
-            $this->breaker->recordFailure($solutionForBreaker, '5xx');
-
-            return new IntegraResponse(
-                success: false,
-                httpStatus: $status,
-                body: [],
-                headers: $this->publicHeaders($headers),
-                errorCode: 'UPSTREAM_ERROR',
-                errorMessage: 'Erro upstream SERPRO.',
-                correlationId: $request->correlationId,
-                latencyMs: $response['latency_ms'],
-                operationKey: $operationKey,
-                requestTag: $requestTag,
-                functionalRoute: $route,
-                simulated: $simulated,
-                sourceProvenance: $provenance,
-            );
-        }
-
-        /** @var array<string, mixed>|null $decoded */
-        $decoded = json_decode($response['body'], true);
-        if (! is_array($decoded)) {
-            $decoded = $response['body'] !== '' ? ['_raw_type' => 'non_json'] : [];
-        }
-
-        $dados = $this->parseDados($decoded);
-        $mensagens = $this->extractMensagens($decoded);
-        $businessStatus = isset($decoded['status']) ? (string) $decoded['status'] : null;
-        $tempoEspera = null;
-        foreach (['tempoEspera', 'tempo_espera'] as $k) {
-            if (isset($decoded[$k]) && is_numeric($decoded[$k])) {
-                $tempoEspera = max(1, (int) $decoded[$k]);
-            }
-        }
-        if ($tempoEspera === null && $etag !== null && preg_match('/tempoEspera[=:](\d+)/i', $etag, $m)) {
-            $tempoEspera = max(1, (int) $m[1]);
-        }
-        if ($tempoEspera === null && $response['retry_after'] !== null) {
-            $tempoEspera = $response['retry_after'];
-        }
-
-        if (in_array($status, [202, 204], true)) {
-            return new IntegraResponse(
-                success: false,
-                httpStatus: $status,
-                body: $this->sanitizeBodyKeys($decoded),
-                headers: $this->publicHeaders($headers),
-                errorCode: 'STILL_PROCESSING',
-                errorMessage: 'Operação em processamento na fonte.',
-                simulated: $simulated,
-                retryAfterSeconds: $tempoEspera ?? 30,
-                correlationId: $request->correlationId,
-                latencyMs: $response['latency_ms'],
-                etag: $etag,
-                expiresHeader: $expires,
-                businessStatus: $businessStatus ?? 'PROCESSANDO',
-                mensagens: $mensagens,
-                dados: $dados,
-                operationKey: $operationKey,
-                requestTag: $requestTag,
-                functionalRoute: $route,
-                sourceProvenance: $provenance,
-            );
-        }
-
-        $httpSuccess = $status >= 200 && $status < 300 && $status !== 204;
-        $businessError = $httpSuccess && $this->hasBusinessError($mensagens);
-        $success = $httpSuccess && ! $businessError;
-        if ($httpSuccess) {
-            // O transporte respondeu normalmente mesmo quando o envelope traz
-            // rejeição de negócio; isso não deve abrir o circuit breaker.
-            $this->breaker->recordSuccess($solutionForBreaker);
-        } else {
-            $this->breaker->recordFailure($solutionForBreaker, '4xx');
-        }
-
-        return new IntegraResponse(
-            success: $success,
-            httpStatus: $status,
-            body: $this->sanitizeBodyKeys($decoded),
-            headers: $this->publicHeaders($headers),
-            errorCode: $success ? null : ($businessError ? 'BUSINESS_ERROR' : 'REQUEST_FAILED'),
-            errorMessage: $success ? null : ($businessError
-                ? 'SERPRO rejeitou os dados da operação.'
-                : 'Chamada Integra Contador rejeitada.'),
-            simulated: $simulated,
-            retryAfterSeconds: $tempoEspera,
-            correlationId: $request->correlationId,
-            latencyMs: $response['latency_ms'],
-            etag: $etag,
-            expiresHeader: $expires,
-            businessStatus: $businessStatus,
-            mensagens: $mensagens,
-            dados: $dados,
-            operationKey: $operationKey,
-            requestTag: $requestTag,
-            functionalRoute: $route,
-            sourceProvenance: $provenance,
-        );
     }
 
     private function serializeDados(IntegraRequest $request, string $dadosMode): string
@@ -707,137 +521,6 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             'identity' => ['numero' => $numero, 'tipo' => $tipo],
             'business_data' => $scenario['business_data'],
         ];
-    }
-
-    /** @param list<array<string, mixed>> $mensagens */
-    private function hasBusinessError(array $mensagens): bool
-    {
-        foreach ($mensagens as $mensagem) {
-            $code = strtoupper(trim((string) ($mensagem['codigo'] ?? $mensagem['code'] ?? '')));
-            $compact = preg_replace('/[^A-Z0-9]/', '', $code) ?? '';
-            if ($code === 'ERRO' || str_starts_with($code, 'ERRO-')
-                || str_starts_with($compact, 'ACESSONEGADO')
-                || str_starts_with($compact, 'ENTRADAINCORRETA')
-            ) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param  array<string, mixed>  $decoded
-     */
-    private function parseDados(array $decoded): mixed
-    {
-        if (! array_key_exists('dados', $decoded)) {
-            return null;
-        }
-        $raw = $decoded['dados'];
-        if (is_array($raw)) {
-            return $raw;
-        }
-        if (! is_string($raw) || $raw === '') {
-            return $raw;
-        }
-        $parsed = json_decode($raw, true);
-
-        return is_array($parsed) ? $parsed : $raw;
-    }
-
-    /**
-     * @param  array<string, mixed>  $decoded
-     * @return list<array{codigo?: string, texto?: string}>
-     */
-    private function extractMensagens(array $decoded): array
-    {
-        $raw = $decoded['mensagens'] ?? $decoded['messages'] ?? [];
-        if (! is_array($raw)) {
-            return [];
-        }
-        $out = [];
-        foreach ($raw as $m) {
-            if (! is_array($m)) {
-                continue;
-            }
-            $out[] = [
-                'codigo' => isset($m['codigo']) ? (string) $m['codigo'] : (isset($m['code']) ? (string) $m['code'] : null),
-                'texto' => isset($m['texto']) ? (string) $m['texto'] : (isset($m['mensagem']) ? (string) $m['mensagem'] : null),
-            ];
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param  array<string, string>  $headers
-     */
-    private function headerValue(array $headers, string $name): ?string
-    {
-        foreach ($headers as $k => $v) {
-            if (strcasecmp((string) $k, $name) === 0) {
-                return (string) $v;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * ETag pode transportar token/protocolo. Permanece apenas em memória para o
-     * fluxo assíncrono; persistência é responsabilidade de um cofre criptografado.
-     */
-    private function sanitizeEtag(?string $etag): ?string
-    {
-        if ($etag === null || $etag === '') {
-            return null;
-        }
-
-        return $etag;
-    }
-
-    /**
-     * @param  array<string, string>  $headers
-     * @return array<string, string>
-     */
-    private function publicHeaders(array $headers): array
-    {
-        $allowed = ['retry-after', 'expires', 'content-type', 'x-request-id'];
-        $out = [];
-        foreach ($headers as $k => $v) {
-            $lk = strtolower((string) $k);
-            if (in_array($lk, $allowed, true)) {
-                $out[$lk] = (string) $v;
-            }
-            // etag intencionalmente omitido da superfície pública default
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param  array<string, mixed>  $body
-     * @return array<string, mixed>
-     */
-    private function sanitizeBodyKeys(array $body): array
-    {
-        foreach ($body as $key => $value) {
-            $lower = strtolower((string) $key);
-            $blocked = ['access_token', 'jwt_token', 'autenticar_procurador_token', 'xmlassinado', 'pfx', 'password', 'private_key', 'consumer_secret', 'termo_xml'];
-            if (in_array($lower, $blocked, true)) {
-                unset($body[$key]);
-
-                continue;
-            }
-            if (is_array($value)) {
-                $body[$key] = $this->sanitizeBodyKeys($value);
-            } elseif (is_string($value) && LogSanitizer::looksLikeSecret($value)) {
-                $body[$key] = '[redacted]';
-            }
-        }
-
-        return $body;
     }
 
     private function fail(

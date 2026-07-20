@@ -71,6 +71,10 @@ const { canTriggerSync, sessionEpoch } = useDashboard()
 const breakpoints = useBreakpoints(breakpointsTailwind)
 const isMobile = breakpoints.smaller('lg')
 const navOpen = ref(false)
+
+function openClientNavigation(): void {
+  navOpen.value = true
+}
 /**
  * Rail sempre fino (ícones); no hover/focus expand overlay sem empurrar a tabela.
  * Pequeno delay no leave evita flicker com tooltips.
@@ -798,7 +802,7 @@ onMounted(async () => {
           variant="ghost"
           aria-label="Abrir navegação do cliente"
           data-testid="monitoring-client-nav-toggle"
-          @click="navOpen = true"
+          @click="openClientNavigation"
         />
         <NavbarMoreActions
           :items="[{
@@ -854,6 +858,8 @@ onMounted(async () => {
         :ui="{ body: 'gap-4 sm:gap-6 lg:py-8' }"
       >
         <template #body>
+          <MonitoringSerproCoveragePanel compact />
+
           <UAlert
             v-if="clientError"
             color="error"

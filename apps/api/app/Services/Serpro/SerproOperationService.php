@@ -20,6 +20,7 @@ use App\Models\OfficeSerproAuthorization;
 use App\Services\Fiscal\Availability\FiscalModuleAvailabilityService;
 use App\Services\Fiscal\Availability\FiscalOperationClassifier;
 use App\Services\Fiscal\Guides\PagtowebEphemeralResponseRedactor;
+use App\Services\Integra\AutenticaProcuradorEtag;
 use App\Services\Integra\ClientProcuracaoSyncService;
 use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Integra\FixtureIntegraContadorClient;
@@ -238,11 +239,18 @@ final class SerproOperationService implements SerproOperationExecutor
             return $this->blocked($operationKey, 'CIRCUIT_OPEN', 'Circuit breaker aberto para a solução.', $correlationId, 503);
         }
 
-        // 10. Recusar parâmetros técnicos tenant-facing (autor/termo/OAuth/token/ETag…)
+        // 10. Recusar parâmetros técnicos tenant-facing (autor/termo/OAuth/token/ETag…).
+        // If-None-Match é a única exceção interna e somente para o handshake
+        // Autentica Procurador; nunca é aceito em outra operation_key.
+        $requestHeaders = $command->headers;
         try {
             $this->technicalParams->assertClean($command->businessData, 'businessData');
             $this->technicalParams->assertClean($command->payload, 'payload');
-            $this->technicalParams->assertClean($command->headers, 'headers');
+            if ($operationKey === 'autentica_procurador.envio_xml_assinado') {
+                $requestHeaders = $this->validatedAutenticaHeaders($requestHeaders);
+            } else {
+                $this->technicalParams->assertClean($requestHeaders, 'headers');
+            }
         } catch (Throwable $e) {
             return $this->blocked(
                 $operationKey,
@@ -456,7 +464,7 @@ final class SerproOperationService implements SerproOperationExecutor
             operationKey: $operationKey,
             businessData: $command->businessData,
             payload: $command->payload,
-            headers: $command->headers,
+            headers: $requestHeaders,
             idempotencyKey: $idempotencyKey,
             correlationId: $correlationId,
             requestTag: $requestTag,
@@ -714,6 +722,27 @@ final class SerproOperationService implements SerproOperationExecutor
             contributorIdentityOverride: $request->contributorCnpj,
             authorIdentityOverride: $request->authorIdentity,
         ));
+    }
+
+    /**
+     * @param  array<string, string>  $headers
+     * @return array<string, string>
+     */
+    private function validatedAutenticaHeaders(array $headers): array
+    {
+        $validated = [];
+        foreach ($headers as $name => $value) {
+            if (strcasecmp((string) $name, 'If-None-Match') !== 0) {
+                $this->technicalParams->assertClean([(string) $name => $value], 'headers');
+                $validated[(string) $name] = $value;
+
+                continue;
+            }
+
+            $validated['If-None-Match'] = AutenticaProcuradorEtag::assertValidCondition($value);
+        }
+
+        return $validated;
     }
 
     private function namespaceIdempotencyKey(

@@ -24,6 +24,7 @@ use App\Services\Audit\AuditLogger;
 use App\Services\Fiscal\Availability\FiscalModuleAvailabilityService;
 use App\Services\Fiscal\Availability\FiscalModuleControlService;
 use App\Services\Fiscal\Availability\FiscalOperationClassifier;
+use App\Services\Fiscal\ManualConsult\ManualConsultExecutionContext;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPostConsultService;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdRbt12Service;
 use App\Services\Operations\OperationsMetrics;
@@ -55,6 +56,7 @@ final class FiscalMonitoringRunService
         private readonly PgdasdRbt12Service $pgdasdRbt12,
         private readonly FiscalModuleAvailabilityService $availability,
         private readonly FiscalModuleControlService $moduleControls,
+        private readonly ManualConsultExecutionContext $manualConsultContext,
     ) {}
 
     /**
@@ -123,9 +125,27 @@ final class FiscalMonitoringRunService
             ->where('idempotency_key', $key)
             ->first();
 
+        $manualAction = $this->manualConsultContext->activeAction();
         if ($run !== null) {
+            if ($manualAction !== null) {
+                $progress = is_array($run->progress) ? $run->progress : [];
+                $progress['manual_consult'] = true;
+                $progress['action_id'] = $manualAction->actionId;
+                $run->forceFill([
+                    'operation_key' => $manualAction->operationKey,
+                    'progress' => $progress,
+                ])->save();
+            }
+
             return $run;
         }
+
+        $progress = $manualAction !== null
+            ? [
+                'manual_consult' => true,
+                'action_id' => $manualAction->actionId,
+            ]
+            : null;
 
         $run = FiscalMonitoringRun::query()->create([
             'office_id' => $office->id,
@@ -134,6 +154,7 @@ final class FiscalMonitoringRunService
             'system_code' => strtoupper($systemCode),
             'service_code' => strtoupper($serviceCode),
             'operation_code' => strtoupper($operationCode),
+            'operation_key' => $manualAction?->operationKey,
             'trigger' => FiscalTrigger::Manual,
             'idempotency_key' => $key,
             'status' => FiscalRunStatus::Queued,
@@ -141,6 +162,7 @@ final class FiscalMonitoringRunService
             'coverage' => 'UNKNOWN',
             'mutability' => FiscalMutability::ReadOnly,
             'correlation_id' => $correlationId,
+            'progress' => $progress,
             'triggered_by' => $actorId,
         ]);
 
@@ -150,6 +172,19 @@ final class FiscalMonitoringRunService
         }
 
         return $run;
+    }
+
+    public function blockBeforeExecution(int $runId, string $code, string $message): FiscalMonitoringRun
+    {
+        $run = FiscalMonitoringRun::query()->withoutGlobalScopes()->find($runId);
+        if ($run === null) {
+            throw new RuntimeException("Run fiscal #{$runId} não encontrada.");
+        }
+        if ($run->status->isTerminal()) {
+            return $run;
+        }
+
+        return $this->markBlocked($run, $code, $message);
     }
 
     /**

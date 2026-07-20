@@ -8,18 +8,13 @@ import { h } from 'vue'
  */
 import {
   FiscalClientCell,
-  MonitoringPgdasdAutomaticSwitch,
-  MonitoringPgdasdBulkAutomaticActions,
   MonitoringPgdasdDeclarationIndicator,
   MonitoringPgdasdRbt12Value
 } from '#components'
 import UBadge from '@nuxt/ui/components/Badge.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
-import type {
-  PgdasdCommunicationPreference,
-  SimplesMeiClientRow
-} from '~/types/fiscal-modules'
+import type { SimplesMeiClientRow } from '~/types/fiscal-modules'
 import { documentActionVisible } from '~/types/fiscal-modules'
 import { resolveApiUrl } from '~/utils/api-url'
 import { formatDate, formatDateTime } from '~/utils/format'
@@ -47,31 +42,18 @@ import {
 
 /**
  * Renderer PGDAS-D — colunas de negócio (densidade compacta):
- * Cliente · Situação · Últ. Declaração · RBT12 · Ações (prévia+auto) ·
- * Rastreio de envio · Consulta · Histórico.
+ * Cliente · Situação · Últ. Declaração · RBT12 · Ações informativas ·
+ * Histórico local de comunicação · Consulta · Histórico fiscal.
  * Seleção é acrescentada pelo shell autorizado antes de Cliente.
  */
 export function buildPgdasdColumns(options: {
-  canManage: boolean
-  /** Lidos no render do header (não no build) para não recriar colunas a cada seleção. */
-  getSelectedClientIds: () => number[]
-  getSelectedCount: () => number
-  getSelectedAutomaticRequested: () => boolean
-  onBulkClear: () => void
-  onBulkRefresh: () => void
   onHistory: (row: SimplesMeiClientRow) => void
   onPreview: (row: SimplesMeiClientRow) => void
   onTracking: (row: SimplesMeiClientRow) => void
   onConfigure: (row: SimplesMeiClientRow) => void
-  onPreferenceSaved: (
-    row: SimplesMeiClientRow,
-    preference: PgdasdCommunicationPreference
-  ) => void
 }): TableColumn<SimplesMeiClientRow>[] {
   const DeclarationIndicator = MonitoringPgdasdDeclarationIndicator
   const Rbt12Value = MonitoringPgdasdRbt12Value
-  const AutomaticSwitch = MonitoringPgdasdAutomaticSwitch
-  const BulkAutomaticSwitch = MonitoringPgdasdBulkAutomaticActions
 
   function situationTooltip(row: SimplesMeiClientRow): string {
     const summary = pgdasdSummary(row)
@@ -90,28 +72,20 @@ export function buildPgdasdColumns(options: {
   }
 
   function rowActions(row: SimplesMeiClientRow) {
-    // Prévia + automático na mesma coluna (regimes/DEFIS ficam na toolbar ao selecionar).
+    // Comunicação é somente informativa; não há switch nem envio nesta coluna.
     return tableIconGroup([
       tableIconButton({
-        label: 'Abrir prévia de envio',
-        icon: 'i-lucide-send',
-        color: 'primary',
-        testId: 'pgdasd-send-preview',
+        label: 'Ver destinatários e documentos locais',
+        icon: 'i-lucide-message-square-text',
+        testId: 'pgdasd-communication-info',
         onClick: () => options.onPreview(row)
       }),
-      h('div', {
-        'class': 'inline-flex size-8 items-center justify-center',
-        'data-testid': 'pgdasd-send-slot'
-      }, [
-        h(AutomaticSwitch, {
-          clientId: row.client_id,
-          preference: pgdasdSummary(row)?.communication,
-          canManage: options.canManage,
-          onConfigure: () => options.onConfigure(row),
-          onSaved: (preference: PgdasdCommunicationPreference) =>
-            options.onPreferenceSaved(row, preference)
-        })
-      ])
+      tableIconButton({
+        label: 'Ver preferências registradas',
+        icon: 'i-lucide-info',
+        testId: 'pgdasd-communication-preferences',
+        onClick: () => options.onConfigure(row)
+      })
     ], 'pgdasd-actions-group')
   }
 
@@ -168,7 +142,7 @@ export function buildPgdasdColumns(options: {
 
     return tableIconGroup([
       tableIconButton({
-        label: `Status do envio: ${meta.label}`,
+        label: `Histórico local de comunicação: ${meta.label}`,
         icon: meta.icon,
         color: meta.color,
         testId: 'pgdasd-tracking-status',
@@ -176,7 +150,7 @@ export function buildPgdasdColumns(options: {
       }),
       artifactsSlot,
       tableIconButton({
-        label: 'Abrir rastreio de envio',
+        label: 'Abrir histórico local de comunicação',
         icon: 'i-lucide-search',
         testId: 'pgdasd-tracking',
         onClick: () => options.onTracking(row)
@@ -251,18 +225,7 @@ export function buildPgdasdColumns(options: {
     },
     {
       id: 'actions',
-      header: () => h('div', { class: 'flex items-center gap-1' }, [
-        h('span', MONITORING_ACTIONS_LABEL),
-        options.canManage
-          ? h(BulkAutomaticSwitch, {
-              selectedClientIds: options.getSelectedClientIds(),
-              selectedCount: options.getSelectedCount(),
-              modelValue: options.getSelectedAutomaticRequested(),
-              onClear: options.onBulkClear,
-              onRefresh: options.onBulkRefresh
-            })
-          : null
-      ]),
+      header: MONITORING_ACTIONS_LABEL,
       enableSorting: false,
       meta: { ...MONITORING_ACTIONS_META },
       cell: ({ row }) => rowActions(row.original)

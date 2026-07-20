@@ -16,7 +16,8 @@
     "test:artifacts": "node tests/security/scan-artifacts.mjs",
     "test:fidelity": "node scripts/template-fidelity-gate.mjs",
     "cleanup:browsers": "node scripts/cleanup-dev-browsers.mjs",
-    "test:e2e": "node -e \"console.error('E2E Playwright removido. Use: pnpm run test:gate'); process.exit(1)\""
+    "test:e2e": "node tests/e2e/run-local.mjs",
+    "test:e2e:direct": "playwright test"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.116",
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@nuxt/eslint": "^1.16.0",
     "@nuxt/test-utils": "^4.0.3",
+    "@playwright/test": "1.61.1",
     "@types/node": "^26.1.1",
     "@vite-pwa/nuxt": "^1.1.1",
     "@vue/test-utils": "^2.4.11",

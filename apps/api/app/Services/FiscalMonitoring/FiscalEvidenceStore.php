@@ -3,11 +3,14 @@
 namespace App\Services\FiscalMonitoring;
 
 use App\Contracts\SecureObjectStore;
+use App\Enums\DocumentUnavailableReason;
+use App\Enums\FiscalVerificationState;
 use App\Enums\SecureObjectPurpose;
 use App\Models\FiscalEvidenceArtifact;
 use App\Models\FiscalMonitoringRun;
 use Carbon\CarbonImmutable;
 use RuntimeException;
+use Throwable;
 
 /**
  * Storage seguro de artefatos no cofre (AAD com purpose + office_id + sha256).
@@ -101,13 +104,65 @@ final class FiscalEvidenceStore
      */
     public function readAuthorized(FiscalEvidenceArtifact $artifact, int $officeId): string
     {
-        if ((int) $artifact->office_id !== $officeId) {
-            throw new RuntimeException('Evidência não pertence ao escritório ativo.');
+        $reason = $this->unavailableReason($artifact, $officeId);
+        if ($reason !== null) {
+            throw new RuntimeException('Evidência fiscal indisponível para download.');
         }
 
         $aad = self::aad($officeId, $artifact->content_sha256);
+        $bytes = $this->vault->get($artifact->vault_object_id, $aad);
+        if (! hash_equals((string) $artifact->content_sha256, hash('sha256', $bytes))) {
+            throw new RuntimeException('Integridade da evidência fiscal rejeitada.');
+        }
+        if ($artifact->byte_size !== null && strlen($bytes) !== (int) $artifact->byte_size) {
+            throw new RuntimeException('Tamanho da evidência fiscal divergente.');
+        }
 
-        return $this->vault->get($artifact->vault_object_id, $aad);
+        return $bytes;
+    }
+
+    public function unavailableReason(
+        FiscalEvidenceArtifact $artifact,
+        int $officeId,
+    ): ?DocumentUnavailableReason {
+        if ((int) $artifact->office_id !== $officeId) {
+            return DocumentUnavailableReason::NotAvailable;
+        }
+        if ($artifact->verification_state === FiscalVerificationState::Rejected) {
+            return DocumentUnavailableReason::IntegrityRejected;
+        }
+        if ($artifact->retention_until !== null && $artifact->retention_until->isPast()) {
+            return DocumentUnavailableReason::Expired;
+        }
+
+        $metadata = is_array($artifact->metadata) ? $artifact->metadata : [];
+        if (isset($metadata['purged_at'])) {
+            return DocumentUnavailableReason::Expired;
+        }
+        if (! is_string($artifact->vault_object_id) || trim($artifact->vault_object_id) === ''
+            || ! is_string($artifact->content_sha256)
+            || preg_match('/^[a-f0-9]{64}$/', strtolower($artifact->content_sha256)) !== 1
+        ) {
+            return DocumentUnavailableReason::IntegrityRejected;
+        }
+
+        $run = FiscalMonitoringRun::query()
+            ->withoutGlobalScopes()
+            ->whereKey($artifact->run_id)
+            ->first(['id', 'office_id']);
+        if ($run === null || (int) $run->office_id !== $officeId) {
+            return DocumentUnavailableReason::IntegrityRejected;
+        }
+
+        try {
+            if (! $this->vault->exists($artifact->vault_object_id)) {
+                return DocumentUnavailableReason::NotAvailable;
+            }
+        } catch (Throwable) {
+            return DocumentUnavailableReason::NotAvailable;
+        }
+
+        return null;
     }
 
     /**

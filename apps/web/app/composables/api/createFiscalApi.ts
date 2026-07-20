@@ -40,7 +40,8 @@ import type {
   FiscalTaxProcess,
   ManualConsultInventory,
   ManualConsultExecuteResult,
-  FiscalPnrRenunciation
+  FiscalPnrRenunciation,
+  MonitoringCoverageContract
 } from '~/types/fiscal-modules'
 import type { ApiClient, ApiUrl } from './types'
 import { createMeiPublicServicesApi } from './createMeiPublicServicesApi'
@@ -51,6 +52,10 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
   return {
     fiscal: {
       meiPublicServices,
+      monitoringCoverage: (options?: { signal?: AbortSignal }) =>
+        client<{ data: MonitoringCoverageContract }>('/api/v1/fiscal/monitoring/coverage', {
+          signal: options?.signal
+        }),
       categories: () =>
         client<{ data: FiscalCategory[] }>('/api/v1/fiscal/categories'),
       categoryLinks: {

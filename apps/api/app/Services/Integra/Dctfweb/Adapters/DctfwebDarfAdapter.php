@@ -12,6 +12,8 @@ use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebCompetenceResolver;
 use App\Services\Integra\Dctfweb\DctfwebDeclarationService;
 use App\Services\Integra\Dctfweb\DctfwebIntegraCaller;
+use App\Services\Integra\Dctfweb\DctfwebOfficialCodec;
+use RuntimeException;
 
 /**
  * Emissão/consulta de documento de arrecadação — NÃO prova pagamento.
@@ -22,6 +24,7 @@ final class DctfwebDarfAdapter extends AbstractDctfwebAdapter
         DctfwebIntegraCaller $caller,
         DctfwebCompetenceResolver $competences,
         private readonly DctfwebDeclarationService $declarations,
+        private readonly DctfwebOfficialCodec $codec,
     ) {
         parent::__construct($caller, $competences);
     }
@@ -44,24 +47,30 @@ final class DctfwebDarfAdapter extends AbstractDctfwebAdapter
     public function execute(FiscalAdapterRequest $request): FiscalAdapterResult
     {
         $periodKey = $this->resolvePeriodKey($request);
-        $response = $this->callUpstream($request, [
-            'competencia' => $periodKey,
-            'periodo' => $periodKey,
-        ]);
+        $response = $this->callUpstream($request, $this->codec->periodPayload($periodKey));
 
         if (! $response->success) {
             return $this->failedFromResponse($response);
         }
 
-        $bytes = DctfwebIntegraCaller::evidenceBytes($response->body);
+        if (! is_array($response->dados)) {
+            return FiscalAdapterResult::failed('Resposta GERARGUIA31 sem dados estruturados.', 'DCTFWEB_DADOS_INVALID');
+        }
+        try {
+            $bytes = $this->codec->decodePdf($response->dados);
+        } catch (RuntimeException $e) {
+            return FiscalAdapterResult::failed($e->getMessage(), 'DCTFWEB_DOCUMENT_INVALID');
+        }
+        $metadata = $this->codec->sanitize($response->dados);
         $darf = $this->declarations->projectDarf(
             run: $request->run,
             office: $request->office,
             client: $request->client,
             periodKey: $periodKey,
             evidenceBytes: $bytes,
-            body: $response->body,
-            sourceVersion: isset($response->body['versao']) ? (string) $response->body['versao'] : null,
+            body: $metadata,
+            sourceVersion: isset($metadata['versao']) ? (string) $metadata['versao'] : null,
+            contentType: 'application/pdf',
         );
 
         // Situação de atenção: guia emitida, pagamento desconhecido
@@ -92,6 +101,7 @@ final class DctfwebDarfAdapter extends AbstractDctfwebAdapter
                 'creates_pending' => false,
             ]],
             coverage: FiscalCoverage::Full,
+            contentType: 'application/pdf',
         );
     }
 }

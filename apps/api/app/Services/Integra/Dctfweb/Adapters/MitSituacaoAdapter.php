@@ -9,6 +9,7 @@ use App\Enums\FiscalCoverage;
 use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalSituation;
 use App\Enums\MitEncerramentoStatus;
+use App\Enums\SerproEnvironment;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebCompetenceResolver;
 use App\Services\Integra\Dctfweb\DctfwebDeclarationService;
@@ -52,21 +53,39 @@ final class MitSituacaoAdapter extends AbstractDctfwebAdapter
     public function execute(FiscalAdapterRequest $request): FiscalAdapterResult
     {
         $periodKey = $this->resolvePeriodKey($request);
-        $response = $this->callUpstream($request, [
-            'competencia' => $periodKey,
-            'periodo' => $periodKey,
-        ]);
+        $protocol = $request->progress['protocoloEncerramento']
+            ?? $request->progress['protocolo_encerramento']
+            ?? $request->context['protocoloEncerramento']
+            ?? $request->context['protocolo_encerramento']
+            ?? null;
+        if ((! is_string($protocol) || trim($protocol) === '')
+            && $this->caller->resolveEnvironment() === SerproEnvironment::Production
+        ) {
+            return FiscalAdapterResult::failed(
+                'SITUACAOENC315 exige protocoloEncerramento retornado pelo encerramento MIT.',
+                'MIT_PROTOCOL_REQUIRED',
+                $this->coverage(),
+            );
+        }
+
+        $payload = is_string($protocol) && trim($protocol) !== ''
+            ? ['protocoloEncerramento' => trim($protocol)]
+            : [];
+        $response = $this->callUpstream($request, $payload);
 
         if (! $response->success) {
             return $this->failedFromResponse($response);
         }
 
-        $bytes = DctfwebIntegraCaller::evidenceBytes($response->body);
+        if (! is_array($response->dados)) {
+            return FiscalAdapterResult::failed('Resposta SITUACAOENC315 sem dados estruturados.', 'MIT_DADOS_INVALID', $this->coverage());
+        }
+        $bytes = DctfwebIntegraCaller::evidenceBytes($response->dados);
         $mit = $this->mit->projectSituacao(
             $request->office,
             $request->client,
             $periodKey,
-            $response->body,
+            $response->dados,
         );
 
         // Garante declaração existe para espelho (sem promover transmissão)
@@ -83,7 +102,7 @@ final class MitSituacaoAdapter extends AbstractDctfwebAdapter
             periodKey: $periodKey,
             kind: DctfwebArtifactKind::SituacaoMit,
             evidenceBytes: $bytes,
-            body: $response->body,
+            body: $response->dados,
         );
 
         $findings = [];

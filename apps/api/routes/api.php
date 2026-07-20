@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\V1\Fiscal\ManualConsultController;
 use App\Http\Controllers\Api\V1\Fiscal\MeiAutomationAttemptController;
 use App\Http\Controllers\Api\V1\Fiscal\MeiDasController;
 use App\Http\Controllers\Api\V1\Fiscal\MitController;
+use App\Http\Controllers\Api\V1\Fiscal\MonitoringCoverageController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebArrecadacaoReceiptController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebPaymentCountController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebPaymentListController;
@@ -285,6 +286,9 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/fiscal/findings', [FiscalSnapshotController::class, 'findings']);
             Route::get('/fiscal/pending-items', [FiscalSnapshotController::class, 'pending']);
             Route::get('/fiscal/evidence/{evidence}/download', [FiscalSnapshotController::class, 'downloadEvidence']);
+
+            // Contrato público das superfícies: saídas documentadas e cobertura Trial.
+            Route::get('/fiscal/monitoring/coverage', MonitoringCoverageController::class);
 
             // Read model de carteira por módulo (overview + clients; office_id só via membership)
             Route::get('/fiscal/modules/{module}/overview', [FiscalModulePortfolioController::class, 'overview']);

@@ -97,6 +97,7 @@ final class FiscalQueryService
     {
         return FiscalEvidenceArtifact::query()
             ->withoutGlobalScopes()
+            ->operationallyEligible()
             ->where('office_id', $office->id)
             ->whereKey($id)
             ->first();

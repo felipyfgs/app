@@ -13,7 +13,7 @@ const toast = useToast()
 const departments = ref<WorkDepartment[]>([])
 const loadingDepartments = ref(true)
 const saving = ref(false)
-const selectedId = ref<number | null>(null)
+const selectedId = ref<number | undefined>(undefined)
 
 const departmentItems = computed(() =>
   departments.value.map(d => ({
@@ -38,7 +38,7 @@ async function loadDepartments() {
 watch(
   item,
   (client) => {
-    selectedId.value = client?.work_department_id ?? null
+    selectedId.value = client?.work_department_id ?? undefined
   },
   { immediate: true }
 )
@@ -48,7 +48,7 @@ async function saveDepartment() {
   saving.value = true
   try {
     await api.clients.update(item.value.id, {
-      work_department_id: selectedId.value
+      work_department_id: selectedId.value ?? null
     })
     toast.add({ title: 'Departamento vinculado.', color: 'success' })
     await load()

@@ -5,6 +5,8 @@ namespace App\Jobs\Fiscal;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\SerproAsyncJobRun;
+use App\Services\Fiscal\ManualConsult\ManualConsultReadPolicy;
+use App\Services\Fiscal\ManualConsult\ManualConsultReadPolicyException;
 use App\Services\Integra\TaxProcesses\TaxProcessProjectionService;
 use App\Services\Serpro\SerproAsyncJobRunStore;
 use App\Services\Serpro\SerproJobFlagGuard;
@@ -41,6 +43,8 @@ final class RefreshTaxProcessesJob implements ShouldQueue
         public readonly ?string $correlationId = null,
         public readonly bool $flagCheckedAtDispatch = false,
         public readonly ?int $asyncRunId = null,
+        public readonly ?string $manualActionId = null,
+        public readonly ?int $actorUserId = null,
     ) {
         $this->onQueue((string) config('serpro.queues.fiscal', 'fiscal'));
         $this->tries = max(1, (int) config('serpro.jobs.tries', 3));
@@ -53,6 +57,8 @@ final class RefreshTaxProcessesJob implements ShouldQueue
         int $officeId,
         int $clientId,
         ?string $correlationId = null,
+        ?string $manualActionId = null,
+        ?int $actorUserId = null,
     ): ?self {
         $guard = app(SerproJobFlagGuard::class);
         $check = $guard->assertAllowed('RefreshTaxProcessesJob', $officeId);
@@ -75,7 +81,15 @@ final class RefreshTaxProcessesJob implements ShouldQueue
             flagCheckedAtDispatch: true,
         );
 
-        $job = new self($officeId, $clientId, $correlationId, true, $run->id);
+        $job = new self(
+            $officeId,
+            $clientId,
+            $correlationId,
+            true,
+            $run->id,
+            $manualActionId,
+            $actorUserId,
+        );
         dispatch($job);
 
         return $job;
@@ -86,6 +100,7 @@ final class RefreshTaxProcessesJob implements ShouldQueue
         SerproJobFlagGuard $flags,
         SerproAsyncJobRunStore $runs,
         SerproMetricsExporter $metrics,
+        ManualConsultReadPolicy $manualConsultPolicy,
     ): void {
         $run = $this->asyncRunId !== null
             ? SerproAsyncJobRun::query()->find($this->asyncRunId)
@@ -109,6 +124,43 @@ final class RefreshTaxProcessesJob implements ShouldQueue
             $runs->fail($run, (string) $check['code'], (string) $check['message'], SerproAsyncJobRun::STATUS_BLOCKED);
 
             return;
+        }
+
+        if ($this->manualActionId !== null) {
+            $office = Office::query()->find($this->officeId);
+            $client = Client::query()->withoutGlobalScopes()
+                ->where('office_id', $this->officeId)
+                ->whereKey($this->clientId)
+                ->first();
+            if ($office === null || $client === null) {
+                $runs->fail(
+                    $run,
+                    'MANUAL_TENANT_CONTEXT_MISSING',
+                    'Contexto da consulta indisponível.',
+                    SerproAsyncJobRun::STATUS_BLOCKED,
+                );
+
+                return;
+            }
+
+            try {
+                $manualConsultPolicy->assertAsyncJobMayExecute(
+                    $office,
+                    $client,
+                    $this->manualActionId,
+                    $this->actorUserId,
+                    $run,
+                );
+            } catch (ManualConsultReadPolicyException $e) {
+                $runs->fail(
+                    $run,
+                    $e->reasonCode,
+                    'Consulta bloqueada antes do transporte remoto.',
+                    SerproAsyncJobRun::STATUS_BLOCKED,
+                );
+
+                return;
+            }
         }
 
         PrivilegedOfficeContext::enter('job:RefreshTaxProcessesJob');

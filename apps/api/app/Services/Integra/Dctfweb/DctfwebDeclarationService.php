@@ -229,6 +229,7 @@ final class DctfwebDeclarationService
         string $evidenceBytes,
         array $body,
         ?string $sourceVersion = null,
+        string $contentType = 'application/json',
     ): DctfwebDarfDocument {
         $declaration = $this->findOrCreate($office, $client, $periodKey);
         $stored = $this->versioning->storeVersioned(
@@ -236,7 +237,7 @@ final class DctfwebDeclarationService
             declaration: $declaration,
             kind: DctfwebArtifactKind::Darf,
             bytes: $evidenceBytes,
-            contentType: 'application/json',
+            contentType: $contentType,
             sourceVersion: $sourceVersion,
         );
 

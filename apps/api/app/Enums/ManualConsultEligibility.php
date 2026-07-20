@@ -15,6 +15,7 @@ enum ManualConsultEligibility: string
     case PowerRefreshing = 'power_refreshing';
     case AdapterMissing = 'adapter_missing';
     case MutatingBlocked = 'mutating_blocked';
+    case PermissionDenied = 'permission_denied';
 
     public function label(): string
     {
@@ -27,6 +28,7 @@ enum ManualConsultEligibility: string
             self::PowerRefreshing => 'Verificando procuração no e-CAC',
             self::AdapterMissing => 'Adapter de consulta não implementado',
             self::MutatingBlocked => 'Operação mutante bloqueada neste explorador',
+            self::PermissionDenied => 'Sem permissão para atualizar consultas fiscais',
         };
     }
 

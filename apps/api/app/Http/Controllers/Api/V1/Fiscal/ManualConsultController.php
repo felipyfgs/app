@@ -60,6 +60,7 @@ final class ManualConsultController extends Controller
             client: $client,
             surfaceKey: isset($validated['surface_key']) ? (string) $validated['surface_key'] : null,
             moduleKey: isset($validated['module_key']) ? (string) $validated['module_key'] : null,
+            actor: $request->user() instanceof User ? $request->user() : null,
         );
 
         return response()->json(['data' => $data]);

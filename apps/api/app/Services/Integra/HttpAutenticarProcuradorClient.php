@@ -155,7 +155,8 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
                 || ! CarbonImmutable::parse((string) $cachedMeta['expires_at'])->isFuture()) {
                 Cache::forget($cacheKey);
 
-                $recoveredToken = $this->recoverTokenFromAuthorization($request, $termoHash);
+                $recoveredToken = AutenticaProcuradorEtag::extractToken($response->etag)
+                    ?? $this->recoverTokenFromAuthorization($request, $termoHash);
                 if ($recoveredToken === null) {
                     return new ProcuradorAuthResult(
                         success: false,
@@ -256,7 +257,8 @@ final class HttpAutenticarProcuradorClient implements AutenticarProcuradorClient
             );
         }
 
-        $token = $this->extractToken($response->body, $response->dados);
+        $token = $this->extractToken($response->body, $response->dados)
+            ?? AutenticaProcuradorEtag::extractToken($response->etag);
         if ($token === null || $token === '') {
             return new ProcuradorAuthResult(
                 success: false,

@@ -2,6 +2,7 @@
 
 namespace App\Services\FiscalMonitoring\Surfaces;
 
+use App\Enums\FiscalOperationClass;
 use App\Enums\MonitoringChannel;
 use App\Enums\MonitoringDocumentPolicy;
 use App\Enums\MonitoringOfficialStateSummary;
@@ -133,6 +134,49 @@ final class MonitoringSurfaceCatalogValidator
                     $errors[] = "{$key}: op não-PRODUCTION {$opKey} em superfície PRODUCTION com documento";
                 }
             }
+        }
+
+        $hierarchicalKeys = [];
+        foreach ($contract->capabilities() as $capability) {
+            if ($capability->capabilityKey === '' || $capability->actions === []) {
+                $errors[] = "{$key}: capability vazia ou sem actions";
+            }
+            foreach ($capability->actions as $action) {
+                $hierarchicalKeys[] = $action->operationKey;
+                if (! isset($index[$action->operationKey])) {
+                    $errors[] = "{$key}: action órfã do manifesto: {$action->actionKey}";
+
+                    continue;
+                }
+                if ($action->handler === 'none' && $action->available) {
+                    $errors[] = "{$key}: action sem handler marcada disponível: {$action->actionKey}";
+                }
+                if ($action->operationClass !== FiscalOperationClass::Read && $action->available) {
+                    $errors[] = "{$key}: action não-READ marcada disponível: {$action->actionKey}";
+                }
+                if ((bool) ($index[$action->operationKey]['is_mutating'] ?? true)
+                    && $action->operationClass === FiscalOperationClass::Read
+                ) {
+                    $errors[] = "{$key}: action mutante classificada como READ: {$action->actionKey}";
+                }
+            }
+        }
+        $expectedKeys = $contract->operationKeys;
+        sort($expectedKeys);
+        sort($hierarchicalKeys);
+        if ($expectedKeys !== $hierarchicalKeys) {
+            $errors[] = "{$key}: hierarchy diverge de operation_keys";
+        }
+
+        if (in_array($key, ['simples_mei_pgdasd', 'simples_mei_pgmei'], true)
+            && $contract->routePattern !== '/monitoring/simples-mei'
+        ) {
+            $errors[] = "{$key}: rota canônica divergente";
+        }
+        if (in_array($key, ['dctfweb', 'mit'], true)
+            && $contract->routePattern !== '/monitoring/dctfweb'
+        ) {
+            $errors[] = "{$key}: rota canônica divergente";
         }
 
         if ($contract->channel === MonitoringChannel::Integra

@@ -5,8 +5,6 @@ namespace App\Services\Fiscal\ManualConsult;
 use App\DTO\Integra\MitListaApuracoesRequest;
 use App\Enums\ManualConsultEligibility;
 use App\Enums\SerproEnvironment;
-use App\Enums\SerproOfficialState;
-use App\Enums\SerproPlatformSupport;
 use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
 use App\Jobs\Fiscal\RefreshRegistrationLinksJob;
 use App\Jobs\Fiscal\RefreshTaxProcessesJob;
@@ -31,7 +29,6 @@ use App\Services\Integra\Dctfweb\MitApuracaoService;
 use App\Services\Integra\Dctfweb\MitListaApuracoesQueryService;
 use App\Services\Integra\Parcelamento\ParcelamentoServiceCatalog;
 use App\Services\Integra\Sitfis\SitfisSnapshotService;
-use App\Services\Serpro\Catalog\OfficialServiceCatalogManifest;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -43,9 +40,9 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 final class ManualConsultExecutionService
 {
     public function __construct(
-        private readonly ManualConsultActionCatalog $catalog,
         private readonly ManualConsultEligibilityGate $eligibility,
-        private readonly OfficialServiceCatalogManifest $manifest,
+        private readonly ManualConsultReadPolicy $readPolicy,
+        private readonly ManualConsultExecutionContext $executionContext,
         private readonly FiscalMonitoringRunService $runs,
         private readonly CcmeiMonitoringQueryService $ccmei,
         private readonly CcmeiRegistrationStatusQueryService $ccmeiStatus,
@@ -81,16 +78,12 @@ final class ManualConsultExecutionService
             throw new HttpException(422, 'Consulta manual exige confirmed=true.');
         }
 
-        if ((int) $client->office_id !== (int) $office->id) {
-            throw new HttpException(404, 'Cliente não encontrado no escritório atual.');
-        }
-
-        if (! $this->catalog->has($actionId)) {
-            throw new HttpException(404, 'Ação de consulta manual desconhecida.');
-        }
-
-        $def = $this->catalog->get($actionId);
-        $this->assertNotMutating($def->operationKey);
+        $def = $this->readPolicy->authorizeDispatch(
+            $office,
+            $client,
+            $actionId,
+            $actorUserId,
+        );
 
         if ($def->requiredProxyPowers !== []
             && $this->eligibility->environment() === SerproEnvironment::Production
@@ -116,12 +109,12 @@ final class ManualConsultExecutionService
             }
         }
 
-        $eligibility = $this->eligibility->evaluate($office, $def, $client);
-        if ($eligibility !== ManualConsultEligibility::Ready) {
-            throw new ManualConsultNotReadyException($eligibility);
-        }
+        $this->readPolicy->assertDispatchReady($office, $client, $def, $actorUserId);
 
-        $result = $this->dispatch($office, $client, $def, $params, $actorUserId);
+        $result = $this->executionContext->within(
+            $def,
+            fn (): array => $this->dispatch($office, $client, $def, $params, $actorUserId),
+        );
 
         return [
             'action_id' => $def->actionId,
@@ -242,8 +235,8 @@ final class ManualConsultExecutionService
                 progress: ['message_id' => (string) $this->requireParam($params, 'message_id')],
             ),
             'installment_read' => $this->installmentRead($office, $client, $def, $params, $actorUserId),
-            'registrations_refresh' => $this->registrationsRefresh($office, $client),
-            'tax_process_refresh' => $this->taxProcessRefresh($office, $client),
+            'registrations_refresh' => $this->registrationsRefresh($office, $client, $def, $actorUserId),
+            'tax_process_refresh' => $this->taxProcessRefresh($office, $client, $def, $actorUserId),
             default => throw new HttpException(422, ManualConsultEligibility::AdapterMissing->label()),
         };
     }
@@ -317,8 +310,14 @@ final class ManualConsultExecutionService
             competence: $declaration->competence,
             actorId: $actorUserId,
             correlationId: sprintf('manual-dctfweb-%d-%s', $client->id, (string) Str::uuid()),
-            dispatch: true,
+            dispatch: false,
         );
+
+        $progress = is_array($run->progress) ? $run->progress : [];
+        $progress['period_key'] = $periodKey;
+        $run->forceFill(['progress' => $progress])->save();
+        ExecuteFiscalMonitoringRunJob::dispatch($run->id)
+            ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
 
         return $run->toPublicArray();
     }
@@ -346,8 +345,20 @@ final class ManualConsultExecutionService
             competence: $apuracao->competence,
             actorId: $actorUserId,
             correlationId: sprintf('manual-mit-%d-%s', $client->id, (string) Str::uuid()),
-            dispatch: true,
+            dispatch: false,
         );
+
+        $progress = is_array($run->progress) ? $run->progress : [];
+        $progress['period_key'] = $periodKey;
+        if ($def->operationKey === 'mit.consapuracao') {
+            $progress['idApuracao'] = (int) $this->requireParam($params, 'id_apuracao');
+        }
+        if ($def->operationKey === 'mit.situacaoenc') {
+            $progress['protocoloEncerramento'] = (string) $this->requireParam($params, 'protocolo_encerramento');
+        }
+        $run->forceFill(['progress' => $progress])->save();
+        ExecuteFiscalMonitoringRunJob::dispatch($run->id)
+            ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
 
         return $run->toPublicArray();
     }
@@ -466,12 +477,18 @@ final class ManualConsultExecutionService
     /**
      * @return array<string, mixed>
      */
-    private function registrationsRefresh(Office $office, Client $client): array
-    {
+    private function registrationsRefresh(
+        Office $office,
+        Client $client,
+        ManualConsultActionDefinition $def,
+        ?int $actorUserId,
+    ): array {
         $job = RefreshRegistrationLinksJob::dispatchIfAllowed(
             (int) $office->id,
             (int) $client->id,
             bin2hex(random_bytes(8)),
+            manualActionId: $def->actionId,
+            actorUserId: $actorUserId,
         );
         if ($job === null) {
             throw new HttpException(423, 'Capability registrations desabilitada ou kill switch ativo.');
@@ -483,12 +500,18 @@ final class ManualConsultExecutionService
     /**
      * @return array<string, mixed>
      */
-    private function taxProcessRefresh(Office $office, Client $client): array
-    {
+    private function taxProcessRefresh(
+        Office $office,
+        Client $client,
+        ManualConsultActionDefinition $def,
+        ?int $actorUserId,
+    ): array {
         $job = RefreshTaxProcessesJob::dispatchIfAllowed(
             (int) $office->id,
             (int) $client->id,
             bin2hex(random_bytes(8)),
+            manualActionId: $def->actionId,
+            actorUserId: $actorUserId,
         );
         if ($job === null) {
             throw new HttpException(423, 'Capability tax_processes desabilitada ou kill switch ativo.');
@@ -534,8 +557,6 @@ final class ManualConsultExecutionService
             foreach ($progress as $k => $v) {
                 $p[$k] = $v;
             }
-            $p['manual_consult'] = true;
-            $p['action_id'] = $def->actionId;
             $run->forceFill(['progress' => $p])->save();
         }
 
@@ -543,38 +564,6 @@ final class ManualConsultExecutionService
             ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
 
         return $run->toPublicArray();
-    }
-
-    private function assertNotMutating(string $operationKey): void
-    {
-        $manifest = $this->manifest->load();
-        foreach ($manifest['entries'] as $entry) {
-            if (($entry['operation_key'] ?? null) !== $operationKey) {
-                continue;
-            }
-            // Fail-closed: chave ausente trata-se como mutante.
-            $isMutating = array_key_exists('is_mutating', $entry)
-                ? (bool) $entry['is_mutating']
-                : true;
-            if ($isMutating) {
-                throw new HttpException(422, ManualConsultEligibility::MutatingBlocked->label());
-            }
-            $state = (string) ($entry['official_state'] ?? '');
-            if ($state !== SerproOfficialState::Production->value) {
-                throw new HttpException(422, 'Operação não está em PRODUCTION.');
-            }
-            $support = (string) ($entry['platform_support'] ?? '');
-            if (! in_array($support, [
-                SerproPlatformSupport::Implemented->value,
-                SerproPlatformSupport::ProductionValidated->value,
-            ], true)) {
-                throw new HttpException(422, ManualConsultEligibility::AdapterMissing->label());
-            }
-
-            return;
-        }
-
-        throw new HttpException(404, 'operation_key ausente do catálogo oficial.');
     }
 
     /**

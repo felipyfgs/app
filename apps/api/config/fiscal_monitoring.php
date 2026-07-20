@@ -80,6 +80,14 @@ return [
         'ttl_seconds' => (int) env('FISCAL_MONITORING_CACHE_TTL', 300),
     ],
 
+    'projection' => [
+        /** Frescor padrão do último snapshot válido exibido no workspace. */
+        'snapshot_freshness_ttl_seconds' => (int) env(
+            'FISCAL_MONITORING_SNAPSHOT_FRESHNESS_TTL_SECONDS',
+            86_400,
+        ),
+    ],
+
     'rate_limit' => [
         'global_rps' => (float) env('FISCAL_MONITORING_GLOBAL_RPS', 4.0),
         'tenant_rps' => (float) env('FISCAL_MONITORING_TENANT_RPS', 1.0),

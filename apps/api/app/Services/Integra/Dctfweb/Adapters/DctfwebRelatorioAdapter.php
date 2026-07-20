@@ -11,6 +11,8 @@ use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebCompetenceResolver;
 use App\Services\Integra\Dctfweb\DctfwebDeclarationService;
 use App\Services\Integra\Dctfweb\DctfwebIntegraCaller;
+use App\Services\Integra\Dctfweb\DctfwebOfficialCodec;
+use RuntimeException;
 
 final class DctfwebRelatorioAdapter extends AbstractDctfwebAdapter
 {
@@ -18,6 +20,7 @@ final class DctfwebRelatorioAdapter extends AbstractDctfwebAdapter
         DctfwebIntegraCaller $caller,
         DctfwebCompetenceResolver $competences,
         private readonly DctfwebDeclarationService $declarations,
+        private readonly DctfwebOfficialCodec $codec,
     ) {
         parent::__construct($caller, $competences);
     }
@@ -40,16 +43,21 @@ final class DctfwebRelatorioAdapter extends AbstractDctfwebAdapter
     public function execute(FiscalAdapterRequest $request): FiscalAdapterResult
     {
         $periodKey = $this->resolvePeriodKey($request);
-        $response = $this->callUpstream($request, [
-            'competencia' => $periodKey,
-            'periodo' => $periodKey,
-        ]);
+        $response = $this->callUpstream($request, $this->codec->periodPayload($periodKey));
 
         if (! $response->success) {
             return $this->failedFromResponse($response);
         }
 
-        $bytes = DctfwebIntegraCaller::evidenceBytes($response->body);
+        if (! is_array($response->dados)) {
+            return FiscalAdapterResult::failed('Resposta CONSDECCOMPLETA33 sem dados estruturados.', 'DCTFWEB_DADOS_INVALID');
+        }
+        try {
+            $bytes = $this->codec->decodePdf($response->dados);
+        } catch (RuntimeException $e) {
+            return FiscalAdapterResult::failed($e->getMessage(), 'DCTFWEB_DOCUMENT_INVALID');
+        }
+        $metadata = $this->codec->sanitize($response->dados);
         $projected = $this->declarations->projectArtifact(
             run: $request->run,
             office: $request->office,
@@ -57,9 +65,9 @@ final class DctfwebRelatorioAdapter extends AbstractDctfwebAdapter
             periodKey: $periodKey,
             kind: DctfwebArtifactKind::Relatorio,
             evidenceBytes: $bytes,
-            body: $response->body,
-            contentType: 'application/json',
-            sourceVersion: isset($response->body['versao']) ? (string) $response->body['versao'] : null,
+            body: $metadata,
+            contentType: 'application/pdf',
+            sourceVersion: isset($metadata['versao']) ? (string) $metadata['versao'] : null,
         );
 
         $situation = $response->simulated
@@ -78,6 +86,7 @@ final class DctfwebRelatorioAdapter extends AbstractDctfwebAdapter
             ],
             findings: $this->retificationFinding($projected['retification']),
             coverage: FiscalCoverage::Full,
+            contentType: 'application/pdf',
         );
     }
 }

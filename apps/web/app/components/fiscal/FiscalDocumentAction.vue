@@ -16,12 +16,15 @@ const props = withDefaults(defineProps<{
    * exibe texto muted (nunca botão). Superfícies NEVER devem deixar false.
    */
   showUnavailable?: boolean
+  /** Exibe tipo, fonte e observação fornecidos pelo descriptor. */
+  showMetadata?: boolean
   size?: 'xs' | 'sm' | 'md'
   /** Força ocultar (ex.: submódulo MIT, surface allows_document=false). */
   disabled?: boolean
 }>(), {
   document: null,
   showUnavailable: false,
+  showMetadata: false,
   size: 'xs',
   disabled: false
 })
@@ -46,6 +49,16 @@ const href = computed(() => {
   const h = props.document?.href
   return typeof h === 'string' && h.trim() ? h.trim() : null
 })
+
+const metadata = computed(() => {
+  if (!visible.value || !props.showMetadata) return null
+  const parts = [props.document?.kind, props.document?.source_label]
+  if (props.document?.observed_at) {
+    parts.push(`observado em ${formatDateTime(props.document.observed_at)}`)
+  }
+  return parts.filter((part): part is string => typeof part === 'string' && part.trim() !== '')
+    .join(' · ')
+})
 </script>
 
 <template>
@@ -61,6 +74,13 @@ const href = computed(() => {
     rel="noopener"
     data-testid="fiscal-document-action"
   />
+  <span
+    v-if="visible && metadata"
+    class="text-xs text-muted"
+    data-testid="fiscal-document-metadata"
+  >
+    {{ metadata }}
+  </span>
   <span
     v-else-if="unavailableText"
     class="text-xs text-muted"

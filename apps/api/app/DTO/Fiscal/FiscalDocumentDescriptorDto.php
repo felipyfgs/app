@@ -4,7 +4,6 @@ namespace App\DTO\Fiscal;
 
 use App\Enums\DocumentUnavailableReason;
 use App\Models\FiscalEvidenceArtifact;
-use App\Models\Office;
 use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceContract;
 
 /**
@@ -25,23 +24,20 @@ final readonly class FiscalDocumentDescriptorDto
         public ?DocumentUnavailableReason $unavailableReason,
     ) {}
 
-    public static function fromArtifact(
+    /**
+     * Constrói o descritor após validação pelo FiscalDocumentDescriptorFactory.
+     */
+    public static function fromAvailableArtifact(
         FiscalEvidenceArtifact $artifact,
         MonitoringSurfaceContract $surface,
-        Office $office,
     ): self {
-        if ((int) $artifact->office_id !== (int) $office->id) {
-            return self::unavailable(DocumentUnavailableReason::NotSupported, $surface);
-        }
-
         $contentType = is_string($artifact->content_type) && $artifact->content_type !== ''
             ? $artifact->content_type
             : 'application/octet-stream';
-        $isPdf = str_contains(strtolower($contentType), 'pdf');
 
         return new self(
             available: true,
-            kind: $isPdf ? 'PDF' : 'PDF',
+            kind: self::kindForContentType($contentType),
             label: self::labelForSurface($surface),
             contentType: $contentType,
             observedAt: $artifact->observed_at?->toIso8601String(),
@@ -109,6 +105,19 @@ final readonly class FiscalDocumentDescriptorDto
             'guides' => 'Ver guia',
             'declarations' => 'Ver recibo/evidência',
             default => 'Ver documento oficial',
+        };
+    }
+
+    private static function kindForContentType(string $contentType): string
+    {
+        $normalized = strtolower($contentType);
+
+        return match (true) {
+            str_contains($normalized, 'pdf') => 'PDF',
+            str_contains($normalized, 'xml') => 'XML',
+            str_contains($normalized, 'zip') => 'ZIP',
+            str_contains($normalized, 'json') => 'JSON',
+            default => 'DOCUMENT',
         };
     }
 }

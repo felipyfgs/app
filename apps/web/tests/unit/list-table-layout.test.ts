@@ -44,13 +44,15 @@ describe('list-table-layout (customers.vue @ 0f30c09)', () => {
     }
   })
 
-  it('PGDAS-D/PGMEI unificam prévia e automático na coluna Ações', () => {
+  it('PGDAS-D/PGMEI mantêm comunicação somente informativa na coluna Ações', () => {
     for (const rel of ['app/utils/pgdasd-table.ts', 'app/utils/pgmei-table.ts']) {
       const source = readFileSync(resolve(process.cwd(), rel), 'utf8')
       expect(source, rel).toContain('id: \'actions\'')
       expect(source, rel).not.toMatch(/id:\s*'send'/)
-      expect(source, rel).toContain('send-slot')
-      expect(source, rel).toContain('send-preview')
+      expect(source, rel).toContain('communication-info')
+      expect(source, rel).toContain('communication-preferences')
+      expect(source, rel).not.toContain('AutomaticSwitch')
+      expect(source, rel).not.toContain('BulkAutomaticSwitch')
     }
   })
 
