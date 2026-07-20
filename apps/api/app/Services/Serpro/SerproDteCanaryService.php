@@ -429,11 +429,8 @@ final class SerproDteCanaryService
             $blockers[] = 'OAUTH_EVIDENCE_MISSING';
         }
 
-        // Seis gates externos aceitos
+        // Gates documentais são informativos (não bloqueiam canário na console simplificada).
         $checks['external_gates_accepted'] = $this->allExternalGatesAccepted();
-        if (! $checks['external_gates_accepted']) {
-            $blockers[] = 'EXTERNAL_GATES_OPEN';
-        }
 
         // A1 do Office
         $checks['a1_valid'] = $office !== null && $this->officeHasValidA1($office);

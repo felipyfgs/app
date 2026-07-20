@@ -4,7 +4,9 @@ namespace Tests\Unit\MeiAutomation;
 
 use App\DTO\MeiAutomation\MeiAutomationJobRequest;
 use App\Enums\MeiAutomationStatus;
+use App\Exceptions\MeiAutomationTransportException;
 use App\Services\MeiAutomation\MeiAutomationClient;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
@@ -83,6 +85,29 @@ class MeiAutomationClientTest extends TestCase
             self::fail('Input fora da allowlist deveria ser rejeitado.');
         } catch (InvalidArgumentException) {
             Http::assertNothingSent();
+        }
+    }
+
+    public function test_connection_failure_is_wrapped_as_transport_exception(): void
+    {
+        config()->set('mei_automation.base_url', 'http://mei.test');
+        config()->set('mei_automation.hmac.key_id', 'laravel');
+        config()->set('mei_automation.hmac.secret', 'shared-test-secret');
+        Http::fake(function () {
+            throw new ConnectionException('Could not resolve host: mei');
+        });
+
+        try {
+            app(MeiAutomationClient::class)->create(new MeiAutomationJobRequest(
+                operationKey: 'fixture.health',
+                idempotencyKey: 'fixture:12345678',
+                requestFingerprint: str_repeat('a', 64),
+                clientRef: 'opaque-client-fixture',
+            ));
+            self::fail('Falha de conexão deveria virar MeiAutomationTransportException.');
+        } catch (MeiAutomationTransportException $error) {
+            self::assertSame('AUTOMATION_TRANSPORT_ERROR', $error->errorCode);
+            self::assertSame(0, $error->httpStatus);
         }
     }
 }

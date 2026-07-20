@@ -5,6 +5,7 @@ namespace App\Services\MeiAutomation;
 use App\DTO\MeiAutomation\MeiAutomationJobRequest;
 use App\DTO\MeiAutomation\MeiAutomationJobResult;
 use App\Exceptions\MeiAutomationTransportException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
 use RuntimeException;
@@ -43,11 +44,15 @@ final class MeiAutomationClient
     public function downloadArtifact(string $jobId, string $artifactId): Response
     {
         $path = '/v1/jobs/'.$this->jobId($jobId).'/artifacts/'.$this->jobId($artifactId);
-        $request = $this->http
-            ->baseUrl(rtrim((string) config('mei_automation.base_url'), '/'))
-            ->timeout(max(1, (int) config('mei_automation.timeout_seconds', 15)))
-            ->withHeaders($this->signer->headers('GET', $path));
-        $response = $request->get($path);
+        try {
+            $request = $this->http
+                ->baseUrl(rtrim((string) config('mei_automation.base_url'), '/'))
+                ->timeout(max(1, (int) config('mei_automation.timeout_seconds', 15)))
+                ->withHeaders($this->signer->headers('GET', $path));
+            $response = $request->get($path);
+        } catch (ConnectionException) {
+            throw new MeiAutomationTransportException('AUTOMATION_TRANSPORT_ERROR', 0);
+        }
         $this->assertSuccessful($response);
 
         return $response;
@@ -69,7 +74,11 @@ final class MeiAutomationClient
             $request = $request->withBody($body, 'application/json');
         }
 
-        $response = $request->send($method, $path);
+        try {
+            $response = $request->send($method, $path);
+        } catch (ConnectionException) {
+            throw new MeiAutomationTransportException('AUTOMATION_TRANSPORT_ERROR', 0);
+        }
         $this->assertSuccessful($response);
 
         $decoded = $response->json();

@@ -85,6 +85,27 @@ class FiscalSnapshotPersistenceTest extends TestCase
         self::assertSame($otherOffice->id, $untouchedSnapshot->office_id);
     }
 
+    public function test_skip_reason_is_truncated_to_80_characters(): void
+    {
+        $office = Office::factory()->create();
+        $client = Client::factory()->forOffice($office)->create();
+        $run = $this->createRun($office, $client, 'skip-reason');
+
+        $long = str_repeat('x', 120);
+        $persisted = app(FiscalSnapshotPersistence::class)->persist(new FiscalPersistPayload(
+            run: $run,
+            result: FiscalRunResult::Blocked,
+            situation: FiscalSituation::Blocked,
+            coverage: FiscalCoverage::Unknown,
+            skipReason: $long,
+            errorCode: 'PROCURACAO_SYNC_FAILED',
+            errorMessage: 'Falha ao sincronizar procurações: Elegibilidade Integra negada: AUTHORIZATION_MISSING',
+        ));
+
+        self::assertSame(80, mb_strlen((string) $persisted['run']->skip_reason));
+        self::assertSame(mb_substr($long, 0, 80), $persisted['run']->skip_reason);
+    }
+
     private function createRun(Office $office, Client $client, string $suffix): FiscalMonitoringRun
     {
         return FiscalMonitoringRun::query()->withoutGlobalScopes()->create([

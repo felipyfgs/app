@@ -21,6 +21,7 @@ use App\Services\Fiscal\Mutations\FiscalMutationIntegraRequestFactory;
 use App\Services\MeiAutomation\MeiDasMutationReconciler;
 use App\Services\MeiAutomation\MeiPortalFiscalMutationTransport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -130,6 +131,28 @@ final class MeiPortalFiscalMutationTransportTest extends TestCase
             ->fallback_reason);
     }
 
+    public function test_pre_submission_connection_failure_falls_back_once_to_serpro(): void
+    {
+        [$office, $client, $mutation] = $this->mutation();
+        $this->enablePortal();
+        $this->enableSerproFallback($office);
+        $serpro = new FakeSerproFiscalMutationTransport;
+        $this->app->instance(SerproFiscalMutationTransport::class, $serpro);
+        Http::fake(function () {
+            throw new ConnectionException('Could not resolve host: mei');
+        });
+
+        $response = app(MeiPortalFiscalMutationTransport::class)
+            ->execute($this->request($office, $client, $mutation));
+
+        self::assertTrue($response->success);
+        self::assertSame(1, $serpro->executeCalls);
+        self::assertSame('PORTAL_UNAVAILABLE', MeiAutomationAttempt::query()
+            ->withoutGlobalScopes()
+            ->firstOrFail()
+            ->fallback_reason);
+    }
+
     /** @return array{Office, Client, FiscalMutationOperation} */
     private function mutation(?Office $office = null, ?Client $client = null): array
     {
@@ -224,7 +247,12 @@ final class MeiPortalFiscalMutationTransportTest extends TestCase
             'mei_automation.fixture_enabled' => false,
             'mei_automation.allow_all_offices' => true,
             'mei_automation.provider_policy.default' => 'portal_then_serpro',
-            'mei_automation.provider_policy.operations.pgmei.gerardaspdf' => null,
+            'mei_automation.provider_policy.operations' => [
+                'pgmei.gerardaspdf' => 'portal_then_serpro',
+                'pgmei.gerardascodbarra' => 'portal_then_serpro',
+                'pgmei.dividaativa' => 'portal_then_serpro',
+                'dasnsimei.consultimadecrec' => 'portal_then_serpro',
+            ],
             'mei_automation.hmac.secret' => str_repeat('s', 32),
             'mei_automation.base_url' => 'http://mei:8080',
         ]);

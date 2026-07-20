@@ -12,8 +12,9 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Persistência da state machine de tentativas do executor central.
  *
- * Garantia: no máximo um HTTP por chave lógica namespaced; replays finalizados
- * devolvem resultado persistido; concorrentes em dispatched bloqueiam.
+ * Garantia: no máximo um HTTP por chave lógica namespaced para resultados
+ * definitivos; falhas de pré-condição local recuperáveis permitem reclaim
+ * (novo dispatch) na mesma chave; concorrentes em dispatched bloqueiam.
  */
 final class SerproOperationAttemptStore
 {
@@ -75,10 +76,46 @@ final class SerproOperationAttemptStore
                 }
 
                 if ($existing->isTerminal()) {
+                    $sticky = SerproAttemptReplayPolicy::isStickyReplay(
+                        $existing->error_code,
+                        (bool) $existing->success,
+                    );
+                    if ($sticky) {
+                        return [
+                            'action' => 'replay',
+                            'attempt' => $existing,
+                            'response' => $this->toResponse($existing),
+                        ];
+                    }
+
+                    // Pré-condição local recuperável: reclaim e novo dispatch.
+                    $existing->forceFill([
+                        'attempt_state' => SerproAttemptState::Dispatched,
+                        'success' => null,
+                        'http_status' => null,
+                        'error_code' => null,
+                        'error_message' => null,
+                        'simulated' => false,
+                        'latency_ms' => null,
+                        'source_provenance' => null,
+                        'business_status' => null,
+                        'functional_route' => null,
+                        'mensagens' => null,
+                        'dados' => null,
+                        'body' => null,
+                        'headers' => null,
+                        'reservation_id' => null,
+                        'request_tag' => $requestTag,
+                        'correlation_id' => $correlationId ?? $existing->correlation_id,
+                        'dispatched_at' => now(),
+                        'acknowledged_at' => null,
+                        'reconciled_at' => null,
+                    ])->save();
+
                     return [
-                        'action' => 'replay',
-                        'attempt' => $existing,
-                        'response' => $this->toResponse($existing),
+                        'action' => 'dispatch',
+                        'attempt' => $existing->fresh(),
+                        'response' => null,
                     ];
                 }
 

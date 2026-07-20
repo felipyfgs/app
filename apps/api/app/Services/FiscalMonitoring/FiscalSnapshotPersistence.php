@@ -264,7 +264,9 @@ final class FiscalSnapshotPersistence
             'progress' => $payload->progress !== [] ? $payload->progress : $run->progress,
             'items_processed' => $run->items_processed + $payload->itemsProcessed,
             'pages_processed' => $run->pages_processed + $payload->pagesProcessed,
-            'skip_reason' => $payload->skipReason,
+            'skip_reason' => $payload->skipReason !== null
+                ? mb_substr($payload->skipReason, 0, 80)
+                : null,
             'error_code' => $payload->errorCode,
             'error_message' => $payload->errorMessage !== null
                 ? mb_substr($payload->errorMessage, 0, 500)

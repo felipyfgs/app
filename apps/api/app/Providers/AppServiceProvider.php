@@ -105,6 +105,8 @@ use App\Services\Integra\ContributorCnpjResolver;
 use App\Services\Integra\Dctfweb\DctfwebAdapterRegistrar;
 use App\Services\Integra\DisabledAutenticarProcuradorClient;
 use App\Services\Integra\DisabledIntegraProcuracoesClient;
+use App\Services\Integra\EnsureClientProcuracaoForConsult;
+use App\Services\Integra\FixtureIntegraProcuracoesClient;
 use App\Services\Integra\HttpAutenticarProcuradorClient;
 use App\Services\Integra\HttpIntegraProcuracoesClient;
 use App\Services\Integra\IntegraEligibilityService;
@@ -334,8 +336,8 @@ class AppServiceProvider extends ServiceProvider
             $driver = $app->make(CapabilityDriverResolver::class)->forCapability('authorization');
 
             return match ($driver) {
-                SerproCapabilityDriver::Disabled,
-                SerproCapabilityDriver::Fixture => $app->make(DisabledIntegraProcuracoesClient::class),
+                SerproCapabilityDriver::Disabled => $app->make(DisabledIntegraProcuracoesClient::class),
+                SerproCapabilityDriver::Fixture => $app->make(FixtureIntegraProcuracoesClient::class),
                 SerproCapabilityDriver::Real => $app->make(HttpIntegraProcuracoesClient::class),
             };
         });
@@ -465,6 +467,7 @@ class AppServiceProvider extends ServiceProvider
                 defisLatestDeclarationPost: $this->app->make(DefisLatestDeclarationPostConsultService::class),
                 defisSpecificDeclarationPost: $this->app->make(DefisSpecificDeclarationPostConsultService::class),
                 defisReferences: $this->app->make(DefisDeclarationReferenceStore::class),
+                procuracaoEnsure: $this->app->make(EnsureClientProcuracaoForConsult::class),
             );
 
             $registry->register(strtoupper($def->systemCode) === 'INTEGRA_MEI'

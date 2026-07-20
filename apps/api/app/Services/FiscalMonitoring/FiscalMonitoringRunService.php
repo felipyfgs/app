@@ -188,6 +188,23 @@ final class FiscalMonitoringRunService
     }
 
     /**
+     * Fecha run não-terminal após falha não tratada do worker (Horizon failed()).
+     */
+    public function failUnhandledJob(int $runId, ?string $sanitizedMessage = null): ?FiscalMonitoringRun
+    {
+        $run = FiscalMonitoringRun::query()->withoutGlobalScopes()->find($runId);
+        if ($run === null || $run->status->isTerminal()) {
+            return $run;
+        }
+
+        $message = is_string($sanitizedMessage) && trim($sanitizedMessage) !== ''
+            ? mb_substr(trim($sanitizedMessage), 0, 500)
+            : 'Falha não tratada na execução da consulta fiscal.';
+
+        return $this->markFailed($run, 'JOB_UNHANDLED_EXCEPTION', $message);
+    }
+
+    /**
      * Executa a run: revalida elegibilidade, chama adapter, persiste atomicamente.
      */
     /**

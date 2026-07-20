@@ -2,10 +2,12 @@
 
 namespace App\Services\Integra;
 
-use App\Contracts\SecureObjectStore;
 use App\Enums\AuthorCertificateMode;
+use App\Enums\AuthorIdentityType;
+use App\Enums\CredentialStatus;
 use App\Enums\FiscalControlModule;
 use App\Enums\FiscalProfile;
+use App\Enums\OfficeCredentialPurpose;
 use App\Enums\OfficeSerproOnboardingStatus;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproEnvironment;
@@ -15,6 +17,8 @@ use App\Jobs\Serpro\BeginOfficeFiscalReadinessJob;
 use App\Jobs\Serpro\ProcessOfficeSerproOnboardingJob;
 use App\Jobs\Serpro\SignTermoWithManagedA1Job;
 use App\Models\Office;
+use App\Models\OfficeCredential;
+use App\Models\OfficeCredentialPurposeLink;
 use App\Models\OfficeInstitutionalProfile;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\OfficeSerproOnboardingState;
@@ -27,7 +31,7 @@ use Throwable;
 
 /**
  * State machine + enqueue de onboarding SERPRO automatizado (F-3.1).
- * Deriva estado de perfil/consentimento/A1 (quando existirem) + OfficeSerproAuthorization.
+ * Deriva estado de perfil/consentimento/A1 canônico + OfficeSerproAuthorization.
  */
 final class OfficeSerproOnboardingService
 {
@@ -72,6 +76,7 @@ final class OfficeSerproOnboardingService
         bool $force = false,
     ): array {
         $state = $this->getOrCreateState($office, $environment);
+        $this->ensureAuthorFromCanonicalSetup($office, $environment, $actorUserId);
         $prereq = $this->evaluatePrerequisites($office, $environment);
         $correlationId ??= (string) Str::uuid();
 
@@ -99,6 +104,10 @@ final class OfficeSerproOnboardingService
         }
 
         if (FiscalProfile::configured() === FiscalProfile::Dev) {
+            // Dev usa autenticar_procurador=fixture → DisabledAutenticarProcuradorClient.
+            // Sem token local a elegibilidade bloqueia toda a carteira (ACTION_REQUIRED).
+            $this->authorizations->activateDevFixtureAuthorization($office, $environment, $actorUserId);
+
             $idempotencyKey = $this->buildIdempotencyKey($office, $environment, $prereq['fingerprint']);
             $this->transition(
                 $state,
@@ -213,6 +222,7 @@ final class OfficeSerproOnboardingService
                 return $state;
             }
 
+            $this->ensureAuthorFromCanonicalSetup($office, $environment, $actorUserId);
             $prereq = $this->evaluatePrerequisites($office, $environment);
             if (! $prereq['complete']) {
                 $this->transition(
@@ -257,18 +267,12 @@ final class OfficeSerproOnboardingService
                         $auth = $auth->refresh();
                     }
 
-                    $signJob = new SignTermoWithManagedA1Job(
+                    SignTermoWithManagedA1Job::dispatchSync(
                         $office->id,
                         $environment->value,
                         $auth->id,
                         $actorUserId,
                         $correlationId,
-                    );
-                    $signJob->handle(
-                        app(SecureObjectStore::class),
-                        app(TermoXmlSigner::class),
-                        $this->authorizations,
-                        $this->audit,
                     );
                     $auth = $auth->refresh();
                     if ($auth->termo_vault_object_id === null) {
@@ -488,9 +492,10 @@ final class OfficeSerproOnboardingService
 
         $profileOk = $this->hasInstitutionalProfile($office);
         $consentOk = $this->hasTechnicalConsent($office, $auth);
-        $a1Ok = $auth !== null
+        $legacyManagedA1 = $auth !== null
             && $auth->author_pfx_vault_object_id !== null
             && $auth->certificate_mode === AuthorCertificateMode::ManagedA1;
+        $canonicalA1 = $this->hasCanonicalOfficeA1($office);
         // External signature path: A1 not required if author configured (tenant signs offline)
         $externalOk = $auth !== null
             && $auth->certificate_mode === AuthorCertificateMode::ExternalSignature
@@ -501,7 +506,7 @@ final class OfficeSerproOnboardingService
             && $auth->author_identity !== ''
             && $auth->author_identity !== '00000000000000';
 
-        $credentialOk = $a1Ok || $externalOk;
+        $credentialOk = $canonicalA1 || $legacyManagedA1 || $externalOk;
 
         $missingCode = null;
         $missingMessage = null;
@@ -520,12 +525,14 @@ final class OfficeSerproOnboardingService
         }
 
         $complete = $profileOk && $consentOk && $authorOk && $credentialOk;
+        $canonical = $this->activeCanonicalCredential((int) $office->id);
         $fingerprint = hash('sha256', implode('|', [
             (string) $office->id,
             $environment->value,
             $auth?->author_identity ?? '',
-            $auth?->author_fingerprint_sha256 ?? '',
+            $auth?->author_fingerprint_sha256 ?? $canonical?->fingerprint_sha256 ?? '',
             $auth?->certificate_mode?->value ?? '',
+            $canonical?->fingerprint_sha256 ?? '',
             $complete ? '1' : '0',
         ]));
 
@@ -539,6 +546,117 @@ final class OfficeSerproOnboardingService
             'missing_message' => $missingMessage,
             'fingerprint' => $fingerprint,
         ];
+    }
+
+    /**
+     * Deriva autor ManagedA1 do perfil + A1 canônico + consentimento técnico
+     * (sem UI técnica SERPRO em /conta/escritorio).
+     */
+    public function ensureAuthorFromCanonicalSetup(
+        Office $office,
+        SerproEnvironment $environment,
+        ?int $actorUserId = null,
+    ): void {
+        $profile = OfficeInstitutionalProfile::query()
+            ->where('office_id', $office->id)
+            ->first();
+
+        if ($profile === null || ! $profile->isComplete()) {
+            return;
+        }
+
+        if (! $this->hasCanonicalOfficeA1($office)) {
+            return;
+        }
+
+        $auth = $this->authorizations->getOrCreate($office, $environment);
+        if (! $this->hasTechnicalConsent($office, $auth)) {
+            return;
+        }
+
+        $identity = strtoupper(preg_replace('/[^0-9A-Za-z]/', '', (string) $profile->cnpj) ?? '');
+        if (strlen($identity) !== 14) {
+            return;
+        }
+
+        $placeholder = $auth->author_identity === '' || $auth->author_identity === '00000000000000';
+        $needsAuthorSync = $placeholder
+            || $auth->author_identity !== $identity
+            || $auth->certificate_mode !== AuthorCertificateMode::ManagedA1;
+
+        if ($needsAuthorSync) {
+            $auth = $this->authorizations->configureAuthor(
+                $office,
+                $environment,
+                AuthorIdentityType::Cnpj,
+                $identity,
+                $profile->legal_name,
+                AuthorCertificateMode::ManagedA1,
+                $actorUserId,
+            );
+        }
+
+        $canonical = $this->activeCanonicalCredential((int) $office->id);
+        $dirty = false;
+        if (! $auth->managed_a1_consent) {
+            $auth->managed_a1_consent = true;
+            $auth->managed_a1_consented_at = now();
+            $dirty = true;
+        }
+        if ($canonical !== null) {
+            if ($auth->author_fingerprint_sha256 !== $canonical->fingerprint_sha256) {
+                $auth->author_fingerprint_sha256 = $canonical->fingerprint_sha256;
+                $dirty = true;
+            }
+            if ($auth->author_cert_valid_from?->toIso8601String() !== $canonical->valid_from?->toIso8601String()) {
+                $auth->author_cert_valid_from = $canonical->valid_from;
+                $dirty = true;
+            }
+            if ($auth->author_cert_valid_to?->toIso8601String() !== $canonical->valid_to?->toIso8601String()) {
+                $auth->author_cert_valid_to = $canonical->valid_to;
+                $dirty = true;
+            }
+        }
+        if ($dirty) {
+            $auth->save();
+        }
+    }
+
+    private function hasCanonicalOfficeA1(Office $office): bool
+    {
+        return $this->activeCanonicalCredential((int) $office->id) !== null
+            || $this->activeSerproTermSigningCredential((int) $office->id) !== null;
+    }
+
+    private function activeCanonicalCredential(int $officeId): ?OfficeCredential
+    {
+        return OfficeCredential::query()
+            ->where('office_id', $officeId)
+            ->where('purpose', OfficeCredentialPurpose::CanonicalECnpjA1->value)
+            ->where('status', CredentialStatus::Active)
+            ->first();
+    }
+
+    private function activeSerproTermSigningCredential(int $officeId): ?OfficeCredential
+    {
+        $link = OfficeCredentialPurposeLink::query()
+            ->where('office_id', $officeId)
+            ->where('purpose', OfficeCredentialPurpose::SerproTermSigning->value)
+            ->where('status', CredentialStatus::Active)
+            ->whereNull('revoked_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($link === null) {
+            return null;
+        }
+
+        $credential = $link->credential;
+        if ($credential === null || ! $credential->status->isUsable()) {
+            return null;
+        }
+
+        return $credential;
     }
 
     private function hasInstitutionalProfile(Office $office): bool

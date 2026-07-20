@@ -888,12 +888,21 @@ class ClientController extends Controller
     }
 
     public function refreshRegistration(
+        Request $request,
         Client $client,
         RefreshClientRegistration $refresher,
     ): JsonResponse {
         $this->authorize('update', $client);
 
-        $result = $refresher->handle($client);
+        $lookupPayload = $request->input('lookup');
+        if ($lookupPayload !== null && ! is_array($lookupPayload)) {
+            throw ValidationException::withMessages([
+                'lookup' => ['Informe o snapshot de consulta no formato esperado.'],
+            ]);
+        }
+
+        /** @var array<string, mixed>|null $lookupPayload */
+        $result = $refresher->handle($client, is_array($lookupPayload) ? $lookupPayload : null);
         $fresh = $result['client']->load([
             'establishments' => fn ($q) => $q->orderByDesc('is_matrix')->orderBy('id'),
             'contacts',

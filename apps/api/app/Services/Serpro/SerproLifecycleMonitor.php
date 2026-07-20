@@ -5,24 +5,29 @@ namespace App\Services\Serpro;
 use App\Enums\ClientProcuracaoSyncStatus;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\TaxProxyPowerStatus;
+use App\Enums\TermRePresentationStrategy;
+use App\Jobs\Serpro\RenewOfficeProcuradorTokenJob;
 use App\Models\ClientProcuracaoSnapshot;
 use App\Models\ClientProcuracaoSync;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\SerproContract;
 use App\Models\TaxProxyPower;
 use App\Services\Audit\AuditLogger;
+use App\Services\Integra\OfficeSerproAuthorizationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Verifica PFX contratante, A1, Termo, token e procurações.
- * Apenas alertas/marcações — NUNCA assina Termo, renova procuração ou muta fiscal.
+ * Renova token do procurador somente quando a estratégia for REUSE_STORED_TERM.
+ * NUNCA assina Termo, renova procuração ou muta fiscal além do token permitido.
  */
 final class SerproLifecycleMonitor
 {
     public function __construct(
         private readonly AuditLogger $audit,
+        private readonly OfficeSerproAuthorizationService $authorizations,
     ) {}
 
     /**
@@ -104,19 +109,34 @@ final class SerproLifecycleMonitor
                     $exp = CarbonImmutable::parse((string) $auth->procurador_token_expires_at);
                     $secondsLeft = $now->diffInSeconds($exp, false);
                     if ($secondsLeft <= $skew) {
+                        $strategy = $this->authorizations->representationStrategy($auth->environment);
+                        $canAutoRenew = $strategy === TermRePresentationStrategy::ReuseStoredTerm;
+
                         $alerts[] = [
                             'kind' => 'PROCURADOR_TOKEN',
                             'subject_id' => (int) $auth->id,
                             'office_id' => (int) $auth->office_id,
                             'days_left' => 0,
-                            'severity' => $secondsLeft <= 0 ? 'EXPIRED' : 'RENEWAL_SKEW',
-                            'message' => $secondsLeft <= 0
-                                ? 'Token do procurador expirado — renovação manual/consentida necessária.'
-                                : 'Token do procurador na margem de renovação (skew) — jobs que ultrapassariam a validade devem bloquear.',
+                            'severity' => $secondsLeft <= 0
+                                ? ($canAutoRenew ? 'AUTO_RENEW' : 'EXPIRED')
+                                : ($canAutoRenew ? 'AUTO_RENEW_SKEW' : 'RENEWAL_SKEW'),
+                            'message' => $canAutoRenew
+                                ? ($secondsLeft <= 0
+                                    ? 'Token do procurador expirado — renovação automática enfileirada.'
+                                    : 'Token do procurador na margem de renovação — renovação automática enfileirada.')
+                                : ($secondsLeft <= 0
+                                    ? 'Token do procurador expirado — renovação manual/consentida necessária.'
+                                    : 'Token do procurador na margem de renovação (skew) — jobs que ultrapassariam a validade devem bloquear.'),
                             'expires_at' => $exp->toIso8601String(),
                         ];
-                        // Marca action required se expirado; NÃO renova automaticamente
-                        if ($secondsLeft <= 0 && $auth->status === SerproAuthorizationStatus::TokenActive) {
+
+                        if ($canAutoRenew) {
+                            RenewOfficeProcuradorTokenJob::dispatch(
+                                (int) $auth->office_id,
+                                $auth->environment->value ?? (string) $auth->environment,
+                            );
+                        } elseif ($secondsLeft <= 0 && $auth->status === SerproAuthorizationStatus::TokenActive) {
+                            // Marca action required se expirado; NÃO renova automaticamente
                             $auth->status = SerproAuthorizationStatus::ActionRequired;
                             $auth->action_required_reason = 'Token do procurador expirado; renovação exige ação explícita.';
                             $auth->save();

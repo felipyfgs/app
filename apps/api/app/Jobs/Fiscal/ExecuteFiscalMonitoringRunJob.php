@@ -68,6 +68,15 @@ class ExecuteFiscalMonitoringRunJob implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
+        $message = $exception !== null
+            ? mb_substr($exception::class.': '.$exception->getMessage(), 0, 500)
+            : null;
+
+        app(FiscalMonitoringRunService::class)->failUnhandledJob(
+            $this->fiscalMonitoringRunId,
+            $message,
+        );
+
         $run = FiscalMonitoringRun::query()
             ->withoutGlobalScopes()
             ->find($this->fiscalMonitoringRunId);

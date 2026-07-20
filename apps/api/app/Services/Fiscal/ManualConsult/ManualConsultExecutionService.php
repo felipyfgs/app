@@ -4,7 +4,6 @@ namespace App\Services\Fiscal\ManualConsult;
 
 use App\DTO\Integra\MitListaApuracoesRequest;
 use App\Enums\ManualConsultEligibility;
-use App\Enums\SerproEnvironment;
 use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
 use App\Jobs\Fiscal\RefreshRegistrationLinksJob;
 use App\Jobs\Fiscal\RefreshTaxProcessesJob;
@@ -22,7 +21,7 @@ use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\SimplesMeiQueryService;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
-use App\Services\Integra\ClientProcuracaoSyncService;
+use App\Services\Integra\EnsureClientProcuracaoForConsult;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebDeclarationService;
 use App\Services\Integra\Dctfweb\MitApuracaoService;
@@ -59,7 +58,7 @@ final class ManualConsultExecutionService
         private readonly DctfwebDeclarationService $dctfwebDeclarations,
         private readonly MitApuracaoService $mit,
         private readonly MitListaApuracoesQueryService $mitLista,
-        private readonly ClientProcuracaoSyncService $procuracoes,
+        private readonly EnsureClientProcuracaoForConsult $procuracaoEnsure,
     ) {}
 
     /**
@@ -85,27 +84,19 @@ final class ManualConsultExecutionService
             $actorUserId,
         );
 
-        if ($def->requiredProxyPowers !== []
-            && $this->eligibility->environment() === SerproEnvironment::Production
-        ) {
-            $refresh = $this->procuracoes->enqueueRefreshIfNeeded(
+        if ($def->requiredProxyPowers !== []) {
+            $ensure = $this->procuracaoEnsure->ensure(
                 $office,
                 $client,
                 $this->eligibility->environment(),
+                $def->requiredProxyPowers,
                 $actorUserId,
-                (string) Str::uuid(),
             );
-            if ($refresh['queued']) {
-                return [
-                    'action_id' => $def->actionId,
-                    'eligibility' => ManualConsultEligibility::PowerRefreshing->value,
-                    'async' => true,
-                    'module_route' => $def->moduleRoute,
-                    'result' => null,
-                    'serpro_call' => 'PROCURACAO_QUEUED',
-                    'retry_after_seconds' => 3,
-                    'procuracao_status' => $refresh['snapshot']?->toClientProjection(),
-                ];
+            if (! $ensure['ok']) {
+                throw new HttpException(
+                    422,
+                    $ensure['message'] ?? ('Elegibilidade Integra negada: '.($ensure['code'] ?? 'PROXY_POWER_MISSING')),
+                );
             }
         }
 

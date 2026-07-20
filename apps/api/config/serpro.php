@@ -177,7 +177,9 @@ return [
     | PENDING_VALIDATION | REUSE_STORED_TERM | REQUIRE_NEW_SIGNATURE
     */
     'term_representation' => [
-        'TRIAL' => env('SERPRO_TERM_REPRESENTATION_TRIAL', 'PENDING_VALIDATION'),
+        // TRIAL: reuso do Termo para renovação automática do token do office.
+        'TRIAL' => env('SERPRO_TERM_REPRESENTATION_TRIAL', 'REUSE_STORED_TERM'),
+        // PRODUCTION: fail-closed até validação explícita em ops.
         'PRODUCTION' => env('SERPRO_TERM_REPRESENTATION_PRODUCTION', 'PENDING_VALIDATION'),
     ],
 

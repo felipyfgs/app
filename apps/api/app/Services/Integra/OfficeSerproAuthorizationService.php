@@ -10,6 +10,7 @@ use App\Domain\BrazilianTaxId;
 use App\DTO\Serpro\ProcuradorAuthRequest;
 use App\Enums\AuthorCertificateMode;
 use App\Enums\AuthorIdentityType;
+use App\Enums\FiscalProfile;
 use App\Enums\SecureObjectPurpose;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproDataSegregationClass;
@@ -18,6 +19,8 @@ use App\Enums\TaxProxyPowerStatus;
 use App\Enums\TermoAuthorizationState;
 use App\Enums\TermRePresentationStrategy;
 use App\Jobs\Serpro\SignTermoWithManagedA1Job;
+use App\Enums\ClientProcuracaoSyncStatus;
+use App\Models\ClientProcuracaoSnapshot;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\OfficeSerproAuthorizationEvent;
@@ -540,12 +543,20 @@ final class OfficeSerproAuthorizationService
 
     /**
      * Renova token do procurador conforme estratégia de reapresentação do Termo.
+     *
+     * @param  bool  $force  Se true, renova mesmo com token ainda vigente (ação explícita do escritório).
      */
     public function refreshProcuradorToken(
         Office $office,
         SerproEnvironment $environment,
         ?int $actorUserId = null,
+        bool $force = false,
     ): OfficeSerproAuthorization {
+        // Dev: autenticar_procurador=fixture é Disabled — token local fixture.
+        if (FiscalProfile::configured() === FiscalProfile::Dev) {
+            return $this->activateDevFixtureAuthorization($office, $environment, $actorUserId);
+        }
+
         $this->assertOfficeEligibleForEnvironment($office, $environment);
         $auth = $this->getOrCreate($office, $environment);
 
@@ -562,7 +573,8 @@ final class OfficeSerproAuthorizationService
         }
 
         if (
-            $auth->procurador_token_vault_object_id !== null
+            ! $force
+            && $auth->procurador_token_vault_object_id !== null
             && $auth->procurador_token_expires_at !== null
             && $auth->procurador_token_expires_at->isFuture()
         ) {
@@ -765,6 +777,72 @@ final class OfficeSerproAuthorizationService
     }
 
     /**
+     * Ativa autorização local em FISCAL_PROFILE=dev (sem Apoiar real).
+     * O driver fixture de autenticar_procurador é Disabled — sem isto a elegibilidade
+     * fica eternamente em ACTION_REQUIRED / TOKEN_MISSING.
+     */
+    public function activateDevFixtureAuthorization(
+        Office $office,
+        SerproEnvironment $environment,
+        ?int $actorUserId = null,
+    ): OfficeSerproAuthorization {
+        $auth = $this->getOrCreate($office, $environment);
+
+        $tokenAad = SecureObjectPurpose::SerproProcuradorToken->aadBase([
+            'office_id' => $office->id,
+            'environment' => $environment->value,
+            'author_identity' => $auth->author_identity,
+        ]);
+
+        $expiresAt = now()->addHours(12);
+        $tokenPayload = json_encode([
+            'token' => 'dev-fixture-procurador-token',
+            'expires_at' => $expiresAt->toIso8601String(),
+            'fixture' => true,
+        ], JSON_THROW_ON_ERROR);
+
+        $previous = $auth->procurador_token_vault_object_id;
+        $objectId = $this->store->put($tokenPayload, $tokenAad);
+
+        $from = $auth->status;
+        $auth->procurador_token_vault_object_id = $objectId;
+        $auth->procurador_token_expires_at = $expiresAt;
+        $auth->last_token_refresh_at = now();
+        $auth->status = SerproAuthorizationStatus::TokenActive;
+        $auth->action_required_reason = null;
+        if ($auth->termo_authorization_state === null
+            || $auth->termo_authorization_state === TermoAuthorizationState::Draft
+            || $auth->termo_authorization_state === TermoAuthorizationState::Rejected
+        ) {
+            $auth->termo_authorization_state = TermoAuthorizationState::LocalValidated;
+        }
+        $auth->save();
+
+        if ($previous !== null && $previous !== $objectId) {
+            try {
+                $this->store->delete($previous);
+            } catch (Throwable) {
+            }
+        }
+
+        $this->recordEvent(
+            $auth,
+            $from,
+            $auth->status,
+            'token.dev_fixture',
+            'Token fixture de desenvolvimento ativado.',
+            $actorUserId,
+        );
+
+        $this->audit->record('serpro.authorization.token_dev_fixture', 'SUCCESS', $auth, [
+            'environment' => $environment->value,
+            'expires_at' => $expiresAt->toIso8601String(),
+        ], $actorUserId, $office->id);
+
+        return $auth->refresh();
+    }
+
+    /**
      * Invalida atomicamente token, ETag, cache e poderes derivados (retenção de Termo/auditoria).
      */
     public function invalidateDerivedAuthorization(
@@ -852,6 +930,16 @@ final class OfficeSerproAuthorizationService
             ->where('status', TaxProxyPowerStatus::Active->value)
             ->update([
                 'status' => TaxProxyPowerStatus::Revoked->value,
+                'last_check_result' => 'INVALIDATED:'.$reason,
+                'updated_at' => now(),
+            ]);
+
+        // Snapshots não podem mascarar o ensure pré-consulta após troca/remoção de A1.
+        ClientProcuracaoSnapshot::query()
+            ->where('office_id', $office->id)
+            ->where('environment', $environment->value)
+            ->update([
+                'status' => ClientProcuracaoSyncStatus::Unverified->value,
                 'last_check_result' => 'INVALIDATED:'.$reason,
                 'updated_at' => now(),
             ]);

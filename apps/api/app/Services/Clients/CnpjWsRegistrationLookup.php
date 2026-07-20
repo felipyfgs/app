@@ -266,7 +266,11 @@ final class CnpjWsRegistrationLookup implements CnpjRegistrationLookup
             return [];
         }
 
-        $out = [];
+        /** @var array<string, ShareholderData> $byKey */
+        $byKey = [];
+        /** @var array<string, bool> $preferSourceMasked */
+        $preferSourceMasked = [];
+
         foreach ($rows as $row) {
             if (! is_array($row)) {
                 continue;
@@ -276,19 +280,36 @@ final class CnpjWsRegistrationLookup implements CnpjRegistrationLookup
                 continue;
             }
             $qual = is_array($row['qualificacao_socio'] ?? null) ? $row['qualificacao_socio'] : [];
-            $out[] = new ShareholderData(
+            $qualificationCode = $this->nullableString($qual['id'] ?? $qual['codigo'] ?? null);
+            $enteredAt = $this->dateOnly($row['data_entrada'] ?? null);
+            $rawDocument = $row['cpf_cnpj_socio'] ?? $row['cpf'] ?? $row['cnpj'] ?? null;
+            $sourceAlreadyMasked = is_string($rawDocument) && str_contains($rawDocument, '*');
+            $key = mb_strtolower($name).'|'.($enteredAt ?? '').'|'.($qualificationCode ?? '');
+
+            $candidate = new ShareholderData(
                 name: $name,
                 type: $this->nullableString($row['tipo'] ?? null),
-                qualificationCode: $this->nullableString($qual['id'] ?? $qual['codigo'] ?? null),
+                qualificationCode: $qualificationCode,
                 qualificationName: $this->nullableString($qual['descricao'] ?? null),
-                enteredAt: $this->dateOnly($row['data_entrada'] ?? null),
-                documentMasked: DocumentMask::ensureMasked(
-                    $row['cpf_cnpj_socio'] ?? $row['cpf'] ?? $row['cnpj'] ?? null
-                ),
+                enteredAt: $enteredAt,
+                documentMasked: DocumentMask::ensureMasked($rawDocument),
             );
+
+            if (! isset($byKey[$key])) {
+                $byKey[$key] = $candidate;
+                $preferSourceMasked[$key] = $sourceAlreadyMasked;
+
+                continue;
+            }
+
+            // Preferir a entrada cujo documento já vinha mascarado pela fonte.
+            if ($sourceAlreadyMasked && ! ($preferSourceMasked[$key] ?? false)) {
+                $byKey[$key] = $candidate;
+                $preferSourceMasked[$key] = true;
+            }
         }
 
-        return $out;
+        return array_values($byKey);
     }
 
     private function composePhone(mixed $ddd, mixed $phone): ?string

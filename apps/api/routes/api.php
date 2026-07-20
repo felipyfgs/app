@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\V1\Fiscal\MeiAutomationAttemptController;
 use App\Http\Controllers\Api\V1\Fiscal\MeiDasController;
 use App\Http\Controllers\Api\V1\Fiscal\MitController;
 use App\Http\Controllers\Api\V1\Fiscal\MonitoringCoverageController;
+use App\Http\Controllers\Api\V1\Fiscal\MonitoringInsightsController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebArrecadacaoReceiptController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebPaymentCountController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebPaymentListController;
@@ -289,6 +290,7 @@ Route::prefix('v1')->group(function (): void {
 
             // Contrato público das superfícies: saídas documentadas e cobertura Trial.
             Route::get('/fiscal/monitoring/coverage', MonitoringCoverageController::class);
+            Route::get('/fiscal/monitoring/insights', MonitoringInsightsController::class);
 
             // Read model de carteira por módulo (overview + clients; office_id só via membership)
             Route::get('/fiscal/modules/{module}/overview', [FiscalModulePortfolioController::class, 'overview']);
@@ -530,6 +532,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/office/settings/credential', [OfficeSettingsController::class, 'storeCredential']);
             Route::post('/office/settings/credential/replace', [OfficeSettingsController::class, 'replaceCredential']);
             Route::post('/office/settings/credential/remove', [OfficeSettingsController::class, 'removeCredential']);
+            Route::post('/office/settings/refresh-integration', [OfficeSettingsController::class, 'refreshIntegration']);
             Route::get('/office/settings/monitor-schedules', [OfficeSettingsController::class, 'listMonitorSchedules']);
             Route::put('/office/settings/monitor-schedules/{monitorKey}', [OfficeSettingsController::class, 'updateMonitorSchedule']);
             Route::get('/office/settings/onboarding-status', [OfficeSettingsController::class, 'onboardingStatus']);

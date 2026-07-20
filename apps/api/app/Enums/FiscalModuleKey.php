@@ -147,7 +147,8 @@ enum FiscalModuleKey: string
             self::Installments => ['PARCELAMENTOS'],
             self::Sitfis => ['SITFIS'],
             self::Mailbox => ['CAIXA_POSTAL'],
-            self::Declarations => ['DECLARACOES'],
+            // Abas do hub Declarações + agregado legado DECLARACOES.
+            self::Declarations => ['PGDAS', 'DCTFWEB', 'FGTS', 'DEFIS', 'DIRF', 'DECLARACOES'],
             self::Guides => ['GUIAS'],
             self::Fgts => ['FGTS'],
             self::Registrations => ['PNRCONTADOR'],

@@ -16,6 +16,7 @@ use App\Enums\FiscalLinkStatus;
 use App\Enums\FiscalModuleKey;
 use App\Enums\FiscalSituation;
 use App\Enums\TaxInstallmentParcelStatus;
+use App\Enums\TaxRegimeCode;
 use App\Models\Client;
 use App\Models\FgtsCompetenceStatus;
 use App\Models\FiscalCategory;
@@ -81,6 +82,11 @@ final class ModulePortfolioQueryService
             && $coverage === FiscalCoverage::Full->value
         ) {
             $coverage = FiscalCoverage::Partial->value;
+        }
+        if ($module === FiscalModuleKey::Declarations
+            && strtoupper((string) ($filters->submodule ?? '')) === 'DIRF'
+        ) {
+            $coverage = FiscalCoverage::Unsupported->value;
         }
 
         return new ModuleOverviewDto(
@@ -394,13 +400,26 @@ final class ModulePortfolioQueryService
 
         $deliveries = $filters->deliveryStatusList();
         if ($deliveries !== [] && $module === FiscalModuleKey::Declarations) {
-            $q->whereExists(function (QueryBuilder $exists) use ($office, $deliveries): void {
+            $obligationCode = $this->declarationsObligationCode($filters->submodule);
+            $q->whereExists(function (QueryBuilder $exists) use ($office, $deliveries, $obligationCode): void {
                 $exists->select(DB::raw('1'))
                     ->from('tax_obligation_projections as top')
                     ->whereColumn('top.client_id', 'clients.id')
                     ->where('top.office_id', $office->id)
                     ->whereIn('top.delivery_status', $deliveries);
+                if ($obligationCode !== null) {
+                    $exists->join('tax_obligation_definitions as tod', 'tod.id', '=', 'top.obligation_definition_id')
+                        ->where('tod.code', $obligationCode);
+                }
             });
+        }
+
+        if ($module === FiscalModuleKey::Declarations) {
+            $this->applyDeclarationsSubmoduleScope($q, $office, $filters);
+        }
+
+        if ($module === FiscalModuleKey::SimplesMei) {
+            $this->applySimplesMeiSubmoduleScope($q, $filters);
         }
 
         if ($filters->coverageList() !== []) {
@@ -707,7 +726,7 @@ SQL;
             FiscalModuleKey::SimplesMei => $this->simplesMeiSituationSql($office, $filters),
             FiscalModuleKey::Installments => $this->parcelamentosSituationSql($office),
             FiscalModuleKey::Mailbox => $this->mailboxSituationSql($office),
-            FiscalModuleKey::Declarations => $this->declaracoesSituationSql($office),
+            FiscalModuleKey::Declarations => $this->declaracoesSituationSql($office, $filters),
             FiscalModuleKey::Guides => $this->guiasSituationSql($office),
             FiscalModuleKey::Fgts => $this->fgtsSituationSql($office),
             default => null,
@@ -871,12 +890,28 @@ SQL;
         )";
     }
 
-    private function declaracoesSituationSql(Office $office): string
+    private function declaracoesSituationSql(Office $office, ModulePortfolioFilters $filters): string
     {
+        $sub = strtoupper((string) ($filters->submodule ?? ''));
+        if ($sub === 'DIRF') {
+            return "'UNSUPPORTED'";
+        }
+        if ($sub === 'FGTS') {
+            return $this->fgtsSituationSql($office);
+        }
+
+        $obligationCode = $this->declarationsObligationCode($filters->submodule);
+        $codeClause = $obligationCode !== null
+            ? "AND tod.code = '".$this->escapeSqlLiteral($obligationCode)."'"
+            : '';
+
         return "(
             SELECT top.situation FROM tax_obligation_projections top
+            INNER JOIN tax_obligation_definitions tod
+              ON tod.id = top.obligation_definition_id
             WHERE top.office_id = {$office->id} AND top.client_id = clients.id
               AND top.is_open = true
+              {$codeClause}
             ORDER BY
                 CASE top.situation
                     WHEN 'ERROR' THEN 1 WHEN 'BLOCKED' THEN 2 WHEN 'ATTENTION' THEN 3
@@ -951,6 +986,40 @@ SQL;
     ORDER BY top.last_valid_query_at DESC, top.id DESC LIMIT 1
 )
 SQL);
+        }
+
+        if ($module === FiscalModuleKey::Declarations) {
+            $obligationCode = $this->declarationsObligationCode($filters->submodule);
+            if ($obligationCode !== null) {
+                $escaped = $this->escapeSqlLiteral($obligationCode);
+
+                return DB::query()->selectRaw(<<<SQL
+(
+    SELECT top.last_valid_query_at
+    FROM tax_obligation_projections top
+    INNER JOIN tax_obligation_definitions tod
+      ON tod.id = top.obligation_definition_id
+    WHERE top.office_id = {$office->id}
+      AND top.client_id = clients.id
+      AND tod.code = '{$escaped}'
+      AND top.last_valid_query_at IS NOT NULL
+    ORDER BY top.last_valid_query_at DESC, top.id DESC LIMIT 1
+)
+SQL);
+            }
+            if ($submodule === 'FGTS') {
+                return DB::query()->selectRaw(<<<SQL
+(
+    SELECT fcs.last_synced_at
+    FROM fgts_competence_statuses fcs
+    WHERE fcs.office_id = {$office->id}
+      AND fcs.client_id = clients.id
+      AND fcs.is_quarantined = false
+      AND fcs.last_synced_at IS NOT NULL
+    ORDER BY fcs.last_synced_at DESC, fcs.id DESC LIMIT 1
+)
+SQL);
+            }
         }
 
         $systemCodes = $this->systemCodesForModule($module, $filters->submodule);
@@ -1114,6 +1183,11 @@ SQL);
             FiscalModuleKey::SimplesMei => match ($submodule) {
                 'PGDASD' => 'SIMPLES_NACIONAL',
                 'PGMEI' => 'MEI',
+                default => $submodule,
+            },
+            // Abas de obrigação do hub usam a categoria agregada DECLARACOES.
+            FiscalModuleKey::Declarations => match (strtoupper($submodule)) {
+                'PGDAS', 'PGDASD', 'DCTFWEB', 'DCTF', 'FGTS', 'DEFIS', 'DIRF', 'DECLARACOES' => 'DECLARACOES',
                 default => $submodule,
             },
             default => $submodule,
@@ -1327,7 +1401,7 @@ SQL);
             FiscalModuleKey::Installments => $this->detailParcelamentos($office, $clientIds),
             FiscalModuleKey::Sitfis => $this->detailSitfis($office, $clientIds),
             FiscalModuleKey::Mailbox => $this->detailMailbox($office, $clientIds),
-            FiscalModuleKey::Declarations => $this->detailDeclaracoes($office, $clientIds),
+            FiscalModuleKey::Declarations => $this->detailDeclaracoes($office, $clientIds, $filters),
             FiscalModuleKey::Guides => $this->detailGuias($office, $clientIds),
             FiscalModuleKey::Fgts => $this->detailFgts($office, $clientIds),
         };
@@ -1724,40 +1798,219 @@ SQL);
     }
 
     /**
+     * Escopo do hub Declarações por aba (obrigação / origem / unsupported).
+     *
+     * @param  Builder<Client>|QueryBuilder  $q
+     */
+    private function applyDeclarationsSubmoduleScope(
+        Builder|QueryBuilder $q,
+        Office $office,
+        ModulePortfolioFilters $filters,
+    ): void {
+        $sub = strtoupper((string) ($filters->submodule ?? ''));
+        if ($sub === '' || $sub === 'DECLARACOES') {
+            return;
+        }
+
+        if ($sub === 'DIRF') {
+            // Sem catálogo/API: carteira vazia honesta (UI marca UNSUPPORTED).
+            $q->whereRaw('1 = 0');
+
+            return;
+        }
+
+        if ($sub === 'FGTS') {
+            $q->whereExists(function (QueryBuilder $exists) use ($office): void {
+                $exists->select(DB::raw('1'))
+                    ->from('fgts_competence_statuses as fcs')
+                    ->whereColumn('fcs.client_id', 'clients.id')
+                    ->where('fcs.office_id', $office->id)
+                    ->where('fcs.is_quarantined', false);
+            });
+
+            return;
+        }
+
+        $obligationCode = $this->declarationsObligationCode($filters->submodule);
+        if ($obligationCode === null) {
+            return;
+        }
+
+        $q->whereExists(function (QueryBuilder $exists) use ($office, $obligationCode): void {
+            $exists->select(DB::raw('1'))
+                ->from('tax_obligation_projections as top')
+                ->join('tax_obligation_definitions as tod', 'tod.id', '=', 'top.obligation_definition_id')
+                ->whereColumn('top.client_id', 'clients.id')
+                ->where('top.office_id', $office->id)
+                ->where('tod.code', $obligationCode);
+        });
+    }
+
+    /**
+     * Escopo de carteira Simples/MEI por família de tax_regime (PGDASD≠PGMEI).
+     * Sem submodule conhecido → carteira vazia (fail-closed); regimes fora de SN/MEI não entram.
+     */
+    private function applySimplesMeiSubmoduleScope(
+        Builder|QueryBuilder $q,
+        ModulePortfolioFilters $filters,
+    ): void {
+        $sub = strtoupper(trim((string) ($filters->submodule ?? '')));
+        $regime = match ($sub) {
+            'PGDASD', 'PGDAS', 'SIMPLES', 'SIMPLES_NACIONAL' => TaxRegimeCode::SimplesNacional,
+            'PGMEI', 'MEI' => TaxRegimeCode::Mei,
+            default => null,
+        };
+
+        if ($regime === null) {
+            $q->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $q->whereIn('clients.tax_regime', $regime->storageFilterValues());
+    }
+
+    /**
+     * Mapeia submodule da aba → código de obrigação do catálogo.
+     * DIRF/FGTS/agregado retornam null (tratamento especial ou sem filtro).
+     */
+    private function declarationsObligationCode(?string $submodule): ?string
+    {
+        return match (strtoupper(trim((string) $submodule))) {
+            'PGDAS', 'PGDASD' => 'PGDAS_D',
+            'DCTFWEB', 'DCTF' => 'DCTFWEB',
+            'DEFIS' => 'DEFIS',
+            default => null,
+        };
+    }
+
+    private function escapeSqlLiteral(string $value): string
+    {
+        return str_replace("'", "''", $value);
+    }
+
+    /**
      * @param  list<int>  $clientIds
      * @return array<int, array<string, mixed>>
      */
-    private function detailDeclaracoes(Office $office, array $clientIds): array
+    private function detailDeclaracoes(Office $office, array $clientIds, ModulePortfolioFilters $filters): array
     {
+        $sub = strtoupper((string) ($filters->submodule ?? ''));
+
+        if ($sub === 'DIRF') {
+            $map = [];
+            foreach ($clientIds as $cid) {
+                $map[$cid] = [
+                    'module_key' => FiscalModuleKey::Declarations->value,
+                    'submodule' => 'DIRF',
+                    'open_count' => 0,
+                    'next_projection_id' => null,
+                    'next_obligation_code' => 'DIRF',
+                    'next_period_key' => null,
+                    'next_due_at' => null,
+                    'next_delivery_status' => null,
+                    'next_situation' => FiscalSituation::Unsupported->value,
+                    'partial_coverage_notice' => 'DIRF não possui cobertura de catálogo nesta superfície.',
+                    'links' => [
+                        'declarations' => '/api/v1/fiscal/declarations?client_id='.$cid,
+                    ],
+                ];
+            }
+
+            return $map;
+        }
+
+        if ($sub === 'FGTS') {
+            $fgtsDetails = $this->detailFgts($office, $clientIds);
+            $map = [];
+            foreach ($clientIds as $cid) {
+                $fgts = $fgtsDetails[$cid] ?? null;
+                $map[$cid] = [
+                    'module_key' => FiscalModuleKey::Declarations->value,
+                    'submodule' => 'FGTS',
+                    'open_count' => 0,
+                    'next_projection_id' => null,
+                    'next_obligation_code' => 'FGTS',
+                    'next_period_key' => $fgts['competence_period_key'] ?? null,
+                    'next_due_at' => null,
+                    'next_delivery_status' => $fgts['closure_status'] ?? null,
+                    'next_situation' => null,
+                    'fgts' => $fgts,
+                    'partial_coverage_notice' => $fgts['partial_coverage_notice']
+                        ?? 'Cobertura parcial FGTS: sem inventário de guia/pagamento nesta aba.',
+                    'links' => [
+                        'declarations' => '/api/v1/fiscal/declarations?client_id='.$cid,
+                        'fgts' => '/api/v1/fiscal/fgts?client_id='.$cid,
+                    ],
+                ];
+            }
+
+            return $map;
+        }
+
+        $obligationCode = $this->declarationsObligationCode($filters->submodule);
+
         $projections = TaxObligationProjection::query()
             ->withoutGlobalScopes()
             ->with('obligation')
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
             ->where('is_open', true)
+            ->when(
+                $obligationCode !== null,
+                fn ($q) => $q->whereHas('obligation', fn ($qq) => $qq->where('code', $obligationCode)),
+            )
             ->orderBy('due_at')
             ->get()
             ->groupBy('client_id');
+
+        $pgdasdDetails = [];
+        if (in_array($sub, ['PGDAS', 'PGDASD'], true)) {
+            $pgdasdDetails = app(PgdasdMonitoringQueryService::class)
+                ->portfolioDetails($office, $clientIds);
+        }
 
         $map = [];
         foreach ($clientIds as $cid) {
             /** @var Collection<int, TaxObligationProjection> $rows */
             $rows = $projections->get($cid) ?? collect();
             $next = $rows->first();
+            $pgdasd = $pgdasdDetails[$cid] ?? null;
             $map[$cid] = [
                 'module_key' => FiscalModuleKey::Declarations->value,
+                'submodule' => $sub !== '' ? $sub : null,
                 'open_count' => $rows->count(),
                 'next_projection_id' => $next?->id,
-                'next_obligation_code' => $next?->obligation?->code,
-                'next_period_key' => $next?->period_key,
+                'next_obligation_code' => $next?->obligation?->code ?? $obligationCode,
+                'next_period_key' => $next?->period_key ?? ($pgdasd['period_key'] ?? null),
                 'next_due_at' => $next?->due_at?->toIso8601String(),
                 'next_delivery_status' => $next?->delivery_status?->value,
                 'next_situation' => $next?->situation?->value,
+                'declaration_state' => $pgdasd['declaration_state'] ?? null,
+                'declaration_state_reason' => $pgdasd['declaration_state_reason'] ?? null,
+                'last_declaration' => $pgdasd['last_declaration'] ?? null,
+                'last_valid_query_at' => $pgdasd['last_valid_query_at']
+                    ?? $pgdasd['last_productive_consulted_at']
+                    ?? null,
+                'pgdasd' => $pgdasd === null ? null : [
+                    'expected_period_key' => $pgdasd['expected_period_key'] ?? null,
+                    'latest_declaration' => $pgdasd['latest_declaration'] ?? null,
+                    'declaration_state' => $pgdasd['declaration_state'] ?? null,
+                    'declaration_state_reason' => $pgdasd['declaration_state_reason'] ?? null,
+                    'last_valid_query_at' => $pgdasd['last_valid_query_at'] ?? null,
+                    'rbt12' => $pgdasd['rbt12'] ?? null,
+                    'documents' => $pgdasd['documents'] ?? [],
+                    'communication' => $pgdasd['communication'] ?? null,
+                ],
                 'links' => [
-                    'declarations' => '/api/v1/fiscal/declarations?client_id='.$cid,
+                    'declarations' => '/api/v1/fiscal/declarations?client_id='.$cid
+                        .($obligationCode !== null ? '&obligation_code='.$obligationCode : ''),
                     'summary' => '/api/v1/fiscal/declarations/summary?client_id='.$cid,
                     'projection' => $next !== null
                         ? '/api/v1/fiscal/declarations/'.$next->id
+                        : null,
+                    'pgdasd_history' => in_array($sub, ['PGDAS', 'PGDASD'], true)
+                        ? '/api/v1/fiscal/simples-mei/pgdasd/clients/'.$cid.'/history'
                         : null,
                 ],
             ];

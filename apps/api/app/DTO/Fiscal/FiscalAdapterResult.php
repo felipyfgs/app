@@ -45,7 +45,7 @@ final readonly class FiscalAdapterResult
             result: FiscalRunResult::Blocked,
             situation: FiscalSituation::Blocked,
             coverage: FiscalCoverage::Unknown,
-            skipReason: $reason,
+            skipReason: $code,
             errorCode: $code,
             errorMessage: $reason,
         );

@@ -21,6 +21,7 @@ use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiDividaAtiva24Codec;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiPostConsultService;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiYear;
 use App\Services\Integra\ContributorCnpjResolver;
+use App\Services\Integra\EnsureClientProcuracaoForConsult;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\OfficeSerproAuthorizationService;
 use App\Services\Serpro\CapabilityDriverResolver;
@@ -59,6 +60,7 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         private readonly DefisLatestDeclarationPostConsultService $defisLatestDeclarationPost,
         private readonly DefisSpecificDeclarationPostConsultService $defisSpecificDeclarationPost,
         private readonly DefisDeclarationReferenceStore $defisReferences,
+        private readonly EnsureClientProcuracaoForConsult $procuracaoEnsure,
     ) {}
 
     public function systemCode(): string
@@ -166,6 +168,24 @@ final class SimplesMeiAdapter implements FiscalSourceAdapter
         $eligibilityOperation = $usesRealDriver
             ? (string) $coordinates['id_servico']
             : $this->resolveCatalogOperation($def);
+
+        if ($def->requiredPowers !== []) {
+            $ensure = $this->procuracaoEnsure->ensure(
+                $office,
+                $client,
+                $env,
+                $def->requiredPowers,
+                $request->run->triggered_by !== null ? (int) $request->run->triggered_by : null,
+            );
+            if (! $ensure['ok']) {
+                $code = $ensure['code'] ?? 'PROXY_POWER_MISSING';
+
+                return FiscalAdapterResult::blocked(
+                    $ensure['message'] ?? ('Elegibilidade Integra negada: '.$code),
+                    $code,
+                );
+            }
+        }
 
         $elig = $this->eligibility->evaluate(
             $office,

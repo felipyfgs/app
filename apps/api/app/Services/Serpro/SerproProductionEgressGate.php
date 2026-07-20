@@ -19,8 +19,9 @@ use App\Models\SerproExternalGate;
  * - kill switch ativo;
  * - drivers reais / fake clients em estado inválido;
  * - versão de credencial exposta não estiver RETIRED/COMPROMISED;
- * - gates documentais externos abertos (quando exigidos);
  * - Office demo/segregado tentar endpoint real.
+ *
+ * Gates documentais externos são informativos (snapshot/CLI) e não bloqueiam egress.
  */
 final class SerproProductionEgressGate
 {
@@ -119,20 +120,11 @@ final class SerproProductionEgressGate
             }
         }
 
-        $blockingExternal = SerproExternalGate::query()
-            ->get()
-            ->filter(fn (SerproExternalGate $g) => $g->blocksProduction());
-
-        // Gates externos bloqueiam PRODUCTION_READY / canário faturável, não Apoiar/Monitorar.
-        if ($route === null || ! $route->isNonBillableByRoute()) {
-            if ($blockingExternal->isNotEmpty() && $environment === SerproEnvironment::Production) {
-                $kinds = $blockingExternal->map(fn (SerproExternalGate $g) => $g->kind->value)->implode(',');
-                $fail('external_gates', "Gates documentais abertos: {$kinds}.");
-            } else {
-                $pass('external_gates', 'Gates documentais não bloqueiam neste contexto.');
-            }
-        } else {
+        // Gates documentais são tracking ops/CLI — não bloqueiam egress na console simplificada.
+        if ($route !== null && $route->isNonBillableByRoute()) {
             $pass('external_gates', 'Rota não faturável: gates documentais não aplicados ao egress.');
+        } else {
+            $pass('external_gates', 'Gates documentais não bloqueiam egress (fluxo admin simplificado).');
         }
 
         $failed = array_values(array_filter($checks, fn (array $c) => ! $c['ok']));
