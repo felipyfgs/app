@@ -6,6 +6,8 @@
 
 # --- Local-only (templates, massa piloto, artefatos de máquina; NÃO versionar) ---
 .local/
+# Dump local de docs/SDK externos (ex.: Integra Contador); nunca versionar
+.references/
 
 # --- Secrets e ambiente ---
 .env
