@@ -10,13 +10,12 @@ import {
   FiscalStatusBadge
 } from '#components'
 import UBadge from '@nuxt/ui/components/Badge.vue'
-import UButton from '@nuxt/ui/components/Button.vue'
-import UDropdownMenu from '@nuxt/ui/components/DropdownMenu.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type {
   DctfwebClientRow
 } from '~/types/fiscal-modules'
 import {
+  dctfwebCanRequestAutomatic,
   dctfwebDeclarationMeta,
   dctfwebLastDeclarationLabel,
   dctfwebSummary,
@@ -24,52 +23,36 @@ import {
   formatDctfwebDate
 } from '~/utils/dctfweb'
 import { sortHeader } from '~/utils/table-sort'
-import { tableIconButton, tableIconGroup } from '~/utils/table-icon-slots'
 import { tableCellBadgeProps } from '~/utils/table-ui'
 import {
+  buildMonitoringActionsMenuCell,
+  buildMonitoringConsultedColumn,
+  buildMonitoringComunicacaoColumn,
   MONITORING_ACTIONS_LABEL,
   MONITORING_ACTIONS_META,
+  MONITORING_CLIENT_COLUMN_META,
   MONITORING_CONSULTED_ID,
   MONITORING_CONSULTED_LABEL,
   MONITORING_CONSULTED_META,
-  MONITORING_HISTORY_LABEL,
-  MONITORING_TRACKING_LABEL,
-  MONITORING_TRACKING_META
+  type MonitoringSendColumnState
 } from '~/utils/monitoring-table-columns'
 
 /**
- * Renderer DCTFWeb — alinhado ao padrão PGDAS-D:
- * Cliente · Situação · Últ. Declaração · Ações informativas · Histórico local ·
- * Última consulta · Histórico.
+ * Renderer DCTFWeb — spine canônica com declaração:
+ * Situação · Últ. Declaração · Cliente · Comunicação · Consulta · Ações.
+ * Histórico de busca / documentos locais só no menu Ações.
  */
 export function buildDctfwebColumns(options: {
   onHistory: (row: DctfwebClientRow) => void
-  onPreview: (row: DctfwebClientRow) => void
   onTracking: (row: DctfwebClientRow) => void
   onConfigure: (row: DctfwebClientRow) => void
+  onSend: (row: DctfwebClientRow) => void
+  onToggleAutomatic: (row: DctfwebClientRow, value: boolean) => void
+  onEditClient?: (row: DctfwebClientRow) => void
+  onExclude?: (row: DctfwebClientRow) => void
+  sendBusyClientIds?: ReadonlySet<number>
+  toggleBusyClientIds?: ReadonlySet<number>
 }): TableColumn<DctfwebClientRow>[] {
-  function iconAction(args: {
-    label: string
-    icon: string
-    color?: 'neutral' | 'primary' | 'success' | 'warning' | 'error' | 'info'
-    testId: string
-    disabled?: boolean
-    onClick: () => void
-  }) {
-    return h(UTooltip, { text: args.label }, {
-      default: () => h(UButton, {
-        'size': 'xs',
-        'color': args.color || 'neutral',
-        'variant': 'ghost',
-        'icon': args.icon,
-        'ariaLabel': args.label,
-        'disabled': args.disabled === true,
-        'data-testid': args.testId,
-        'onClick': args.disabled ? undefined : args.onClick
-      })
-    })
-  }
-
   function actionItems(row: DctfwebClientRow): DropdownMenuItem[][] {
     const summary = dctfwebSummary(row)
     const name = row.name || row.legal_name || `cliente ${row.client_id}`
@@ -78,13 +61,20 @@ export function buildDctfwebColumns(options: {
         label: 'Abrir cliente',
         icon: 'i-lucide-building-2',
         to: `/monitoring/clients/${row.client_id}`
-      },
-      {
-        label: 'Preferências registradas',
-        icon: 'i-lucide-info',
-        onSelect: () => options.onConfigure(row)
       }
     ]
+    if (options.onEditClient) {
+      items.push({
+        label: 'Editar cliente',
+        icon: 'i-lucide-pencil',
+        onSelect: () => options.onEditClient?.(row)
+      })
+    }
+    items.push({
+      label: 'Preferências de comunicação',
+      icon: 'i-lucide-settings-2',
+      onSelect: () => options.onConfigure(row)
+    })
     if (summary?.has_history) {
       items.push({
         label: 'Histórico de busca',
@@ -92,7 +82,13 @@ export function buildDctfwebColumns(options: {
         onSelect: () => options.onHistory(row)
       })
     }
-    // Sem mutações fiscais (transmitir / DARF / encerrar).
+    if (options.onExclude) {
+      items.push({
+        label: 'Excluir do monitoramento',
+        icon: 'i-lucide-user-minus',
+        onSelect: () => options.onExclude?.(row)
+      })
+    }
     return [items, [{
       label: `Documentos locais de ${name}`,
       icon: 'i-lucide-file-text',
@@ -101,20 +97,28 @@ export function buildDctfwebColumns(options: {
     }]]
   }
 
+  function sendState(row: DctfwebClientRow): MonitoringSendColumnState {
+    const summary = dctfwebSummary(row)
+    const communication = summary?.communication
+    const hasTracking = summary?.has_tracking === true
+      || Boolean(communication?.tracking_status
+        && communication.tracking_status !== 'NO_HISTORY'
+        && communication.tracking_status !== 'NOT_CONFIGURED')
+    const tracking = dctfwebTrackingMeta(communication?.tracking_status)
+    return {
+      trackingIcon: tracking.icon,
+      trackingLabel: hasTracking ? `Histórico local: ${tracking.label}` : 'Sem histórico local',
+      trackingColor: hasTracking ? tracking.color : 'neutral',
+      trackingDisabled: !hasTracking && !communication,
+      automaticRequested: communication?.automatic_requested === true,
+      canToggleAutomatic: dctfwebCanRequestAutomatic(communication),
+      canSend: communication?.can_send === true,
+      sendBusy: options.sendBusyClientIds?.has(row.client_id) === true,
+      toggleBusy: options.toggleBusyClientIds?.has(row.client_id) === true
+    }
+  }
+
   return [
-    {
-      id: 'client',
-      header: ({ column }) => sortHeader('Cliente', column),
-      enableHiding: false,
-      meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
-      cell: ({ row }) => h(FiscalClientCell, {
-        clientId: row.original.client_id,
-        name: row.original.legal_name || row.original.name,
-        legalName: row.original.legal_name,
-        cnpjMasked: row.original.cnpj_masked,
-        to: `/monitoring/clients/${row.original.client_id}`
-      })
-    },
     {
       id: 'situation',
       header: ({ column }) => sortHeader('Situação', column),
@@ -172,64 +176,26 @@ export function buildDctfwebColumns(options: {
       }
     },
     {
-      id: 'actions',
-      header: MONITORING_ACTIONS_LABEL,
+      id: 'client',
+      header: ({ column }) => sortHeader('Cliente', column),
       enableHiding: false,
-      enableSorting: false,
-      meta: { ...MONITORING_ACTIONS_META },
-      cell: ({ row }) => {
-        const name = row.original.name || row.original.legal_name || `cliente ${row.original.client_id}`
-        return tableIconGroup([
-          tableIconButton({
-            label: 'Ver destinatários e documentos locais',
-            icon: 'i-lucide-message-square-text',
-            testId: 'dctfweb-communication-info',
-            onClick: () => options.onPreview(row.original)
-          }),
-          tableIconButton({
-            label: 'Ver preferências registradas',
-            icon: 'i-lucide-info',
-            testId: 'dctfweb-communication-preferences',
-            onClick: () => options.onConfigure(row.original)
-          }),
-          h(UDropdownMenu, {
-            items: actionItems(row.original),
-            content: { align: 'end' }
-          }, () => h(UButton, {
-            'icon': 'i-lucide-ellipsis-vertical',
-            'color': 'neutral',
-            'variant': 'ghost',
-            'size': 'sm',
-            'square': true,
-            'class': 'size-8 justify-center',
-            'aria-label': `Mais ações de ${name}`,
-            'data-testid': 'dctfweb-row-actions'
-          }))
-        ], 'dctfweb-actions-group')
-      }
+      meta: { ...MONITORING_CLIENT_COLUMN_META },
+      cell: ({ row }) => h(FiscalClientCell, {
+        clientId: row.original.client_id,
+        name: row.original.legal_name || row.original.name,
+        legalName: row.original.legal_name,
+        cnpj: row.original.cnpj,
+        cnpjMasked: row.original.cnpj_masked,
+        to: `/monitoring/clients/${row.original.client_id}`
+      })
     },
-    {
-      id: 'tracking',
-      header: MONITORING_TRACKING_LABEL,
-      enableSorting: false,
-      meta: { ...MONITORING_TRACKING_META },
-      cell: ({ row }) => {
-        const summary = dctfwebSummary(row.original)
-        const hasTracking = summary?.has_tracking === true
-          || Boolean(summary?.communication?.tracking_status
-            && summary.communication.tracking_status !== 'NO_HISTORY'
-            && summary.communication.tracking_status !== 'NOT_CONFIGURED')
-        const tracking = dctfwebTrackingMeta(summary?.communication?.tracking_status)
-        return iconAction({
-          label: hasTracking ? `Histórico local: ${tracking.label}` : 'Sem histórico local',
-          icon: tracking.icon,
-          color: hasTracking ? tracking.color : 'neutral',
-          testId: 'dctfweb-tracking',
-          disabled: !hasTracking && !summary?.communication,
-          onClick: () => options.onTracking(row.original)
-        })
-      }
-    },
+    buildMonitoringComunicacaoColumn<DctfwebClientRow>({
+      getState: row => sendState(row),
+      onTracking: row => options.onTracking(row),
+      onSend: row => options.onSend(row),
+      onToggleAutomatic: (row, value) => options.onToggleAutomatic(row, value),
+      testIdPrefix: 'dctfweb-tracking'
+    }),
     {
       id: MONITORING_CONSULTED_ID,
       header: ({ column }) => sortHeader(MONITORING_CONSULTED_LABEL, column),
@@ -246,22 +212,17 @@ export function buildDctfwebColumns(options: {
       }
     },
     {
-      id: 'history',
-      header: MONITORING_HISTORY_LABEL,
+      id: 'actions',
+      header: MONITORING_ACTIONS_LABEL,
       enableHiding: false,
       enableSorting: false,
-      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
+      meta: { ...MONITORING_ACTIONS_META },
       cell: ({ row }) => {
-        const summary = dctfwebSummary(row.original)
-        const hasHistory = summary?.has_history === true
-        return iconAction({
-          label: hasHistory
-            ? 'Abrir histórico de busca local'
-            : 'Sem histórico local',
-          icon: 'i-lucide-history',
-          testId: 'dctfweb-history',
-          disabled: !hasHistory,
-          onClick: () => options.onHistory(row.original)
+        const name = row.original.name || row.original.legal_name || `cliente ${row.original.client_id}`
+        return buildMonitoringActionsMenuCell({
+          ariaLabel: `Mais ações de ${name}`,
+          testId: 'dctfweb-row-actions',
+          items: actionItems(row.original)
         })
       }
     }
@@ -270,21 +231,70 @@ export function buildDctfwebColumns(options: {
 
 /**
  * Renderer MIT independente — não reutiliza colunas DCTFWeb.
+ * Spine: Situação · Cliente · domínio · Comunicação · Consulta · Ações.
+ * Pipeline de comunicação MIT pode ficar fail-closed até enrichment existir.
  */
 export function buildMitColumns(options: {
   onOpenClient: (row: DctfwebClientRow) => void
   onListApuracoes: (row: DctfwebClientRow) => void
+  onEditClient?: (row: DctfwebClientRow) => void
+  onTracking?: (row: DctfwebClientRow) => void
+  onSend?: (row: DctfwebClientRow) => void
+  onToggleAutomatic?: (row: DctfwebClientRow, value: boolean) => void
 }): TableColumn<DctfwebClientRow>[] {
+  function actionItems(row: DctfwebClientRow): DropdownMenuItem[][] {
+    const items: DropdownMenuItem[] = [
+      {
+        label: 'Abrir cliente',
+        icon: 'i-lucide-building-2',
+        onSelect: () => options.onOpenClient(row)
+      }
+    ]
+    if (options.onEditClient) {
+      items.push({
+        label: 'Editar cliente',
+        icon: 'i-lucide-pencil',
+        onSelect: () => options.onEditClient?.(row)
+      })
+    }
+    items.push({
+      label: 'Ver apurações MIT 317 locais',
+      icon: 'i-lucide-list-filter',
+      onSelect: () => options.onListApuracoes(row)
+    })
+    return [items]
+  }
+
+  function sendState(row: DctfwebClientRow): MonitoringSendColumnState {
+    const communication = row.detail?.mit?.communication
+    const tracking = dctfwebTrackingMeta(communication?.tracking_status)
+    return {
+      trackingIcon: tracking.icon,
+      trackingLabel: communication ? tracking.label : 'Sem histórico local',
+      trackingColor: communication ? tracking.color : 'neutral',
+      trackingDisabled: !communication || !options.onTracking,
+      automaticRequested: communication?.automatic_requested === true,
+      canToggleAutomatic: false,
+      canSend: communication?.can_send === true && Boolean(options.onSend)
+    }
+  }
+
   return [
+    {
+      id: 'situation',
+      header: 'Situação',
+      cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: row.original.detail?.mit?.situation || row.original.situation })
+    },
     {
       id: 'client',
       header: ({ column }) => sortHeader('Cliente', column),
       enableHiding: false,
-      meta: { class: { th: 'min-w-56', td: 'min-w-56' } },
+      meta: { ...MONITORING_CLIENT_COLUMN_META },
       cell: ({ row }) => h(FiscalClientCell, {
         clientId: row.original.client_id,
         name: row.original.legal_name || row.original.name,
         legalName: row.original.legal_name,
+        cnpj: row.original.cnpj,
         cnpjMasked: row.original.cnpj_masked,
         to: `/monitoring/clients/${row.original.client_id}`
       })
@@ -296,11 +306,6 @@ export function buildMitColumns(options: {
       cell: ({ row }) => String(row.original.detail?.mit?.period_key || row.original.competence || '—')
     },
     {
-      id: 'situation',
-      header: 'Situação',
-      cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: row.original.detail?.mit?.situation || row.original.situation })
-    },
-    {
       id: 'closure',
       header: 'Encerramento',
       enableSorting: false,
@@ -310,21 +315,31 @@ export function buildMitColumns(options: {
         return h(FiscalStatusBadge, { fill: true, status })
       }
     },
+    buildMonitoringComunicacaoColumn<DctfwebClientRow>({
+      getState: row => sendState(row),
+      onTracking: row => options.onTracking?.(row),
+      onSend: row => options.onSend?.(row),
+      onToggleAutomatic: (row, value) => options.onToggleAutomatic?.(row, value),
+      testIdPrefix: 'mit-tracking'
+    }),
+    buildMonitoringConsultedColumn<DctfwebClientRow>({
+      getAt: row => row.last_consulted_at || row.last_snapshot_at,
+      testId: 'mit-last-consulted'
+    }),
     {
-      id: 'lista_apuracoes_317',
-      header: 'Apurações 317',
+      id: 'actions',
+      header: MONITORING_ACTIONS_LABEL,
+      enableHiding: false,
       enableSorting: false,
-      meta: { class: { th: 'min-w-36', td: 'min-w-36' } },
-      cell: ({ row }) => h(UButton, {
-        'label': 'Ver locais',
-        'icon': 'i-lucide-list-filter',
-        'size': 'xs',
-        'color': 'neutral',
-        'variant': 'ghost',
-        'aria-label': 'Ver apurações MIT 317 locais',
-        'data-testid': 'mit-lista-apuracoes-317',
-        'onClick': () => options.onListApuracoes(row.original)
-      })
+      meta: { ...MONITORING_ACTIONS_META },
+      cell: ({ row }) => {
+        const name = row.original.name || row.original.legal_name || `cliente ${row.original.client_id}`
+        return buildMonitoringActionsMenuCell({
+          ariaLabel: `Mais ações de ${name}`,
+          testId: 'mit-row-actions',
+          items: actionItems(row.original)
+        })
+      }
     }
   ]
 }

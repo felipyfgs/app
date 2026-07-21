@@ -4,20 +4,28 @@
  * Fechamento, totalização, eventos e divergências no detalhe. Task 7.10
  * Sem ação de scraping / portal humano.
  */
-import type { TableColumn } from '@nuxt/ui'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import type { FgtsCoverageManifest } from '~/types/api'
 import type { FgtsClientDetail, FgtsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
+import { pgdasdCanRequestAutomatic, pgdasdTrackingMeta } from '~/utils/pgdasd'
 import {
+  buildMonitoringActionsMenuCell,
   buildMonitoringConsultedColumn,
-  MONITORING_SHARED_COLUMN_LABELS
+  buildMonitoringComunicacaoColumn,
+  MONITORING_ACTIONS_LABEL,
+  MONITORING_ACTIONS_META,
+  MONITORING_CLIENT_COLUMN_META,
+  MONITORING_SHARED_COLUMN_LABELS,
+  type MonitoringSendColumnState
 } from '~/utils/monitoring-table-columns'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
-const UButton = resolveComponent('UButton')
 
 const api = useApi()
+const toast = useToast()
+const { canManageClients } = useDashboard()
 
 const {
   page,
@@ -46,6 +54,14 @@ const {
   applyQuickFilters,
   resetFilters
 } = useFiscalModulePortfolio('fgts')
+
+const {
+  formOpen: clientFormOpen,
+  formClient,
+  canManageCredentials,
+  openEditClient,
+  onFormSaved: onClientFormSaved
+} = useMonitoringClientEdit(() => refresh())
 
 const filterConfig: MonitoringFilterConfig = {
   fields: [
@@ -176,16 +192,85 @@ async function openDetail(row: FgtsClientRow) {
   }
 }
 
-const columns: TableColumn<FgtsClientRow>[] = [
+function onFgtsTracking() {
+  toast.add({
+    title: 'Rastreio de comunicação indisponível',
+    description: 'A carteira FGTS ainda não expõe histórico de envio local.',
+    color: 'neutral'
+  })
+}
+
+function onFgtsSend() {
+  toast.add({
+    title: 'Envio indisponível',
+    description: 'O pipeline de comunicação para FGTS ainda não foi habilitado no backend.',
+    color: 'warning'
+  })
+}
+
+function onFgtsToggleAutomatic() {
+  toast.add({
+    title: 'Preferência indisponível',
+    description: 'A carteira FGTS ainda não tem preferência de envio automático para persistir.',
+    color: 'warning'
+  })
+}
+
+function fgtsSendState(row: FgtsClientRow): MonitoringSendColumnState {
+  const communication = detailOf(row).communication
+  const tracking = pgdasdTrackingMeta(communication?.tracking_status)
+  return {
+    trackingIcon: tracking.icon,
+    trackingLabel: communication ? tracking.label : 'Sem histórico local',
+    trackingColor: communication ? tracking.color : 'neutral',
+    trackingDisabled: !communication,
+    automaticRequested: communication?.automatic_requested === true,
+    canToggleAutomatic: pgdasdCanRequestAutomatic(communication),
+    canSend: communication?.can_send === true
+  }
+}
+
+function fgtsActionItems(row: FgtsClientRow): DropdownMenuItem[][] {
+  const items: DropdownMenuItem[] = [
+    {
+      label: 'Abrir cliente',
+      icon: 'i-lucide-building-2',
+      to: clientHref(row.client_id)
+    }
+  ]
+  if (canManageClients.value) {
+    items.push({
+      label: 'Editar cliente',
+      icon: 'i-lucide-pencil',
+      onSelect: () => { void openEditClient(row.client_id) }
+    })
+  }
+  items.push({
+    label: 'Ver detalhe FGTS',
+    icon: 'i-lucide-panel-right',
+    onSelect: () => openDetail(row)
+  })
+  return [items]
+}
+
+const columns = computed<TableColumn<FgtsClientRow>[]>(() => [
+  {
+    id: 'situation',
+    header: ({ column }) => sortHeader('Situação', column),
+    enableSorting: false,
+    meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
+    cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(row.original.situation || 'UNKNOWN') })
+  },
   {
     id: 'client',
     header: ({ column }) => sortHeader('Cliente', column),
     enableHiding: false,
-    meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
+    meta: { ...MONITORING_CLIENT_COLUMN_META },
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
       legalName: row.original.legal_name,
+      cnpj: row.original.cnpj,
       cnpjMasked: row.original.cnpj_masked,
       to: clientHref(row.original.client_id)
     })
@@ -223,6 +308,13 @@ const columns: TableColumn<FgtsClientRow>[] = [
     enableSorting: false,
     cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(detailOf(row.original).payment_status || 'UNSUPPORTED') })
   },
+  buildMonitoringComunicacaoColumn<FgtsClientRow>({
+    getState: row => fgtsSendState(row),
+    onTracking: onFgtsTracking,
+    onSend: onFgtsSend,
+    onToggleAutomatic: onFgtsToggleAutomatic,
+    testIdPrefix: 'fgts-tracking'
+  }),
   buildMonitoringConsultedColumn<FgtsClientRow>({
     getAt: row => detailOf(row).last_synced_at || row.last_consulted_at,
     format: 'datetime',
@@ -230,28 +322,20 @@ const columns: TableColumn<FgtsClientRow>[] = [
   }),
   {
     id: 'actions',
-    header: 'Ações',
+    header: MONITORING_ACTIONS_LABEL,
     enableHiding: false,
     enableSorting: false,
-    meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
-    cell: ({ row }) => h('div', { class: 'flex justify-end gap-1' }, [
-      h(UButton, {
-        size: 'xs',
-        color: 'primary',
-        variant: 'ghost',
-        label: 'Detalhe',
-        onClick: () => openDetail(row.original)
-      }),
-      h(UButton, {
-        size: 'xs',
-        color: 'neutral',
-        variant: 'ghost',
-        label: 'Cliente',
-        to: clientHref(row.original.client_id)
+    meta: { ...MONITORING_ACTIONS_META },
+    cell: ({ row }) => {
+      const name = row.original.name || row.original.legal_name || `cliente ${row.original.client_id}`
+      return buildMonitoringActionsMenuCell({
+        ariaLabel: `Mais ações de ${name}`,
+        testId: 'fgts-row-actions',
+        items: fgtsActionItems(row.original)
       })
-    ])
+    }
   }
-]
+])
 
 onMounted(() => {
   void loadCoverage()
@@ -285,9 +369,10 @@ onMounted(() => {
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
-    :horizontal-scroll="true"
+    :horizontal-scroll="false"
     empty-title="Nenhum cliente FGTS"
     :column-labels="{
+      situation: 'Situação',
       closure: 'Fechamento',
       totalization: 'Totalização',
       guide: 'Guia FGTS Digital',
@@ -511,4 +596,13 @@ onMounted(() => {
       </USlideover>
     </template>
   </MonitoringModuleTable>
+
+  <ClientsClientFormModal
+    v-if="canManageClients"
+    v-model:open="clientFormOpen"
+    :client="formClient"
+    :can-manage-credentials="canManageCredentials"
+    :can-manage-clients="canManageClients"
+    @saved="onClientFormSaved"
+  />
 </template>

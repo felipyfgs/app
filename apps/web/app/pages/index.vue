@@ -191,7 +191,7 @@ watch(sessionEpoch, () => {
             label="Fiscal"
           />
           <UButton
-            to="/monitoring/simples-mei"
+            to="/monitoring/simples"
             size="xs"
             color="neutral"
             variant="ghost"

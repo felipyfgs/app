@@ -114,6 +114,7 @@ export function monitoringBulkActionState(input: {
   canAssociate: boolean
   canEnqueue: boolean
   canExport: boolean
+  canMembership?: boolean
 }) {
   const supported = Boolean(input.moduleKey && isFiscalPortfolioModule(input.moduleKey))
   const associate = supported && input.canAssociate
@@ -121,12 +122,14 @@ export function monitoringBulkActionState(input: {
     && moduleSupportsEnqueueRead(input.moduleKey || '')
   const exportPortfolio = supported && input.canExport
     && moduleSupportsPortfolioExport(input.moduleKey || '')
-  const available = associate || enqueue || exportPortfolio
+  const membership = supported && Boolean(input.canMembership)
+  const available = associate || enqueue || exportPortfolio || membership
   return {
     associate,
     enqueue,
     export: exportPortfolio,
+    membership,
     available,
-    visible: available && input.selectedCount > 0
+    visible: available && (input.selectedCount > 0 || membership)
   }
 }

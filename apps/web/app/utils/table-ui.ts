@@ -26,10 +26,12 @@
  * - Larguras só em column.meta.class
  *
  * Larguras em `table-fixed` (evita «coluna fantasma» à direita):
- * - Coluna de identidade (Cliente / razão social / título): `min-w-* w-full`
- *   — absorve o espaço restante quando há colunas ocultas ou ações estreitas.
- * - Demais colunas: largura fixa em rem (`w-28 min-w-24`), sem `%` baixo nem `max-w`
- *   na identidade (max-w na coluna flexível deixa faixa vazia no fim da tabela).
+ * - Coluna de identidade (Cliente): `w-full max-w-0` (`MONITORING_CLIENT_COLUMN_META`)
+ *   — absorve o espaço restante e permite ellipsis abaixo do min-content do texto.
+ *   Não usar `min-w-48` nas carteiras (força scroll horizontal).
+ * - Demais colunas: largura fixa em rem (`w-28 min-w-24`), sem `%` baixo.
+ *   Evitar `max-w-*` arbitrário (ex.: max-w-xs) na identidade — deixa faixa vazia;
+ *   `max-w-0` + `w-full` é a exceção intencional do truque de ellipsis.
  *
  * Preferir caber na viewport (sem barra horizontal):
  * - NÃO forçar `min-w-[960px]` / `min-w-4xl` na `<table>` só para “alinhar ícones”.

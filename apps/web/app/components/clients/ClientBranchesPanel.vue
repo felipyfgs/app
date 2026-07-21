@@ -201,7 +201,7 @@ function openClient(id: number) {
                   size="sm"
                   icon="i-lucide-badge-check"
                 >
-                  A1
+                  Com certificado
                 </UBadge>
                 <UBadge
                   v-else
@@ -210,7 +210,7 @@ function openClient(id: number) {
                   size="sm"
                   icon="i-lucide-shield-off"
                 >
-                  Sem A1
+                  Sem certificado
                 </UBadge>
               </div>
               <p class="font-mono text-sm text-muted">

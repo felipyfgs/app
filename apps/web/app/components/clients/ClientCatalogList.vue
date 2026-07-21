@@ -32,6 +32,7 @@ import { normalizeCnpj } from '~/utils/format'
 import { apiErrorMessage } from '~/utils/api-error'
 import { CLIENT_TAX_REGIME_FILTER_ITEMS } from '~/utils/clients-tax-regime'
 import { normalizeListTablePerPage } from '~/utils/table-ui'
+import { monitoringDestinationAfterClientCreate } from '~/utils/monitoring-post-create'
 
 const CLIENT_COLUMN_LABELS = clientsColumnLabels()
 const UCheckbox = resolveComponent('UCheckbox')
@@ -327,7 +328,7 @@ function applyKpiFilter(key: KpiFilter) {
 
 /**
  * KPIs de cadastro (contagens reais da API):
- * total · com A1 · sem A1 · a vencer · vencido · captura problemática
+ * total · com certificado · sem certificado · a vencer · vencido · captura problemática
  */
 const kpiItems = computed((): DashboardKpiItem[] => [
   {
@@ -339,19 +340,19 @@ const kpiItems = computed((): DashboardKpiItem[] => [
   },
   {
     key: 'with_credential',
-    title: 'Com A1',
+    title: 'Com certificado',
     value: loading.value && !clients.value.length
       ? '…'
       : (stats.value.with_credential ?? Math.max(0, stats.value.total - stats.value.without_credential)),
     icon: 'i-lucide-badge-check',
-    ariaLabel: 'Filtrar lista: Com A1'
+    ariaLabel: 'Filtrar lista: Com certificado'
   },
   {
     key: 'without_credential',
-    title: 'Sem A1',
+    title: 'Sem certificado',
     value: loading.value && !clients.value.length ? '…' : stats.value.without_credential,
     icon: 'i-lucide-shield-off',
-    ariaLabel: 'Filtrar lista: Sem A1'
+    ariaLabel: 'Filtrar lista: Sem certificado'
   },
   {
     key: 'expiring',
@@ -362,10 +363,10 @@ const kpiItems = computed((): DashboardKpiItem[] => [
   },
   {
     key: 'credential_expired',
-    title: 'A1 vencido',
+    title: 'Certificado vencido',
     value: loading.value && !clients.value.length ? '…' : stats.value.credential_expired,
     icon: 'i-lucide-badge-x',
-    ariaLabel: 'Filtrar lista: A1 vencido'
+    ariaLabel: 'Filtrar lista: Certificado vencido'
   },
   {
     key: 'capture_problem',
@@ -748,11 +749,21 @@ function openEditForm(client: Client) {
   formOpen.value = true
 }
 
-async function onFormSaved(payload: { id: number, mode: 'create' | 'edit', section?: 'resumo' | 'certificado' }) {
+async function onFormSaved(payload: {
+  id: number
+  mode: 'create' | 'edit'
+  section?: 'resumo' | 'certificado'
+  tax_regime?: string | null
+}) {
   formOpen.value = false
   formClient.value = null
   await load()
   if (payload.mode === 'create') {
+    const monitoring = monitoringDestinationAfterClientCreate(payload.tax_regime)
+    if (monitoring) {
+      await navigateTo(monitoring.path)
+      return
+    }
     await navigateTo(clientSectionPath(payload.id, payload.section || 'resumo'))
   }
 }

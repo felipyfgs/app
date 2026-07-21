@@ -6,6 +6,7 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { InstallmentsClientDetail, InstallmentsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
+import { MONITORING_CLIENT_COLUMN_META } from '~/utils/monitoring-table-columns'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const FiscalClientCell = resolveComponent('FiscalClientCell')
@@ -200,11 +201,12 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
     id: 'client',
     header: ({ column }) => sortHeader('Cliente', column),
     enableHiding: false,
-    meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
+    meta: { ...MONITORING_CLIENT_COLUMN_META },
     cell: ({ row }) => h(FiscalClientCell, {
       clientId: row.original.client_id,
       name: row.original.name || row.original.display_name,
       legalName: row.original.legal_name,
+      cnpj: row.original.cnpj,
       cnpjMasked: row.original.cnpj_masked
     })
   },
@@ -341,7 +343,7 @@ onMounted(() => {
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
-    :horizontal-scroll="true"
+    :horizontal-scroll="false"
     empty-title="Nenhum parcelamento"
     :column-labels="{
       modality: 'Modalidade',

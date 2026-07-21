@@ -128,6 +128,29 @@ onMounted(load)
     </template>
 
     <template #body>
+      <div
+        class="mb-6 flex flex-col gap-3 rounded-lg border border-default bg-elevated/40 p-4 sm:flex-row sm:items-center sm:justify-between"
+        data-testid="monitoring-by-company-entry"
+      >
+        <div class="min-w-0 space-y-1">
+          <p class="font-medium text-highlighted">
+            Por empresa
+          </p>
+          <p class="text-sm text-muted">
+            Abra uma empresa para ver todos os processos monitorados daquele CNPJ.
+          </p>
+        </div>
+        <UButton
+          to="/clients"
+          color="primary"
+          variant="soft"
+          icon="i-lucide-building-2"
+          label="Abrir empresas"
+          class="shrink-0"
+          data-testid="monitoring-by-company-link"
+        />
+      </div>
+
       <UAlert
         v-if="loadError"
         color="error"

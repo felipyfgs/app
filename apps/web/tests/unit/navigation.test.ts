@@ -5,7 +5,7 @@ import type { MeUser } from '~/types/api'
 import { clientDetailNav } from '~/utils/client-detail-navigation'
 import { clientFiscalDetailNav } from '~/utils/client-fiscal-detail-navigation'
 import { fiscalNavLeaves } from '~/utils/fiscal-navigation'
-import { LINK_TABS_UI, SCROLLABLE_TABS_UI } from '~/utils/list-filter-layout'
+import { LINK_TABS_UI, SCROLLABLE_TABS_UI, TOUCH_SCROLL_X } from '~/utils/list-filter-layout'
 import { MONITORING_NAV_ITEMS } from '~/utils/monitoring-nav'
 import {
   mainDestinations,
@@ -23,7 +23,7 @@ const viewer = {
 } as MeUser
 
 describe('navegação global no sidebar', () => {
-  it('organiza os 11 contextos sob um único acordeão Monitoramento', () => {
+  it('organiza os 12 contextos sob um único acordeão Monitoramento', () => {
     const destinations = monitoringDestinations(viewer, '/monitoring/declarations')
     const monitoring = destinations[0]
 
@@ -37,7 +37,8 @@ describe('navegação global no sidebar', () => {
     expect(monitoring).not.toHaveProperty('active')
     expect(monitoring?.children?.map(item => item.label)).toEqual([
       'Dashboard',
-      'Simples Nacional | MEI',
+      'Simples Nacional',
+      'MEI',
       'DCTFWeb',
       'FGTS Digital',
       'Parcelamentos',
@@ -55,7 +56,7 @@ describe('navegação global no sidebar', () => {
 
   it('converte Monitoramento e suas folhas para o contrato nativo do UNavigationMenu', () => {
     const items = toNavigationItems(
-      monitoringDestinations(viewer, '/monitoring/simples-mei')
+      monitoringDestinations(viewer, '/monitoring/simples')
     )
 
     expect(items[0]).toMatchObject({
@@ -67,7 +68,8 @@ describe('navegação global no sidebar', () => {
     expect(items[0]?.children?.filter(item => item.active)).toHaveLength(1)
     expect(items[0]?.children)
       .toEqual(expect.arrayContaining([
-        expect.objectContaining({ label: 'Simples Nacional | MEI', to: '/monitoring/simples-mei' }),
+        expect.objectContaining({ label: 'Simples Nacional', to: '/monitoring/simples' }),
+        expect.objectContaining({ label: 'MEI', to: '/monitoring/mei' }),
         expect.objectContaining({ label: 'Declarações', to: '/monitoring/declarations' })
       ]))
   })
@@ -87,10 +89,11 @@ describe('navegação global no sidebar', () => {
       .toEqual(MONITORING_NAV_ITEMS.map(item => item.label))
   })
 
-  it('alinha os nomes do sidebar aos títulos das 11 superfícies', () => {
+  it('alinha os nomes do sidebar às 12 superfícies operacionais', () => {
     const pageContracts: Array<[string, string | RegExp]> = [
       ['app/pages/monitoring/index.vue', 'title="Dashboard"'],
-      ['app/pages/monitoring/simples-mei/index.vue', 'title="Simples Nacional | MEI"'],
+      ['app/pages/monitoring/simples/index.vue', 'submodule="PGDASD"'],
+      ['app/pages/monitoring/mei/index.vue', 'submodule="PGMEI"'],
       ['app/pages/monitoring/dctfweb/index.vue', 'title="DCTFWeb"'],
       ['app/pages/monitoring/fgts.vue', 'title="FGTS Digital"'],
       ['app/pages/monitoring/installments.vue', 'title="Parcelamentos"'],
@@ -105,12 +108,11 @@ describe('navegação global no sidebar', () => {
 
     const navLabels = MONITORING_NAV_ITEMS.map(item => item.label)
     expect(navLabels).toContain('Declarações')
-    expect(pageContracts.map(([path]) => path)).toHaveLength(11)
+    expect(pageContracts.map(([path]) => path)).toHaveLength(12)
     for (const [path, title] of pageContracts) {
       const source = readFileSync(resolve(process.cwd(), path), 'utf8')
       if (typeof title === 'string') {
         expect(source).toContain(title)
-        expect(navLabels).toContain(title.replace('title="', '').replace('"', ''))
       } else {
         expect(source).toMatch(title)
       }
@@ -152,15 +154,25 @@ describe('navegação contextual Tabs → Subtabs', () => {
     const cadastro = nav.find(item => item.id === 'client-cadastro')
     expect(cadastro && 'to' in cadastro ? cadastro.to : null).toBe('/clients/7/cadastro')
 
-    const fiscalNav = clientFiscalDetailNav(8)
+    const fiscalNav = clientFiscalDetailNav(8, { isMei: true })
     expect(fiscalNav.every(item => !('children' in item))).toBe(true)
     expect(fiscalNav.map(item => item.id)).toContain('cf-pgdasd')
+    expect(fiscalNav.map(item => item.id)).toContain('cf-ccmei')
+    expect(fiscalNav.map(item => item.id)).toContain('cf-tax-processes')
+    expect(fiscalNav.map(item => item.id)).toContain('cf-dctfweb')
+    expect(fiscalNav.map(item => item.id)).toContain('cf-mailbox')
+    expect(fiscalNav.map(item => item.id)).not.toContain('cf-runs')
+    expect(fiscalNav.map(item => item.id)).not.toContain('cf-pending')
     const fiscalClient = resolveNavSelection(
       fiscalNav,
-      '/monitoring/clients/8/tax_processes'
+      '/monitoring/clients/8/pgdasd'
     )
     expect(fiscalClient.group).toBeNull()
-    expect(fiscalClient.leaf?.id).toBe('cf-tax-processes')
+    expect(fiscalClient.leaf?.id).toBe('cf-pgdasd')
+    expect(fiscalClient.leaf?.label).toBe('Simples Nacional')
+
+    const snNav = clientFiscalDetailNav(8, { isMei: false })
+    expect(snNav.map(item => item.id)).not.toContain('cf-ccmei')
   })
 
   it('preserva seções identificadas por query no detalhe de processo', () => {
@@ -199,9 +211,26 @@ describe('tabs locais', () => {
     expect(SCROLLABLE_TABS_UI.trigger).not.toMatch(/text-|bg-|rounded|shadow/)
   })
 
+  it('limita scroll touch à largura do pai (overflow contido)', () => {
+    expect(TOUCH_SCROLL_X).toContain('w-full')
+    expect(TOUCH_SCROLL_X).toContain('max-w-full')
+    expect(TOUCH_SCROLL_X).toContain('min-w-0')
+    expect(TOUCH_SCROLL_X).toContain('overflow-x-auto')
+
+    const kpiStrip = readFileSync(
+      resolve(process.cwd(), 'app/components/monitoring/KpiStrip.vue'),
+      'utf8'
+    )
+    const moduleTable = readFileSync(
+      resolve(process.cwd(), 'app/components/monitoring/ModuleTable.vue'),
+      'utf8'
+    )
+    expect(kpiStrip).toMatch(/fiscal-kpi-strip[\s\S]*?w-full min-w-0 max-w-full/)
+    expect(moduleTable).toMatch(/fiscal-kpi-block[\s\S]*?w-full min-w-0 max-w-full|w-full min-w-0 max-w-full[\s\S]*?fiscal-kpi-block/)
+  })
+
   it('aplica cápsulas compactas às alternâncias locais de monitoramento', () => {
     const sources = [
-      'app/pages/monitoring/simples-mei/index.vue',
       'app/pages/monitoring/dctfweb/index.vue'
     ].map(path => readFileSync(resolve(process.cwd(), path), 'utf8'))
 
@@ -261,7 +290,7 @@ describe('tabs locais', () => {
 
   it('simplifica o chrome da carteira Simples Nacional sem afetar outras carteiras', () => {
     const source = readFileSync(
-      resolve(process.cwd(), 'app/pages/monitoring/simples-mei/index.vue'),
+      resolve(process.cwd(), 'app/components/monitoring/simples-mei/Portfolio.vue'),
       'utf8'
     )
     const moduleTable = readFileSync(

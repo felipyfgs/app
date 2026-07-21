@@ -258,7 +258,7 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
 
         <div
           v-if="showKpis || $slots.kpis"
-          class="min-w-0"
+          class="w-full min-w-0 max-w-full"
           data-testid="fiscal-kpi-block"
         >
           <slot name="kpis">

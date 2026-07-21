@@ -277,9 +277,27 @@
   },
   {
     "section": "monitoring",
+    "file": "app/pages/monitoring/mei/index.vue",
+    "route": "/monitoring/mei",
+    "notes": ""
+  },
+  {
+    "section": "monitoring",
+    "file": "app/pages/monitoring/simples/index.vue",
+    "route": "/monitoring/simples",
+    "notes": ""
+  },
+  {
+    "section": "monitoring",
+    "file": "app/pages/monitoring/simples/[submodule].vue",
+    "route": "/monitoring/simples/:submodule",
+    "notes": "**redirect-only** via middleware `monitoring-submodule-legacy` (301)"
+  },
+  {
+    "section": "monitoring",
     "file": "app/pages/monitoring/simples-mei/index.vue",
     "route": "/monitoring/simples-mei",
-    "notes": ""
+    "notes": "**redirect-only** → `/monitoring/simples` (301)"
   },
   {
     "section": "monitoring",

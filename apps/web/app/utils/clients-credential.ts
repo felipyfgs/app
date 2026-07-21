@@ -1,5 +1,6 @@
 /**
- * Chip A1 da lista de clientes (puro — sem dependência de #components).
+ * Chip de certificado digital da lista de clientes (puro — sem dependência de #components).
+ * Fonte: `credential_summary` (tabela `client_credentials`).
  */
 import type { Client } from '~/types/api'
 import { statusLabel } from '~/utils/format'
@@ -13,7 +14,7 @@ export function formatClientDateOnly(value?: string | null): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(date)
 }
 
-/** Chip A1: válido / ausente / a vencer / vencido */
+/** Chip certificado: válido / ausente / a vencer / vencido */
 export function clientCredentialInfo(client: Client): {
   chipLabel: string
   color: ChipTone
@@ -22,7 +23,7 @@ export function clientCredentialInfo(client: Client): {
   const summary = client.credential_summary
   if (!summary) {
     return {
-      chipLabel: 'Sem A1',
+      chipLabel: 'Sem certificado',
       color: 'neutral',
       hasCredential: false
     }

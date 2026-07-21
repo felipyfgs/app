@@ -120,10 +120,10 @@ function onSelect(key: string | number) {
 <template>
   <div
     data-testid="fiscal-kpi-strip"
-    class="flex min-w-0 items-center gap-2"
+    class="flex w-full min-w-0 max-w-full items-center gap-2"
   >
     <ShellScrollableTabs
-      class="min-w-0"
+      class="w-full min-w-0 max-w-full"
       :model-value="resolvedActiveKey"
       :items="items"
       size="md"

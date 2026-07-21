@@ -12,9 +12,18 @@ import type {
   FiscalRegistrationLink,
   FiscalTaxProcess
 } from '~/types/fiscal-modules'
-import { documentActionVisible } from '~/types/fiscal-modules'
 import { clientCrmHref } from '~/utils/client-cross-links'
-import { clientFiscalNavigationMenu } from '~/utils/client-fiscal-detail-navigation'
+import { clientIsMei } from '~/utils/client-detail-tabs'
+import {
+  clientFiscalNavigationMenu,
+  clientFiscalSwitchPath,
+  isClientFiscalSectionVisible,
+  sectionKeyFromFiscalPath,
+  type ClientFiscalSectionKey
+} from '~/utils/client-fiscal-detail-navigation'
+import { buildClientMonitoringOverview } from '~/utils/client-monitoring-overview'
+import { setMailboxClientFilterHandoff } from '~/utils/mailbox-handoff'
+import { mailboxTriageLabel } from '~/utils/mailbox-triage'
 import ShellDataTable from '~/components/shell/DataTable.vue'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
@@ -34,9 +43,11 @@ type SectionKey
     | 'installments'
     | 'declarations'
     | 'pgdasd'
+    | 'dctfweb'
     | 'guides'
     | 'fgts'
     | 'sitfis'
+    | 'mailbox'
     | 'registrations'
     | 'ccmei'
     | 'renunciations'
@@ -50,9 +61,11 @@ const SECTION_KEYS: SectionKey[] = [
   'installments',
   'declarations',
   'pgdasd',
+  'dctfweb',
   'guides',
   'fgts',
   'sitfis',
+  'mailbox',
   'registrations',
   'ccmei',
   'renunciations',
@@ -114,10 +127,19 @@ watch(() => route.path, () => {
 })
 
 const clientId = computed(() => Number(route.params.clientId))
+const client = ref<Client | null>(null)
+const clientLoading = ref(false)
+const clientError = ref<string | null>(null)
+const clientIsMeiSignal = computed(() => clientIsMei(client.value))
+
 const tab = computed({
   get: (): SectionKey => {
     const raw = String(route.params.section || 'overview')
-    return isSectionKey(raw) ? raw : 'overview'
+    if (!isSectionKey(raw)) return 'overview'
+    if (!isClientFiscalSectionVisible(raw as ClientFiscalSectionKey, { isMei: clientIsMeiSignal.value })) {
+      return 'overview'
+    }
+    return raw
   },
   set: (value: SectionKey) => {
     const base = `/monitoring/clients/${clientId.value}`
@@ -125,28 +147,26 @@ const tab = computed({
   }
 })
 
-const client = ref<Client | null>(null)
-const pgdasdDasHistoryOpen = ref(false)
-
-function openPgdasdDasHistory() {
-  pgdasdDasHistoryOpen.value = true
-}
-const clientLoading = ref(false)
-const clientError = ref<string | null>(null)
-
 const pageTitle = computed(() =>
   client.value?.name || client.value?.legal_name || `Cliente #${clientId.value}`
 )
 
 const snapshots = ref<FiscalSnapshot[]>([])
+const overviewProcessCards = computed(() =>
+  buildClientMonitoringOverview(clientId.value, snapshots.value, {
+    isMei: clientIsMeiSignal.value
+  })
+)
 const runs = ref<FiscalMonitoringRun[]>([])
 const findings = ref<FiscalFinding[]>([])
 const pending = ref<FiscalPendingItem[]>([])
 const installments = ref<Record<string, unknown>[]>([])
 const declarations = ref<Record<string, unknown>[]>([])
+const dctfwebDeclarations = ref<Record<string, unknown>[]>([])
 const guides = ref<Record<string, unknown>[]>([])
 const sitfis = ref<Record<string, unknown> | null>(null)
 const fgtsCompetences = ref<Record<string, unknown>[]>([])
+const mailboxMessages = ref<Record<string, unknown>[]>([])
 const registrationLinks = ref<FiscalRegistrationLink[]>([])
 const taxProcesses = ref<FiscalTaxProcess[]>([])
 
@@ -218,9 +238,11 @@ const sections = reactive<Record<SectionKey, SectionState>>({
   installments: emptySection(),
   declarations: emptySection(),
   pgdasd: emptySection(),
+  dctfweb: emptySection(),
   guides: emptySection(),
   fgts: emptySection(),
   sitfis: emptySection(),
+  mailbox: emptySection(),
   registrations: emptySection(),
   ccmei: emptySection(),
   renunciations: emptySection(),
@@ -232,57 +254,30 @@ function cacheKey(): string {
 }
 
 const links = computed(() =>
-  clientFiscalNavigationMenu(clientId.value, route.path)
+  clientFiscalNavigationMenu(clientId.value, route.path, {
+    isMei: clientIsMeiSignal.value
+  })
 )
 
-const snapshotColumns = [
-  { accessorKey: 'id', header: 'ID' },
-  {
-    id: 'situation',
-    header: 'Situação',
-    cell: ({ row }: { row: { original: FiscalSnapshot } }) =>
-      h(FiscalStatusBadge, { fill: true, status: row.original.situation })
-  },
-  {
-    id: 'service',
-    header: 'Serviço',
-    cell: ({ row }: { row: { original: FiscalSnapshot } }) =>
-      [row.original.system_code, row.original.service_code].filter(Boolean).join(' / ')
-  },
-  {
-    accessorKey: 'observed_at',
-    header: 'Observado',
-    cell: ({ row }: { row: { original: FiscalSnapshot } }) =>
-      formatDateTime(row.original.observed_at)
-  },
-  {
-    id: 'evidence',
-    header: 'Evidência',
-    cell: ({ row }: { row: { original: FiscalSnapshot & { document?: FiscalDocumentDescriptor | null } } }) => {
-      const doc = row.original.document
-      if (documentActionVisible(doc)) {
-        return h(FiscalDocumentAction, { document: doc })
-      }
-      // Legacy: only when server-shaped download URL helper matches backend path.
-      if (row.original.evidence_artifact_id) {
-        return h(FiscalDocumentAction, {
-          document: {
-            available: true,
-            kind: 'PDF',
-            label: 'Ver documento oficial',
-            content_type: 'application/pdf',
-            observed_at: null,
-            source_surface: null,
-            source_label: null,
-            href: api.fiscal.evidenceDownloadUrl(row.original.evidence_artifact_id),
-            unavailable_reason: null
-          }
-        })
-      }
-      return '—'
+/** Deep-link para seção oculta / MEI sem regime → overview. */
+watch(
+  () => [route.params.section, client.value?.id, clientIsMeiSignal.value] as const,
+  () => {
+    const raw = String(route.params.section || 'overview')
+    if (!raw || raw === 'overview') return
+    const key = sectionKeyFromFiscalPath(route.path)
+    if (!isClientFiscalSectionVisible(key, { isMei: clientIsMeiSignal.value })) {
+      void router.replace(`/monitoring/clients/${clientId.value}`)
     }
-  }
-]
+  },
+  { immediate: true }
+)
+
+function onSwitchClient(payload: { id: number, isMei: boolean }) {
+  if (!Number.isFinite(payload.id) || payload.id < 1 || payload.id === clientId.value) return
+  const current = sectionKeyFromFiscalPath(route.path)
+  void router.push(clientFiscalSwitchPath(payload.id, current, { isMei: payload.isMei }))
+}
 
 /** Coluna de documento quando o item expõe descritor com href do servidor. */
 function documentColumnFor<T extends { document?: FiscalDocumentDescriptor | null }>() {
@@ -400,8 +395,11 @@ const declarationColumns = [
   {
     id: 'name',
     header: 'Obrigação',
-    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
-      String(row.original.obligation_name || row.original.obligation_code || `Decl. #${row.original.id}`)
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) => {
+      const code = String(row.original.obligation_name || row.original.obligation_code || `Decl. #${row.original.id}`)
+      const number = row.original.declaration_number || row.original.receipt_number
+      return number ? `${code} · ${String(number)}` : code
+    }
   },
   {
     id: 'period',
@@ -424,12 +422,68 @@ const declarationColumns = [
   documentColumnFor<Record<string, unknown> & { document?: FiscalDocumentDescriptor | null }>()
 ]
 
+const mailboxColumns = [
+  {
+    id: 'subject',
+    header: 'Assunto',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      String(row.original.subject_preview || row.original.subject || `Msg #${row.original.id}`)
+  },
+  {
+    id: 'when',
+    header: 'Recebida',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      formatDateTime(String(row.original.received_at_official || row.original.received_at || row.original.created_at || '') || null)
+  },
+  {
+    id: 'triage',
+    header: 'Triagem',
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
+      mailboxTriageLabel(String(row.original.triage_status || '') || null)
+  }
+]
+
+function openMailboxInbox() {
+  const id = Number(clientId.value)
+  if (Number.isFinite(id) && id > 0) {
+    setMailboxClientFilterHandoff(id)
+  }
+  void router.push('/monitoring/mailbox')
+}
+
+function openMailboxMessage(row: unknown) {
+  const record = (row && typeof row === 'object' && 'original' in row
+    ? (row as { original: Record<string, unknown> }).original
+    : row) as Record<string, unknown> | null
+  const messageId = Number(record?.id)
+  const id = Number(clientId.value)
+  if (Number.isFinite(id) && id > 0) {
+    setMailboxClientFilterHandoff(id)
+  }
+  if (Number.isFinite(messageId) && messageId > 0) {
+    void router.push(`/monitoring/mailbox/${messageId}`)
+    return
+  }
+  void router.push('/monitoring/mailbox')
+}
+
 const guideColumns = [
   {
     id: 'guide',
     header: 'Guia',
-    cell: ({ row }: { row: { original: Record<string, unknown> } }) =>
-      `Guia #${row.original.id} · ${row.original.competence_period_key || row.original.period_key || '—'}`
+    cell: ({ row }: { row: { original: Record<string, unknown> } }) => {
+      const period = String(row.original.competence_period_key || row.original.period_key || '—')
+      const source = String(row.original.source || '')
+      const code = row.original.das_number || row.original.identifier_code
+      if (source === 'DCTFWEB_DARF' && code) {
+        return `DARF ${String(code)} · ${period}`
+      }
+      if (code) {
+        const prefix = source === 'PGDASD_CONSULT' || row.original.das_number ? 'DAS' : 'Guia'
+        return `${prefix} ${String(code)} · ${period}`
+      }
+      return `Guia #${row.original.id} · ${period}`
+    }
   },
   {
     id: 'amount',
@@ -442,6 +496,10 @@ const guideColumns = [
     header: 'Emissão',
     cell: ({ row }: { row: { original: Record<string, unknown> } }) => {
       const ver = row.original.current_version as Record<string, unknown> | undefined
+      const emittedAt = ver?.emitted_at || row.original.issued_at
+      if (emittedAt) {
+        return formatDateTime(String(emittedAt))
+      }
       return String(ver?.emission_status || row.original.emission_status || '—')
     }
   },
@@ -555,6 +613,9 @@ function clearSectionData(key: SectionKey) {
       break
     case 'pgdasd':
       break
+    case 'dctfweb':
+      dctfwebDeclarations.value = []
+      break
     case 'guides':
       guides.value = []
       break
@@ -563,6 +624,9 @@ function clearSectionData(key: SectionKey) {
       break
     case 'sitfis':
       sitfis.value = null
+      break
+    case 'mailbox':
+      mailboxMessages.value = []
       break
     case 'registrations':
       registrationLinks.value = []
@@ -688,6 +752,15 @@ async function loadSection(key: SectionKey, force = false) {
       case 'pgdasd':
         // O histórico carrega apenas a projeção local dentro do próprio painel.
         break
+      case 'dctfweb': {
+        const res = await api.fiscal.dctfweb.list({
+          client_id: clientId.value,
+          per_page: 20
+        })
+        if (cacheKey() !== keyNow) return
+        dctfwebDeclarations.value = (res.data as Record<string, unknown>[]) || []
+        break
+      }
       case 'guides': {
         const res = await api.fiscal.guides.list({
           client_id: clientId.value,
@@ -710,6 +783,15 @@ async function loadSection(key: SectionKey, force = false) {
         const res = await api.fiscal.sitfis.show(clientId.value)
         if (cacheKey() !== keyNow) return
         sitfis.value = (res.data as Record<string, unknown>) || null
+        break
+      }
+      case 'mailbox': {
+        const res = await api.fiscal.mailbox.list({
+          client_id: clientId.value,
+          per_page: 20
+        })
+        if (cacheKey() !== keyNow) return
+        mailboxMessages.value = (res.data as Record<string, unknown>[]) || []
         break
       }
       case 'registrations': {
@@ -851,6 +933,7 @@ onMounted(async () => {
               :client-id="clientId"
               :links="links"
               :loading="clientLoading"
+              @switch-client="onSwitchClient"
             />
           </div>
         </div>
@@ -917,71 +1000,42 @@ onMounted(async () => {
             </UAlert>
 
             <template v-else>
-              <!-- overview: ShellDataTable sempre montada (customers.vue / ModuleTable) -->
-              <UPageCard
+              <div
                 v-if="tab === 'overview'"
-                title="Snapshots atuais"
-                variant="subtle"
+                class="space-y-3"
               >
-                <ShellDataTable
-                  ui-preset="monitoring-compact"
-                  :data="snapshots"
-                  :columns="snapshotColumns"
-                  :page="1"
-                  :total="snapshots.length"
-                  :items-per-page="snapshots.length || 1"
-                  :show-footer="false"
-                  test-id="client-section-table-overview"
-                >
-                  <template #empty>
-                    <MonitoringTableEmptyState
-                      kind="empty"
-                      title="Nenhum snapshot atual"
-                    />
-                  </template>
-                </ShellDataTable>
-              </UPageCard>
+                <h2 class="text-sm font-medium text-highlighted">
+                  Processos monitorados
+                </h2>
+                <MonitoringClientProcessOverview
+                  :cards="overviewProcessCards"
+                  :loading="sections.overview.loading"
+                />
+              </div>
 
-              <ClientPnrRenunciationsPanel
+              <ClientsClientPnrRenunciationsPanel
                 v-else-if="tab === 'renunciations'"
                 :client-id="clientId"
                 :can-consult="canTriggerSync"
               />
 
               <section v-else-if="tab === 'pgdasd'" class="space-y-3">
-                <div class="flex flex-wrap items-center justify-end gap-2">
-                  <UButton
-                    size="sm"
-                    color="primary"
-                    variant="soft"
-                    icon="i-lucide-history"
-                    label="Histórico DAS"
-                    data-testid="client-pgdasd-das-history"
-                    @click="openPgdasdDasHistory"
-                  />
-                </div>
                 <MonitoringPgdasdHistoryView
                   :client-id="clientId"
                   :can-collect-documents="canTriggerSync"
                 />
-                <MonitoringPgdasdDasHistoryModal
-                  v-model:open="pgdasdDasHistoryOpen"
-                  :client-id="clientId"
-                  :client-name="client?.legal_name || client?.display_name || client?.name"
-                  :cnpj-masked="client?.cnpj || client?.root_cnpj || null"
-                />
               </section>
 
               <div v-else-if="tab === 'ccmei'" class="space-y-4">
-                <ClientCcmeiPanel
+                <ClientsClientCcmeiPanel
                   :client-id="clientId"
                   :can-consult="canTriggerSync"
                 />
-                <ClientCcmeiRegistrationStatusPanel
+                <ClientsClientCcmeiRegistrationStatusPanel
                   :client-id="clientId"
                   :can-consult="canTriggerSync"
                 />
-                <ClientCcmeiCertificateIssuancePanel
+                <ClientsClientCcmeiCertificateIssuancePanel
                   :client-id="clientId"
                   :can-consult="canTriggerSync"
                 />
@@ -1126,6 +1180,74 @@ onMounted(async () => {
               </UPageCard>
 
               <UPageCard
+                v-else-if="tab === 'dctfweb'"
+                title="DCTFWeb"
+                variant="subtle"
+              >
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="dctfwebDeclarations"
+                  :columns="declarationColumns"
+                  :page="1"
+                  :total="dctfwebDeclarations.length"
+                  :items-per-page="dctfwebDeclarations.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-dctfweb"
+                >
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhuma declaração DCTFWeb"
+                    />
+                  </template>
+                </ShellDataTable>
+                <div class="mt-3">
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="soft"
+                    to="/monitoring/dctfweb"
+                    label="Abrir carteira DCTFWeb"
+                  />
+                </div>
+              </UPageCard>
+
+              <UPageCard
+                v-else-if="tab === 'mailbox'"
+                title="Caixas Postais"
+                variant="subtle"
+              >
+                <ShellDataTable
+                  ui-preset="monitoring-compact"
+                  :data="mailboxMessages"
+                  :columns="mailboxColumns"
+                  :page="1"
+                  :total="mailboxMessages.length"
+                  :items-per-page="mailboxMessages.length || 1"
+                  :show-footer="false"
+                  test-id="client-section-table-mailbox"
+                  @select="(_event, row) => openMailboxMessage(row)"
+                >
+                  <template #empty>
+                    <MonitoringTableEmptyState
+                      kind="empty"
+                      title="Nenhuma mensagem na caixa postal"
+                    />
+                  </template>
+                </ShellDataTable>
+                <div class="mt-3">
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="soft"
+                    label="Abrir caixas postais"
+                    data-testid="client-mailbox-open-inbox"
+                    @click="openMailboxInbox"
+                  />
+                </div>
+              </UPageCard>
+
+              <UPageCard
                 v-else-if="tab === 'guides'"
                 title="Guias"
                 variant="subtle"
@@ -1192,80 +1314,90 @@ onMounted(async () => {
               </UPageCard>
 
               <!-- sitfis: painel detalhe (não lista) — casca sempre visível -->
-              <UPageCard
+              <div
                 v-else-if="tab === 'sitfis'"
-                title="Situação fiscal (SITFIS)"
-                variant="subtle"
+                class="space-y-4"
                 data-testid="client-sitfis-section"
               >
-                <MonitoringTableEmptyState
-                  v-if="!sitfis || (!sitfisSituation && !sitfisErrorCode)"
-                  kind="empty"
-                  title="Nenhum snapshot SITFIS"
-                />
-                <template v-else>
-                  <UAlert
-                    v-if="sitfisErrorCode"
-                    color="error"
-                    variant="subtle"
-                    icon="i-lucide-circle-x"
-                    class="mb-3"
-                    :title="String(sitfisErrorCode)"
-                    data-testid="client-sitfis-error"
+                <UPageCard
+                  title="Situação fiscal (SITFIS)"
+                  variant="subtle"
+                >
+                  <MonitoringTableEmptyState
+                    v-if="!sitfis || (!sitfisSituation && !sitfisErrorCode)"
+                    kind="empty"
+                    title="Nenhum snapshot SITFIS"
                   />
-                  <p v-if="sitfisErrorMessage" class="mb-3 text-sm text-error">
-                    {{ sitfisErrorMessage }}
-                  </p>
-                  <dl
-                    class="grid gap-2 text-sm sm:grid-cols-2"
-                    data-testid="client-sitfis-fields"
-                  >
-                    <div>
-                      <dt class="text-muted">
-                        Situação
-                      </dt>
-                      <dd>
-                        <FiscalStatusBadge
-                          v-if="sitfisSituation"
-                          :status="sitfisSituation"
-                          show-hint
-                        />
-                        <span v-else class="text-muted">—</span>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt class="text-muted">
-                        Observado
-                      </dt>
-                      <dd>{{ formatDateTime(sitfisObserved) }}</dd>
-                    </div>
-                    <div>
-                      <dt class="text-muted">
-                        Protocolo
-                      </dt>
-                      <dd>{{ sitfisProtocol || '—' }}</dd>
-                    </div>
-                    <div>
-                      <dt class="text-muted">
-                        Cobertura
-                      </dt>
-                      <dd>{{ sitfisCoverage || '—' }}</dd>
-                    </div>
-                  </dl>
-                  <div class="mt-3 flex flex-wrap items-center gap-2">
-                    <FiscalDocumentAction
-                      :document="sitfisDocument"
+                  <template v-else>
+                    <UAlert
+                      v-if="sitfisErrorCode"
+                      color="error"
+                      variant="subtle"
+                      icon="i-lucide-circle-x"
+                      class="mb-3"
+                      :title="String(sitfisErrorCode)"
+                      data-testid="client-sitfis-error"
                     />
-                    <UButton
-                      size="sm"
-                      color="neutral"
-                      variant="soft"
-                      to="/monitoring/sitfis"
-                      label="Abrir carteira SITFIS"
-                    />
-                  </div>
-                </template>
-              </UPageCard>
+                    <p v-if="sitfisErrorMessage" class="mb-3 text-sm text-error">
+                      {{ sitfisErrorMessage }}
+                    </p>
+                    <dl
+                      class="grid gap-2 text-sm sm:grid-cols-2"
+                      data-testid="client-sitfis-fields"
+                    >
+                      <div>
+                        <dt class="text-muted">
+                          Situação
+                        </dt>
+                        <dd>
+                          <FiscalStatusBadge
+                            v-if="sitfisSituation"
+                            :status="sitfisSituation"
+                            show-hint
+                          />
+                          <span v-else class="text-muted">—</span>
+                        </dd>
+                      </div>
+                      <div>
+                        <dt class="text-muted">
+                          Observado
+                        </dt>
+                        <dd>{{ formatDateTime(sitfisObserved) }}</dd>
+                      </div>
+                      <div>
+                        <dt class="text-muted">
+                          Protocolo
+                        </dt>
+                        <dd>{{ sitfisProtocol || '—' }}</dd>
+                      </div>
+                      <div>
+                        <dt class="text-muted">
+                          Cobertura
+                        </dt>
+                        <dd>{{ sitfisCoverage || '—' }}</dd>
+                      </div>
+                    </dl>
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
+                      <FiscalDocumentAction
+                        :document="sitfisDocument"
+                      />
+                      <UButton
+                        size="sm"
+                        color="neutral"
+                        variant="soft"
+                        to="/monitoring/sitfis"
+                        label="Abrir carteira SITFIS"
+                      />
+                    </div>
+                  </template>
+                </UPageCard>
+
+                <MonitoringSitfisHistoryView
+                  :client-id="clientId"
+                  :client-name="client?.legal_name || client?.display_name"
+                  :cnpj-masked="client?.cnpj || client?.root_cnpj"
+                />
+              </div>
 
               <UPageCard
                 v-else-if="tab === 'registrations'"
@@ -1340,38 +1472,6 @@ onMounted(async () => {
                 </div>
               </UPageCard>
             </template>
-
-            <div class="flex flex-wrap gap-2">
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="soft"
-                to="/monitoring/mailbox"
-                label="Caixa postal"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="soft"
-                to="/monitoring/dctfweb"
-                label="DCTFWeb"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="soft"
-                to="/monitoring/simples-mei"
-                label="Simples/MEI"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="soft"
-                :to="clientCrmHref(clientId, 'cadastro')"
-                label="Cadastro completo"
-                data-testid="monitoring-client-cadastro-completo"
-              />
-            </div>
           </template>
         </template>
       </UDashboardPanel>
@@ -1394,6 +1494,7 @@ onMounted(async () => {
             :links="links"
             :loading="clientLoading"
             class="p-1"
+            @switch-client="onSwitchClient"
           />
         </template>
       </USlideover>

@@ -14,8 +14,13 @@ import { DCTFWEB_TABS } from '~/types/fiscal-modules'
 import { buildDctfwebColumns, buildMitColumns } from '~/utils/dctfweb-table'
 import { dctfwebSummary, isDctfwebCapsule, isMitCapsule } from '~/utils/dctfweb'
 import { MONITORING_SHARED_COLUMN_LABELS } from '~/utils/monitoring-table-columns'
+import { apiErrorMessage } from '~/utils/api-error'
+import { useDctfwebMonitoring } from '~/composables/useDctfwebMonitoring'
 
 const { canManageClients, canTriggerSync } = useDashboard()
+const api = useApi()
+const toast = useToast()
+const dctfwebMonitoring = useDctfwebMonitoring()
 
 // Tab local (DCTFWEB default). URL permanece /monitoring/dctfweb.
 const submodule = ref(normalizeMonitoringSubmodule('dctfweb', undefined))
@@ -49,6 +54,14 @@ const {
 } = useFiscalModulePortfolio('dctfweb', {
   submodule
 })
+
+const {
+  formOpen: clientFormOpen,
+  formClient,
+  canManageCredentials,
+  openEditClient,
+  onFormSaved: onClientFormSaved
+} = useMonitoringClientEdit(() => refresh())
 
 const isDctfweb = computed(() => isDctfwebCapsule(submodule.value))
 const isMit = computed(() => isMitCapsule(submodule.value))
@@ -100,11 +113,68 @@ function openFor(row: DctfwebClientRow, kind: 'history' | 'preview' | 'tracking'
   prefsOpen.value = kind === 'prefs'
 }
 
+// —— Envio automático (Switch da coluna Comunicação) ——
+const toggleBusyClientIds = ref<Set<number>>(new Set())
+
+async function onToggleAutomatic(row: DctfwebClientRow, value: boolean) {
+  const preference = dctfwebSummary(row)?.communication
+  if (!preference) return
+  const next = new Set(toggleBusyClientIds.value)
+  next.add(row.client_id)
+  toggleBusyClientIds.value = next
+  try {
+    await dctfwebMonitoring.updatePreferences(row.client_id, {
+      email_enabled: preference.email_enabled,
+      whatsapp_enabled: preference.whatsapp_enabled,
+      automatic_requested: value,
+      lock_version: preference.lock_version
+    })
+    toast.add({
+      title: value ? 'Envio automático ativado' : 'Envio automático desativado',
+      description: 'A preferência foi registrada; o envio efetivo segue o kill-switch do provider.',
+      color: 'success'
+    })
+    await refresh()
+  } catch (caught) {
+    toast.add({
+      title: apiErrorMessage(caught, 'Falha ao atualizar a preferência de envio automático.'),
+      color: 'error'
+    })
+  } finally {
+    const cleared = new Set(toggleBusyClientIds.value)
+    cleared.delete(row.client_id)
+    toggleBusyClientIds.value = cleared
+  }
+}
+
 const dctfwebColumns = computed(() => buildDctfwebColumns({
   onHistory: row => openFor(row, 'history'),
-  onPreview: row => openFor(row, 'preview'),
   onTracking: row => openFor(row, 'tracking'),
-  onConfigure: row => openFor(row, 'prefs')
+  onConfigure: row => openFor(row, 'prefs'),
+  onSend: row => openFor(row, 'preview'),
+  onToggleAutomatic: (row, value) => { void onToggleAutomatic(row, value) },
+  onEditClient: canManageClients.value
+    ? (row) => { void openEditClient(row.client_id) }
+    : undefined,
+  toggleBusyClientIds: toggleBusyClientIds.value,
+  onExclude: (row) => {
+    void (async () => {
+      try {
+        await api.fiscal.monitoringMembership.exclude({
+          module: 'dctfweb',
+          submodule: submodule.value,
+          client_ids: [row.client_id]
+        })
+        toast.add({ title: 'Cliente removido do monitoramento', color: 'success' })
+        await refresh()
+      } catch (caught) {
+        toast.add({
+          title: apiErrorMessage(caught, 'Falha ao excluir do monitoramento.'),
+          color: 'error'
+        })
+      }
+    })()
+  }
 }))
 
 const mitColumns = computed(() => buildMitColumns({
@@ -116,7 +186,10 @@ const mitColumns = computed(() => buildMitColumns({
     modalClientName.value = row.legal_name || row.name || null
     modalCnpjMasked.value = row.cnpj_masked || null
     mitListOpen.value = true
-  }
+  },
+  onEditClient: canManageClients.value
+    ? (row) => { void openEditClient(row.client_id) }
+    : undefined
 }))
 
 const columns = computed(() => {
@@ -167,14 +240,15 @@ watch(submodule, (next, prev) => {
     :submodule="submodule"
     :selection-enabled="canManageClients"
     :initial-hidden-columns="['evidence', 'darf']"
-    :horizontal-scroll="true"
+    :horizontal-scroll="false"
     empty-title="Nenhum cliente"
     :column-labels="isMit
       ? {
-        period: 'Competência',
         situation: 'Situação',
+        period: 'Competência',
         closure: 'Encerramento',
-        lista_apuracoes_317: 'Apurações 317'
+        ...MONITORING_SHARED_COLUMN_LABELS,
+        client: 'Cliente'
       }
       : {
         situation: 'Situação',
@@ -249,5 +323,14 @@ watch(submodule, (next, prev) => {
     :client-name="modalClientName"
     :cnpj-masked="modalCnpjMasked"
     :can-consult="canTriggerSync"
+  />
+
+  <ClientsClientFormModal
+    v-if="canManageClients"
+    v-model:open="clientFormOpen"
+    :client="formClient"
+    :can-manage-credentials="canManageCredentials"
+    :can-manage-clients="canManageClients"
+    @saved="onClientFormSaved"
   />
 </template>

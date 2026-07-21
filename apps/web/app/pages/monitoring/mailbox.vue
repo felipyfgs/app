@@ -11,6 +11,7 @@
 import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
 import type { MailboxListItem } from '~/components/monitoring/MailboxList.vue'
 import type { MonitoringFilterConfig, MonitoringFilterValue } from '~/types/fiscal-modules'
+import { consumeMailboxClientFilterHandoff } from '~/utils/mailbox-handoff'
 import { MAILBOX_TRIAGE_FILTER_ITEMS } from '~/utils/mailbox-triage'
 import {
   normalizeMonitoringFilters,
@@ -33,8 +34,11 @@ const rows = ref<MailboxListItem[]>([])
 const listRef = ref<{ focusMessage: (id: number | null | undefined) => void } | null>(null)
 /** ID a restaurar foco ao fechar detalhe (desktop/mobile). */
 const lastFocusedId = ref<number | null>(null)
+const alerts = ref<Array<Record<string, unknown>>>([])
+const alertsError = ref<string | null>(null)
 let loadSeq = 0
 let filterTransactionDepth = 0
+let handoffApplied = false
 
 const triageItems = MAILBOX_TRIAGE_FILTER_ITEMS.map(item => ({
   label: item.label,
@@ -82,12 +86,35 @@ const mobileOpen = computed({
   }
 })
 
+async function loadAlerts() {
+  alertsError.value = null
+  try {
+    const res = await api.fiscal.mailbox.alerts()
+    const all = ((res.data as Array<Record<string, unknown>>) || [])
+    const clientNum = Number(clientId.value)
+    const scoped = Number.isFinite(clientNum) && clientNum > 0
+      ? all.filter(a => Number(a.client_id) === clientNum)
+      : all
+    alerts.value = scoped.slice(0, 8)
+  } catch (caught) {
+    alerts.value = []
+    alertsError.value = apiErrorMessage(caught, 'Falha ao carregar alertas.')
+  }
+}
+
 async function load() {
   const seq = ++loadSeq
   const epoch = sessionEpoch.value
   loading.value = true
   loadError.value = null
   try {
+    if (!handoffApplied) {
+      handoffApplied = true
+      const handoffClientId = consumeMailboxClientFilterHandoff()
+      if (handoffClientId != null) {
+        clientId.value = String(handoffClientId)
+      }
+    }
     await syncUrl()
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
     const clientNum = Number(clientId.value)
@@ -104,6 +131,7 @@ async function load() {
       total.value = rows.value.length
       lastPage.value = 1
     }
+    void loadAlerts()
   } catch (caught) {
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
     rows.value = []
@@ -186,12 +214,26 @@ watch(sessionEpoch, () => {
     total.value = 0
     lastPage.value = 1
     page.value = 1
+    alerts.value = []
+    handoffApplied = false
   } finally {
     filterTransactionDepth -= 1
   }
   void load()
 })
 onMounted(load)
+
+function openAlert(alert: Record<string, unknown>) {
+  const messageId = Number(alert.mailbox_message_id)
+  if (Number.isFinite(messageId) && messageId > 0) {
+    selectMessage(messageId)
+    return
+  }
+  const deep = String(alert.deep_link || '')
+  if (deep.startsWith('/monitoring/mailbox')) {
+    void router.push(deep)
+  }
+}
 </script>
 
 <template>
@@ -213,8 +255,62 @@ onMounted(load)
       </template>
     </UDashboardNavbar>
 
-    <div class="shrink-0 px-4 pt-4 sm:px-6">
+    <div class="shrink-0 space-y-3 px-4 pt-4 sm:px-6">
       <FiscalModuleAvailabilityBanner module-key="mailbox" />
+
+      <div
+        v-if="alerts.length || alertsError"
+        class="rounded-lg border border-default bg-elevated/40 p-3"
+        data-testid="mailbox-alerts-strip"
+      >
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <p class="text-sm font-medium text-highlighted">
+            Alertas ativos
+          </p>
+          <UBadge
+            v-if="alerts.length"
+            :label="String(alerts.length)"
+            variant="subtle"
+            color="warning"
+          />
+        </div>
+        <UAlert
+          v-if="alertsError"
+          color="error"
+          variant="subtle"
+          :title="alertsError"
+          class="mb-2"
+        />
+        <ul
+          v-else
+          class="flex flex-col gap-1.5"
+        >
+          <li
+            v-for="alert in alerts"
+            :key="String(alert.id)"
+          >
+            <button
+              type="button"
+              class="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-elevated"
+              @click="openAlert(alert)"
+            >
+              <UBadge
+                size="sm"
+                variant="subtle"
+                :color="String(alert.severity) === 'high' ? 'error' : 'warning'"
+                :label="String(alert.severity || 'info')"
+              />
+              <span class="min-w-0 flex-1">
+                <span class="font-medium text-highlighted">{{ alert.title }}</span>
+                <span
+                  v-if="alert.body"
+                  class="mt-0.5 block text-xs text-muted"
+                >{{ alert.body }}</span>
+              </span>
+            </button>
+          </li>
+        </ul>
+      </div>
     </div>
 
     <!-- Inbox abaixo do navbar; navegação fiscal fica no sidebar. -->

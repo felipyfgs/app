@@ -27,7 +27,12 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  saved: [payload: { id: number, mode: 'create' | 'edit', section?: 'resumo' | 'certificado' }]
+  saved: [payload: {
+    id: number
+    mode: 'create' | 'edit'
+    section?: 'resumo' | 'certificado'
+    tax_regime?: string | null
+  }]
   cancel: []
   openExisting: [id: number]
   confirmRefresh: [lookup: CnpjLookupResult]
@@ -532,7 +537,7 @@ function buildLookupFromState(): CnpjLookupResult {
       shareholders: [...shareholders.value],
       simples_optant: simplesOptant.value,
       mei_optant: meiOptant.value,
-      registration_status: registrationStatus.value,
+      registration_status: registrationStatus.value || 'UNKNOWN',
       registration_status_at: registrationStatusAt.value,
       registration_status_reason: registrationStatusReason.value,
       special_situation: specialSituation.value,
@@ -675,7 +680,15 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       toast.add({ title: 'Cliente cadastrado.', color: 'success' })
     }
 
-    emit('saved', { id: clientId, mode: 'create', section })
+    emit('saved', {
+      id: clientId,
+      mode: 'create',
+      section,
+      tax_regime: (() => {
+        const raw = event.data.tax_regime?.trim()
+        return !raw || raw === 'none' ? null : raw
+      })()
+    })
   } catch (caught) {
     fieldErrors.value = apiFieldErrors(caught)
     existingClientId.value = extractExistingClientId(caught)

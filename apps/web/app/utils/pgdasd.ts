@@ -1,6 +1,7 @@
 import type {
   PgdasdClientSummary,
   PgdasdCommunicationPreference,
+  PgdasdDasPaymentState,
   PgdasdDeclarationState,
   PgdasdHistoryPayload,
   PgdasdHistoryPeriod,
@@ -8,7 +9,7 @@ import type {
   PgdasdTrackingStatus,
   SimplesMeiClientRow
 } from '~/types/fiscal-modules'
-import { formatAmountCents, formatCurrency, formatDateTime } from '~/utils/format'
+import { formatAmountCents, formatCurrency } from '~/utils/format'
 
 export interface PgdasdStateMeta {
   label: string
@@ -25,7 +26,7 @@ const DECLARATION_META: Record<PgdasdDeclarationState, PgdasdStateMeta> = {
     icon: 'i-lucide-circle-check'
   },
   DUE_WITHIN_DEADLINE: {
-    label: 'Pendências',
+    label: 'No prazo',
     description: 'A declaração ainda não foi localizada, mas o prazo confiável não terminou.',
     color: 'warning',
     icon: 'i-lucide-clock-3'
@@ -39,6 +40,33 @@ const DECLARATION_META: Record<PgdasdDeclarationState, PgdasdStateMeta> = {
   UNVERIFIED: {
     label: 'Não verificado',
     description: 'Ainda não existe evidência produtiva suficiente para classificar o período.',
+    color: 'neutral',
+    icon: 'i-lucide-circle-help'
+  }
+}
+
+const PAYMENT_META: Record<PgdasdDasPaymentState, PgdasdStateMeta> = {
+  PAID: {
+    label: 'Em dia',
+    description: 'Pagamento localizado.',
+    color: 'success',
+    icon: 'i-lucide-circle-check'
+  },
+  UNPAID: {
+    label: 'Pendências',
+    description: 'Há DAS do período esperado sem pagamento localizado na Receita.',
+    color: 'warning',
+    icon: 'i-lucide-circle-dollar-sign'
+  },
+  NO_DAS: {
+    label: 'Sem movimento',
+    description: 'Nenhum DAS gerado no período.',
+    color: 'neutral',
+    icon: 'i-lucide-file-x'
+  },
+  UNVERIFIED: {
+    label: 'Não verificado',
+    description: 'Ainda não há evidência suficiente para classificar o pagamento do DAS.',
     color: 'neutral',
     icon: 'i-lucide-circle-help'
   }
@@ -110,12 +138,19 @@ export function pgdasdSummary(row?: SimplesMeiClientRow | null): PgdasdClientSum
     || row.detail.rbt12 != null
     || row.detail.last_productive_consulted_at != null
     || row.detail.communication != null
+    || row.detail.payment_state != null
   if (!hasLegacySummary) return null
 
   return {
     expected_period_key: row.detail.period_key,
     latest_declaration: row.detail.last_declaration,
     declaration_state: row.detail.declaration_state,
+    payment_state: row.detail.payment_state,
+    payment_state_reason: row.detail.payment_state_reason,
+    payment_das_count: row.detail.payment_das_count,
+    payment_unpaid_count: row.detail.payment_unpaid_count,
+    payment_paid_count: row.detail.payment_paid_count,
+    payment_open_competencies: row.detail.payment_open_competencies,
     last_valid_query_at: row.detail.last_productive_consulted_at,
     rbt12: row.detail.rbt12,
     documents: row.detail.documents,
@@ -130,6 +165,48 @@ export function pgdasdDeclarationState(value?: string | null): PgdasdDeclaration
 
 export function pgdasdDeclarationMeta(value?: string | null): PgdasdStateMeta {
   return DECLARATION_META[pgdasdDeclarationState(value)]
+}
+
+export function pgdasdDasPaymentState(value?: string | null): PgdasdDasPaymentState {
+  const state = String(value || '').toUpperCase() as PgdasdDasPaymentState
+  return state in PAYMENT_META ? state : 'UNVERIFIED'
+}
+
+export function pgdasdDasPaymentMeta(value?: string | null): PgdasdStateMeta {
+  return PAYMENT_META[pgdasdDasPaymentState(value)]
+}
+export interface PgdasdPaymentDetailItem {
+  label: string
+  value: string
+  /** Valor monetário de PA unpaid — destaque de débito na UI. */
+  isDebit?: boolean
+}
+
+/**
+ * Itens do popover Pagamento no nível do cliente:
+ * PAID/NO_DAS → cartão curto na UI; UNVERIFIED → traço;
+ * UNPAID com competências → só linhas MM/YYYY · valor (ou "—");
+ * UNPAID sem lista → situação + descrição (util).
+ */
+export function pgdasdPaymentDetailItems(summary?: PgdasdClientSummary | null): PgdasdPaymentDetailItem[] {
+  const state = pgdasdDasPaymentState(summary?.payment_state)
+  const meta = pgdasdDasPaymentMeta(state)
+
+  if (state === 'UNPAID') {
+    const competencies = summary?.payment_open_competencies || []
+    if (competencies.length > 0) {
+      return competencies.map(competency => ({
+        label: formatPgdasdPeriod(competency.period_key),
+        value: formatAmountCents(competency.amount_cents),
+        isDebit: competency.amount_cents != null
+      }))
+    }
+  }
+
+  return [
+    { label: 'Situação', value: meta.label },
+    { label: 'Detalhe', value: meta.description }
+  ]
 }
 
 export function pgdasdTrackingStatus(value?: string | null): PgdasdTrackingStatus {
@@ -158,44 +235,73 @@ export function formatPgdasdPeriod(value?: string | null): string {
   return `${month}/${year}`
 }
 
-export function pgdasdRbt12Tooltip(rbt12?: PgdasdRbt12Summary | null): string {
+export function pgdasdRbt12UnavailableLabel(reason?: string | null): string {
+  const code = String(reason || '').trim().toUpperCase()
+  const labels: Record<string, string> = {
+    EMPTY_TEXT: 'Extrato sem texto legível para leitura do RBT12.',
+    INVALID_EXPECTED_PERIOD: 'Período de apuração inválido para validar o extrato.',
+    PERIOD_MISMATCH: 'O extrato não confere com o período de apuração esperado.',
+    CONFLICTING_VALUES: 'Há valores de RBT12 conflitantes no extrato; o sistema não escolhe um deles.',
+    EXACT_RBT12_VALUE_NOT_FOUND: 'Não foi possível localizar o RBT12 inequívoco no extrato do DAS.',
+    COMPOSITION_MISMATCH: 'Mercado interno + externo não fecha com o total do RBT12 no extrato.',
+    EXTRACT_QUERY_FAILED: 'A consulta do extrato do DAS falhou; o RBT12 não foi atualizado.',
+    EXTRATO_ARTIFACT_MISSING: 'Extrato do DAS não ficou disponível para leitura do RBT12.',
+    EXTRATO_EVIDENCE_MISSING: 'Evidência do extrato indisponível para leitura do RBT12.',
+    PDF_TEXT_EXTRACTION_FAILED: 'Não foi possível ler o texto do PDF do extrato.',
+    READ_OR_PARSE_FAILED: 'Falha ao ler ou interpretar o extrato do DAS.',
+    NO_DAS: 'Não há DAS de origem para consultar o extrato e obter o RBT12.'
+  }
+  return labels[code]
+    || reason?.trim()
+    || 'RBT12 (receita bruta dos 12 meses anteriores ao PA) indisponível. O sistema não estima valores ausentes ou ambíguos.'
+}
+
+export interface PgdasdRbt12DetailItem {
+  label: string
+  value: string
+}
+
+/** Itens para o painel/popover de detalhe do RBT12 (lista enxuta). */
+export function pgdasdRbt12DetailItems(rbt12?: PgdasdRbt12Summary | null): PgdasdRbt12DetailItem[] {
   const parsed = rbt12?.status === 'PARSED'
   const hasValue = rbt12?.total_cents != null || Boolean(rbt12?.rbt12_value)
   if (!rbt12 || !parsed || !hasValue) {
-    return rbt12?.availability_reason?.trim()
-      || rbt12?.unavailable_reason?.trim()
-      || 'RBT12 (RB12 — receita bruta dos 12 meses) indisponível. O sistema não estima valores ausentes ou ambíguos.'
+    return [{
+      label: 'Situação',
+      value: pgdasdRbt12UnavailableLabel(
+        rbt12?.availability_reason || rbt12?.unavailable_reason
+      )
+    }]
   }
 
   const total = rbt12.total_cents != null
     ? formatAmountCents(rbt12.total_cents)
     : formatCurrency(rbt12.rbt12_value)
-  const parts = [
-    `RBT12 (RB12): receita bruta acumulada nos 12 meses anteriores ao período de apuração — ${total}.`
+  const internal = rbt12.internal_market_cents ?? rbt12.composition?.internal_market_cents
+  const external = rbt12.external_market_cents ?? rbt12.composition?.external_market_cents
+  const items: PgdasdRbt12DetailItem[] = [
+    { label: 'RBT12', value: total || '—' }
   ]
-  if (rbt12.internal_market_cents != null) {
-    parts.push(`Mercado interno: ${formatAmountCents(rbt12.internal_market_cents)}.`)
-  } else if (rbt12.composition?.internal_market_cents != null) {
-    parts.push(`Mercado interno: ${formatAmountCents(rbt12.composition.internal_market_cents)}.`)
+  if (internal != null) {
+    items.push({ label: 'Mercado interno', value: formatAmountCents(internal) })
   }
-  if (rbt12.external_market_cents != null) {
-    parts.push(`Mercado externo: ${formatAmountCents(rbt12.external_market_cents)}.`)
-  } else if (rbt12.composition?.external_market_cents != null) {
-    parts.push(`Mercado externo: ${formatAmountCents(rbt12.composition.external_market_cents)}.`)
+  if (external != null) {
+    items.push({ label: 'Mercado externo', value: formatAmountCents(external) })
   }
-  const origin = [
-    rbt12.origin?.das_number ? `DAS nº ${rbt12.origin.das_number}` : null,
-    rbt12.origin?.declaration_number
-      ? `declaração nº ${rbt12.origin.declaration_number}`
-      : null
-  ].filter(Boolean).join(' e ')
-  if (origin) {
-    parts.push(`Origem: extrato do ${origin}.`)
+  if (rbt12.rpa_cents != null) {
+    items.push({ label: 'RPA', value: formatAmountCents(rbt12.rpa_cents) })
   }
-  if (rbt12.extracted_at) {
-    parts.push(`Extraído em ${formatDateTime(rbt12.extracted_at)}.`)
+  if (rbt12.period_key) {
+    items.push({ label: 'PA', value: formatPgdasdPeriod(rbt12.period_key) })
   }
-  return parts.join(' ')
+  return items
+}
+
+/** @deprecated Preferir `pgdasdRbt12DetailItems` no popover; mantido para compat de testes. */
+export function pgdasdRbt12Tooltip(rbt12?: PgdasdRbt12Summary | null): string {
+  return pgdasdRbt12DetailItems(rbt12)
+    .map(item => `${item.label}: ${item.value}`)
+    .join(' · ')
 }
 
 export function pgdasdCanRequestAutomatic(
@@ -215,4 +321,27 @@ export function pgdasdHistoryPeriods(
   if (Array.isArray(payload?.periods)) return payload.periods
   if (Array.isArray(payload?.history)) return payload.history
   return []
+}
+
+/**
+ * Anos-calendário disponíveis para o seletor do histórico PGDAS-D.
+ * Sempre inclui o ano corrente e os anos presentes em `period_key` / seed.
+ */
+export function pgdasdHistoryCalendarYears(
+  payload?: PgdasdHistoryPayload | PgdasdHistoryPeriod[] | null,
+  seedYears: Iterable<number> = [],
+  now: Date = new Date()
+): number[] {
+  const years = new Set<number>()
+  years.add(now.getFullYear())
+  for (const year of seedYears) {
+    if (Number.isInteger(year) && year >= 2000 && year <= 2100) years.add(year)
+  }
+  for (const period of pgdasdHistoryPeriods(payload)) {
+    const match = /^(\d{4})/.exec(String(period.period_key || ''))
+    if (!match) continue
+    const year = Number(match[1])
+    if (year >= 2000 && year <= 2100) years.add(year)
+  }
+  return [...years].sort((a, b) => b - a)
 }

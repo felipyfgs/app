@@ -87,7 +87,7 @@ const diffRows = computed((): DiffRow[] => {
     {
       label: 'Cidade / UF',
       before: display(
-        [est?.address_city, est?.address_state].filter(Boolean).join(' / ') || null
+        [est?.address?.city, est?.address?.state].filter(Boolean).join(' / ') || null
       ),
       after: display(
         [next.establishment.address?.city, next.establishment.address?.state].filter(Boolean).join(' / ') || null

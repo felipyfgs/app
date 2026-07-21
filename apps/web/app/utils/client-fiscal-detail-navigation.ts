@@ -1,8 +1,11 @@
 /**
  * Navegação do detalhe fiscal do cliente (`/monitoring/clients/:id/:section?`).
- * Catálogo plano — sidebar interno (UNavigationMenu vertical).
+ * Labels/ordem canônicos = MONITORING_NAV_ITEMS (sidebar Monitoramento).
+ * Seções internas ocultas; MEI (`ccmei`) só para cliente MEI.
  */
 import type { NavigationMenuItem } from '@nuxt/ui'
+import type { MonitoringModuleKey } from '~/utils/monitoring-nav'
+import { MONITORING_NAV_ITEMS } from '~/utils/monitoring-nav'
 import type { NavLayerItem, NavLeafDestination } from '~/utils/navigation-hierarchy'
 import { flattenNavLeaves, validateNavCatalog } from '~/utils/navigation-hierarchy'
 
@@ -14,9 +17,11 @@ export type ClientFiscalSectionKey
     | 'installments'
     | 'declarations'
     | 'pgdasd'
+    | 'dctfweb'
     | 'guides'
     | 'fgts'
     | 'sitfis'
+    | 'mailbox'
     | 'registrations'
     | 'ccmei'
     | 'renunciations'
@@ -27,17 +32,48 @@ export const CLIENT_FISCAL_SECTION_KEYS: ClientFiscalSectionKey[] = [
   'runs',
   'findings',
   'pending',
-  'installments',
-  'declarations',
   'pgdasd',
-  'guides',
-  'fgts',
-  'sitfis',
-  'registrations',
   'ccmei',
+  'dctfweb',
+  'fgts',
+  'installments',
+  'sitfis',
+  'mailbox',
+  'declarations',
+  'guides',
+  'registrations',
   'renunciations',
   'tax_processes'
 ]
+
+/** Ocultas no rail/overview (deep-link → overview). */
+export const CLIENT_FISCAL_HIDDEN_SECTION_KEYS = [
+  'runs',
+  'findings',
+  'pending',
+  'renunciations'
+] as const satisfies readonly ClientFiscalSectionKey[]
+
+export type ClientFiscalNavOptions = {
+  /** MEI (`ccmei`) só quando true. */
+  isMei?: boolean
+}
+
+/** moduleKey do Monitoramento global → seção do detalhe (paths estáveis). */
+const MODULE_TO_SECTION: Partial<Record<MonitoringModuleKey, ClientFiscalSectionKey>> = {
+  dashboard: 'overview',
+  simples_mei: 'pgdasd',
+  mei: 'ccmei',
+  dctfweb: 'dctfweb',
+  fgts: 'fgts',
+  installments: 'installments',
+  sitfis: 'sitfis',
+  mailbox: 'mailbox',
+  declarations: 'declarations',
+  guides: 'guides',
+  registrations: 'registrations',
+  tax_processes: 'tax_processes'
+}
 
 interface FiscalSectionDef {
   key: ClientFiscalSectionKey
@@ -46,27 +82,100 @@ interface FiscalSectionDef {
   icon: string
 }
 
-/** Ordem estável do sidebar interno (folhas). */
+function navItemForSection(key: ClientFiscalSectionKey) {
+  const moduleKey = (Object.entries(MODULE_TO_SECTION) as [MonitoringModuleKey, ClientFiscalSectionKey][])
+    .find(([, section]) => section === key)?.[0]
+  return moduleKey
+    ? MONITORING_NAV_ITEMS.find(item => item.moduleKey === moduleKey)
+    : undefined
+}
+
+function sectionDefFromMonitoring(key: ClientFiscalSectionKey, fallbackId: string): FiscalSectionDef {
+  const item = navItemForSection(key)
+  return {
+    key,
+    id: fallbackId,
+    label: item?.label ?? key,
+    icon: item?.icon ?? 'i-lucide-circle'
+  }
+}
+
+/**
+ * Ordem canônica do rail = MONITORING_NAV_ITEMS.
+ * Inclui ocultas no catálogo completo só para deep-link/redirect.
+ */
 const FISCAL_SECTIONS: FiscalSectionDef[] = [
-  { key: 'overview', id: 'cf-overview', label: 'Visão geral', icon: 'i-lucide-layout-dashboard' },
+  sectionDefFromMonitoring('overview', 'cf-overview'),
   { key: 'runs', id: 'cf-runs', label: 'Execuções', icon: 'i-lucide-play' },
   { key: 'findings', id: 'cf-findings', label: 'Achados', icon: 'i-lucide-search' },
   { key: 'pending', id: 'cf-pending', label: 'Pendências', icon: 'i-lucide-circle-alert' },
-  { key: 'declarations', id: 'cf-declarations', label: 'Declarações', icon: 'i-lucide-file-check-2' },
-  { key: 'pgdasd', id: 'cf-pgdasd', label: 'PGDAS-D', icon: 'i-lucide-badge-percent' },
-  { key: 'fgts', id: 'cf-fgts', label: 'FGTS', icon: 'i-lucide-landmark' },
-  { key: 'installments', id: 'cf-installments', label: 'Parcelamentos', icon: 'i-lucide-calendar-range' },
-  { key: 'guides', id: 'cf-guides', label: 'Guias', icon: 'i-lucide-receipt' },
-  { key: 'sitfis', id: 'cf-sitfis', label: 'SITFIS', icon: 'i-lucide-clipboard-check' },
-  { key: 'registrations', id: 'cf-registrations', label: 'Cadastro e Vínculos', icon: 'i-lucide-link-2' },
-  { key: 'ccmei', id: 'cf-ccmei', label: 'CCMEI', icon: 'i-lucide-badge-check' },
+  sectionDefFromMonitoring('pgdasd', 'cf-pgdasd'),
+  sectionDefFromMonitoring('ccmei', 'cf-ccmei'),
+  sectionDefFromMonitoring('dctfweb', 'cf-dctfweb'),
+  sectionDefFromMonitoring('fgts', 'cf-fgts'),
+  sectionDefFromMonitoring('installments', 'cf-installments'),
+  sectionDefFromMonitoring('sitfis', 'cf-sitfis'),
+  sectionDefFromMonitoring('mailbox', 'cf-mailbox'),
+  sectionDefFromMonitoring('declarations', 'cf-declarations'),
+  sectionDefFromMonitoring('guides', 'cf-guides'),
+  sectionDefFromMonitoring('registrations', 'cf-registrations'),
   { key: 'renunciations', id: 'cf-renunciations', label: 'Renúncias', icon: 'i-lucide-unlink' },
-  { key: 'tax_processes', id: 'cf-tax-processes', label: 'Processos Fiscais', icon: 'i-lucide-scale' }
+  sectionDefFromMonitoring('tax_processes', 'cf-tax-processes')
 ]
 
-function sectionPath(clientId: string | number, section: ClientFiscalSectionKey): string {
+/** Ordem visível no rail (sem ocultas; MEI filtrado em runtime). */
+const CANONICAL_VISIBLE_ORDER: ClientFiscalSectionKey[] = [
+  'overview',
+  'pgdasd',
+  'ccmei',
+  'dctfweb',
+  'fgts',
+  'installments',
+  'sitfis',
+  'mailbox',
+  'declarations',
+  'guides',
+  'registrations',
+  'tax_processes'
+]
+
+export function isClientFiscalSectionVisible(
+  key: ClientFiscalSectionKey,
+  options: ClientFiscalNavOptions = {}
+): boolean {
+  if ((CLIENT_FISCAL_HIDDEN_SECTION_KEYS as readonly string[]).includes(key)) {
+    return false
+  }
+  if (key === 'ccmei' && options.isMei !== true) {
+    return false
+  }
+  return (CANONICAL_VISIBLE_ORDER as readonly string[]).includes(key)
+}
+
+function visibleFiscalSections(options: ClientFiscalNavOptions = {}): FiscalSectionDef[] {
+  const byKey = new Map(FISCAL_SECTIONS.map(def => [def.key, def]))
+  return CANONICAL_VISIBLE_ORDER
+    .filter(key => isClientFiscalSectionVisible(key, options))
+    .map(key => byKey.get(key)!)
+}
+
+export function sectionPath(clientId: string | number, section: ClientFiscalSectionKey): string {
   const base = `/monitoring/clients/${clientId}`
   return section === 'overview' ? base : `${base}/${section}`
+}
+
+/**
+ * Path ao trocar de empresa: preserva seção se visível no destino; senão overview.
+ */
+export function clientFiscalSwitchPath(
+  targetClientId: string | number,
+  currentSection: ClientFiscalSectionKey,
+  options: ClientFiscalNavOptions = {}
+): string {
+  const section = isClientFiscalSectionVisible(currentSection, options)
+    ? currentSection
+    : 'overview'
+  return sectionPath(targetClientId, section)
 }
 
 function sectionActive(section: ClientFiscalSectionKey, clientId: string | number) {
@@ -94,23 +203,36 @@ function sectionLeaf(
 }
 
 /** Catálogo plano (folhas) — sidebar interno / busca. */
-export function clientFiscalDetailNav(clientId: string | number): NavLayerItem[] {
-  const items = FISCAL_SECTIONS.map(def => sectionLeaf(clientId, def))
-  validateNavCatalog(items, FISCAL_SECTIONS.length)
+export function clientFiscalDetailNav(
+  clientId: string | number,
+  options: ClientFiscalNavOptions = {}
+): NavLayerItem[] {
+  const sections = visibleFiscalSections(options)
+  const items = sections.map(def => sectionLeaf(clientId, def))
+  validateNavCatalog(items, sections.length)
   return items
 }
 
-export function clientFiscalDetailLeaves(clientId: string | number): NavLeafDestination[] {
-  return flattenNavLeaves(clientFiscalDetailNav(clientId))
+export function clientFiscalDetailLeaves(
+  clientId: string | number,
+  options: ClientFiscalNavOptions = {}
+): NavLeafDestination[] {
+  return flattenNavLeaves(clientFiscalDetailNav(clientId, options))
+}
+
+/** Labels canônicos visíveis (contrato anti-drift com Monitoramento). */
+export function clientFiscalCanonicalLabels(options: ClientFiscalNavOptions = {}): string[] {
+  return visibleFiscalSections(options).map(def => def.label)
 }
 
 /** Links para UNavigationMenu vertical do sidebar interno (grupo único). */
 export function clientFiscalNavigationMenu(
   clientId: string | number,
-  currentPath?: string
+  currentPath?: string,
+  options: ClientFiscalNavOptions = {}
 ): NavigationMenuItem[][] {
   const path = currentPath || ''
-  const items = FISCAL_SECTIONS.map((def): NavigationMenuItem => {
+  const items = visibleFiscalSections(options).map((def): NavigationMenuItem => {
     const leaf = sectionLeaf(clientId, def)
     return {
       label: leaf.label,

@@ -4,9 +4,11 @@ import type {
   PgdasdCommunicationPreview,
   PgdasdCommunicationTracking
 } from '~/types/fiscal-modules'
+import { useAuthenticatedDownload } from '~/composables/useAuthenticatedDownload'
 import { useDctfwebMonitoring } from '~/composables/useDctfwebMonitoring'
 import { usePgdasdMonitoring } from '~/composables/usePgdasdMonitoring'
 import { usePgmeiMonitoring } from '~/composables/usePgmeiMonitoring'
+import { useSitfisMonitoring } from '~/composables/useSitfisMonitoring'
 import { apiErrorMessage } from '~/utils/api-error'
 import { formatDateTime } from '~/utils/format'
 import { formatPgdasdPeriod, pgdasdTrackingMeta } from '~/utils/pgdasd'
@@ -19,7 +21,7 @@ const props = defineProps<{
   clientName?: string | null
   preference?: PgdasdCommunicationPreference | null
   /** Mantém o mesmo shell TEMPLATE_ONLY, isolando as APIs por domínio. */
-  context?: 'PGDASD' | 'PGMEI' | 'DCTFWEB'
+  context?: 'PGDASD' | 'PGMEI' | 'DCTFWEB' | 'SITFIS'
   year?: number | null
 }>()
 
@@ -32,6 +34,8 @@ const emit = defineEmits<{
 const pgdasdMonitoring = usePgdasdMonitoring()
 const pgmeiMonitoring = usePgmeiMonitoring()
 const dctfwebMonitoring = useDctfwebMonitoring()
+const sitfisMonitoring = useSitfisMonitoring()
+const { download: downloadAuthenticated, downloading: downloadBusy } = useAuthenticatedDownload()
 
 const previewLoading = ref(false)
 const previewError = ref<string | null>(null)
@@ -44,17 +48,102 @@ let trackingGeneration = 0
 
 const isPgmei = computed(() => props.context === 'PGMEI')
 const isDctfweb = computed(() => props.context === 'DCTFWEB')
+const isSitfis = computed(() => props.context === 'SITFIS')
 
 function fetchPreview(clientId: number) {
   if (isPgmei.value) return pgmeiMonitoring.fetchPreview(clientId)
   if (isDctfweb.value) return dctfwebMonitoring.fetchPreview(clientId)
+  if (isSitfis.value) return sitfisMonitoring.fetchPreview(clientId)
   return pgdasdMonitoring.fetchPreview(clientId)
 }
 
 function fetchTracking(clientId: number) {
   if (isPgmei.value) return pgmeiMonitoring.fetchTracking(clientId)
   if (isDctfweb.value) return dctfwebMonitoring.fetchTracking(clientId)
+  if (isSitfis.value) return sitfisMonitoring.fetchTracking(clientId)
   return pgdasdMonitoring.fetchTracking(clientId)
+}
+
+function requestSend(clientId: number) {
+  if (isPgmei.value) return pgmeiMonitoring.requestSend(clientId)
+  if (isDctfweb.value) return dctfwebMonitoring.requestSend(clientId)
+  if (isSitfis.value) return sitfisMonitoring.requestSend(clientId)
+  return pgdasdMonitoring.requestSend(clientId)
+}
+
+function updatePreferences(
+  clientId: number,
+  body: {
+    email_enabled: boolean
+    whatsapp_enabled: boolean
+    automatic_requested: boolean
+    lock_version: number
+  }
+) {
+  if (isPgmei.value) return pgmeiMonitoring.updatePreferences(clientId, body)
+  if (isDctfweb.value) return dctfwebMonitoring.updatePreferences(clientId, body)
+  if (isSitfis.value) return sitfisMonitoring.updatePreferences(clientId, body)
+  return pgdasdMonitoring.updatePreferences(clientId, body)
+}
+
+const sendBusy = ref(false)
+const prefsBusy = ref(false)
+const draftEmail = ref(false)
+const draftWhatsapp = ref(false)
+const draftAutomatic = ref(false)
+
+const displayedPreference = computed(() => preview.value?.preferences || props.preference || null)
+
+watch(displayedPreference, (pref) => {
+  if (!pref) return
+  draftEmail.value = Boolean(pref.email_enabled)
+  draftWhatsapp.value = Boolean(pref.whatsapp_enabled)
+  draftAutomatic.value = Boolean(pref.automatic_requested)
+}, { immediate: true })
+
+async function confirmSend() {
+  if (!props.clientId || sendBusy.value) return
+  sendBusy.value = true
+  try {
+    const result = await requestSend(props.clientId)
+    useToast().add({
+      title: 'Envio enfileirado',
+      description: result.provider_enabled
+        ? `${result.queued} despacho(s) na fila.`
+        : `${result.queued} despacho(s) registrados (provider fail-closed).`,
+      color: 'success'
+    })
+    emit('update:previewOpen', false)
+  } catch (caught) {
+    useToast().add({
+      title: apiErrorMessage(caught, 'Falha ao enfileirar envio.'),
+      color: 'error'
+    })
+  } finally {
+    sendBusy.value = false
+  }
+}
+
+async function savePreferences() {
+  if (!props.clientId || !displayedPreference.value || prefsBusy.value) return
+  prefsBusy.value = true
+  try {
+    await updatePreferences(props.clientId, {
+      email_enabled: draftEmail.value,
+      whatsapp_enabled: draftWhatsapp.value,
+      automatic_requested: draftAutomatic.value,
+      lock_version: Number(displayedPreference.value.lock_version || 0)
+    })
+    useToast().add({ title: 'Preferências salvas', color: 'success' })
+    await loadPreview()
+  } catch (caught) {
+    useToast().add({
+      title: apiErrorMessage(caught, 'Falha ao salvar preferências.'),
+      color: 'error'
+    })
+  } finally {
+    prefsBusy.value = false
+  }
 }
 
 function documentDownloadHref(document: { id: number, download_href?: string | null }): string | undefined {
@@ -62,14 +151,28 @@ function documentDownloadHref(document: { id: number, download_href?: string | n
   if (isDctfweb.value && props.clientId) {
     return dctfwebMonitoring.evidenceDownloadUrl(props.clientId, document.id)
   }
+  if (isSitfis.value) {
+    return document.download_href?.trim() || sitfisMonitoring.evidenceDownloadUrl(document.id)
+  }
   return pgdasdMonitoring.artifactDownloadUrl(document.id)
+}
+
+async function downloadDocument(document: {
+  id: number
+  filename?: string | null
+  kind?: string | null
+  download_href?: string | null
+}): Promise<void> {
+  const href = documentDownloadHref(document)
+  if (!href) return
+  const filename = (document.filename || '').trim()
+    || `documento-${document.kind || document.id}.pdf`
+  await downloadAuthenticated(href, filename)
 }
 
 function channelLabel(channel?: string | null): string {
   return channel === 'WHATSAPP' ? 'WhatsApp' : channel === 'EMAIL' ? 'E-mail' : channel || 'Canal'
 }
-
-const displayedPreference = computed(() => preview.value?.preferences || props.preference || null)
 
 async function loadPreview() {
   const clientId = props.clientId
@@ -160,7 +263,7 @@ function openPreferences() {
             {{ preview?.client?.legal_name || clientName || `Cliente #${clientId || '—'}` }}
           </p>
           <p class="text-xs text-muted">
-            {{ isPgmei ? `Ano ${year || '—'}` : `PA ${formatPgdasdPeriod(preview?.period_key)}` }}
+            {{ isPgmei ? `Ano ${year || '—'}` : isSitfis ? 'Situação Fiscal' : `PA ${formatPgdasdPeriod(preview?.period_key)}` }}
           </p>
         </div>
 
@@ -240,10 +343,9 @@ function openPreferences() {
                   variant="outline"
                   icon="i-lucide-download"
                   label="Baixar"
-                  :to="documentDownloadHref(document)"
-                  external
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  :loading="downloadBusy"
+                  :disabled="downloadBusy"
+                  @click="downloadDocument(document)"
                 />
               </li>
             </ul>
@@ -274,8 +376,17 @@ function openPreferences() {
           color="neutral"
           variant="outline"
           icon="i-lucide-settings-2"
-          label="Ver preferências registradas"
+          label="Preferências"
           @click="openPreferences"
+        />
+        <UButton
+          color="primary"
+          icon="i-lucide-send"
+          label="Enviar"
+          :loading="sendBusy"
+          :disabled="!preview?.can_send || sendBusy"
+          data-testid="communication-send-confirm"
+          @click="confirmSend"
         />
       </div>
     </template>
@@ -283,8 +394,8 @@ function openPreferences() {
 
   <ShellScrollableModal
     :open="prefsOpen"
-    title="Preferências registradas"
-    description="Consulta somente leitura do cadastro legado de comunicação."
+    title="Preferências de comunicação"
+    description="Canais e envio automático na consulta agendada."
     content-class="w-[calc(100vw-1rem)] sm:max-w-xl"
     :test-id="isPgmei ? 'pgmei-communication-preferences' : 'pgdasd-communication-preferences'"
     :show-default-footer="false"
@@ -294,41 +405,38 @@ function openPreferences() {
     <template #body>
       <div class="space-y-4">
         <UAlert
+          v-if="!(displayedPreference?.provider_enabled ?? preview?.provider_enabled)"
           color="warning"
           variant="subtle"
           icon="i-lucide-info"
-          title="Nenhuma preferência ativa envio"
-          description="Os valores abaixo são informativos. O workspace não oferece envio imediato ou automático."
+          title="Provider de envio desligado"
+          description="Preferências e fila ficam ativas; o envio externo permanece fail-closed até a flag ser ligada."
         />
         <UAlert v-if="previewError" color="error" :title="previewError" />
 
-        <dl class="divide-y divide-default rounded-lg border border-default">
+        <div class="divide-y divide-default rounded-lg border border-default">
           <div class="flex items-center justify-between gap-3 p-3">
-            <dt class="text-sm text-highlighted">
-              E-mail
-            </dt>
-            <dd><UBadge color="neutral" variant="soft" :label="displayedPreference?.email_enabled ? 'Preferência registrada' : 'Não registrado'" /></dd>
+            <span class="text-sm text-highlighted">E-mail</span>
+            <USwitch v-model="draftEmail" size="sm" aria-label="Habilitar e-mail" />
           </div>
           <div class="flex items-center justify-between gap-3 p-3">
-            <dt class="text-sm text-highlighted">
-              WhatsApp
-            </dt>
-            <dd><UBadge color="neutral" variant="soft" :label="displayedPreference?.whatsapp_enabled ? 'Preferência registrada' : 'Não registrado'" /></dd>
+            <span class="text-sm text-highlighted">WhatsApp</span>
+            <USwitch v-model="draftWhatsapp" size="sm" aria-label="Habilitar WhatsApp" />
           </div>
           <div class="flex items-center justify-between gap-3 p-3">
-            <dt class="text-sm text-highlighted">
-              Intenção automática legada
-            </dt>
-            <dd><UBadge color="warning" variant="outline" :label="displayedPreference?.automatic_requested ? 'Registrada, porém inativa' : 'Não registrada'" /></dd>
+            <span class="text-sm text-highlighted">Envio automático na consulta agendada</span>
+            <USwitch v-model="draftAutomatic" size="sm" aria-label="Envio automático" />
           </div>
-        </dl>
+        </div>
       </div>
     </template>
     <template #footer>
       <ShellModalFooter
         cancel-label="Fechar"
-        :show-submit="false"
+        submit-label="Salvar"
+        :loading="prefsBusy"
         @cancel="emit('update:prefsOpen', false)"
+        @submit="savePreferences"
       />
     </template>
   </ShellScrollableModal>
@@ -387,7 +495,7 @@ function openPreferences() {
                 >
                   <p class="font-medium text-highlighted">
                     {{ dispatch.recipient_masked || 'Destinatário protegido' }} ·
-                    {{ isPgmei ? `Ano ${dispatch.period_key || '—'}` : `PA ${formatPgdasdPeriod(dispatch.period_key)}` }}
+                    {{ isPgmei ? `Ano ${dispatch.period_key || '—'}` : isSitfis ? (dispatch.period_key || 'SITFIS') : `PA ${formatPgdasdPeriod(dispatch.period_key)}` }}
                   </p>
                   <p class="mt-1 text-xs text-muted">
                     {{ pgdasdTrackingMeta(dispatch.status).label }} ·

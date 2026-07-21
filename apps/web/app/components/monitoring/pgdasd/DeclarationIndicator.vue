@@ -5,13 +5,20 @@ const props = defineProps<{
   period?: string | null
   state?: string | null
   reason?: string | null
+  /** Tooltip completo (entrega + PA + consulta); se omitido, monta label + reason. */
+  tooltipText?: string | null
 }>()
 
 const meta = computed(() => pgdasdDeclarationMeta(props.state))
-const tooltip = computed(() => [
-  meta.value.label,
-  props.reason?.trim() || meta.value.description
-].join(': '))
+const tooltip = computed(() => {
+  if (props.tooltipText?.trim()) {
+    return props.tooltipText.trim()
+  }
+  return [
+    meta.value.label,
+    props.reason?.trim() || meta.value.description
+  ].join(': ')
+})
 </script>
 
 <template>

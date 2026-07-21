@@ -1,4 +1,4 @@
-import type { TableColumn } from '@nuxt/ui'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { h } from 'vue'
 /**
  * Imports estáticos — NÃO usar resolveComponent aqui.
@@ -9,6 +9,7 @@ import { h } from 'vue'
 import {
   FiscalClientCell,
   MonitoringPgdasdDeclarationIndicator,
+  MonitoringPgdasdPaymentValue,
   MonitoringPgdasdRbt12Value
 } from '#components'
 import UBadge from '@nuxt/ui/components/Badge.vue'
@@ -17,41 +18,57 @@ import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type { SimplesMeiClientRow } from '~/types/fiscal-modules'
 import { formatDate, formatDateTime } from '~/utils/format'
 import {
+  pgdasdCanRequestAutomatic,
   pgdasdDeclarationMeta,
   pgdasdDeclarationPeriod,
   pgdasdSummary,
   pgdasdTrackingMeta
 } from '~/utils/pgdasd'
-import { tableIconButton, tableIconGroup } from '~/utils/table-icon-slots'
 import { sortHeader } from '~/utils/table-sort'
 import { tableCellBadgeProps } from '~/utils/table-ui'
 import {
+  buildMonitoringActionsMenuCell,
+  buildMonitoringComunicacaoColumn,
   MONITORING_ACTIONS_LABEL,
   MONITORING_ACTIONS_META,
+  MONITORING_CLIENT_COLUMN_META,
   MONITORING_CONSULTED_ID,
   MONITORING_CONSULTED_LABEL,
   MONITORING_CONSULTED_META,
-  MONITORING_HISTORY_LABEL,
-  MONITORING_TRACKING_LABEL
+  type MonitoringSendColumnState
 } from '~/utils/monitoring-table-columns'
+import { simplesMeiMissingProcuracaoSituation } from '~/utils/simples-mei-situation'
+import { consultPendingSkeleton } from '~/utils/consult-pending-skeleton'
 
 /**
- * Renderer PGDAS-D — densidade minimalista:
- * Cliente · Situação · Últ. Declaração · RBT12 · Ações · Hist. comunicação · Consulta · Histórico.
- * Seleção é acrescentada pelo shell autorizado antes de Cliente.
+ * Renderer PGDAS-D — exceção da spine canônica:
+ * Situação (pagamento) · Declaração (entrega) · RBT12 · Cliente · Comunicação · Consulta · Ações.
+ * Seleção é acrescentada pelo shell autorizado antes de Situação.
+ * Histórico de busca só no menu Ações (não entra na grade).
  */
 export function buildPgdasdColumns(options: {
   onHistory: (row: SimplesMeiClientRow) => void
-  onPreview: (row: SimplesMeiClientRow) => void
   onTracking: (row: SimplesMeiClientRow) => void
   onConfigure: (row: SimplesMeiClientRow) => void
+  onSend: (row: SimplesMeiClientRow) => void
+  onToggleAutomatic: (row: SimplesMeiClientRow, value: boolean) => void
+  onEditClient?: (row: SimplesMeiClientRow) => void
   onConsult?: (row: SimplesMeiClientRow) => void
+  onExclude?: (row: SimplesMeiClientRow) => void
   canConsult?: boolean
+  /** client_id com consulta enfileirada aguardando resultado. */
+  pendingClientIds?: ReadonlySet<number>
+  sendBusyClientIds?: ReadonlySet<number>
+  toggleBusyClientIds?: ReadonlySet<number>
 }): TableColumn<SimplesMeiClientRow>[] {
+  function isRowPending(clientId: number): boolean {
+    return options.pendingClientIds?.has(clientId) === true
+  }
   const DeclarationIndicator = MonitoringPgdasdDeclarationIndicator
   const Rbt12Value = MonitoringPgdasdRbt12Value
+  const PaymentValue = MonitoringPgdasdPaymentValue
 
-  function situationTooltip(row: SimplesMeiClientRow): string {
+  function declarationTooltip(row: SimplesMeiClientRow): string {
     const summary = pgdasdSummary(row)
     const meta = pgdasdDeclarationMeta(summary?.declaration_state)
     const period = pgdasdDeclarationPeriod(summary)
@@ -67,119 +84,153 @@ export function buildPgdasdColumns(options: {
     ].filter(Boolean).join(' ')
   }
 
-  function rowActions(row: SimplesMeiClientRow) {
-    return tableIconGroup([
-      tableIconButton({
-        label: 'Ver destinatários e documentos locais',
-        icon: 'i-lucide-message-square-text',
-        testId: 'pgdasd-communication-info',
-        onClick: () => options.onPreview(row)
-      }),
-      tableIconButton({
-        label: 'Ver preferências registradas',
-        icon: 'i-lucide-info',
-        testId: 'pgdasd-communication-preferences',
-        onClick: () => options.onConfigure(row)
+  function actionItems(row: SimplesMeiClientRow): DropdownMenuItem[][] {
+    const items: DropdownMenuItem[] = [
+      {
+        label: 'Abrir cliente',
+        icon: 'i-lucide-building-2',
+        to: `/monitoring/clients/${row.client_id}`
+      }
+    ]
+    if (options.onEditClient) {
+      items.push({
+        label: 'Editar cliente',
+        icon: 'i-lucide-pencil',
+        onSelect: () => options.onEditClient?.(row)
       })
-    ], 'pgdasd-actions-group')
+    }
+    items.push({
+      label: 'Preferências de comunicação',
+      icon: 'i-lucide-settings-2',
+      onSelect: () => options.onConfigure(row)
+    }, {
+      label: 'Ver histórico fiscal PGDAS-D',
+      icon: 'i-lucide-history',
+      onSelect: () => options.onHistory(row)
+    })
+    if (options.onExclude) {
+      items.push({
+        label: 'Excluir do monitoramento',
+        icon: 'i-lucide-user-minus',
+        onSelect: () => options.onExclude?.(row)
+      })
+    }
+    return [items]
   }
 
-  function trackingCell(row: SimplesMeiClientRow) {
+  function sendState(row: SimplesMeiClientRow): MonitoringSendColumnState {
     const summary = pgdasdSummary(row)
-    const meta = pgdasdTrackingMeta(summary?.communication?.tracking_status)
-    return tableIconButton({
-      label: `Histórico local de comunicação: ${meta.label}`,
-      icon: meta.icon,
-      color: meta.color,
-      testId: 'pgdasd-tracking',
-      onClick: () => options.onTracking(row)
-    })
+    const communication = summary?.communication
+    const tracking = pgdasdTrackingMeta(communication?.tracking_status)
+    return {
+      trackingIcon: tracking.icon,
+      trackingLabel: `Histórico local de comunicação: ${tracking.label}`,
+      trackingColor: tracking.color,
+      automaticRequested: communication?.automatic_requested === true,
+      canToggleAutomatic: pgdasdCanRequestAutomatic(communication),
+      canSend: communication?.can_send === true,
+      sendBusy: options.sendBusyClientIds?.has(row.client_id) === true,
+      toggleBusy: options.toggleBusyClientIds?.has(row.client_id) === true
+    }
   }
 
   return [
     {
-      id: 'client',
-      header: ({ column }) => sortHeader('Cliente', column),
-      enableHiding: false,
-      meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
-      cell: ({ row }) => h(FiscalClientCell, {
-        clientId: row.original.client_id,
-        name: row.original.legal_name,
-        legalName: row.original.legal_name,
-        cnpjMasked: row.original.cnpj_masked,
-        to: `/monitoring/clients/${row.original.client_id}`
-      })
-    },
-    {
       id: 'situation',
-      header: 'Situação',
-      enableSorting: false,
+      header: ({ column }) => h(UTooltip, {
+        text: 'Pagamento dos DAS do período de apuração esperado.'
+      }, {
+        default: () => sortHeader('Situação', column)
+      }),
       meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
       cell: ({ row }) => {
-        const summary = pgdasdSummary(row.original)
-        const meta = pgdasdDeclarationMeta(summary?.declaration_state)
-        return h(UTooltip, { text: situationTooltip(row.original) }, {
-          default: () => h('div', { class: 'block w-full min-w-0' }, [
-            h(UBadge, tableCellBadgeProps({
-              'label': meta.label,
-              'color': meta.color,
-              'icon': meta.icon,
-              'aria-label': `Situação PGDAS-D: ${meta.label}`,
-              'data-testid': 'pgdasd-situation'
-            }))
-          ])
-        })
+        if (isRowPending(row.original.client_id)) {
+          return consultPendingSkeleton('pgdasd-situation-pending')
+        }
+        const missing = simplesMeiMissingProcuracaoSituation(row.original, 'pgdasd-situation')
+        if (missing) {
+          return h(UTooltip, { text: missing.tooltip }, {
+            default: () => h('div', { class: 'block w-full min-w-0' }, [
+              h(UBadge, tableCellBadgeProps({
+                'label': missing.label,
+                'color': missing.color,
+                'icon': missing.icon,
+                'aria-label': `Situação PGDAS-D: ${missing.label}`,
+                'data-testid': missing.testId
+              }))
+            ])
+          })
+        }
+        return h('div', { class: 'block w-full min-w-0' }, [
+          h(PaymentValue, {
+            summary: pgdasdSummary(row.original)
+          })
+        ])
       }
     },
     {
       id: 'last_declaration',
-      header: 'Últ. Declaração',
-      enableSorting: false,
+      header: ({ column }) => sortHeader('Declaração', column),
       meta: { class: { th: 'w-24 min-w-20', td: 'w-24 min-w-20' } },
       cell: ({ row }) => {
+        if (isRowPending(row.original.client_id)) {
+          return consultPendingSkeleton('pgdasd-declaration-pending', 'max-w-[4.5rem]')
+        }
         const summary = pgdasdSummary(row.original)
         return h(DeclarationIndicator, {
           period: pgdasdDeclarationPeriod(summary),
           state: summary?.declaration_state,
-          reason: summary?.declaration_state_reason || summary?.declaration_reason
+          reason: summary?.declaration_state_reason || summary?.declaration_reason,
+          tooltipText: declarationTooltip(row.original)
         })
       }
     },
     {
       id: 'rbt12',
-      header: () => h(UTooltip, {
+      header: ({ column }) => h(UTooltip, {
         text: 'RBT12 (RB12): receita bruta acumulada nos 12 meses anteriores ao período de apuração. Não é RPA (receita do mês) nem o sublimite anual.'
       }, {
-        default: () => h('span', { class: 'whitespace-nowrap' }, [
-          'RBT12',
-          h('span', { class: 'sr-only' }, ' — receita bruta acumulada em doze meses')
-        ])
+        default: () => sortHeader('RBT12', column)
       }),
-      enableSorting: false,
       meta: { class: { th: 'w-0 whitespace-nowrap', td: 'w-0 whitespace-nowrap' } },
-      cell: ({ row }) => h(Rbt12Value, {
-        rbt12: pgdasdSummary(row.original)?.rbt12
+      cell: ({ row }) => {
+        if (isRowPending(row.original.client_id)) {
+          return consultPendingSkeleton('pgdasd-rbt12-pending', 'max-w-[5rem]')
+        }
+        return h(Rbt12Value, {
+          rbt12: pgdasdSummary(row.original)?.rbt12
+        })
+      }
+    },
+    {
+      id: 'client',
+      header: ({ column }) => sortHeader('Cliente', column),
+      enableHiding: false,
+      meta: { ...MONITORING_CLIENT_COLUMN_META },
+      cell: ({ row }) => h(FiscalClientCell, {
+        clientId: row.original.client_id,
+        name: row.original.legal_name,
+        legalName: row.original.legal_name,
+        cnpj: row.original.cnpj,
+        cnpjMasked: row.original.cnpj_masked,
+        to: `/monitoring/clients/${row.original.client_id}`
       })
     },
-    {
-      id: 'actions',
-      header: MONITORING_ACTIONS_LABEL,
-      enableSorting: false,
-      meta: { ...MONITORING_ACTIONS_META },
-      cell: ({ row }) => rowActions(row.original)
-    },
-    {
-      id: 'tracking',
-      header: MONITORING_TRACKING_LABEL,
-      enableSorting: false,
-      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
-      cell: ({ row }) => trackingCell(row.original)
-    },
+    buildMonitoringComunicacaoColumn<SimplesMeiClientRow>({
+      getState: row => sendState(row),
+      onTracking: row => options.onTracking(row),
+      onSend: row => options.onSend(row),
+      onToggleAutomatic: (row, value) => options.onToggleAutomatic(row, value),
+      testIdPrefix: 'pgdasd-tracking'
+    }),
     {
       id: MONITORING_CONSULTED_ID,
       header: ({ column }) => sortHeader(MONITORING_CONSULTED_LABEL, column),
       meta: { ...MONITORING_CONSULTED_META },
       cell: ({ row }) => {
+        if (isRowPending(row.original.client_id)) {
+          return consultPendingSkeleton('pgdasd-consult-pending', 'max-w-[5.5rem]')
+        }
         const lastQuery = pgdasdSummary(row.original)?.last_valid_query_at
         const dateNode = h(UTooltip, {
           text: lastQuery
@@ -211,23 +262,18 @@ export function buildPgdasdColumns(options: {
       }
     },
     {
-      id: 'history',
-      header: MONITORING_HISTORY_LABEL,
+      id: 'actions',
+      header: MONITORING_ACTIONS_LABEL,
       enableSorting: false,
-      meta: { class: { th: 'w-16 min-w-14', td: 'w-16 min-w-14' } },
-      cell: ({ row }) => h(UTooltip, {
-        text: 'Ver histórico fiscal PGDAS-D'
-      }, {
-        default: () => h(UButton, {
-          'size': 'xs',
-          'color': 'neutral',
-          'variant': 'ghost',
-          'icon': 'i-lucide-search',
-          'aria-label': 'Ver histórico fiscal PGDAS-D',
-          'data-testid': 'pgdasd-history',
-          'onClick': () => options.onHistory(row.original)
+      meta: { ...MONITORING_ACTIONS_META },
+      cell: ({ row }) => {
+        const name = row.original.legal_name || `cliente ${row.original.client_id}`
+        return buildMonitoringActionsMenuCell({
+          ariaLabel: `Mais ações de ${name}`,
+          testId: 'pgdasd-row-actions',
+          items: actionItems(row.original)
         })
-      })
+      }
     }
   ]
 }

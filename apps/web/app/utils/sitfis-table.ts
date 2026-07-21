@@ -1,4 +1,4 @@
-import type { TableColumn } from '@nuxt/ui'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { h } from 'vue'
 /**
  * Imports estáticos — NÃO usar resolveComponent aqui.
@@ -16,14 +16,22 @@ import UBadge from '@nuxt/ui/components/Badge.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type { SitfisClientDetail, SitfisClientRow } from '~/types/fiscal-modules'
 import { documentActionVisible } from '~/types/fiscal-modules'
-import { tableIconButton, tableIconGroup } from '~/utils/table-icon-slots'
 import { sortHeader } from '~/utils/table-sort'
-import { buildMonitoringConsultedColumn } from '~/utils/monitoring-table-columns'
+import { pgdasdCanRequestAutomatic, pgdasdTrackingMeta } from '~/utils/pgdasd'
+import {
+  buildMonitoringActionsMenuCell,
+  buildMonitoringConsultedColumn,
+  buildMonitoringComunicacaoColumn,
+  MONITORING_ACTIONS_LABEL,
+  MONITORING_ACTIONS_META,
+  MONITORING_CLIENT_COLUMN_META,
+  type MonitoringSendColumnState
+} from '~/utils/monitoring-table-columns'
 
 /**
- * Renderer SITFIS — alinhado à densidade Simples/MEI:
- * Cliente · Situação · Achados · Cobertura · Ações ·
- * Procuração · Franquia / agenda · Idade / TTL · Última consulta.
+ * Renderer SITFIS — spine canônica:
+ * Situação · Cliente · Achados · Cobertura · Procuração · Franquia / agenda ·
+ * Idade / TTL · Comunicação · Consulta · Ações.
  * Secundárias (procuração/franquia/idade) começam ocultas via Exibir.
  */
 export function sitfisDetailOf(row: SitfisClientRow): SitfisClientDetail {
@@ -42,53 +50,85 @@ export function sitfisAgeLabel(seconds?: number | null) {
 export function buildSitfisColumns(options: {
   allowsDocument: boolean
   onFindings: (row: SitfisClientRow) => void
+  onTracking: (row: SitfisClientRow) => void
+  onSend: (row: SitfisClientRow) => void
+  onToggleAutomatic: (row: SitfisClientRow, value: boolean) => void
+  onDocument: (row: SitfisClientRow) => void
+  onEditClient?: (row: SitfisClientRow) => void
 }): TableColumn<SitfisClientRow>[] {
-  function rowActions(row: SitfisClientRow) {
+  function actionItems(row: SitfisClientRow): DropdownMenuItem[][] {
     const href = documentActionVisible(row.document)
       ? row.document?.href?.trim() || null
       : null
     const docEnabled = options.allowsDocument && Boolean(href)
-
-    return tableIconGroup([
-      tableIconButton({
-        label: docEnabled
-          ? (row.document?.label || 'Baixar documento oficial')
-          : 'Nenhum documento oficial disponível',
-        icon: 'i-lucide-file-down',
-        color: docEnabled ? 'primary' : 'neutral',
-        testId: 'sitfis-document-action',
-        href: docEnabled ? href : null,
-        disabled: !docEnabled
-      }),
-      tableIconButton({
-        label: 'Ver achados e pendências',
-        icon: 'i-lucide-list-checks',
-        color: 'primary',
-        testId: 'sitfis-findings',
-        onClick: () => options.onFindings(row)
+    const items: DropdownMenuItem[] = [
+      {
+        label: 'Abrir cliente',
+        icon: 'i-lucide-building-2',
+        to: `/monitoring/clients/${row.client_id}/sitfis`
+      }
+    ]
+    if (options.onEditClient) {
+      items.push({
+        label: 'Editar cliente',
+        icon: 'i-lucide-pencil',
+        onSelect: () => options.onEditClient?.(row)
       })
-    ], 'sitfis-actions-group')
+    }
+    items.push({
+      label: 'Ver achados e pendências',
+      icon: 'i-lucide-list-checks',
+      onSelect: () => options.onFindings(row)
+    })
+    items.push({
+      label: 'Histórico de busca',
+      icon: 'i-lucide-history',
+      to: `/monitoring/clients/${row.client_id}/sitfis`
+    })
+    if (docEnabled && href) {
+      items.push({
+        label: row.document?.label || 'Baixar documento oficial',
+        icon: 'i-lucide-file-down',
+        onSelect: () => options.onDocument(row)
+      })
+    }
+    return [items]
+  }
+
+  function sendState(row: SitfisClientRow): MonitoringSendColumnState {
+    const communication = sitfisDetailOf(row).communication
+    const tracking = pgdasdTrackingMeta(communication?.tracking_status)
+    return {
+      trackingIcon: tracking.icon,
+      trackingLabel: communication ? tracking.label : 'Sem histórico local',
+      trackingColor: communication ? tracking.color : 'neutral',
+      trackingDisabled: !communication,
+      automaticRequested: communication?.automatic_requested === true,
+      canToggleAutomatic: pgdasdCanRequestAutomatic(communication),
+      canSend: communication?.can_send === true
+    }
   }
 
   return [
-    {
-      id: 'client',
-      header: ({ column }) => sortHeader('Cliente', column),
-      enableHiding: false,
-      meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
-      cell: ({ row }) => h(FiscalClientCell, {
-        clientId: row.original.client_id,
-        name: row.original.legal_name || row.original.name || row.original.display_name,
-        legalName: row.original.legal_name,
-        cnpjMasked: row.original.cnpj_masked,
-        to: `/monitoring/clients/${row.original.client_id}/sitfis`
-      })
-    },
     {
       id: 'situation',
       header: ({ column }) => sortHeader('Situação', column),
       meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } },
       cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: row.original.situation })
+    },
+    {
+      id: 'client',
+      header: ({ column }) => sortHeader('Cliente', column),
+      enableHiding: false,
+      meta: { ...MONITORING_CLIENT_COLUMN_META },
+      cell: ({ row }) => h(FiscalClientCell, {
+        clientId: row.original.client_id,
+        name: row.original.legal_name || row.original.name || row.original.display_name,
+        legalName: row.original.legal_name,
+        cnpj: row.original.cnpj,
+        cnpjMasked: row.original.cnpj_masked,
+        to: `/monitoring/clients/${row.original.client_id}/sitfis`
+      })
     },
     {
       id: 'findings',
@@ -115,14 +155,6 @@ export function buildSitfisColumns(options: {
       enableSorting: false,
       meta: { class: { th: 'w-36 min-w-28', td: 'w-36 min-w-28' } },
       cell: ({ row }) => h(FiscalCoverageBadge, { fill: true, coverage: row.original.coverage })
-    },
-    {
-      id: 'actions',
-      header: 'Ações',
-      enableHiding: false,
-      enableSorting: false,
-      meta: { class: { th: 'w-20 min-w-20', td: 'w-20 min-w-20' } },
-      cell: ({ row }) => rowActions(row.original)
     },
     {
       id: 'procuracao',
@@ -169,6 +201,13 @@ export function buildSitfisColumns(options: {
         ])
       }
     },
+    buildMonitoringComunicacaoColumn<SitfisClientRow>({
+      getState: row => sendState(row),
+      onTracking: row => options.onTracking(row),
+      onSend: row => options.onSend(row),
+      onToggleAutomatic: (row, value) => options.onToggleAutomatic(row, value),
+      testIdPrefix: 'sitfis-tracking'
+    }),
     buildMonitoringConsultedColumn<SitfisClientRow>({
       getAt: (row) => {
         return sitfisDetailOf(row).observed_at
@@ -176,6 +215,21 @@ export function buildSitfisColumns(options: {
           || row.last_consulted_at
       },
       testId: 'sitfis-observed'
-    })
+    }),
+    {
+      id: 'actions',
+      header: MONITORING_ACTIONS_LABEL,
+      enableHiding: false,
+      enableSorting: false,
+      meta: { ...MONITORING_ACTIONS_META },
+      cell: ({ row }) => {
+        const name = row.original.legal_name || row.original.name || `cliente ${row.original.client_id}`
+        return buildMonitoringActionsMenuCell({
+          ariaLabel: `Mais ações de ${name}`,
+          testId: 'sitfis-row-actions',
+          items: actionItems(row.original)
+        })
+      }
+    }
   ]
 }

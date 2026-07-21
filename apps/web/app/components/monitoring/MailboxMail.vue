@@ -1,14 +1,17 @@
 <script setup lang="ts">
 /**
  * Detalhe canônico de mensagem (arquétipo InboxMail).
- * Corpo/anexos via download protegido — sem bytes embutidos.
+ * Corpo via fetch autenticado (preview) + download; anexos protegidos.
  * Triagem: NEW / IN_REVIEW / RESOLVED apenas; não altera ciência oficial.
  */
 import {
   MAILBOX_TRIAGE_SELECT_ITEMS,
+  mailboxTriageLabel,
   parseMailboxTriageStatus,
   type MailboxTriageStatus
 } from '~/utils/mailbox-triage'
+import { parseMailboxBodyPreviewBlob } from '~/utils/mailbox-body-preview'
+import { toSanctumApiPath } from '~/utils/authenticated-download'
 
 export interface MailboxMessageDetail {
   id: number
@@ -55,7 +58,10 @@ const emit = defineEmits<{
 
 const api = useApi()
 const toast = useToast()
+const sanctum = useSanctumClient()
+const { download: authDownload, downloading: bodyDownloading } = useAuthenticatedDownload()
 const { canTriageMailbox, sessionEpoch } = useDashboard()
+const apiBase = String(useRuntimeConfig().public.apiBase || '').replace(/\/$/, '')
 
 const loading = ref(false)
 const loadError = ref<string | null>(null)
@@ -65,11 +71,16 @@ const dte = ref<MailboxDteState | null>(null)
 const triageStatus = ref<MailboxTriageStatus>('NEW')
 const triageNote = ref('')
 const saving = ref(false)
+const bodyPreview = ref<string | null>(null)
+const bodyPreviewError = ref<string | null>(null)
+const bodyPreviewLoading = ref(false)
 let loadSeq = 0
 
 const triageItems = [...MAILBOX_TRIAGE_SELECT_ITEMS]
 
 const attachments = computed(() => message.value?.attachments || [])
+
+const triageBadgeLabel = computed(() => mailboxTriageLabel(message.value?.triage_status))
 
 const officialReadLabel = computed(() => {
   if (meta.value?.official_read_unchanged === true) {
@@ -94,6 +105,39 @@ async function loadDte(clientId: number, parentSeq: number, parentEpoch: number)
   }
 }
 
+async function loadBodyPreview(messageId: number, parentSeq: number, parentEpoch: number) {
+  bodyPreview.value = null
+  bodyPreviewError.value = null
+  bodyPreviewLoading.value = true
+  try {
+    const path = toSanctumApiPath(api.fiscal.mailbox.bodyDownloadUrl(messageId), apiBase)
+    const blob = await sanctum<Blob>(path, {
+      method: 'GET',
+      responseType: 'blob' as 'json',
+      headers: { Accept: 'text/plain, text/*, */*' }
+    })
+    if (parentSeq !== loadSeq || parentEpoch !== sessionEpoch.value) return
+    if (!(blob instanceof Blob)) {
+      bodyPreviewError.value = 'Resposta inválida ao carregar o corpo.'
+      return
+    }
+    const parsed = await parseMailboxBodyPreviewBlob(blob)
+    if (parentSeq !== loadSeq || parentEpoch !== sessionEpoch.value) return
+    if (parsed.ok) {
+      bodyPreview.value = parsed.text
+    } else {
+      bodyPreviewError.value = parsed.error
+    }
+  } catch (caught) {
+    if (parentSeq !== loadSeq || parentEpoch !== sessionEpoch.value) return
+    bodyPreviewError.value = apiErrorMessage(caught, 'Falha ao carregar o corpo.')
+  } finally {
+    if (parentSeq === loadSeq && parentEpoch === sessionEpoch.value) {
+      bodyPreviewLoading.value = false
+    }
+  }
+}
+
 async function load() {
   const seq = ++loadSeq
   const epoch = sessionEpoch.value
@@ -105,6 +149,8 @@ async function load() {
   loading.value = true
   loadError.value = null
   dte.value = null
+  bodyPreview.value = null
+  bodyPreviewError.value = null
   try {
     const res = await api.fiscal.mailbox.get(props.messageId)
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
@@ -115,6 +161,9 @@ async function load() {
     const cid = Number(res.data.client_id)
     if (Number.isFinite(cid) && cid > 0) {
       void loadDte(cid, seq, epoch)
+    }
+    if (res.data.has_body === true) {
+      void loadBodyPreview(props.messageId, seq, epoch)
     }
   } catch (caught) {
     if (seq !== loadSeq || epoch !== sessionEpoch.value) return
@@ -132,7 +181,7 @@ async function saveTriage() {
   const status = parseMailboxTriageStatus(triageStatus.value)
   if (!status) {
     toast.add({
-      title: 'Triagem inválida. Use NEW, IN_REVIEW ou RESOLVED.',
+      title: 'Triagem inválida. Use Nova, Em análise ou Resolvida.',
       color: 'warning'
     })
     return
@@ -161,15 +210,17 @@ async function saveTriage() {
   }
 }
 
-function openBody() {
-  window.open(api.fiscal.mailbox.bodyDownloadUrl(props.messageId), '_blank', 'noopener')
+async function openBody() {
+  await authDownload(
+    api.fiscal.mailbox.bodyDownloadUrl(props.messageId),
+    `mailbox-message-${props.messageId}.txt`
+  )
 }
 
-function openAttachment(attachmentId: number) {
-  window.open(
+async function openAttachment(attachmentId: number) {
+  await authDownload(
     api.fiscal.mailbox.attachmentDownloadUrl(props.messageId, attachmentId),
-    '_blank',
-    'noopener'
+    `mailbox-attachment-${attachmentId}.bin`
   )
 }
 
@@ -186,6 +237,8 @@ watch(sessionEpoch, () => {
   meta.value = null
   dte.value = null
   loadError.value = null
+  bodyPreview.value = null
+  bodyPreviewError.value = null
   void load()
 })
 </script>
@@ -214,8 +267,9 @@ watch(sessionEpoch, () => {
             v-if="message?.has_body"
             color="neutral"
             variant="ghost"
-            icon="i-lucide-file-text"
-            label="Corpo"
+            icon="i-lucide-download"
+            label="Baixar corpo"
+            :loading="bodyDownloading"
             @click="openBody"
           />
           <UButton
@@ -280,8 +334,9 @@ watch(sessionEpoch, () => {
                 <UBadge
                   color="neutral"
                   variant="subtle"
+                  data-testid="mailbox-triage-badge"
                 >
-                  {{ message.triage_status || '—' }}
+                  {{ triageBadgeLabel }}
                 </UBadge>
                 <UBadge
                   v-if="message.severity_hint"
@@ -339,6 +394,52 @@ watch(sessionEpoch, () => {
             </dl>
             <p class="mt-3 whitespace-pre-wrap text-sm">
               {{ message.subject_preview || 'Sem prévia de assunto.' }}
+            </p>
+          </div>
+
+          <div
+            class="border-b border-default p-4 sm:px-6"
+            data-testid="mailbox-body-preview"
+          >
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <h3 class="text-sm font-medium">
+                Corpo da mensagem
+              </h3>
+              <UButton
+                v-if="message.has_body"
+                size="xs"
+                color="neutral"
+                variant="soft"
+                icon="i-lucide-download"
+                label="Baixar"
+                :loading="bodyDownloading"
+                @click="openBody"
+              />
+            </div>
+            <p
+              v-if="!message.has_body"
+              class="text-sm text-muted"
+              data-testid="mailbox-body-pending"
+            >
+              Corpo ainda não sincronizado. Aguardando consulta DETALHE.
+            </p>
+            <p
+              v-else-if="bodyPreviewLoading"
+              class="text-sm text-muted"
+            >
+              Carregando corpo…
+            </p>
+            <UAlert
+              v-else-if="bodyPreviewError"
+              color="warning"
+              variant="subtle"
+              :title="bodyPreviewError"
+            />
+            <p
+              v-else-if="bodyPreview"
+              class="whitespace-pre-wrap text-sm text-highlighted"
+            >
+              {{ bodyPreview }}
             </p>
           </div>
 

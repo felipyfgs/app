@@ -49,6 +49,15 @@ const {
   submodule
 })
 
+const { canManageClients } = useDashboard()
+const {
+  formOpen: clientFormOpen,
+  formClient,
+  canManageCredentials,
+  openEditClient,
+  onFormSaved: onClientFormSaved
+} = useMonitoringClientEdit(() => refresh())
+
 const isPgdas = computed(() => submodule.value === 'PGDAS')
 const isDctfweb = computed(() => submodule.value === 'DCTFWEB')
 const isDefis = computed(() => submodule.value === 'DEFIS')
@@ -124,26 +133,31 @@ function openDefisHistory(row: DeclarationsClientRow) {
 }
 
 const columns = computed(() => {
+  const onEdit = canManageClients.value
+    ? (row: DeclarationsClientRow) => { void openEditClient(row.client_id) }
+    : undefined
   if (isPgdas.value) {
-    return buildDeclarationsPgdasColumns({ onHistory: openPgdasHistory })
+    return buildDeclarationsPgdasColumns({ onHistory: openPgdasHistory, onEditClient: onEdit })
   }
   if (isDctfweb.value) {
     return buildDeclarationsObligationColumns({
       onHistory: openDctfwebHistory,
+      onEditClient: onEdit,
       historyLabel: 'Histórico'
     })
   }
   if (isDefis.value) {
     return buildDeclarationsObligationColumns({
       onHistory: openDefisHistory,
+      onEditClient: onEdit,
       historyLabel: 'Histórico DEFIS'
     })
   }
   if (isFgts.value) {
-    return buildDeclarationsFgtsColumns()
+    return buildDeclarationsFgtsColumns({ onEditClient: onEdit })
   }
   // DIRF: colunas mínimas (tabela vazia + empty unsupported)
-  return buildDeclarationsObligationColumns({})
+  return buildDeclarationsObligationColumns({ onEditClient: onEdit })
 })
 
 const columnLabels = computed(() => {
@@ -159,7 +173,6 @@ const columnLabels = computed(() => {
   }
   return {
     obligation: 'Obrigação',
-    history: 'Histórico',
     ...MONITORING_SHARED_COLUMN_LABELS
   }
 })
@@ -211,7 +224,7 @@ watch(submodule, (next, prev) => {
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
     :submodule="submodule"
-    :horizontal-scroll="true"
+    :horizontal-scroll="false"
     :empty-title="emptyTitle"
     :empty-kind="emptyKind"
     :column-labels="columnLabels"
@@ -294,5 +307,14 @@ watch(submodule, (next, prev) => {
     v-model:open="defisHistoryOpen"
     :client-id="modalClientId"
     :client-name="modalClientName"
+  />
+
+  <ClientsClientFormModal
+    v-if="canManageClients"
+    v-model:open="clientFormOpen"
+    :client="formClient"
+    :can-manage-credentials="canManageCredentials"
+    :can-manage-clients="canManageClients"
+    @saved="onClientFormSaved"
   />
 </template>

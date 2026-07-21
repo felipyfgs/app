@@ -57,6 +57,11 @@ export function usePgdasdMonitoring() {
     return res.data
   }
 
+  async function requestSend(clientId: number) {
+    const res = await fiscal.pgdasd.communication.send(clientId)
+    return res.data
+  }
+
   async function collectDocuments(
     clientId: number,
     body: { period_key: string, declaration_number?: string | null, confirmed: true }
@@ -74,6 +79,7 @@ export function usePgdasdMonitoring() {
     batchAutomatic,
     fetchPreview,
     fetchTracking,
+    requestSend,
     collectDocuments,
     artifactDownloadUrl
   }

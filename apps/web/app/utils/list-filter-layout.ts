@@ -5,7 +5,7 @@
 
 /** Scroll horizontal com gesto touch (tabs, chips, ações da toolbar). */
 export const TOUCH_SCROLL_X
-  = 'min-w-0 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] touch-pan-x'
+  = 'w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] touch-pan-x'
 
 /** Faixa principal da ListFilterToolbar: empilha no xs, linha no sm+. */
 export const LIST_FILTER_TOOLBAR_STACK

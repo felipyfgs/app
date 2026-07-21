@@ -50,35 +50,33 @@ describe('declarations-obligation-hub', () => {
     expect(page).not.toMatch(/navigateTo\([^)]*declarations\//)
   })
 
-  it('colunas PGDAS cobrem Situação / Últ. Declaração / Cliente / Última Busca / Histórico', () => {
+  it('colunas PGDAS cobrem Situação / Últ. Declaração / Cliente / Ações · Consulta, sem Histórico na grade', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'app/utils/declarations-table.ts'),
       'utf8'
     )
+    const [pgdasSection] = source.split('/** Colunas genéricas filtradas por obrigação')
     expect(source).toContain('Situação da declaração')
     expect(source).toContain('Últ. Declaração')
-    expect(source).toContain('Última Busca')
-    expect(source).toContain('Histórico de Busca')
-    expect(source).toContain('declarations-pgdas-history')
+    expect(pgdasSection).toContain('MONITORING_ACTIONS_LABEL')
+    expect(pgdasSection).toContain('MONITORING_CONSULTED_LABEL')
+    expect(pgdasSection).not.toMatch(/id:\s*'history'/)
+    expect(pgdasSection).not.toContain('Última Busca')
+    expect(pgdasSection).toContain('Histórico de busca')
+    expect(pgdasSection).toContain('declarations-pgdas-row-actions')
   })
 
-  it('modais DAS e Declarações aninhado existem com contrato de referência', () => {
+  it('modal DAS mantém histórico próprio sem abrir modal aninhado de declarações', () => {
     const das = readFileSync(
       resolve(process.cwd(), 'app/components/monitoring/PgdasdDasHistoryModal.vue'),
-      'utf8'
-    )
-    const nested = readFileSync(
-      resolve(process.cwd(), 'app/components/monitoring/PgdasdDeclarationsHistoryModal.vue'),
       'utf8'
     )
     expect(das).toContain('DAS Simples Nacional - Histórico')
     expect(das).toContain('MAEDs não são enviadas automaticamente')
     expect(das).toContain('Ano da busca')
     expect(das).toContain('Baixar DAS')
-    expect(das).toContain('MonitoringPgdasdDeclarationsHistoryModal')
     expect(das).toContain('fetchHistory')
-    expect(nested).toContain('Histórico de Declarações')
-    expect(nested).toContain('Nº Declaração')
-    expect(nested).toContain('Extrato')
+    expect(das).not.toContain('MonitoringPgdasdDeclarationsHistoryModal')
+    expect(das).not.toContain('pgdasd-das-open-declarations')
   })
 })

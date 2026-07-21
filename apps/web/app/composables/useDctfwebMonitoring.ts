@@ -54,6 +54,11 @@ export function useDctfwebMonitoring() {
     return res.data
   }
 
+  async function requestSend(clientId: number) {
+    const res = await fiscal.dctfweb.communication.send(clientId)
+    return res.data
+  }
+
   function evidenceDownloadUrl(clientId: number, evidenceId: number): string {
     return fiscal.dctfweb.evidenceDownloadUrl(clientId, evidenceId)
   }
@@ -64,6 +69,7 @@ export function useDctfwebMonitoring() {
     batchAutomatic,
     fetchPreview,
     fetchTracking,
+    requestSend,
     evidenceDownloadUrl
   }
 }

@@ -32,6 +32,9 @@ import type {
   PgdasdCommunicationPreference,
   PgdasdCommunicationPreview,
   PgdasdCommunicationTracking,
+  SitfisHistoryPayload,
+  SitfisRefreshResponse,
+  SitfisShowResponse,
   PgdasdHistoryPayload,
   PgdasdHistoryPeriod,
   DctfwebHistoryPayload,
@@ -86,6 +89,25 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
         }) =>
           client<{ data: { created?: number, updated?: number, errors?: unknown[] } }>(
             '/api/v1/fiscal/category-links/batch',
+            { method: 'POST', body }
+          )
+      },
+      monitoringMembership: {
+        list: (params: { module: string, submodule?: string | null }) =>
+          client<{ data: Array<Record<string, unknown>> }>('/api/v1/fiscal/monitoring/membership', {
+            query: {
+              module: params.module,
+              submodule: params.submodule || undefined
+            }
+          }),
+        exclude: (body: { module: string, submodule?: string | null, client_ids: number[] }) =>
+          client<{ data: { excluded?: number, errors?: Array<{ client_id: number, message: string }> } }>(
+            '/api/v1/fiscal/monitoring/membership/exclude',
+            { method: 'POST', body }
+          ),
+        include: (body: { module: string, submodule?: string | null, client_ids: number[] }) =>
+          client<{ data: { included?: number, errors?: Array<{ client_id: number, message: string }> } }>(
+            '/api/v1/fiscal/monitoring/membership/include',
             { method: 'POST', body }
           )
       },
@@ -186,6 +208,11 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           tracking: (clientId: number) =>
             client<{ data: PgdasdCommunicationTracking }>(
               `/api/v1/fiscal/simples-mei/pgdasd/clients/${clientId}/communications`
+            ),
+          send: (clientId: number) =>
+            client<{ data: { queued: number, provider_enabled: boolean, dispatches: unknown[] } }>(
+              `/api/v1/fiscal/simples-mei/pgdasd/clients/${clientId}/communication-send`,
+              { method: 'POST' }
             )
         }
       },
@@ -196,7 +223,7 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
             { query: params }
           ),
         consult: (body: { client_ids: number[], year: number, confirmed: true }) =>
-          client<{ data: Array<Record<string, unknown>>, enqueued_count?: number, year?: number }>(
+          client<{ data: FiscalMonitoringRun[], enqueued_count?: number, year?: number }>(
             '/api/v1/fiscal/simples-mei/pgmei/consult',
             { method: 'POST', body }
           ),
@@ -229,6 +256,11 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           tracking: (clientId: number) =>
             client<{ data: PgdasdCommunicationTracking }>(
               `/api/v1/fiscal/simples-mei/pgmei/clients/${clientId}/communications`
+            ),
+          send: (clientId: number) =>
+            client<{ data: { queued: number, provider_enabled: boolean, dispatches: unknown[] } }>(
+              `/api/v1/fiscal/simples-mei/pgmei/clients/${clientId}/communication-send`,
+              { method: 'POST' }
             )
         }
       },
@@ -388,6 +420,11 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           tracking: (clientId: number) =>
             client<{ data: PgdasdCommunicationTracking }>(
               `/api/v1/fiscal/dctfweb/clients/${clientId}/communications`
+            ),
+          send: (clientId: number) =>
+            client<{ data: { queued: number, provider_enabled: boolean, dispatches: unknown[] } }>(
+              `/api/v1/fiscal/dctfweb/clients/${clientId}/communication-send`,
+              { method: 'POST' }
             )
         }
       },
@@ -442,15 +479,47 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           client<{ data: unknown }>('/api/v1/fiscal/installments/runs', { method: 'POST', body })
       },
       sitfis: {
+        history: (clientId: number) =>
+          client<{ data: SitfisHistoryPayload }>(
+            `/api/v1/fiscal/sitfis/clients/${clientId}/history`
+          ),
         show: (clientId: number) =>
-          client<{ data: Record<string, unknown> }>('/api/v1/fiscal/sitfis', {
+          client<{ data: SitfisShowResponse }>('/api/v1/fiscal/sitfis', {
             query: { client_id: clientId }
           }),
         refresh: (body: { client_id: number, force?: boolean }) =>
-          client<{ data: Record<string, unknown> }>('/api/v1/fiscal/sitfis/refresh', {
+          client<{ data: SitfisRefreshResponse }>('/api/v1/fiscal/sitfis/refresh', {
             method: 'POST',
             body
-          })
+          }),
+        communication: {
+          updatePreference: (
+            clientId: number,
+            body: {
+              automatic_requested: boolean
+              email_enabled: boolean
+              whatsapp_enabled: boolean
+              lock_version: number
+            }
+          ) =>
+            client<{ data: PgdasdCommunicationPreference }>(
+              `/api/v1/fiscal/sitfis/clients/${clientId}/communication-preference`,
+              { method: 'PATCH', body }
+            ),
+          preview: (clientId: number) =>
+            client<{ data: PgdasdCommunicationPreview }>(
+              `/api/v1/fiscal/sitfis/clients/${clientId}/communication-preview`
+            ),
+          tracking: (clientId: number) =>
+            client<{ data: PgdasdCommunicationTracking }>(
+              `/api/v1/fiscal/sitfis/clients/${clientId}/communications`
+            ),
+          send: (clientId: number) =>
+            client<{ data: { queued: number, provider_enabled: boolean, dispatches: unknown[] } }>(
+              `/api/v1/fiscal/sitfis/clients/${clientId}/communication-send`,
+              { method: 'POST' }
+            )
+        }
       },
       registrations: {
         list: (params?: { page?: number, per_page?: number, q?: string, client_id?: number, status?: string }) =>

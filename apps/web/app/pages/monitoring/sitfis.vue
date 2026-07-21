@@ -5,7 +5,12 @@
  * Task 7.5 · deep-links /monitoring/clients/{id}/sitfis
  */
 import type { FiscalFinding, FiscalPendingItem } from '~/types/api'
-import type { MonitoringFilterConfig, SitfisClientRow } from '~/types/fiscal-modules'
+import type {
+  MonitoringFilterConfig,
+  PgdasdCommunicationPreference,
+  SitfisClientRow,
+  SitfisShowResponse
+} from '~/types/fiscal-modules'
 import { commercialBlockLabel } from '~/utils/monitor-commercial'
 import {
   buildSitfisColumns,
@@ -13,9 +18,15 @@ import {
   sitfisDetailOf as detailOf
 } from '~/utils/sitfis-table'
 import { MONITORING_SHARED_COLUMN_LABELS } from '~/utils/monitoring-table-columns'
+import { apiErrorMessage } from '~/utils/api-error'
+import { useSitfisMonitoring } from '~/composables/useSitfisMonitoring'
+import { useAuthenticatedDownload } from '~/composables/useAuthenticatedDownload'
+import { fiscalDocumentDownloadFilename } from '~/utils/authenticated-download'
 
 const api = useApi()
-const { canTriggerSync } = useDashboard()
+const sitfisMonitoring = useSitfisMonitoring()
+const { download: downloadAuthenticated, downloading: evidenceDownloadBusy } = useAuthenticatedDownload()
+const { canManageClients, canTriggerSync } = useDashboard()
 const toast = useToast()
 
 const {
@@ -47,6 +58,14 @@ const {
   resetFilters
 } = useFiscalModulePortfolio('sitfis')
 
+const {
+  formOpen: clientFormOpen,
+  formClient,
+  canManageCredentials,
+  openEditClient,
+  onFormSaved: onClientFormSaved
+} = useMonitoringClientEdit(() => refresh())
+
 const filterConfig: MonitoringFilterConfig = {
   fields: [
     { key: 'situation', kind: 'option', label: 'Situação' },
@@ -68,23 +87,12 @@ const slideOpen = ref(false)
 const selected = ref<SitfisClientRow | null>(null)
 const findings = ref<FiscalFinding[]>([])
 const pending = ref<FiscalPendingItem[]>([])
-const sitfisMeta = ref<{
-  observed_at?: string | null
-  age_seconds?: number | null
-  ttl_seconds?: number | null
-  is_within_ttl?: boolean
-  expires_at?: string | null
-  next_refresh_at?: string | null
-  can_refresh?: boolean
-  block_reason?: string | null
-  source_provenance?: string | null
-  verification_state?: string | null
-  disclaimer?: string | null
-  coverage?: string | null
-} | null>(null)
+const sitfisMeta = ref<SitfisShowResponse | null>(null)
 
 function provenanceLabel(value?: string | null) {
   if (value === 'SERPRO_REAL') return 'Fonte SERPRO real'
+  if (value === 'SERPRO_TRIAL') return 'Fonte SERPRO Trial'
+  if (value === 'FIXTURE') return 'Fixture (desenvolvimento)'
   if (value === 'SIMULATED') return 'Simulado (desenvolvimento)'
   if (value === 'UNVERIFIED') return 'Não verificado (legado)'
   return null
@@ -95,6 +103,30 @@ const detailRefreshing = ref(false)
 
 function clientHref(id: number) {
   return `/monitoring/clients/${id}/sitfis`
+}
+
+function evidenceDownloadHref(meta: SitfisShowResponse | null): string | null {
+  const fromLinks = meta?.links?.evidence_download?.trim()
+  if (fromLinks) return fromLinks
+  if (meta?.evidence_artifact_id != null) {
+    return sitfisMonitoring.evidenceDownloadUrl(meta.evidence_artifact_id)
+  }
+  return null
+}
+
+async function downloadEvidence() {
+  const href = evidenceDownloadHref(sitfisMeta.value)
+  if (!href) return
+  await downloadAuthenticated(href, 'relatorio-sitfis.pdf')
+}
+
+async function downloadRowDocument(row: SitfisClientRow) {
+  const href = row.document?.href?.trim()
+  if (!href) return
+  await downloadAuthenticated(href, fiscalDocumentDownloadFilename({
+    label: row.document?.label,
+    kind: row.document?.kind
+  }))
 }
 
 async function openDetail(row: SitfisClientRow) {
@@ -109,7 +141,7 @@ async function openDetail(row: SitfisClientRow) {
     const [findRes, pendRes, sitRes] = await Promise.allSettled([
       api.fiscal.findings({ client_id: row.client_id, per_page: 50, active_only: true }),
       api.fiscal.pending({ client_id: row.client_id, per_page: 50, status: 'OPEN' }),
-      api.fiscal.sitfis.show(row.client_id)
+      sitfisMonitoring.show(row.client_id)
     ])
     if (findRes.status === 'fulfilled') {
       findings.value = ((findRes.value as { data: FiscalFinding[] }).data) || []
@@ -118,32 +150,17 @@ async function openDetail(row: SitfisClientRow) {
       pending.value = ((pendRes.value as { data: FiscalPendingItem[] }).data) || []
     }
     if (sitRes.status === 'fulfilled') {
-      const view = sitRes.value.data || {}
+      const view = sitRes.value
       const d = detailOf(row)
+      const snap = view.snapshot as { observed_at?: string, coverage?: string, source_provenance?: string, verification_state?: string } | null | undefined
       sitfisMeta.value = {
-        observed_at: (view.observed_at as string | null)
-          || (view.snapshot as { observed_at?: string } | undefined)?.observed_at
-          || d.observed_at
-          || null,
-        age_seconds: (view.age_seconds as number | null) ?? d.age_seconds ?? null,
-        ttl_seconds: (view.ttl_seconds as number | null) ?? d.ttl_seconds ?? null,
-        is_within_ttl: view.is_within_ttl as boolean | undefined,
-        expires_at: view.expires_at as string | null | undefined,
-        next_refresh_at: view.next_refresh_at as string | null | undefined,
-        can_refresh: view.can_refresh as boolean | undefined,
-        block_reason: view.block_reason as string | null | undefined,
-        source_provenance: (view.source_provenance as string | null | undefined)
-          || (view.snapshot as { source_provenance?: string } | undefined)?.source_provenance
-          || null,
-        verification_state: (view.verification_state as string | null | undefined)
-          || (view.snapshot as { verification_state?: string } | undefined)?.verification_state
-          || null,
-        disclaimer: view.disclaimer as string | null | undefined,
-        coverage: String(
-          (view.snapshot as { coverage?: string } | undefined)?.coverage
-          || row.coverage
-          || ''
-        ) || null
+        ...view,
+        observed_at: view.observed_at || snap?.observed_at || d.observed_at || null,
+        age_seconds: view.age_seconds ?? d.age_seconds ?? null,
+        ttl_seconds: view.ttl_seconds ?? d.ttl_seconds ?? null,
+        source_provenance: view.source_provenance || snap?.source_provenance || null,
+        verification_state: view.verification_state || snap?.verification_state || null,
+        coverage: String(view.coverage || snap?.coverage || row.coverage || '') || null
       }
     }
     if (
@@ -164,11 +181,23 @@ async function doRefreshSelected(force = false) {
   if (!selected.value || !canTriggerSync.value) return
   detailRefreshing.value = true
   try {
-    await api.fiscal.sitfis.refresh({
+    const result = await sitfisMonitoring.refresh({
       client_id: selected.value.client_id,
       force
     })
-    toast.add({ title: 'Atualização SITFIS solicitada', color: 'success' })
+    if (result.enqueued) {
+      toast.add({ title: 'Atualização SITFIS solicitada', color: 'success' })
+    } else {
+      toast.add({
+        title: 'Atualização não enfileirada',
+        description: result.reason === 'WITHIN_TTL'
+          ? 'Snapshot ainda dentro do TTL.'
+          : result.reason === 'ALREADY_RUNNING'
+            ? 'Já existe uma consulta em andamento.'
+            : (result.reason || 'A API não enfileirou a atualização.'),
+        color: 'warning'
+      })
+    }
     recentConfirmOpen.value = false
     await openDetail(selected.value)
     await refresh()
@@ -193,9 +222,67 @@ async function refreshSelected() {
   await doRefreshSelected(false)
 }
 
+// —— Comunicação (padrão DCTFWeb) ——
+const previewOpen = ref(false)
+const trackingOpen = ref(false)
+const prefsOpen = ref(false)
+const modalClientId = ref<number | null>(null)
+const modalClientName = ref<string | null>(null)
+const modalPreference = ref<PgdasdCommunicationPreference | null>(null)
+const toggleBusyClientIds = ref<Set<number>>(new Set())
+
+function openCommunication(row: SitfisClientRow, kind: 'preview' | 'tracking' | 'prefs') {
+  const communication = detailOf(row).communication
+  if (!communication) return
+  modalClientId.value = row.client_id
+  modalClientName.value = row.legal_name || row.name || null
+  modalPreference.value = communication
+  previewOpen.value = kind === 'preview'
+  trackingOpen.value = kind === 'tracking'
+  prefsOpen.value = kind === 'prefs'
+}
+
+async function onSitfisToggleAutomatic(row: SitfisClientRow, value: boolean) {
+  const preference = detailOf(row).communication
+  if (!preference) return
+  const next = new Set(toggleBusyClientIds.value)
+  next.add(row.client_id)
+  toggleBusyClientIds.value = next
+  try {
+    await sitfisMonitoring.updatePreferences(row.client_id, {
+      email_enabled: preference.email_enabled,
+      whatsapp_enabled: preference.whatsapp_enabled,
+      automatic_requested: value,
+      lock_version: preference.lock_version
+    })
+    toast.add({
+      title: value ? 'Envio automático ativado' : 'Envio automático desativado',
+      description: 'A preferência foi registrada; o envio efetivo segue o kill-switch do provider.',
+      color: 'success'
+    })
+    await refresh()
+  } catch (caught) {
+    toast.add({
+      title: apiErrorMessage(caught, 'Falha ao atualizar a preferência de envio automático.'),
+      color: 'error'
+    })
+  } finally {
+    const cleared = new Set(toggleBusyClientIds.value)
+    cleared.delete(row.client_id)
+    toggleBusyClientIds.value = cleared
+  }
+}
+
 const columns = computed(() => buildSitfisColumns({
   allowsDocument: allowsDocument.value,
-  onFindings: openDetail
+  onFindings: openDetail,
+  onTracking: row => openCommunication(row, 'tracking'),
+  onSend: row => openCommunication(row, 'preview'),
+  onDocument: (row) => { void downloadRowDocument(row) },
+  onToggleAutomatic: (row, value) => { void onSitfisToggleAutomatic(row, value) },
+  onEditClient: canManageClients.value
+    ? (row) => { void openEditClient(row.client_id) }
+    : undefined
 }))
 </script>
 
@@ -226,7 +313,7 @@ const columns = computed(() => buildSitfisColumns({
     :sorting="sorting"
     :get-row-id="getRowId"
     :get-client-id="row => row.client_id"
-    :horizontal-scroll="true"
+    :horizontal-scroll="false"
     :initial-hidden-columns="['procuracao', 'franchise', 'age']"
     empty-title="Nenhum cliente"
     :column-labels="{
@@ -354,6 +441,17 @@ const columns = computed(() => buildSitfisColumns({
                 v-if="selected"
                 :document="selected.document"
                 :disabled="!allowsDocument"
+              />
+              <UButton
+                v-if="evidenceDownloadHref(sitfisMeta)"
+                size="xs"
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-file-down"
+                label="Baixar relatório"
+                :loading="evidenceDownloadBusy"
+                data-testid="sitfis-evidence-download"
+                @click="downloadEvidence"
               />
               <UButton
                 v-if="selected"
@@ -497,5 +595,24 @@ const columns = computed(() => buildSitfisColumns({
     :remaining="selected?.commercial_quota?.remaining"
     :loading="detailRefreshing"
     @confirm="doRefreshSelected(true)"
+  />
+
+  <MonitoringPgdasdCommunicationModals
+    v-model:preview-open="previewOpen"
+    v-model:tracking-open="trackingOpen"
+    v-model:prefs-open="prefsOpen"
+    :client-id="modalClientId"
+    :client-name="modalClientName"
+    :preference="modalPreference"
+    context="SITFIS"
+  />
+
+  <ClientsClientFormModal
+    v-if="canManageClients"
+    v-model:open="clientFormOpen"
+    :client="formClient"
+    :can-manage-credentials="canManageCredentials"
+    :can-manage-clients="canManageClients"
+    @saved="onClientFormSaved"
   />
 </template>

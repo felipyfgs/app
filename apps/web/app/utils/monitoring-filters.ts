@@ -13,12 +13,21 @@ import {
   normalizeFilterModels
 } from '~/utils/data-table-filters'
 
+/** Itens do chip Envio (Simples Nacional / PGDAS-D). */
+export function monitoringSendStatusFilterItems(): Array<{ label: string, value: string }> {
+  return [
+    { label: 'Enviado', value: 'sent' },
+    { label: 'Não enviado', value: 'not_sent' }
+  ]
+}
+
 export const EMPTY_MONITORING_FILTERS: Readonly<MonitoringFilterValue> = Object.freeze({
   q: '',
   situation: 'all',
   competence: '',
   clientIds: [] as number[],
   deliveryStatus: 'all',
+  sendStatus: 'all',
   paymentStatus: 'all',
   status: 'all',
   coverage: 'all',
@@ -49,6 +58,7 @@ export function normalizeMonitoringFilters(
     competence: String(value?.competence ?? '').trim(),
     clientIds: normalizeClientIds(value?.clientIds, legacy?.clientId),
     deliveryStatus: String(value?.deliveryStatus || 'all'),
+    sendStatus: String(value?.sendStatus || 'all'),
     paymentStatus: String(value?.paymentStatus || 'all'),
     status: String(value?.status || 'all'),
     coverage: String(value?.coverage || 'all'),
@@ -77,6 +87,7 @@ export function hasActiveMonitoringFilters(
     || n.competence
     || n.clientIds.length > 0
     || (n.deliveryStatus && n.deliveryStatus !== 'all')
+    || (n.sendStatus && n.sendStatus !== 'all')
     || (n.paymentStatus && n.paymentStatus !== 'all')
     || (n.status && n.status !== 'all')
     || (n.coverage && n.coverage !== 'all')
@@ -140,6 +151,7 @@ export function resolveMonitoringFilterFields(
 const MULTIPLE_OPTION_KEYS = new Set([
   'situation',
   'deliveryStatus',
+  'sendStatus',
   'modality'
 ])
 
@@ -162,7 +174,9 @@ export function monitoringFieldsToDefinitions(
     }
     const items = field.key === 'situation'
       ? (field.items && field.items.length > 0 ? field.items : fiscalSituationFilterItems(false))
-      : field.items
+      : field.key === 'sendStatus'
+        ? (field.items && field.items.length > 0 ? field.items : monitoringSendStatusFilterItems())
+        : field.items
     const multiple = field.kind === 'option'
       ? (field.multiple ?? MULTIPLE_OPTION_KEYS.has(field.key))
       : false
@@ -181,6 +195,7 @@ export function monitoringFieldsToDefinitions(
 const OPTION_KEYS = [
   'situation',
   'deliveryStatus',
+  'sendStatus',
   'paymentStatus',
   'status',
   'coverage',
@@ -275,6 +290,9 @@ export function monitoringAdvancedFieldActive(
   if (field.key === 'deliveryStatus') {
     return String(filters.deliveryStatus || '').trim() !== '' && filters.deliveryStatus !== 'all'
   }
+  if (field.key === 'sendStatus') {
+    return String(filters.sendStatus || '').trim() !== '' && filters.sendStatus !== 'all'
+  }
   if (field.key === 'paymentStatus') {
     return String(filters.paymentStatus || '').trim() !== '' && filters.paymentStatus !== 'all'
   }
@@ -306,6 +324,7 @@ export function monitoringFilterSignature(filters: MonitoringFilterValue): strin
     normalized.competence,
     encodeClientIds(normalized.clientIds),
     normalized.deliveryStatus,
+    normalized.sendStatus,
     normalized.paymentStatus,
     normalized.status,
     normalized.coverage,

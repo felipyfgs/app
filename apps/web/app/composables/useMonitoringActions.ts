@@ -149,14 +149,33 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
           client_id: input.client_id,
           force: input.force
         })
-        if (!input.silent) {
-          toast.add({
-            title: 'Atualização SITFIS enfileirada',
-            description: 'Resultado reflete o job; em demo a integração externa é bloqueada.',
-            color: 'success'
-          })
+        const payload = res.data as {
+          enqueued?: boolean
+          reason?: string
+          run?: FiscalMonitoringRun | null
         }
-        return res.data
+        const enqueued = payload?.enqueued === true
+        if (!input.silent) {
+          if (enqueued) {
+            toast.add({
+              title: 'Atualização SITFIS enfileirada',
+              description: 'Resultado reflete o job; em demo a integração externa é bloqueada.',
+              color: 'success'
+            })
+          } else {
+            const reason = String(payload?.reason || 'SKIPPED')
+            toast.add({
+              title: 'Atualização SITFIS não enfileirada',
+              description: reason === 'WITHIN_TTL'
+                ? 'Snapshot ainda dentro do TTL.'
+                : reason === 'ALREADY_RUNNING'
+                  ? 'Já existe consulta em andamento.'
+                  : `Motivo: ${reason}`,
+              color: 'warning'
+            })
+          }
+        }
+        return enqueued ? (payload as Record<string, unknown>) : null
       }
 
       if (key === 'fgts') {

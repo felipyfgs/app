@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
  * Sidebar interno do detalhe fiscal do cliente:
- * contexto compacto + UNavigationMenu vertical (só ícones / expandido no hover).
+ * seletor de empresa + atalhos CRM + UNavigationMenu vertical.
  */
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { Client } from '~/types/api'
 import { clientCrmHref } from '~/utils/client-cross-links'
+import { clientIsMei } from '~/utils/client-detail-tabs'
+import { formatCnpj } from '~/utils/format'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   client: Client | null
   clientId: number
   links: NavigationMenuItem[][]
@@ -18,6 +20,18 @@ withDefaults(defineProps<{
   loading: false,
   collapsed: true
 })
+
+const emit = defineEmits<{
+  switchClient: [payload: { id: number, isMei: boolean }]
+}>()
+
+const switcherOpen = ref(false)
+
+function onClientPicked(next: Client | null) {
+  if (!next || next.id === props.clientId) return
+  switcherOpen.value = false
+  emit('switchClient', { id: next.id, isMei: clientIsMei(next) })
+}
 </script>
 
 <template>
@@ -32,7 +46,7 @@ withDefaults(defineProps<{
       role="status"
       aria-label="Carregando cliente"
     >
-      <USkeleton class="h-4 w-full rounded-md" />
+      <USkeleton class="h-8 w-full rounded-md" />
       <USkeleton
         v-if="!collapsed"
         class="h-4 w-2/3 rounded-md"
@@ -40,15 +54,22 @@ withDefaults(defineProps<{
     </div>
 
     <div
-      v-else-if="client"
+      v-else
       class="w-full shrink-0 space-y-2 border-b border-default pb-3"
       :class="collapsed ? 'flex flex-col items-center border-none pb-0' : undefined"
+      data-testid="monitoring-client-switcher"
     >
       <template v-if="!collapsed">
-        <p class="truncate text-xs text-muted tabular-nums">
-          {{ client.cnpj ? formatCnpj(client.cnpj) : client.root_cnpj }}
-        </p>
-        <div class="flex flex-wrap items-center gap-1.5 text-xs">
+        <FiscalClientPicker
+          :model-value="clientId"
+          class="w-full min-w-0"
+          placeholder="Trocar empresa…"
+          @select="onClientPicked"
+        />
+        <div
+          v-if="client"
+          class="flex flex-wrap items-center gap-1.5 text-xs"
+        >
           <UBadge
             size="sm"
             :color="client.is_active ? 'success' : 'neutral'"
@@ -56,9 +77,39 @@ withDefaults(defineProps<{
           >
             {{ client.is_active ? 'Ativo' : 'Inativo' }}
           </UBadge>
-          <span class="text-muted">ID {{ client.id }}</span>
+          <span class="truncate text-muted tabular-nums">
+            {{ client.cnpj ? formatCnpj(client.cnpj) : client.root_cnpj }}
+          </span>
         </div>
       </template>
+
+      <UPopover
+        v-else
+        v-model:open="switcherOpen"
+        :content="{ side: 'right', align: 'start', sideOffset: 8 }"
+      >
+        <UTooltip text="Trocar empresa">
+          <UButton
+            size="xs"
+            color="neutral"
+            variant="soft"
+            icon="i-lucide-building-2"
+            square
+            aria-label="Trocar empresa"
+            data-testid="monitoring-client-switcher-collapsed"
+          />
+        </UTooltip>
+        <template #content>
+          <div class="w-72 p-2">
+            <FiscalClientPicker
+              :model-value="clientId"
+              class="w-full min-w-0"
+              placeholder="Trocar empresa…"
+              @select="onClientPicked"
+            />
+          </div>
+        </template>
+      </UPopover>
 
       <div
         class="flex gap-1"

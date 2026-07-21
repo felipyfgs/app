@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
  * Ação de evidência oficial: botão só com available=true e href do servidor.
- * Sem Base64, JSON bruto ou URL inventada no frontend.
+ * Download via cliente Sanctum (sem navegar o path da API como rota SPA).
  */
 import type { FiscalDocumentDescriptor } from '~/types/fiscal-modules'
 import {
   documentActionVisible,
   documentUnavailableLabel
 } from '~/types/fiscal-modules'
+import { useAuthenticatedDownload } from '~/composables/useAuthenticatedDownload'
+import { fiscalDocumentDownloadFilename } from '~/utils/authenticated-download'
 
 const props = withDefaults(defineProps<{
   document?: FiscalDocumentDescriptor | null
@@ -28,6 +30,8 @@ const props = withDefaults(defineProps<{
   size: 'xs',
   disabled: false
 })
+
+const { download: downloadAuthenticated, downloading } = useAuthenticatedDownload()
 
 const visible = computed(() =>
   !props.disabled && documentActionVisible(props.document)
@@ -50,6 +54,13 @@ const href = computed(() => {
   return typeof h === 'string' && h.trim() ? h.trim() : null
 })
 
+const filename = computed(() =>
+  fiscalDocumentDownloadFilename({
+    label: props.document?.label,
+    kind: props.document?.kind
+  })
+)
+
 const metadata = computed(() => {
   if (!visible.value || !props.showMetadata) return null
   const parts = [props.document?.kind, props.document?.source_label]
@@ -59,6 +70,11 @@ const metadata = computed(() => {
   return parts.filter((part): part is string => typeof part === 'string' && part.trim() !== '')
     .join(' · ')
 })
+
+async function onDownload() {
+  if (!href.value || downloading.value) return
+  await downloadAuthenticated(href.value, filename.value)
+}
 </script>
 
 <template>
@@ -69,10 +85,10 @@ const metadata = computed(() => {
     variant="ghost"
     icon="i-lucide-file-down"
     :label="label"
-    :href="href"
-    target="_blank"
-    rel="noopener"
+    :loading="downloading"
+    :disabled="downloading"
     data-testid="fiscal-document-action"
+    @click="onDownload"
   />
   <span
     v-if="visible && metadata"

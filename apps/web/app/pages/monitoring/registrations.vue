@@ -239,7 +239,7 @@ watch(sessionEpoch, () => {
     :sorting="sorting"
     :get-row-id="row => `registration:${row.id}`"
     :show-kpis="false"
-    :horizontal-scroll="true"
+    :horizontal-scroll="false"
     empty-title="Nenhum vínculo"
     empty-description="Atualize por cliente."
     :column-labels="{

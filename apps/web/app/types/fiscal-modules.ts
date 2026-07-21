@@ -50,7 +50,7 @@ export const FISCAL_PORTFOLIO_MODULE_KEYS: readonly FiscalPortfolioModuleKey[] =
 
 export const FISCAL_MODULE_LABELS: Record<FiscalModuleKey, string> = {
   dashboard: 'Dashboard',
-  simples_mei: 'Simples Nacional | MEI',
+  simples_mei: 'Simples Nacional',
   dctfweb: 'DCTFWeb',
   installments: 'Parcelamentos',
   sitfis: 'Situação Fiscal',
@@ -62,8 +62,8 @@ export const FISCAL_MODULE_LABELS: Record<FiscalModuleKey, string> = {
 
 export const FISCAL_MODULE_PATHS: Record<FiscalModuleKey, string> = {
   dashboard: '/monitoring',
-  /** Path = item da sidebar; tabs PGDASD/PGMEI… via query `submodule`. */
-  simples_mei: '/monitoring/simples-mei',
+  /** Path = item da sidebar (MEI desacoplado em /monitoring/mei). */
+  simples_mei: '/monitoring/simples',
   dctfweb: '/monitoring/dctfweb',
   installments: '/monitoring/installments',
   sitfis: '/monitoring/sitfis',
@@ -538,6 +538,8 @@ export interface FiscalClientRowBase<
   display_name?: string | null
   /** display_name || legal_name */
   name?: string | null
+  /** CNPJ normalizado (14 chars) para exibição/cópia; cnpj_masked permanece por compat. */
+  cnpj?: string | null
   cnpj_masked: string
   root_cnpj_masked?: string | null
   competence?: string | null
@@ -581,6 +583,12 @@ export type PgdasdDeclarationState
     | 'OVERDUE_NOT_FOUND'
     | 'UNVERIFIED'
 
+export type PgdasdDasPaymentState
+  = | 'PAID'
+    | 'UNPAID'
+    | 'NO_DAS'
+    | 'UNVERIFIED'
+
 export type PgdasdRbt12Status
   = | 'PENDING'
     | 'PARSED'
@@ -612,11 +620,14 @@ export interface PgdasdLatestDeclaration {
 
 export interface PgdasdRbt12Summary {
   status?: PgdasdRbt12Status | string | null
+  period_key?: string | null
   /** Valor monetário formatável (string decimal) — preferido na API atual. */
   rbt12_value?: string | null
   total_cents?: number | null
   internal_market_cents?: number | null
   external_market_cents?: number | null
+  /** RPA do extrato (receita do PA) — informativo; não é o valor do chip RBT12. */
+  rpa_cents?: number | null
   composition?: {
     internal_market_cents?: number | null
     external_market_cents?: number | null
@@ -633,17 +644,26 @@ export interface PgdasdRbt12Summary {
   unavailable_reason?: string | null
 }
 
-/** Preferência pública: intenção registrada, sem envio efetivo nesta capacidade. */
+/** Preferência pública de comunicação (canais + intenção automática + elegibilidade de envio). */
 export interface PgdasdCommunicationPreference {
   client_id?: number | null
   automatic_requested: boolean
-  automatic_effective: false
+  automatic_effective: boolean
   email_enabled: boolean
   whatsapp_enabled: boolean
   lock_version: number
   execution_mode: 'TEMPLATE_ONLY'
   eligible_channels?: PgdasdCommunicationChannel[]
   tracking_status?: PgdasdTrackingStatus | string | null
+  /** Canal + docs elegíveis — UI pode habilitar Send mesmo com provider off (fila). */
+  can_send?: boolean
+  /** Provider externo ligado (config fail-closed). */
+  provider_enabled?: boolean
+}
+
+export interface PgdasdPaymentOpenCompetency {
+  period_key: string
+  amount_cents?: number | null
 }
 
 export interface PgdasdClientSummary {
@@ -653,6 +673,14 @@ export interface PgdasdClientSummary {
   declaration_state_reason?: string | null
   /** Alias transitório aceito durante deploy escalonado. */
   declaration_reason?: string | null
+  /** Pagamento dos DAS do PA esperado (eixo ortogonal à entrega; UI: coluna Situação). */
+  payment_state?: PgdasdDasPaymentState | string | null
+  payment_state_reason?: string | null
+  payment_das_count?: number | null
+  payment_unpaid_count?: number | null
+  payment_paid_count?: number | null
+  /** Competências com DAS unpaid no histórico local do cliente (não só o PA esperado). */
+  payment_open_competencies?: PgdasdPaymentOpenCompetency[]
   last_valid_query_at?: string | null
   rbt12?: PgdasdRbt12Summary | null
   /** Documentos PGDAS-D já persistidos; nunca contém bytes ou referência ao cofre. */
@@ -1007,6 +1035,9 @@ export interface RegimeResolutionPayload {
 export interface PgdasdArtifactDescriptor {
   id: number
   kind?: string | null
+  period_key?: string | null
+  declaration_number?: string | null
+  das_number?: string | null
   filename?: string | null
   content_type?: string | null
   byte_size?: number | null
@@ -1068,7 +1099,9 @@ export interface PgdasdCommunicationPreview {
   client?: { id?: number | null, legal_name?: string | null } | null
   period_key?: string | null
   execution_mode: 'TEMPLATE_ONLY'
-  can_send: false
+  can_send: boolean
+  automatic_effective?: boolean
+  provider_enabled?: boolean
   channels?: Array<{
     channel: PgdasdCommunicationChannel | string
     enabled: boolean
@@ -1119,12 +1152,22 @@ export interface SimplesMeiClientDetail {
     numero_declaracao?: string | null
     operation_kind?: string | null
   } | null
+  payment_state?: PgdasdDasPaymentState | string | null
+  payment_state_reason?: string | null
+  payment_das_count?: number | null
+  payment_unpaid_count?: number | null
+  payment_paid_count?: number | null
+  payment_open_competencies?: PgdasdPaymentOpenCompetency[]
   rbt12?: PgdasdRbt12Summary | null
   last_productive_consulted_at?: string | null
   /** Alias transitório dos documentos de detail.pgdasd durante deploy escalonado. */
   documents?: PgdasdArtifactDescriptor[]
   communication?: PgdasdCommunicationPreference | null
   links?: Record<string, string | null>
+  /** Projeção oficial e-CAC (sem egress na listagem). */
+  procuracao_status?: 'authorized' | 'expiring' | 'missing' | 'expired' | 'unverified' | 'verifying' | 'failed' | string | null
+  procuracao_valid_to?: string | null
+  procuracao_checked_at?: string | null
 }
 
 export type DctfwebDeclarationState
@@ -1268,6 +1311,8 @@ export interface DctfwebClientDetail {
     encerramento_status?: string | null
     dctfweb_transmission_status?: string | null
     situation?: string | null
+    /** Preferência isolada da cápsula MIT (enrichment futuro); ausente até o backend expor. */
+    communication?: PgdasdCommunicationPreference | null
   } | null
   links?: Record<string, string | null>
 }
@@ -1296,7 +1341,69 @@ export interface SitfisClientDetail {
   is_expired?: boolean
   findings_count?: number
   pending_count?: number
+  /** Wrapper de comunicação SITFIS (core compartilhado); ausente = controles desabilitados. */
+  communication?: PgdasdCommunicationPreference | null
   links?: Record<string, string | null>
+}
+
+/** Resposta tipada de GET /api/v1/fiscal/sitfis */
+export interface SitfisShowResponse {
+  snapshot?: Record<string, unknown> | null
+  situation?: string | null
+  protocol?: string | null
+  coverage?: string | null
+  evidence_artifact_id?: number | null
+  age_seconds?: number | null
+  observed_at?: string | null
+  expires_at?: string | null
+  next_refresh_at?: string | null
+  ttl_seconds?: number | null
+  is_within_ttl?: boolean
+  can_refresh?: boolean
+  block_reason?: string | null
+  source_provenance?: string | null
+  verification_state?: string | null
+  is_negative_certificate?: boolean
+  disclaimer?: string | null
+  active_run?: Record<string, unknown> | null
+  last_failed_run?: Record<string, unknown> | null
+  display_only?: boolean
+  error_code?: string | null
+  error_message?: string | null
+  links?: {
+    evidence_download?: string | null
+  } | null
+  cache_key_hint?: string | null
+}
+
+export interface SitfisHistorySearch {
+  id: number
+  observed_at: string | null
+  situation?: string | null
+  version: number
+  is_current: boolean
+  evidence_artifact_id: number | null
+  links?: {
+    evidence_download?: string | null
+  } | null
+}
+
+export interface SitfisHistoryPayload {
+  client: {
+    id: number
+    legal_name: string
+    cnpj_masked?: string | null
+  }
+  searches: SitfisHistorySearch[]
+}
+
+/** Resposta tipada de POST /api/v1/fiscal/sitfis/refresh */
+export interface SitfisRefreshResponse {
+  enqueued: boolean
+  reused_snapshot?: boolean
+  reason?: string | null
+  run?: Record<string, unknown> | null
+  situation?: SitfisShowResponse | null
 }
 
 export interface MailboxClientDetail {
@@ -1357,6 +1464,8 @@ export interface FgtsClientDetail {
   coverage?: string | null
   last_synced_at?: string | null
   partial_coverage_notice?: string | null
+  /** Enrichment futuro (wrapper de comunicação FGTS); ausente até o backend expor. */
+  communication?: PgdasdCommunicationPreference | null
   links?: Record<string, string | null>
 }
 
@@ -1406,13 +1515,18 @@ export interface FiscalModulePortfolioFilters {
   /** Ano-calendário da projeção PGMEI; omitido nas demais cápsulas. */
   year?: number
   delivery_status?: string
+  /**
+   * Envio de comunicação PGDAS-D: `sent` | `not_sent` (CSV).
+   * Só aplica em simples_mei + PGDASD.
+   */
+  send_status?: string
   /** Um id ou CSV "1,2,3" (multi-cliente no portfolio). */
   client_id?: number | string
   /** Cobertura (FULL / PARTIAL / …) — ModulePortfolioFilters backend. */
   coverage?: string
   /** Modalidade de parcelamento (PARCSN, …) — só installments. */
   modality?: string
-  sort?: 'legal_name' | 'display_name' | 'situation' | 'last_consulted_at' | 'competence' | 'id' | string
+  sort?: 'legal_name' | 'display_name' | 'situation' | 'last_declaration' | 'rbt12' | 'last_consulted_at' | 'competence' | 'id' | string
   sort_direction?: 'asc' | 'desc'
 }
 
@@ -1427,6 +1541,8 @@ export interface MonitoringFilterValue {
    */
   clientIds: number[]
   deliveryStatus: string
+  /** Envio comunicação PGDAS: sent | not_sent | all (CSV multi). */
+  sendStatus: string
   paymentStatus: string
   status: string
   /** Cobertura FULL|PARTIAL|…; default 'all'. */
@@ -1458,7 +1574,7 @@ export type MonitoringStructuredFilterField
     multiple?: boolean
   }
   | {
-    key: 'deliveryStatus' | 'paymentStatus' | 'status' | 'coverage' | 'modality'
+    key: 'deliveryStatus' | 'sendStatus' | 'paymentStatus' | 'status' | 'coverage' | 'modality'
     kind: 'option'
     label: string
     items: Array<{ label: string, value: string }>
@@ -1541,12 +1657,6 @@ export type FiscalTableEmptyKind
     | 'unsupported'
     | 'blocked'
     | 'filtered'
-
-/** Submódulos de UI (tabs) → valor de filtro da API. */
-export const SIMPLES_MEI_TABS = [
-  { label: 'Simples Nacional', badge: 'PGDAS-D', value: 'PGDASD' },
-  { label: 'MEI', badge: 'PGMEI', value: 'PGMEI' }
-] as const
 
 export const DCTFWEB_TABS = [
   { label: 'DCTFWeb', value: 'DCTFWEB' },

@@ -1,8 +1,9 @@
 /**
  * Redireciona paths legados `/monitoring/{modulo}/{submodule}` para o path
- * limpo do item da sidebar (sem query). Tabs são estado local da página.
+ * para a superfície canônica correspondente (sem query).
  *
- * Canônico: `/monitoring/simples-mei`, `/monitoring/dctfweb`
+ * Canônico: `/monitoring/simples`, `/monitoring/mei`, `/monitoring/dctfweb`
+ * Legado: `/monitoring/simples-mei` (+ submodule) ainda redireciona.
  */
 export default defineNuxtRouteMiddleware((to) => {
   const moduleKey = to.path.startsWith('/monitoring/dctfweb')

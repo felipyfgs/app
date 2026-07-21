@@ -7,6 +7,8 @@ const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const repoRoot = resolve(webRoot, '../..')
 const project = process.env.E2E_COMPOSE_PROJECT || 'fiscal-monitor-e2e'
 const composeArgs = ['compose', '-p', project, '-f', 'docker-compose.yml']
+const playwrightArgs = process.argv.slice(2).filter(argument => argument !== '--')
+const e2eWebPort = process.env.E2E_WEB_PORT || '13000'
 const env = {
   ...process.env,
   COMPOSE_PROJECT_NAME: project,
@@ -15,13 +17,19 @@ const env = {
   APP_ENV: 'testing',
   DB_DATABASE: 'nfse_e2e',
   E2E_API_PORT: process.env.E2E_API_PORT || '18080',
-  E2E_WEB_PORT: process.env.E2E_WEB_PORT || '13000',
+  E2E_WEB_PORT: e2eWebPort,
   E2E_POSTGRES_PORT: process.env.E2E_POSTGRES_PORT || '15432',
   E2E_REDIS_PORT: process.env.E2E_REDIS_PORT || '16379',
   POSTGRES_PORT: process.env.E2E_POSTGRES_PORT || '15432',
   REDIS_PORT: process.env.E2E_REDIS_PORT || '16379',
   APP_PORT: process.env.E2E_API_PORT || '18080',
-  FRONTEND_DEV_PORT: process.env.E2E_WEB_PORT || '13000',
+  FRONTEND_DEV_PORT: e2eWebPort,
+  SANCTUM_STATEFUL_DOMAINS: process.env.SANCTUM_STATEFUL_DOMAINS || `127.0.0.1:${e2eWebPort},localhost:${e2eWebPort},127.0.0.1,localhost`,
+  FISCAL_DEMO_OFFICE_SLUG: 'contador',
+  FISCAL_DEMO_SENTINEL_SLUG: 'plataforma',
+  WORK_DEMO_OFFICE_SLUG: 'contador',
+  WORK_DEMO_SENTINEL_SLUG: 'plataforma',
+  FISCAL_MONITORING_MUTATING_ENABLED: 'false',
   FISCAL_KILL_SWITCH: 'true'
 }
 
@@ -74,7 +82,18 @@ async function waitFor(url, timeoutMs = 120_000) {
 let nuxtProcess
 try {
   await run('docker', [...composeArgs, 'up', '-d', '--build', 'postgres', 'redis', 'php', 'nginx'])
-  await run('docker', [...composeArgs, 'exec', '-T', 'php', 'php', 'artisan', 'migrate:fresh', '--force', '--seed', '--seeder=FiscalMonitoringE2ESeeder'])
+  await run('docker', [
+    ...composeArgs,
+    'exec',
+    '-T',
+    '-e', 'FISCAL_DEMO_OFFICE_SLUG=contador',
+    '-e', 'FISCAL_DEMO_SENTINEL_SLUG=plataforma',
+    '-e', 'WORK_DEMO_OFFICE_SLUG=contador',
+    '-e', 'WORK_DEMO_SENTINEL_SLUG=plataforma',
+    '-e', 'FISCAL_MONITORING_MUTATING_ENABLED=false',
+    'php',
+    'php', 'artisan', 'migrate:fresh', '--force', '--seed', '--seeder=FiscalMonitoringE2ESeeder'
+  ])
   await waitFor(`http://127.0.0.1:${env.E2E_API_PORT}/up`)
   nuxtProcess = start('corepack', ['pnpm', 'exec', 'nuxt', 'dev', '--host', '127.0.0.1', '--port', env.E2E_WEB_PORT], {
     cwd: webRoot,
@@ -87,7 +106,7 @@ try {
     }
   })
   await waitFor(`http://127.0.0.1:${env.E2E_WEB_PORT}/login`)
-  await run('corepack', ['pnpm', 'exec', 'playwright', 'test'], { cwd: webRoot })
+  await run('corepack', ['pnpm', 'exec', 'playwright', 'test', ...playwrightArgs], { cwd: webRoot })
 } finally {
   await stop(nuxtProcess)
   if (process.env.E2E_KEEP_STACK !== 'true') {

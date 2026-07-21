@@ -280,7 +280,12 @@ onBeforeUnmount(clearTimers)
         />
 
         <section v-if="activeService === 'ccmei'" class="space-y-4" data-testid="ccmei-service">
-          <UAlert v-if="ccmeiError" color="warning" icon="i-lucide-triangle-alert" :title="ccmeiError" />
+          <UAlert
+            v-if="ccmeiError"
+            color="warning"
+            icon="i-lucide-triangle-alert"
+            :title="ccmeiError"
+          />
           <ShellLoadingModalBody v-if="ccmeiLoading && !ccmeiHistory && !registrationHistory" :rows="3" />
 
           <div v-else class="grid gap-4 md:grid-cols-2">
@@ -288,21 +293,53 @@ onBeforeUnmount(clearTimers)
               <template #header>
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h3 class="font-medium text-highlighted">Dados CCMEI</h3>
-                    <p class="text-xs text-muted">Snapshot sanitizado de DADOSCCMEI.</p>
+                    <h3 class="font-medium text-highlighted">
+                      Dados CCMEI
+                    </h3>
+                    <p class="text-xs text-muted">
+                      Snapshot sanitizado de DADOSCCMEI.
+                    </p>
                   </div>
                   <MonitoringQueryStateBadge :state="ccmeiState" />
                 </div>
               </template>
               <dl v-if="ccmeiHistory?.current" class="space-y-2 text-sm">
-                <div class="flex justify-between gap-3"><dt class="text-muted">Situação</dt><dd class="font-medium">{{ ccmeiHistory.current.situation || '—' }}</dd></div>
-                <div class="flex justify-between gap-3"><dt class="text-muted">Status</dt><dd>{{ ccmeiHistory.current.status || '—' }}</dd></div>
-                <div class="flex justify-between gap-3"><dt class="text-muted">Observado em</dt><dd>{{ formatDateTime(ccmeiHistory.current.last_valid_query_at) }}</dd></div>
-                <div class="flex justify-between gap-3"><dt class="text-muted">Fonte</dt><dd>{{ ccmeiHistory.current.source_provenance || ccmeiHistory.provenance?.source || '—' }}</dd></div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Situação
+                  </dt><dd class="font-medium">
+                    {{ ccmeiHistory.current.situation || '—' }}
+                  </dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Status
+                  </dt><dd>{{ ccmeiHistory.current.status || '—' }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Observado em
+                  </dt><dd>{{ formatDateTime(ccmeiHistory.current.last_valid_query_at) }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Fonte
+                  </dt><dd>{{ ccmeiHistory.current.source_provenance || ccmeiHistory.provenance?.source || '—' }}</dd>
+                </div>
               </dl>
-              <p v-else class="text-sm text-muted">Nenhum snapshot CCMEI armazenado.</p>
+              <p v-else class="text-sm text-muted">
+                Nenhum snapshot CCMEI armazenado.
+              </p>
               <template v-if="canRefresh" #footer>
-                <UButton size="sm" color="primary" variant="soft" icon="i-lucide-refresh-cw" label="Consultar dados" :loading="ccmeiLoading" @click="consultCcmei('summary')" />
+                <UButton
+                  size="sm"
+                  color="primary"
+                  variant="soft"
+                  icon="i-lucide-refresh-cw"
+                  label="Consultar dados"
+                  :loading="ccmeiLoading"
+                  @click="consultCcmei('summary')"
+                />
               </template>
             </UCard>
 
@@ -310,68 +347,179 @@ onBeforeUnmount(clearTimers)
               <template #header>
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h3 class="font-medium text-highlighted">Situação cadastral</h3>
-                    <p class="text-xs text-muted">Enquadramento e ocorrências cadastrais.</p>
+                    <h3 class="font-medium text-highlighted">
+                      Situação cadastral
+                    </h3>
+                    <p class="text-xs text-muted">
+                      Enquadramento e ocorrências cadastrais.
+                    </p>
                   </div>
                   <MonitoringQueryStateBadge :state="registrationState" />
                 </div>
               </template>
               <dl v-if="registrationHistory?.current" class="space-y-2 text-sm">
-                <div class="flex justify-between gap-3"><dt class="text-muted">Enquadrado MEI</dt><dd class="font-medium">{{ registrationHistory.current.enquadrado_mei ? 'Sim' : 'Não' }}</dd></div>
-                <div class="flex justify-between gap-3"><dt class="text-muted">Situação</dt><dd>{{ registrationHistory.current.situation || '—' }}</dd></div>
-                <div class="flex justify-between gap-3"><dt class="text-muted">Ocorrências</dt><dd>{{ registrationHistory.current.count }}</dd></div>
-                <div class="flex justify-between gap-3"><dt class="text-muted">Observado em</dt><dd>{{ formatDateTime(registrationHistory.current.observed_at) }}</dd></div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Enquadrado MEI
+                  </dt><dd class="font-medium">
+                    {{ registrationHistory.current.enquadrado_mei ? 'Sim' : 'Não' }}
+                  </dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Situação
+                  </dt><dd>{{ registrationHistory.current.situation || '—' }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Ocorrências
+                  </dt><dd>{{ registrationHistory.current.count }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted">
+                    Observado em
+                  </dt><dd>{{ formatDateTime(registrationHistory.current.observed_at) }}</dd>
+                </div>
               </dl>
-              <p v-else class="text-sm text-muted">Nenhuma situação cadastral armazenada.</p>
+              <p v-else class="text-sm text-muted">
+                Nenhuma situação cadastral armazenada.
+              </p>
               <template v-if="canRefresh" #footer>
-                <UButton size="sm" color="primary" variant="soft" icon="i-lucide-refresh-cw" label="Consultar situação" :loading="ccmeiLoading" @click="consultCcmei('registration')" />
+                <UButton
+                  size="sm"
+                  color="primary"
+                  variant="soft"
+                  icon="i-lucide-refresh-cw"
+                  label="Consultar situação"
+                  :loading="ccmeiLoading"
+                  @click="consultCcmei('registration')"
+                />
               </template>
             </UCard>
           </div>
 
           <section class="space-y-2">
             <div>
-              <h3 class="text-sm font-medium text-highlighted">Certificados CCMEI já coletados</h3>
-              <p class="text-xs text-muted">A lista não gera novo certificado.</p>
+              <h3 class="text-sm font-medium text-highlighted">
+                Certificados CCMEI já coletados
+              </h3>
+              <p class="text-xs text-muted">
+                A lista não gera novo certificado.
+              </p>
             </div>
             <ul v-if="certificateHistory?.certificates?.length" class="divide-y divide-default rounded-lg border border-default">
               <li v-for="certificate in certificateHistory.certificates" :key="certificate.id" class="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
                 <span>Certificado #{{ certificate.id }} · {{ formatDateTime(certificate.observed_at) }} · {{ certificate.source_provenance || 'fonte local' }}</span>
-                <UButton size="xs" color="neutral" variant="outline" icon="i-lucide-download" label="Baixar certificado existente" :to="certificateDownloadPath(certificate.id)" external target="_blank" rel="noopener noreferrer" />
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-download"
+                  label="Baixar certificado existente"
+                  :to="certificateDownloadPath(certificate.id)"
+                  external
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
               </li>
             </ul>
-            <p v-else class="text-sm text-muted">Nenhum certificado CCMEI coletado.</p>
+            <p v-else class="text-sm text-muted">
+              Nenhum certificado CCMEI coletado.
+            </p>
           </section>
         </section>
 
         <section v-else class="space-y-4" data-testid="mei-dasn-service">
           <div class="flex flex-wrap items-end gap-3">
             <UFormField label="Ano-calendário" name="dasn-year">
-              <UInputNumber v-model="dasnYear" :min="2009" :max="2100" :format-options="{ useGrouping: false }" class="w-36" />
+              <UInputNumber
+                v-model="dasnYear"
+                :min="2009"
+                :max="2100"
+                :format-options="{ useGrouping: false }"
+                class="w-36"
+              />
             </UFormField>
-            <UCheckbox v-model="includeFullReceipt" label="Buscar recibo integral quando disponível" class="min-h-8 pb-1" :disabled="!canRefresh" />
+            <UCheckbox
+              v-model="includeFullReceipt"
+              label="Buscar recibo integral quando disponível"
+              class="min-h-8 pb-1"
+              :disabled="!canRefresh"
+            />
             <div class="ml-auto flex items-center gap-2">
               <MonitoringQueryStateBadge :state="dasnState" />
-              <UButton icon="i-lucide-refresh-cw" color="neutral" variant="outline" aria-label="Atualizar histórico DASN-SIMEI" :loading="dasnLoading" @click="loadDasnHistory()" />
-              <UButton v-if="canRefresh" icon="i-lucide-search" color="primary" label="Consultar" :loading="dasnLoading || dasnPolling" @click="consultDasn" />
+              <UButton
+                icon="i-lucide-refresh-cw"
+                color="neutral"
+                variant="outline"
+                aria-label="Atualizar histórico DASN-SIMEI"
+                :loading="dasnLoading"
+                @click="loadDasnHistory()"
+              />
+              <UButton
+                v-if="canRefresh"
+                icon="i-lucide-search"
+                color="primary"
+                label="Consultar"
+                :loading="dasnLoading || dasnPolling"
+                @click="consultDasn"
+              />
             </div>
           </div>
 
-          <UAlert v-if="dasnError" color="error" icon="i-lucide-circle-x" :title="dasnError" />
+          <UAlert
+            v-if="dasnError"
+            color="error"
+            icon="i-lucide-circle-x"
+            :title="dasnError"
+          />
           <UProgress v-if="dasnPolling" animation="carousel" aria-label="Consulta DASN-SIMEI em processamento" />
           <ShellLoadingModalBody v-if="dasnLoading && !dasnHistory" :rows="2" />
 
           <div v-else-if="dasnHistory?.declarations.length" class="overflow-x-auto">
             <table class="w-full min-w-[640px] text-left text-sm">
-              <thead class="text-xs text-muted"><tr><th class="pb-2 pr-3 font-medium">Ano</th><th class="pb-2 pr-3 font-medium">Situação</th><th class="pb-2 pr-3 font-medium">Transmissão</th><th class="pb-2 pr-3 font-medium">Cobertura</th><th class="pb-2 text-right font-medium">Evidência</th></tr></thead>
+              <thead class="text-xs text-muted">
+                <tr>
+                  <th class="pb-2 pr-3 font-medium">
+                    Ano
+                  </th><th class="pb-2 pr-3 font-medium">
+                    Situação
+                  </th><th class="pb-2 pr-3 font-medium">
+                    Transmissão
+                  </th><th class="pb-2 pr-3 font-medium">
+                    Cobertura
+                  </th><th class="pb-2 text-right font-medium">
+                    Evidência
+                  </th>
+                </tr>
+              </thead>
               <tbody>
                 <tr v-for="declaration in dasnHistory.declarations" :key="`${declaration.calendar_year}-${declaration.transmitted_at || declaration.status}`" class="border-t border-default">
-                  <td class="py-3 pr-3 tabular-nums">{{ declaration.calendar_year }}</td>
-                  <td class="py-3 pr-3 font-medium">{{ declaration.status }}</td>
-                  <td class="py-3 pr-3">{{ formatDateTime(declaration.transmitted_at) }}</td>
-                  <td class="py-3 pr-3"><UBadge :color="coverageMeta(declaration.coverage).color" :label="coverageMeta(declaration.coverage).label" variant="subtle" /></td>
+                  <td class="py-3 pr-3 tabular-nums">
+                    {{ declaration.calendar_year }}
+                  </td>
+                  <td class="py-3 pr-3 font-medium">
+                    {{ declaration.status }}
+                  </td>
+                  <td class="py-3 pr-3">
+                    {{ formatDateTime(declaration.transmitted_at) }}
+                  </td>
+                  <td class="py-3 pr-3">
+                    <UBadge :color="coverageMeta(declaration.coverage).color" :label="coverageMeta(declaration.coverage).label" variant="subtle" />
+                  </td>
                   <td class="py-3 text-right">
-                    <UButton v-if="hasIntegralDasnReceipt(declaration.coverage, declaration.receipt_available) && declaration.artifact?.href" icon="i-lucide-download" color="neutral" variant="outline" size="xs" label="Recibo" :to="declaration.artifact.href" external target="_blank" rel="noopener noreferrer" />
+                    <UButton
+                      v-if="hasIntegralDasnReceipt(declaration.coverage, declaration.receipt_available) && declaration.artifact?.href"
+                      icon="i-lucide-download"
+                      color="neutral"
+                      variant="outline"
+                      size="xs"
+                      label="Recibo"
+                      :to="declaration.artifact.href"
+                      external
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
                     <span v-else class="text-xs text-muted">Resumo público</span>
                   </td>
                 </tr>

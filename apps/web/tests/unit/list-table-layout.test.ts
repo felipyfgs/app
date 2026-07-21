@@ -32,25 +32,41 @@ describe('list-table-layout (customers.vue @ 0f30c09)', () => {
     expect(source).toContain('w-full')
   })
 
-  it('carteiras fiscais usam Cliente w-full (sem faixa vazia em table-fixed)', () => {
+  it('carteiras fiscais usam Cliente w-full max-w-0 (ellipsis sem scroll horizontal)', () => {
     for (const rel of [
       'app/utils/pgdasd-table.ts',
       'app/utils/pgmei-table.ts',
-      'app/utils/sitfis-table.ts'
+      'app/utils/sitfis-table.ts',
+      'app/utils/dctfweb-table.ts',
+      'app/utils/declarations-table.ts'
     ]) {
       const source = readFileSync(resolve(process.cwd(), rel), 'utf8')
-      expect(source, rel).toContain('min-w-48 w-full')
+      expect(source, rel).toContain('MONITORING_CLIENT_COLUMN_META')
+      expect(source, rel).not.toContain('min-w-48 w-full')
       expect(source, rel).not.toMatch(/w-\[\d+%\]/)
     }
+    const metaSource = readFileSync(
+      resolve(process.cwd(), 'app/utils/monitoring-table-columns.ts'),
+      'utf8'
+    )
+    expect(metaSource).toContain('th: \'w-full max-w-0\'')
+    expect(metaSource).toContain('td: \'w-full max-w-0 overflow-hidden\'')
+
+    const portfolio = readFileSync(
+      resolve(process.cwd(), 'app/components/monitoring/simples-mei/Portfolio.vue'),
+      'utf8'
+    )
+    expect(portfolio).toContain(':horizontal-scroll="false"')
   })
 
-  it('PGDAS-D/PGMEI mantêm comunicação somente informativa na coluna Ações', () => {
+  it('PGDAS-D/PGMEI usam Ações só ⋮ (sem ícones de preview/info na grade)', () => {
     for (const rel of ['app/utils/pgdasd-table.ts', 'app/utils/pgmei-table.ts']) {
       const source = readFileSync(resolve(process.cwd(), rel), 'utf8')
       expect(source, rel).toContain('id: \'actions\'')
       expect(source, rel).not.toMatch(/id:\s*'send'/)
-      expect(source, rel).toContain('communication-info')
-      expect(source, rel).toContain('communication-preferences')
+      expect(source, rel).not.toContain('communication-info')
+      expect(source, rel).toContain('Editar cliente')
+      expect(source, rel).toContain('Preferências de comunicação')
       expect(source, rel).not.toContain('AutomaticSwitch')
       expect(source, rel).not.toContain('BulkAutomaticSwitch')
     }
@@ -119,7 +135,7 @@ describe('list-table-layout (customers.vue @ 0f30c09)', () => {
     expect(moduleSource).not.toContain('DEFAULT_SCROLL_MIN_WIDTH')
 
     const monitoringPages = [
-      'app/pages/monitoring/simples-mei/index.vue',
+      'app/pages/monitoring/simples/index.vue',
       'app/pages/monitoring/dctfweb/index.vue',
       'app/pages/monitoring/guides.vue',
       'app/pages/monitoring/fgts.vue',
@@ -133,7 +149,7 @@ describe('list-table-layout (customers.vue @ 0f30c09)', () => {
     }
   })
 
-  it('carteiras com comunicação alinham Ações · Rastreio · Última consulta', () => {
+  it('carteiras com comunicação alinham Comunicação · Consulta · Ações', () => {
     for (const rel of [
       'app/utils/pgdasd-table.ts',
       'app/utils/pgmei-table.ts',
@@ -141,20 +157,33 @@ describe('list-table-layout (customers.vue @ 0f30c09)', () => {
     ]) {
       const source = readFileSync(resolve(process.cwd(), rel), 'utf8')
       expect(source, rel).toContain('MONITORING_CONSULTED_LABEL')
-      expect(source, rel).toContain('MONITORING_TRACKING_LABEL')
+      expect(source, rel).toContain('buildMonitoringComunicacaoColumn')
       expect(source, rel).toContain('MONITORING_ACTIONS_LABEL')
       expect(source, rel).not.toMatch(/id:\s*'send'/)
       expect(source, rel).not.toContain('Última Busca')
+      expect(source, rel).not.toContain('Hist. comunicação')
     }
   })
 
-  it('Simples MEI tracking é um único atalho (sem trio status+download+search)', () => {
+  it('Simples MEI/DCTFWeb usam prefixo de teste próprio na coluna Comunicação', () => {
     for (const rel of ['app/utils/pgdasd-table.ts', 'app/utils/pgmei-table.ts']) {
       const source = readFileSync(resolve(process.cwd(), rel), 'utf8')
       expect(source, rel).not.toContain('pgdasd-tracking-attachment')
       expect(source, rel).not.toContain('pgmei-tracking-attachment')
       expect(source, rel).not.toContain('pgdasd-artifacts-menu')
-      expect(source, rel).toMatch(/testId: 'pgdasd-tracking'|testId: 'pgmei-tracking'/)
+      expect(source, rel).toMatch(/testIdPrefix: 'pgdasd-tracking'|testIdPrefix: 'pgmei-tracking'/)
+    }
+  })
+
+  it('carteiras não expõem coluna Histórico na grade (só no menu Ações)', () => {
+    for (const rel of [
+      'app/utils/pgdasd-table.ts',
+      'app/utils/pgmei-table.ts',
+      'app/utils/dctfweb-table.ts',
+      'app/utils/sitfis-table.ts'
+    ]) {
+      const source = readFileSync(resolve(process.cwd(), rel), 'utf8')
+      expect(source, rel).not.toMatch(/id:\s*'history'/)
     }
   })
 })

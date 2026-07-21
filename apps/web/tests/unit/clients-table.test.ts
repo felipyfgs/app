@@ -78,8 +78,8 @@ describe('clients-table', () => {
     expect(labels.tax_regime).toBe('Regime tributário')
   })
 
-  it('chip A1 resume validade sem inventar status', () => {
-    const withA1 = clientCredentialInfo({
+  it('chip de certificado resume validade sem inventar status', () => {
+    const withCredential = clientCredentialInfo({
       id: 1,
       name: 'Cliente',
       legal_name: 'Cliente LTDA',
@@ -89,18 +89,18 @@ describe('clients-table', () => {
       }
     } as Client)
 
-    expect(withA1.hasCredential).toBe(true)
-    expect(withA1.color).toBe('success')
-    expect(withA1.chipLabel).toContain('Válido até')
+    expect(withCredential.hasCredential).toBe(true)
+    expect(withCredential.color).toBe('success')
+    expect(withCredential.chipLabel).toContain('Válido até')
 
-    const withoutA1 = clientCredentialInfo({
+    const withoutCredential = clientCredentialInfo({
       id: 2,
-      name: 'Sem A1',
-      legal_name: 'Sem A1 LTDA'
+      name: 'Sem certificado',
+      legal_name: 'Sem certificado LTDA'
     } as Client)
 
-    expect(withoutA1).toEqual({
-      chipLabel: 'Sem A1',
+    expect(withoutCredential).toEqual({
+      chipLabel: 'Sem certificado',
       color: 'neutral',
       hasCredential: false
     })

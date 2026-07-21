@@ -55,12 +55,18 @@ export function usePgmeiMonitoring() {
     return response.data
   }
 
+  async function requestSend(clientId: number) {
+    const response = await fiscal.pgmei.communication.send(clientId)
+    return response.data
+  }
+
   return {
     fetchHistory,
     requestConsult,
     updatePreferences,
     batchAutomatic,
     fetchPreview,
-    fetchTracking
+    fetchTracking,
+    requestSend
   }
 }

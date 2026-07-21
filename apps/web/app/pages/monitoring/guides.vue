@@ -9,11 +9,14 @@ import type {
   MonitoringFilterConfig,
   MonitoringFilterValue
 } from '~/types/fiscal-modules'
+import { useAuthenticatedDownload } from '~/composables/useAuthenticatedDownload'
+import { fiscalDocumentDownloadFilename } from '~/utils/authenticated-download'
 import { resolveGuideEmissionCodes } from '~/utils/fiscal-high-risk'
 import { sortHeader } from '~/utils/table-sort'
 
 const FiscalStatusBadge = resolveComponent('FiscalStatusBadge')
 const UButton = resolveComponent('UButton')
+const { download: downloadAuthenticated } = useAuthenticatedDownload()
 
 /** payment_status oficiais (TaxGuidePaymentStatus) — independentes de emissão. */
 const PAYMENT_STATUS_ITEMS: Array<{ label: string, value: string }> = [
@@ -43,25 +46,12 @@ const GUIDE_SORT_COLUMN_TO_API = Object.freeze<Record<string, 'client_id' | 'com
   payment: 'payment_status'
 })
 
-const GUIDE_SORT_API_TO_COLUMN = Object.freeze<Record<string, string>>(
-  Object.fromEntries(
-    Object.entries(GUIDE_SORT_COLUMN_TO_API).map(([column, apiField]) => [apiField, column])
-  )
-)
-
 function resolveGuideSortApi(columnId: string | undefined): 'client_id' | 'competence' | 'due_at' | 'amount' | 'payment_status' {
   if (!columnId) return 'due_at'
   return GUIDE_SORT_COLUMN_TO_API[columnId] ?? 'due_at'
 }
 
-function hydrateGuideSortingFromQuery() {
-  const raw = String(route.query.sort || 'due_at')
-  const columnId = GUIDE_SORT_API_TO_COLUMN[raw] ?? (GUIDE_SORT_COLUMN_TO_API[raw] ? raw : 'due')
-  const desc = String(route.query.sort_direction ?? route.query.direction ?? 'desc') !== 'asc'
-  return [{ id: columnId, desc }] as { id: string, desc: boolean }[]
-}
-
-const sorting = ref<{ id: string, desc: boolean }[]>(hydrateGuideSortingFromQuery())
+const sorting = ref<{ id: string, desc: boolean }[]>([{ id: 'due', desc: true }])
 
 const paymentStatus = ref('all')
 
@@ -229,18 +219,11 @@ async function loadOverview() {
   }
 }
 
+/** URL Nuxt path-only — limpa query residual (bookmarks legados). */
 async function syncGuidesUrl() {
-  const sort = sorting.value[0]
-  const apiSort = resolveGuideSortApi(sort?.id)
-  const query: Record<string, string> = {
-    sort: apiSort,
-    sort_direction: sort?.desc ? 'desc' : 'asc'
+  if (Object.keys(route.query).length > 0) {
+    await router.replace({ path: route.path })
   }
-  if (clientId.value) query.client_id = clientId.value
-  if (paymentStatus.value !== 'all') query.payment_status = paymentStatus.value
-  if (page.value > 1) query.page = String(page.value)
-  if (perPage.value !== 20) query.per_page = String(perPage.value)
-  await router.replace({ path: route.path, query })
 }
 
 async function load() {
@@ -484,14 +467,25 @@ const columns: TableColumn<Record<string, unknown>>[] = [
           }))
         }
       } else {
-        const doc = original.document as { href?: string | null, available?: boolean } | null
+        const doc = original.document as {
+          href?: string | null
+          available?: boolean
+          label?: string | null
+          kind?: string | null
+        } | null
         if (doc?.available && doc.href) {
+          const href = doc.href
           children.push(h(UButton, {
             size: 'xs',
             color: 'neutral',
             variant: 'ghost',
             label: 'Documento',
-            to: doc.href
+            onClick: () => {
+              void downloadAuthenticated(
+                href,
+                fiscalDocumentDownloadFilename({ label: doc.label, kind: doc.kind })
+              )
+            }
           }))
         }
       }
@@ -640,7 +634,7 @@ onMounted(() => {
     :data-origin-label="overview?.data_origin_label"
     :source-label="overview?.source_label"
     :as-of="overview?.as_of"
-    :horizontal-scroll="true"
+    :horizontal-scroll="false"
     empty-title="Nenhuma guia"
     :column-labels="{
       system: 'Sistema / tipo',

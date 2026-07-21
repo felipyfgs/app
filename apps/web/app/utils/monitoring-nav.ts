@@ -6,10 +6,15 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 import type { FiscalModuleKey } from '~/types/fiscal-modules'
 import { FISCAL_MODULE_PATHS } from '~/types/fiscal-modules'
 
-export type MonitoringModuleKey = FiscalModuleKey | 'registrations' | 'tax_processes'
+/**
+ * `mei` é uma superfície de navegação própria, mas reutiliza o módulo API
+ * `simples_mei` com o submódulo PGMEI.
+ */
+export type MonitoringModuleKey = FiscalModuleKey | 'mei' | 'registrations' | 'tax_processes'
 export type RoutedMonitoringModuleKey = 'simples_mei' | 'dctfweb'
 
 const MONITORING_EXTRA_PATHS: Record<Exclude<MonitoringModuleKey, FiscalModuleKey>, string> = {
+  mei: '/monitoring/mei',
   registrations: '/monitoring/registrations',
   tax_processes: '/monitoring/tax-processes'
 }
@@ -36,13 +41,19 @@ export const MONITORING_NAV_ITEMS: readonly MonitoringNavItem[] = [
     exact: true
   },
   {
-    id: 'monitoring-simples-mei',
-    label: 'Simples Nacional | MEI',
+    id: 'monitoring-simples',
+    label: 'Simples Nacional',
     icon: 'i-lucide-badge-percent',
-    // Depth = item da sidebar (submódulos PGDASD/PGMEI são tabs, não path).
-    to: '/monitoring/simples-mei',
+    to: '/monitoring/simples',
     moduleKey: 'simples_mei',
-    pathPrefix: '/monitoring/simples-mei'
+    pathPrefix: '/monitoring/simples'
+  },
+  {
+    id: 'monitoring-mei',
+    label: 'MEI',
+    icon: 'i-lucide-badge-check',
+    to: '/monitoring/mei',
+    moduleKey: 'mei'
   },
   {
     id: 'monitoring-dctfweb',
@@ -151,7 +162,7 @@ export function normalizeMonitoringSubmodule(
 
 /** Path do módulo (1:1 com item da sidebar). Tabs internas NÃO entram na URL. */
 export function monitoringModuleBasePath(moduleKey: RoutedMonitoringModuleKey): string {
-  return moduleKey === 'simples_mei' ? '/monitoring/simples-mei' : '/monitoring/dctfweb'
+  return moduleKey === 'simples_mei' ? '/monitoring/simples' : '/monitoring/dctfweb'
 }
 
 /**
@@ -180,12 +191,18 @@ export function monitoringCanonicalQuery(
   return {}
 }
 
-/** Redirect legado `/modulo/:submodule` → path limpo do item da sidebar. */
+/** Redirect legado `/modulo/:submodule` → superfície canônica correspondente. */
 export function monitoringLegacySubmoduleLocation(
   moduleKey: RoutedMonitoringModuleKey,
   _query: Record<string, unknown> = {},
-  _pathSegment?: unknown
+  pathSegment?: unknown
 ) {
+  if (
+    moduleKey === 'simples_mei'
+    && normalizeMonitoringSubmodule('simples_mei', pathSegment) === 'PGMEI'
+  ) {
+    return { path: '/monitoring/mei', query: {} }
+  }
   return monitoringSubmoduleLocation(moduleKey)
 }
 
@@ -194,6 +211,10 @@ export function monitoringNavActiveModule(path: string): MonitoringModuleKey {
   if (p === '/monitoring' || p === '/monitoring/') return 'dashboard'
   // detalhe de cliente fiscal não é item de nav — cai no dashboard
   if (p.startsWith('/monitoring/clients')) return 'dashboard'
+  // Path legado pré-desacoplamento MEI
+  if (p === '/monitoring/simples-mei' || p.startsWith('/monitoring/simples-mei/')) {
+    return 'simples_mei'
+  }
   for (const item of MONITORING_NAV_ITEMS) {
     if (item.exact) {
       if (p === item.to) return item.moduleKey
@@ -228,6 +249,8 @@ export function monitoringNavMenuItems(
 }
 
 export function monitoringPathForModule(key: MonitoringModuleKey): string {
-  if (key === 'registrations' || key === 'tax_processes') return MONITORING_EXTRA_PATHS[key]
+  if (key === 'mei' || key === 'registrations' || key === 'tax_processes') {
+    return MONITORING_EXTRA_PATHS[key]
+  }
   return FISCAL_MODULE_PATHS[key]
 }

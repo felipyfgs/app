@@ -1,69 +1,48 @@
 <script setup lang="ts">
 /**
- * Ações PGDAS-D na toolbar ao selecionar linhas.
- * Consultar (PGDASD) é o atalho primário; menu Ações cobre regime/DEFIS/locais.
+ * Ações PGDAS-D da seleção: Solicitar consulta (com confirmação) + Limpar.
+ * Membership (associar/excluir) fica fora — modal dedicado / ações da linha.
  */
 import type { DropdownMenuItem } from '@nuxt/ui'
-import type { SimplesMeiClientRow } from '~/types/fiscal-modules'
 import {
   buildPgdasdSelectionMenu,
-  type PgdasdActionHandlers,
-  type PgdasdBatchConsultKind
+  type PgdasdActionHandlers
 } from '~/utils/pgdasd-action-items'
 import { COMPACT_BUTTON_LABEL_UI } from '~/utils/list-filter-layout'
 
 const props = defineProps<{
   selectedClientIds: number[]
   selectedCount: number
-  rows: SimplesMeiClientRow[]
-  handlers: PgdasdActionHandlers
+  handlers?: PgdasdActionHandlers
   canConsult?: boolean
 }>()
 
 const emit = defineEmits<{
-  clear: []
-  refresh: []
+  'clear': []
+  'refresh': []
+  'consult-enqueued': [runs: Array<{ clientId: number, runId: number }>]
 }>()
 
-const {
-  requestConsult: requestRegimeCalendar
-} = useRegimeCalendarMonitoring()
-const { requestConsult: requestRegimeOption } = useRegimeOptionMonitoring()
-const { requestConsult: requestRegimeResolution } = useRegimeResolutionMonitoring()
-const { requestConsult: requestDefisConsult } = useDefisDeclarationsMonitoring()
-const { requestConsult: requestDefisLatestConsult } = useDefisLatestDeclarationMonitoring()
 const { enqueueReadUpdate, canTriggerSync } = useMonitoringActions('simples_mei')
 const toast = useToast()
 
 const busy = ref(false)
-const confirmOpen = ref(false)
 const pgdasdConfirmOpen = ref(false)
-const pendingKind = ref<PgdasdBatchConsultKind | null>(null)
-const pendingIds = ref<number[]>([])
 
 const showConsult = computed(() => props.canConsult !== false && canTriggerSync.value)
+const visible = computed(() => props.selectedCount > 0)
 
-const pendingLabel = computed(() => {
-  switch (pendingKind.value) {
-    case 'regime': return 'regimes (CONSULTARANOSCALENDARIOS102)'
-    case 'regime_option': return 'opção anual de regime (CONSULTAROPCAOREGIME103)'
-    case 'regime_resolution': return 'resolução Regime de Caixa (CONSULTARRESOLUCAO104)'
-    case 'defis': return 'declarações DEFIS (CONSDECLARACAO142)'
-    case 'defis_latest': return 'última DEFIS (CONSULTIMADECREC143)'
-    default: return 'consulta SERPRO'
-  }
+const items = computed<DropdownMenuItem[][]>(() => {
+  if (!visible.value) return []
+  return buildPgdasdSelectionMenu({
+    clientIds: props.selectedClientIds,
+    handlers: {
+      onConsult: showConsult.value ? openPgdasdConsultConfirm : undefined
+    },
+    onClear: () => emit('clear'),
+    busy: busy.value
+  })
 })
-
-function openBatchConfirm(kind: PgdasdBatchConsultKind, clientIds: number[]) {
-  if (!clientIds.length || busy.value) return
-  if (clientIds.length > 100) {
-    toast.add({ title: 'Selecione no máximo 100 clientes.', color: 'warning' })
-    return
-  }
-  pendingKind.value = kind
-  pendingIds.value = [...clientIds]
-  confirmOpen.value = true
-}
 
 function openPgdasdConsultConfirm() {
   if (!showConsult.value || !props.selectedCount || busy.value) return
@@ -74,82 +53,23 @@ function openPgdasdConsultConfirm() {
   pgdasdConfirmOpen.value = true
 }
 
-const handlersWithBatch = computed<PgdasdActionHandlers>(() => ({
-  ...props.handlers,
-  onBatchConsult: openBatchConfirm
-}))
-
-const items = computed<DropdownMenuItem[][]>(() => {
-  if (props.selectedCount < 1) return []
-  return buildPgdasdSelectionMenu({
-    clientIds: props.selectedClientIds,
-    rows: props.rows,
-    handlers: handlersWithBatch.value,
-    onClear: () => emit('clear')
-  })
-})
-
-async function runOne(kind: PgdasdBatchConsultKind, clientId: number) {
-  const year = new Date().getFullYear()
-  switch (kind) {
-    case 'regime':
-      await requestRegimeCalendar(clientId)
-      return
-    case 'regime_option':
-      await requestRegimeOption(clientId, year)
-      return
-    case 'regime_resolution':
-      await requestRegimeResolution(clientId, year)
-      return
-    case 'defis':
-      await requestDefisConsult(clientId)
-      return
-    case 'defis_latest':
-      await requestDefisLatestConsult(clientId, year)
-  }
-}
-
-async function confirmBatch() {
-  const kind = pendingKind.value
-  const ids = pendingIds.value
-  if (!kind || !ids.length || busy.value) return
-  busy.value = true
-  let ok = 0
-  let fail = 0
-  try {
-    for (const clientId of ids) {
-      try {
-        await runOne(kind, clientId)
-        ok++
-      } catch {
-        fail++
-      }
-    }
-    toast.add({
-      title: 'Consultas SERPRO enfileiradas',
-      description: `${ok} ok${fail ? ` · ${fail} falha(s)` : ''} de ${ids.length} · ${pendingLabel.value}`,
-      color: fail && !ok ? 'error' : fail ? 'warning' : 'success'
-    })
-    confirmOpen.value = false
-    pendingKind.value = null
-    pendingIds.value = []
-    if (ok) {
-      emit('clear')
-      emit('refresh')
-    }
-  } finally {
-    busy.value = false
-  }
-}
-
 async function confirmPgdasdConsult() {
   if (!showConsult.value || busy.value || !props.selectedClientIds.length) return
   busy.value = true
   let ok = 0
   let fail = 0
+  const enqueued: Array<{ clientId: number, runId: number }> = []
   try {
     for (const clientId of props.selectedClientIds) {
       const run = await enqueueReadUpdate({ client_id: clientId, silent: true })
+      if (run && typeof run === 'object' && 'id' in run) {
+        const runId = Number((run as { id?: number }).id)
+        if (Number.isFinite(runId) && runId > 0) {
+          enqueued.push({ clientId, runId })
+          ok++
+          continue
+        }
+      }
       if (run) ok++
       else fail++
     }
@@ -160,6 +80,7 @@ async function confirmPgdasdConsult() {
     })
     pgdasdConfirmOpen.value = false
     if (ok) {
+      if (enqueued.length) emit('consult-enqueued', enqueued)
       emit('clear')
       emit('refresh')
     }
@@ -171,38 +92,19 @@ async function confirmPgdasdConsult() {
 
 <template>
   <div
-    v-if="selectedCount > 0"
-    class="flex flex-wrap items-center gap-1.5"
+    v-if="visible"
     data-testid="pgdasd-selection-actions"
   >
-    <UButton
-      v-if="showConsult"
-      size="sm"
-      color="primary"
-      variant="soft"
-      icon="i-lucide-refresh-cw"
-      label="Consultar"
-      aria-label="Consultar PGDAS-D dos selecionados"
-      :ui="COMPACT_BUTTON_LABEL_UI"
-      :loading="busy"
-      data-testid="pgdasd-bulk-consult"
-      @click="openPgdasdConsultConfirm"
-    >
-      <template #trailing>
-        <UKbd>{{ selectedCount }}</UKbd>
-      </template>
-    </UButton>
-
     <UDropdownMenu
       :items="items"
       :content="{ align: 'start' }"
     >
       <UButton
         color="neutral"
-        variant="outline"
+        variant="subtle"
         icon="i-lucide-list-checks"
-        label="Mais ações"
-        aria-label="Ações PGDAS-D, regime e DEFIS da seleção"
+        label="Ações"
+        aria-label="Ações em massa"
         :ui="COMPACT_BUTTON_LABEL_UI"
         :loading="busy"
         data-testid="pgdasd-selection-actions-menu"
@@ -219,7 +121,7 @@ async function confirmPgdasdConsult() {
       :description="`Será enfileirada 1 consulta PGDAS-D por cliente (${selectedCount}). Pode ser faturável.`"
       content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
       confirm-label="Confirmar consulta"
-      confirm-icon="i-lucide-refresh-cw"
+      confirm-icon="i-lucide-cloud-download"
       :loading="busy"
       confirm-test-id="pgdasd-bulk-consult-confirm"
       @confirm="confirmPgdasdConsult"
@@ -233,32 +135,6 @@ async function confirmPgdasdConsult() {
         >
           <template #description>
             O hub enfileira MONITOR PGDAS-D por contribuinte selecionado.
-          </template>
-        </UAlert>
-      </template>
-    </ShellConfirmModal>
-
-    <ShellConfirmModal
-      v-model:open="confirmOpen"
-      title="Confirmar consultas SERPRO"
-      :description="`Será feita 1 chamada Consultar por cliente (${pendingIds.length}) — ${pendingLabel}. Pode ser faturável.`"
-      content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
-      confirm-label="Confirmar consultas"
-      confirm-icon="i-lucide-refresh-cw"
-      :loading="busy"
-      confirm-test-id="pgdasd-batch-consult-confirm"
-      @confirm="confirmBatch"
-    >
-      <template #body>
-        <UAlert
-          color="warning"
-          variant="subtle"
-          icon="i-lucide-triangle-alert"
-          title="Uma chamada por CNPJ (Integra Contador)"
-        >
-          <template #description>
-            O catálogo SERPRO não tem lote nativo para essas operações. O hub enfileira
-            uma consulta por contribuinte selecionado.
           </template>
         </UAlert>
       </template>

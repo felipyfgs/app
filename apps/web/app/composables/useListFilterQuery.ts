@@ -88,23 +88,6 @@ export function resolveSortDirection(
   return lower === 'desc' ? 'desc' : 'asc'
 }
 
-export const MONITORING_LIST_QUERY_SCHEMA: ListFilterQuerySchema = {
-  defaults: {
-    q: '',
-    situation: 'all',
-    competence: '',
-    client_id: '',
-    delivery_status: 'all',
-    coverage: 'all',
-    modality: 'all',
-    page: 1,
-    per_page: 20,
-    sort: 'legal_name',
-    sort_direction: 'asc'
-  },
-  numberKeys: ['page', 'per_page']
-}
-
 export const CLIENTS_LIST_QUERY_SCHEMA: ListFilterQuerySchema = {
   defaults: {
     q: '',

@@ -1,20 +1,28 @@
-import type { TableColumn } from '@nuxt/ui'
+import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { h } from 'vue'
 import {
   FiscalClientCell,
   FiscalStatusBadge,
   MonitoringPgdasdDeclarationIndicator
 } from '#components'
-import UButton from '@nuxt/ui/components/Button.vue'
 import UBadge from '@nuxt/ui/components/Badge.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type { DeclarationsClientRow } from '~/types/fiscal-modules'
 import { formatDateTime } from '~/utils/format'
-import { pgdasdDeclarationMeta, formatPgdasdPeriod } from '~/utils/pgdasd'
+import { pgdasdCanRequestAutomatic, pgdasdDeclarationMeta, formatPgdasdPeriod, pgdasdTrackingMeta } from '~/utils/pgdasd'
 import { sortHeader } from '~/utils/table-sort'
 import { tableCellBadgeProps } from '~/utils/table-ui'
 import {
-  MONITORING_SHARED_COLUMN_LABELS
+  buildMonitoringActionsMenuCell,
+  buildMonitoringComunicacaoColumn,
+  MONITORING_ACTIONS_LABEL,
+  MONITORING_ACTIONS_META,
+  MONITORING_CLIENT_COLUMN_META,
+  MONITORING_CONSULTED_ID,
+  MONITORING_CONSULTED_LABEL,
+  MONITORING_CONSULTED_META,
+  MONITORING_SHARED_COLUMN_LABELS,
+  type MonitoringSendColumnState
 } from '~/utils/monitoring-table-columns'
 
 function detailOf(row: DeclarationsClientRow) {
@@ -26,13 +34,54 @@ function clientHref(id: number) {
 }
 
 /**
- * Colunas PGDAS do hub Declarações (fidelidade MonitorHub):
- * Situação da declaração · Últ. Declaração · Cliente · Última Busca · Histórico de Busca
+ * Colunas PGDAS do hub Declarações — spine com declaração:
+ * Situação · Últ. Declaração · Cliente · Comunicação · Consulta · Ações.
  */
 export function buildDeclarationsPgdasColumns(options: {
   onHistory: (row: DeclarationsClientRow) => void
+  onEditClient?: (row: DeclarationsClientRow) => void
+  onTracking?: (row: DeclarationsClientRow) => void
+  onSend?: (row: DeclarationsClientRow) => void
+  onToggleAutomatic?: (row: DeclarationsClientRow, value: boolean) => void
 }): TableColumn<DeclarationsClientRow>[] {
   const DeclarationIndicator = MonitoringPgdasdDeclarationIndicator
+
+  function actionItems(row: DeclarationsClientRow): DropdownMenuItem[][] {
+    const items: DropdownMenuItem[] = [
+      {
+        label: 'Abrir cliente',
+        icon: 'i-lucide-building-2',
+        to: clientHref(row.client_id)
+      }
+    ]
+    if (options.onEditClient) {
+      items.push({
+        label: 'Editar cliente',
+        icon: 'i-lucide-pencil',
+        onSelect: () => options.onEditClient?.(row)
+      })
+    }
+    items.push({
+      label: 'Histórico de busca',
+      icon: 'i-lucide-history',
+      onSelect: () => options.onHistory(row)
+    })
+    return [items]
+  }
+
+  function sendState(row: DeclarationsClientRow): MonitoringSendColumnState {
+    const communication = detailOf(row).pgdasd?.communication || null
+    const tracking = pgdasdTrackingMeta(communication?.tracking_status)
+    return {
+      trackingIcon: tracking.icon,
+      trackingLabel: communication ? tracking.label : 'Sem histórico local',
+      trackingColor: communication ? tracking.color : 'neutral',
+      trackingDisabled: !communication || !options.onTracking,
+      automaticRequested: communication?.automatic_requested === true,
+      canToggleAutomatic: Boolean(options.onToggleAutomatic) && pgdasdCanRequestAutomatic(communication),
+      canSend: communication?.can_send === true && Boolean(options.onSend)
+    }
+  }
 
   return [
     {
@@ -86,20 +135,27 @@ export function buildDeclarationsPgdasColumns(options: {
       id: 'client',
       header: ({ column }) => sortHeader('Cliente', column),
       enableHiding: false,
-      meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
+      meta: { ...MONITORING_CLIENT_COLUMN_META },
       cell: ({ row }) => h(FiscalClientCell, {
         clientId: row.original.client_id,
         name: row.original.name || row.original.display_name,
         legalName: row.original.legal_name,
+        cnpj: row.original.cnpj,
         cnpjMasked: row.original.cnpj_masked,
         to: clientHref(row.original.client_id)
       })
     },
+    buildMonitoringComunicacaoColumn<DeclarationsClientRow>({
+      getState: row => sendState(row),
+      onTracking: row => options.onTracking?.(row),
+      onSend: row => options.onSend?.(row),
+      onToggleAutomatic: (row, value) => options.onToggleAutomatic?.(row, value),
+      testIdPrefix: 'declarations-pgdas-tracking'
+    }),
     {
-      id: 'last_search',
-      header: 'Última Busca',
-      enableSorting: false,
-      meta: { class: { th: 'w-36 min-w-28', td: 'w-36 min-w-28' } },
+      id: MONITORING_CONSULTED_ID,
+      header: ({ column }) => sortHeader(MONITORING_CONSULTED_LABEL, column),
+      meta: { ...MONITORING_CONSULTED_META },
       cell: ({ row }) => {
         const d = detailOf(row.original)
         const at = d.last_valid_query_at
@@ -107,26 +163,21 @@ export function buildDeclarationsPgdasColumns(options: {
           || row.original.last_consulted_at
           || row.original.last_snapshot_at
         return h('span', {
-          'class': 'text-xs whitespace-nowrap',
+          'class': 'whitespace-nowrap tabular-nums text-xs text-muted',
           'data-testid': 'declarations-pgdas-last-search'
         }, formatDateTime(at || null))
       }
     },
     {
-      id: 'history',
-      header: 'Histórico de Busca',
-      enableSorting: false,
+      id: 'actions',
+      header: MONITORING_ACTIONS_LABEL,
       enableHiding: false,
-      meta: { class: { th: 'w-28', td: 'w-28' } },
-      cell: ({ row }) => h(UButton, {
-        'size': 'xs',
-        'color': 'primary',
-        'variant': 'ghost',
-        'icon': 'i-lucide-history',
-        'label': 'Histórico',
-        'aria-label': `Histórico de busca do cliente ${row.original.client_id}`,
-        'data-testid': 'declarations-pgdas-history',
-        'onClick': () => options.onHistory(row.original)
+      enableSorting: false,
+      meta: { ...MONITORING_ACTIONS_META },
+      cell: ({ row }) => buildMonitoringActionsMenuCell({
+        ariaLabel: `Mais ações do cliente ${row.original.client_id}`,
+        testId: 'declarations-pgdas-row-actions',
+        items: actionItems(row.original)
       })
     }
   ]
@@ -135,18 +186,55 @@ export function buildDeclarationsPgdasColumns(options: {
 /** Colunas genéricas filtradas por obrigação (DCTFWeb / DEFIS). */
 export function buildDeclarationsObligationColumns(options: {
   onHistory?: (row: DeclarationsClientRow) => void
+  onEditClient?: (row: DeclarationsClientRow) => void
   historyLabel?: string
 }): TableColumn<DeclarationsClientRow>[] {
-  const columns: TableColumn<DeclarationsClientRow>[] = [
+  function actionItems(row: DeclarationsClientRow): DropdownMenuItem[][] {
+    const items: DropdownMenuItem[] = [
+      {
+        label: 'Abrir cliente',
+        icon: 'i-lucide-building-2',
+        to: clientHref(row.client_id)
+      }
+    ]
+    if (options.onEditClient) {
+      items.push({
+        label: 'Editar cliente',
+        icon: 'i-lucide-pencil',
+        onSelect: () => options.onEditClient?.(row)
+      })
+    }
+    if (options.onHistory) {
+      items.push({
+        label: options.historyLabel || 'Histórico',
+        icon: 'i-lucide-history',
+        onSelect: () => options.onHistory?.(row)
+      })
+    }
+    return [items]
+  }
+
+  return [
+    {
+      id: 'situation',
+      header: ({ column }) => sortHeader('Situação', column),
+      cell: ({ row }) => h(FiscalStatusBadge, {
+        fill: true,
+        status: String(
+          detailOf(row.original).next_situation || row.original.situation
+        )
+      })
+    },
     {
       id: 'client',
       header: ({ column }) => sortHeader('Cliente', column),
       enableHiding: false,
-      meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
+      meta: { ...MONITORING_CLIENT_COLUMN_META },
       cell: ({ row }) => h(FiscalClientCell, {
         clientId: row.original.client_id,
         name: row.original.name || row.original.display_name,
         legalName: row.original.legal_name,
+        cnpj: row.original.cnpj,
         cnpjMasked: row.original.cnpj_masked,
         to: clientHref(row.original.client_id)
       })
@@ -167,60 +255,70 @@ export function buildDeclarationsObligationColumns(options: {
       )
     },
     {
+      id: MONITORING_CONSULTED_ID,
+      header: MONITORING_SHARED_COLUMN_LABELS.consulted || 'Consulta',
+      enableSorting: false,
+      meta: { ...MONITORING_CONSULTED_META },
+      cell: ({ row }) => formatDateTime(
+        row.original.last_consulted_at || row.original.last_snapshot_at || null
+      )
+    },
+    {
+      id: 'actions',
+      header: MONITORING_ACTIONS_LABEL,
+      enableHiding: false,
+      enableSorting: false,
+      meta: { ...MONITORING_ACTIONS_META },
+      cell: ({ row }) => buildMonitoringActionsMenuCell({
+        ariaLabel: `Mais ações do cliente ${row.original.client_id}`,
+        testId: 'declarations-obligation-row-actions',
+        items: actionItems(row.original)
+      })
+    }
+  ]
+}
+
+/** Colunas FGTS parciais (sem inventar guia/pagamento). */
+export function buildDeclarationsFgtsColumns(options?: {
+  onEditClient?: (row: DeclarationsClientRow) => void
+}): TableColumn<DeclarationsClientRow>[] {
+  function actionItems(row: DeclarationsClientRow): DropdownMenuItem[][] {
+    const items: DropdownMenuItem[] = [
+      {
+        label: 'Abrir cliente',
+        icon: 'i-lucide-building-2',
+        to: `/monitoring/clients/${row.client_id}/fgts`
+      }
+    ]
+    if (options?.onEditClient) {
+      items.push({
+        label: 'Editar cliente',
+        icon: 'i-lucide-pencil',
+        onSelect: () => options.onEditClient?.(row)
+      })
+    }
+    return [items]
+  }
+
+  return [
+    {
       id: 'situation',
       header: ({ column }) => sortHeader('Situação', column),
       cell: ({ row }) => h(FiscalStatusBadge, {
         fill: true,
-        status: String(
-          detailOf(row.original).next_situation || row.original.situation
-        )
+        status: String(row.original.situation || 'UNKNOWN')
       })
     },
-    {
-      id: 'consulted',
-      header: MONITORING_SHARED_COLUMN_LABELS.consulted || 'Última consulta',
-      enableSorting: false,
-      cell: ({ row }) => formatDateTime(
-        row.original.last_consulted_at || row.original.last_snapshot_at || null
-      )
-    }
-  ]
-
-  if (options.onHistory) {
-    columns.push({
-      id: 'history',
-      header: options.historyLabel || 'Histórico',
-      enableSorting: false,
-      enableHiding: false,
-      meta: { class: { th: 'w-28', td: 'w-28' } },
-      cell: ({ row }) => h(UButton, {
-        'size': 'xs',
-        'color': 'primary',
-        'variant': 'ghost',
-        'icon': 'i-lucide-history',
-        'label': 'Histórico',
-        'aria-label': `Histórico do cliente ${row.original.client_id}`,
-        'data-testid': 'declarations-obligation-history',
-        'onClick': () => options.onHistory?.(row.original)
-      })
-    })
-  }
-
-  return columns
-}
-
-/** Colunas FGTS parciais (sem inventar guia/pagamento). */
-export function buildDeclarationsFgtsColumns(): TableColumn<DeclarationsClientRow>[] {
-  return [
     {
       id: 'client',
       header: ({ column }) => sortHeader('Cliente', column),
       enableHiding: false,
-      meta: { class: { th: 'min-w-48 w-full', td: 'min-w-48 w-full overflow-hidden' } },
+      meta: { ...MONITORING_CLIENT_COLUMN_META },
       cell: ({ row }) => h(FiscalClientCell, {
         clientId: row.original.client_id,
         name: row.original.name || row.original.display_name,
         legalName: row.original.legal_name,
+        cnpj: row.original.cnpj,
         cnpjMasked: row.original.cnpj_masked,
         to: `/monitoring/clients/${row.original.client_id}/fgts`
       })
@@ -262,11 +360,15 @@ export function buildDeclarationsFgtsColumns(): TableColumn<DeclarationsClientRo
       })
     },
     {
-      id: 'situation',
-      header: ({ column }) => sortHeader('Situação', column),
-      cell: ({ row }) => h(FiscalStatusBadge, {
-        fill: true,
-        status: String(row.original.situation || 'UNKNOWN')
+      id: 'actions',
+      header: MONITORING_ACTIONS_LABEL,
+      enableHiding: false,
+      enableSorting: false,
+      meta: { ...MONITORING_ACTIONS_META },
+      cell: ({ row }) => buildMonitoringActionsMenuCell({
+        ariaLabel: `Mais ações do cliente ${row.original.client_id}`,
+        testId: 'declarations-fgts-row-actions',
+        items: actionItems(row.original)
       })
     }
   ]
@@ -275,7 +377,6 @@ export function buildDeclarationsFgtsColumns(): TableColumn<DeclarationsClientRo
 export const DECLARATIONS_PGDAS_COLUMN_LABELS = {
   situation: 'Situação da declaração',
   last_declaration: 'Últ. Declaração',
-  last_search: 'Última Busca',
-  history: 'Histórico de Busca',
-  client: 'Cliente'
+  client: 'Cliente',
+  ...MONITORING_SHARED_COLUMN_LABELS
 } as const

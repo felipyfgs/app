@@ -1,6 +1,6 @@
 /**
  * Carteira fiscal tenant-aware: overview + lista paginada do read model.
- * - Filtros, ordenação e paginação sincronizam com a query (padrão list-filters-ux)
+ * - Filtros, ordenação e paginação ficam em estado local (URL Nuxt path-only)
  * - Sem fallback sintético em erro/vazio
  * - Aborta/descarta requests quando o office ou módulo muda
  * - Ordenação é sempre server-side para não reordenar apenas o lote carregado
@@ -22,12 +22,7 @@ import {
   surfaceAllowsDocument
 } from '~/types/fiscal-modules'
 import { laravelPageBatch, usePagedTable } from '~/composables/usePagedTable'
-import {
-  MONITORING_LIST_QUERY_SCHEMA,
-  serializeListFilterQuery,
-  useListFilterQuery
-} from '~/composables/useListFilterQuery'
-import { decodeClientIds, encodeClientIds } from '~/utils/data-table-filters'
+import { encodeClientIds } from '~/utils/data-table-filters'
 import {
   hasActiveMonitoringFilters,
   normalizeMonitoringFilters,
@@ -59,17 +54,13 @@ const SORT_COLUMN_TO_API = Object.freeze<Record<string, NonNullable<FiscalModule
   client: 'legal_name',
   competence: 'competence',
   situation: 'situation',
+  last_declaration: 'last_declaration',
+  rbt12: 'rbt12',
   consulted: 'last_consulted_at',
   observed: 'last_consulted_at',
   synced: 'last_consulted_at',
   id: 'id'
 })
-
-const SORT_API_TO_COLUMN = Object.freeze<Record<string, string>>(
-  Object.fromEntries(
-    Object.entries(SORT_COLUMN_TO_API).map(([column, api]) => [api, column])
-  )
-)
 
 export function fiscalModuleSortKey(columnId: string | null | undefined) {
   return columnId ? SORT_COLUMN_TO_API[columnId] : undefined
@@ -83,14 +74,6 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   const { sessionEpoch } = useDashboard()
   const router = useRouter()
   const route = useRoute()
-  const monitoringQuerySchema = {
-    ...MONITORING_LIST_QUERY_SCHEMA,
-    defaults: {
-      ...MONITORING_LIST_QUERY_SCHEMA.defaults,
-      per_page: options.perPage ?? 20
-    }
-  }
-  const listQuery = useListFilterQuery(monitoringQuerySchema)
 
   const page = ref(1)
   /** pageSize alinhado à lista de clientes (20). */
@@ -103,35 +86,19 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
   const year = options.year ?? ref<number | null>(null)
   const deliveryStatus = options.deliveryStatus
     ?? ref('all')
+  const sendStatus = ref('all')
   const clientIds = ref<number[]>([])
   const coverage = ref('all')
   const modality = ref('all')
   const sorting = ref<FiscalModuleSortingState>([{ id: 'client', desc: false }])
 
-  function hydrateFromQuery() {
-    const state = listQuery.read()
-    q.value = String(state.q ?? '')
-    situation.value = String(state.situation ?? 'all')
-    competence.value = String(state.competence ?? '')
-    deliveryStatus.value = String(state.delivery_status ?? 'all')
-    coverage.value = String(state.coverage ?? 'all')
-    modality.value = String(state.modality ?? 'all')
-    clientIds.value = decodeClientIds(String(state.client_id ?? ''))
-    page.value = Math.max(1, Number(state.page) || 1)
-    perPage.value = Math.max(1, Number(state.per_page) || (options.perPage ?? 20))
-    const apiSort = String(state.sort ?? 'legal_name')
-    const columnId = SORT_API_TO_COLUMN[apiSort] || 'client'
-    const dir = String(state.sort_direction ?? 'asc') === 'desc'
-    sorting.value = [{ id: columnId, desc: dir }]
-  }
-
-  hydrateFromQuery()
   const filters = computed<MonitoringFilterValue>(() => normalizeMonitoringFilters({
     q: q.value,
     situation: situation.value,
     competence: competence.value,
     clientIds: clientIds.value,
     deliveryStatus: deliveryStatus.value,
+    sendStatus: sendStatus.value,
     coverage: coverage.value,
     modality: modality.value
   }))
@@ -173,6 +140,10 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
         deliveryStatus.value && deliveryStatus.value !== 'all'
           ? deliveryStatus.value
           : undefined,
+      send_status:
+        sendStatus.value && sendStatus.value !== 'all'
+          ? sendStatus.value
+          : undefined,
       client_id: (() => {
         const encoded = encodeClientIds(clientIds.value)
         return encoded || undefined
@@ -191,12 +162,12 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
 
   /**
    * Filtros do overview/contadores: independentes da cápsula (situation/KPI).
-   * Só filtros avançados (busca, competência, submódulo, delivery, cliente,
+   * Só filtros avançados (busca, competência, submódulo, delivery, envio, cliente,
    * coverage, modality) redimensionam Total / Em dia / Pendências / etc.
    */
   function buildOverviewFilters(): Pick<
     FiscalModulePortfolioFilters,
-    'q' | 'competence' | 'submodule' | 'year' | 'delivery_status' | 'client_id' | 'coverage' | 'modality'
+    'q' | 'competence' | 'submodule' | 'year' | 'delivery_status' | 'send_status' | 'client_id' | 'coverage' | 'modality'
   > {
     const next = buildFilters(1)
     return {
@@ -205,6 +176,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
       submodule: next.submodule,
       year: next.year,
       delivery_status: next.delivery_status,
+      send_status: next.send_status,
       client_id: next.client_id,
       coverage: next.coverage,
       modality: next.modality
@@ -275,27 +247,16 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     competence: competence.value,
     clientIds: clientIds.value,
     deliveryStatus: deliveryStatus.value,
+    sendStatus: sendStatus.value,
     coverage: coverage.value,
     modality: modality.value
   }) || Boolean(submodule.value && submodule.value !== 'all' && submodule.value.trim()))
 
-  /** Espelha filtros/paginação/sort na query (LFU-02). */
+  /** URL Nuxt path-only — limpa query residual (bookmarks legados). */
   async function syncUrl() {
-    const { sort, sort_direction } = currentSort()
-    const query = serializeListFilterQuery({
-      q: q.value,
-      situation: situation.value,
-      competence: competence.value,
-      client_id: encodeClientIds(clientIds.value) || '',
-      delivery_status: deliveryStatus.value,
-      coverage: coverage.value,
-      modality: modality.value,
-      page: page.value,
-      per_page: perPage.value,
-      sort: sort ?? 'legal_name',
-      sort_direction: sort_direction ?? 'asc'
-    }, monitoringQuerySchema)
-    await router.replace({ path: route.path, query })
+    if (Object.keys(route.query).length > 0) {
+      await router.replace({ path: route.path })
+    }
   }
 
   function overviewStillCurrent(seq: number, epoch: number) {
@@ -420,6 +381,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     const next = normalizeMonitoringFilters(nextValue)
     const nextSituation = next.situation || 'all'
     const nextDeliveryStatus = next.deliveryStatus || 'all'
+    const nextSendStatus = next.sendStatus || 'all'
     const nextCoverage = next.coverage || 'all'
     const nextModality = next.modality || 'all'
 
@@ -427,6 +389,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     const advancedChanged = q.value !== next.q
       || competence.value !== next.competence
       || deliveryStatus.value !== nextDeliveryStatus
+      || sendStatus.value !== nextSendStatus
       || clientSig(clientIds.value) !== clientSig(next.clientIds)
       || coverage.value !== nextCoverage
       || modality.value !== nextModality
@@ -440,6 +403,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
       situation.value = nextSituation
       competence.value = next.competence
       deliveryStatus.value = nextDeliveryStatus
+      sendStatus.value = nextSendStatus
       clientIds.value = [...next.clientIds]
       coverage.value = nextCoverage
       modality.value = nextModality
@@ -486,7 +450,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
 
   // Filtros avançados: recarregam contadores (overview) + lista.
   watch(
-    [q, competence, submodule, year, deliveryStatus, clientIds, coverage, modality],
+    [q, competence, submodule, year, deliveryStatus, sendStatus, clientIds, coverage, modality],
     () => {
       if (!ready || filterTransactionDepth > 0) return
       resetPage()
@@ -533,6 +497,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
       competence.value = ''
       clientIds.value = []
       deliveryStatus.value = 'all'
+      sendStatus.value = 'all'
       coverage.value = 'all'
       modality.value = 'all'
       page.value = 1
@@ -580,6 +545,7 @@ export function useFiscalModulePortfolio<M extends FiscalPortfolioModuleKey>(
     submodule,
     year,
     deliveryStatus,
+    sendStatus,
     clientIds,
     coverage,
     modality,

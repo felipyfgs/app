@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Modal “DAS Simples Nacional - Histórico” (nível 1).
- * Histórico local; abrir não dispara SERPRO. Declarações abre o modal aninhado.
+ * Histórico local de DAS; abrir não dispara SERPRO.
  */
 import type {
   PgdasdArtifactDescriptor,
@@ -9,6 +9,7 @@ import type {
   PgdasdHistoryPayload,
   PgdasdHistoryPeriod
 } from '~/types/fiscal-modules'
+import { useAuthenticatedDownload } from '~/composables/useAuthenticatedDownload'
 import { usePgdasdMonitoring } from '~/composables/usePgdasdMonitoring'
 import { apiErrorMessage } from '~/utils/api-error'
 import { resolveApiUrl } from '~/utils/api-url'
@@ -30,14 +31,13 @@ const emit = defineEmits<{
 }>()
 
 const { fetchHistory, artifactDownloadUrl } = usePgdasdMonitoring()
+const { download: downloadAuthenticated, downloading: downloadBusy } = useAuthenticatedDownload()
 const apiBase = useRuntimeConfig().public.apiBase as string
 
 const loading = ref(false)
 const error = ref<string | null>(null)
 const history = ref<PgdasdHistoryPayload | PgdasdHistoryPeriod[] | null>(null)
 const yearFilter = ref<number | 'all'>('all')
-const nestedOpen = ref(false)
-const nestedPeriod = ref<PgdasdHistoryPeriod | null>(null)
 let requestGeneration = 0
 
 const payload = computed<PgdasdHistoryPayload>(() =>
@@ -107,6 +107,19 @@ function dasDownload(period: PgdasdHistoryPeriod): string | null {
   return artifactHref(dasDoc)
 }
 
+async function downloadDas(period: PgdasdHistoryPeriod): Promise<void> {
+  const href = dasDownload(period)
+  if (!href) return
+  const artifacts = periodArtifacts(period)
+  const dasDoc = artifacts.find(a =>
+    ['DAS', 'DARF_MAED'].includes(String(a.kind || '').toUpperCase())
+  )
+  const filename = dasDoc
+    ? `pgdasd-das-${dasDoc.id}.pdf`
+    : `pgdasd-das-${period.period_key || 'documento'}.pdf`
+  await downloadAuthenticated(href, filename)
+}
+
 function maedLabel(period: PgdasdHistoryPeriod): string {
   const has = periodArtifacts(period).some(a =>
     ['NOTIFICACAO_MAED', 'DARF_MAED', 'MAED'].includes(String(a.kind || '').toUpperCase())
@@ -150,11 +163,6 @@ function totalValue(period: PgdasdHistoryPeriod): string {
   return '—'
 }
 
-function openDeclarations(period: PgdasdHistoryPeriod) {
-  nestedPeriod.value = period
-  nestedOpen.value = true
-}
-
 async function loadHistory() {
   const clientId = props.clientId
   if (!props.open || !clientId) return
@@ -179,8 +187,6 @@ watch(
   ([open]) => {
     if (open) {
       yearFilter.value = 'all'
-      nestedOpen.value = false
-      nestedPeriod.value = null
       void loadHistory()
       return
     }
@@ -188,8 +194,6 @@ watch(
     history.value = null
     error.value = null
     loading.value = false
-    nestedOpen.value = false
-    nestedPeriod.value = null
   },
   { immediate: true }
 )
@@ -286,7 +290,7 @@ watch(yearFilter, () => {
           aria-label="Histórico DAS Simples Nacional"
           data-testid="pgdasd-das-history-table"
         >
-          <table class="w-full min-w-[1080px] border-separate border-spacing-0 text-left text-sm">
+          <table class="w-full min-w-[960px] border-separate border-spacing-0 text-left text-sm">
             <thead class="bg-elevated/60 text-xs text-muted">
               <tr>
                 <th class="border-b border-default px-3 py-2.5 font-medium">
@@ -303,9 +307,6 @@ watch(yearFilter, () => {
                 </th>
                 <th class="border-b border-default px-3 py-2.5 font-medium">
                   Vencimento
-                </th>
-                <th class="border-b border-default px-3 py-2.5 font-medium">
-                  Declarações
                 </th>
                 <th class="border-b border-default px-3 py-2.5 text-center font-medium">
                   Malha
@@ -339,18 +340,6 @@ watch(yearFilter, () => {
                 <td class="border-b border-default px-3 py-3 text-xs text-muted group-hover:bg-elevated/40">
                   —
                 </td>
-                <td class="border-b border-default px-3 py-3 group-hover:bg-elevated/40">
-                  <UButton
-                    size="xs"
-                    color="primary"
-                    variant="ghost"
-                    icon="i-lucide-files"
-                    label="Declarações"
-                    :aria-label="`Abrir declarações de ${formatPgdasdPeriod(period.period_key)}`"
-                    data-testid="pgdasd-das-open-declarations"
-                    @click="openDeclarations(period)"
-                  />
-                </td>
                 <td class="border-b border-default px-3 py-3 text-center group-hover:bg-elevated/40">
                   {{ malhaLabel(period) }}
                 </td>
@@ -365,11 +354,10 @@ watch(yearFilter, () => {
                     variant="soft"
                     icon="i-lucide-download"
                     label="Baixar DAS"
-                    :to="dasDownload(period)!"
-                    external
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    :loading="downloadBusy"
+                    :disabled="downloadBusy"
                     data-testid="pgdasd-das-download"
+                    @click="downloadDas(period)"
                   />
                   <span v-else class="text-muted">—</span>
                 </td>
@@ -380,11 +368,4 @@ watch(yearFilter, () => {
       </div>
     </template>
   </ShellScrollableModal>
-
-  <MonitoringPgdasdDeclarationsHistoryModal
-    v-model:open="nestedOpen"
-    :period="nestedPeriod"
-    :client-name="clientLabel"
-    :cnpj-masked="cnpjLabel"
-  />
 </template>

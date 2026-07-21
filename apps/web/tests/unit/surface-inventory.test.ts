@@ -28,6 +28,20 @@ describe('surface inventory (web)', () => {
     expect(pages.length).toBe(summary.pagesTotal)
   })
 
+  it('inventory files match the complete page file set', () => {
+    const inventory = JSON.parse(readFileSync(join(fixturesDir, 'web-pages.json'), 'utf8')) as Array<{
+      file: string
+      route: string
+    }>
+    const liveFiles = listVuePages(pagesRoot)
+      .map(file => `app/pages/${file.slice(pagesRoot.length + 1)}`)
+      .sort()
+    const inventoryFiles = inventory.map(page => page.file).sort()
+
+    expect(inventoryFiles).toEqual(liveFiles)
+    expect(inventory.every(page => page.route.startsWith('/'))).toBe(true)
+  })
+
   it('redirect-only notes count matches summary.pagesRedirectOnly', () => {
     const summary = JSON.parse(readFileSync(join(fixturesDir, 'summary.json'), 'utf8')) as {
       pagesRedirectOnly: number

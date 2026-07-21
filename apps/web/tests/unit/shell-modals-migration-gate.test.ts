@@ -21,7 +21,7 @@ const FORM_OR_CONFIRM = [
   'app/pages/work/templates/index.vue',
   'app/pages/exports.vue',
   'app/pages/closing.vue',
-  'app/pages/monitoring/simples-mei/index.vue',
+  'app/components/monitoring/simples-mei/Portfolio.vue',
   'app/components/settings/OfficeProfileSection.vue'
 ] as const
 
@@ -34,7 +34,6 @@ const SCROLLABLE = [
   'app/components/monitoring/DefisSpecificDeclarationModal.vue',
   'app/components/monitoring/DctfwebHistoryModal.vue',
   'app/components/monitoring/PgdasdDasHistoryModal.vue',
-  'app/components/monitoring/PgdasdDeclarationsHistoryModal.vue',
   'app/components/monitoring/PgmeiHistoryModal.vue',
   'app/components/monitoring/RegimeOptionModal.vue',
   'app/components/monitoring/RegimeResolutionModal.vue',
