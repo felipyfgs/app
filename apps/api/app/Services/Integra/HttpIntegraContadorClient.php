@@ -5,6 +5,7 @@ namespace App\Services\Integra;
 use App\Contracts\IntegraContadorClient;
 use App\Contracts\SecureObjectStore;
 use App\Contracts\SerproContractAuthenticator;
+use App\DTO\Serpro\FiscalIdentity;
 use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
 use App\Enums\ClientProcuracaoSyncStatus;
@@ -136,15 +137,16 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
                 $requiredPowers,
             );
             if ($needsProcuradorToken) {
-                $procuradorToken = $this->loadProcuradorToken($request, $env);
-                if ($procuradorToken === null) {
+                $resolved = $this->resolveProcuradorToken($request, $env);
+                if ($resolved['token'] === null) {
                     return $this->fail(
                         $request,
                         422,
-                        'PROCURADOR_TOKEN_MISSING',
-                        'Token do procurador ausente ou expirado para o escritório.',
+                        $resolved['code'],
+                        $resolved['message'],
                     );
                 }
+                $procuradorToken = $resolved['token'];
             }
         }
 
@@ -550,27 +552,67 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             : FiscalSourceProvenance::SerproReal->value;
     }
 
-    private function loadProcuradorToken(IntegraRequest $request, SerproEnvironment $env): ?string
+    /**
+     * @return array{token: ?string, code: string, message: string}
+     */
+    private function resolveProcuradorToken(IntegraRequest $request, SerproEnvironment $env): array
     {
         $auth = OfficeSerproAuthorization::query()
+            ->withoutGlobalScopes()
             ->where('office_id', $request->officeId)
             ->where('environment', $env->value)
             ->first();
 
-        if ($auth === null
-            || $auth->procurador_token_vault_object_id === null
-            || $auth->procurador_token_expires_at === null
-            || $auth->procurador_token_expires_at->isPast()
-        ) {
-            return null;
+        if ($auth === null) {
+            return $this->tokenFailure(
+                'AUTHORIZATION_MISSING',
+                'Autorização SERPRO do escritório ausente para o ambiente.',
+            );
         }
 
-        $author = strtoupper((string) $auth->author_identity);
-        if ($author === '' || $author === '00000000000000') {
-            return null;
+        if ($auth->procurador_token_vault_object_id === null) {
+            return $this->tokenFailure(
+                'PROCURADOR_TOKEN_MISSING',
+                'Token do procurador ainda não foi obtido para o escritório.',
+            );
         }
-        if ($request->authorIdentity !== $author) {
-            return null;
+
+        if ($auth->procurador_token_expires_at === null) {
+            return $this->tokenFailure(
+                'PROCURADOR_TOKEN_MISSING',
+                'Validade do token do procurador ausente; renove a autorização.',
+            );
+        }
+
+        if ($auth->procurador_token_expires_at->isPast()) {
+            return $this->tokenFailure(
+                'PROCURADOR_TOKEN_EXPIRED',
+                'Token do procurador expirado; renove a autorização do escritório.',
+            );
+        }
+
+        $authorRaw = strtoupper(trim((string) $auth->author_identity));
+        if ($authorRaw === '' || $authorRaw === '00000000000000') {
+            return $this->tokenFailure(
+                'AUTHOR_IDENTITY_MISSING',
+                'Autor do Pedido não configurado na autorização do escritório.',
+            );
+        }
+
+        try {
+            $authorNormalized = FiscalIdentity::fromNumero($authorRaw)->numero;
+        } catch (Throwable) {
+            return $this->tokenFailure(
+                'AUTHOR_IDENTITY_MISSING',
+                'Autor do Pedido inválido na autorização do escritório.',
+            );
+        }
+
+        if ($request->authorIdentity !== $authorNormalized) {
+            return $this->tokenFailure(
+                'AUTHOR_IDENTITY_MISMATCH',
+                'Autor do pedido diverge da autorização SERPRO do escritório.',
+            );
         }
 
         $aad = SecureObjectPurpose::SerproProcuradorToken->aadBase([
@@ -584,10 +626,33 @@ final class HttpIntegraContadorClient implements IntegraContadorClient
             /** @var array{token?: string}|null $payload */
             $payload = json_decode($raw, true);
             $token = is_array($payload) ? (string) ($payload['token'] ?? '') : '';
+            if ($token === '') {
+                return $this->tokenFailure(
+                    'PROCURADOR_TOKEN_EMPTY',
+                    'Material do token do procurador no cofre está vazio.',
+                );
+            }
 
-            return $token !== '' ? $token : null;
+            return ['token' => $token, 'code' => '', 'message' => ''];
         } catch (Throwable) {
-            return null;
+            return $this->tokenFailure(
+                'PROCURADOR_TOKEN_VAULT_UNREADABLE',
+                'Falha ao ler o token do procurador no cofre do escritório.',
+            );
         }
+    }
+
+    /**
+     * @return array{token: null, code: string, message: string}
+     */
+    private function tokenFailure(string $code, string $message): array
+    {
+        return ['token' => null, 'code' => $code, 'message' => $message];
+    }
+
+    /** @deprecated Use resolveProcuradorToken(); mantido para testes legados. */
+    private function loadProcuradorToken(IntegraRequest $request, SerproEnvironment $env): ?string
+    {
+        return $this->resolveProcuradorToken($request, $env)['token'];
     }
 }

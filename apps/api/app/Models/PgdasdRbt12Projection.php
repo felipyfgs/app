@@ -92,6 +92,9 @@ class PgdasdRbt12Projection extends Model
                 'external_market_cents' => $this->external_market_cents,
                 'total_cents' => $this->total_cents,
             ],
+            'rpa_cents' => is_array($this->metadata) && isset($this->metadata['rpa_cents'])
+                ? (int) $this->metadata['rpa_cents']
+                : null,
             'origin' => [
                 'das_number' => $this->source_das_number,
                 'declaration_number' => $this->source_declaration_number,

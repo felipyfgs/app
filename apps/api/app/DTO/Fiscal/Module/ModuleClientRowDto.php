@@ -21,6 +21,7 @@ final readonly class ModuleClientRowDto
         public int $clientId,
         public string $legalName,
         public ?string $displayName,
+        public ?string $cnpj,
         public string $cnpjMasked,
         public string $rootCnpjMasked,
         public ?string $competence,
@@ -48,6 +49,7 @@ final readonly class ModuleClientRowDto
             'name' => ($this->displayName !== null && trim($this->displayName) !== '')
                 ? $this->displayName
                 : $this->legalName,
+            'cnpj' => $this->cnpj,
             'cnpj_masked' => $this->cnpjMasked,
             'root_cnpj_masked' => $this->rootCnpjMasked,
             'competence' => $this->competence,

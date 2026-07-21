@@ -101,6 +101,22 @@ return [
                     ],
                     'source_url' => 'https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/cenarios_trial/cenarios_mit/',
                 ],
+                // Doc oficial: contratante/autor 00000000000000 tipo 2; contribuinte CPF Trial 99999999999 tipo 1.
+                'sitfis.solicitar_protocolo' => [
+                    'identity' => ['numero' => '00000000000000', 'tipo' => 2],
+                    'contributor' => ['numero' => '99999999999', 'tipo' => 1],
+                    'business_data' => [],
+                    'source_url' => 'https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/cenarios_trial/cenarios_sitfis/',
+                ],
+                'sitfis.emitir_relatorio' => [
+                    'identity' => ['numero' => '00000000000000', 'tipo' => 2],
+                    'contributor' => ['numero' => '99999999999', 'tipo' => 1],
+                    'business_data' => [
+                        // Protocolo de exemplo publicado na doc de cenários Trial (não é segredo).
+                        'protocoloRelatorio' => '+S7N6c04XNZUVzmxWT7SzpkZA4xeDQC9Z2T2GBJ5usn8LyouyWXbsy6mKsLy7/EImRkDjF4NAL25KiSXOLjnzAaZu/FC+G1pYOtTMYqokKYYr/yZ6aqUiCuWPfujDQ2/udwgU+Dyh56GSe28B5Ev25jDnzpvVJPhiebO5hpy1YESP5gnEhaP3bocCiZZrYG26F8avRRBJhRTsfv3Rvop+bxvYJZsVym270eO8oZTDIr3OJj==',
+                    ],
+                    'source_url' => 'https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/cenarios_trial/cenarios_sitfis/',
+                ],
             ],
         ],
         'PRODUCTION' => [

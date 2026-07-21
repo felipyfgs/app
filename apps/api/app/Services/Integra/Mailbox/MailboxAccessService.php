@@ -95,10 +95,22 @@ final class MailboxAccessService
             // sem body
         ], userId: $actor?->id, officeId: (int) $office->id);
 
+        $rawType = trim((string) ($message->body_content_type ?? ''));
+        $contentType = $rawType !== '' ? $rawType : 'text/plain; charset=UTF-8';
+        if (strcasecmp($contentType, 'text/plain') === 0) {
+            $contentType = 'text/plain; charset=UTF-8';
+        }
+
+        $ext = match (true) {
+            str_contains(strtolower($contentType), 'html') => 'html',
+            str_starts_with(strtolower($contentType), 'text/') => 'txt',
+            default => 'bin',
+        };
+
         return [
             'bytes' => $bytes,
-            'content_type' => $message->body_content_type ?? 'application/octet-stream',
-            'filename' => 'mailbox-message-'.$message->id.'.bin',
+            'content_type' => $contentType,
+            'filename' => 'mailbox-message-'.$message->id.'.'.$ext,
         ];
     }
 

@@ -35,17 +35,24 @@ final readonly class DasGuideDto
             throw new InvalidArgumentException("DAS guide DTO versão não suportada: {$version}");
         }
 
-        $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
-        $competence = (string) ($data['competence'] ?? $data['competencia'] ?? $fallbackCompetence);
-        $doc = isset($data['document_number'])
-            ? (string) $data['document_number']
-            : (isset($data['numero_documento']) ? (string) $data['numero_documento'] : null);
-        $due = isset($data['due_date'])
-            ? (string) $data['due_date']
-            : (isset($data['vencimento']) ? (string) $data['vencimento'] : null);
-        $amount = isset($data['amount'])
-            ? (float) $data['amount']
-            : (isset($data['valor']) ? (float) $data['valor'] : null);
+        $data = self::unwrapPayload($body);
+        $competence = (string) ($data['competence'] ?? $data['competencia'] ?? $data['periodoApuracao'] ?? $fallbackCompetence);
+        $doc = self::firstString($data, [
+            'document_number',
+            'numero_documento',
+            'numeroDocumento',
+        ]);
+        $due = self::firstString($data, [
+            'due_date',
+            'vencimento',
+            'dataVencimento',
+        ]);
+        $amount = self::firstFloat($data, [
+            'amount',
+            'valor',
+            'total',
+            'principal',
+        ]);
 
         $emissionRaw = strtoupper((string) ($data['emission_status'] ?? 'ISSUED'));
         $emission = FiscalGuideEmissionStatus::tryFrom($emissionRaw) ?? FiscalGuideEmissionStatus::Issued;
@@ -57,13 +64,68 @@ final readonly class DasGuideDto
             version: self::VERSION,
             competence: $competence,
             regimeFamily: $regimeFamily,
-            documentNumber: $doc !== '' ? $doc : null,
-            dueDate: $due !== '' ? $due : null,
+            documentNumber: $doc,
+            dueDate: $due,
             amount: $amount,
             emissionStatus: $emission,
             paymentStatus: $payment,
             raw: $data,
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    private static function unwrapPayload(array $body): array
+    {
+        if (isset($body['data']) && is_array($body['data'])) {
+            return $body['data'];
+        }
+        if (isset($body['dados']) && is_array($body['dados'])) {
+            return $body['dados'];
+        }
+
+        return $body;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  list<string>  $keys
+     */
+    private static function firstString(array $data, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $data) || $data[$key] === null) {
+                continue;
+            }
+            $value = trim((string) $data[$key]);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  list<string>  $keys
+     */
+    private static function firstFloat(array $data, array $keys): ?float
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $data) || $data[$key] === null || $data[$key] === '') {
+                continue;
+            }
+            if (! is_numeric($data[$key])) {
+                continue;
+            }
+
+            return (float) $data[$key];
+        }
+
+        return null;
     }
 
     /**

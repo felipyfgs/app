@@ -97,4 +97,17 @@ final class DctfwebCommunicationService
     {
         return $this->inner->tracking($office, $client);
     }
+
+    /**
+     * @return array{queued:int, provider_enabled:bool, dispatches:list<array<string, mixed>>}
+     */
+    public function requestSend(Office $office, Client $client, User $actor): array
+    {
+        return $this->inner->requestSend($office, $client, $actor);
+    }
+
+    public function maybeQueueAutomaticAfterConsult(Office $office, Client $client): void
+    {
+        $this->inner->maybeQueueAutomaticAfterConsult($office, $client);
+    }
 }

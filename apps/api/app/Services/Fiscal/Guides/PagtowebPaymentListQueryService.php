@@ -38,7 +38,14 @@ final class PagtowebPaymentListQueryService
         $normalized = $this->codec->normalizeFilters($filters);
         $run = $this->runs->enqueueManual(office: $office, client: $client, systemCode: PagtowebPaymentListAdapter::SYSTEM, serviceCode: PagtowebPaymentListAdapter::SERVICE, operationCode: PagtowebPaymentListAdapter::OPERATION, competence: null, actorId: $actorUserId, correlationId: sprintf('pagtoweb-list-%d-%s', $client->id, (string) Str::uuid()), dispatch: false);
         $progress = is_array($run->progress) ? $run->progress : [];
-        $progress['pagtoweb_payment_list_filters'] = $normalized['filter_summary'];
+        $persistedFilters = $normalized['filter_summary'];
+        unset($persistedFilters['numero_documento_digests']);
+        $progress['pagtoweb_payment_list_filters'] = $persistedFilters;
+        if ($normalized['document_numbers'] !== []) {
+            $progress['pagtoweb_payment_list_documents_encrypted'] = $this->codec->encryptDocumentNumbers(
+                $normalized['document_numbers'],
+            );
+        }
         $run->forceFill(['progress' => $progress])->save();
         ExecuteFiscalMonitoringRunJob::dispatch($run->id)->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
 

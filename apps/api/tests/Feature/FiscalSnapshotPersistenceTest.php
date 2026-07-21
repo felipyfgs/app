@@ -56,7 +56,8 @@ class FiscalSnapshotPersistenceTest extends TestCase
         self::assertSame($targetOffice->id, $persisted['snapshot']?->office_id);
         self::assertSame($targetRun->id, $persisted['snapshot']?->run_id);
         self::assertSame(5, $persisted['snapshot']?->version);
-        self::assertTrue((bool) $persisted['snapshot']?->is_current);
+        // Failed sem evidência não promove is_current — mantém relatório anterior.
+        self::assertFalse((bool) $persisted['snapshot']?->is_current);
 
         $targetSnapshots = FiscalSnapshot::query()
             ->withoutGlobalScopes()
@@ -68,7 +69,7 @@ class FiscalSnapshotPersistenceTest extends TestCase
 
         self::assertSame(2, (clone $targetSnapshots)->count());
         self::assertSame(1, (clone $targetSnapshots)->where('is_current', true)->count());
-        self::assertFalse((bool) FiscalSnapshot::query()
+        self::assertTrue((bool) FiscalSnapshot::query()
             ->withoutGlobalScopes()
             ->findOrFail($targetCurrentSnapshot->id)
             ->is_current);
@@ -104,6 +105,76 @@ class FiscalSnapshotPersistenceTest extends TestCase
 
         self::assertSame(80, mb_strlen((string) $persisted['run']->skip_reason));
         self::assertSame(mb_substr($long, 0, 80), $persisted['run']->skip_reason);
+    }
+
+    public function test_success_with_pdf_evidence_promotes_over_stale_error_without_evidence(): void
+    {
+        $office = Office::factory()->create();
+        $client = Client::factory()->forOffice($office)->create();
+        $failedRun = $this->createRun($office, $client, 'sitfis-failed');
+        $failedRun->forceFill([
+            'system_code' => 'INTEGRA_SITFIS',
+            'service_code' => 'SITFIS',
+            'operation_code' => 'MONITOR',
+            'source_provenance' => 'SERPRO_REAL',
+            'verification_state' => 'UNVERIFIED',
+        ])->save();
+        $staleError = FiscalSnapshot::query()->withoutGlobalScopes()->create([
+            'office_id' => $failedRun->office_id,
+            'run_id' => $failedRun->id,
+            'client_id' => $failedRun->client_id,
+            'competence_id' => null,
+            'system_code' => 'INTEGRA_SITFIS',
+            'service_code' => 'SITFIS',
+            'operation_code' => 'MONITOR',
+            'situation' => FiscalSituation::Error,
+            'coverage' => FiscalCoverage::Unknown,
+            'version' => 1,
+            'is_current' => true,
+            'normalized' => [],
+            'observed_at' => now(),
+            'created_at' => now(),
+            'source_provenance' => 'SERPRO_REAL',
+            'verification_state' => 'UNVERIFIED',
+            'evidence_artifact_id' => null,
+        ]);
+
+        $okRun = $this->createRun($office, $client, 'sitfis-ok');
+        $okRun->forceFill([
+            'system_code' => 'INTEGRA_SITFIS',
+            'service_code' => 'SITFIS',
+            'operation_code' => 'MONITOR',
+            'source_provenance' => 'SERPRO_REAL',
+            'verification_state' => 'UNVERIFIED',
+        ])->save();
+
+        $persisted = app(FiscalSnapshotPersistence::class)->persist(new FiscalPersistPayload(
+            run: $okRun->fresh(),
+            result: FiscalRunResult::Success,
+            situation: FiscalSituation::Attention,
+            coverage: FiscalCoverage::Full,
+            evidenceBytes: "%PDF-1.4\nfake-sitfis",
+            evidenceContentType: 'application/pdf',
+            evidenceSource: 'App\\Services\\Integra\\Sitfis\\SitfisSourceAdapter',
+            sourceVersion: '2.0',
+            normalized: [
+                'layout_recognized' => true,
+                'report_format' => 'pdf',
+                'is_negative_certificate' => false,
+            ],
+            findings: [[
+                'code' => 'SITFIS_PDF_UNSTRUCTURED',
+                'severity' => 'MEDIUM',
+                'title' => 'Relatório SITFIS em PDF — revise o artefato',
+                'detail' => 'PDF oficial preservado.',
+                'situation' => 'ATTENTION',
+                'creates_pending' => false,
+            ]],
+        ));
+
+        self::assertTrue((bool) $persisted['snapshot']?->is_current);
+        self::assertNotNull($persisted['snapshot']?->evidence_artifact_id);
+        self::assertFalse((bool) FiscalSnapshot::query()->withoutGlobalScopes()->findOrFail($staleError->id)->is_current);
     }
 
     private function createRun(Office $office, Client $client, string $suffix): FiscalMonitoringRun

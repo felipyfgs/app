@@ -2,13 +2,14 @@
 
 namespace App\Services\Serpro;
 
+use App\Contracts\ResolvesSerproCapabilityDriver;
 use App\Enums\FiscalProfile;
 use App\Enums\SerproCapabilityDriver;
 
 /**
  * O perfil fiscal é a única seleção de transporte: dev=fixture, trial/prod=real.
  */
-final class CapabilityDriverResolver
+final class CapabilityDriverResolver implements ResolvesSerproCapabilityDriver
 {
     /**
      * Prefixo de operation_key → chave de config.

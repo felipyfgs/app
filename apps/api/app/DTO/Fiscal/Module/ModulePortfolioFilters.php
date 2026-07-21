@@ -31,6 +31,11 @@ final readonly class ModulePortfolioFilters
         public ?string $modality = null,
         /** Ano-calendário opcional da cápsula PGMEI. */
         public ?int $year = null,
+        /**
+         * Envio de comunicação PGDAS-D: sent | not_sent (CSV).
+         * Só aplicado em simples_mei + submodule PGDASD.
+         */
+        public ?string $sendStatus = null,
     ) {}
 
     /**
@@ -70,10 +75,19 @@ final readonly class ModulePortfolioFilters
             static fn (string $token): ?string => strtoupper(trim($token)) ?: null,
         );
 
+        $sendStatus = self::normalizeTokenList(
+            $input['send_status'] ?? null,
+            static function (string $token): ?string {
+                $normalized = strtolower(trim($token));
+
+                return in_array($normalized, ['sent', 'not_sent'], true) ? $normalized : null;
+            },
+        );
+
         $sort = isset($input['sort']) && is_string($input['sort'])
             ? strtolower(trim($input['sort']))
             : 'legal_name';
-        $allowedSort = ['legal_name', 'display_name', 'situation', 'last_consulted_at', 'competence', 'id'];
+        $allowedSort = ['legal_name', 'display_name', 'situation', 'last_declaration', 'rbt12', 'last_consulted_at', 'competence', 'id'];
         if (! in_array($sort, $allowedSort, true)) {
             $sort = 'legal_name';
         }
@@ -132,6 +146,7 @@ final readonly class ModulePortfolioFilters
             coverage: $coverage,
             modality: $modality,
             year: $year,
+            sendStatus: $sendStatus,
         );
     }
 
@@ -154,6 +169,7 @@ final readonly class ModulePortfolioFilters
             coverage: $this->coverage,
             modality: $this->modality,
             year: $this->year,
+            sendStatus: $this->sendStatus,
         );
     }
 
@@ -190,6 +206,14 @@ final readonly class ModulePortfolioFilters
     public function deliveryStatusList(): array
     {
         return self::splitList($this->deliveryStatus);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function sendStatusList(): array
+    {
+        return self::splitList($this->sendStatus);
     }
 
     /**

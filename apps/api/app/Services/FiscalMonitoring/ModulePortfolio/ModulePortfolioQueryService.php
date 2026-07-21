@@ -18,6 +18,8 @@ use App\Enums\FiscalSituation;
 use App\Enums\TaxInstallmentParcelStatus;
 use App\Enums\TaxRegimeCode;
 use App\Models\Client;
+use App\Models\ClientProcuracaoSnapshot;
+use App\Models\ClientProcuracaoSync;
 use App\Models\FgtsCompetenceStatus;
 use App\Models\FiscalCategory;
 use App\Models\FiscalCompetence;
@@ -35,12 +37,17 @@ use App\Models\TaxInstallmentOrder;
 use App\Models\TaxInstallmentParcel;
 use App\Models\TaxObligationProjection;
 use App\Services\Fiscal\Dctfweb\DctfwebMonitoringQueryService;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdCommunicationService;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdMonitoringQueryService;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPeriod;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiMonitoringQueryService;
+use App\Services\Fiscal\Sitfis\SitfisCommunicationService;
 use App\Services\FiscalMonitoring\FiscalCoverageAggregator;
 use App\Services\FiscalMonitoring\FiscalDocumentDescriptorFactory;
+use App\Services\FiscalMonitoring\MonitoringModuleMembershipService;
 use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceContract;
 use App\Services\FiscalMonitoring\Surfaces\MonitoringSurfaceRegistry;
+use App\Services\Integra\ClientProcuracaoValidityResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -60,6 +67,7 @@ final class ModulePortfolioQueryService
         private readonly MonitoringSurfaceRegistry $surfaces,
         private readonly FiscalDocumentDescriptorFactory $documentDescriptors,
         private readonly FiscalCoverageAggregator $coverageAggregator,
+        private readonly MonitoringModuleMembershipService $membership,
     ) {}
 
     public function overview(
@@ -114,11 +122,20 @@ final class ModulePortfolioQueryService
     ): LengthAwarePaginator {
         $origin = $this->dataOrigin->resolve($office);
         $idsQuery = $this->scopedClientIdsQuery($office, $module, $filters);
+        $isPgdasdPortfolio = $this->isPgdasdPortfolioSubmodule($module, $filters);
 
         $sortColumn = match ($filters->sort) {
             'display_name' => 'clients.display_name',
             'id' => 'clients.id',
-            'situation' => 'portfolio_situation',
+            'situation' => $isPgdasdPortfolio
+                ? 'portfolio_pgdasd_declaration_state'
+                : 'portfolio_situation',
+            'last_declaration' => $isPgdasdPortfolio
+                ? 'portfolio_pgdasd_last_declaration'
+                : 'clients.legal_name',
+            'rbt12' => $isPgdasdPortfolio
+                ? 'portfolio_pgdasd_rbt12'
+                : 'clients.legal_name',
             'last_consulted_at' => 'portfolio_last_consulted_at',
             'competence' => 'portfolio_competence',
             default => 'clients.legal_name',
@@ -141,7 +158,25 @@ final class ModulePortfolioQueryService
             ->selectSub(
                 $this->competenceSubquery($office, $module, $filters),
                 'portfolio_competence',
-            )
+            );
+
+        if ($isPgdasdPortfolio) {
+            $pageQuery
+                ->selectSub(
+                    $this->pgdasdDeclarationStateSortSubquery($office),
+                    'portfolio_pgdasd_declaration_state',
+                )
+                ->selectSub(
+                    $this->pgdasdLastDeclarationSortSubquery($office),
+                    'portfolio_pgdasd_last_declaration',
+                )
+                ->selectSub(
+                    $this->pgdasdRbt12SortSubquery($office),
+                    'portfolio_pgdasd_rbt12',
+                );
+        }
+
+        $pageQuery
             ->orderBy($sortColumn, $filters->sortDirection)
             ->orderBy('clients.id');
 
@@ -171,6 +206,7 @@ final class ModulePortfolioQueryService
             $competence = $client->getAttribute('portfolio_competence');
             $lastConsulted = $client->getAttribute('portfolio_last_consulted_at');
             $cnpj = $matrixCnpjs[$id] ?? null;
+            $normalizedCnpj = Cnpj::normalize($cnpj ?? (string) $client->root_cnpj);
             $detail = $details[$id] ?? ['module_key' => $module->value];
             $coverage = $coverages[$id] ?? FiscalCoverage::Unknown->value;
             if ($module === FiscalModuleKey::Fgts
@@ -185,6 +221,7 @@ final class ModulePortfolioQueryService
                 clientId: $id,
                 legalName: (string) $client->legal_name,
                 displayName: $client->display_name,
+                cnpj: strlen($normalizedCnpj) === 14 ? $normalizedCnpj : null,
                 cnpjMasked: $this->maskCnpj($cnpj ?? $client->root_cnpj),
                 rootCnpjMasked: $this->maskRootCnpj((string) $client->root_cnpj),
                 competence: is_string($competence) && $competence !== '' ? $competence : null,
@@ -420,7 +457,10 @@ final class ModulePortfolioQueryService
 
         if ($module === FiscalModuleKey::SimplesMei) {
             $this->applySimplesMeiSubmoduleScope($q, $filters);
+            $this->applyPgdasdSendStatusFilter($q, $office, $filters);
         }
+
+        $this->membership->applyExclusionScope($q, $office, $module, $filters->submodule);
 
         if ($filters->coverageList() !== []) {
             $this->applyCoverageFilter($q, $office, $module, $filters);
@@ -535,6 +575,7 @@ SQL;
             coverage: $filters->coverage,
             modality: $filters->modality,
             year: $filters->year,
+            sendStatus: $filters->sendStatus,
         );
 
         $ids = $this->scopedClientIdsQuery($office, $module, $scopeFilters);
@@ -964,6 +1005,105 @@ SQL;
         ModulePortfolioFilters $filters,
     ): QueryBuilder {
         return DB::query()->selectRaw($this->situationSqlExpression($office, $module, $filters));
+    }
+
+    private function isPgdasdPortfolioSubmodule(
+        FiscalModuleKey $module,
+        ModulePortfolioFilters $filters,
+    ): bool {
+        if ($module !== FiscalModuleKey::SimplesMei) {
+            return false;
+        }
+
+        $sub = strtoupper((string) ($filters->submodule ?? 'PGDASD'));
+
+        return in_array($sub, ['', 'PGDASD', 'PGDAS', 'SIMPLES'], true);
+    }
+
+    private function pgdasdDeclarationStateSortSubquery(Office $office): QueryBuilder
+    {
+        return DB::query()->selectRaw(<<<SQL
+(
+    SELECT top.pgdasd_declaration_state
+    FROM tax_obligation_projections top
+    INNER JOIN tax_obligation_definitions tod
+      ON tod.id = top.obligation_definition_id
+    WHERE top.office_id = {$office->id}
+      AND top.client_id = clients.id
+      AND tod.code = 'PGDAS_D'
+    ORDER BY top.last_valid_query_at DESC NULLS LAST, top.id DESC
+    LIMIT 1
+)
+SQL);
+    }
+
+    private function pgdasdLastDeclarationSortSubquery(Office $office): QueryBuilder
+    {
+        return DB::query()->selectRaw(<<<SQL
+(
+    SELECT po.period_key
+    FROM pgdasd_operations po
+    WHERE po.office_id = {$office->id}
+      AND po.client_id = clients.id
+      AND po.kind = 'DECLARATION'
+    ORDER BY po.transmitted_at DESC NULLS LAST, po.declaration_number DESC NULLS LAST, po.id DESC
+    LIMIT 1
+)
+SQL);
+    }
+
+    private function pgdasdRbt12SortSubquery(Office $office): QueryBuilder
+    {
+        $tz = is_string($office->timezone) && $office->timezone !== ''
+            ? $office->timezone
+            : 'America/Sao_Paulo';
+        $expectedPeriodKey = PgdasdPeriod::toPeriodKey(PgdasdPeriod::expectedPa(null, $tz));
+        $expectedPeriodSql = $this->escapeSqlLiteral($expectedPeriodKey);
+        $officeId = (int) $office->id;
+
+        // Período de display = declaração do PA esperado se existir; senão última
+        // declaração; senão PA esperado — alinhado a portfolioDetails.
+        // Nested subselects correlacionam em pr.client_id (SQLite rejeita clients.id
+        // dentro de ORDER BY aninhado).
+        return DB::query()->selectRaw(<<<SQL
+(
+    SELECT pr.total_cents
+    FROM pgdasd_rbt12_projections pr
+    LEFT JOIN tax_obligation_projections top_rbt
+      ON top_rbt.id = pr.projection_id
+    WHERE pr.office_id = {$officeId}
+      AND pr.client_id = clients.id
+    ORDER BY
+      CASE
+        WHEN pr.status = 'PARSED' AND top_rbt.period_key = COALESCE(
+          (
+            SELECT po.period_key
+            FROM pgdasd_operations po
+            WHERE po.office_id = {$officeId}
+              AND po.client_id = pr.client_id
+              AND po.kind = 'DECLARATION'
+              AND po.period_key = '{$expectedPeriodSql}'
+            ORDER BY po.transmitted_at DESC NULLS LAST, po.declaration_number DESC NULLS LAST, po.id DESC
+            LIMIT 1
+          ),
+          (
+            SELECT po.period_key
+            FROM pgdasd_operations po
+            WHERE po.office_id = {$officeId}
+              AND po.client_id = pr.client_id
+              AND po.kind = 'DECLARATION'
+            ORDER BY po.transmitted_at DESC NULLS LAST, po.declaration_number DESC NULLS LAST, po.id DESC
+            LIMIT 1
+          ),
+          '{$expectedPeriodSql}'
+        ) THEN 0
+        WHEN pr.status = 'PARSED' THEN 1
+        ELSE 2
+      END ASC,
+      pr.id DESC
+    LIMIT 1
+)
+SQL);
     }
 
     private function lastConsultedSubquery(
@@ -1471,14 +1611,24 @@ SQL);
                 ->portfolioDetails($office, $clientIds, $filters->year);
         }
 
+        $procuracaoByClient = $this->simplesMeiProcuracaoProjections($office, $clientIds);
+
         $map = [];
         foreach ($clientIds as $cid) {
             $comp = $comps->firstWhere('client_id', $cid);
+            $procuracao = $procuracaoByClient[$cid] ?? [
+                'status' => 'unverified',
+                'valid_to' => null,
+                'checked_at' => null,
+            ];
             $base = [
                 'module_key' => FiscalModuleKey::SimplesMei->value,
                 'submodule' => $filters->submodule,
                 'period_key' => $comp?->period_key,
                 'competence_id' => $comp?->id,
+                'procuracao_status' => $procuracao['status'],
+                'procuracao_valid_to' => $procuracao['valid_to'],
+                'procuracao_checked_at' => $procuracao['checked_at'],
                 'links' => [
                     'regimes' => "/api/v1/fiscal/simples-mei/clients/{$cid}/regimes",
                     'competences' => "/api/v1/fiscal/simples-mei/clients/{$cid}/competences",
@@ -1493,6 +1643,12 @@ SQL);
                     'latest_declaration' => $pg['latest_declaration'] ?? null,
                     'declaration_state' => $pg['declaration_state'] ?? null,
                     'declaration_state_reason' => $pg['declaration_state_reason'] ?? null,
+                    'payment_state' => $pg['payment_state'] ?? null,
+                    'payment_state_reason' => $pg['payment_state_reason'] ?? null,
+                    'payment_das_count' => $pg['payment_das_count'] ?? null,
+                    'payment_unpaid_count' => $pg['payment_unpaid_count'] ?? null,
+                    'payment_paid_count' => $pg['payment_paid_count'] ?? null,
+                    'payment_open_competencies' => $pg['payment_open_competencies'] ?? [],
                     'last_valid_query_at' => $pg['last_valid_query_at'] ?? null,
                     'rbt12' => $pg['rbt12'] ?? null,
                     'documents' => $pg['documents'] ?? [],
@@ -1529,6 +1685,47 @@ SQL);
         }
 
         return $map;
+    }
+
+    /**
+     * Projeção oficial de procuração e-CAC por cliente (sem egress SERPRO).
+     *
+     * @param  list<int>  $clientIds
+     * @return array<int, array{status: string, valid_to: ?string, checked_at: ?string}>
+     */
+    private function simplesMeiProcuracaoProjections(Office $office, array $clientIds): array
+    {
+        if ($clientIds === []) {
+            return [];
+        }
+
+        $resolver = app(ClientProcuracaoValidityResolver::class);
+        $environment = (string) config('serpro.default_environment', 'TRIAL');
+
+        $syncs = ClientProcuracaoSync::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereIn('client_id', $clientIds)
+            ->get()
+            ->keyBy('client_id');
+
+        $snapshots = ClientProcuracaoSnapshot::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereIn('client_id', $clientIds)
+            ->where('environment', $environment)
+            ->get()
+            ->keyBy('client_id');
+
+        $out = [];
+        foreach ($clientIds as $cid) {
+            $out[$cid] = $resolver->resolve(
+                $syncs->get($cid),
+                $snapshots->get($cid),
+            );
+        }
+
+        return $out;
     }
 
     /**
@@ -1691,10 +1888,13 @@ SQL);
             ->orderByDesc('observed_at')
             ->get();
 
+        $snapshotIds = $snapshots->pluck('id')->map(fn ($id): int => (int) $id)->all();
+
         $findings = FiscalFinding::query()
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
+            ->whereIn('snapshot_id', $snapshotIds)
             ->where('is_active', true)
             ->selectRaw('client_id, COUNT(*) as cnt')
             ->groupBy('client_id')
@@ -1705,9 +1905,16 @@ SQL);
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
             ->where('status', 'OPEN')
+            ->whereHas('run', fn ($query) => $query
+                ->withoutGlobalScopes()
+                ->where('system_code', $system)
+                ->where('service_code', (string) config('fiscal_monitoring.sitfis.service_code', 'SITFIS')))
             ->selectRaw('client_id, COUNT(*) as cnt')
             ->groupBy('client_id')
             ->pluck('cnt', 'client_id');
+
+        $comms = app(SitfisCommunicationService::class)
+            ->summariesForClients($office, $clientIds);
 
         $map = [];
         foreach ($clientIds as $cid) {
@@ -1725,6 +1932,7 @@ SQL);
                 'is_expired' => $expired,
                 'findings_count' => (int) ($findings[$cid] ?? 0),
                 'pending_count' => (int) ($pending[$cid] ?? 0),
+                'communication' => $comms[$cid] ?? null,
                 'links' => [
                     'sitfis' => '/api/v1/fiscal/sitfis?client_id='.$cid,
                     'findings' => '/api/v1/fiscal/findings?client_id='.$cid,
@@ -1871,6 +2079,56 @@ SQL);
     }
 
     /**
+     * Filtro Enviado / Não enviado (comunicação PGDAS-D).
+     * Alinhado a PgdasdCommunicationService::trackingStatus: qualquer dispatch
+     * = Enviado; ausência = Não enviado (NO_HISTORY / NOT_CONFIGURED).
+     * Só aplica em submodule PGDASD; PGMEI ignora send_status.
+     */
+    private function applyPgdasdSendStatusFilter(
+        Builder|QueryBuilder $q,
+        Office $office,
+        ModulePortfolioFilters $filters,
+    ): void {
+        $statuses = $filters->sendStatusList();
+        if ($statuses === []) {
+            return;
+        }
+
+        $sub = strtoupper(trim((string) ($filters->submodule ?? '')));
+        if (! in_array($sub, ['PGDASD', 'PGDAS', 'SIMPLES', 'SIMPLES_NACIONAL', ''], true)) {
+            return;
+        }
+
+        $wantSent = in_array('sent', $statuses, true);
+        $wantNotSent = in_array('not_sent', $statuses, true);
+        if ($wantSent && $wantNotSent) {
+            return;
+        }
+
+        $moduleKey = PgdasdCommunicationService::MODULE;
+        $submoduleKey = PgdasdCommunicationService::SUBMODULE;
+
+        $existsDispatch = function (QueryBuilder $exists) use ($office, $moduleKey, $submoduleKey): void {
+            $exists->select(DB::raw('1'))
+                ->from('client_communication_dispatches as ccd')
+                ->whereColumn('ccd.client_id', 'clients.id')
+                ->where('ccd.office_id', $office->id)
+                ->where('ccd.module_key', $moduleKey)
+                ->where('ccd.submodule_key', $submoduleKey);
+        };
+
+        if ($wantSent) {
+            $q->whereExists($existsDispatch);
+
+            return;
+        }
+
+        if ($wantNotSent) {
+            $q->whereNotExists($existsDispatch);
+        }
+    }
+
+    /**
      * Mapeia submodule da aba → código de obrigação do catálogo.
      * DIRF/FGTS/agregado retornam null (tratamento especial ou sem filtro).
      */
@@ -1997,6 +2255,12 @@ SQL);
                     'latest_declaration' => $pgdasd['latest_declaration'] ?? null,
                     'declaration_state' => $pgdasd['declaration_state'] ?? null,
                     'declaration_state_reason' => $pgdasd['declaration_state_reason'] ?? null,
+                    'payment_state' => $pgdasd['payment_state'] ?? null,
+                    'payment_state_reason' => $pgdasd['payment_state_reason'] ?? null,
+                    'payment_das_count' => $pgdasd['payment_das_count'] ?? null,
+                    'payment_unpaid_count' => $pgdasd['payment_unpaid_count'] ?? null,
+                    'payment_paid_count' => $pgdasd['payment_paid_count'] ?? null,
+                    'payment_open_competencies' => $pgdasd['payment_open_competencies'] ?? [],
                     'last_valid_query_at' => $pgdasd['last_valid_query_at'] ?? null,
                     'rbt12' => $pgdasd['rbt12'] ?? null,
                     'documents' => $pgdasd['documents'] ?? [],

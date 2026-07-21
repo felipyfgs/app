@@ -3,8 +3,13 @@
 namespace App\Http\Controllers\Api\V1\Fiscal;
 
 use App\Enums\OfficeRole;
+use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureOfficeContext;
 use App\Models\Client;
+use App\Models\User;
+use App\Services\Authorization\TenantAuthorization;
+use App\Services\Fiscal\Sitfis\SitfisHistoryQueryService;
 use App\Services\Integra\Sitfis\SitfisSnapshotService;
 use App\Support\CurrentOffice;
 use Illuminate\Http\JsonResponse;
@@ -19,7 +24,36 @@ class SitfisSituationController extends Controller
     public function __construct(
         private readonly CurrentOffice $currentOffice,
         private readonly SitfisSnapshotService $sitfis,
+        private readonly SitfisHistoryQueryService $historyQueries,
+        private readonly TenantAuthorization $authorization,
     ) {}
+
+    /**
+     * Histórico local consolidado por consulta. Nunca dispara refresh/Integra.
+     */
+    public function history(Request $request, int $client): JsonResponse
+    {
+        $this->assertCanRead();
+        if ($this->clientOfficeIdWasSupplied($request)) {
+            return response()->json([
+                'message' => 'office_id não é aceito; o escritório é obtido do contexto autenticado.',
+                'code' => 'CLIENT_OFFICE_ID_REJECTED',
+            ], 422);
+        }
+
+        $office = $this->currentOffice->office();
+        $model = $this->findClient((int) $office->id, $client);
+        if ($model === null) {
+            return response()->json([
+                'message' => 'Cliente não encontrado no escritório atual.',
+                'code' => 'CLIENT_NOT_FOUND',
+            ], 404);
+        }
+
+        return response()->json([
+            'data' => $this->historyQueries->history($office, $model),
+        ]);
+    }
 
     /**
      * GET — devolve snapshot existente + idade. Nunca dispara nova chamada só por abrir a tela.
@@ -55,6 +89,7 @@ class SitfisSituationController extends Controller
 
         $data = $request->validate([
             'client_id' => ['required', 'integer'],
+            'force' => ['sometimes', 'boolean'],
         ]);
 
         $client = $this->findClient($office->id, (int) $data['client_id']);
@@ -66,7 +101,7 @@ class SitfisSituationController extends Controller
             $result = $this->sitfis->refresh(
                 office: $office,
                 client: $client,
-                force: false,
+                force: (bool) ($data['force'] ?? false),
                 actorId: $request->user()?->id,
                 dispatch: true,
             );
@@ -98,9 +133,32 @@ class SitfisSituationController extends Controller
 
     private function assertCanRead(): void
     {
-        if ($this->currentOffice->role() === null) {
+        $actor = request()->user();
+        if (! $actor instanceof User
+            || ! $this->authorization->allows($actor, TenantPermission::FiscalMonitoringView)) {
             abort(403, 'Perfil não resolvido.');
         }
+    }
+
+    private function clientOfficeIdWasSupplied(Request $request): bool
+    {
+        return $request->attributes->get(EnsureOfficeContext::CLIENT_OFFICE_ID_SUPPLIED) === true
+            || $this->containsOfficeIdKey($request->query->all());
+    }
+
+    /** @param array<array-key, mixed> $values */
+    private function containsOfficeIdKey(array $values): bool
+    {
+        foreach ($values as $key => $value) {
+            if (is_string($key) && strtolower($key) === 'office_id') {
+                return true;
+            }
+            if (is_array($value) && $this->containsOfficeIdKey($value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function assertCanWrite(): void

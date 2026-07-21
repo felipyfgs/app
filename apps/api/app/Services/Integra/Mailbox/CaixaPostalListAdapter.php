@@ -21,6 +21,7 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
     public function __construct(
         private readonly CaixaPostalClient $client,
         private readonly MailboxMessageStore $store,
+        private readonly MailboxDetailEnqueueService $detailEnqueue,
     ) {}
 
     public function systemCode(): string
@@ -178,6 +179,8 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
             $request->run->id,
         );
 
+        $detailRuns = $this->detailEnqueue->enqueueAfterList($request->office, $request->client);
+
         $evidence = json_encode([
             'operation' => 'LISTAR',
             'source' => 'CAIXA_POSTAL',
@@ -189,6 +192,7 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
             'pages_processed' => $page,
             'pagination_complete' => $paginationComplete,
             'pagination_truncated' => $paginationTruncated,
+            'detail_fetches_enqueued' => count($detailRuns),
             // sem corpos/subjects
             'external_ids' => array_map(
                 fn (array $i) => $i['external_id'] ?? null,
@@ -242,6 +246,7 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
                 'official_unread_count' => $list->officialUnreadCount,
                 'messages_status' => 'CONSULTED',
                 'pagination_complete' => $paginationComplete,
+                'detail_fetches_enqueued' => count($detailRuns),
             ],
             findings: $findings,
             itemsProcessed: count($list->items),

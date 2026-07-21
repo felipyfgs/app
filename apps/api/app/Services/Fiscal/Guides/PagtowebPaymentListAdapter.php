@@ -68,7 +68,12 @@ final class PagtowebPaymentListAdapter implements FiscalSourceAdapter
             return FiscalAdapterResult::blocked('Módulo guias desabilitado.', 'FEATURE_DISABLED');
         }
         try {
-            $normalized = $this->codec->normalizeFilters((array) ($request->progress['pagtoweb_payment_list_filters'] ?? []));
+            $filters = (array) ($request->progress['pagtoweb_payment_list_filters'] ?? []);
+            $encryptedDocuments = $request->progress['pagtoweb_payment_list_documents_encrypted'] ?? null;
+            if (is_string($encryptedDocuments) && $encryptedDocuments !== '') {
+                $filters['numero_documento_lista'] = $this->codec->decryptDocumentNumbers($encryptedDocuments);
+            }
+            $normalized = $this->codec->normalizeFilters($filters);
             $response = $this->operations->execute(office: $request->office, client: $request->client, operationKey: self::OPERATION_KEY, businessData: $normalized['business_data'], idempotencyKey: 'pagtoweb-payment-list:'.$request->run->idempotency_key, correlationId: $request->run->correlation_id, entityKey: 'fiscal-run:'.$request->run->id, module: 'guias');
             if (! $response->success) {
                 return FiscalAdapterResult::failed($response->errorMessage ?? 'Falha na consulta de pagamentos.', $response->errorCode ?? 'PAGTOWEB_PAYMENT_LIST_FAILED', $this->coverage());

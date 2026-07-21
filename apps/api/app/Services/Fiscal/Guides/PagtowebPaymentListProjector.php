@@ -2,18 +2,22 @@
 
 namespace App\Services\Fiscal\Guides;
 
+use App\Enums\FiscalSourceProvenance;
 use App\Models\Client;
 use App\Models\FiscalMonitoringRun;
 use App\Models\Office;
 use App\Models\PagtowebPaymentListItem;
 use App\Models\PagtowebPaymentListObservation;
 use App\Models\PagtowebPaymentListProjection;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPagtowebEvidenceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 final class PagtowebPaymentListProjector
 {
+    public function __construct(private readonly PgdasdPagtowebEvidenceService $pgdasdEvidence) {}
+
     /** @param list<array<string,mixed>> $items @param array<string,mixed> $filterSummary @return array{observation:PagtowebPaymentListObservation,created:bool} */
     public function project(Office $office, Client $client, array $items, array $filterSummary, ?int $sourceRunId, string $provenance, ?CarbonImmutable $observedAt = null): array
     {
@@ -38,6 +42,17 @@ final class PagtowebPaymentListProjector
             $projection = PagtowebPaymentListProjection::query()->withoutGlobalScopes()->where('office_id', $office->id)->where('client_id', $client->id)->lockForUpdate()->first();
             $data = ['last_observation_id' => $observation->id, 'last_run_id' => $sourceRunId, 'last_valid_query_at' => $observedAt, 'source_provenance' => $provenance];
             $projection === null ? PagtowebPaymentListProjection::query()->create(['office_id' => $office->id, 'client_id' => $client->id, ...$data]) : $projection->forceFill($data)->save();
+
+            if ($provenance === FiscalSourceProvenance::SerproReal->value) {
+                $this->pgdasdEvidence->apply(
+                    $office,
+                    $client,
+                    $observation,
+                    (array) ($filterSummary['numero_documento_digests'] ?? []),
+                    $sourceRunId,
+                    $observedAt,
+                );
+            }
 
             return ['observation' => $observation->refresh(), 'created' => $created];
         });

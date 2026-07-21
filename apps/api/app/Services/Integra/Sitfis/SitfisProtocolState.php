@@ -25,6 +25,9 @@ final class SitfisProtocolState
 
     public const PHASE_WAITING_MIN_PERIOD = 'WAITING_MIN_PERIOD';
 
+    /** Aguardando expiração do cache /Apoiar (HTTP 304 sem protocolo parseável). */
+    public const PHASE_WAITING_CACHE_EXPIRY = 'WAITING_CACHE_EXPIRY';
+
     public const PHASE_POLLING_EMIT = 'POLLING_EMIT';
 
     public const PHASE_DONE = 'DONE';

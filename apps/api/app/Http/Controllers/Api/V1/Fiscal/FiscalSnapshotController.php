@@ -131,10 +131,9 @@ class FiscalSnapshotController extends Controller
     private function assertCanRead(?Model $target = null): void
     {
         $actor = auth()->user();
-        $membership = $this->currentOffice->realMembership();
+        // Não exigir realMembership(): em platform_privileged sem vínculo dual
+        // TenantAuthorization já autoriza PLATFORM_ADMIN (e barra o restante).
         if (! $actor instanceof User
-            || $membership === null
-            || ! $membership->is_active
             || ! $this->authorization->allows(
                 $actor,
                 TenantPermission::FiscalMonitoringView,

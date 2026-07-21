@@ -2,6 +2,7 @@
 
 namespace App\Services\Integra;
 
+use App\Contracts\IntegraEligibilityEvaluating;
 use App\DTO\Serpro\EligibilityResult;
 use App\Enums\OfficeRole;
 use App\Enums\SerproAuthorizationStatus;
@@ -25,7 +26,7 @@ use Illuminate\Support\Facades\Cache;
 /**
  * Matriz de elegibilidade pré-chamada Integra Contador (fail-closed).
  */
-final class IntegraEligibilityService
+final class IntegraEligibilityService implements IntegraEligibilityEvaluating
 {
     /** idServico oficial faturável de lookup de procurações. */
     public const BILLABLE_PROXY_LOOKUP_SERVICE = 'OBTERPROCURACAO41';

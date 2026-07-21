@@ -221,6 +221,29 @@ class PgmeiMonitoringController extends Controller
         ]);
     }
 
+    public function send(Request $request, int $client): JsonResponse
+    {
+        $this->assertCanSync();
+        if ($rejection = $this->rejectClientOfficeId($request)) {
+            return $rejection;
+        }
+
+        $office = $this->currentOffice->office();
+        $model = $this->findClient($office->id, $client);
+        if ($model === null) {
+            return response()->json(['message' => 'Cliente não encontrado.'], 404);
+        }
+        /** @var User $actor */
+        $actor = $request->user();
+        try {
+            $data = $this->communication->requestSend($office, $model, $actor);
+        } catch (HttpException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->getStatusCode());
+        }
+
+        return response()->json(['data' => $data]);
+    }
+
     private function findClient(int $officeId, int $clientId): ?Client
     {
         return Client::query()

@@ -80,6 +80,10 @@ final class SerproOperationAttemptStore
                         $existing->error_code,
                         (bool) $existing->success,
                     );
+                    // Sucesso sticky SITFIS com protocolo omitido no store não correlaciona — reclaim.
+                    if ($sticky && $this->sitfisSolicitProtocolOmitted($existing)) {
+                        $sticky = false;
+                    }
                     if ($sticky) {
                         return [
                             'action' => 'replay',
@@ -199,6 +203,46 @@ final class SerproOperationAttemptStore
         $this->persistTerminal($attempt, $response, SerproAttemptState::Acknowledged);
     }
 
+    /**
+     * Remove attempt de falha local recuperável para não gerar replay sticky.
+     */
+    public function abandonLocalPrecondition(SerproOperationAttempt $attempt): void
+    {
+        if (! Schema::hasTable('serpro_operation_attempts')) {
+            return;
+        }
+
+        SerproOperationAttempt::query()
+            ->withoutGlobalScopes()
+            ->whereKey($attempt->id)
+            ->delete();
+    }
+
+    /**
+     * Após refresh do token: remove bloqueios locais de token do office/ambiente.
+     *
+     * @param  list<string>|null  $errorCodes
+     */
+    public function purgeNonStickyTokenFailures(
+        int $officeId,
+        string $environment,
+        ?array $errorCodes = null,
+    ): int {
+        if (! Schema::hasTable('serpro_operation_attempts')) {
+            return 0;
+        }
+
+        $codes = $errorCodes ?? SerproAttemptReplayPolicy::tokenRelatedNonStickyCodes();
+
+        return SerproOperationAttempt::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $officeId)
+            ->where('environment', $environment)
+            ->where('success', false)
+            ->whereIn('error_code', $codes)
+            ->delete();
+    }
+
     public function markUncertain(SerproOperationAttempt $attempt, IntegraResponse $response): void
     {
         $this->persistTerminal($attempt, $response, SerproAttemptState::Uncertain);
@@ -224,6 +268,11 @@ final class SerproOperationAttemptStore
 
         $now = now();
         $documental = $this->isDocumentalOperationKey($attempt->operation_key);
+        $dados = $this->sanitizeAttemptDados($attempt->operation_key, $response->dados);
+        $dados = $this->canonicalizeSitfisSolicitProtocol($attempt->operation_key, $response, $dados);
+        $headers = $this->sanitizeResponseArray($response->headers, $attempt->operation_key);
+        $headers = $this->persistSitfisExpiresHeader($headers, $response);
+
         $attempt->forceFill([
             'attempt_state' => $state,
             'success' => $response->success,
@@ -237,10 +286,10 @@ final class SerproOperationAttemptStore
             'source_provenance' => $response->sourceProvenance,
             'business_status' => $response->businessStatus,
             'functional_route' => $response->functionalRoute,
-            'mensagens' => $this->sanitizeResponseArray($response->mensagens),
-            'dados' => $this->sanitizeAttemptDados($attempt->operation_key, $response->dados),
+            'mensagens' => $this->sanitizeResponseArray($response->mensagens, $attempt->operation_key),
+            'dados' => $dados,
             'body' => $this->sanitizeAttemptBody($attempt->operation_key, $response->body),
-            'headers' => $this->sanitizeResponseArray($response->headers),
+            'headers' => $headers,
             'request_tag' => $response->requestTag ?? $attempt->request_tag,
             'correlation_id' => $response->correlationId ?? $attempt->correlation_id,
             'acknowledged_at' => in_array($state, [
@@ -254,19 +303,34 @@ final class SerproOperationAttemptStore
 
     public function toResponse(SerproOperationAttempt $attempt): IntegraResponse
     {
+        $headers = is_array($attempt->headers) ? $attempt->headers : [];
+        $dados = $attempt->dados;
+        $etag = $this->headerValue($headers, 'etag');
+        $expires = $this->headerValue($headers, 'expires');
+
+        // Replay SITFIS 304: protocolo canônico em dados (ETag não fica em publicHeaders).
+        if ($etag === null || $etag === '') {
+            $protocol = $this->sitfisProtocolFromDados($dados);
+            if ($protocol !== null) {
+                $etag = 'protocoloRelatorio:'.$protocol;
+            }
+        }
+
         $response = new IntegraResponse(
             success: (bool) $attempt->success,
             httpStatus: (int) ($attempt->http_status ?? 0),
             body: is_array($attempt->body) ? $attempt->body : [],
-            headers: is_array($attempt->headers) ? $attempt->headers : [],
+            headers: $headers,
             errorCode: $attempt->error_code,
             errorMessage: $attempt->error_message,
             simulated: false,
             correlationId: $attempt->correlation_id,
             latencyMs: $attempt->latency_ms,
+            etag: $etag,
+            expiresHeader: $expires,
             businessStatus: $attempt->business_status,
             mensagens: is_array($attempt->mensagens) ? $attempt->mensagens : [],
-            dados: $attempt->dados,
+            dados: $dados,
             operationKey: $attempt->operation_key,
             requestTag: $attempt->request_tag,
             functionalRoute: $attempt->functional_route,
@@ -280,6 +344,122 @@ final class SerproOperationAttemptStore
         }
 
         return $response;
+    }
+
+    /**
+     * HTTP 304 SITFIS: protocolo só no ETag — grava em dados.protocoloRelatorio para replay.
+     *
+     * @param  array<string, mixed>|null  $dados
+     * @return array<string, mixed>|null
+     */
+    private function canonicalizeSitfisSolicitProtocol(
+        ?string $operationKey,
+        IntegraResponse $response,
+        ?array $dados,
+    ): ?array {
+        if ($operationKey !== 'sitfis.solicitar_protocolo') {
+            return $dados;
+        }
+
+        $existing = $this->sitfisProtocolFromDados($dados);
+        if ($existing !== null) {
+            return $dados;
+        }
+
+        $fromEtag = $this->extractSitfisProtocolFromEtag($response->etag);
+        if ($fromEtag === null) {
+            return $dados;
+        }
+
+        $dados = is_array($dados) ? $dados : [];
+        $dados['protocoloRelatorio'] = mb_substr($fromEtag, 0, 512);
+
+        return $dados;
+    }
+
+    /**
+     * @param  array<string, mixed>  $headers
+     * @return array<string, mixed>
+     */
+    private function persistSitfisExpiresHeader(array $headers, IntegraResponse $response): array
+    {
+        if ($this->headerValue($headers, 'expires') !== null) {
+            return $headers;
+        }
+
+        $expires = $response->expiresHeader;
+        if ($expires === null || trim($expires) === '') {
+            return $headers;
+        }
+
+        $headers['expires'] = mb_substr(trim($expires), 0, 200);
+
+        return $headers;
+    }
+
+    private function sitfisProtocolFromDados(mixed $dados): ?string
+    {
+        if (! is_array($dados)) {
+            return null;
+        }
+
+        foreach (['protocoloRelatorio', 'protocolo_relatorio', 'protocolo', 'protocol'] as $key) {
+            if (! array_key_exists($key, $dados)) {
+                continue;
+            }
+            $value = $dados[$key];
+            if ($this->isOmittedDescriptor($value)) {
+                continue;
+            }
+            if (is_scalar($value) && ! is_bool($value)) {
+                $token = trim((string) $value);
+                if ($token !== '' && ! str_contains($token, 'omitted_from_attempt_store')) {
+                    return $token;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function extractSitfisProtocolFromEtag(?string $etag): ?string
+    {
+        if ($etag === null) {
+            return null;
+        }
+
+        $raw = trim($etag);
+        if ($raw === '') {
+            return null;
+        }
+
+        $raw = trim($raw, "\"'");
+        if (! preg_match('/protocoloRelatorio\s*[=:]\s*(.+)$/i', $raw, $matches)) {
+            return null;
+        }
+
+        $token = trim($matches[1], " \t\n\r\0\x0B\"'");
+        if ($token === '' || str_contains($token, 'omitted_from_attempt_store')) {
+            return null;
+        }
+
+        return $token;
+    }
+
+    /**
+     * @param  array<string, mixed>  $headers
+     */
+    private function headerValue(array $headers, string $name): ?string
+    {
+        foreach ($headers as $key => $value) {
+            if (strcasecmp((string) $key, $name) === 0 && is_scalar($value)) {
+                $string = trim((string) $value);
+
+                return $string !== '' ? $string : null;
+            }
+        }
+
+        return null;
     }
 
     private function blocked(
@@ -327,7 +507,7 @@ final class SerproOperationAttemptStore
             }
         }
 
-        $dados = $this->sanitizeResponseArray($dados);
+        $dados = $this->sanitizeResponseArray($dados, $operationKey);
 
         return $this->isDocumentalOperationKey($operationKey)
             ? $this->stripPdfBase64Fields($dados)
@@ -340,7 +520,7 @@ final class SerproOperationAttemptStore
      */
     private function sanitizeAttemptBody(?string $operationKey, array $body): array
     {
-        $body = $this->sanitizeResponseArray($body);
+        $body = $this->sanitizeResponseArray($body, $operationKey);
 
         if ($this->isPagtowebArrecadacaoReceiptKey($operationKey)) {
             $body['dados'] = $this->sanitizePagtowebReceiptDescriptor($body['dados'] ?? null);
@@ -435,21 +615,31 @@ final class SerproOperationAttemptStore
     /**
      * Remove segredos e XML/Base64 ecoados antes de qualquer resposta ir para
      * o attempt store. O material sensível permanece exclusivamente no vault.
+     * Protocolo SITFIS (protocoloRelatorio) é preservado (truncado), não omitido como blob.
      *
      * @param  array<string|int, mixed>  $node
      * @return array<string|int, mixed>
      */
-    private function sanitizeResponseArray(array $node): array
+    private function sanitizeResponseArray(array $node, ?string $operationKey = null): array
     {
+        $preserveSitfisProtocol = $this->isSitfisOperationKey($operationKey);
+
         foreach ($node as $field => &$value) {
-            if ($this->isSensitiveResponseField((string) $field)) {
+            $fieldName = (string) $field;
+            if ($preserveSitfisProtocol && $this->isSitfisProtocolField($fieldName) && is_string($value) && $value !== '') {
+                $value = mb_substr($value, 0, 512);
+
+                continue;
+            }
+
+            if ($this->isSensitiveResponseField($fieldName)) {
                 $value = $this->omittedDescriptor();
 
                 continue;
             }
 
             if (is_array($value)) {
-                $value = $this->sanitizeResponseArray($value);
+                $value = $this->sanitizeResponseArray($value, $operationKey);
 
                 continue;
             }
@@ -460,7 +650,7 @@ final class SerproOperationAttemptStore
 
             $decoded = json_decode($value, true);
             if (is_array($decoded)) {
-                $value = $this->sanitizeResponseArray($decoded);
+                $value = $this->sanitizeResponseArray($decoded, $operationKey);
 
                 continue;
             }
@@ -470,6 +660,82 @@ final class SerproOperationAttemptStore
         unset($value);
 
         return $node;
+    }
+
+    private function isSitfisOperationKey(?string $operationKey): bool
+    {
+        return in_array($operationKey, [
+            'sitfis.solicitar_protocolo',
+            'sitfis.emitir_relatorio',
+        ], true);
+    }
+
+    private function isSitfisProtocolField(string $field): bool
+    {
+        $normalized = strtolower(str_replace(['-', ' '], '_', $field));
+
+        return in_array($normalized, [
+            'protocolorelatorio',
+            'protocolo_relatorio',
+            'protocolo',
+            'protocol',
+            'numeroprotocolo',
+            'protocolnumber',
+            'numero_protocolo',
+        ], true);
+    }
+
+    /**
+     * Sucesso sticky de solicit cuja resposta no store perdeu o protocolo (omit descriptor).
+     */
+    private function sitfisSolicitProtocolOmitted(SerproOperationAttempt $attempt): bool
+    {
+        if ($attempt->operation_key !== 'sitfis.solicitar_protocolo' || ! $attempt->success) {
+            return false;
+        }
+
+        $payloads = [];
+        if (is_array($attempt->dados)) {
+            $payloads[] = $attempt->dados;
+        }
+        if (is_array($attempt->body)) {
+            $payloads[] = $attempt->body;
+            if (isset($attempt->body['dados']) && is_array($attempt->body['dados'])) {
+                $payloads[] = $attempt->body['dados'];
+            }
+        }
+
+        $sawOmitted = false;
+        $sawUsable = false;
+        foreach ($payloads as $payload) {
+            foreach (['protocoloRelatorio', 'protocolo_relatorio', 'protocolo', 'protocol'] as $key) {
+                if (! array_key_exists($key, $payload)) {
+                    continue;
+                }
+                $value = $payload[$key];
+                if ($this->isOmittedDescriptor($value)) {
+                    $sawOmitted = true;
+
+                    continue;
+                }
+                if (is_scalar($value) && trim((string) $value) !== '' && ! is_bool($value)) {
+                    $sawUsable = true;
+                }
+            }
+        }
+
+        return $sawOmitted && ! $sawUsable;
+    }
+
+    private function isOmittedDescriptor(mixed $value): bool
+    {
+        if (is_string($value) && str_contains($value, 'omitted_from_attempt_store')) {
+            return true;
+        }
+
+        return is_array($value)
+            && (($value['omitted_from_attempt_store'] ?? false) === true
+                || ($value['sanitized'] ?? false) === true);
     }
 
     private function isSensitiveResponseField(string $field): bool

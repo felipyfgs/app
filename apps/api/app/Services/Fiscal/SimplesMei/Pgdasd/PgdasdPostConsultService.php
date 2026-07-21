@@ -32,6 +32,7 @@ final class PgdasdPostConsultService
         private readonly PgdasdDeclarationStateResolver $stateResolver,
         private readonly PgdasdRbt12Service $rbt12,
         private readonly FiscalEvidenceStore $evidenceStore,
+        private readonly PgdasdOperationAmountService $operationAmounts,
     ) {}
 
     /** @return array{result:FiscalAdapterResult,sanitized_dados:mixed} */
@@ -55,6 +56,7 @@ final class PgdasdPostConsultService
             'pgdasd.consultimadecrec',
             'pgdasd.consdecrec',
             'pgdasd.consextrato' => $this->handleDocumental($request, $response, $result, $operationKey),
+            'pgdasd.gerardas' => $this->handleGerarDas($request, $result),
             default => ['result' => $result, 'sanitized_dados' => null],
         };
     }
@@ -162,6 +164,7 @@ final class PgdasdPostConsultService
             lastProductiveConsultedAt: $observedAt,
             projection: $expectedProjection->refresh(),
         );
+        $situation = $statePack['state']->toFiscalSituation();
         $expectedMetadata = is_array($expectedProjection->metadata) ? $expectedProjection->metadata : [];
         $expectedMetadata['pgdasd_declaration_state_reason'] = $statePack['reason'];
         $expectedProjection->forceFill([
@@ -169,6 +172,8 @@ final class PgdasdPostConsultService
             'pgdasd_last_declaration_operation_id' => $declaration?->id,
             'pgdasd_calendar_version_code' => $statePack['calendar_version_code'],
             'pgdasd_calendar_verified' => $statePack['calendar_verified'],
+            'situation' => $situation,
+            'delivery_status' => $situation,
             'metadata' => $expectedMetadata,
         ])->save();
 
@@ -176,7 +181,23 @@ final class PgdasdPostConsultService
             $request->run,
             $projected['upserted'],
             $periodProjections->all(),
+            $expectedPeriodKey,
         );
+
+        try {
+            $this->operationAmounts->coverAmountGapsAfterMonitor(
+                $request->office,
+                $request->client,
+                $request->run,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('pgdasd.das_amount_gap_cover_failed', [
+                'office_id' => $request->office->id,
+                'client_id' => $request->client->id,
+                'run_id' => $request->run->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         $normalized = is_array($result->normalized) ? $result->normalized : [];
         $normalized['pgdasd'] = [
@@ -195,13 +216,6 @@ final class PgdasdPostConsultService
             'productive' => true,
             'incomplete' => false,
         ];
-
-        $situation = match ($statePack['state']) {
-            PgdasdDeclarationState::Current => FiscalSituation::UpToDate,
-            PgdasdDeclarationState::DueWithinDeadline,
-            PgdasdDeclarationState::OverdueNotFound => FiscalSituation::Pending,
-            PgdasdDeclarationState::Unverified => FiscalSituation::Unknown,
-        };
 
         return [
             'result' => $this->replaceResult(
@@ -277,12 +291,56 @@ final class PgdasdPostConsultService
 
         if ($operationKey === 'pgdasd.consextrato') {
             $this->resolveReservedRbt12($request, $numeroDas, $pack['artifacts']);
+            try {
+                $this->operationAmounts->applyFromExtratoArtifacts(
+                    $request->office,
+                    (int) $request->client->id,
+                    $numeroDas,
+                    $pack['artifacts'],
+                );
+            } catch (\Throwable $e) {
+                Log::warning('pgdasd.extrato_das_amount.apply_failed', [
+                    'office_id' => $request->office->id,
+                    'client_id' => $request->client->id,
+                    'run_id' => $request->run->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($operationKey === 'pgdasd.consdecrec' || $operationKey === 'pgdasd.consultimadecrec') {
+            $numeroDeclaracao = $this->requestValue($request, 'numeroDeclaracao', 'numero_declaracao');
+            $this->resolveReservedRbt12FromDeclaration($request, $numeroDeclaracao, $pack['artifacts']);
         }
 
         return [
             'result' => $this->documentResult($result, $pack['artifacts'], $pack['failures']),
             'sanitized_dados' => $pack['sanitized_dados'],
         ];
+    }
+
+    /** @return array{result:FiscalAdapterResult,sanitized_dados:mixed} */
+    private function handleGerarDas(
+        FiscalAdapterRequest $request,
+        FiscalAdapterResult $result,
+    ): array {
+        $normalized = is_array($result->normalized) ? $result->normalized : [];
+        try {
+            $this->operationAmounts->applyFromGerarDasNormalized(
+                $request->office,
+                (int) $request->client->id,
+                $normalized,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('pgdasd.gerar_das_amount.apply_failed', [
+                'office_id' => $request->office->id,
+                'client_id' => $request->client->id,
+                'run_id' => $request->run->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return ['result' => $result, 'sanitized_dados' => null];
     }
 
     /** @param list<PgdasdArtifact> $artifacts */
@@ -328,6 +386,85 @@ final class PgdasdPostConsultService
         $artifact = collect($artifacts)->first(
             static fn (PgdasdArtifact $candidate): bool => (string) $candidate->kind === 'EXTRATO'
         );
+        if (! $artifact instanceof PgdasdArtifact) {
+            $this->rbt12->markFailed($reservation, 'EXTRATO_ARTIFACT_MISSING', (int) $request->run->id);
+
+            return;
+        }
+
+        $artifact->loadMissing('evidenceArtifact');
+        if ($artifact->evidenceArtifact === null) {
+            $this->rbt12->markFailed($reservation, 'EXTRATO_EVIDENCE_MISSING', (int) $request->run->id);
+
+            return;
+        }
+
+        try {
+            $bytes = $this->evidenceStore->readAuthorized(
+                $artifact->evidenceArtifact,
+                (int) $request->office->id,
+            );
+            $this->rbt12->resolveFromPdfBytes(
+                $reservation,
+                $bytes,
+                (int) $artifact->id,
+                (int) $request->run->id,
+            );
+        } catch (\Throwable) {
+            $this->rbt12->markFailed($reservation, 'READ_OR_PARSE_FAILED', (int) $request->run->id);
+        }
+    }
+
+    /** @param list<PgdasdArtifact> $artifacts */
+    private function resolveReservedRbt12FromDeclaration(
+        FiscalAdapterRequest $request,
+        ?string $numeroDeclaracao,
+        array $artifacts,
+    ): void {
+        $reservationId = $request->progress['rbt12_projection_id']
+            ?? $request->context['rbt12_projection_id']
+            ?? null;
+        $sourceReferenceKey = $request->progress['rbt12_source_reference_key']
+            ?? $request->context['rbt12_source_reference_key']
+            ?? null;
+        $declarationNumber = is_string($numeroDeclaracao) ? trim($numeroDeclaracao) : '';
+        if (! is_numeric($reservationId)
+            || ! is_string($sourceReferenceKey)
+            || $sourceReferenceKey === ''
+            || $declarationNumber === ''
+        ) {
+            return;
+        }
+
+        $reservation = PgdasdRbt12Projection::query()
+            ->withoutGlobalScopes()
+            ->whereKey((int) $reservationId)
+            ->where('office_id', $request->office->id)
+            ->where('client_id', $request->client->id)
+            ->where('source_declaration_number', $declarationNumber)
+            ->whereNull('source_das_number')
+            ->where('source_reference_key', $sourceReferenceKey)
+            ->where('source_run_id', $request->run->id)
+            ->where('status', PgdasdRbt12Status::Pending->value)
+            ->first();
+        if ($reservation === null) {
+            return;
+        }
+
+        if ($artifacts === []) {
+            $this->rbt12->markFailed($reservation, 'EXTRATO_ARTIFACT_MISSING', (int) $request->run->id);
+
+            return;
+        }
+
+        $artifact = collect($artifacts)->first(
+            static fn (PgdasdArtifact $candidate): bool => (string) (is_object($candidate->kind) ? $candidate->kind->value : $candidate->kind) === 'DECLARACAO'
+        );
+        if (! $artifact instanceof PgdasdArtifact) {
+            $artifact = collect($artifacts)->first(
+                static fn (PgdasdArtifact $candidate): bool => (string) (is_object($candidate->kind) ? $candidate->kind->value : $candidate->kind) === 'RECIBO'
+            );
+        }
         if (! $artifact instanceof PgdasdArtifact) {
             $this->rbt12->markFailed($reservation, 'EXTRATO_ARTIFACT_MISSING', (int) $request->run->id);
 
@@ -408,9 +545,12 @@ final class PgdasdPostConsultService
 
         $metadata = is_array($projection->metadata) ? $projection->metadata : [];
         $metadata['pgdasd_declaration_state_reason'] = $reason;
+        $unknown = PgdasdDeclarationState::Unverified->toFiscalSituation();
         $projection->forceFill([
             'pgdasd_declaration_state' => PgdasdDeclarationState::Unverified,
             'pgdasd_calendar_verified' => false,
+            'situation' => $unknown,
+            'delivery_status' => $unknown,
             'metadata' => $metadata,
         ])->save();
     }

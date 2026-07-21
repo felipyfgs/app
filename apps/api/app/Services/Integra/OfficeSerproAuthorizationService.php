@@ -10,6 +10,7 @@ use App\Domain\BrazilianTaxId;
 use App\DTO\Serpro\ProcuradorAuthRequest;
 use App\Enums\AuthorCertificateMode;
 use App\Enums\AuthorIdentityType;
+use App\Enums\ClientProcuracaoSyncStatus;
 use App\Enums\FiscalProfile;
 use App\Enums\SecureObjectPurpose;
 use App\Enums\SerproAuthorizationStatus;
@@ -19,7 +20,6 @@ use App\Enums\TaxProxyPowerStatus;
 use App\Enums\TermoAuthorizationState;
 use App\Enums\TermRePresentationStrategy;
 use App\Jobs\Serpro\SignTermoWithManagedA1Job;
-use App\Enums\ClientProcuracaoSyncStatus;
 use App\Models\ClientProcuracaoSnapshot;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
@@ -29,6 +29,7 @@ use App\Models\SerproTermVersion;
 use App\Models\TaxProxyPower;
 use App\Services\Audit\AuditLogger;
 use App\Services\Serpro\SerproContractService;
+use App\Services\Serpro\SerproOperationAttemptStore;
 use App\Services\Serpro\SerproProductionOnboardingGuard;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
@@ -758,6 +759,19 @@ final class OfficeSerproAuthorizationService
             'authorization_state' => $auth->termo_authorization_state?->value,
         ]);
 
+        try {
+            $purged = app(SerproOperationAttemptStore::class)
+                ->purgeNonStickyTokenFailures((int) $office->id, $environment->value);
+            if ($purged > 0) {
+                $this->audit->record('serpro.authorization.token_attempt_purge', 'SUCCESS', $auth, [
+                    'purged' => $purged,
+                    'environment' => $environment->value,
+                ], $actorUserId, $office->id);
+            }
+        } catch (Throwable) {
+            // Purge é best-effort: refresh do token já foi persistido.
+        }
+
         $this->audit->record('serpro.authorization.token_refresh', 'SUCCESS', $auth, [
             'simulated' => $result->simulated,
             'expires_at' => $result->expiresAt->toIso8601String(),
@@ -838,6 +852,12 @@ final class OfficeSerproAuthorizationService
             'environment' => $environment->value,
             'expires_at' => $expiresAt->toIso8601String(),
         ], $actorUserId, $office->id);
+
+        try {
+            app(SerproOperationAttemptStore::class)
+                ->purgeNonStickyTokenFailures((int) $office->id, $environment->value);
+        } catch (Throwable) {
+        }
 
         return $auth->refresh();
     }

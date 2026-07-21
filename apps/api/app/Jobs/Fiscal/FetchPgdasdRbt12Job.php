@@ -9,7 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
 
-/** Dispara uma única consulta CONSEXTRATO16 para uma source_reference_key reservada. */
+/** Dispara consulta documental RBT12 (CONSEXTRATO16 ou CONSDECREC15) para reserva PENDING. */
 final class FetchPgdasdRbt12Job implements ShouldQueue
 {
     use Queueable;

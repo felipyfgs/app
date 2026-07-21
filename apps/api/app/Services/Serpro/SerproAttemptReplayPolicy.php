@@ -15,6 +15,10 @@ final class SerproAttemptReplayPolicy
      */
     private const NON_STICKY_ERROR_CODES = [
         'PROCURADOR_TOKEN_MISSING',
+        'PROCURADOR_TOKEN_EXPIRED',
+        'PROCURADOR_TOKEN_EMPTY',
+        'PROCURADOR_TOKEN_VAULT_UNREADABLE',
+        'AUTHOR_IDENTITY_MISMATCH',
         'RATE_LIMIT_LOCAL',
         'RATE_LIMIT_NOT_CONFIGURED',
         'AUTHORIZATION_MISSING',
@@ -41,6 +45,22 @@ final class SerproAttemptReplayPolicy
         'PROCURACAO_SYNC_BUSY',
         'CAPABILITY_NOT_IMPLEMENTED',
     ];
+
+    /**
+     * @return list<string>
+     */
+    public static function tokenRelatedNonStickyCodes(): array
+    {
+        return [
+            'PROCURADOR_TOKEN_MISSING',
+            'PROCURADOR_TOKEN_EXPIRED',
+            'PROCURADOR_TOKEN_EMPTY',
+            'PROCURADOR_TOKEN_VAULT_UNREADABLE',
+            'AUTHOR_IDENTITY_MISMATCH',
+            'AUTHORIZATION_MISSING',
+            'AUTHOR_IDENTITY_MISSING',
+        ];
+    }
 
     public static function isStickyReplay(?string $errorCode, bool $success): bool
     {

@@ -7,7 +7,9 @@ use App\Enums\TaxDeliveryEvidenceKind;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\TaxObligationDefinition;
+use App\Services\Fiscal\Declarations\DeclarationDctfwebEnrichmentService;
 use App\Services\Fiscal\Declarations\DeclarationHubQueryService;
+use App\Services\Fiscal\Declarations\DeclarationPgdasdEnrichmentService;
 use App\Services\Fiscal\Declarations\TaxDeadlineCalendarService;
 use App\Services\Fiscal\Declarations\TaxDeliveryEvidenceService;
 use App\Services\Fiscal\Declarations\TaxObligationCatalogService;
@@ -31,6 +33,8 @@ class DeclarationHubController extends Controller
         private readonly TaxDeliveryEvidenceService $evidences,
         private readonly TaxDeadlineCalendarService $deadlines,
         private readonly DeclarationHubQueryService $hub,
+        private readonly DeclarationPgdasdEnrichmentService $pgdasdEnrichment,
+        private readonly DeclarationDctfwebEnrichmentService $dctfwebEnrichment,
     ) {}
 
     /** Catálogo versionado (global, leitura). */
@@ -71,7 +75,10 @@ class DeclarationHubController extends Controller
         }
 
         $page = $this->hub->list($office, $filters);
-        $page->getCollection()->transform(fn ($p) => $p->toPublicArray(true));
+        $enriched = $this->pgdasdEnrichment->enrichPublicList($office, $page->getCollection(), true);
+        $clientId = is_numeric($filters['client_id'] ?? null) ? (int) $filters['client_id'] : null;
+        $enriched = $this->dctfwebEnrichment->enrichPublicRows($office, $enriched, $clientId);
+        $page->setCollection(collect($enriched));
 
         return response()->json($page);
     }

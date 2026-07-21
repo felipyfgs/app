@@ -56,13 +56,19 @@ class ClientCommunicationPreference extends Model
     public function toPublicArray(
         array $eligibleChannels = [],
         ?string $trackingStatus = null,
+        bool $canSend = false,
+        bool $automaticEffective = false,
     ): array {
+        $providerEnabled = (bool) config('fiscal_monitoring.communication.provider_enabled', false);
+
         return [
             'client_id' => $this->client_id,
             'email_enabled' => (bool) $this->email_enabled,
             'whatsapp_enabled' => (bool) $this->whatsapp_enabled,
             'automatic_requested' => (bool) $this->automatic_requested,
-            'automatic_effective' => false,
+            'automatic_effective' => $automaticEffective,
+            'can_send' => $canSend,
+            'provider_enabled' => $providerEnabled,
             'execution_mode' => CommunicationExecutionMode::TemplateOnly->value,
             'lock_version' => (int) $this->lock_version,
             'eligible_channels' => array_values($eligibleChannels),

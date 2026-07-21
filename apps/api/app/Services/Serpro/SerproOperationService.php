@@ -17,6 +17,7 @@ use App\Enums\SerproUsageResult;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
+use App\Models\SerproOperationAttempt;
 use App\Services\Fiscal\Availability\FiscalModuleAvailabilityService;
 use App\Services\Fiscal\Availability\FiscalOperationClassifier;
 use App\Services\Fiscal\Guides\PagtowebEphemeralResponseRedactor;
@@ -498,7 +499,7 @@ final class SerproOperationService implements SerproOperationExecutor
         if (! $reservation->allowed) {
             if ($attempt !== null) {
                 $blocked = $this->blocked($operationKey, 'BUDGET_EXCEEDED', 'Orçamento SERPRO bloqueou a operação.', $correlationId, 429, $requestTag);
-                $this->attempts->acknowledge($attempt, $blocked);
+                $this->finalizeAttempt($attempt, $blocked);
 
                 return $blocked;
             }
@@ -630,7 +631,7 @@ final class SerproOperationService implements SerproOperationExecutor
             if ($uncertainHttp) {
                 $this->attempts->markUncertain($attempt, $response);
             } else {
-                $this->attempts->acknowledge($attempt, $response);
+                $this->finalizeAttempt($attempt, $response);
             }
         }
 
@@ -644,6 +645,23 @@ final class SerproOperationService implements SerproOperationExecutor
         }
 
         return $response;
+    }
+
+    /**
+     * ACK apenas resultados definitivos; falhas locais recuperáveis abandonam o attempt.
+     */
+    private function finalizeAttempt(SerproOperationAttempt $attempt, IntegraResponse $response): void
+    {
+        if (
+            ! $response->success
+            && SerproAttemptReplayPolicy::isNonStickyError($response->errorCode)
+        ) {
+            $this->attempts->abandonLocalPrecondition($attempt);
+
+            return;
+        }
+
+        $this->attempts->acknowledge($attempt, $response);
     }
 
     /**

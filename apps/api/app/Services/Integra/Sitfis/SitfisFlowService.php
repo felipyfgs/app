@@ -2,6 +2,11 @@
 
 namespace App\Services\Integra\Sitfis;
 
+use App\Contracts\EnsuresClientProcuracaoForConsult;
+use App\Contracts\IntegraEligibilityEvaluating;
+use App\Contracts\ResolvesSerproCapabilityDriver;
+use App\Contracts\SerproOperationExecutor;
+use App\Contracts\SitfisIdentityResolving;
 use App\DTO\Fiscal\FiscalAdapterRequest;
 use App\DTO\Fiscal\FiscalAdapterResult;
 use App\DTO\Serpro\IntegraRequest;
@@ -14,9 +19,6 @@ use App\Enums\FiscalSourceProvenance;
 use App\Enums\FiscalVerificationState;
 use App\Enums\SerproEnvironment;
 use App\Models\SerproContract;
-use App\Services\Integra\IntegraEligibilityService;
-use App\Services\Serpro\CapabilityDriverResolver;
-use App\Services\Serpro\SerproOperationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -29,11 +31,12 @@ use RuntimeException;
 final class SitfisFlowService
 {
     public function __construct(
-        private readonly SerproOperationService $operations,
-        private readonly SitfisIdentityResolver $identities,
+        private readonly SerproOperationExecutor $operations,
+        private readonly SitfisIdentityResolving $identities,
         private readonly SitfisReportParser $parser,
-        private readonly IntegraEligibilityService $eligibility,
-        private readonly CapabilityDriverResolver $drivers,
+        private readonly IntegraEligibilityEvaluating $eligibility,
+        private readonly ResolvesSerproCapabilityDriver $drivers,
+        private readonly EnsuresClientProcuracaoForConsult $procuracaoEnsure,
     ) {}
 
     public function execute(FiscalAdapterRequest $request): FiscalAdapterResult
@@ -56,6 +59,30 @@ final class SitfisFlowService
             $ids = $this->identities->resolve($request->office, $request->client);
         } catch (RuntimeException $e) {
             return FiscalAdapterResult::blocked($e->getMessage(), 'SITFIS_IDENTITY');
+        }
+
+        // Cache /Apoiar 304 sem protocolo: espera expires sem nova chamada SERPRO.
+        if ($this->isWaitingCacheExpiry($state, $now)) {
+            $wait = max(1, $state->secondsUntilEmitAllowed($now));
+            $next = $state->with(
+                phase: SitfisProtocolState::PHASE_WAITING_CACHE_EXPIRY,
+                requeueAfterSeconds: $wait,
+            );
+
+            return $this->processingResult(
+                state: $next,
+                message: 'Aguardando expiração do cache SITFIS antes de nova solicitação de protocolo.',
+                requeueAfter: $wait,
+            );
+        }
+
+        // Ensure poder e-CAC antes de qualquer chamada Integra SITFIS (não na espera pura).
+        $needsSerproCall = ! $state->hasProtocol() || $state->canAttemptEmit($now);
+        if ($needsSerproCall) {
+            $ensureBlocked = $this->ensureProxyPower($request, $ids, $cfg);
+            if ($ensureBlocked !== null) {
+                return $ensureBlocked;
+            }
         }
 
         // Fase 1: solicitar protocolo se ainda não houver (SITFIS 2.0 /Apoiar)
@@ -101,19 +128,8 @@ final class SitfisFlowService
             correlation: $correlation,
         );
 
-        // 304/NOT_MODIFIED com body vazio: força 1 retry com idempotency distinct (sem ETag stale).
-        if ($this->isEmptyNotModified($response)) {
-            $response = $this->call(
-                $request,
-                $ids,
-                (string) ($cfg['solicit_operation_key'] ?? 'sitfis.solicitar_protocolo'),
-                (string) ($cfg['solicit_operation'] ?? 'SOLICITARPROTOCOLO91'),
-                businessData: [],
-                dadosMode: 'EMPTY',
-                correlation: $correlation,
-                idempotencySuffix: 'force-'.Str::lower(Str::random(8)),
-            );
-        }
+        // Doc SERPRO: 304 = cache de protocolo válido no ETag (body vazio). Sem force-retry imediato.
+        $protocol = $this->extractProtocolFromResponse($response);
 
         if (! $response->success) {
             if ($this->isGateBlock($response)) {
@@ -134,14 +150,27 @@ final class SitfisFlowService
             return FiscalAdapterResult::blocked('Resposta sintética não pode iniciar protocolo SITFIS.', 'SIMULATED_SOURCE_REJECTED');
         }
 
-        $protocol = $this->extractProtocolFromResponse($response);
         if ($protocol === null || $protocol === '') {
-            // 304 residual ou payload sem campo oficial
+            // 304 sem ETag parseável: espera expires (ou fallback) e retoma solicitação.
             if ($this->isEmptyNotModified($response)) {
-                return FiscalAdapterResult::failed(
-                    'Solicitação SITFIS retornou cache vazio (304); tente novamente em instantes.',
-                    'SITFIS_NOT_MODIFIED_EMPTY',
-                    FiscalCoverage::Full,
+                $wait = $this->resolveCacheWaitSeconds($response, $cfg);
+                $notBefore = $now->addSeconds($wait);
+                $state = new SitfisProtocolState(
+                    phase: SitfisProtocolState::PHASE_WAITING_CACHE_EXPIRY,
+                    protocol: null,
+                    requestedAt: $now,
+                    notBefore: $notBefore,
+                    pollCount: 0,
+                    lastPollAt: null,
+                    correlationId: $correlation,
+                    requeueAfterSeconds: $wait,
+                    simulated: $response->simulated,
+                );
+
+                return $this->processingResult(
+                    state: $state,
+                    message: 'Cache SITFIS (304) sem protocolo no ETag; aguardando expiração antes de nova solicitação.',
+                    requeueAfter: $wait,
                 );
             }
 
@@ -319,11 +348,23 @@ final class SitfisFlowService
             normalized: $normalized,
             findings: $parsed->findings,
             shouldRequeue: false,
-            progressCursor: 'protocol:'.$state->protocol,
+            progressCursor: self::cursorForProtocol($state->protocol),
             progress: $doneState->toProgress(),
             itemsProcessed: count($parsed->findings),
             pagesProcessed: 1,
         );
+    }
+
+    /**
+     * Cursor curto para a coluna progress_cursor (≤64). Protocolo integral só em progress.protocol.
+     */
+    public static function cursorForProtocol(?string $protocol): string
+    {
+        if ($protocol === null || $protocol === '') {
+            return 'solicit';
+        }
+
+        return 'protocol:'.substr(hash('sha256', $protocol), 0, 16);
     }
 
     /**
@@ -468,7 +509,7 @@ final class SitfisFlowService
                 'creates_pending' => false,
             ]],
             shouldRequeue: true,
-            progressCursor: $state->protocol !== null ? 'protocol:'.$state->protocol : 'solicit',
+            progressCursor: self::cursorForProtocol($state->protocol),
             progress: $progress,
             requeueAfterSeconds: $requeueAfter,
         );
@@ -485,7 +526,72 @@ final class SitfisFlowService
             }
         }
 
-        return $this->extractProtocol($response->body);
+        $fromBody = $this->extractProtocol($response->body);
+        if ($fromBody !== null && $fromBody !== '') {
+            return $fromBody;
+        }
+
+        // Doc SERPRO (cache /Apoiar): 304 com body vazio e protocolo no ETag.
+        return $this->extractProtocolFromEtag($response->etag);
+    }
+
+    /**
+     * Extrai protocoloRelatorio do header ETag oficial SITFIS.
+     * Formato: protocoloRelatorio:{token} (aspas opcionais).
+     */
+    private function extractProtocolFromEtag(?string $etag): ?string
+    {
+        if ($etag === null) {
+            return null;
+        }
+
+        $raw = trim($etag);
+        if ($raw === '') {
+            return null;
+        }
+
+        $raw = trim($raw, "\"'");
+        if (! preg_match('/protocoloRelatorio\s*[=:]\s*(.+)$/i', $raw, $matches)) {
+            return null;
+        }
+
+        $token = trim($matches[1], " \t\n\r\0\x0B\"'");
+        if ($token === '' || str_contains($token, 'omitted_from_attempt_store')) {
+            return null;
+        }
+
+        return $token;
+    }
+
+    /**
+     * @param  array{environment: SerproEnvironment, contract: SerproContract, contractor_cnpj: string, author_identity: string, contributor_cnpj: string}  $ids
+     * @param  array<string, mixed>  $cfg
+     */
+    private function ensureProxyPower(FiscalAdapterRequest $request, array $ids, array $cfg): ?FiscalAdapterResult
+    {
+        $power = trim((string) ($cfg['required_proxy_power'] ?? '00002'));
+        if ($power === '') {
+            return null;
+        }
+
+        $ensure = $this->procuracaoEnsure->ensure(
+            $request->office,
+            $request->client,
+            $ids['environment'],
+            [$power],
+            $request->run->triggered_by !== null ? (int) $request->run->triggered_by : null,
+        );
+
+        if ($ensure['ok']) {
+            return null;
+        }
+
+        $code = $ensure['code'] ?? 'PROXY_POWER_MISSING';
+
+        return FiscalAdapterResult::blocked(
+            $ensure['message'] ?? ('Elegibilidade Integra negada: '.$code),
+            $code,
+        );
     }
 
     /**
@@ -606,6 +712,58 @@ final class SitfisFlowService
         }
 
         return false;
+    }
+
+    private function isWaitingCacheExpiry(SitfisProtocolState $state, CarbonImmutable $now): bool
+    {
+        if ($state->phase !== SitfisProtocolState::PHASE_WAITING_CACHE_EXPIRY) {
+            return false;
+        }
+        if ($state->hasProtocol()) {
+            return false;
+        }
+        if ($state->notBefore === null) {
+            return false;
+        }
+
+        return $now->lessThan($state->notBefore);
+    }
+
+    /**
+     * @param  array<string, mixed>  $cfg
+     */
+    private function resolveCacheWaitSeconds(IntegraResponse $response, array $cfg): int
+    {
+        $fallback = max(60, (int) ($cfg['cache_empty_fallback_seconds'] ?? 900));
+        $max = max($fallback, (int) ($cfg['cache_empty_max_wait_seconds'] ?? 86400));
+
+        $expires = $response->expiresHeader;
+        if ($expires === null || trim($expires) === '') {
+            $expires = null;
+            foreach ($response->headers as $key => $value) {
+                if (strcasecmp((string) $key, 'expires') === 0 && is_scalar($value)) {
+                    $candidate = trim((string) $value);
+                    if ($candidate !== '') {
+                        $expires = $candidate;
+                    }
+                    break;
+                }
+            }
+        }
+
+        if ($expires !== null && trim($expires) !== '') {
+            try {
+                $until = CarbonImmutable::parse(trim($expires));
+                $wait = (int) CarbonImmutable::now()->diffInSeconds($until, false);
+                if ($wait > 0) {
+                    return min($max, max(60, $wait + 5));
+                }
+            } catch (\Throwable) {
+                // fallback abaixo
+            }
+        }
+
+        return min($max, $fallback);
     }
 
     /**

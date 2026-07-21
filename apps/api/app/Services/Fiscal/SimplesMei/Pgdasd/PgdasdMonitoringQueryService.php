@@ -2,20 +2,27 @@
 
 namespace App\Services\Fiscal\SimplesMei\Pgdasd;
 
+use App\Enums\FiscalRunResult;
 use App\Enums\FiscalRunStatus;
+use App\Enums\FiscalSituation;
 use App\Enums\PgdasdDeclarationState;
 use App\Enums\PgdasdOperationKind;
 use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
 use App\Models\Client;
+use App\Models\FiscalEvidenceArtifact;
 use App\Models\FiscalMonitoringRun;
+use App\Models\FiscalSnapshot;
 use App\Models\Office;
 use App\Models\PgdasdArtifact;
 use App\Models\PgdasdOperation;
 use App\Models\PgdasdRbt12Projection;
+use App\Models\TaxGuide;
 use App\Models\TaxObligationDefinition;
 use App\Models\TaxObligationProjection;
+use App\Services\FiscalMonitoring\FiscalEvidenceStore;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use RuntimeException;
+use Throwable;
 
 /**
  * Consultas tenant-scoped da carteira/histórico PGDAS-D (somente leitura local).
@@ -26,6 +33,8 @@ final class PgdasdMonitoringQueryService
         private readonly FiscalMonitoringRunService $runs,
         private readonly PgdasdOperationProjector $projector,
         private readonly PgdasdCommunicationService $communication,
+        private readonly PgdasdDasPaymentStateResolver $dasPaymentResolver,
+        private readonly FiscalEvidenceStore $evidenceStore,
     ) {}
 
     /**
@@ -68,6 +77,19 @@ final class PgdasdMonitoringQueryService
             ->get()
             ->groupBy('client_id');
 
+        $dasByClient = PgdasdOperation::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereIn('client_id', $clientIds)
+            ->where('kind', PgdasdOperationKind::Das->value)
+            ->where('period_key', $periodKey)
+            ->orderByDesc('issued_at')
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('client_id');
+
+        $openPaymentCompetencies = $this->openPaymentCompetencies($office, $clientIds);
+
         $rbt12 = PgdasdRbt12Projection::query()
             ->withoutGlobalScopes()
             ->with('projection')
@@ -97,15 +119,44 @@ final class PgdasdMonitoringQueryService
                 static fn (PgdasdOperation $op) => $op->period_key === $periodKey
             ) ?? $clientOps->first();
             $displayPeriodKey = $lastDecl?->period_key ?: $periodKey;
-            $latestRbt = $rbt12->get($cid, collect())->first(
-                static fn (PgdasdRbt12Projection $item): bool => $item->projection?->period_key === $displayPeriodKey
+            $clientRbt = $rbt12->get($cid, collect());
+            $latestRbt = $clientRbt->first(
+                static fn (PgdasdRbt12Projection $item): bool => ($item->status?->value ?? '') === 'PARSED'
+                    && $item->projection?->period_key === $displayPeriodKey
             );
+            if ($latestRbt === null) {
+                $pointerId = $proj?->pgdasd_latest_rbt12_projection_id;
+                if ($pointerId) {
+                    $pointed = $clientRbt->first(
+                        static fn (PgdasdRbt12Projection $item): bool => (int) $item->id === (int) $pointerId
+                    );
+                    if ($pointed !== null && ($pointed->status?->value ?? '') === 'PARSED') {
+                        $latestRbt = $pointed;
+                    }
+                }
+            }
+            if ($latestRbt === null) {
+                $latestRbt = $clientRbt->first(
+                    static fn (PgdasdRbt12Projection $item): bool => ($item->status?->value ?? '') === 'PARSED'
+                );
+            }
+            if ($latestRbt === null) {
+                $latestRbt = $clientRbt->first(
+                    static fn (PgdasdRbt12Projection $item): bool => $item->projection?->period_key === $displayPeriodKey
+                );
+            }
 
             $state = $proj?->pgdasd_declaration_state?->value
                 ?? PgdasdDeclarationState::Unverified->value;
             $lastPublic = $lastDecl?->toPublicArray();
             $rbtPublic = $latestRbt?->toPublicArray();
             $comm = $communications[$cid];
+            $hasProductiveConsult = $proj?->pgdasd_last_productive_consulted_at !== null
+                || $proj?->last_valid_query_at !== null;
+            $paymentPack = $this->dasPaymentResolver->resolve(
+                $dasByClient->get($cid, collect()),
+                $hasProductiveConsult,
+            );
 
             $map[$cid] = [
                 'module_key' => 'simples_mei',
@@ -115,6 +166,12 @@ final class PgdasdMonitoringQueryService
                 'period_key' => $periodKey,
                 'declaration_state' => $state,
                 'declaration_state_reason' => $this->stateReason($proj),
+                'payment_state' => $paymentPack['state']->value,
+                'payment_state_reason' => $paymentPack['reason'],
+                'payment_das_count' => $paymentPack['das_count'],
+                'payment_unpaid_count' => $paymentPack['unpaid_count'],
+                'payment_paid_count' => $paymentPack['paid_count'],
+                'payment_open_competencies' => $openPaymentCompetencies[$cid] ?? [],
                 'last_declaration' => $lastPublic,
                 'latest_declaration' => $lastPublic === null ? null : [
                     'period_key' => $lastPublic['period_key'] ?? null,
@@ -142,6 +199,322 @@ final class PgdasdMonitoringQueryService
         }
 
         return $map;
+    }
+
+    /**
+     * Competências DAS em aberto conhecidas localmente, sem consulta externa.
+     *
+     * @param  list<int>  $clientIds
+     * @return array<int, list<array{period_key: string, amount_cents: ?int}>>
+     */
+    private function openPaymentCompetencies(Office $office, array $clientIds): array
+    {
+        $ttl = max(60, (int) config(
+            'fiscal_monitoring.pgdasd_pagtoweb_reconciliation.negative_ttl_seconds',
+            86_400,
+        ));
+        $freshAfter = now()->subSeconds($ttl);
+        $operations = PgdasdOperation::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereIn('client_id', $clientIds)
+            ->where('kind', PgdasdOperationKind::Das->value)
+            ->whereNotNull('period_key')
+            ->orderByDesc('period_key')
+            ->orderByDesc('id')
+            ->get([
+                'client_id',
+                'period_key',
+                'das_number',
+                'pagtoweb_payment_status',
+                'pagtoweb_verified_at',
+                'pagtoweb_amount_cents',
+                'amount_cents',
+            ])
+            ->groupBy(static fn (PgdasdOperation $operation): string => (
+                (int) $operation->client_id
+            ).'|'.(string) $operation->period_key)
+            ->filter(static function ($periodOperations) use ($freshAfter): bool {
+                if ($periodOperations->contains(
+                    static fn (PgdasdOperation $operation): bool => $operation->pagtoweb_payment_status === 'PAID'
+                )) {
+                    return false;
+                }
+
+                return $periodOperations->isNotEmpty()
+                    && $periodOperations->every(
+                        static fn (PgdasdOperation $operation): bool => $operation->pagtoweb_payment_status === 'NOT_FOUND'
+                            && $operation->pagtoweb_verified_at !== null
+                            && $operation->pagtoweb_verified_at->greaterThanOrEqualTo($freshAfter)
+                    );
+            })
+            ->flatten(1)
+            ->values();
+
+        if ($operations->isEmpty()) {
+            return [];
+        }
+
+        $dasNumbers = $operations
+            ->pluck('das_number')
+            ->filter(static fn ($number): bool => is_string($number) && $number !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        $guideAmounts = TaxGuide::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereIn('client_id', $clientIds)
+            ->when(
+                $dasNumbers !== [],
+                fn ($query) => $query->whereIn('identifier_code', $dasNumbers),
+                fn ($query) => $query->whereRaw('1 = 0'),
+            )
+            ->orderByDesc('id')
+            ->get(['client_id', 'identifier_code', 'amount_cents'])
+            ->unique(static fn (TaxGuide $guide): string => $guide->client_id.'|'.$guide->identifier_code)
+            ->mapWithKeys(static fn (TaxGuide $guide): array => [
+                $guide->client_id.'|'.$guide->identifier_code => $guide->amount_cents,
+            ]);
+
+        $operationAmounts = [];
+        foreach ($operations as $operation) {
+            $dasNumber = (string) ($operation->das_number ?? '');
+            if ($dasNumber === '' || $operation->amount_cents === null) {
+                continue;
+            }
+            $key = ((int) $operation->client_id).'|'.$dasNumber;
+            $operationAmounts[$key] ??= (int) $operation->amount_cents;
+        }
+
+        $gaps = [];
+        foreach ($operations as $operation) {
+            $clientId = (int) $operation->client_id;
+            $dasNumber = (string) ($operation->das_number ?? '');
+            if ($dasNumber === '') {
+                continue;
+            }
+            $key = $clientId.'|'.$dasNumber;
+            if ($operation->pagtoweb_amount_cents === null
+                && $guideAmounts->get($key) === null
+                && ! isset($operationAmounts[$key])
+            ) {
+                $gaps[$key] = [
+                    'client_id' => $clientId,
+                    'das_number' => $dasNumber,
+                ];
+            }
+        }
+
+        $gerarDasAmounts = $this->gerarDasLocalAmounts($office, array_values($gaps));
+
+        $aggregate = [];
+        foreach ($operations as $operation) {
+            $clientId = (int) $operation->client_id;
+            $periodKey = (string) $operation->period_key;
+            $dasNumber = (string) ($operation->das_number ?? '');
+            $key = $clientId.'|'.$dasNumber;
+            $amount = $dasNumber === ''
+                ? null
+                : ($operation->pagtoweb_amount_cents
+                    ?? $guideAmounts->get($key)
+                    ?? $operationAmounts[$key]
+                    ?? $gerarDasAmounts[$key]
+                    ?? null);
+
+            if (! isset($aggregate[$clientId][$periodKey])) {
+                $aggregate[$clientId][$periodKey] = [
+                    'amount_cents' => null,
+                    'has_missing_amount' => false,
+                ];
+            }
+
+            if ($amount === null) {
+                $aggregate[$clientId][$periodKey]['has_missing_amount'] = true;
+
+                continue;
+            }
+
+            $resolved = (int) $amount;
+            $current = $aggregate[$clientId][$periodKey]['amount_cents'];
+            $aggregate[$clientId][$periodKey]['amount_cents'] = $current === null
+                ? $resolved
+                : max($current, $resolved);
+        }
+
+        $result = [];
+        foreach ($aggregate as $clientId => $periods) {
+            krsort($periods);
+            $result[$clientId] = array_map(
+                static fn (array $entry, string $periodKey): array => [
+                    'period_key' => $periodKey,
+                    'amount_cents' => $entry['has_missing_amount'] ? null : $entry['amount_cents'],
+                ],
+                $periods,
+                array_keys($periods),
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Fallback local: snapshot/evidência GERAR_DAS (sem SERPRO).
+     *
+     * @param  list<array{client_id: int, das_number: string}>  $gaps
+     * @return array<string, int> keyed by "{client_id}|{das_number}"
+     */
+    private function gerarDasLocalAmounts(Office $office, array $gaps): array
+    {
+        if ($gaps === []) {
+            return [];
+        }
+
+        $needed = [];
+        foreach ($gaps as $gap) {
+            $needed[$gap['client_id'].'|'.$gap['das_number']] = true;
+        }
+        $clientIds = array_values(array_unique(array_map(
+            static fn (array $gap): int => $gap['client_id'],
+            $gaps,
+        )));
+        $resolved = [];
+
+        $snapshots = FiscalSnapshot::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereIn('client_id', $clientIds)
+            ->where('service_code', 'PGDASD')
+            ->where('operation_code', 'GERAR_DAS')
+            ->orderByDesc('id')
+            ->get(['client_id', 'normalized']);
+
+        foreach ($snapshots as $snapshot) {
+            $parsed = $this->parseGerarDasAmount(
+                is_array($snapshot->normalized) ? $snapshot->normalized : null
+            );
+            if ($parsed === null) {
+                continue;
+            }
+            $key = ((int) $snapshot->client_id).'|'.$parsed['das_number'];
+            if (! isset($needed[$key]) || isset($resolved[$key])) {
+                continue;
+            }
+            $resolved[$key] = $parsed['amount_cents'];
+        }
+
+        $stillNeeded = array_diff_key($needed, $resolved);
+        if ($stillNeeded === []) {
+            return $resolved;
+        }
+
+        $runs = FiscalMonitoringRun::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereIn('client_id', $clientIds)
+            ->where('service_code', 'PGDASD')
+            ->where('operation_code', 'GERAR_DAS')
+            ->where(function ($query): void {
+                $query->where('result', FiscalRunResult::Success->value)
+                    ->orWhere('status', FiscalRunStatus::Completed->value);
+            })
+            ->orderByDesc('id')
+            ->get(['id', 'client_id']);
+
+        if ($runs->isEmpty()) {
+            return $resolved;
+        }
+
+        $runClientIds = $runs->mapWithKeys(
+            static fn (FiscalMonitoringRun $run): array => [(int) $run->id => (int) $run->client_id]
+        );
+
+        $artifacts = FiscalEvidenceArtifact::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereIn('run_id', $runs->pluck('id'))
+            ->where('content_type', 'application/json')
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($artifacts as $artifact) {
+            $clientId = $runClientIds[(int) $artifact->run_id] ?? null;
+            if ($clientId === null) {
+                continue;
+            }
+            try {
+                $bytes = $this->evidenceStore->readAuthorized($artifact, (int) $office->id);
+            } catch (Throwable) {
+                continue;
+            }
+            $json = json_decode($bytes, true);
+            if (! is_array($json)) {
+                continue;
+            }
+            $parsed = $this->parseGerarDasAmount($json);
+            if ($parsed === null) {
+                continue;
+            }
+            $key = $clientId.'|'.$parsed['das_number'];
+            if (! isset($stillNeeded[$key]) || isset($resolved[$key])) {
+                continue;
+            }
+            $resolved[$key] = $parsed['amount_cents'];
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $data
+     * @return array{das_number: string, amount_cents: int}|null
+     */
+    private function parseGerarDasAmount(?array $data): ?array
+    {
+        if ($data === null) {
+            return null;
+        }
+
+        if (isset($data['dados']) && is_array($data['dados'])) {
+            $nested = $this->parseGerarDasAmount($data['dados']);
+            if ($nested !== null) {
+                return $nested;
+            }
+        }
+
+        $doc = null;
+        foreach (['document_number', 'numeroDocumento', 'numero_documento'] as $key) {
+            if (! array_key_exists($key, $data) || $data[$key] === null) {
+                continue;
+            }
+            $candidate = trim((string) $data[$key]);
+            if ($candidate !== '') {
+                $doc = $candidate;
+                break;
+            }
+        }
+
+        $amount = null;
+        foreach (['amount', 'total', 'principal', 'valor'] as $key) {
+            if (! array_key_exists($key, $data) || $data[$key] === null || $data[$key] === '') {
+                continue;
+            }
+            if (! is_numeric($data[$key])) {
+                continue;
+            }
+            $amount = (float) $data[$key];
+            break;
+        }
+
+        if ($doc === null || $amount === null || $amount < 0) {
+            return null;
+        }
+
+        return [
+            'das_number' => $doc,
+            'amount_cents' => (int) round($amount * 100),
+        ];
     }
 
     /**
@@ -366,7 +739,7 @@ final class PgdasdMonitoringQueryService
         $periodKey = trim((string) ($params['period_key'] ?? ''));
         try {
             PgdasdPeriod::parse($periodKey);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             throw new RuntimeException('PA inválido para coleta documental.');
         }
         if ($operationCode === 'CONSULTAR_RECIBO') {
@@ -409,7 +782,7 @@ final class PgdasdMonitoringQueryService
             $progress['periodo_apuracao'] = (string) $params['periodoApuracao'];
             try {
                 $progress['period_key'] = PgdasdPeriod::periodKeyFromPeriodoApuracao((string) $params['periodoApuracao']);
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 // ignore
             }
         }
@@ -432,18 +805,27 @@ final class PgdasdMonitoringQueryService
     public function enqueueAutomaticRbt12Extract(
         PgdasdRbt12Projection $rbt12,
     ): FiscalMonitoringRun {
-        $rbt12->loadMissing(['projection', 'client']);
-        $projection = $rbt12->projection;
-        $client = $rbt12->client;
+        $projection = TaxObligationProjection::query()
+            ->withoutGlobalScopes()
+            ->find($rbt12->projection_id);
+        $client = Client::query()
+            ->withoutGlobalScopes()
+            ->find($rbt12->client_id);
         $office = Office::query()->find($rbt12->office_id);
         if ($projection === null || $client === null || $office === null
             || (int) $projection->office_id !== (int) $office->id
             || (int) $client->office_id !== (int) $office->id
             || $rbt12->status?->value !== 'PENDING'
-            || ! is_string($rbt12->source_das_number)
-            || $rbt12->source_das_number === ''
         ) {
-            throw new RuntimeException('Reserva RBT12 inválida para consulta do extrato.');
+            throw new RuntimeException('Reserva RBT12 inválida para consulta documental.');
+        }
+
+        $hasDas = is_string($rbt12->source_das_number) && $rbt12->source_das_number !== '';
+        $declarationNumber = is_string($rbt12->source_declaration_number)
+            ? trim($rbt12->source_declaration_number)
+            : '';
+        if (! $hasDas && $declarationNumber === '') {
+            throw new RuntimeException('Reserva RBT12 sem DAS nem declaração para consulta documental.');
         }
 
         $originRunId = $rbt12->source_run_id;
@@ -453,30 +835,38 @@ final class PgdasdMonitoringQueryService
             : null;
 
         $correlationId = 'pgdasd-rbt12-'.substr((string) $rbt12->source_reference_key, 0, 50);
+        $operationCode = $hasDas ? 'CONSULTAR_EXTRATO' : 'CONSULTAR_RECIBO';
+        $operationKey = $hasDas ? 'pgdasd.consextrato' : 'pgdasd.consdecrec';
+
         $run = $this->runs->enqueueManual(
             office: $office,
             client: $client,
             systemCode: 'INTEGRA_SN',
             serviceCode: 'PGDASD',
-            operationCode: 'CONSULTAR_EXTRATO',
+            operationCode: $operationCode,
             correlationId: $correlationId,
             dispatch: false,
         );
         $progress = [
             'period_key' => $projection->period_key,
             'periodo_apuracao' => str_replace('-', '', (string) $projection->period_key),
-            'numero_das' => $rbt12->source_das_number,
             'rbt12_projection_id' => (int) $rbt12->id,
             'rbt12_source_reference_key' => $rbt12->source_reference_key,
         ];
+        if ($hasDas) {
+            $progress['numero_das'] = $rbt12->source_das_number;
+        } else {
+            $progress['numero_declaracao'] = $declarationNumber;
+        }
         $run->forceFill([
-            'operation_key' => 'pgdasd.consextrato',
+            'operation_key' => $operationKey,
             'progress' => $progress,
         ])->save();
 
         $metadata = $priorMetadata;
         $metadata['reservation_run_id'] ??= $originRunId;
         $metadata['extract_run_id'] = $run->id;
+        $metadata['source_kind'] = $hasDas ? 'das_extrato' : 'declaration_recibo';
         $rbt12->forceFill([
             'source_run_id' => $run->id,
             'metadata' => $metadata,
@@ -490,6 +880,26 @@ final class PgdasdMonitoringQueryService
         $alreadyLinked = $priorExtractRunId !== null && $priorExtractRunId === (int) $run->id;
 
         if ($alreadyLinked && $status !== null && $status !== FiscalRunStatus::Failed) {
+            return $run->fresh() ?? $run;
+        }
+
+        if ($status === FiscalRunStatus::Failed) {
+            $run->forceFill([
+                'status' => FiscalRunStatus::Queued,
+                'result' => null,
+                'error_code' => null,
+                'error_message' => null,
+                'skip_reason' => null,
+                'finished_at' => null,
+                'started_at' => null,
+                'lease_owner' => null,
+                'locked_at' => null,
+                'situation' => FiscalSituation::Unknown,
+            ])->save();
+
+            ExecuteFiscalMonitoringRunJob::dispatch((int) $run->id)
+                ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
+
             return $run->fresh() ?? $run;
         }
 

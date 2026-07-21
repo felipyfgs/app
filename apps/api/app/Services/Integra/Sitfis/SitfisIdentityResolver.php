@@ -2,6 +2,7 @@
 
 namespace App\Services\Integra\Sitfis;
 
+use App\Contracts\SitfisIdentityResolving;
 use App\Domain\Cnpj;
 use App\Enums\SerproEnvironment;
 use App\Models\Client;
@@ -16,7 +17,7 @@ use RuntimeException;
  * Resolve identidades da cadeia Integra (contratante → autor → contribuinte)
  * a partir de registros persistidos — nunca do frontend.
  */
-final class SitfisIdentityResolver
+final class SitfisIdentityResolver implements SitfisIdentityResolving
 {
     public function __construct(
         private readonly SerproContractService $contracts,

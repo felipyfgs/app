@@ -37,6 +37,8 @@ use App\Http\Controllers\Api\V1\Fiscal\MeiDasController;
 use App\Http\Controllers\Api\V1\Fiscal\MitController;
 use App\Http\Controllers\Api\V1\Fiscal\MonitoringCoverageController;
 use App\Http\Controllers\Api\V1\Fiscal\MonitoringInsightsController;
+use App\Http\Controllers\Api\V1\Fiscal\MonitoringModuleCommunicationController;
+use App\Http\Controllers\Api\V1\Fiscal\MonitoringModuleMembershipController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebArrecadacaoReceiptController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebPaymentCountController;
 use App\Http\Controllers\Api\V1\Fiscal\PagtowebPaymentListController;
@@ -277,6 +279,9 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/fiscal/category-links', [FiscalCategoryController::class, 'indexLinks']);
             Route::post('/fiscal/category-links', [FiscalCategoryController::class, 'associate']);
             Route::post('/fiscal/category-links/batch', [FiscalCategoryController::class, 'associateBatch']);
+            Route::get('/fiscal/monitoring/membership', [MonitoringModuleMembershipController::class, 'index']);
+            Route::post('/fiscal/monitoring/membership/exclude', [MonitoringModuleMembershipController::class, 'exclude']);
+            Route::post('/fiscal/monitoring/membership/include', [MonitoringModuleMembershipController::class, 'include']);
             Route::get('/fiscal/runs', [FiscalMonitoringRunController::class, 'index']);
             Route::post('/fiscal/runs', [FiscalMonitoringRunController::class, 'store']);
             Route::get('/fiscal/runs/{run}', [FiscalMonitoringRunController::class, 'show']);
@@ -333,6 +338,7 @@ Route::prefix('v1')->group(function (): void {
             // Situação Fiscal (SITFIS) — snapshot com idade; refresh respeita TTL
             Route::get('/fiscal/sitfis', [SitfisSituationController::class, 'show']);
             Route::post('/fiscal/sitfis/refresh', [SitfisSituationController::class, 'refresh']);
+            Route::get('/fiscal/sitfis/clients/{client}/history', [SitfisSituationController::class, 'history']);
 
             // Explorador de consultas manuais (somente leitura; GET local; POST confirmado)
             Route::get('/fiscal/manual-consults', [ManualConsultController::class, 'index']);
@@ -429,6 +435,7 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/fiscal/simples-mei/pgdasd/communication-preferences/bulk', [PgdasdMonitoringController::class, 'batchPreferences']);
             Route::get('/fiscal/simples-mei/pgdasd/clients/{client}/communication-preview', [PgdasdMonitoringController::class, 'preview']);
             Route::get('/fiscal/simples-mei/pgdasd/clients/{client}/communications', [PgdasdMonitoringController::class, 'tracking']);
+            Route::post('/fiscal/simples-mei/pgdasd/clients/{client}/communication-send', [PgdasdMonitoringController::class, 'send']);
 
             // PGMEI — dívida ativa (histórico local + consulta manual + comunicação template)
             Route::get('/fiscal/simples-mei/pgmei/clients/{client}/history', [PgmeiMonitoringController::class, 'history']);
@@ -441,6 +448,7 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/fiscal/simples-mei/pgmei/communication-preferences/bulk', [PgmeiMonitoringController::class, 'batchPreferences']);
             Route::get('/fiscal/simples-mei/pgmei/clients/{client}/communication-preview', [PgmeiMonitoringController::class, 'preview']);
             Route::get('/fiscal/simples-mei/pgmei/clients/{client}/communications', [PgmeiMonitoringController::class, 'tracking']);
+            Route::post('/fiscal/simples-mei/pgmei/clients/{client}/communication-send', [PgmeiMonitoringController::class, 'send']);
 
             // DASN-SIMEI — histórico público com cobertura explícita e consulta assíncrona.
             Route::get('/fiscal/simples-mei/dasn-simei/clients/{client}/history', [DasnSimeiController::class, 'history']);
@@ -477,6 +485,17 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/fiscal/dctfweb/communication-preferences/bulk', [DctfwebMonitoringController::class, 'batchPreferences']);
             Route::get('/fiscal/dctfweb/clients/{client}/communication-preview', [DctfwebMonitoringController::class, 'preview']);
             Route::get('/fiscal/dctfweb/clients/{client}/communications', [DctfwebMonitoringController::class, 'tracking']);
+            Route::post('/fiscal/dctfweb/clients/{client}/communication-send', [DctfwebMonitoringController::class, 'send']);
+
+            // Comunicação transversal (SITFIS / FGTS / MIT)
+            Route::patch('/fiscal/{module}/clients/{client}/communication-preference', [MonitoringModuleCommunicationController::class, 'updatePreferences'])
+                ->whereIn('module', ['sitfis', 'fgts', 'mit']);
+            Route::get('/fiscal/{module}/clients/{client}/communication-preview', [MonitoringModuleCommunicationController::class, 'preview'])
+                ->whereIn('module', ['sitfis', 'fgts', 'mit']);
+            Route::get('/fiscal/{module}/clients/{client}/communications', [MonitoringModuleCommunicationController::class, 'tracking'])
+                ->whereIn('module', ['sitfis', 'fgts', 'mit']);
+            Route::post('/fiscal/{module}/clients/{client}/communication-send', [MonitoringModuleCommunicationController::class, 'send'])
+                ->whereIn('module', ['sitfis', 'fgts', 'mit']);
 
             // FGTS parcial via eSocial (cobertura explícita; sem portal FGTS Digital)
             Route::get('/fiscal/fgts/coverage', [FgtsEsocialController::class, 'coverage']);

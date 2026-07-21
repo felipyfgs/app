@@ -378,6 +378,12 @@
     "action": "DctfwebMonitoringController@preview"
   },
   {
+    "method": "POST",
+    "uri": "api/v1/fiscal/dctfweb/clients/{client}/communication-send",
+    "group": "fiscal",
+    "action": "DctfwebMonitoringController@send"
+  },
+  {
     "method": "GET",
     "uri": "api/v1/fiscal/dctfweb/clients/{client}/communications",
     "group": "fiscal",
@@ -804,6 +810,24 @@
     "action": "MonitoringInsightsController"
   },
   {
+    "method": "GET",
+    "uri": "api/v1/fiscal/monitoring/membership",
+    "group": "fiscal",
+    "action": "MonitoringModuleMembershipController@index"
+  },
+  {
+    "method": "POST",
+    "uri": "api/v1/fiscal/monitoring/membership/exclude",
+    "group": "fiscal",
+    "action": "MonitoringModuleMembershipController@exclude"
+  },
+  {
+    "method": "POST",
+    "uri": "api/v1/fiscal/monitoring/membership/include",
+    "group": "fiscal",
+    "action": "MonitoringModuleMembershipController@include"
+  },
+  {
     "method": "POST",
     "uri": "api/v1/fiscal/mutations",
     "group": "fiscal",
@@ -1032,6 +1056,12 @@
     "action": "PgdasdMonitoringController@preview"
   },
   {
+    "method": "POST",
+    "uri": "api/v1/fiscal/simples-mei/pgdasd/clients/{client}/communication-send",
+    "group": "fiscal",
+    "action": "PgdasdMonitoringController@send"
+  },
+  {
     "method": "GET",
     "uri": "api/v1/fiscal/simples-mei/pgdasd/clients/{client}/communications",
     "group": "fiscal",
@@ -1066,6 +1096,12 @@
     "uri": "api/v1/fiscal/simples-mei/pgmei/clients/{client}/communication-preview",
     "group": "fiscal",
     "action": "PgmeiMonitoringController@preview"
+  },
+  {
+    "method": "POST",
+    "uri": "api/v1/fiscal/simples-mei/pgmei/clients/{client}/communication-send",
+    "group": "fiscal",
+    "action": "PgmeiMonitoringController@send"
   },
   {
     "method": "GET",
@@ -1134,6 +1170,12 @@
     "action": "SitfisSituationController@show"
   },
   {
+    "method": "GET",
+    "uri": "api/v1/fiscal/sitfis/clients/{client}/history",
+    "group": "fiscal",
+    "action": "SitfisSituationController@history"
+  },
+  {
     "method": "POST",
     "uri": "api/v1/fiscal/sitfis/refresh",
     "group": "fiscal",
@@ -1162,6 +1204,30 @@
     "uri": "api/v1/fiscal/tax-processes/{id}",
     "group": "fiscal",
     "action": "TaxProcessController@show"
+  },
+  {
+    "method": "PATCH",
+    "uri": "api/v1/fiscal/{module}/clients/{client}/communication-preference",
+    "group": "fiscal",
+    "action": "MonitoringModuleCommunicationController@updatePreferences"
+  },
+  {
+    "method": "GET",
+    "uri": "api/v1/fiscal/{module}/clients/{client}/communication-preview",
+    "group": "fiscal",
+    "action": "MonitoringModuleCommunicationController@preview"
+  },
+  {
+    "method": "POST",
+    "uri": "api/v1/fiscal/{module}/clients/{client}/communication-send",
+    "group": "fiscal",
+    "action": "MonitoringModuleCommunicationController@send"
+  },
+  {
+    "method": "GET",
+    "uri": "api/v1/fiscal/{module}/clients/{client}/communications",
+    "group": "fiscal",
+    "action": "MonitoringModuleCommunicationController@tracking"
   },
   {
     "method": "POST",

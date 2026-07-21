@@ -94,6 +94,21 @@ return [
     ],
 
     /**
+     * Reconciliação oficial do pagamento de DAS via PAGTOWEB/PAGAMENTOS71.
+     * O canal é somente leitura, porém bilhetável; permanece OFF até rollout explícito.
+     */
+    'pgdasd_pagtoweb_reconciliation' => [
+        'enabled' => filter_var(
+            env('PGDASD_PAGTOWEB_RECONCILIATION_ENABLED', false),
+            FILTER_VALIDATE_BOOL,
+        ),
+        'negative_ttl_seconds' => (int) env('PGDASD_PAGTOWEB_NEGATIVE_TTL_SECONDS', 86_400),
+        'max_documents_per_batch' => (int) env('PGDASD_PAGTOWEB_MAX_DOCUMENTS_PER_BATCH', 100),
+        'backfill_max_clients' => (int) env('PGDASD_PAGTOWEB_BACKFILL_MAX_CLIENTS', 25),
+        'backfill_max_documents' => (int) env('PGDASD_PAGTOWEB_BACKFILL_MAX_DOCUMENTS', 500),
+    ],
+
+    /**
      * Integra-SITFIS — fluxo assíncrono solicitação/protocolo/espera/emissão.
      * Polling respeitoso: nunca mais agressivo que poll_interval; espera min_wait antes da 1ª emissão.
      */
@@ -113,6 +128,12 @@ return [
         'min_wait_seconds' => (int) env('SITFIS_MIN_WAIT_SECONDS', 30),
         /** Intervalo mínimo entre polls de emissão (s). */
         'poll_interval_seconds' => (int) env('SITFIS_POLL_INTERVAL_SECONDS', 60),
+        /**
+         * 304 /Apoiar sem ETag: espera até expires ou fallback (s) antes de nova solicitação.
+         * Evita force-retry imediato enquanto o cache SERPRO permanece válido.
+         */
+        'cache_empty_fallback_seconds' => (int) env('SITFIS_CACHE_EMPTY_FALLBACK_SECONDS', 900),
+        'cache_empty_max_wait_seconds' => (int) env('SITFIS_CACHE_EMPTY_MAX_WAIT_SECONDS', 86400),
         /** Máximo de tentativas de emissão após o min_wait. */
         'max_polls' => (int) env('SITFIS_MAX_POLLS', 20),
         /** TTL do snapshot (s) — 24h; refresh manual reutiliza dentro do TTL. */
@@ -120,6 +141,9 @@ return [
         /** Intervalo do schedule diário SITFIS (minutos). */
         'interval_minutes' => (int) env('SITFIS_INTERVAL_MINUTES', 1440),
         'parser_version' => '2.0',
+        /** Limites defensivos do fallback de leitura do PDF oficial. */
+        'pdf_parse_max_bytes' => 5_242_880,
+        'pdf_parse_max_text_bytes' => 524_288,
     ],
 
     /**
@@ -128,6 +152,11 @@ return [
     'mailbox' => [
         /** Até 50 mensagens por página no contrato SERPRO; limita custo e duração da run. */
         'max_pages_per_sync' => (int) env('MAILBOX_MAX_PAGES_PER_SYNC', 20),
+        /**
+         * Após LISTAR, quantas mensagens sem corpo enfileiram DETALHE (bilhetagem).
+         * 0 = desliga o enqueue automático.
+         */
+        'max_detail_fetches_per_sync' => (int) env('MAILBOX_MAX_DETAIL_FETCHES_PER_SYNC', 10),
         'retention_days' => (int) env('MAILBOX_RETENTION_DAYS', 2555), // ~7 anos
         'max_body_bytes' => (int) env('MAILBOX_MAX_BODY_BYTES', 2_097_152), // 2 MiB
         'max_attachment_bytes' => (int) env('MAILBOX_MAX_ATTACHMENT_BYTES', 10_485_760), // 10 MiB
@@ -135,6 +164,17 @@ return [
         'sensitivity_class' => 'FISCAL_RESTRICTED',
         /** Categorias oficiais tratadas como críticas para alerta. */
         'critical_categories' => ['INTIMACAO', 'NOTIFICACAO', 'COBRANCA', 'URGENTE'],
+    ],
+
+    /**
+     * Comunicação com clientes (guias/docs capturados).
+     * Provider real fail-closed — preferências e fila existem com flag off.
+     */
+    'communication' => [
+        'provider_enabled' => filter_var(
+            env('FISCAL_COMMUNICATION_PROVIDER_ENABLED', false),
+            FILTER_VALIDATE_BOOL
+        ),
     ],
 
     /**

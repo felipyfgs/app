@@ -24,9 +24,16 @@ use App\Services\Audit\AuditLogger;
 use App\Services\Fiscal\Availability\FiscalModuleAvailabilityService;
 use App\Services\Fiscal\Availability\FiscalModuleControlService;
 use App\Services\Fiscal\Availability\FiscalOperationClassifier;
+use App\Services\Fiscal\Dctfweb\DctfwebCommunicationService;
+use App\Services\Fiscal\Dctfweb\MitCommunicationService;
+use App\Services\Fiscal\Fgts\FgtsCommunicationService;
 use App\Services\Fiscal\ManualConsult\ManualConsultExecutionContext;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdCommunicationService;
+use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPagtowebReconciliationService;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPostConsultService;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdRbt12Service;
+use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiCommunicationService;
+use App\Services\Fiscal\Sitfis\SitfisCommunicationService;
 use App\Services\Operations\OperationsMetrics;
 use App\Services\Operations\StructuredLogger;
 use App\Services\Platform\OfficeSubscriptionGate;
@@ -35,6 +42,7 @@ use App\Services\Usage\MonitorCommercialLedgerService;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -53,10 +61,12 @@ final class FiscalMonitoringRunService
         private readonly OperationsMetrics $metrics,
         private readonly MonitorCommercialLedgerService $commercialLedger,
         private readonly PgdasdPostConsultService $pgdasdPostConsult,
+        private readonly PgdasdPagtowebReconciliationService $pgdasdPaymentReconciliation,
         private readonly PgdasdRbt12Service $pgdasdRbt12,
         private readonly FiscalModuleAvailabilityService $availability,
         private readonly FiscalModuleControlService $moduleControls,
         private readonly ManualConsultExecutionContext $manualConsultContext,
+        private readonly SitfisProjectionReconciler $sitfisProjectionReconciler,
     ) {}
 
     /**
@@ -354,9 +364,28 @@ final class FiscalMonitoringRunService
             $persist = FiscalPersistPayload::fromAdapterResult($run, $result, $adapter::class);
             $out = $this->persistence->persist($persist);
             $fresh = $out['run'];
+            if ($out['snapshot'] !== null && $out['evidence_id'] !== null) {
+                $this->sitfisProjectionReconciler->reconcile($out['snapshot'], $persist->findings);
+            }
             $this->pgdasdPostConsult->attachSnapshotToValidProjections($fresh, $out['snapshot']);
             if ($fresh->result !== FiscalRunResult::Success) {
                 $this->pgdasdRbt12->reconcileTerminalFailure($fresh);
+            } else {
+                try {
+                    $this->pgdasdPaymentReconciliation->enqueueAfterProductiveMonitor(
+                        $office,
+                        $client,
+                        $fresh,
+                    );
+                } catch (\Throwable $exception) {
+                    Log::warning('pgdasd.pagtoweb_reconciliation_enqueue_failed', [
+                        'office_id' => $office->id,
+                        'client_id' => $client->id,
+                        'run_id' => $fresh->id,
+                        'reason' => 'RECONCILIATION_ENQUEUE_FAILED',
+                        'error' => $exception->getMessage(),
+                    ]);
+                }
             }
 
             $latencyMs = null;
@@ -425,6 +454,12 @@ final class FiscalMonitoringRunService
                         'last_success_at' => CarbonImmutable::now(),
                         'last_result' => FiscalRunResult::Success->value,
                     ]);
+                $this->maybeQueueAutomaticCommunication(
+                    $office,
+                    $client,
+                    $adapter->moduleKey(),
+                    (string) $fresh->service_code,
+                );
             }
 
             return $fresh;
@@ -676,5 +711,27 @@ final class FiscalMonitoringRunService
         );
 
         return $this->persistence->persist($payload)['run'];
+    }
+
+    private function maybeQueueAutomaticCommunication(
+        Office $office,
+        Client $client,
+        ?string $moduleKey,
+        string $serviceCode = '',
+    ): void {
+        $serviceCode = strtoupper($serviceCode);
+        $service = match (true) {
+            $moduleKey === 'simples_mei' && str_contains($serviceCode, 'PGMEI') => app(PgmeiCommunicationService::class),
+            $moduleKey === 'simples_mei' && str_contains($serviceCode, 'PGDASD') => app(PgdasdCommunicationService::class),
+            $moduleKey === 'dctfweb' && str_contains($serviceCode, 'MIT') => app(MitCommunicationService::class),
+            $moduleKey === 'dctfweb' => app(DctfwebCommunicationService::class),
+            $moduleKey === 'sitfis' => app(SitfisCommunicationService::class),
+            $moduleKey === 'fgts' => app(FgtsCommunicationService::class),
+            default => null,
+        };
+        if ($service === null) {
+            return;
+        }
+        $service->maybeQueueAutomaticAfterConsult($office, $client);
     }
 }

@@ -6,6 +6,7 @@ use App\Enums\OfficeRole;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\User;
+use App\Services\Fiscal\Guides\ClientGuidesQueryService;
 use App\Services\Fiscal\Guides\Exceptions\GuideException;
 use App\Services\Fiscal\Guides\GuideDownloadService;
 use App\Services\Fiscal\Guides\GuideHighRiskGate;
@@ -26,6 +27,7 @@ class TaxGuideController extends Controller
     public function __construct(
         private readonly CurrentOffice $currentOffice,
         private readonly GuideQueryService $queries,
+        private readonly ClientGuidesQueryService $clientGuides,
         private readonly GuideIssuanceService $issuance,
         private readonly GuideDownloadService $downloads,
         private readonly GuidePaymentService $payments,
@@ -45,18 +47,23 @@ class TaxGuideController extends Controller
         // LFU-07: `sort_direction` e `direction` são aliases equivalentes.
         $direction = $request->query('sort_direction', $request->query('direction', ''));
         $direction = is_string($direction) ? strtolower($direction) : '';
+        $sort = $request->string('sort')->toString();
+        $payment = is_string($paymentStatus) ? $paymentStatus : null;
+        $resolvedClientId = is_numeric($clientId) ? (int) $clientId : null;
 
-        $page = $this->queries->paginate(
+        $result = $this->clientGuides->paginate(
             $office,
+            $resolvedClientId,
             $perPage,
-            is_numeric($clientId) ? (int) $clientId : null,
-            is_string($paymentStatus) ? $paymentStatus : null,
-            $request->string('sort')->toString(),
+            $payment,
+            $sort,
             $direction,
         );
-        $page->getCollection()->transform(fn ($g) => $g->toPublicArray());
 
-        return response()->json($page);
+        $payload = $result['page']->toArray();
+        $payload['payment_counters'] = $result['payment_counters'];
+
+        return response()->json($payload);
     }
 
     public function show(int $guide): JsonResponse

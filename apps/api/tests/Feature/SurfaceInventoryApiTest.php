@@ -22,7 +22,7 @@ class SurfaceInventoryApiTest extends TestCase
         );
     }
 
-    public function test_sample_inventory_uris_exist_in_live_routes(): void
+    public function test_inventory_route_keys_match_the_live_route_set_exactly(): void
     {
         $inventory = json_decode(
             (string) file_get_contents(base_path('tests/fixtures/surface-inventory/api-routes.json')),
@@ -37,22 +37,30 @@ class SurfaceInventoryApiTest extends TestCase
         $live = json_decode(Artisan::output(), true);
         $this->assertIsArray($live);
 
-        $liveUris = collect($live)
-            ->map(fn (array $row): string => (string) ($row['uri'] ?? ''))
-            ->filter()
-            ->unique()
+        $liveKeys = collect($live)
+            ->map(fn (array $row): string => $this->routeKey(
+                (string) ($row['method'] ?? ''),
+                (string) ($row['uri'] ?? ''),
+            ))
+            ->filter(fn (string $key): bool => ! str_ends_with($key, ' '))
+            ->sort()
+            ->values()
             ->all();
 
-        $sample = array_slice($inventory, 0, 5);
-        foreach ($sample as $row) {
-            $uri = (string) ($row['uri'] ?? '');
-            $this->assertNotSame('', $uri);
-            $this->assertContains(
-                $uri,
-                $liveUris,
-                "URI inventariada ausente nas rotas live: {$uri}",
-            );
-        }
+        $inventoryKeys = collect($inventory)
+            ->map(fn (array $row): string => $this->routeKey(
+                (string) ($row['method'] ?? ''),
+                (string) ($row['uri'] ?? ''),
+            ))
+            ->sort()
+            ->values()
+            ->all();
+
+        $this->assertSame(
+            $inventoryKeys,
+            $liveKeys,
+            'O conjunto método + URI diverge; regenere conscientemente o inventário e o grafo.',
+        );
     }
 
     /** @return array<string, mixed> */
@@ -66,5 +74,12 @@ class SurfaceInventoryApiTest extends TestCase
         $this->assertArrayHasKey('apiTotal', $summary);
 
         return $summary;
+    }
+
+    private function routeKey(string $method, string $uri): string
+    {
+        $normalizedMethod = explode('|', $method)[0];
+
+        return $normalizedMethod.' '.$uri;
     }
 }

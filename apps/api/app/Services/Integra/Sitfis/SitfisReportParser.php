@@ -2,8 +2,10 @@
 
 namespace App\Services\Integra\Sitfis;
 
+use App\Contracts\SitfisPdfTextExtracting;
 use App\Enums\FiscalFindingSeverity;
 use App\Enums\FiscalSituation;
+use Throwable;
 
 /**
  * Parser versionado do relatório oficial SITFIS.
@@ -40,6 +42,10 @@ final class SitfisReportParser
         'message',
     ];
 
+    public function __construct(
+        private readonly ?SitfisPdfTextExtracting $pdfTextExtractor = null,
+    ) {}
+
     /**
      * @param  array<string, mixed>|string  $report  JSON decodificado ou texto/base64 decodificado
      */
@@ -53,7 +59,7 @@ final class SitfisReportParser
                     $version = $configured;
                 }
             }
-        } catch (\Throwable) {
+        } catch (Throwable) {
             $version = self::VERSION;
         }
 
@@ -63,6 +69,12 @@ final class SitfisReportParser
                 return $this->unknownLayout($version, ['empty_body'], [
                     'parser_note' => 'Corpo do relatório vazio.',
                 ]);
+            }
+            // Oficial RELATORIOSITFIS92: campo pdf (binário após decode base64).
+            // Situação ATTENTION: evidência existe, mas pendências estruturadas ainda não
+            // foram extraídas — NÃO usar UNKNOWN (UI: "Desconhecido / sem evidência").
+            if (str_starts_with($trimmed, '%PDF')) {
+                return $this->parsePdf($report, $version);
             }
             $decoded = json_decode($trimmed, true);
             if (is_array($decoded)) {
@@ -170,6 +182,193 @@ final class SitfisReportParser
             ],
             claimsNegativeCertificate: false,
         );
+    }
+
+    private function parsePdf(string $pdfBytes, string $version): SitfisParseResult
+    {
+        $maxPdfBytes = max(1, (int) $this->configValue('pdf_parse_max_bytes', 5_242_880));
+        $maxTextBytes = max(1, (int) $this->configValue('pdf_parse_max_text_bytes', 524_288));
+
+        if (strlen($pdfBytes) > $maxPdfBytes) {
+            return $this->inconclusivePdf($version, strlen($pdfBytes), 'PDF acima do limite de análise.');
+        }
+
+        if ($this->pdfTextExtractor === null) {
+            return $this->inconclusivePdf($version, strlen($pdfBytes), 'Extrator de texto PDF indisponível.');
+        }
+
+        try {
+            $text = $this->pdfTextExtractor->extract($pdfBytes, $maxTextBytes);
+        } catch (Throwable) {
+            return $this->inconclusivePdf($version, strlen($pdfBytes), 'Não foi possível extrair texto conclusivo do PDF.');
+        }
+
+        $sections = $this->extractPdfPendingSections($text);
+        if ($sections !== []) {
+            $findings = array_map(function (string $section): array {
+                return [
+                    'code' => $this->pendingSectionCode($section),
+                    'severity' => FiscalFindingSeverity::High->value,
+                    'title' => 'Pendência SITFIS — '.$section,
+                    'detail' => 'Seção de pendência identificada no relatório oficial SITFIS.',
+                    'situation' => FiscalSituation::Pending->value,
+                    'creates_pending' => true,
+                ];
+            }, $sections);
+
+            return new SitfisParseResult(
+                parserVersion: $version,
+                layoutRecognized: true,
+                contractChanged: false,
+                situation: FiscalSituation::Pending,
+                findings: $findings,
+                unknownSections: [],
+                normalized: $this->pdfNormalized(
+                    $version,
+                    strlen($pdfBytes),
+                    $sections,
+                    'PENDING_SECTIONS',
+                    'Pendências identificadas por seções explícitas do relatório oficial.',
+                ),
+                claimsNegativeCertificate: false,
+            );
+        }
+
+        if ($this->hasGeneralNoPendingStatement($text)) {
+            return new SitfisParseResult(
+                parserVersion: $version,
+                layoutRecognized: true,
+                contractChanged: false,
+                situation: FiscalSituation::UpToDate,
+                findings: [],
+                unknownSections: [],
+                normalized: $this->pdfNormalized(
+                    $version,
+                    strlen($pdfBytes),
+                    [],
+                    'NO_PENDING_RFB_PGFN',
+                    'Relatório informa ausência de pendências nos controles conjuntos RFB e PGFN; não equivale a certidão negativa.',
+                ),
+                claimsNegativeCertificate: false,
+            );
+        }
+
+        return $this->inconclusivePdf(
+            $version,
+            strlen($pdfBytes),
+            'PDF sem marcador conclusivo de pendência ou ausência geral.',
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function extractPdfPendingSections(string $text): array
+    {
+        preg_match_all('/^\s*Pendência\s*-\s*(.+?)(?:\s+_{3,})?\s*$/miu', $text, $matches);
+
+        $sections = [];
+        foreach ($matches[1] ?? [] as $section) {
+            $normalized = preg_replace('/\s+/u', ' ', trim((string) $section));
+            $normalized = is_string($normalized) ? trim($normalized, " \t\n\r\0\x0B_") : '';
+            if ($normalized !== '' && ! in_array($normalized, $sections, true)) {
+                $sections[] = mb_substr($normalized, 0, 160);
+            }
+        }
+
+        return $sections;
+    }
+
+    private function hasGeneralNoPendingStatement(string $text): bool
+    {
+        $singleLine = preg_replace('/\s+/u', ' ', $text);
+        if (! is_string($singleLine)) {
+            return false;
+        }
+
+        return mb_stripos(
+            $singleLine,
+            'Não foram detectadas pendências/exigibilidades suspensas nos controles da Receita Federal e da Procuradoria-Geral da Fazenda Nacional.',
+        ) !== false;
+    }
+
+    private function pendingSectionCode(string $section): string
+    {
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $section);
+        $slug = strtoupper(preg_replace('/[^A-Za-z0-9]+/', '_', (string) $ascii) ?? '');
+        $slug = trim($slug, '_');
+
+        return 'SITFIS_PENDING_'.substr($slug !== '' ? $slug : hash('sha256', $section), 0, 48);
+    }
+
+    /**
+     * @param  list<string>  $sections
+     * @return array<string, mixed>
+     */
+    private function pdfNormalized(
+        string $version,
+        int $documentBytes,
+        array $sections,
+        string $conclusion,
+        string $disclaimer,
+    ): array {
+        return [
+            'parser_version' => $version,
+            'layout_recognized' => true,
+            'contract_changed' => false,
+            'report_format' => 'pdf',
+            'document_bytes' => $documentBytes,
+            'recognized_sections' => $sections,
+            'recognized_items_count' => count($sections),
+            'parser_conclusion' => $conclusion,
+            'is_negative_certificate' => false,
+            'disclaimer' => $disclaimer,
+        ];
+    }
+
+    private function inconclusivePdf(string $version, int $documentBytes, string $reason): SitfisParseResult
+    {
+        return new SitfisParseResult(
+            parserVersion: $version,
+            layoutRecognized: false,
+            contractChanged: false,
+            situation: FiscalSituation::Attention,
+            findings: [[
+                'code' => 'SITFIS_PDF_INCONCLUSIVE',
+                'severity' => FiscalFindingSeverity::Medium->value,
+                'title' => 'Relatório SITFIS requer revisão',
+                'detail' => $reason,
+                'situation' => FiscalSituation::Attention->value,
+                'creates_pending' => false,
+            ]],
+            unknownSections: [],
+            normalized: [
+                'parser_version' => $version,
+                'layout_recognized' => false,
+                'contract_changed' => false,
+                'report_format' => 'pdf',
+                'document_bytes' => $documentBytes,
+                'recognized_sections' => [],
+                'recognized_items_count' => 0,
+                'parser_conclusion' => 'INCONCLUSIVE',
+                'is_negative_certificate' => false,
+                'disclaimer' => 'PDF oficial preservado; análise inconclusiva. Revise o relatório.',
+            ],
+            claimsNegativeCertificate: false,
+        );
+    }
+
+    private function configValue(string $key, mixed $default): mixed
+    {
+        try {
+            if (function_exists('config')) {
+                return config('fiscal_monitoring.sitfis.'.$key, $default);
+            }
+        } catch (Throwable) {
+            // PHPUnit puro não inicializa o container Laravel.
+        }
+
+        return $default;
     }
 
     /**

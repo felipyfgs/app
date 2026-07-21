@@ -2,13 +2,16 @@
 
 namespace App\Services\Integra\Sitfis;
 
+use App\Enums\FiscalSituation;
 use App\Enums\FiscalSourceProvenance;
 use App\Enums\FiscalVerificationState;
 use App\Enums\SerproCapabilityDriver;
 use App\Models\Client;
+use App\Models\FiscalCategory;
 use App\Models\FiscalMonitoringRun;
 use App\Models\FiscalSnapshot;
 use App\Models\Office;
+use App\Services\FiscalMonitoring\FiscalCategoryService;
 use App\Services\FiscalMonitoring\FiscalIdempotency;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use App\Services\Serpro\CapabilityDriverResolver;
@@ -17,6 +20,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 /**
  * TTL/cache SITFIS: devolve snapshot existente com idade; só enfileira nova chamada se expirado.
@@ -26,6 +30,7 @@ final class SitfisSnapshotService
     public function __construct(
         private readonly FiscalMonitoringRunService $runs,
         private readonly CapabilityDriverResolver $drivers,
+        private readonly FiscalCategoryService $categories,
     ) {}
 
     /**
@@ -192,8 +197,14 @@ final class SitfisSnapshotService
 
         $view = $this->current($office, $client);
 
-        // Nesta change: force não cria chamada externa se ainda dentro do TTL
-        if ($view['is_within_ttl'] && $view['snapshot'] !== null) {
+        // force ou snapshot terminal/falho: não bloquear por TTL de reuso.
+        $ttlBlocks = $view['is_within_ttl']
+            && $view['snapshot'] !== null
+            && ! $force
+            && ! (bool) ($view['display_only'] ?? false)
+            && $this->snapshotSituationBlocksRefresh($view['snapshot']);
+
+        if ($ttlBlocks) {
             return [
                 'run' => null,
                 'reused_snapshot' => true,
@@ -235,6 +246,8 @@ final class SitfisSnapshotService
             'verification_state' => FiscalVerificationState::Unverified,
         ])->save();
 
+        $this->ensureSitfisSchedule($office, $client, $actorId);
+
         $view = $this->current($office, $client);
 
         return [
@@ -244,6 +257,50 @@ final class SitfisSnapshotService
             'reason' => 'TTL_EXPIRED_OR_MISSING',
             'view' => $this->publicView($view),
         ];
+    }
+
+    /**
+     * TTL de reuso só para situações “úteis”. ERROR/BLOCKED/UNKNOWN sempre permitem enqueue.
+     */
+    private function snapshotSituationBlocksRefresh(FiscalSnapshot $snapshot): bool
+    {
+        $raw = $snapshot->situation instanceof FiscalSituation
+            ? $snapshot->situation
+            : FiscalSituation::tryFrom(strtoupper((string) $snapshot->situation));
+
+        if ($raw === null) {
+            return false;
+        }
+
+        return in_array($raw, [
+            FiscalSituation::UpToDate,
+            FiscalSituation::Pending,
+            FiscalSituation::Attention,
+            FiscalSituation::Processing,
+        ], true);
+    }
+
+    private function ensureSitfisSchedule(Office $office, Client $client, ?int $actorId): void
+    {
+        try {
+            $category = FiscalCategory::query()
+                ->where('is_active', true)
+                ->where(function ($q): void {
+                    $q->where('service_code', 'SITFIS')
+                        ->orWhere('code', 'SITFIS')
+                        ->orWhere('module_key', 'sitfis');
+                })
+                ->orderBy('id')
+                ->first();
+
+            if ($category === null) {
+                return;
+            }
+
+            $this->categories->associate($office, $client, $category, $actorId);
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     /**
@@ -292,11 +349,19 @@ final class SitfisSnapshotService
             $situation = $lastFailed['situation'] ?? null;
         }
 
+        $evidenceArtifactId = $snapshot?->evidence_artifact_id !== null
+            ? (int) $snapshot->evidence_artifact_id
+            : null;
+        $evidenceDownload = $evidenceArtifactId !== null
+            ? '/api/v1/fiscal/evidence/'.$evidenceArtifactId.'/download'
+            : null;
+
         return [
             'snapshot' => $snapshotPublic,
             'situation' => $situation,
             'protocol' => $protocol,
             'coverage' => $coverage,
+            'evidence_artifact_id' => $evidenceArtifactId,
             'age_seconds' => $view['age_seconds'],
             'observed_at' => $view['observed_at'],
             'expires_at' => $view['expires_at'],
@@ -314,6 +379,9 @@ final class SitfisSnapshotService
             'display_only' => $displayOnly,
             'error_code' => is_array($lastFailed) ? ($lastFailed['error_code'] ?? null) : null,
             'error_message' => is_array($lastFailed) ? ($lastFailed['error_message'] ?? null) : null,
+            'links' => [
+                'evidence_download' => $evidenceDownload,
+            ],
             'cache_key_hint' => FiscalIdempotency::cacheKey(
                 (int) ($snapshot?->office_id ?? 0),
                 'sitfis',

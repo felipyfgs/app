@@ -61,7 +61,10 @@ final class FiscalSnapshotPersistence
                 ->firstOrFail();
 
             $hasParseAlert = collect($payload->findings)->contains(
-                fn (array $finding): bool => ($finding['code'] ?? null) === 'SITFIS_LAYOUT_UNKNOWN'
+                fn (array $finding): bool => in_array($finding['code'] ?? null, [
+                    'SITFIS_LAYOUT_UNKNOWN',
+                    'SITFIS_PDF_INCONCLUSIVE',
+                ], true)
             );
             if ($hasParseAlert) {
                 $locked->verification_state = FiscalVerificationState::ParseAlert;
@@ -176,10 +179,19 @@ final class FiscalSnapshotPersistence
         ?int $evidenceId,
     ): FiscalSnapshot {
         $isCurrentEligible = $run->source_provenance?->value !== 'UNVERIFIED'
-            && $run->verification_state?->value !== 'PARSE_ALERT';
+            && ! (
+                $run->verification_state?->value === 'PARSE_ALERT'
+                && $evidenceId === null
+            )
+            && ! ($evidenceId === null && in_array($payload->result, [
+                FiscalRunResult::Failed,
+                FiscalRunResult::Blocked,
+                FiscalRunResult::Skipped,
+            ], true));
 
-        // Só demove o corrente se o novo for elegível — PARSE_ALERT/UNVERIFIED
-        // não podem deixar o cliente sem snapshot is_current válido.
+        // Só demove o corrente se o novo for elegível — PARSE_ALERT sem evidência
+        // e falhas sem evidência não podem deixar o cliente sem snapshot is_current válido.
+        // PARSE_ALERT/sucesso com evidência (ex. PDF) MAY promover e demover ERROR stale.
         if ($isCurrentEligible) {
             FiscalSnapshot::query()
                 ->withoutGlobalScopes()

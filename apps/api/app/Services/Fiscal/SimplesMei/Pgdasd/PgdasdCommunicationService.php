@@ -25,7 +25,8 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
- * Preferências, prévia e rastreio TEMPLATE_ONLY — sem provider, job, Mail ou envio real.
+ * Preferências, prévia, rastreio e fila de envio.
+ * Provider externo fail-closed (`fiscal_monitoring.communication.provider_enabled`).
  */
 final class PgdasdCommunicationService
 {
@@ -121,6 +122,7 @@ final class PgdasdCommunicationService
             ->where('submodule_key', $this->submoduleKey)
             ->get(['id', 'client_id', 'status'])
             ->groupBy('client_id');
+        $docsByClient = $this->clientsWithLocalDocumentsMap($office, $clientIds);
 
         $result = [];
         foreach ($clientIds as $clientId) {
@@ -140,8 +142,16 @@ final class PgdasdCommunicationService
             /** @var Collection<int, ClientCommunicationDispatch> $clientDispatches */
             $clientDispatches = $dispatches->get($clientId, collect());
             $status = $this->trackingStatus($persisted, $eligibleChannels, $clientDispatches);
+            $hasLocalDocuments = $docsByClient[$clientId] ?? false;
+            $canSend = $this->resolveCanSend($preference, $eligibleChannels, $hasLocalDocuments);
+            $automaticEffective = $this->resolveAutomaticEffective($preference, $eligibleChannels, $hasLocalDocuments);
 
-            $result[$clientId] = $preference->toPublicArray($eligibleChannels, $status->value);
+            $result[$clientId] = $preference->toPublicArray(
+                $eligibleChannels,
+                $status->value,
+                $canSend,
+                $automaticEffective,
+            );
         }
 
         return $result;
@@ -388,7 +398,7 @@ final class PgdasdCommunicationService
             : 'America/Sao_Paulo';
         $periodKey = match ($this->submoduleKey) {
             'pgmei' => (string) CarbonImmutable::now($timezone)->year,
-            'dctfweb' => DctfwebPeriod::toPeriodKey(
+            'dctfweb', 'mit' => DctfwebPeriod::toPeriodKey(
                 DctfwebPeriod::expectedPa(null, $timezone)
             ),
             default => PgdasdPeriod::toPeriodKey(PgdasdPeriod::expectedPa(null, $timezone)),
@@ -431,6 +441,14 @@ final class PgdasdCommunicationService
         if ($preference->whatsapp_enabled && $contacts['whatsapp'] === []) {
             $warnings[] = 'WhatsApp habilitado sem destinatário elegível.';
         }
+        $providerEnabled = (bool) config('fiscal_monitoring.communication.provider_enabled', false);
+        if (! $providerEnabled) {
+            $warnings[] = 'Envio externo desligado (fail-closed). A fila registra a intenção.';
+        }
+
+        $hasLocalDocuments = ! $this->requiresLocalDocuments() || $documents !== [];
+        $canSend = $this->resolveCanSend($preference, $eligibleChannels, $hasLocalDocuments);
+        $automaticEffective = $this->resolveAutomaticEffective($preference, $eligibleChannels, $hasLocalDocuments);
 
         return [
             'client' => [
@@ -439,13 +457,342 @@ final class PgdasdCommunicationService
             ],
             'period_key' => $periodKey,
             'execution_mode' => CommunicationExecutionMode::TemplateOnly->value,
-            'can_send' => false,
-            'automatic_effective' => false,
-            'preferences' => $preference->toPublicArray($eligibleChannels, $trackingStatus->value),
+            'can_send' => $canSend,
+            'automatic_effective' => $automaticEffective,
+            'provider_enabled' => $providerEnabled,
+            'preferences' => $preference->toPublicArray(
+                $eligibleChannels,
+                $trackingStatus->value,
+                $canSend,
+                $automaticEffective,
+            ),
             'channels' => $channels,
             'documents' => $documents,
             'warnings' => $warnings,
         ];
+    }
+
+    /**
+     * Enfileira dispatch(es) de envio manual. Provider externo só se flag ligada.
+     *
+     * @return array{queued:int, provider_enabled:bool, dispatches:list<array<string, mixed>>}
+     */
+    public function requestSend(Office $office, Client $client, User $actor): array
+    {
+        $this->assertClient($office, $client);
+        $this->assertCanWrite($actor, $client);
+
+        $preference = $this->getPreferences($office, $client);
+        if (! $preference->exists) {
+            throw new HttpException(422, 'Configure canais de comunicação antes de enviar.');
+        }
+
+        $contacts = $this->eligibleContacts($office, $client);
+        $eligibleChannels = $this->channelNames($contacts);
+        $this->assertEligibleChannels(
+            $client,
+            (bool) $preference->email_enabled,
+            (bool) $preference->whatsapp_enabled,
+            $eligibleChannels,
+        );
+
+        $hasLocalDocuments = $this->clientHasLocalDocuments($office, (int) $client->id);
+        if (! $this->resolveCanSend($preference, $eligibleChannels, $hasLocalDocuments)) {
+            throw new HttpException(
+                422,
+                $this->requiresLocalDocuments() && ! $hasLocalDocuments
+                    ? 'Não há documentos locais para enviar.'
+                    : 'Nenhum canal elegível para envio.',
+            );
+        }
+
+        $providerEnabled = (bool) config('fiscal_monitoring.communication.provider_enabled', false);
+        $created = $this->queueDispatches(
+            $office,
+            $client,
+            $preference,
+            $contacts,
+            $eligibleChannels,
+            (int) $actor->id,
+            'manual',
+        );
+
+        if ($created === []) {
+            throw new HttpException(422, 'Nenhum canal elegível para envio.');
+        }
+
+        $this->audit->record(
+            action: $this->auditPrefix.'.send.queued',
+            result: 'SUCCESS',
+            subject: $preference,
+            context: [
+                'client_id' => $client->id,
+                'queued' => count($created),
+                'provider_enabled' => $providerEnabled,
+            ],
+            userId: $actor->id,
+            officeId: (int) $office->id,
+        );
+
+        return [
+            'queued' => count($created),
+            'provider_enabled' => $providerEnabled,
+            'dispatches' => $created,
+        ];
+    }
+
+    /**
+     * Hook pós-consulta agendada: enfileira se automatic_requested e elegível.
+     */
+    public function maybeQueueAutomaticAfterConsult(Office $office, Client $client): void
+    {
+        try {
+            $preference = ClientCommunicationPreference::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $office->id)
+                ->where('client_id', $client->id)
+                ->where('module_key', $this->moduleKey)
+                ->where('submodule_key', $this->submoduleKey)
+                ->first();
+            if ($preference === null || ! $preference->automatic_requested) {
+                return;
+            }
+
+            $contacts = $this->eligibleContacts($office, $client);
+            $eligibleChannels = $this->channelNames($contacts);
+            $hasLocalDocuments = $this->clientHasLocalDocuments($office, (int) $client->id);
+            if (! $this->resolveAutomaticEffective($preference, $eligibleChannels, $hasLocalDocuments)) {
+                return;
+            }
+
+            $actorId = (int) ($preference->updated_by_user_id ?: 0);
+            $this->queueDispatches($office, $client, $preference, $contacts, $eligibleChannels, $actorId, 'scheduled_consult');
+        } catch (\Throwable) {
+            // Fail-soft: consulta já concluiu; envio automático não deve derrubar a run.
+        }
+    }
+
+    /**
+     * @param  array{email: list<ClientContact>, whatsapp: list<ClientContact>}  $contacts
+     * @param  list<string>  $eligibleChannels
+     * @return list<array<string, mixed>>
+     */
+    private function queueDispatches(
+        Office $office,
+        Client $client,
+        ClientCommunicationPreference $preference,
+        array $contacts,
+        array $eligibleChannels,
+        int $actorId,
+        string $trigger,
+    ): array {
+        $timezone = is_string($office->timezone) && $office->timezone !== ''
+            ? $office->timezone
+            : 'America/Sao_Paulo';
+        $periodKey = match ($this->submoduleKey) {
+            'pgmei' => (string) CarbonImmutable::now($timezone)->year,
+            'dctfweb', 'mit' => DctfwebPeriod::toPeriodKey(
+                DctfwebPeriod::expectedPa(null, $timezone)
+            ),
+            default => PgdasdPeriod::toPeriodKey(PgdasdPeriod::expectedPa(null, $timezone)),
+        };
+        $providerEnabled = (bool) config('fiscal_monitoring.communication.provider_enabled', false);
+        $created = [];
+        foreach ([CommunicationChannel::Email, CommunicationChannel::Whatsapp] as $channel) {
+            $enabled = $channel === CommunicationChannel::Email
+                ? (bool) $preference->email_enabled
+                : (bool) $preference->whatsapp_enabled;
+            if (! $enabled || ! in_array($channel->value, $eligibleChannels, true)) {
+                continue;
+            }
+            $recipients = $channel === CommunicationChannel::Email
+                ? $contacts['email']
+                : $contacts['whatsapp'];
+            /** @var ClientContact|null $first */
+            $first = $recipients[0] ?? null;
+            if ($first === null) {
+                continue;
+            }
+
+            $idempotencyKey = $this->buildDispatchIdempotencyKey(
+                (int) $client->id,
+                $channel,
+                $periodKey,
+                $trigger,
+            );
+
+            if ($trigger === 'scheduled_consult') {
+                $alreadyQueued = ClientCommunicationDispatch::query()
+                    ->withoutGlobalScopes()
+                    ->where('office_id', $office->id)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->exists();
+                if ($alreadyQueued) {
+                    continue;
+                }
+            }
+
+            try {
+                $dispatch = ClientCommunicationDispatch::query()->create([
+                    'office_id' => $office->id,
+                    'client_id' => $client->id,
+                    'preference_id' => $preference->id,
+                    'module_key' => $this->moduleKey,
+                    'submodule_key' => $this->submoduleKey,
+                    'period_key' => $periodKey,
+                    'channel' => $channel,
+                    'status' => CommunicationDispatchStatus::Queued,
+                    'recipient_masked' => $this->maskContact($first, $channel),
+                    'recipient_hash' => hash('sha256', $channel === CommunicationChannel::Email
+                        ? strtolower(trim((string) $first->email))
+                        : (preg_replace('/\D/', '', (string) $first->phone) ?? '')),
+                    'idempotency_key' => $idempotencyKey,
+                    'template_key' => $this->auditPrefix.'.'.$trigger,
+                    'template_version' => 1,
+                    'provider' => $providerEnabled ? 'configured' : 'disabled',
+                    'queued_at' => now(),
+                    'metadata' => [
+                        'trigger' => $trigger,
+                        'provider_enabled' => $providerEnabled,
+                        'actor_user_id' => $actorId,
+                    ],
+                ]);
+            } catch (QueryException $e) {
+                // Corrida entre runs agendadas: unique (office_id, idempotency_key).
+                if ($trigger === 'scheduled_consult') {
+                    continue;
+                }
+                throw $e;
+            }
+            $created[] = $dispatch->toPublicArray();
+        }
+
+        return $created;
+    }
+
+    /**
+     * Chave ≤64 chars. Automático estável por período; manual com nonce curto.
+     */
+    private function buildDispatchIdempotencyKey(
+        int $clientId,
+        CommunicationChannel $channel,
+        string $periodKey,
+        string $trigger,
+    ): string {
+        $module = match ($this->moduleKey) {
+            self::MODULE => 'sm',
+            default => substr(preg_replace('/[^a-z0-9]/', '', strtolower($this->moduleKey)) ?: 'mod', 0, 4),
+        };
+        $submodule = match ($this->submoduleKey) {
+            'pgdasd' => 'pd',
+            'pgmei' => 'pm',
+            'dctfweb' => 'dw',
+            'mit' => 'mt',
+            'sitfis' => 'sf',
+            'fgts' => 'fg',
+            default => substr(preg_replace('/[^a-z0-9]/', '', strtolower($this->submoduleKey)) ?: 'sub', 0, 4),
+        };
+        $channelCode = $channel === CommunicationChannel::Email ? 'e' : 'w';
+        $triggerCode = $trigger === 'scheduled_consult' ? 'auto' : 'man';
+        $base = sprintf(
+            '%s:%s:%d:%s:%s:%s',
+            $module,
+            $submodule,
+            $clientId,
+            $channelCode,
+            $periodKey,
+            $triggerCode,
+        );
+
+        if ($trigger === 'scheduled_consult') {
+            return strlen($base) <= 64 ? $base : substr(hash('sha256', $base), 0, 64);
+        }
+
+        $withNonce = $base.':'.bin2hex(random_bytes(4));
+
+        return strlen($withNonce) <= 64 ? $withNonce : substr(hash('sha256', $withNonce), 0, 64);
+    }
+
+    /**
+     * @param  list<string>  $eligibleChannels
+     */
+    private function resolveCanSend(
+        ClientCommunicationPreference $preference,
+        array $eligibleChannels,
+        bool $hasLocalDocuments,
+    ): bool {
+        if ($this->moduleKey === self::MODULE && $this->submoduleKey === self::SUBMODULE && ! $hasLocalDocuments) {
+            return false;
+        }
+
+        return
+            ((bool) $preference->email_enabled && in_array(CommunicationChannel::Email->value, $eligibleChannels, true))
+            || ((bool) $preference->whatsapp_enabled && in_array(CommunicationChannel::Whatsapp->value, $eligibleChannels, true));
+    }
+
+    /**
+     * @param  list<string>  $eligibleChannels
+     */
+    private function resolveAutomaticEffective(
+        ClientCommunicationPreference $preference,
+        array $eligibleChannels,
+        bool $hasLocalDocuments,
+    ): bool {
+        if (! $preference->automatic_requested) {
+            return false;
+        }
+
+        return $this->resolveCanSend($preference, $eligibleChannels, $hasLocalDocuments);
+    }
+
+    private function requiresLocalDocuments(): bool
+    {
+        return $this->moduleKey === self::MODULE && $this->submoduleKey === self::SUBMODULE;
+    }
+
+    private function clientHasLocalDocuments(Office $office, int $clientId): bool
+    {
+        if (! $this->requiresLocalDocuments()) {
+            return true;
+        }
+
+        return PgdasdArtifact::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->where('client_id', $clientId)
+            ->exists();
+    }
+
+    /**
+     * @param  list<int>  $clientIds
+     * @return array<int, bool>
+     */
+    private function clientsWithLocalDocumentsMap(Office $office, array $clientIds): array
+    {
+        if (! $this->requiresLocalDocuments()) {
+            $map = [];
+            foreach ($clientIds as $clientId) {
+                $map[$clientId] = true;
+            }
+
+            return $map;
+        }
+
+        $present = PgdasdArtifact::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereIn('client_id', $clientIds)
+            ->distinct()
+            ->pluck('client_id')
+            ->map(static fn ($id): int => (int) $id)
+            ->all();
+        $set = array_fill_keys($present, true);
+        $map = [];
+        foreach ($clientIds as $clientId) {
+            $map[$clientId] = isset($set[$clientId]);
+        }
+
+        return $map;
     }
 
     /**

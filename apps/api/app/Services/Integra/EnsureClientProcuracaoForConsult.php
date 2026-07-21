@@ -2,6 +2,7 @@
 
 namespace App\Services\Integra;
 
+use App\Contracts\EnsuresClientProcuracaoForConsult;
 use App\Enums\SerproEnvironment;
 use App\Models\Client;
 use App\Models\Office;
@@ -13,7 +14,7 @@ use Throwable;
  * Garante evidência de procuração usável antes de consulta Integra que exige poder e-CAC.
  * Fluxo: local → sync oficial (Integra/fixture) se necessário → recheck.
  */
-final class EnsureClientProcuracaoForConsult
+final class EnsureClientProcuracaoForConsult implements EnsuresClientProcuracaoForConsult
 {
     public function __construct(
         private readonly TaxProxyPowerService $proxyPowers,

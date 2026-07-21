@@ -23,6 +23,7 @@ x-php: &php
     QUEUE_CONNECTION: redis
     CACHE_STORE: redis
     SESSION_DRIVER: redis
+    SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost,localhost:3000,127.0.0.1,127.0.0.1:3000}
     VAULT_DISK_ROOT: /var/vault
   volumes:
     - ./apps/api:/var/www/html
