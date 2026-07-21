@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Monorepo do hub fiscal (NFS-e / escritório): painel web, API Laravel e automação MEI/SERPRO.
+Monorepo do hub fiscal (NFS-e / escritório): painel web, API Laravel e integração SERPRO/Integra Contador (monitoramento Simples/MEI).
 Tudo roda via Docker Compose + Makefile na raiz — não trate `apps/api` ou `apps/web` como apps standalone fora do compose.
 
 ## Stack
@@ -14,11 +14,13 @@ Tudo roda via Docker Compose + Makefile na raiz — não trate `apps/api` ou `ap
 
 ## Layout
 
-- `apps/api` — backend Laravel
+- `apps/api` — backend Laravel (inclui `app/Services/MeiAutomation/` e Integra/SERPRO)
 - `apps/web` — painel Nuxt (SPA `generate` → nginx)
-- `services/mei` — código de automação dos portais MEI (versionado; **não** é serviço do Compose)
-- `infra/docker` — Dockerfiles e entrypoints
+- `infra/docker` — Dockerfiles e entrypoints (php, nginx, frontend, traefik)
 - `openspec/` — specs canônicas e changes
+- `.local/reference/nuxt-dashboard-template` — arquétipo UI do painel (não redesenhar o shell)
+
+Não existe `services/` no tree atual. Sidecar MEI de portal **não** está versionado nem no Compose; cliente HTTP opcional permanece fail-closed.
 
 ## Dev setup
 
@@ -26,8 +28,8 @@ Tudo roda via Docker Compose + Makefile na raiz — não trate `apps/api` ou `ap
 - Run com HMR: `make dev` — API `:8080`, Nuxt `:3000`
 - Run estático (SPA no nginx): `make up`
 - Parar: `make down` | logs: `make logs` | shell PHP: `make shell`
-- Migrate / seed: `make migrate` | `make seed`
-- Env: copie `.env.example` → `.env` e `apps/api/.env.example` → `apps/api/.env` (`chmod 600`). Nunca versione os arquivos reais.
+- Migrate / seed: `make migrate` | `make seed` (`make seed-pilot` para PilotSeeder)
+- Env: `make init-env` ou copie `.env.example` → `.env` e `apps/api/.env.example` → `apps/api/.env` (`chmod 600`). Nunca versione os arquivos reais.
 
 ## Build / deploy
 
@@ -38,6 +40,8 @@ Tudo roda via Docker Compose + Makefile na raiz — não trate `apps/api` ou `ap
 ## Test / lint
 
 Espelhe o CI (`.github/workflows/ci.yml`):
+
+**Regra:** toda feature, fix ou mudança de comportamento **deve** incluir testes que validem a implementação — na mesma change, não “depois”. Preferir unitário (PHPUnit `tests/Unit/**` / Vitest `tests/unit/**`) para lógica; Feature HTTP quando o contrato de API/persistência mudar. Playwright E2E é local, não gate de CI.
 
 **API** (`apps/api`):
 
@@ -54,27 +58,31 @@ Espelhe o CI (`.github/workflows/ci.yml`):
 - `pnpm run test:fidelity`
 - `pnpm run test:artifacts`
 
-Gate frontend no CI = lint + typecheck + generate + vitest + fidelity. Playwright E2E **não** faz parte do gate de CI.
+Gate frontend no CI = lint + typecheck + generate + vitest + fidelity + artifacts. Playwright E2E **não** faz parte do gate.
 
 **Infra / OpenSpec:**
 
-- `docker compose -f docker-compose.yml config --quiet` (e equivalente prod)
+- `docker compose -f docker-compose.yml config --quiet` (e equivalente prod; CI também rejeita serviços `mei`/`mei-worker`)
 - `npx @fission-ai/openspec@1.6.0 validate --specs --strict` (e changes ativas com delta)
+- CI também valida entrypoints em `infra/docker/` e build das imagens de dev
 
-Antes de PR: rode os gates da área que alterou (api e/ou web) e, se tocou specs/compose, a validação de infra/OpenSpec.
+Antes de PR: rode os gates da área que alterou (api e/ou web) e, se tocou specs/compose, a validação de infra/OpenSpec. Inclua os novos testes no gate da área.
 
 ## Code conventions
 
 - Locale e copy do produto: `pt_BR`
 - Commits: Conventional Commits em pt-BR quando o time pedir commit
 - **Antes de qualquer modificação de código/produto:** rode `/opsx-propose` (skill `openspec-propose`) e só implemente depois com `/opsx:apply` — nunca pule a change OpenSpec (proposal/design/tasks/delta)
-- UI do painel: use as skills `/panel-ui` e arquétipos do dashboard — não reinvente o shell
+- **Sempre** acrescente ou atualize testes (Unit e/ou Feature) que comprovem o comportamento novo/alterado; tasks OpenSpec de implementação devem listar os testes
+- UI do painel: alinhar ao arquétipo em `.local/reference/nuxt-dashboard-template` e ao fidelity gate — não reinvente o shell
 
 ## Architecture boundaries
 
-- Do: orquestre MEI via API + código em `services/mei`; mantenha SERPRO/MEI fail-closed por default
+- Do: monitoramento MEI/Simples via API (`MeiAutomation*` + SERPRO/Integra Contador); provider default SERPRO; sidecar de portal só via cliente HTTP opcional e flags OFF
 - Never implemente feature, fix ou mudança de comportamento sem change OpenSpec via `/opsx-propose` (exceto pedido explícito do usuário para pular)
+- Never entregue implementação sem testes que validem o comportamento (exceto pedido explícito do usuário para pular)
 - Never adicione serviços `mei` ou `mei-worker` ao Compose (dev ou prod) — o CI falha se aparecerem
+- Never restaure `services/mei` no tree sem pedido explícito (foi removido de propósito)
 - Never coloque Consumer Secret, PFX ou outros segredos SERPRO em `.env.example` ou em commits
 - Never commite `.env`, certs, vault, `auth.json`, nem artefatos em `apps/api/storage/app/private` / certs
 - Never invente targets Make/ops marcados como indisponíveis no Makefile
@@ -94,5 +102,6 @@ Antes de PR: rode os gates da área que alterou (api e/ou web) e, se tocou specs
 ## Where else to look
 
 - Specs: `openspec/specs/`
-- Skills (workflows sob demanda; não duplicar aqui): `.codex/skills/` — openspec-*, panel-ui, ui-archetype, api-integra-contador, task-loop
-- Cursor commands: `.cursor/commands/`
+- Skills (workflows sob demanda; não duplicar aqui): `.codex/skills/` e espelho `.cursor/skills/` — `openspec-*`, `api-integra-contador`
+- Cursor commands: `.cursor/commands/` (`opsx-propose`, `opsx-apply`, `opsx-explore`, `opsx-sync`, `opsx-archive`)
+- OpenSpec rules injetadas: `openspec/config.yaml` (não duplicar stack/ops aqui)

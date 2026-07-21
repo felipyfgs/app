@@ -49,7 +49,8 @@ context: |
   Stack:
   - apps/api — Laravel 13, PHP 8.4, Horizon, Sanctum/Fortify, Postgres, Redis
   - apps/web — Nuxt 4 SPA (ssr:false) + Nuxt UI 4, pnpm 11.9, Node 24
-  - services/mei — automação de portais MEI quando versionada (nunca serviço Compose)
+  - MEI: orquestração em apps/api/app/Services/MeiAutomation/ (SERPRO default;
+    sidecar de portal opcional via HTTP — não versionado; nunca serviço Compose)
   - infra/docker — Dockerfiles/entrypoints; nginx same-origin em up/prod
   - Dev HMR: `make dev` (API :8080, Nuxt :3000). Estático: `make up`.
 
@@ -59,10 +60,11 @@ context: |
 
   Segurança: SecureObjectStore (vault); VAULT_MASTER_KEY/APP_KEY fora do git;
   sem PFX/tokens/XML bruto em JSON/logs; feature flags e canais SEFAZ/SERPRO/MEI
-  fail-closed (default OFF); never serviços mei/mei-worker no Compose.
+  fail-closed (default OFF); never serviços mei/mei-worker no Compose;
+  never restaurar services/mei sem pedido explícito.
 
-  UI: skills panel-ui → ui-archetype; template .local/reference/nuxt-dashboard-template
-  @ 0f30c09; locale/copy pt_BR; não redesenhar o shell do dashboard.
+  UI: arquétipo .local/reference/nuxt-dashboard-template; locale/copy pt_BR;
+  não redesenhar o shell do dashboard.
 
   Verificação (espelhar CI da área tocada):
   - API: composer validate --strict --no-check-publish; vendor/bin/pint --test; php artisan test
@@ -87,8 +89,8 @@ rules:
     - "Cobrir isolamento de tenant, papéis e fail-closed de flags/canais quando aplicável; nunca exigir defaults ON."
   design:
     - "Conteúdo em pt-BR; headings estruturais do template; decisões, trade-offs, riscos e non-goals — sem copiar o proposal."
-    - "Mapear apps/api (Domain|Services|Http|Jobs) vs apps/web (pages|composables|components) e, se couber, services/mei ou infra/docker."
-    - "Decidir Sanctum platform vs office context; jobs assíncronos via Horizon; UI via ui-archetype (não redesenhar shell)."
+    - "Mapear apps/api (Domain|Services|Http|Jobs|MeiAutomation) vs apps/web (pages|composables|components) e, se couber, infra/docker."
+    - "Decidir Sanctum platform vs office context; jobs assíncronos via Horizon; UI alinhada ao arquétipo do dashboard (não redesenhar shell)."
     - "Com dependência entre changes ou ≥3 blocos de execução: incluir `## Mapa de dependências` (DAG, ownership, marcos, paralelo, rollout/rollback)."
     - "Para cada upstream ativo: compatibilidade de contrato, arquivos compartilhados, gate coordenado/bloqueante e como não editar artefatos de outra change."
     - "Riscos obrigatórios quando aplicável: vazamento entre offices, segredos em log/API, kill switches, bilhetagem SERPRO acidental, mei no Compose."
