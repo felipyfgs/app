@@ -9,12 +9,17 @@ use App\Enums\FiscalSituation;
 use App\Enums\FiscalTrigger;
 use App\Enums\OfficeRole;
 use App\Enums\SerproAuthorizationStatus;
+use App\Enums\SerproEnvironment;
+use App\Enums\TaxProxyPowerSource;
+use App\Enums\TaxProxyPowerStatus;
 use App\Jobs\Fiscal\ExecuteFiscalMonitoringRunJob;
 use App\Models\AuditLog;
 use App\Models\Client;
+use App\Models\Establishment;
 use App\Models\FiscalMonitoringRun;
 use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
+use App\Models\TaxProxyPower;
 use App\Models\User;
 use App\Services\Fiscal\ManualConsult\ManualConsultActionCatalog;
 use App\Services\Fiscal\ManualConsult\ManualConsultExecutionService;
@@ -73,6 +78,7 @@ class ManualConsultReadPolicyTest extends TestCase
         $definition = app(ManualConsultActionCatalog::class)
             ->findByOperationKey('caixa_postal.lista');
         $this->assertNotNull($definition);
+        $this->seedUsableProxyPower($office, $client, $definition->requiredProxyPowers);
 
         app(ManualConsultExecutionService::class)->execute(
             office: $office,
@@ -234,6 +240,51 @@ class ManualConsultReadPolicyTest extends TestCase
         $this->assertSame($office->id, $currentOffice->resolve($actor)?->id);
 
         return [$office, $actor, $client];
+    }
+
+    /**
+     * @param  list<string>  $requiredPowers
+     */
+    private function seedUsableProxyPower(Office $office, Client $client, array $requiredPowers): void
+    {
+        $powerCode = $requiredPowers[0] ?? '00006';
+        $contributorCnpj = '26461528000151';
+
+        Establishment::factory()->forClient($client)->create([
+            'office_id' => $office->id,
+            'cnpj' => $contributorCnpj,
+            'is_active' => true,
+            'is_matrix' => true,
+        ]);
+
+        $auth = OfficeSerproAuthorization::query()->create([
+            'office_id' => $office->id,
+            'environment' => SerproEnvironment::Trial,
+            'status' => SerproAuthorizationStatus::TokenActive,
+            'author_identity_type' => 'CNPJ',
+            'author_identity' => '11222333000181',
+            'certificate_mode' => 'EXTERNAL_SIGNATURE',
+            'procurador_token_vault_object_id' => '01J00000000000000000000000',
+            'procurador_token_expires_at' => now()->addHour(),
+        ]);
+
+        TaxProxyPower::query()->create([
+            'office_id' => $office->id,
+            'client_id' => $client->id,
+            'office_serpro_authorization_id' => $auth->id,
+            'author_identity' => $auth->author_identity,
+            'contributor_cnpj' => $contributorCnpj,
+            'system_code' => 'CAIXAPOSTAL',
+            'power_code' => $powerCode,
+            'source' => TaxProxyPowerSource::IntegraProcuracoes,
+            'status' => TaxProxyPowerStatus::Active,
+            'environment' => SerproEnvironment::Trial->value,
+            'provenance' => 'API_VERIFIED',
+            'accepted_at' => now(),
+            'freshness_checked_at' => now(),
+            'verified_at' => now(),
+            'valid_to' => now()->addYear(),
+        ]);
     }
 
     private function actionIdForOperation(string $operationKey): string

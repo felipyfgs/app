@@ -13,7 +13,8 @@ class MonitoringCoverageServiceTest extends TestCase
 
         $this->assertSame(15, $coverage['totals']['surfaces']);
         $this->assertSame(119, $coverage['totals']['catalog_operations']);
-        $this->assertSame(4, $coverage['totals']['trial_scenarios']);
+        // DCTFWeb(1) + MIT(3) + SITFIS trial (solicitar + emitir) = 6
+        $this->assertSame(6, $coverage['totals']['trial_scenarios']);
 
         $dctfweb = collect($coverage['surfaces'])->firstWhere('surface_key', 'dctfweb');
         $this->assertIsArray($dctfweb);

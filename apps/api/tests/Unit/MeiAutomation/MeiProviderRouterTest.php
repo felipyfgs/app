@@ -99,6 +99,7 @@ class MeiProviderRouterTest extends TestCase
             'mei_automation.live_egress_enabled' => true,
             'mei_automation.allow_all_offices' => true,
             'mei_automation.provider_policy.default' => 'portal_then_serpro',
+            'mei_automation.provider_policy.operations' => [],
         ]);
         $definition = SimplesMeiCatalog::find('INTEGRA_MEI', 'PGMEI', 'CONSULTAR');
         self::assertNotNull($definition);

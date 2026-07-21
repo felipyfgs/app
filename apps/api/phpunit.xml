@@ -34,6 +34,19 @@
         <server name="WORK_DEMO_OFFICE_SLUG" value="contador"/>
         <server name="WORK_DEMO_SENTINEL_SLUG" value="plataforma"/>
         <server name="FISCAL_MONITORING_MUTATING_ENABLED" value="false"/>
+        <!-- Perfil/flags de piloto: $_SERVER do Docker não pode vazar para a suíte -->
+        <server name="FISCAL_PROFILE" value="dev"/>
+        <server name="MEI_AUTOMATION_ENABLED" value="false"/>
+        <server name="MEI_AUTOMATION_KILL_SWITCH" value="false"/>
+        <server name="MEI_AUTOMATION_LIVE_EGRESS_ENABLED" value="false"/>
+        <server name="MEI_AUTOMATION_FIXTURE_ENABLED" value="false"/>
+        <server name="SERPRO_TERM_REPRESENTATION_TRIAL" value="REUSE_STORED_TERM"/>
+        <server name="SERPRO_TERM_REPRESENTATION_PRODUCTION" value="PENDING_VALIDATION"/>
+        <server name="MEI_AUTOMATION_PROVIDER_DEFAULT" value="serpro"/>
+        <server name="MEI_AUTOMATION_PROVIDER_PGMEI_DAS_PDF" value=""/>
+        <server name="MEI_AUTOMATION_PROVIDER_PGMEI_DAS_BARCODE" value=""/>
+        <server name="MEI_AUTOMATION_PROVIDER_PGMEI_DEBT" value=""/>
+        <server name="MEI_AUTOMATION_PROVIDER_DASN_HISTORY" value=""/>
         <!-- Suíte legada: fail-closed de tenant é coberto por testes dedicados com flag true -->
         <server name="FISCAL_MODEL_FAIL_CLOSED_SCOPES" value="false"/>
         <server name="MAIL_MAILER" value="array"/>
@@ -81,6 +94,18 @@
         <env name="WORK_DEMO_OFFICE_SLUG" value="contador" force="true"/>
         <env name="WORK_DEMO_SENTINEL_SLUG" value="plataforma" force="true"/>
         <env name="FISCAL_MONITORING_MUTATING_ENABLED" value="false" force="true"/>
+        <env name="FISCAL_PROFILE" value="dev" force="true"/>
+        <env name="MEI_AUTOMATION_ENABLED" value="false" force="true"/>
+        <env name="MEI_AUTOMATION_KILL_SWITCH" value="false" force="true"/>
+        <env name="MEI_AUTOMATION_LIVE_EGRESS_ENABLED" value="false" force="true"/>
+        <env name="MEI_AUTOMATION_FIXTURE_ENABLED" value="false" force="true"/>
+        <env name="SERPRO_TERM_REPRESENTATION_TRIAL" value="REUSE_STORED_TERM" force="true"/>
+        <env name="SERPRO_TERM_REPRESENTATION_PRODUCTION" value="PENDING_VALIDATION" force="true"/>
+        <env name="MEI_AUTOMATION_PROVIDER_DEFAULT" value="serpro" force="true"/>
+        <env name="MEI_AUTOMATION_PROVIDER_PGMEI_DAS_PDF" value="" force="true"/>
+        <env name="MEI_AUTOMATION_PROVIDER_PGMEI_DAS_BARCODE" value="" force="true"/>
+        <env name="MEI_AUTOMATION_PROVIDER_PGMEI_DEBT" value="" force="true"/>
+        <env name="MEI_AUTOMATION_PROVIDER_DASN_HISTORY" value="" force="true"/>
         <env name="FISCAL_MODEL_FAIL_CLOSED_SCOPES" value="false" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>

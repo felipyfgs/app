@@ -15,8 +15,10 @@ final class MeiProviderPolicy
         }
 
         $operations = (array) config('mei_automation.provider_policy.operations', []);
-        $mode = strtolower((string) ($operations[$operationKey]
-            ?? config('mei_automation.provider_policy.default', 'serpro')));
+        $rawMode = $operations[$operationKey] ?? null;
+        $mode = is_string($rawMode) && trim($rawMode) !== ''
+            ? strtolower(trim($rawMode))
+            : strtolower((string) config('mei_automation.provider_policy.default', 'serpro'));
 
         return match ($mode) {
             'portal' => [MeiProvider::ReceitaPortal],
