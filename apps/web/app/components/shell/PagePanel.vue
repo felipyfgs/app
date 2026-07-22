@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /**
  * Casca canônica de página autenticada — UDashboardPanel + slots.
- * Uso: `#header`, `#toolbar`, `#body` (ou default).
+ * Uso: `#header`, `#toolbar` (renderizado no header após a navbar), `#body` (ou default).
+ *
+ * UDashboardPanel não tem slot toolbar nativo — a toolbar vive em #header.
  */
 const props = withDefaults(defineProps<{
   id: string
@@ -25,10 +27,11 @@ const resolvedUi = computed(() =>
     :ui="resolvedUi"
   >
     <template
-      v-if="$slots.header"
+      v-if="$slots.header || $slots.toolbar"
       #header
     >
       <slot name="header" />
+      <slot name="toolbar" />
     </template>
     <template #body>
       <slot name="body">

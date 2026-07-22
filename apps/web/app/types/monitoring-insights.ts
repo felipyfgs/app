@@ -3,9 +3,10 @@
  */
 
 export interface MonitoringInsightsKpis {
+  clients_total: number | null
   pending_open: number | null
   findings_active: number | null
-  modules_with_error: number
+  modules_with_error: number | null
 }
 
 export interface MonitoringInsightsPendingItem {

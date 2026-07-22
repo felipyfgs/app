@@ -1,11 +1,11 @@
 {
-  "apiTotal": 456,
+  "apiTotal": 555,
   "apiByMethod": {
-    "DELETE": 5,
-    "GET": 231,
-    "PATCH": 30,
-    "POST": 184,
-    "PUT": 6
+    "DELETE": 12,
+    "GET": 258,
+    "PATCH": 35,
+    "POST": 229,
+    "PUT": 21
   },
   "apiByGroup": {
     "activations": 2,
@@ -13,12 +13,13 @@
     "client-categories": 3,
     "clients": 16,
     "cnpj": 1,
+    "communication": 74,
     "cte": 5,
     "documents": 14,
     "establishments": 1,
     "exports": 3,
     "first-access": 1,
-    "fiscal": 154,
+    "fiscal": 176,
     "integrations": 1,
     "list-filters": 4,
     "mei": 2,
@@ -33,21 +34,22 @@
     "storage": 2,
     "sync-runs": 2,
     "tenants": 2,
-    "work": 42
+    "work": 45
   },
-  "pagesTotal": 97,
+  "pagesTotal": 100,
   "pagesBySection": {
     "/": 6,
     "admin": 7,
     "admin/serpro": 8,
     "auth": 5,
     "clients": 23,
+    "communication": 2,
     "conta": 7,
     "docs": 6,
     "monitoring": 19,
     "notes": 2,
     "settings": 8,
-    "work": 6
+    "work": 7
   },
   "pagesRedirectOnly": 29
 }

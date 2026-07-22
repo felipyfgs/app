@@ -403,10 +403,12 @@ export interface WorkProcessesFilterState {
   q: string
   competence: string
   status: string
+  client_id: number | null
+  department_id: number | null
 }
 
 export function emptyWorkProcessesFilters(): WorkProcessesFilterState {
-  return { q: '', competence: '', status: 'all' }
+  return { q: '', competence: '', status: 'all', client_id: null, department_id: null }
 }
 
 export function workProcessesFiltersToPayload(
@@ -416,7 +418,9 @@ export function workProcessesFiltersToPayload(
     schema_version: SAVED_LIST_SCHEMA_VERSION,
     q: String(state.q ?? '').trim(),
     competence: String(state.competence ?? '').trim(),
-    status: state.status && state.status !== 'all' ? state.status : 'all'
+    status: state.status && state.status !== 'all' ? state.status : 'all',
+    client_id: asPositiveIntOrNull(state.client_id),
+    department_id: asPositiveIntOrNull(state.department_id)
   }
 }
 
@@ -429,7 +433,9 @@ export function workProcessesPayloadToFilters(
   return {
     q: asString(payload.q, '').trim(),
     competence: asString(payload.competence, '').trim(),
-    status: status && status !== 'all' ? status : 'all'
+    status: status && status !== 'all' ? status : 'all',
+    client_id: asPositiveIntOrNull(payload.client_id),
+    department_id: asPositiveIntOrNull(payload.department_id)
   }
 }
 
@@ -440,6 +446,8 @@ export function hasWorkProcessesPayloadContent(
   if (String(payload.q || '').trim()) return true
   if (String(payload.competence || '').trim()) return true
   if (payload.status && payload.status !== 'all') return true
+  if (payload.client_id) return true
+  if (payload.department_id) return true
   return false
 }
 

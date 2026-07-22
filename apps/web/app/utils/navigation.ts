@@ -14,6 +14,7 @@ import {
   canAccessPlatformAdmin,
   canCreateExport,
   canManageClients,
+  canViewCommunication,
   canViewWork
 } from '~/utils/permissions'
 import { workNavigationItems } from '~/utils/work-navigation'
@@ -152,6 +153,16 @@ export function mainDestinations(
     })
   }
 
+  if (canViewCommunication(user)) {
+    items.push({
+      id: 'communication',
+      label: 'Atendimento',
+      icon: 'i-lucide-messages-square',
+      to: '/communication',
+      active: path === '/communication' || path.startsWith('/communication/')
+    })
+  }
+
   items.push(
     {
       id: 'clients',
@@ -261,9 +272,9 @@ export function quickActions(user?: MeUser | null): QuickAction[] {
   if (canViewWork(user)) {
     actions.push({
       id: 'work-queue',
-      label: 'Minha fila',
+      label: 'Tarefas',
       icon: 'i-lucide-inbox',
-      to: '/work'
+      to: '/work/tasks'
     })
   }
 

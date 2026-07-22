@@ -7,6 +7,17 @@ defineProps<{
   loading?: boolean
   error?: string | null
 }>()
+
+const severityLabels: Record<string, string> = {
+  CRITICAL: 'Crítica',
+  HIGH: 'Alta',
+  MEDIUM: 'Média',
+  LOW: 'Baixa'
+}
+
+function severityLabel(severity: string): string {
+  return severityLabels[severity] ?? severity
+}
 </script>
 
 <template>
@@ -19,7 +30,7 @@ defineProps<{
       <div class="flex items-start justify-between gap-3">
         <div>
           <p class="text-xs uppercase text-muted">
-            Pendências fiscais
+            Prioridades fiscais
           </p>
           <p class="mt-1 text-2xl font-semibold tabular-nums text-highlighted">
             {{ loading && !data ? '…' : (data?.total ?? '—') }}
@@ -53,8 +64,22 @@ defineProps<{
       title="Sem pendências abertas"
       description="Nenhuma pendência OPEN no escritório."
     />
+    <div
+      v-else-if="data"
+      class="flex flex-wrap gap-2"
+      aria-label="Pendências por severidade"
+    >
+      <UBadge
+        v-for="(count, severity) in data.by_severity"
+        :key="severity"
+        size="sm"
+        variant="subtle"
+        :color="severity === 'CRITICAL' || severity === 'HIGH' ? 'error' : 'warning'"
+        :label="`${severityLabel(severity)}: ${count}`"
+      />
+    </div>
     <ul
-      v-else
+      v-if="!error && data?.items?.length"
       class="divide-y divide-default"
     >
       <li
@@ -76,7 +101,7 @@ defineProps<{
             size="sm"
             variant="subtle"
             :color="item.severity === 'CRITICAL' || item.severity === 'HIGH' ? 'error' : 'warning'"
-            :label="item.severity"
+            :label="severityLabel(item.severity)"
           />
           <p
             v-if="item.created_at || item.due_at"

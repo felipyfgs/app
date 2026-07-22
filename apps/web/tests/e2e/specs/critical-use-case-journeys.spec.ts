@@ -53,10 +53,17 @@ test('catálogo de clientes diferencia as permissões de operador e viewer', asy
   await expect(page.getByTestId('clients-bulk-actions')).toHaveCount(0)
 })
 
-test('fila de trabalho isola o tenant e mantém viewer sem ações mutáveis', async ({ page }) => {
+test('dashboard e fila de trabalho isolam o tenant e mantêm viewer sem ações mutáveis', async ({ page }) => {
   await login(page, 'viewer@example.com')
   await selectOffice(page, 'Escritório Contábil Demo')
   await page.goto('/work')
+
+  await expect(page.getByTestId('work-strategic-dashboard')).toBeVisible()
+  await expect(page.getByTestId('work-dashboard-kpis')).toBeVisible()
+  await expect(page.getByTestId('work-dashboard-departments')).toBeVisible()
+  expect(await page.evaluate(() => document.body.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
+
+  await page.goto('/work/tasks')
 
   await expect(page.getByTestId('work-queue-panel')).toBeVisible()
   await page.getByTestId('work-queue-item').filter({ hasText: 'Tarefa E2E Primário' }).click()
@@ -68,7 +75,7 @@ test('fila de trabalho isola o tenant e mantém viewer sem ações mutáveis', a
   const secondaryQueueResponse = page.waitForResponse(response =>
     response.url().includes('/api/sanctum/api/v1/work/queue') && response.ok())
   await selectOffice(page, 'Escritório E2E Secundário')
-  await page.goto('/work')
+  await page.goto('/work/tasks')
   const secondaryQueue = await (await secondaryQueueResponse).json() as { data: Array<{ title: string }> }
   expect(secondaryQueue.data.map(task => task.title)).toContain('Tarefa E2E Secundário')
   expect(secondaryQueue.data.map(task => task.title)).not.toContain('Tarefa E2E Primário')

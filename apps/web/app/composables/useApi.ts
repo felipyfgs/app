@@ -12,6 +12,7 @@ import { createOutboundApi } from './api/createOutboundApi'
 import { createOperationsApi } from './api/createOperationsApi'
 import { createPlatformApi } from './api/createPlatformApi'
 import { createSavedListFiltersApi } from './api/createSavedListFiltersApi'
+import { createCommunicationApi } from './api/createCommunicationApi'
 
 export type { ClientListParams, InboxListParams, NoteListParams } from './api/types'
 
@@ -36,6 +37,7 @@ export function useApi() {
   const operationsApi = createOperationsApi(client, apiUrl)
   const platformApi = createPlatformApi(client)
   const savedListFiltersApi = createSavedListFiltersApi(client)
+  const communicationApi = createCommunicationApi(client, apiUrl)
 
   // Ordem de chaves idêntica à fachada monólito (acesso por nome; ordem estável).
   return {
@@ -66,6 +68,7 @@ export function useApi() {
     outbound: outboundApi.outbound,
     platform: platformApi.platform,
     savedListFilters: savedListFiltersApi.savedListFilters,
+    communication: communicationApi.communication,
     twoFactor: auth.twoFactor
   }
 }

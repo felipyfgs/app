@@ -55,6 +55,12 @@ function pct(n: number) {
     >
       Carregando…
     </div>
+    <MonitoringTableEmptyState
+      v-else-if="!data"
+      kind="empty"
+      title="Sem leitura da caixa postal"
+      description="Nenhuma consolidação e-CAC está disponível neste momento."
+    />
     <div
       v-else
       class="grid gap-4 sm:grid-cols-[1fr_auto]"

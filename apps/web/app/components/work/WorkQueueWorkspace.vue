@@ -1,15 +1,18 @@
 <script setup lang="ts">
 /**
- * Workspace da fila de trabalho (mestre–detalhe).
+ * Workspace da fila de trabalho — Fila (mestre–detalhe) ou Lista (tabular).
  *
  * URL canônica:
- * - `/work` — sem seleção
+ * - `/work/tasks` — sem seleção
  * - `/work/tasks/{id}` — tarefa no path
- * - query: só filtros (tab, q, page…) — nunca `task` / `office_id`
+ * - query: filtros + `view=lista` opcional — nunca `task` / `office_id`
  *
- * Compat: `/work?task=N` → `/work/tasks/N` (preserva demais query).
+ * Compat: `/work/tasks?task=N` → `/work/tasks/N` (preserva demais query).
  */
 import { breakpointsTailwind } from '@vueuse/core'
+import { h } from 'vue'
+import type { TableColumn } from '@nuxt/ui'
+import UCheckbox from '@nuxt/ui/components/Checkbox.vue'
 import type { OperationalTaskDetail, OperationalTaskSummary, WorkDepartment } from '~/types/work'
 import type { DataTableFilterDefinition, DataTableFilterModel } from '~/types/data-table-filter'
 import type { SavedListFilterPayload } from '~/types/saved-list-filters'
@@ -19,7 +22,8 @@ import {
   serializeWorkQueueQuery,
   useWorkQueueFilters,
   workQueuePath,
-  workTaskPath
+  workTaskPath,
+  type WorkQueueView
 } from '~/composables/useWorkQueueFilters'
 import {
   hasActiveWorkQueueFiltersForSave,
@@ -27,14 +31,22 @@ import {
   workQueuePayloadToFilters
 } from '~/utils/saved-list-filters'
 import { createFilterModel, findDefinition } from '~/utils/data-table-filters'
+import { formatDueDate } from '~/utils/work-labels'
+import { sortHeader } from '~/utils/table-sort'
+import { canAdministerWork, canExecuteWorkTasks } from '~/utils/permissions'
 import ShellListFilterToolbar from '~/components/shell/ListFilterToolbar.vue'
 import ShellScrollableTabs from '~/components/shell/ScrollableTabs.vue'
+import ShellDataTable from '~/components/shell/DataTable.vue'
+import WorkBulkActionsModal from '~/components/work/WorkBulkActionsModal.vue'
+import type { WorkBulkItem } from '~/components/work/WorkBulkActionsModal.vue'
+import WorkTaskStatusSelect from '~/components/work/WorkTaskStatusSelect.vue'
+import { COMPACT_BUTTON_LABEL_UI } from '~/utils/list-filter-layout'
 
 const route = useRoute()
 const router = useRouter()
 const api = useApi()
 const toast = useToast()
-const { sessionEpoch } = useDashboard()
+const { me, sessionEpoch } = useDashboard()
 const {
   filters,
   selectedTaskId,
@@ -43,6 +55,11 @@ const {
   clearTask,
   apiParams
 } = useWorkQueueFilters()
+
+const canExecute = computed(() => canExecuteWorkTasks(me.value))
+const canAdmin = computed(() => canAdministerWork(me.value))
+const rowSelection = ref<Record<string, boolean>>({})
+const bulkOpen = ref(false)
 
 const departments = ref<WorkDepartment[]>([])
 
@@ -172,11 +189,33 @@ const loading = ref(false)
 const detailLoading = ref(false)
 const loadError = ref<string | null>(null)
 const total = ref(0)
-const mobileOpen = ref(false)
 const itemRefs = ref<Record<number, { el: HTMLElement | null } | null>>({})
+/**
+ * Desktop Fila: mestre–detalhe estilo inbox/chat.
+ * Detalhe aberto por default (empty state sem seleção); toggle ainda colapsa.
+ */
+const detailOpen = ref(true)
+/** Evita re-selecionar logo após dismiss explícito (X). */
+const suppressAutoSelect = ref(false)
 
 const breakpoints = useBreakpoints(breakpointsTailwind)
 const isMobile = breakpoints.smaller('lg')
+
+const queueView = computed(() => filters.value.view)
+const isLista = computed(() => queueView.value === 'lista')
+const isFila = computed(() => !isLista.value)
+const detailPaneVisible = computed(
+  () => isFila.value && !isMobile.value && detailOpen.value
+)
+
+function setQueueView(next: WorkQueueView) {
+  if (filters.value.view === next) return
+  if (next === 'fila') {
+    detailOpen.value = true
+    suppressAutoSelect.value = false
+  }
+  void patch({ view: next }, { resetPage: false })
+}
 
 const tabs = [
   { label: 'Abertas', value: 'open' },
@@ -190,7 +229,6 @@ const tabs = [
 const selectedTab = computed({
   get: () => filters.value.tab,
   set: (v: string) => {
-    // Troca de aba limpa a seleção (volta a /work) e aplica o filtro na query.
     void router.replace({
       path: workQueuePath(),
       query: serializeWorkQueueQuery({
@@ -204,6 +242,16 @@ const selectedTab = computed({
 
 const selectedId = selectedTaskId
 
+const detailSlideoverOpen = computed({
+  get: () => {
+    if (!selectedId.value) return false
+    return isLista.value || isMobile.value
+  },
+  set: (open: boolean) => {
+    if (!open) void clearSelection()
+  }
+})
+
 async function loadQueue() {
   const epoch = sessionEpoch.value
   loading.value = true
@@ -213,23 +261,29 @@ async function loadQueue() {
     if (epoch !== sessionEpoch.value) return
     items.value = res.data
     total.value = res.meta.total
+    rowSelection.value = {}
 
     const current = selectedTaskId.value
     if (current && !items.value.some(i => i.id === current)) {
-      // Tarefa fora da lista filtrada: limpa seleção (mantém filtros)
       if (route.path.startsWith('/work/tasks/')) {
         await clearTask()
       }
-    } else if (!current && items.value[0] && !isMobile.value) {
-      // Desktop: auto-seleciona a primeira via path canônico
-      await selectTask(items.value[0].id)
-      return
     }
 
     if (selectedTaskId.value) {
       await loadDetail(selectedTaskId.value)
     } else {
       detail.value = null
+      if (
+        !suppressAutoSelect.value
+        && isFila.value
+        && !isMobile.value
+        && items.value.length > 0
+      ) {
+        detailOpen.value = true
+        await select(items.value[0]!.id)
+        return
+      }
     }
   } catch (e) {
     if (epoch !== sessionEpoch.value) return
@@ -258,18 +312,27 @@ async function loadDetail(id: number) {
 }
 
 async function select(id: number) {
+  suppressAutoSelect.value = false
   await selectTask(id)
-  if (isMobile.value) mobileOpen.value = true
+  if (isFila.value && !isMobile.value) detailOpen.value = true
   await loadDetail(id)
-  nextTick(() => {
-    const ref = itemRefs.value[id]
-    const el = ref?.el
-    el?.scrollIntoView({ block: 'nearest' })
-  })
+  if (isFila.value) {
+    nextTick(() => {
+      const ref = itemRefs.value[id]
+      const el = ref?.el
+      el?.scrollIntoView({ block: 'nearest' })
+    })
+  }
+}
+
+function toggleDetail() {
+  if (!isFila.value) return
+  detailOpen.value = !detailOpen.value
 }
 
 async function clearSelection() {
-  mobileOpen.value = false
+  suppressAutoSelect.value = true
+  detailOpen.value = true
   detail.value = null
   await clearTask()
 }
@@ -283,9 +346,130 @@ function onQueueSearch(value: string) {
   search.value = value
 }
 
+function onListPage(page: number) {
+  void patch({ page }, { resetPage: false })
+}
+
+function onListPerPage(perPage: number) {
+  void patch({ per_page: perPage, page: 1 }, { resetPage: false })
+}
+
+const taskListColumns = computed<TableColumn<OperationalTaskSummary>[]>(() => {
+  const selectColumn: TableColumn<OperationalTaskSummary> = {
+    id: 'select',
+    enableHiding: false,
+    enableSorting: false,
+    meta: { class: { th: 'w-10 min-w-10', td: 'w-10 min-w-10' } },
+    header: ({ table: current }) => h(UCheckbox, {
+      'modelValue': current.getIsSomePageRowsSelected()
+        ? 'indeterminate'
+        : current.getIsAllPageRowsSelected(),
+      'onUpdate:modelValue': (value: unknown) =>
+        current.toggleAllPageRowsSelected(!!value),
+      'ariaLabel': 'Selecionar todas as tarefas desta página'
+    }),
+    cell: ({ row }) => h(UCheckbox, {
+      'modelValue': row.getIsSelected(),
+      'onUpdate:modelValue': (value: unknown) => row.toggleSelected(!!value),
+      'ariaLabel': `Selecionar ${row.original.title}`
+    })
+  }
+
+  const columns: TableColumn<OperationalTaskSummary>[] = [
+    {
+      accessorKey: 'title',
+      header: ({ column }) => sortHeader('Tarefa', column),
+      meta: { class: { th: 'w-full max-w-0 min-w-48', td: 'w-full max-w-0 min-w-48' } }
+    },
+    {
+      accessorKey: 'status',
+      header: ({ column }) => sortHeader('Status', column),
+      meta: { class: { th: 'w-40 min-w-36', td: 'w-40 min-w-36' } }
+    },
+    {
+      id: 'effective_due_date',
+      accessorKey: 'effective_due_date',
+      header: ({ column }) => sortHeader('Prazo', column),
+      meta: { class: { th: 'w-28 min-w-24', td: 'w-28 min-w-24' } }
+    },
+    {
+      id: 'client_name',
+      accessorKey: 'client_name',
+      header: ({ column }) => sortHeader('Cliente / Processo', column),
+      enableSorting: true,
+      meta: { class: { th: 'w-56 min-w-44', td: 'w-56 min-w-44' } }
+    },
+    {
+      id: 'assignee_name',
+      accessorKey: 'assignee_name',
+      header: ({ column }) => sortHeader('Responsável', column),
+      meta: { class: { th: 'w-36 min-w-28', td: 'w-36 min-w-28' } }
+    },
+    {
+      accessorKey: 'actions',
+      header: '',
+      enableSorting: false,
+      meta: { class: { th: 'w-14 min-w-12', td: 'w-14 min-w-12' } }
+    }
+  ]
+
+  return (canExecute.value || canAdmin.value) ? [selectColumn, ...columns] : columns
+})
+
+const sortingState = computed(() => {
+  if (!filters.value.sort) return []
+  return [{ id: filters.value.sort, desc: filters.value.direction === 'desc' }]
+})
+
+function onListSortingUpdate(next: Array<{ id: string, desc: boolean }>) {
+  const first = next[0]
+  const allowed = new Set(['title', 'status', 'effective_due_date', 'client_name', 'assignee_name'])
+  if (!first || !allowed.has(first.id)) {
+    void patch({ sort: null, direction: null, page: 1 }, { resetPage: false })
+    return
+  }
+  void patch({
+    sort: first.id,
+    direction: first.desc ? 'desc' : 'asc',
+    page: 1
+  }, { resetPage: false })
+}
+
+const selectedTaskBulkItems = computed<WorkBulkItem[]>(() =>
+  items.value
+    .filter(task => rowSelection.value[String(task.id)] === true)
+    .map(task => ({
+      id: task.id,
+      lock_version: task.lock_version,
+      label: task.title
+    }))
+)
+
+const selectedCount = computed(() => selectedTaskBulkItems.value.length)
+
+const canBulk = computed(() => canExecute.value || canAdmin.value)
+
+function openBulkActions() {
+  if (!selectedCount.value || !canBulk.value) return
+  bulkOpen.value = true
+}
+
+function clearListSelection() {
+  rowSelection.value = {}
+}
+
+function taskOriginLabel(item: OperationalTaskSummary): string {
+  const client = item.process?.client?.name
+  const process = item.process?.title
+  if (client && process) return `${client} · ${process}`
+  if (client) return client
+  if (process) return process
+  return 'Sem cliente'
+}
+
 defineShortcuts({
   arrowdown: () => {
-    if (isInputFocused()) return
+    if (isLista.value || isInputFocused()) return
     const list = items.value
     if (!list.length) return
     const idx = list.findIndex(i => i.id === selectedId.value)
@@ -293,14 +477,46 @@ defineShortcuts({
     if (next) void select(next.id)
   },
   arrowup: () => {
-    if (isInputFocused()) return
+    if (isLista.value || isInputFocused()) return
     const list = items.value
     if (!list.length) return
     const idx = list.findIndex(i => i.id === selectedId.value)
     const next = idx === -1 ? list[list.length - 1] : list[Math.max(0, idx - 1)]
     if (next) void select(next.id)
+  },
+  escape: () => {
+    if (isLista.value || isInputFocused()) return
+    if (detailOpen.value && isFila.value && !isMobile.value) {
+      detailOpen.value = false
+      return
+    }
+    if (selectedId.value) void clearSelection()
   }
 })
+
+watch(
+  selectedTaskId,
+  (id, prev) => {
+    // Deep-link / chegada com id no path: abre o detalhe na Fila desktop
+    if (id && !prev && isFila.value && !isMobile.value) {
+      detailOpen.value = true
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  () => [
+    filters.value.tab,
+    filters.value.q,
+    filters.value.department_id,
+    filters.value.client_id,
+    filters.value.scope
+  ],
+  () => {
+    suppressAutoSelect.value = false
+  }
+)
 
 function isInputFocused() {
   if (!import.meta.client) return false
@@ -320,6 +536,9 @@ watch(
     filters.value.scope,
     filters.value.page,
     filters.value.per_page,
+    filters.value.view,
+    filters.value.sort,
+    filters.value.direction,
     selectedTaskId.value,
     sessionEpoch.value
   ],
@@ -330,8 +549,10 @@ watch(
 watch(sessionEpoch, () => {
   items.value = []
   detail.value = null
+  detailOpen.value = true
+  suppressAutoSelect.value = false
   loadError.value = null
-  mobileOpen.value = false
+  clearListSelection()
   void clearTask()
   void patch({
     page: 1,
@@ -339,155 +560,383 @@ watch(sessionEpoch, () => {
     client_id: null,
     assignee_membership_id: null,
     q: '',
-    scope: 'default'
+    scope: 'default',
+    sort: null,
+    direction: null
   })
 })
-
-// Mobile: path com task abre slideover
-watch(selectedTaskId, (id) => {
-  if (id && isMobile.value) mobileOpen.value = true
-  if (!id) mobileOpen.value = false
-}, { immediate: true })
 </script>
 
 <template>
-  <UDashboardPanel
-    id="work-queue-list"
-    data-testid="work-queue-panel"
-    resizable
-    :default-size="28"
-    :min-size="22"
-    :max-size="36"
-    class="min-w-0"
-  >
-    <template #header>
-      <UDashboardNavbar title="Minha fila" data-testid="page-navbar">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-        <template #trailing>
-          <UBadge
-            :label="String(total)"
-            variant="subtle"
-            data-testid="work-queue-total"
-          />
-        </template>
-      </UDashboardNavbar>
+  <!-- ===== Visão Lista (painel único) ===== -->
+  <template v-if="isLista">
+    <UDashboardPanel
+      id="work-queue-list-view"
+      data-testid="work-queue-list-panel"
+      class="min-w-0"
+    >
+      <template #header>
+        <UDashboardNavbar title="Tarefas" data-testid="page-navbar">
+          <template #leading>
+            <UDashboardSidebarCollapse />
+          </template>
+          <template #trailing>
+            <UFieldGroup data-testid="work-queue-view-toggle">
+              <UButton
+                label="Fila"
+                icon="i-lucide-messages-square"
+                size="sm"
+                :variant="isFila ? 'solid' : 'outline'"
+                :color="isFila ? 'primary' : 'neutral'"
+                @click="setQueueView('fila')"
+              />
+              <UButton
+                label="Lista"
+                icon="i-lucide-list"
+                size="sm"
+                :variant="isLista ? 'solid' : 'outline'"
+                :color="isLista ? 'primary' : 'neutral'"
+                @click="setQueueView('lista')"
+              />
+            </UFieldGroup>
+            <UBadge
+              :label="String(total)"
+              variant="subtle"
+              data-testid="work-queue-total"
+            />
+          </template>
+        </UDashboardNavbar>
 
-      <UDashboardToolbar
-        data-testid="work-queue-toolbar"
-        :ui="{
-          root: 'flex-col items-stretch justify-start gap-2 py-2 overflow-x-auto min-h-0'
-        }"
-      >
-        <ShellScrollableTabs
-          v-model="selectedTab"
-          :items="tabs"
-          size="sm"
-          class="w-full min-w-0"
-          aria-label="Filtrar fila por prazo"
-          test-id="work-queue-tabs"
-        />
-        <ShellListFilterToolbar
-          :q="search"
-          search-placeholder="Buscar tarefa ou processo…"
-          search-aria-label="Buscar na fila"
-          :definitions="queueDefinitions"
-          :models="queueChipModels"
-          :loading="loading"
-          :reset-key="sessionEpoch"
-          surface="work.queue"
-          :get-payload="() => workQueueFiltersToPayload(filters)"
-          :can-save="() => hasActiveWorkQueueFiltersForSave(filters)"
-          test-id-prefix="work-queue"
-          @update:q="onQueueSearch"
-          @update:models="onQueueModelsUpdate"
-          @clear="onQueueClear"
-          @refresh="loadQueue"
-          @apply-preset="onQueuePreset"
+        <UDashboardToolbar
+          data-testid="work-queue-toolbar"
+          :ui="{
+            root: 'flex-col items-stretch justify-start gap-2 py-2 overflow-x-auto min-h-0'
+          }"
         >
-          <template #client="{ modelValue, update, select: selectClient }">
-            <FiscalClientPicker
-              :model-value="modelValue"
-              search-mode="select"
-              placeholder="Cliente"
-              class="w-full min-w-0"
-              @update:model-value="(value) => update?.(value as number | null)"
-              @select="(client) => selectClient?.(client)"
+          <ShellScrollableTabs
+            v-model="selectedTab"
+            :items="tabs"
+            size="sm"
+            class="w-full min-w-0"
+            aria-label="Filtrar fila por prazo"
+            test-id="work-queue-tabs"
+          />
+          <ShellListFilterToolbar
+            :q="search"
+            search-placeholder="Buscar tarefa ou processo…"
+            search-aria-label="Buscar na fila"
+            :definitions="queueDefinitions"
+            :models="queueChipModels"
+            :loading="loading"
+            :reset-key="sessionEpoch"
+            surface="work.queue"
+            :get-payload="() => workQueueFiltersToPayload(filters)"
+            :can-save="() => hasActiveWorkQueueFiltersForSave(filters)"
+            test-id-prefix="work-queue"
+            @update:q="onQueueSearch"
+            @update:models="onQueueModelsUpdate"
+            @clear="onQueueClear"
+            @refresh="loadQueue"
+            @apply-preset="onQueuePreset"
+          >
+            <template #actions>
+              <div
+                v-if="canBulk && selectedCount > 0"
+                data-testid="work-queue-bulk-actions"
+              >
+                <UButton
+                  color="neutral"
+                  variant="subtle"
+                  icon="i-lucide-list-checks"
+                  label="Ações"
+                  aria-label="Ações em massa"
+                  :ui="COMPACT_BUTTON_LABEL_UI"
+                  data-testid="work-queue-bulk-actions-menu"
+                  @click="openBulkActions"
+                >
+                  <template #trailing>
+                    <UKbd>{{ selectedCount }}</UKbd>
+                  </template>
+                </UButton>
+              </div>
+            </template>
+            <template #client="{ modelValue, update, select: selectClient }">
+              <FiscalClientPicker
+                :model-value="modelValue"
+                search-mode="select"
+                placeholder="Cliente"
+                class="w-full min-w-0"
+                @update:model-value="(value) => update?.(value as number | null)"
+                @select="(client) => selectClient?.(client)"
+              />
+            </template>
+          </ShellListFilterToolbar>
+        </UDashboardToolbar>
+      </template>
+
+      <template #body>
+        <h1 data-testid="page-title" class="sr-only">
+          Tarefas
+        </h1>
+
+        <ShellDataTable
+          v-model:row-selection="rowSelection"
+          :sorting="sortingState"
+          test-id="work-queue-table"
+          ui-preset="monitoring-compact"
+          primary-column-id="title"
+          status-column-id="status"
+          :summary-column-ids="['effective_due_date', 'client_name', 'assignee_name']"
+          :columns="taskListColumns"
+          :data="items"
+          :loading="loading"
+          :error="loadError"
+          :page="filters.page"
+          :total="total"
+          :items-per-page="filters.per_page"
+          :selected-count="selectedCount"
+          :selection-enabled="canExecute || canAdmin"
+          :manual-sorting="true"
+          empty-title="Nenhuma tarefa nesta aba"
+          empty-description="Ajuste filtros ou gere processos a partir de um modelo."
+          per-page-aria-label="Tarefas por página"
+          footer-test-id="work-queue-list-footer"
+          @update:page="onListPage"
+          @update:items-per-page="onListPerPage"
+          @update:sorting="onListSortingUpdate"
+          @retry="loadQueue"
+        >
+          <template #title-cell="{ row }">
+            <div class="min-w-0">
+              <p class="truncate font-medium text-highlighted">
+                {{ row.original.title }}
+              </p>
+              <p
+                v-if="row.original.is_critical"
+                class="text-xs text-warning"
+              >
+                Crítica
+              </p>
+            </div>
+          </template>
+          <template #status-cell="{ row }">
+            <WorkTaskStatusSelect
+              :task-id="row.original.id"
+              :status="row.original.status"
+              :lock-version="row.original.lock_version"
+              :can-claim="!row.original.assignee?.membership_id"
+              :disabled="!(canExecute || canAdmin)"
+              @updated="loadQueue"
             />
           </template>
-        </ShellListFilterToolbar>
-      </UDashboardToolbar>
-    </template>
-
-    <template #body>
-      <h1 data-testid="page-title" class="sr-only">
-        Minha fila
-      </h1>
-
-      <div v-if="loadError" class="p-4">
-        <UAlert color="error" :title="loadError">
-          <template #actions>
-            <UButton
-              size="xs"
-              variant="soft"
-              label="Tentar de novo"
-              @click="loadQueue"
-            />
+          <template #effective_due_date-cell="{ row }">
+            <span class="tabular-nums text-sm">
+              {{ formatDueDate(row.original.effective_due_date || row.original.due_date) }}
+            </span>
           </template>
-        </UAlert>
-      </div>
+          <template #client_name-cell="{ row }">
+            <span class="block truncate text-sm text-toned">
+              {{ taskOriginLabel(row.original) }}
+            </span>
+          </template>
+          <template #assignee_name-cell="{ row }">
+            <span
+              class="block truncate text-sm"
+              :class="row.original.assignee?.name ? '' : 'text-warning'"
+            >
+              {{ row.original.assignee?.name || 'Sem responsável' }}
+            </span>
+          </template>
+          <template #actions-cell="{ row }">
+            <div class="flex justify-end">
+              <UButton
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-arrow-up-right"
+                aria-label="Abrir tarefa"
+                @click.stop="select(row.original.id)"
+              />
+            </div>
+          </template>
+        </ShellDataTable>
 
-      <div v-else-if="loading" class="space-y-3 p-4">
-        <USkeleton v-for="i in 6" :key="i" class="h-16 w-full" />
-      </div>
-
-      <UEmpty
-        v-else-if="!items.length"
-        data-testid="work-queue-empty"
-        icon="i-lucide-inbox"
-        title="Nenhuma tarefa nesta aba"
-        description="Ajuste filtros ou gere processos a partir de um modelo."
-      />
-
-      <div
-        v-else
-        role="listbox"
-        aria-label="Fila de tarefas"
-        class="overflow-y-auto divide-y divide-default"
-      >
-        <WorkQueueListItem
-          v-for="item in items"
-          :key="item.id"
-          :ref="(el: unknown) => { itemRefs[item.id] = el as { el: HTMLElement | null } | null }"
-          :item="item"
-          :selected="selectedId === item.id"
-          @select="select"
+        <WorkBulkActionsModal
+          v-model:open="bulkOpen"
+          :tasks="selectedTaskBulkItems"
+          :can-administer="canAdmin"
+          @done="() => { clearListSelection(); void loadQueue() }"
         />
-      </div>
-    </template>
-  </UDashboardPanel>
+      </template>
+    </UDashboardPanel>
+  </template>
 
-  <WorkTaskDetailPanel
-    v-if="!isMobile && selectedId"
-    class="hidden min-w-0 flex-1 lg:flex"
-    :detail="detail"
-    :loading="detailLoading"
-    @close="clearSelection"
-    @refreshed="loadQueue"
-  />
-  <div
-    v-else-if="!isMobile"
-    class="hidden min-w-0 flex-1 items-center justify-center lg:flex"
-    data-testid="work-queue-neutral"
-  >
-    <UIcon name="i-lucide-inbox" class="size-32 text-dimmed" />
-  </div>
+  <!-- ===== Visão Fila (mestre–detalhe) ===== -->
+  <template v-else>
+    <UDashboardPanel
+      id="work-queue-list"
+      data-testid="work-queue-panel"
+      :resizable="detailPaneVisible"
+      :default-size="detailPaneVisible ? 28 : undefined"
+      :min-size="detailPaneVisible ? 22 : undefined"
+      :max-size="detailPaneVisible ? 36 : undefined"
+      :class="detailPaneVisible ? 'min-w-0' : 'min-w-0 flex-1'"
+    >
+      <template #header>
+        <UDashboardNavbar title="Tarefas" data-testid="page-navbar">
+          <template #leading>
+            <UDashboardSidebarCollapse />
+          </template>
+          <template #trailing>
+            <UFieldGroup data-testid="work-queue-view-toggle">
+              <UButton
+                label="Fila"
+                icon="i-lucide-messages-square"
+                size="sm"
+                :variant="isFila ? 'solid' : 'outline'"
+                :color="isFila ? 'primary' : 'neutral'"
+                @click="setQueueView('fila')"
+              />
+              <UButton
+                label="Lista"
+                icon="i-lucide-list"
+                size="sm"
+                :variant="isLista ? 'solid' : 'outline'"
+                :color="isLista ? 'primary' : 'neutral'"
+                @click="setQueueView('lista')"
+              />
+            </UFieldGroup>
+            <UBadge
+              :label="String(total)"
+              variant="subtle"
+              data-testid="work-queue-total"
+            />
+            <UTooltip
+              :text="detailOpen ? 'Fechar detalhe' : 'Abrir detalhe'"
+              class="hidden lg:inline-flex"
+            >
+              <UButton
+                icon="i-lucide-panel-right"
+                :color="detailOpen ? 'primary' : 'neutral'"
+                :variant="detailOpen ? 'soft' : 'ghost'"
+                :aria-label="detailOpen ? 'Fechar detalhe' : 'Abrir detalhe'"
+                :aria-pressed="detailOpen"
+                data-testid="work-queue-detail-toggle"
+                @click="toggleDetail"
+              />
+            </UTooltip>
+          </template>
+        </UDashboardNavbar>
+
+        <UDashboardToolbar
+          data-testid="work-queue-toolbar"
+          :ui="{
+            root: 'flex-col items-stretch justify-start gap-2 py-2 overflow-x-auto min-h-0'
+          }"
+        >
+          <ShellScrollableTabs
+            v-model="selectedTab"
+            :items="tabs"
+            size="sm"
+            class="w-full min-w-0"
+            aria-label="Filtrar fila por prazo"
+            test-id="work-queue-tabs"
+          />
+          <ShellListFilterToolbar
+            :q="search"
+            search-placeholder="Buscar tarefa ou processo…"
+            search-aria-label="Buscar na fila"
+            :definitions="queueDefinitions"
+            :models="queueChipModels"
+            :loading="loading"
+            :reset-key="sessionEpoch"
+            surface="work.queue"
+            :get-payload="() => workQueueFiltersToPayload(filters)"
+            :can-save="() => hasActiveWorkQueueFiltersForSave(filters)"
+            test-id-prefix="work-queue"
+            @update:q="onQueueSearch"
+            @update:models="onQueueModelsUpdate"
+            @clear="onQueueClear"
+            @refresh="loadQueue"
+            @apply-preset="onQueuePreset"
+          >
+            <template #client="{ modelValue, update, select: selectClient }">
+              <FiscalClientPicker
+                :model-value="modelValue"
+                search-mode="select"
+                placeholder="Cliente"
+                class="w-full min-w-0"
+                @update:model-value="(value) => update?.(value as number | null)"
+                @select="(client) => selectClient?.(client)"
+              />
+            </template>
+          </ShellListFilterToolbar>
+        </UDashboardToolbar>
+      </template>
+
+      <template #body>
+        <h1 data-testid="page-title" class="sr-only">
+          Tarefas
+        </h1>
+
+        <div v-if="loadError" class="p-4">
+          <UAlert color="error" :title="loadError">
+            <template #actions>
+              <UButton
+                size="xs"
+                variant="soft"
+                label="Tentar de novo"
+                @click="loadQueue"
+              />
+            </template>
+          </UAlert>
+        </div>
+
+        <div v-else-if="loading" class="space-y-3 p-4">
+          <USkeleton v-for="i in 6" :key="i" class="h-16 w-full" />
+        </div>
+
+        <UEmpty
+          v-else-if="!items.length"
+          data-testid="work-queue-empty"
+          icon="i-lucide-inbox"
+          title="Nenhuma tarefa nesta aba"
+          description="Ajuste filtros ou gere processos a partir de um modelo."
+        />
+
+        <div
+          v-else
+          role="listbox"
+          aria-label="Fila de tarefas"
+          class="overflow-y-auto divide-y divide-default"
+        >
+          <WorkQueueListItem
+            v-for="item in items"
+            :key="item.id"
+            :ref="(el: unknown) => { itemRefs[item.id] = el as { el: HTMLElement | null } | null }"
+            :item="item"
+            :selected="selectedId === item.id"
+            @select="select"
+          />
+        </div>
+      </template>
+    </UDashboardPanel>
+
+    <WorkTaskDetailPanel
+      v-if="detailPaneVisible"
+      class="hidden min-w-0 flex-1 lg:flex"
+      :detail="detail"
+      :loading="detailLoading"
+      @close="clearSelection"
+      @refreshed="loadQueue"
+    />
+  </template>
 
   <USlideover
-    v-model:open="mobileOpen"
+    v-if="isLista || isMobile"
+    v-model:open="detailSlideoverOpen"
     title="Tarefa"
-    class="lg:hidden"
+    :class="isLista ? undefined : 'lg:hidden'"
     @update:open="(v: boolean) => { if (!v) clearSelection() }"
   >
     <template #body>

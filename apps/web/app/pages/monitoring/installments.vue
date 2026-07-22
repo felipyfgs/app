@@ -4,7 +4,15 @@
  * Detalhe do pedido em slideover navegável. Task 7.4
  */
 import type { TableColumn } from '@nuxt/ui'
-import type { InstallmentsClientDetail, InstallmentsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
+import type {
+  InstallmentModalityCatalogItem,
+  InstallmentOrder,
+  InstallmentParcel,
+  InstallmentPayment,
+  InstallmentsClientDetail,
+  InstallmentsClientRow,
+  MonitoringFilterConfig
+} from '~/types/fiscal-modules'
 import { sortHeader } from '~/utils/table-sort'
 import { MONITORING_CLIENT_COLUMN_META } from '~/utils/monitoring-table-columns'
 
@@ -23,6 +31,8 @@ const {
   refreshing,
   loadError,
   overviewError,
+  overviewLoading,
+  overview,
   rows,
   counters,
   totalClients,
@@ -44,51 +54,41 @@ const {
 
 /** Catálogo oficial Integra-Parcelamento (fallback se a API falhar). */
 const CATALOG_MODALITIES = [
-  { code: 'PARCSN', label: 'PARCSN' },
-  { code: 'PARCSN-ESP', label: 'PARCSN-ESP' },
-  { code: 'PERTSN', label: 'PERTSN' },
-  { code: 'RELPSN', label: 'RELPSN' },
-  { code: 'PARCMEI', label: 'PARCMEI' },
-  { code: 'PARCMEI-ESP', label: 'PARCMEI-ESP' },
-  { code: 'PERTMEI', label: 'PERTMEI' },
-  { code: 'RELPMEI', label: 'RELPMEI' }
-] as const
+  { code: 'PARCSN', label: 'Parcelamento Simples Nacional', regime: 'SN', executable: true },
+  { code: 'PARCSN-ESP', label: 'Parcelamento Especial Simples Nacional', regime: 'SN', executable: true },
+  { code: 'PERTSN', label: 'PERT Simples Nacional', regime: 'SN', executable: true },
+  { code: 'RELPSN', label: 'RELP Simples Nacional', regime: 'SN', executable: true },
+  { code: 'PARCMEI', label: 'Parcelamento MEI', regime: 'MEI', executable: true },
+  { code: 'PARCMEI-ESP', label: 'Parcelamento Especial MEI', regime: 'MEI', executable: true },
+  { code: 'PERTMEI', label: 'PERT MEI', regime: 'MEI', executable: true },
+  { code: 'RELPMEI', label: 'RELP MEI', regime: 'MEI', executable: true },
+  { code: 'PARC-PAEX', label: 'Parcelamento PAEX', regime: 'GERAL', executable: false },
+  { code: 'PARC-SIPADE', label: 'Parcelamento SIPADE', regime: 'GERAL', executable: false }
+] as const satisfies ReadonlyArray<Pick<InstallmentModalityCatalogItem, 'code' | 'label' | 'regime' | 'executable'>>
 
 const api = useApi()
-const modalities = ref<Array<Record<string, unknown>>>([])
+const modalities = ref<InstallmentModalityCatalogItem[]>([])
 const modalitiesError = ref<string | null>(null)
+const distinctOverviewError = computed(() =>
+  overviewError.value && overviewError.value !== loadError.value
+    ? overviewError.value
+    : null
+)
 
-const modalityFilterItems = computed(() => {
-  const fromApi = modalities.value
-    .map((m) => {
-      const code = String(m.code || m.name || m.label || m.id || '').trim().toUpperCase()
-      if (!code) return null
-      return { label: code, value: code }
-    })
-    .filter((x): x is { label: string, value: string } => Boolean(x))
-
-  const catalog = fromApi.length
-    ? fromApi
-    : CATALOG_MODALITIES.map(m => ({ label: m.label, value: m.code }))
-
-  return [
-    { label: 'Todas as modalidades', value: 'all' },
-    ...catalog
-  ]
-})
+const resolvedModalities = computed(() => modalities.value.length
+  ? modalities.value
+  : CATALOG_MODALITIES.map(item => ({
+      ...item,
+      official_state: item.executable ? 'PRODUCTION' : 'PROSPECTION',
+      official_state_label: item.executable ? 'Em produção' : 'Em prospecção',
+      monitoring_supported: item.executable,
+      required_power: null
+    })))
 
 const filterConfig = computed<MonitoringFilterConfig>(() => ({
   fields: [
     { key: 'situation', kind: 'option', label: 'Situação' },
-    { key: 'clientId', kind: 'client', label: 'Cliente' },
-    {
-      key: 'modality',
-      kind: 'option',
-      label: 'Modalidade',
-      items: modalityFilterItems.value,
-      // Single: UTabs de modalidade são exclusivos (1:1 com o chip).
-      multiple: false
-    }
+    { key: 'clientId', kind: 'client', label: 'Cliente' }
   ]
 }))
 
@@ -96,24 +96,55 @@ function getRowId(row: InstallmentsClientRow) {
   return `c:${row.client_id}`
 }
 
-/**
- * Cápsula de modalidade sincronizada com o filtro server-side (portfolio.modality).
- * Trocar a tab aplica modality no portfolio; chips/presets atualizam a cápsula.
- */
-const selectedModality = computed({
-  get: () => filters.value.modality || 'all',
-  set: (value: string) => {
-    const next = value || 'all'
-    if ((filters.value.modality || 'all') === next) return
-    void applyFilters({ ...filters.value, modality: next })
+const INSTALLMENT_TAB_LABELS: Record<string, string> = {
+  'PARCSN': 'Simples',
+  'PARCSN-ESP': 'Simples Especial',
+  'PERTSN': 'PERT Simples',
+  'RELPSN': 'RELP Simples',
+  'PARCMEI': 'MEI',
+  'PARCMEI-ESP': 'MEI Especial',
+  'PERTMEI': 'PERT MEI',
+  'RELPMEI': 'RELP MEI',
+  'PARC-PAEX': 'PAEX',
+  'PARC-SIPADE': 'SIPADE'
+}
+
+function activeModalityCodes() {
+  return String(filters.value.modality || '')
+    .split(',')
+    .map(code => code.trim().toUpperCase())
+    .filter(Boolean)
+}
+
+const selectedInstallmentType = computed<string>({
+  get: () => {
+    const active = activeModalityCodes()
+    if (active.length === 1 && resolvedModalities.value.some(item => item.code === active[0])) {
+      return active[0]!
+    }
+    return 'all'
+  },
+  set: (value) => {
+    const item = resolvedModalities.value.find(modality => modality.code === value)
+    if (value !== 'all' && !item?.executable) return
+    const modality = value === 'all' ? 'all' : value
+    if ((filters.value.modality || 'all') === modality) return
+    void applyFilters({ ...filters.value, modality })
   }
 })
+
+function tabBadge(key: string): number | string {
+  const count = overview.value?.metrics?.tab_counts?.[key]
+  if (typeof count === 'number' && Number.isFinite(count)) return count
+  return overviewLoading.value || (!overview.value && !overviewError.value) ? '…' : '—'
+}
 
 const detailOpen = ref(false)
 const detailLoading = ref(false)
 const detailError = ref<string | null>(null)
-const detailOrder = ref<Record<string, unknown> | null>(null)
-const detailParcels = ref<Array<Record<string, unknown>>>([])
+const detailOrder = ref<InstallmentOrder | null>(null)
+const detailOrders = ref<InstallmentOrder[]>([])
+const detailParcels = ref<InstallmentParcel[]>([])
 const detailRow = ref<InstallmentsClientRow | null>(null)
 
 /**
@@ -124,24 +155,25 @@ const detailRow = ref<InstallmentsClientRow | null>(null)
 const orderParcels = computed(() => {
   const embedded = detailOrder.value?.parcels
   return Array.isArray(embedded) && embedded.length > 0
-    ? embedded as Array<Record<string, unknown>>
+    ? embedded
     : detailParcels.value
 })
+const orderPayments = computed<InstallmentPayment[]>(() => detailOrder.value?.payments || [])
 
 const detailHasOverdueParcels = computed(() => orderParcels.value.some((parcel) => {
-  const status = String(parcel.status || parcel.situation || '').toUpperCase()
+  const status = String(parcel.status || '').toUpperCase()
   return status.includes('ATRAS') || status.includes('OVERDUE')
 }))
 
-function parcelLabel(parcel: Record<string, unknown>) {
-  return String(parcel.parcel_number || parcel.number || parcel.id || '—')
+function parcelLabel(parcel: InstallmentParcel) {
+  return String(parcel.parcel_number || parcel.id || '—')
 }
 
-function parcelStatus(parcel: Record<string, unknown>) {
-  return String(parcel.status || parcel.situation || 'PENDING')
+function parcelStatus(parcel: InstallmentParcel) {
+  return String(parcel.status || 'PENDING')
 }
 
-function parcelPaymentStatus(parcel: Record<string, unknown>) {
+function parcelPaymentStatus(parcel: InstallmentParcel) {
   const value = String(parcel.payment_status || '').trim()
   return value || null
 }
@@ -150,12 +182,17 @@ function detailOf(row: InstallmentsClientRow): InstallmentsClientDetail {
   return row.detail || {}
 }
 
-const modalityTabItems = computed(() => {
-  return modalityFilterItems.value.map(item => ({
-    label: item.value === 'all' ? 'Todas' : item.label,
-    value: item.value
+const installmentTypeTabs = computed(() => [
+  { label: 'Todos', value: 'all', badge: tabBadge('all') },
+  ...resolvedModalities.value.map(item => ({
+    label: item.executable
+      ? (INSTALLMENT_TAB_LABELS[item.code] || item.label)
+      : `${INSTALLMENT_TAB_LABELS[item.code] || item.label} · em prospecção`,
+    value: item.code,
+    badge: tabBadge(item.code),
+    disabled: !item.executable
   }))
-})
+] satisfies Array<{ label: string, value: string, badge: number | string, disabled?: boolean }>)
 
 /** Lista já filtrada server-side por modality — sem refiltro local. */
 const displayRows = computed(() => rows.value)
@@ -171,13 +208,14 @@ async function loadModalities() {
   }
 }
 
-async function openOrder(orderId: number, row?: InstallmentsClientRow) {
+async function openOrder(orderId: number, row?: InstallmentsClientRow, availableOrders?: InstallmentOrder[]) {
   detailOpen.value = true
   detailLoading.value = true
   detailError.value = null
   detailOrder.value = null
   detailParcels.value = []
-  detailRow.value = row ?? null
+  if (row) detailRow.value = row
+  if (availableOrders) detailOrders.value = availableOrders
   try {
     const [orderRes, parcelsRes] = await Promise.allSettled([
       api.fiscal.installments.order(orderId),
@@ -189,14 +227,102 @@ async function openOrder(orderId: number, row?: InstallmentsClientRow) {
       detailError.value = apiErrorMessage(orderRes.reason, 'Falha ao carregar pedido.')
     }
     if (parcelsRes.status === 'fulfilled') {
-      detailParcels.value = (parcelsRes.value.data as Array<Record<string, unknown>>) || []
+      detailParcels.value = parcelsRes.value.data || []
     }
   } finally {
     detailLoading.value = false
   }
 }
 
+async function openClientOrders(row: InstallmentsClientRow) {
+  const embedded = detailOf(row).orders || []
+  let clientOrders = embedded
+  if (clientOrders.length === 0) {
+    const modalities = activeModalityCodes()
+    const response = await api.fiscal.installments.orders({
+      client_id: row.client_id,
+      modality: modalities.length === 1 ? modalities[0] : undefined,
+      per_page: 100
+    })
+    clientOrders = modalities.length > 1
+      ? (response.data || []).filter(order => modalities.includes(order.modality))
+      : response.data || []
+  }
+  const first = clientOrders[0]
+  if (!first) return
+  await openOrder(first.id, row, clientOrders)
+}
+
 const columns: TableColumn<InstallmentsClientRow>[] = [
+  {
+    id: 'situation',
+    header: 'Situação',
+    enableSorting: false,
+    cell: ({ row }) => h(FiscalStatusBadge, {
+      fill: true,
+      status: String(detailOf(row.original).order_situation || row.original.situation)
+    })
+  },
+  {
+    id: 'modality',
+    header: 'Modalidade',
+    enableSorting: false,
+    cell: ({ row }) => {
+      const d = detailOf(row.original)
+      const values = d.modalities?.length
+        ? d.modalities
+        : d.modality ? [String(d.modality)] : []
+      if (values.length <= 1) return values[0] || '—'
+      return h('div', { class: 'min-w-0' }, [
+        h('p', { class: 'font-medium text-highlighted' }, `${values.length} modalidades`),
+        h('p', { class: 'truncate text-xs text-muted', title: values.join(', ') }, values.join(', '))
+      ])
+    }
+  },
+  {
+    id: 'order',
+    header: 'Pedido',
+    enableSorting: false,
+    cell: ({ row }) => {
+      const d = detailOf(row.original)
+      if ((d.order_count || 0) > 1) return `${d.order_count} pedidos`
+      return String(d.external_order_id || d.order_id || '—')
+    }
+  },
+  {
+    id: 'total',
+    header: 'Saldo',
+    enableSorting: false,
+    cell: ({ row }) => formatAmountCents(detailOf(row.original).total_amount_cents)
+  },
+  {
+    id: 'parcels',
+    header: 'Parcelas',
+    enableSorting: false,
+    cell: ({ row }) => {
+      const d = detailOf(row.original)
+      const count = d.parcel_count ?? '—'
+      const overdue = d.overdue_parcels ?? 0
+      return h('div', { class: 'min-w-0' }, [
+        h('p', { class: 'font-medium text-highlighted' }, String(count)),
+        overdue
+          ? h('p', { class: 'text-xs font-medium text-error' }, `${overdue} em atraso`)
+          : h('p', { class: 'text-xs text-muted' }, 'Sem atraso sinalizado')
+      ])
+    }
+  },
+  {
+    id: 'next',
+    header: 'Próxima parcela',
+    enableSorting: false,
+    cell: ({ row }) => {
+      const d = detailOf(row.original)
+      return h('div', { class: 'min-w-0' }, [
+        h('p', { class: 'font-medium text-highlighted' }, formatDateTime(d.next_parcel_due_at)),
+        h('p', { class: 'text-xs text-muted' }, formatAmountCents(d.next_parcel_amount_cents))
+      ])
+    }
+  },
   {
     id: 'client',
     header: ({ column }) => sortHeader('Cliente', column),
@@ -209,80 +335,6 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
       cnpj: row.original.cnpj,
       cnpjMasked: row.original.cnpj_masked
     })
-  },
-  {
-    id: 'modality',
-    header: 'Modalidade',
-    enableSorting: false,
-    cell: ({ row }) => String(detailOf(row.original).modality || '—')
-  },
-  {
-    id: 'order',
-    header: 'Pedido',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const d = detailOf(row.original)
-      return String(d.external_order_id || d.order_id || '—')
-    }
-  },
-  {
-    id: 'total',
-    header: 'Saldo / total',
-    enableSorting: false,
-    cell: ({ row }) => formatAmountCents(detailOf(row.original).total_amount_cents)
-  },
-  {
-    id: 'parcels',
-    header: 'Parcelas',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const d = detailOf(row.original)
-      const count = d.parcel_count ?? '—'
-      const overdue = d.overdue_parcels ?? 0
-      return `${count}${overdue ? ` (${overdue} atraso)` : ''}`
-    }
-  },
-  {
-    id: 'next',
-    header: 'Próxima parcela',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const d = detailOf(row.original)
-      const due = formatDateTime(d.next_parcel_due_at)
-      const amt = formatAmountCents(d.next_parcel_amount_cents)
-      return `${due} · ${amt}`
-    }
-  },
-  {
-    id: 'overdue',
-    header: 'Atraso',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const n = detailOf(row.original).overdue_parcels ?? 0
-      if (!n) return '—'
-      return h(FiscalStatusBadge, { fill: true, status: 'ATTENTION' })
-    }
-  },
-  {
-    id: 'guide',
-    header: 'Guia',
-    enableSorting: false,
-    cell: ({ row }) => {
-      const orderId = detailOf(row.original).order_id
-      return h(UButton, {
-        size: 'xs',
-        color: 'neutral',
-        variant: 'ghost',
-        label: 'Ver no pedido',
-        disabled: !orderId,
-        onClick: () => orderId && openOrder(Number(orderId), row.original)
-      })
-    }
-  },
-  {
-    id: 'situation',
-    header: ({ column }) => sortHeader('Situação', column),
-    cell: ({ row }) => h(FiscalStatusBadge, { fill: true, status: String(detailOf(row.original).order_situation || row.original.situation) })
   },
   {
     id: 'actions',
@@ -302,11 +354,12 @@ const columns: TableColumn<InstallmentsClientRow>[] = [
           size: 'xs',
           color: 'primary',
           variant: 'ghost',
-          label: 'Pedido',
-          onClick: () => openOrder(Number(orderId), row.original)
+          icon: 'i-lucide-panel-right-open',
+          label: 'Ver pedido',
+          onClick: () => openClientOrders(row.original)
         }))
       }
-      return h('div', { class: 'flex justify-end gap-1 items-center' }, children)
+      return h('div', { class: 'flex items-center justify-end gap-1' }, children)
     }
   }
 ]
@@ -348,11 +401,9 @@ onMounted(() => {
     :column-labels="{
       modality: 'Modalidade',
       order: 'Pedido',
-      total: 'Saldo / total',
+      total: 'Saldo',
       parcels: 'Parcelas',
-      next: 'Próxima parcela',
-      overdue: 'Atraso',
-      guide: 'Guia'
+      next: 'Próxima parcela'
     }"
     @update:page="setPage"
     @update:per-page="setPerPage"
@@ -362,16 +413,20 @@ onMounted(() => {
     @reset-filters="resetFilters"
     @refresh="refresh"
   >
-    <!-- Modalidades oficiais como cápsulas em largura total (padrão KPI/submódulos) -->
     <template #submodules>
-      <ShellScrollableTabs
-        v-model="selectedModality"
-        :items="modalityTabItems"
-        size="sm"
-        class="w-full min-w-0"
-        aria-label="Filtrar por modalidade do catálogo"
-        test-id="installments-modality-tabs"
-      />
+      <div
+        class="flex w-full min-w-0 max-w-full items-center gap-2"
+        data-testid="installments-modality-control"
+      >
+        <ShellScrollableTabs
+          v-model="selectedInstallmentType"
+          :items="installmentTypeTabs"
+          size="md"
+          class="w-full min-w-0 max-w-full"
+          aria-label="Filtrar por tipo de parcelamento"
+          test-id="installments-type-tabs"
+        />
+      </div>
     </template>
 
     <template #utilities>
@@ -383,10 +438,10 @@ onMounted(() => {
         class="w-full"
       />
       <UAlert
-        v-if="overviewError"
+        v-if="distinctOverviewError"
         color="warning"
         icon="i-lucide-triangle-alert"
-        :title="overviewError"
+        :title="distinctOverviewError"
         class="w-full"
       />
     </template>
@@ -412,6 +467,21 @@ onMounted(() => {
             v-else-if="detailOrder"
             class="flex flex-col gap-4"
           >
+            <div
+              v-if="detailOrders.length > 1"
+              class="flex min-w-0 gap-2 overflow-x-auto pb-1"
+              data-testid="installments-order-navigation"
+            >
+              <UButton
+                v-for="order in detailOrders"
+                :key="order.id"
+                size="xs"
+                color="neutral"
+                :variant="order.id === detailOrder.id ? 'solid' : 'outline'"
+                :label="`${order.modality} · ${order.external_order_id}`"
+                @click="openOrder(order.id, detailRow || undefined)"
+              />
+            </div>
             <div
               v-if="detailRow?.document"
               class="flex flex-wrap items-center gap-2"
@@ -448,7 +518,7 @@ onMounted(() => {
                     Situação
                   </dt>
                   <dd class="mt-1">
-                    <FiscalStatusBadge :status="String(detailOrder.situation || detailOrder.status || '')" />
+                    <FiscalStatusBadge :status="String(detailOrder.situation || '')" />
                   </dd>
                 </div>
                 <div>
@@ -500,6 +570,36 @@ onMounted(() => {
                   </dd>
                 </div>
               </dl>
+            </UPageCard>
+            <UPageCard
+              v-if="orderPayments.length"
+              title="Pagamentos confirmados"
+              description="Demonstrativo persistido junto ao pedido; nenhuma chamada externa é feita ao navegar."
+              variant="subtle"
+              data-testid="installments-order-payments"
+            >
+              <div class="divide-y divide-default">
+                <article
+                  v-for="payment in orderPayments"
+                  :key="payment.id"
+                  class="grid gap-2 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                >
+                  <div>
+                    <p class="font-medium text-highlighted">
+                      {{ payment.payment_ref || `Pagamento #${payment.id}` }}
+                    </p>
+                    <p class="mt-1 text-muted">
+                      Pago em {{ formatDateTime(payment.paid_at) }}
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-2 sm:justify-end">
+                    <span class="font-medium text-highlighted">
+                      {{ formatAmountCents(payment.amount_cents) }}
+                    </span>
+                    <FiscalStatusBadge :status="payment.status" />
+                  </div>
+                </article>
+              </div>
             </UPageCard>
 
             <UPageCard

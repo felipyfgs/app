@@ -7,6 +7,7 @@
 import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
 import NavbarMoreActions from '~/components/navigation/NavbarMoreActions.vue'
 import type { Client, FiscalFinding, FiscalMonitoringRun, FiscalPendingItem, FiscalSnapshot } from '~/types/api'
+import type { OperationalProcess } from '~/types/work'
 import type {
   FiscalDocumentDescriptor,
   FiscalRegistrationLink,
@@ -152,6 +153,7 @@ const pageTitle = computed(() =>
 )
 
 const snapshots = ref<FiscalSnapshot[]>([])
+const operationalProcesses = ref<OperationalProcess[]>([])
 const overviewProcessCards = computed(() =>
   buildClientMonitoringOverview(clientId.value, snapshots.value, {
     isMei: clientIsMeiSignal.value
@@ -248,6 +250,9 @@ const sections = reactive<Record<SectionKey, SectionState>>({
   renunciations: emptySection(),
   tax_processes: emptySection()
 })
+
+/** Estado independente: uma falha do Work não invalida os snapshots fiscais. */
+const operationalWorkState = reactive<SectionState>(emptySection())
 
 function cacheKey(): string {
   return `${clientId.value}@${sessionEpoch.value}`
@@ -646,6 +651,8 @@ function invalidateAllSections() {
     sections[key] = emptySection()
     clearSectionData(key)
   }
+  operationalProcesses.value = []
+  Object.assign(operationalWorkState, emptySection())
 }
 
 async function loadClient(force = false) {
@@ -678,6 +685,37 @@ async function loadClient(force = false) {
   }
 }
 
+async function loadOperationalWork(force = false) {
+  if (!Number.isFinite(clientId.value) || clientId.value < 1) return
+
+  const keyNow = cacheKey()
+  if (!force && operationalWorkState.loadedKey === keyNow && !operationalWorkState.error) {
+    return
+  }
+
+  operationalWorkState.loading = true
+  operationalWorkState.error = null
+  try {
+    const response = await api.work.processes.list({
+      client_id: clientId.value,
+      active_only: true,
+      sort: 'due_date',
+      direction: 'asc',
+      per_page: 5
+    })
+    if (cacheKey() !== keyNow) return
+    operationalProcesses.value = response.data || []
+    operationalWorkState.loadedKey = keyNow
+  } catch (caught) {
+    if (cacheKey() !== keyNow) return
+    operationalProcesses.value = []
+    operationalWorkState.loadedKey = null
+    operationalWorkState.error = apiErrorMessage(caught, 'Falha ao carregar o trabalho operacional.')
+  } finally {
+    if (cacheKey() === keyNow) operationalWorkState.loading = false
+  }
+}
+
 async function loadSection(key: SectionKey, force = false) {
   if (!Number.isFinite(clientId.value) || clientId.value < 1) return
 
@@ -693,6 +731,8 @@ async function loadSection(key: SectionKey, force = false) {
   try {
     switch (key) {
       case 'overview': {
+        // Carregamento paralelo e isolado: Work indisponível não oculta o fiscal.
+        void loadOperationalWork(force)
         const res = await api.fiscal.snapshots.list({
           client_id: clientId.value,
           per_page: 20,
@@ -737,7 +777,7 @@ async function loadSection(key: SectionKey, force = false) {
           per_page: 20
         })
         if (cacheKey() !== keyNow) return
-        installments.value = (res.data as Record<string, unknown>[]) || []
+        installments.value = (res.data || []).map(order => ({ ...order }))
         break
       }
       case 'declarations': {
@@ -1002,14 +1042,24 @@ onMounted(async () => {
             <template v-else>
               <div
                 v-if="tab === 'overview'"
-                class="space-y-3"
+                class="space-y-6"
               >
-                <h2 class="text-sm font-medium text-highlighted">
-                  Processos monitorados
-                </h2>
-                <MonitoringClientProcessOverview
-                  :cards="overviewProcessCards"
-                  :loading="sections.overview.loading"
+                <section class="space-y-3" aria-labelledby="client-fiscal-processes-title">
+                  <h2 id="client-fiscal-processes-title" class="text-sm font-medium text-highlighted">
+                    Processos monitorados
+                  </h2>
+                  <MonitoringClientProcessOverview
+                    :cards="overviewProcessCards"
+                    :loading="sections.overview.loading"
+                  />
+                </section>
+
+                <MonitoringClientOperationalWork
+                  :client-id="clientId"
+                  :items="operationalProcesses"
+                  :loading="operationalWorkState.loading"
+                  :error="operationalWorkState.error"
+                  @retry="loadOperationalWork(true)"
                 />
               </div>
 

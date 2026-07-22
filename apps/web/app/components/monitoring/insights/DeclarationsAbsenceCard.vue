@@ -45,6 +45,12 @@ defineProps<{
     >
       Carregando…
     </div>
+    <MonitoringTableEmptyState
+      v-else-if="!data"
+      kind="empty"
+      title="Sem resumo de declarações"
+      description="Ainda não há obrigações aplicáveis consolidadas para o escritório."
+    />
     <div
       v-else
       class="grid grid-cols-2 gap-3"
@@ -58,7 +64,7 @@ defineProps<{
           <span class="text-xs uppercase text-muted">Em dia</span>
         </div>
         <p class="mt-2 text-2xl font-semibold tabular-nums text-highlighted">
-          {{ data?.up_to_date_count ?? 0 }}
+          {{ data.up_to_date_count }}
         </p>
       </div>
       <div class="rounded-lg bg-elevated/50 p-3 ring ring-inset ring-default">
@@ -70,7 +76,7 @@ defineProps<{
           <span class="text-xs uppercase text-muted">Em aberto</span>
         </div>
         <p class="mt-2 text-2xl font-semibold tabular-nums text-highlighted">
-          {{ data?.open_count ?? 0 }}
+          {{ data.open_count }}
         </p>
       </div>
     </div>

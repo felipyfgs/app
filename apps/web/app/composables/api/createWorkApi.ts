@@ -5,7 +5,9 @@ import type {
   OperationalProcess,
   OperationalTaskDetail,
   OperationalTaskSummary,
+  GenerationSelection,
   ProcessTemplate,
+  ProcessTemplateCatalogItem,
   WorkDepartment,
   WorkKpis
 } from '~/types/work'
@@ -28,6 +30,15 @@ export function createWorkApi(client: ApiClient, apiUrl: ApiUrl) {
           )
       },
       templates: {
+        catalog: () =>
+          client<{ data: ProcessTemplateCatalogItem[] }>('/api/v1/work/template-catalog'),
+        installCatalog: (
+          catalogKey: string,
+          body?: { name?: string, default_department_id?: number | null }
+        ) => client<{ data: ProcessTemplate }>(
+          `/api/v1/work/template-catalog/${encodeURIComponent(catalogKey)}/install`,
+          { method: 'POST', body: body || {} }
+        ),
         list: (params?: {
           page?: number
           per_page?: number
@@ -45,7 +56,8 @@ export function createWorkApi(client: ApiClient, apiUrl: ApiUrl) {
           client<{ data: ProcessTemplate }>(`/api/v1/work/templates/${id}`, { method: 'PATCH', body }),
         preview: (id: number, body: {
           competence: string
-          client_ids: number[]
+          client_ids?: number[]
+          selection?: GenerationSelection
           overrides?: Record<string, unknown>
           idempotency_key?: string
         }) =>
@@ -76,6 +88,14 @@ export function createWorkApi(client: ApiClient, apiUrl: ApiUrl) {
             method: 'POST',
             body: { lock_version: lockVersion }
           }),
+        bulk: (body: {
+          items: Array<{ id: number, lock_version: number }>
+          changes: { action: string } & Record<string, unknown>
+        }) =>
+          client<{
+            data: OperationalProcess[]
+            meta: { succeeded: number, failed: Array<{ id: number, message: string }> }
+          }>('/api/v1/work/processes/bulk', { method: 'POST', body }),
         comment: (id: number, body: string) =>
           client<{ data: { id: number, body: string } }>(`/api/v1/work/processes/${id}/comments`, {
             method: 'POST',
@@ -87,6 +107,14 @@ export function createWorkApi(client: ApiClient, apiUrl: ApiUrl) {
       tasks: {
         get: (id: number) =>
           client<{ data: OperationalTaskDetail }>(`/api/v1/work/tasks/${id}`),
+        bulk: (body: {
+          items: Array<{ id: number, lock_version: number }>
+          changes: Record<string, unknown>
+        }) =>
+          client<{
+            data: OperationalTaskDetail[]
+            meta: { succeeded: number, failed: Array<{ id: number, message: string }> }
+          }>('/api/v1/work/tasks/bulk', { method: 'POST', body }),
         start: (id: number, lockVersion: number) =>
           client<{ data: OperationalTaskDetail }>(`/api/v1/work/tasks/${id}/start`, {
             method: 'POST',

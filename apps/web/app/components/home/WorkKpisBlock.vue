@@ -74,12 +74,12 @@ const cards = computed((): DashboardKpiItem[] => {
   const k = data.value?.kpis
   if (!k) return []
   return [
-    { key: 'open', title: 'Abertas', value: k.total_open, to: '/work', icon: 'i-lucide-inbox' },
-    { key: 'atrasadas', title: 'Atrasadas', value: k.atrasadas, to: '/work?tab=atrasadas', icon: 'i-lucide-clock-alert', tone: 'warning' },
-    { key: 'em_multa', title: 'Em multa', value: k.em_multa, to: '/work?tab=atrasadas', icon: 'i-lucide-siren', tone: 'error' },
-    { key: 'vence_hoje', title: 'Vencem hoje', value: k.vence_hoje, to: '/work?tab=hoje', icon: 'i-lucide-calendar-days' },
-    { key: 'em_progresso', title: 'Em progresso', value: k.em_progresso, to: '/work', icon: 'i-lucide-loader', tone: 'info' },
-    { key: 'sem_responsavel', title: 'Sem responsável', value: k.sem_responsavel, to: '/work', icon: 'i-lucide-user-x' }
+    { key: 'open', title: 'Abertas', value: k.total_open, to: '/work/tasks', icon: 'i-lucide-inbox' },
+    { key: 'atrasadas', title: 'Atrasadas', value: k.atrasadas, to: '/work/tasks?tab=atrasadas', icon: 'i-lucide-clock-alert', tone: 'warning' },
+    { key: 'em_multa', title: 'Em multa', value: k.em_multa, to: '/work/tasks?tab=atrasadas', icon: 'i-lucide-siren', tone: 'error' },
+    { key: 'vence_hoje', title: 'Vencem hoje', value: k.vence_hoje, to: '/work/tasks?tab=hoje', icon: 'i-lucide-calendar-days' },
+    { key: 'em_progresso', title: 'Em progresso', value: k.em_progresso, to: '/work/tasks', icon: 'i-lucide-loader', tone: 'info' },
+    { key: 'sem_responsavel', title: 'Sem responsável', value: k.sem_responsavel, to: '/work/tasks', icon: 'i-lucide-user-x' }
   ]
 })
 
@@ -103,11 +103,11 @@ const departmentRows = computed(() => {
         unassigned: row.unassigned ?? 0,
         completedPercent: row.completed_percent ?? 0,
         to: row.work_department_id != null
-          ? `/work?department_id=${row.work_department_id}`
-          : '/work',
+          ? `/work/tasks?department_id=${row.work_department_id}`
+          : '/work/tasks',
         overdueTo: row.work_department_id != null
-          ? `/work?tab=atrasadas&department_id=${row.work_department_id}`
-          : '/work?tab=atrasadas'
+          ? `/work/tasks?tab=atrasadas&department_id=${row.work_department_id}`
+          : '/work/tasks?tab=atrasadas'
       }
     })
     .sort((a, b) => b.open - a.open)
@@ -160,7 +160,7 @@ const lastUpdated = computed(() => {
         color="neutral"
         variant="ghost"
         to="/work"
-        label="Minha fila"
+        label="Visão estratégica"
         trailing-icon="i-lucide-arrow-right"
       />
     </div>

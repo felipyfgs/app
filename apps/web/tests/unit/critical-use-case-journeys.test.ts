@@ -44,17 +44,19 @@ describe('critical use-case journeys', () => {
     expect(JSON.stringify(clientMock.mock.calls)).not.toContain('office_id')
   })
 
-  it('operational work maps queue reads and process mutations to distinct methods', async () => {
+  it('operational work maps templates, tasks and processes to distinct methods', async () => {
     const { client, clientMock, apiUrl } = harness()
     const api = createWorkApi(client, apiUrl)
 
+    await api.work.templates.catalog()
     await api.work.queue({ scope: 'default' })
     await api.work.processes.create({ client_id: 7, title: 'Fechamento E2E' })
 
-    expect(clientMock).toHaveBeenNthCalledWith(1, '/api/v1/work/queue', {
+    expect(clientMock).toHaveBeenNthCalledWith(1, '/api/v1/work/template-catalog')
+    expect(clientMock).toHaveBeenNthCalledWith(2, '/api/v1/work/queue', {
       query: { scope: 'default' }
     })
-    expect(clientMock).toHaveBeenNthCalledWith(2, '/api/v1/work/processes', {
+    expect(clientMock).toHaveBeenNthCalledWith(3, '/api/v1/work/processes', {
       method: 'POST',
       body: { client_id: 7, title: 'Fechamento E2E' }
     })

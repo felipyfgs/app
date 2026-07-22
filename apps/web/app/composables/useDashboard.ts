@@ -83,6 +83,7 @@ const _useDashboard = () => {
     'g-s': () => router.push('/syncs'),
     'g-o': () => router.push('/health'),
     'g-m': () => router.push('/monitoring'),
+    'g-i': () => router.push('/communication'),
     'g-w': () => router.push('/work'),
     'g-k': () => router.push('/work/calendar'),
     'g-u': () => router.push('/conta/consumo'),

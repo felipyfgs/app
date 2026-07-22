@@ -3,7 +3,11 @@
  * Declarações — hub por obrigação (abas locais; URL fixa /monitoring/declarations).
  * Default PGDAS; DIRF unsupported honesto; FGTS cobertura parcial.
  */
-import type { DeclarationsClientRow, MonitoringFilterConfig } from '~/types/fiscal-modules'
+import type {
+  DeclarationOperation,
+  DeclarationsClientRow,
+  MonitoringFilterConfig
+} from '~/types/fiscal-modules'
 import {
   DECLARATIONS_TABS,
   declarationsSurfaceTitle,
@@ -16,8 +20,35 @@ import {
   DECLARATIONS_PGDAS_COLUMN_LABELS
 } from '~/utils/declarations-table'
 import { MONITORING_SHARED_COLUMN_LABELS } from '~/utils/monitoring-table-columns'
+import { apiErrorMessage } from '~/utils/api-error'
 
 const submodule = ref(normalizeDeclarationsSubmodule('PGDAS'))
+const api = useApi()
+
+const declarationOperations = ref<DeclarationOperation[]>([])
+const declarationCatalogLoading = ref(true)
+const declarationCatalogError = ref<string | null>(null)
+
+async function loadDeclarationCatalog() {
+  declarationCatalogLoading.value = true
+  declarationCatalogError.value = null
+  try {
+    const response = await api.fiscal.declarations.catalog()
+    declarationOperations.value = response.data.operation_catalog?.operations || []
+  } catch (caught) {
+    declarationOperations.value = []
+    declarationCatalogError.value = apiErrorMessage(
+      caught,
+      'Não foi possível carregar as operações oficiais. A carteira local continua disponível.'
+    )
+  } finally {
+    declarationCatalogLoading.value = false
+  }
+}
+
+onMounted(() => {
+  void loadDeclarationCatalog()
+})
 
 const {
   page,
@@ -29,6 +60,8 @@ const {
   refreshing,
   loadError,
   overviewError,
+  overviewLoading,
+  overview,
   rows,
   counters,
   totalClients,
@@ -49,7 +82,7 @@ const {
   submodule
 })
 
-const { canManageClients } = useDashboard()
+const { canManageClients, canTriggerSync } = useDashboard()
 const {
   formOpen: clientFormOpen,
   formClient,
@@ -59,14 +92,30 @@ const {
 } = useMonitoringClientEdit(() => refresh())
 
 const isPgdas = computed(() => submodule.value === 'PGDAS')
-const isDctfweb = computed(() => submodule.value === 'DCTFWEB')
 const isDefis = computed(() => submodule.value === 'DEFIS')
+const isDasnSimei = computed(() => submodule.value === 'DASN_SIMEI')
+const isDctfweb = computed(() => submodule.value === 'DCTFWEB')
+const isMit = computed(() => submodule.value === 'MIT')
 const isFgts = computed(() => submodule.value === 'FGTS')
 const isDirf = computed(() => submodule.value === 'DIRF')
 
+const activeOperations = computed(() => declarationOperations.value.filter(
+  operation => operation.obligation === submodule.value
+))
+
 const surfaceTitle = computed(() => declarationsSurfaceTitle(submodule.value))
 
-const tabItems = DECLARATIONS_TABS.map(t => ({ label: t.label, value: t.value }))
+function tabBadge(key: string): number | string {
+  const count = overview.value?.metrics?.tab_counts?.[key]
+  if (typeof count === 'number' && Number.isFinite(count)) return count
+  return overviewLoading.value || (!overview.value && !overviewError.value) ? '…' : '—'
+}
+
+const tabItems = computed(() => DECLARATIONS_TABS.map(t => ({
+  label: t.label,
+  value: t.value,
+  badge: tabBadge(t.value)
+})))
 
 const filterConfig = computed<MonitoringFilterConfig>(() => {
   if (isDirf.value) {
@@ -98,6 +147,11 @@ function getRowId(row: DeclarationsClientRow) {
 const pgdasHistoryOpen = ref(false)
 const dctfwebHistoryOpen = ref(false)
 const defisHistoryOpen = ref(false)
+const dasnHistoryOpen = ref(false)
+const mitHistoryOpen = ref(false)
+const operationModalOpen = ref(false)
+const operationClientId = ref<number | null>(null)
+const operationClientName = ref<string | null>(null)
 const modalClientId = ref<number | null>(null)
 const modalClientName = ref<string | null>(null)
 const modalCnpjMasked = ref<string | null>(null)
@@ -106,9 +160,20 @@ function closeModals() {
   pgdasHistoryOpen.value = false
   dctfwebHistoryOpen.value = false
   defisHistoryOpen.value = false
+  dasnHistoryOpen.value = false
+  mitHistoryOpen.value = false
+  operationModalOpen.value = false
   modalClientId.value = null
   modalClientName.value = null
   modalCnpjMasked.value = null
+}
+
+function openOperations(row?: DeclarationsClientRow) {
+  operationClientId.value = row?.client_id || null
+  operationClientName.value = row
+    ? row.legal_name || row.name || row.display_name || null
+    : null
+  operationModalOpen.value = true
 }
 
 function openModalClient(row: DeclarationsClientRow) {
@@ -132,16 +197,31 @@ function openDefisHistory(row: DeclarationsClientRow) {
   defisHistoryOpen.value = true
 }
 
+function openDasnHistory(row: DeclarationsClientRow) {
+  openModalClient(row)
+  dasnHistoryOpen.value = true
+}
+
+function openMitHistory(row: DeclarationsClientRow) {
+  openModalClient(row)
+  mitHistoryOpen.value = true
+}
+
 const columns = computed(() => {
   const onEdit = canManageClients.value
     ? (row: DeclarationsClientRow) => { void openEditClient(row.client_id) }
     : undefined
   if (isPgdas.value) {
-    return buildDeclarationsPgdasColumns({ onHistory: openPgdasHistory, onEditClient: onEdit })
+    return buildDeclarationsPgdasColumns({
+      onHistory: openPgdasHistory,
+      onOperations: openOperations,
+      onEditClient: onEdit
+    })
   }
   if (isDctfweb.value) {
     return buildDeclarationsObligationColumns({
       onHistory: openDctfwebHistory,
+      onOperations: openOperations,
       onEditClient: onEdit,
       historyLabel: 'Histórico'
     })
@@ -149,8 +229,25 @@ const columns = computed(() => {
   if (isDefis.value) {
     return buildDeclarationsObligationColumns({
       onHistory: openDefisHistory,
+      onOperations: openOperations,
       onEditClient: onEdit,
       historyLabel: 'Histórico DEFIS'
+    })
+  }
+  if (isDasnSimei.value) {
+    return buildDeclarationsObligationColumns({
+      onHistory: openDasnHistory,
+      onOperations: openOperations,
+      onEditClient: onEdit,
+      historyLabel: 'Histórico DASN-SIMEI'
+    })
+  }
+  if (isMit.value) {
+    return buildDeclarationsObligationColumns({
+      onHistory: openMitHistory,
+      onOperations: openOperations,
+      onEditClient: onEdit,
+      historyLabel: 'Apurações MIT'
     })
   }
   if (isFgts.value) {
@@ -183,10 +280,16 @@ const emptyTitle = computed(() => {
   if (isPgdas.value) return 'Nenhuma declaração PGDAS'
   if (isDctfweb.value) return 'Nenhuma declaração DCTFWeb'
   if (isDefis.value) return 'Nenhuma declaração DEFIS'
+  if (isDasnSimei.value) return 'Nenhuma declaração DASN-SIMEI'
+  if (isMit.value) return 'Nenhuma apuração MIT'
   return 'Nenhuma declaração'
 })
 
 const emptyKind = computed(() => (isDirf.value ? 'unsupported' as const : null))
+
+async function refreshAll() {
+  await Promise.all([refresh(), loadDeclarationCatalog()])
+}
 
 watch(submodule, (next, prev) => {
   if (next === prev) return
@@ -234,30 +337,46 @@ watch(submodule, (next, prev) => {
     @quick-filter-change="applyQuickFilters"
     @apply-filters="applyFilters"
     @reset-filters="resetFilters"
-    @refresh="refresh"
+    @refresh="refreshAll"
   >
     <template #submodules>
       <div
-        class="flex min-w-0 flex-col gap-2"
+        class="flex w-full min-w-0 max-w-full flex-col gap-2 sm:flex-row sm:items-center"
         data-testid="declarations-obligation-control"
       >
-        <p class="text-xs font-medium text-muted">
-          Obrigação
-        </p>
-        <ShellScrollableTabs
-          v-model="submodule"
-          :items="tabItems"
-          size="sm"
+        <div class="w-full min-w-0 flex-1">
+          <ShellScrollableTabs
+            v-model="submodule"
+            :items="tabItems"
+            size="md"
+            class="w-full min-w-0 max-w-full"
+            aria-label="Filtrar por declaração"
+            test-id="declarations-submodule-tabs"
+          />
+        </div>
+        <UButton
+          v-if="!isFgts && !isDirf"
           color="primary"
-          variant="pill"
-          class="w-full min-w-0"
-          aria-label="Obrigação: PGDAS, DCTFWeb, FGTS, DEFIS ou DIRF"
-          test-id="declarations-submodule-tabs"
+          variant="soft"
+          icon="i-lucide-list-filter"
+          label="Operações"
+          :loading="declarationCatalogLoading"
+          :disabled="Boolean(declarationCatalogError) || activeOperations.length === 0"
+          class="shrink-0 self-end sm:self-auto"
+          data-testid="declarations-operations-open"
+          @click="openOperations()"
         />
       </div>
     </template>
 
     <template #utilities>
+      <UAlert
+        v-if="declarationCatalogError && !isFgts && !isDirf"
+        color="warning"
+        icon="i-lucide-triangle-alert"
+        :title="declarationCatalogError"
+        class="w-full"
+      />
       <UAlert
         v-if="overviewError"
         color="warning"
@@ -307,6 +426,32 @@ watch(submodule, (next, prev) => {
     v-model:open="defisHistoryOpen"
     :client-id="modalClientId"
     :client-name="modalClientName"
+  />
+  <MonitoringMeiPublicServicesModal
+    v-if="isDasnSimei"
+    v-model:open="dasnHistoryOpen"
+    :client-id="modalClientId"
+    :client-name="modalClientName"
+    :cnpj-masked="modalCnpjMasked"
+    :can-refresh="canTriggerSync"
+    initial-service="dasn"
+  />
+  <MonitoringMitListaApuracoesModal
+    v-if="isMit"
+    v-model:open="mitHistoryOpen"
+    :client-id="modalClientId"
+    :client-name="modalClientName"
+    :cnpj-masked="modalCnpjMasked"
+    :can-consult="canTriggerSync"
+  />
+
+  <MonitoringDeclarationOperationModal
+    v-model:open="operationModalOpen"
+    :obligation="submodule"
+    :operations="activeOperations"
+    :initial-client-id="operationClientId"
+    :initial-client-name="operationClientName"
+    @executed="refreshAll"
   />
 
   <ClientsClientFormModal

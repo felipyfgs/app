@@ -85,11 +85,23 @@ const TRACKING_META: Record<PgdasdTrackingStatus, PgdasdStateMeta> = {
     color: 'neutral',
     icon: 'i-lucide-message-square-dashed'
   },
+  SCHEDULED: {
+    label: 'Agendado para o cutoff',
+    description: 'O envio aguarda o dia e horário definidos na política do escritório.',
+    color: 'info',
+    icon: 'i-lucide-calendar-clock'
+  },
   QUEUED: {
     label: 'Na fila',
     description: 'O envio está aguardando processamento.',
     color: 'warning',
     icon: 'i-lucide-clock-3'
+  },
+  ACCEPTED: {
+    label: 'Aceito pelo gateway',
+    description: 'O comando foi persistido pelo gateway e aguarda confirmação remota.',
+    color: 'info',
+    icon: 'i-lucide-check'
   },
   SENT: {
     label: 'Enviado',
@@ -120,6 +132,18 @@ const TRACKING_META: Record<PgdasdTrackingStatus, PgdasdStateMeta> = {
     description: 'O envio não foi concluído.',
     color: 'error',
     icon: 'i-lucide-message-square-x'
+  },
+  UNKNOWN: {
+    label: 'Resultado incerto',
+    description: 'A entrega não pôde ser confirmada sem risco de duplicação.',
+    color: 'warning',
+    icon: 'i-lucide-circle-help'
+  },
+  SKIPPED_NO_DOCUMENT: {
+    label: 'Sem documento da competência',
+    description: 'O cutoff venceu sem o documento canônico exato; o envio foi encerrado e não reabrirá automaticamente.',
+    color: 'warning',
+    icon: 'i-lucide-file-warning'
   },
   CANCELED: {
     label: 'Envio cancelado',

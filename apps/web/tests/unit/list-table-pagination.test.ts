@@ -47,6 +47,9 @@ describe('list-table-pagination', () => {
     const dataTable = readFileSync(root('app/components/shell/DataTable.vue'), 'utf8')
     expect(dataTable).toContain('v-if="showFooter"')
     expect(dataTable).not.toContain('total > 0 || selectedCount > 0')
+    // Desktop e mobile usam o mesmo resolvedGetRowId (nunca getRowId cru/undefined).
+    expect(dataTable.match(/:get-row-id="resolvedGetRowId"/g)?.length).toBe(2)
+    expect(dataTable).not.toMatch(/:get-row-id="getRowId"/)
   })
 
   it('listas in-memory usam useLocalTablePagination (não fingem length como per-page)', () => {

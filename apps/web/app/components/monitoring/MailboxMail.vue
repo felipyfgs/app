@@ -12,6 +12,7 @@ import {
 } from '~/utils/mailbox-triage'
 import { parseMailboxBodyPreviewBlob } from '~/utils/mailbox-body-preview'
 import { toSanctumApiPath } from '~/utils/authenticated-download'
+import type { MailboxCostPreview } from '~/types/mailbox-monitoring'
 
 export interface MailboxMessageDetail {
   id: number
@@ -74,6 +75,11 @@ const saving = ref(false)
 const bodyPreview = ref<string | null>(null)
 const bodyPreviewError = ref<string | null>(null)
 const bodyPreviewLoading = ref(false)
+const detailPreview = ref<MailboxCostPreview | null>(null)
+const detailModalOpen = ref(false)
+const detailPreviewLoading = ref(false)
+const detailConfirming = ref(false)
+const detailQueued = ref(false)
 let loadSeq = 0
 
 const triageItems = [...MAILBOX_TRIAGE_SELECT_ITEMS]
@@ -224,6 +230,36 @@ async function openAttachment(attachmentId: number) {
   )
 }
 
+async function openDetailPreview() {
+  detailPreviewLoading.value = true
+  try {
+    detailPreview.value = (await api.fiscal.mailbox.detailPreview(props.messageId)).data.cost
+    detailModalOpen.value = true
+  } catch (caught) {
+    toast.add({ title: apiErrorMessage(caught, 'Não foi possível preparar o conteúdo.'), color: 'error' })
+  } finally {
+    detailPreviewLoading.value = false
+  }
+}
+
+async function confirmDetail() {
+  detailConfirming.value = true
+  try {
+    await api.fiscal.mailbox.enqueueDetail(props.messageId)
+    detailQueued.value = true
+    detailModalOpen.value = false
+    toast.add({
+      title: 'Busca do corpo iniciada',
+      description: 'A mensagem será atualizada quando a consulta DETALHE terminar.',
+      color: 'success'
+    })
+  } catch (caught) {
+    toast.add({ title: apiErrorMessage(caught, 'Falha ao iniciar o DETALHE.'), color: 'error' })
+  } finally {
+    detailConfirming.value = false
+  }
+}
+
 function onClose() {
   emit('close')
 }
@@ -239,6 +275,7 @@ watch(sessionEpoch, () => {
   loadError.value = null
   bodyPreview.value = null
   bodyPreviewError.value = null
+  detailQueued.value = false
   void load()
 })
 </script>
@@ -416,13 +453,22 @@ watch(sessionEpoch, () => {
                 @click="openBody"
               />
             </div>
-            <p
-              v-if="!message.has_body"
-              class="text-sm text-muted"
-              data-testid="mailbox-body-pending"
-            >
-              Corpo ainda não sincronizado. Aguardando consulta DETALHE.
-            </p>
+            <div v-if="!message.has_body" class="flex flex-col items-start gap-2" data-testid="mailbox-body-pending">
+              <p class="text-sm text-muted">
+                {{ detailQueued ? 'Consulta DETALHE enfileirada. Atualize em alguns instantes.' : 'Corpo ainda não sincronizado.' }}
+              </p>
+              <UButton
+                v-if="!detailQueued"
+                size="sm"
+                color="neutral"
+                variant="soft"
+                icon="i-lucide-file-search"
+                label="Buscar corpo"
+                :loading="detailPreviewLoading"
+                data-testid="mailbox-detail-preview-button"
+                @click="openDetailPreview"
+              />
+            </div>
             <p
               v-else-if="bodyPreviewLoading"
               class="text-sm text-muted"
@@ -506,5 +552,40 @@ watch(sessionEpoch, () => {
         </template>
       </div>
     </template>
+
+    <UModal
+      v-model:open="detailModalOpen"
+      title="Carregar conteúdo completo"
+      description="Confirme para buscar o texto e os anexos desta mensagem."
+      :ui="{ footer: 'justify-end' }"
+    >
+      <template #body>
+        <UAlert
+          v-if="detailPreview"
+          :color="detailPreview.allowed ? 'primary' : 'warning'"
+          variant="subtle"
+          :icon="detailPreview.allowed ? 'i-lucide-mail-open' : 'i-lucide-circle-x'"
+          :title="detailPreview.allowed ? 'Conteúdo pronto para ser solicitado' : 'Conteúdo indisponível no momento'"
+          :description="detailPreview.allowed
+            ? 'A busca será feita uma única vez e a mensagem será atualizada automaticamente.'
+            : 'Nenhuma busca foi realizada. Tente novamente mais tarde ou fale com o suporte.'"
+        />
+      </template>
+      <template #footer="{ close }">
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="Cancelar"
+          @click="close"
+        />
+        <UButton
+          label="Buscar conteúdo"
+          :loading="detailConfirming"
+          :disabled="!detailPreview?.allowed"
+          data-testid="mailbox-detail-confirm"
+          @click="confirmDetail"
+        />
+      </template>
+    </UModal>
   </UDashboardPanel>
 </template>

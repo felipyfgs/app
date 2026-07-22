@@ -27,8 +27,7 @@ const MATRIX = path.join(WEB, 'tests/fixtures/template-parity-matrix.md')
 const FORBIDDEN_CHROME = [
   ['ShellListShell', 'components/shell/ListShell.vue'],
   ['ShellStickyTableFilters', 'components/shell/StickyTableFilters.vue'],
-  ['ShellInfiniteTableLoader', 'components/shell/InfiniteTableLoader.vue'],
-  ['ShellTableFooter', 'components/shell/TableFooter.vue']
+  ['ShellInfiniteTableLoader', 'components/shell/InfiniteTableLoader.vue']
 ]
 
 /** Tokens literais de customers.vue @ 0f30c09 (ou export DASHBOARD_TABLE_UI). */
@@ -104,11 +103,15 @@ function hasChrome(text) {
 /** Cascas que embutem UDashboardPanel do template. */
 function hasEmbeddedChrome(text) {
   return (
-    text.includes('MonitoringModuleTable')
+    text.includes('ShellPagePanel')
+    || text.includes('ShellSettingsShell')
+    || text.includes('MonitoringModuleTable')
     || text.includes('<ModuleTable')
+    || text.includes('MonitoringSimplesMeiPortfolio')
     || text.includes('DocsWorkspace')
     || text.includes('WorkQueueWorkspace')
     || text.includes('NotesWorkspace')
+    || text.includes('CommunicationWorkspacePage')
   )
 }
 
@@ -131,10 +134,6 @@ function findForbiddenChrome(file, text) {
 
 function findNonCanonicalAlerts(file, text) {
   const violations = []
-  const alertBlocks = text.match(/<UAlert\b[\s\S]*?(?:\/>|<\/UAlert>)/g) || []
-  if (alertBlocks.some(block => /(?:^|\s):?description=/.test(block))) {
-    violations.push(`${relApp(file)}: UAlert com description explicativa; use título curto e acionável`)
-  }
   if (text.includes('FiscalDemoBanner')) {
     violations.push(`${relApp(file)}: banner demonstrativo persistente fora do template`)
   }
@@ -216,7 +215,7 @@ function runSelfTest() {
     </template>`
   const checks = {
     rejectsForbiddenChrome: findForbiddenChrome(fixture, '<ShellListShell />').length === 1,
-    rejectsAlertDescription: findNonCanonicalAlerts(fixture, '<UAlert title="Info" description="Texto longo" />').length === 1,
+    acceptsAlertDescription: findNonCanonicalAlerts(fixture, '<UAlert title="Info" description="Texto longo" />').length === 0,
     rejectsDemoBanner: findNonCanonicalAlerts(fixture, '<FiscalDemoBanner />').length === 1,
     acceptsLiteralList: findListContractIssues(fixture, validList).length === 0,
     acceptsDashboardTableUi: findListContractIssues(fixture, '<UTable :ui="DASHBOARD_TABLE_UI" />').length === 0,

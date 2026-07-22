@@ -8,13 +8,14 @@ const props = defineProps<{
 }>()
 
 function ratio(row: MonitoringInsightsObligationProgress): number {
-  if (row.coverage === 'UNSUPPORTED' || row.completed == null || row.total == null || row.total <= 0) {
+  if (row.is_synthetic || row.coverage === 'UNSUPPORTED' || row.completed == null || row.total == null || row.total <= 0) {
     return 0
   }
   return Math.min(100, Math.round((row.completed / row.total) * 100))
 }
 
 function fraction(row: MonitoringInsightsObligationProgress): string {
+  if (row.is_synthetic) return 'Sem dados reais'
   if (row.coverage === 'UNSUPPORTED') return 'UNSUPPORTED'
   if (row.completed == null || row.total == null) return '—'
   return `${row.completed} / ${row.total}`
@@ -80,17 +81,17 @@ const rows = computed(() => props.items ?? [])
           <span class="inline-flex items-center gap-1.5 tabular-nums text-muted">
             {{ fraction(row) }}
             <UIcon
-              v-if="row.coverage === 'UNSUPPORTED' || (row.error ?? 0) > 0 || (row.completed != null && row.total != null && row.completed < row.total)"
-              :name="row.coverage === 'UNSUPPORTED' ? 'i-lucide-ban' : 'i-lucide-triangle-alert'"
+              v-if="row.is_synthetic || row.coverage === 'UNSUPPORTED' || (row.error ?? 0) > 0 || (row.completed != null && row.total != null && row.completed < row.total)"
+              :name="row.is_synthetic || row.coverage === 'UNSUPPORTED' ? 'i-lucide-ban' : 'i-lucide-triangle-alert'"
               class="size-3.5"
-              :class="row.coverage === 'UNSUPPORTED' ? 'text-muted' : 'text-error'"
+              :class="row.is_synthetic || row.coverage === 'UNSUPPORTED' ? 'text-muted' : 'text-error'"
             />
           </span>
         </div>
         <UProgress
           :model-value="ratio(row)"
           size="sm"
-          :color="row.coverage === 'UNSUPPORTED' ? 'neutral' : (ratio(row) >= 100 ? 'success' : 'error')"
+          :color="row.is_synthetic || row.coverage === 'UNSUPPORTED' || row.total === 0 ? 'neutral' : (ratio(row) >= 100 ? 'success' : 'warning')"
         />
       </li>
     </ul>

@@ -1,95 +1,18 @@
 @import "tailwindcss" theme(static);
 @import "@nuxt/ui";
 
-/*
- * Tema do painel — Inter × Nuxt UI
- *
- * Primary: laranja Inter (#FF7A00) com hover/pressed da brand (não TW orange puro).
- * Success: #00A868 (feedback institucional Inter).
- * Neutral: zinc (compatível Nuxt + dark Inter).
- * Warning / error / info: tokens de feedback Inter.
- */
 @theme static {
   --font-sans: 'Public Sans', sans-serif;
 
-  /* —— Primary orange (Inter brand) ——
-   * 400 light #FF9B3D · 500 main #FF7A00 · 600 dark #E56E00 · 700 darkest #CC6200
-   * Extremos 50–300 / 800–950 mantêm ritmo Tailwind para superfícies subtle.
-   */
-  --color-orange-50: #FFF7ED;
-  --color-orange-100: #FFD9B3;
-  --color-orange-200: #FED7AA;
-  --color-orange-300: #FDBA74;
-  --color-orange-400: #FF9B3D;
-  --color-orange-500: #FF7A00;
-  --color-orange-600: #E56E00;
-  --color-orange-700: #CC6200;
-  --color-orange-800: #9A3412;
-  --color-orange-900: #7C2D12;
-  --color-orange-950: #431407;
-
-  /* —— Success (Inter feedback.success #00A868) —— */
-  --color-green-50: #E6F9F0;
-  --color-green-100: #C6F0DC;
-  --color-green-200: #8EE0B8;
-  --color-green-300: #4DC98F;
-  --color-green-400: #1FB874;
-  --color-green-500: #00A868;
-  --color-green-600: #008F58;
-  --color-green-700: #007548;
-  --color-green-800: #065F3C;
-  --color-green-900: #064E32;
-  --color-green-950: #022C1C;
-
-  /* —— Warning (Inter #FFB800) —— */
-  --color-amber-50: #FFF8E6;
-  --color-amber-100: #FFEFBF;
-  --color-amber-200: #FFE08A;
-  --color-amber-300: #FFD14D;
-  --color-amber-400: #FFC61A;
-  --color-amber-500: #FFB800;
-  --color-amber-600: #E0A200;
-  --color-amber-700: #B88400;
-  --color-amber-800: #8F6700;
-  --color-amber-900: #664900;
-  --color-amber-950: #3D2C00;
-
-  /* —— Error / alert (Inter #E5222D) —— */
-  --color-red-50: #FDE8E9;
-  --color-red-100: #F9C8CB;
-  --color-red-200: #F29A9F;
-  --color-red-300: #E96A71;
-  --color-red-400: #E53E48;
-  --color-red-500: #E5222D;
-  --color-red-600: #C41C26;
-  --color-red-700: #9F171F;
-  --color-red-800: #7A1218;
-  --color-red-900: #560D11;
-  --color-red-950: #38080B;
-
-  /* —— Info (Inter #1E7FE6) —— */
-  --color-blue-50: #E8F2FD;
-  --color-blue-100: #C5DFFA;
-  --color-blue-200: #8FC0F5;
-  --color-blue-300: #599FEF;
-  --color-blue-400: #338CEB;
-  --color-blue-500: #1E7FE6;
-  --color-blue-600: #196CC4;
-  --color-blue-700: #1458A1;
-  --color-blue-800: #10457E;
-  --color-blue-900: #0B325B;
-  --color-blue-950: #071E38;
-
-  /* —— Neutral zinc (Nuxt UI + dark Inter ≈ #0D0D0D / #161616) —— */
-  --color-zinc-50: #FAFAFA;
-  --color-zinc-100: #F5F5F7;
-  --color-zinc-200: #E4E4E7;
-  --color-zinc-300: #D4D4D8;
-  --color-zinc-400: #A1A1AA;
-  --color-zinc-500: #71717A;
-  --color-zinc-600: #52525B;
-  --color-zinc-700: #3F3F46;
-  --color-zinc-800: #27272A;
-  --color-zinc-900: #18181B;
-  --color-zinc-950: #0D0D0D;
+  --color-green-50: #EFFDF5;
+  --color-green-100: #D9FBE8;
+  --color-green-200: #B3F5D1;
+  --color-green-300: #75EDAE;
+  --color-green-400: #00DC82;
+  --color-green-500: #00C16A;
+  --color-green-600: #00A155;
+  --color-green-700: #007F45;
+  --color-green-800: #016538;
+  --color-green-900: #0A5331;
+  --color-green-950: #052E16;
 }

@@ -12,8 +12,8 @@ const MOBILE_CARD_SURFACES = [
   'app/pages/health.vue',
   'app/pages/docs/imports/index.vue',
   'app/pages/docs/imports/[id].vue',
-  'app/pages/work/processes/index.vue',
   'app/pages/work/templates/index.vue',
+  'app/pages/work/processes/index.vue',
   'app/pages/admin/offices/index.vue',
   'app/pages/admin/serpro/catalog.vue',
   'app/pages/admin/serpro/contracts.vue',
@@ -73,12 +73,54 @@ describe('painel-responsivo-mobile-gate', () => {
     }
   })
 
+  it('processos usa ShellDataTable com cards mobile do shell', () => {
+    const page = readFileSync(root('app/pages/work/processes/index.vue'), 'utf8')
+
+    expect(page).toContain('ShellDataTable')
+    expect(page).toContain('work-processes-table')
+    expect(page).toContain('primary-column-id="title"')
+    expect(page).toContain('status-column-id="status"')
+    expect(page).not.toContain('WorkProcessAccordionList')
+    expect(page).not.toContain('overflow-x-auto')
+  })
+
   it('splits N2 usam breakpoint lg + slideover', () => {
     for (const rel of SPLIT_SURFACES) {
       const source = readFileSync(root(rel), 'utf8')
       expect(source, rel).toMatch(/smaller\(['"]lg['"]\)|hidden lg:flex|lg:hidden/)
       expect(source, `${rel} slideover`).toContain('USlideover')
     }
+  })
+
+  it('layout default expõe slot direto no UDashboardGroup (master–detalhe)', () => {
+    const layout = readFileSync(root('app/layouts/default.vue'), 'utf8')
+    expect(layout).toContain('<UDashboardGroup')
+    expect(layout).toMatch(/<UDashboardSearch[^/]*\/>\s*<slot\s*\/>/s)
+    expect(layout).not.toMatch(/flex-col">\s*<slot/)
+  })
+
+  it('fila de tarefas expõe dualidade Fila|Lista com ShellDataTable', () => {
+    const workspace = readFileSync(root('app/components/work/WorkQueueWorkspace.vue'), 'utf8')
+    expect(workspace).toContain('work-queue-view-toggle')
+    expect(workspace).toContain('USlideover')
+    expect(workspace).toContain('ShellDataTable')
+    expect(workspace).toContain('work-queue-table')
+    expect(workspace).toContain('primary-column-id="title"')
+  })
+
+  it('fila restaura mestre–detalhe com auto-select; mailbox segue densificada', () => {
+    const workspace = readFileSync(root('app/components/work/WorkQueueWorkspace.vue'), 'utf8')
+    const mailbox = readFileSync(root('app/pages/monitoring/mailbox.vue'), 'utf8')
+    expect(workspace).toContain('detailOpen')
+    expect(workspace).toContain('work-queue-detail-toggle')
+    expect(workspace).toContain('detailPaneVisible')
+    expect(workspace).toContain('i-lucide-panel-right')
+    expect(workspace).toContain('suppressAutoSelect')
+    expect(workspace).toContain('await select(items.value[0]')
+    expect(mailbox).toContain('detailOpen')
+    expect(mailbox).toContain('mailbox-detail-toggle')
+    expect(mailbox).toContain('mailbox-monitoring-collapsible')
+    expect(mailbox).toContain('detailPaneVisible')
   })
 
   it('conta segue arquétipo settings (toolbar UNavigationMenu + NuxtPage)', () => {

@@ -69,6 +69,7 @@ function inferGroup(uri, exact, prefixes) {
   }
 
   if (uri.startsWith('api/v1/auth/') || ['api/v1/account', 'api/v1/me'].includes(uri)) return 'auth'
+  if (uri.startsWith('api/internal/v1/communication/') || uri === 'api/broadcasting/auth') return 'communication'
   if (/^(login|logout|forgot-password|reset-password|sanctum\/|user\/)/.test(uri)) return 'auth'
   if (uri.startsWith('api/v1/')) return uri.split('/')[2]
   if (uri.startsWith('horizon') || uri === 'up') return 'monitoring'
@@ -132,15 +133,31 @@ function assignedJourney(items, kind, value) {
 
 function extractApiEndpoints(source) {
   const endpoints = []
+  const bases = new Map()
+  const basePattern = /const\s+([A-Za-z_$][\w$]*)\s*=\s*(['"])(\/api\/v1\/[^'"]+)\2/g
+  for (const match of source.matchAll(basePattern)) bases.set(match[1], match[3])
+
   const pattern = /([`'"])(\/api\/v1\/[\s\S]*?)\1/g
   for (const match of source.matchAll(pattern)) {
     const raw = match[2]
       .replace(/\$\{[^}]*\?\s*$/, '')
       .split('?')[0]
+    if ([...bases.values()].includes(raw)) continue
     const normalized = raw
       .replace(/\$\{[^}]+\}/g, ':param')
       .replace(/^\//, '')
     if (!normalized.includes('\n')) endpoints.push(normalized)
+  }
+
+  for (const [name, base] of bases) {
+    const templatePattern = new RegExp('`\\$\\{' + name + '\\}([\\s\\S]*?)`', 'g')
+    for (const match of source.matchAll(templatePattern)) {
+      const normalized = `${base}${match[1]}`
+        .replace(/\$\{[^}]+\}/g, ':param')
+        .split('?')[0]
+        .replace(/^\//, '')
+      if (!normalized.includes('\n')) endpoints.push(normalized)
+    }
   }
   return unique(endpoints).sort()
 }

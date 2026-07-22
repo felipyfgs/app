@@ -39,6 +39,7 @@ function clientHref(id: number) {
  */
 export function buildDeclarationsPgdasColumns(options: {
   onHistory: (row: DeclarationsClientRow) => void
+  onOperations?: (row: DeclarationsClientRow) => void
   onEditClient?: (row: DeclarationsClientRow) => void
   onTracking?: (row: DeclarationsClientRow) => void
   onSend?: (row: DeclarationsClientRow) => void
@@ -66,6 +67,13 @@ export function buildDeclarationsPgdasColumns(options: {
       icon: 'i-lucide-history',
       onSelect: () => options.onHistory(row)
     })
+    if (options.onOperations) {
+      items.push({
+        label: 'Operações oficiais',
+        icon: 'i-lucide-workflow',
+        onSelect: () => options.onOperations?.(row)
+      })
+    }
     return [items]
   }
 
@@ -186,6 +194,7 @@ export function buildDeclarationsPgdasColumns(options: {
 /** Colunas genéricas filtradas por obrigação (DCTFWeb / DEFIS). */
 export function buildDeclarationsObligationColumns(options: {
   onHistory?: (row: DeclarationsClientRow) => void
+  onOperations?: (row: DeclarationsClientRow) => void
   onEditClient?: (row: DeclarationsClientRow) => void
   historyLabel?: string
 }): TableColumn<DeclarationsClientRow>[] {
@@ -209,6 +218,13 @@ export function buildDeclarationsObligationColumns(options: {
         label: options.historyLabel || 'Histórico',
         icon: 'i-lucide-history',
         onSelect: () => options.onHistory?.(row)
+      })
+    }
+    if (options.onOperations) {
+      items.push({
+        label: 'Operações oficiais',
+        icon: 'i-lucide-workflow',
+        onSelect: () => options.onOperations?.(row)
       })
     }
     return [items]

@@ -18,6 +18,7 @@ const env = {
   DB_DATABASE: 'nfse_e2e',
   E2E_API_PORT: process.env.E2E_API_PORT || '18080',
   E2E_WEB_PORT: e2eWebPort,
+  E2E_BASE_URL: process.env.E2E_BASE_URL || `http://127.0.0.1:${e2eWebPort}`,
   E2E_POSTGRES_PORT: process.env.E2E_POSTGRES_PORT || '15432',
   E2E_REDIS_PORT: process.env.E2E_REDIS_PORT || '16379',
   POSTGRES_PORT: process.env.E2E_POSTGRES_PORT || '15432',
@@ -29,8 +30,9 @@ const env = {
   FISCAL_DEMO_SENTINEL_SLUG: 'plataforma',
   WORK_DEMO_OFFICE_SLUG: 'contador',
   WORK_DEMO_SENTINEL_SLUG: 'plataforma',
-  FISCAL_MONITORING_MUTATING_ENABLED: 'false',
-  FISCAL_KILL_SWITCH: 'true'
+  FISCAL_PROFILE: process.env.E2E_FISCAL_PROFILE || 'dev',
+  FISCAL_MONITORING_MUTATING_ENABLED: process.env.E2E_FISCAL_MONITORING_MUTATING_ENABLED || 'false',
+  FISCAL_KILL_SWITCH: process.env.E2E_FISCAL_KILL_SWITCH || 'true'
 }
 
 function run(command, args, options = {}) {

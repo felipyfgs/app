@@ -15,21 +15,26 @@ describe('declarations-obligation-hub', () => {
     expect(normalizeDeclarationsSubmodule('PGDAS_D')).toBe('PGDAS')
     expect(normalizeDeclarationsSubmodule('dctf')).toBe('DCTFWEB')
     expect(normalizeDeclarationsSubmodule('DEFIS')).toBe('DEFIS')
+    expect(normalizeDeclarationsSubmodule('dasnsimei')).toBe('DASN_SIMEI')
+    expect(normalizeDeclarationsSubmodule('mit')).toBe('MIT')
     expect(normalizeDeclarationsSubmodule('dirf')).toBe('DIRF')
   })
 
-  it('expõe as cinco abas na ordem da referência', () => {
+  it('expõe as cinco obrigações oficiais e duas coberturas externas', () => {
     expect(DECLARATIONS_TABS.map(t => t.value)).toEqual([
       'PGDAS',
-      'DCTFWEB',
-      'FGTS',
       'DEFIS',
+      'DASN_SIMEI',
+      'DCTFWEB',
+      'MIT',
+      'FGTS',
       'DIRF'
     ])
   })
 
   it('monta título dinâmico da superfície', () => {
-    expect(declarationsSurfaceTitle('PGDAS')).toBe('PGDAS - Declarações')
+    expect(declarationsSurfaceTitle('PGDAS')).toBe('PGDAS-D - Declarações')
+    expect(declarationsSurfaceTitle('DASN_SIMEI')).toBe('DASN-SIMEI - Declarações')
     expect(declarationsSurfaceTitle('DCTFWEB')).toBe('DCTFWeb - Declarações')
     expect(declarationsSurfaceTitle('DIRF')).toBe('DIRF - Declarações')
   })
@@ -39,6 +44,18 @@ describe('declarations-obligation-hub', () => {
       resolve(process.cwd(), 'app/pages/monitoring/declarations.vue'),
       'utf8'
     )
+    const kpiSource = readFileSync(
+      resolve(process.cwd(), 'app/components/monitoring/KpiStrip.vue'),
+      'utf8'
+    )
+    const tabsStart = page.indexOf('<ShellScrollableTabs')
+    const tabsMarkup = page.slice(tabsStart, page.indexOf('/>', tabsStart) + 2)
+    const kpiTabsStart = kpiSource.indexOf('<ShellScrollableTabs')
+    const kpiTabsMarkup = kpiSource.slice(
+      kpiTabsStart,
+      kpiSource.indexOf('/>', kpiTabsStart) + 2
+    )
+
     expect(page).toContain('declarations-submodule-tabs')
     expect(page).toContain('normalizeDeclarationsSubmodule(\'PGDAS\')')
     expect(page).toContain('useFiscalModulePortfolio(\'declarations\'')
@@ -46,8 +63,60 @@ describe('declarations-obligation-hub', () => {
     expect(page).toContain('MonitoringPgdasdDasHistoryModal')
     expect(page).toContain('MonitoringDctfwebHistoryModal')
     expect(page).toContain('MonitoringDefisDeclarationsModal')
+    expect(page).toContain('MonitoringMeiPublicServicesModal')
+    expect(page).toContain('initial-service="dasn"')
+    expect(page).toContain('MonitoringMitListaApuracoesModal')
+    expect(page).toContain('MonitoringDeclarationOperationModal')
+    expect(page).toContain('activeOperations')
+    expect(page).toContain('onOperations: openOperations')
+    expect(page).toContain('loadDeclarationCatalog')
+    expect(page).toContain('aria-label="Filtrar por declaração"')
+    expect(page).toContain('badge: tabBadge(t.value)')
+    expect(page).toContain('overview.value?.metrics?.tab_counts?.[key]')
+    expect(page).toContain('? \'…\' : \'—\'')
+    for (const markup of [tabsMarkup, kpiTabsMarkup]) {
+      expect(markup).toContain('size="md"')
+      expect(markup).toContain('class="w-full min-w-0 max-w-full"')
+      expect(markup).not.toContain('color=')
+      expect(markup).not.toContain('variant=')
+      expect(markup).not.toContain(':ui=')
+    }
+    expect(page).toContain('class="w-full min-w-0 flex-1"')
+    expect(page.indexOf('class="w-full min-w-0 flex-1"')).toBeLessThan(
+      page.indexOf('data-testid="declarations-operations-open"')
+    )
+    expect(page).not.toContain('MonitoringDeclarationsCoverageSummary')
+    expect(page).not.toContain('MonitoringDeclarationsOperationsPanel')
     expect(page).toContain('declarations-dirf-unsupported')
     expect(page).not.toMatch(/navigateTo\([^)]*declarations\//)
+  })
+
+  it('central declarativa usa action_id e não envia coordenadas técnicas pelo cliente', () => {
+    const api = readFileSync(
+      resolve(process.cwd(), 'app/composables/api/createFiscalApi.ts'),
+      'utf8'
+    )
+    const modal = readFileSync(
+      resolve(process.cwd(), 'app/components/monitoring/DeclarationOperationModal.vue'),
+      'utf8'
+    )
+    expect(api).toContain('/fiscal/declarations/operations/${encodeURIComponent(actionId)}/read')
+    expect(api).toContain('/fiscal/declarations/operations/${encodeURIComponent(actionId)}/preflight')
+    expect(api).toContain('/fiscal/declarations/operations/${encodeURIComponent(actionId)}/execute')
+    expect(modal).toContain('Nenhuma ação ocorre ao abrir este modal.')
+    expect(modal).toContain('declaration-operation-confirmation-phrase')
+    expect(modal).not.toContain('id_sistema')
+    expect(modal).not.toContain('id_servico')
+  })
+
+  it('modal MEI aceita iniciar diretamente no histórico DASN-SIMEI', () => {
+    const modal = readFileSync(
+      resolve(process.cwd(), 'app/components/monitoring/MeiPublicServicesModal.vue'),
+      'utf8'
+    )
+    expect(modal).toContain('initialService?: \'ccmei\' | \'dasn\'')
+    expect(modal).toContain('initialService: \'ccmei\'')
+    expect(modal).toContain('activeService.value === \'dasn\'')
   })
 
   it('colunas PGDAS cobrem Situação / Últ. Declaração / Cliente / Ações · Consulta, sem Histórico na grade', () => {

@@ -44,7 +44,14 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      apiBase
+      apiBase,
+      communicationEnabled: process.env.NUXT_PUBLIC_COMMUNICATION_ENABLED === 'true',
+      reverb: {
+        key: process.env.NUXT_PUBLIC_REVERB_APP_KEY || 'communication-disabled',
+        host: process.env.NUXT_PUBLIC_REVERB_HOST || '',
+        port: Number(process.env.NUXT_PUBLIC_REVERB_PORT || 0),
+        scheme: process.env.NUXT_PUBLIC_REVERB_SCHEME || 'https'
+      }
     }
   },
 

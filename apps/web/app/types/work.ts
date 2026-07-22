@@ -1,3 +1,5 @@
+import type { ClientCategoryColor, ClientTaxRegimeCode } from './api'
+
 /** Tipos do módulo operacional (Work) — alinhados à API /api/v1/work/* */
 
 export type ProcessOrigin = 'TEMPLATE' | 'MANUAL'
@@ -17,6 +19,25 @@ export type QueueBucket
     | 'SEM_RESPONSAVEL'
     | 'DEMAIS_ABERTAS'
     | 'CONCLUIDAS'
+
+export type WorkMonitoringModuleKey
+  = | 'PGDASD'
+    | 'PGMEI'
+    | 'INSTALLMENTS'
+    | 'DCTFWEB'
+    | 'FGTS'
+    | 'MAILBOX'
+    | 'SITFIS'
+    | 'DECLARATIONS'
+    | 'GUIDES'
+    | 'TAX_PROCESSES'
+
+export interface ProcessAudienceRules {
+  tax_regimes: ClientTaxRegimeCode[]
+  category_ids: number[]
+  category_match: 'ANY' | 'ALL'
+  excluded_category_ids: number[]
+}
 
 export interface WorkDepartment {
   id: number
@@ -44,8 +65,12 @@ export interface ProcessTemplateTask {
 
 export interface ProcessTemplate {
   id: number
+  catalog_key?: string | null
+  catalog_version?: number | null
   name: string
   description?: string | null
+  monitoring_module_key?: WorkMonitoringModuleKey | null
+  audience_rules: ProcessAudienceRules
   default_department_id?: number | null
   default_due_rule_type?: DueRuleType | null
   default_due_rule_value?: number | null
@@ -54,6 +79,29 @@ export interface ProcessTemplate {
   tasks: ProcessTemplateTask[]
   created_at?: string
   updated_at?: string
+}
+
+export interface ProcessTemplateCatalogItem {
+  key: string
+  version: number
+  name: string
+  description?: string | null
+  department_role?: string | null
+  monitoring_module_key?: WorkMonitoringModuleKey | null
+  default_due_rule_type?: DueRuleType | null
+  default_due_rule_value?: number | null
+  audience_rules: ProcessAudienceRules
+  tasks: ProcessTemplateTask[]
+  installed: boolean
+  installed_template_id?: number | null
+  installed_version?: number | null
+  update_available: boolean
+}
+
+export interface WorkMonitoringContext {
+  key: WorkMonitoringModuleKey
+  label: string
+  to: string
 }
 
 export interface OperationalTaskSummary {
@@ -69,6 +117,7 @@ export interface OperationalTaskSummary {
   lock_version: number
   bucket?: QueueBucket
   risks?: WorkRisk[]
+  evidence_count?: number | null
   department?: { id: number, name: string, code: string } | null
   assignee?: { membership_id: number, name: string } | null
   process?: {
@@ -85,6 +134,7 @@ export interface OperationalProcess {
   id: number
   title: string
   description?: string | null
+  monitoring_module_key?: WorkMonitoringModuleKey | null
   competence: string
   origin: ProcessOrigin
   status: ProcessStatus
@@ -96,7 +146,9 @@ export interface OperationalProcess {
   client_id: number
   process_template_id?: number | null
   lock_version: number
-  client?: { id: number, name: string } | null
+  client?: { id: number, name: string, cnpj_masked?: string | null } | null
+  links?: { client: string, monitoring: string } | null
+  monitoring_context?: WorkMonitoringContext | null
   department?: { id: number, name: string, code: string } | null
   assignee?: { membership_id: number, name: string } | null
   task_count?: number | null
@@ -104,16 +156,19 @@ export interface OperationalProcess {
   open_task_count?: number | null
   progress_percent?: number | null
   risks?: WorkRisk[]
-  tasks?: OperationalTaskDetail[]
+  tasks?: OperationalProcessTask[]
   comments?: OperationalComment[]
 }
 
-export interface OperationalTaskDetail extends OperationalTaskSummary {
-  operational_process_id: number
+export interface OperationalProcessTask extends OperationalTaskSummary {
   sort_order: number
   description?: string | null
   assignee_membership_id?: number | null
   work_department_id?: number | null
+}
+
+export interface OperationalTaskDetail extends OperationalProcessTask {
+  operational_process_id: number
   started_at?: string | null
   completed_at?: string | null
   evidences?: OperationalEvidence[]
@@ -144,9 +199,60 @@ export interface GenerationBatch {
   status: string
   payload_hash: string
   idempotency_key?: string
-  preview_summary?: { total: number, blocked: number, ready: number }
+  preview_summary?: GenerationSummary
   expires_at?: string | null
   items: GenerationItem[]
+}
+
+export interface GenerationSummary {
+  total: number
+  blocked: number
+  ready: number
+  matched_by_rule?: number
+  included_manually?: number
+  excluded_manually?: number
+  invalid_references?: number
+  excluded_items?: Array<{
+    client_id: number
+    client_name: string
+    cnpj_masked?: string | null
+    reason: string
+  }>
+}
+
+export interface GenerationSelection {
+  rules: ProcessAudienceRules
+  include_client_ids: number[]
+  exclude_client_ids: number[]
+}
+
+export interface GenerationPreviewCategory {
+  id: number
+  name: string
+  color: ClientCategoryColor
+}
+
+export interface GenerationPreviewPayload {
+  title?: string
+  description?: string | null
+  due_date?: string | null
+  target_due_date?: string | null
+  subject_to_fine?: boolean
+  monitoring_module_key?: WorkMonitoringModuleKey | null
+  work_department_id?: number | null
+  selection?: {
+    client_name?: string
+    cnpj_masked?: string | null
+    tax_regime?: string
+    regime_source?: string
+    categories?: GenerationPreviewCategory[]
+    selection_source?: string
+  }
+  tasks?: Array<{
+    sort_order: number
+    title: string
+    due_date?: string | null
+  }>
 }
 
 export interface GenerationItem {
@@ -154,8 +260,8 @@ export interface GenerationItem {
   client_id: number
   status: string
   is_blocked: boolean
-  preview_payload?: Record<string, unknown>
-  alerts?: unknown[]
+  preview_payload?: GenerationPreviewPayload
+  alerts?: Array<{ code?: string, message?: string }>
   conflicts?: Array<{ code: string, message: string }>
   created_process_id?: number | null
   error_message?: string | null

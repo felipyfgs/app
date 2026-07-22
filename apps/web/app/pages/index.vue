@@ -1,9 +1,8 @@
 <script setup lang="ts">
 /**
- * Home — arquétipo copiado de
- * `.local/reference/nuxt-dashboard-template/app/pages/index.vue`
- * (UDashboardPanel + Navbar com alertas/plus + Toolbar + body em blocos).
- * Áreas nomeadas: Trabalho | Monitoramento fiscal (atalhos) | Operações/Infra.
+ * Home — cockpit operacional do escritório ativo.
+ * Fonte: GET /api/v1/operations/summary + /operations/inbox + work/kpis.
+ * Não duplica a profundidade fiscal de /monitoring.
  */
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { InboxItem, OperationsSummary } from '~/types/api'
@@ -104,7 +103,10 @@ watch(sessionEpoch, () => {
 <template>
   <UDashboardPanel id="home">
     <template #header>
-      <UDashboardNavbar title="Dashboard" data-testid="page-navbar">
+      <UDashboardNavbar
+        title="Início"
+        data-testid="page-navbar"
+      >
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
@@ -173,59 +175,43 @@ watch(sessionEpoch, () => {
 
     <template #body>
       <div class="flex flex-col gap-4 sm:gap-6">
-        <HomeStats
+        <HomeBlocksBanner
           :summary="summary"
           :loading="loading"
         />
 
+        <section
+          data-testid="home-operations-section"
+          aria-labelledby="home-ops-heading"
+        >
+          <h2
+            id="home-ops-heading"
+            class="mb-2 text-xs font-normal uppercase text-muted"
+          >
+            Operações
+          </h2>
+          <HomeStats
+            :summary="summary"
+            :loading="loading"
+          />
+        </section>
+
         <HomeWorkKpisBlock />
 
-        <!-- Atalhos compactos (sem texto instrutivo) -->
-        <div class="flex min-w-0 flex-wrap gap-1.5">
-          <UButton
-            to="/monitoring"
-            size="xs"
-            color="neutral"
-            variant="soft"
-            icon="i-lucide-layout-dashboard"
-            label="Fiscal"
-          />
-          <UButton
-            to="/monitoring/simples"
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            label="Simples"
-          />
-          <UButton
-            to="/monitoring/dctfweb"
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            label="DCTFWeb"
-          />
-          <UButton
-            to="/monitoring/mailbox"
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            label="Caixa postal"
-          />
-          <UButton
-            to="/monitoring/guides"
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            label="Guias"
-          />
-          <UButton
-            to="/monitoring/sitfis"
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            label="SITFIS"
-          />
-        </div>
+        <HomeFiscalSlice
+          :summary="summary"
+          :loading="loading"
+        />
+
+        <HomeSerproOffice
+          :summary="summary"
+          :loading="loading"
+        />
+
+        <HomeCommunication
+          :summary="summary"
+          :loading="loading"
+        />
 
         <HomeOperations
           :summary="summary"

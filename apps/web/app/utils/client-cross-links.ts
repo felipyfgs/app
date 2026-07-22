@@ -6,8 +6,6 @@
  */
 import type { ClientFiscalSectionKey } from '~/utils/client-fiscal-detail-navigation'
 
-export type { ClientFiscalSectionKey }
-
 export type ClientCrmTab
   = 'cadastro'
     | 'dados-adicionais'

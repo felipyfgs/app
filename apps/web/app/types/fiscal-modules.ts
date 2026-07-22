@@ -270,6 +270,7 @@ export const FISCAL_COUNTER_KPI_KEYS = [
 
 export interface FiscalModuleMetrics {
   total_clients?: number
+  tab_counts?: Record<string, number>
   partial_coverage?: boolean
   guide_payment_supported?: boolean
   open_messages?: number
@@ -452,6 +453,149 @@ export interface MonitoringCoverageContract {
   surfaces: MonitoringCoverageSurface[]
 }
 
+export type DeclarationCoverageState
+  = | 'FULL'
+    | 'PARTIAL'
+    | 'INVENTORIED'
+    | 'UNSUPPORTED'
+
+export interface DeclarationIntegrationCoverageEntry {
+  code: DeclarationsSubmodule
+  label: string
+  source_kind: 'INTEGRA_CONTADOR' | 'EXTERNAL'
+  source_label: string
+  coverage: DeclarationCoverageState | string
+  monitoring_supported: boolean
+  transmission_supported: boolean
+  operations_total: number
+  implemented_operations: number
+  inventoried_operations: number
+  routes: string[]
+  verified_at: string
+  note: string
+}
+
+export interface DeclarationIntegrationCoverage {
+  manifest_version: string
+  verified_at: string
+  truth_note: string
+  obligations: DeclarationIntegrationCoverageEntry[]
+}
+
+export type DeclarationOperationFlow = 'READ' | 'MUTATION'
+export type DeclarationOperationAvailability
+  = | 'AVAILABLE'
+    | 'CONTROLLED'
+    | 'PROSPECTION'
+    | 'NOT_IMPLEMENTED'
+
+export interface DeclarationOperationParam {
+  name: string
+  type: 'string' | 'integer' | 'month' | 'date' | 'object' | 'array' | 'base64'
+  required: boolean
+  label: string
+  format?: string
+  help?: string
+}
+
+export interface DeclarationOperation {
+  action_id: string
+  obligation: DeclarationsSubmodule
+  label: string
+  official_route: string
+  flow: DeclarationOperationFlow
+  official_state: 'PRODUCTION' | 'PROSPECTION' | string
+  implementation_state: string
+  availability: DeclarationOperationAvailability | string
+  executable: boolean
+  requires_preflight: boolean
+  is_billable: boolean
+  async: boolean
+  params: DeclarationOperationParam[]
+  result_kind: 'STRUCTURED' | 'DOCUMENT' | string
+}
+
+export interface DeclarationOperationCatalog {
+  verified_at: string
+  counts: {
+    total: number
+    production: number
+    prospection: number
+    read: number
+    mutation: number
+    production_read: number
+    production_mutation: number
+    executable: number
+  }
+  operations: DeclarationOperation[]
+}
+
+export interface DeclarationOperationPreflight {
+  action_id: string
+  eligible: boolean
+  replayed?: boolean
+  confirmation_required?: boolean
+  confirmation_phrase?: string | null
+  effect?: string | null
+  competence?: string | null
+  eligibility?: {
+    allowed?: boolean
+    codes?: string[]
+    primary_code?: string | null
+    messages?: string[]
+  } | null
+  cost_estimate?: Record<string, unknown> | null
+  estimated_cost_micros?: number | null
+  preflight_token?: string | null
+  preflight_expires_at?: string | null
+  idempotency_key?: string | null
+  mutation_operation_id?: number | null
+  status?: string | null
+  denial_code?: string | null
+  denial_message?: string | null
+  codes?: string[]
+}
+
+export interface DeclarationOperationMutation {
+  id: number
+  client_id: number
+  action_id: string
+  status: string
+  status_label?: string | null
+  competence_period_key?: string | null
+  effect_summary?: string | null
+  confirmation_phrase?: string | null
+  preflight_token?: string | null
+  preflight_expires_at?: string | null
+  result_code?: string | null
+  result_message?: string | null
+  denial_code?: string | null
+  denial_message?: string | null
+  evidence_ref?: string | null
+  external_correlation?: string | null
+  allows_reconciliation?: boolean
+  is_terminal?: boolean
+  is_uncertain?: boolean
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface DeclarationOperationReadResult {
+  action_id: string
+  eligibility: string
+  async: boolean
+  module_route?: string | null
+  result?: Record<string, unknown> | null
+  serpro_call?: string | null
+}
+
+export interface DeclarationCatalogPayload {
+  obligations: Array<Record<string, unknown>>
+  calendar: Record<string, unknown> | null
+  integration_coverage: DeclarationIntegrationCoverage
+  operation_catalog: DeclarationOperationCatalog
+}
+
 /** true somente com artefato real: available + href não vazio. */
 export function documentActionVisible(
   doc?: FiscalDocumentDescriptor | null
@@ -600,12 +744,16 @@ export type PgdasdRbt12Status
 export type PgdasdTrackingStatus
   = | 'NOT_CONFIGURED'
     | 'NO_HISTORY'
+    | 'SCHEDULED'
     | 'QUEUED'
+    | 'ACCEPTED'
     | 'SENT'
     | 'DELIVERED'
     | 'READ'
     | 'PARTIAL'
     | 'FAILED'
+    | 'UNKNOWN'
+    | 'SKIPPED_NO_DOCUMENT'
     | 'CANCELED'
 
 export type PgdasdCommunicationChannel = 'EMAIL' | 'WHATSAPP'
@@ -652,7 +800,7 @@ export interface PgdasdCommunicationPreference {
   email_enabled: boolean
   whatsapp_enabled: boolean
   lock_version: number
-  execution_mode: 'TEMPLATE_ONLY'
+  execution_mode: 'TEMPLATE_ONLY' | 'WHATSAPP_NATIVE'
   eligible_channels?: PgdasdCommunicationChannel[]
   tracking_status?: PgdasdTrackingStatus | string | null
   /** Canal + docs elegíveis — UI pode habilitar Send mesmo com provider off (fila). */
@@ -1098,7 +1246,7 @@ export interface PgdasdHistoryPayload {
 export interface PgdasdCommunicationPreview {
   client?: { id?: number | null, legal_name?: string | null } | null
   period_key?: string | null
-  execution_mode: 'TEMPLATE_ONLY'
+  execution_mode: 'TEMPLATE_ONLY' | 'WHATSAPP_NATIVE'
   can_send: boolean
   automatic_effective?: boolean
   provider_enabled?: boolean
@@ -1317,10 +1465,96 @@ export interface DctfwebClientDetail {
   links?: Record<string, string | null>
 }
 
+export interface InstallmentModalityCatalogItem {
+  code: string
+  label: string
+  regime: string
+  official_state: 'PRODUCTION' | 'PROSPECTION' | string
+  official_state_label: string
+  monitoring_supported: boolean
+  executable: boolean
+  required_power: string | null
+}
+
+export interface InstallmentParcel {
+  id: number
+  office_id: number
+  client_id: number
+  order_id: number
+  modality: string
+  parcel_key: string
+  parcel_number?: number | null
+  status: string
+  source_status?: string | null
+  due_at?: string | null
+  amount_cents?: number | null
+  document_available?: boolean
+  payment_status?: string | null
+  paid_at?: string | null
+  tax_guide_id?: number | null
+  logical_key?: string | null
+}
+
+export interface InstallmentPayment {
+  id: number
+  office_id: number
+  client_id: number
+  order_id: number
+  modality: string
+  payment_ref?: string | null
+  status: string
+  paid_at?: string | null
+  amount_cents?: number | null
+}
+
+export interface InstallmentOrder {
+  id: number
+  office_id: number
+  client_id: number
+  modality: string
+  regime?: string | null
+  external_order_id: string
+  situation?: string | null
+  source_status?: string | null
+  requested_at?: string | null
+  consolidated_at?: string | null
+  parcel_count?: number | null
+  total_amount_cents?: number | null
+  observed_at?: string | null
+  parcels?: InstallmentParcel[]
+  payments?: InstallmentPayment[]
+}
+
+export interface InstallmentMonitorResult {
+  modality: string
+  accepted: boolean
+  run?: Record<string, unknown>
+  error_code?: string
+}
+
+export interface InstallmentMonitorClientResult {
+  client_id: number
+  requested_modalities: number
+  accepted: number
+  failed: number
+  results: InstallmentMonitorResult[]
+}
+
+export interface InstallmentMonitorBulkResponse {
+  clients: number
+  requested_modalities_per_client: number
+  accepted: number
+  failed: number
+  results: InstallmentMonitorClientResult[]
+}
+
 export interface InstallmentsClientDetail {
   module_key?: 'installments' | string
   order_id?: number | null
   modality?: string | null
+  modalities?: string[]
+  order_count?: number
+  orders?: InstallmentOrder[]
   external_order_id?: string | null
   total_amount_cents?: number | null
   parcel_count?: number | null
@@ -1665,10 +1899,12 @@ export const DCTFWEB_TABS = [
 
 /** Abas locais do hub Declarações (não entram na URL). Default: PGDAS. */
 export const DECLARATIONS_TABS = [
-  { label: 'PGDAS', value: 'PGDAS' },
-  { label: 'DCTFWeb', value: 'DCTFWEB' },
-  { label: 'FGTS', value: 'FGTS' },
+  { label: 'PGDAS-D', value: 'PGDAS' },
   { label: 'DEFIS', value: 'DEFIS' },
+  { label: 'DASN-SIMEI', value: 'DASN_SIMEI' },
+  { label: 'DCTFWeb', value: 'DCTFWEB' },
+  { label: 'MIT', value: 'MIT' },
+  { label: 'FGTS Digital', value: 'FGTS' },
   { label: 'DIRF', value: 'DIRF' }
 ] as const
 
@@ -1680,6 +1916,7 @@ export function normalizeDeclarationsSubmodule(raw?: unknown): DeclarationsSubmo
     .toUpperCase()
     .replaceAll('-', '_')
   if (value === 'PGDASD' || value === 'PGDAS_D') return 'PGDAS'
+  if (value === 'DASNSIMEI') return 'DASN_SIMEI'
   if (value === 'DCTF') return 'DCTFWEB'
   const found = DECLARATIONS_TABS.find(tab => tab.value === value)
   return found?.value ?? 'PGDAS'

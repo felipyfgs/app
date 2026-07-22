@@ -110,6 +110,22 @@
       "gaps": ["L1", "L2", "L3"]
     },
     {
+      "id": "communication-inbox",
+      "title": "Atendimento WhatsApp compartilhado",
+      "critical": false,
+      "actors": ["office-admin", "operator", "viewer"],
+      "apiGroups": ["communication"],
+      "pageSections": ["communication"],
+      "pageRoutes": [],
+      "apiClients": ["app/composables/api/createCommunicationApi.ts"],
+      "integrations": ["communication-provider"],
+      "evidence": [
+        { "level": "L1", "file": "apps/api/tests/Feature/Communication/CommunicationApiTest.php", "anchor": "test_rbac_limits_non_admin_to_membership_and_hides_foreign_office" },
+        { "level": "L2", "file": "apps/web/tests/unit/communication-workspace-ui-gate.test.ts", "anchor": "integra REST office-scoped" }
+      ],
+      "gaps": ["L3"]
+    },
+    {
       "id": "fiscal-monitoring",
       "title": "Monitoramento fiscal e consultas",
       "critical": true,

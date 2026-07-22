@@ -25,6 +25,7 @@ const {
   moduleSupportsEnqueueRead
 } = useMonitoringActions(computed(() => props.moduleKey))
 const { requestConsult: requestPgmeiConsult } = usePgmeiMonitoring()
+const api = useApi()
 const toast = useToast()
 
 const open = ref(false)
@@ -37,6 +38,8 @@ const isMit = computed(() =>
   props.moduleKey === 'dctfweb' && normalizedSubmodule.value === 'MIT'
 )
 const isDctfweb = computed(() => props.moduleKey === 'dctfweb' && !isMit.value)
+const isInstallments = computed(() => props.moduleKey === 'installments')
+const isFgts = computed(() => props.moduleKey === 'fgts')
 const supportsSearch = computed(() =>
   isPgmei.value || moduleSupportsEnqueueRead.value
 )
@@ -45,7 +48,7 @@ function uniqueClientIds(values: number[]) {
   return [...new Set(values
     .map(Number)
     .filter(value => Number.isInteger(value) && value > 0))]
-    .slice(0, 100)
+    .slice(0, isInstallments.value ? 25 : 100)
 }
 
 const targets = computed(() => {
@@ -61,10 +64,18 @@ const visible = computed(() =>
 )
 const scopeLabel = computed(() => usesSelection.value ? 'selecionado(s)' : 'da página atual')
 const currentYear = computed(() => new Date().getFullYear())
-const actionLabel = computed(() => isDctfweb.value ? 'Consulta manual' : 'Buscar pendências')
+const actionLabel = computed(() => {
+  if (isInstallments.value) return 'Consultar todos'
+  if (isFgts.value) return 'Sincronizar eSocial'
+  return isDctfweb.value ? 'Consulta manual' : 'Buscar pendências'
+})
 const confirmationTitle = computed(() => isDctfweb.value
   ? 'Confirmar consulta manual DCTFWeb'
-  : 'Confirmar busca de pendências')
+  : isInstallments.value
+    ? 'Confirmar consulta de todos os parcelamentos'
+    : isFgts.value
+      ? 'Confirmar sincronização eSocial'
+      : 'Confirmar busca de pendências')
 const refreshTimers: ReturnType<typeof setTimeout>[] = []
 
 function scheduleRefreshes() {
@@ -92,7 +103,21 @@ async function submitSearch() {
   let queued = 0
   let failed = 0
 
-  if (isPgmei.value) {
+  if (isInstallments.value) {
+    queryingPgmei.value = true
+    try {
+      const response = await api.fiscal.installments.monitorAll({ client_ids: targets.value })
+      const feedback = installmentMonitorFeedback(response.data, targets.value.length)
+      queued = feedback.accepted
+      failed = feedback.failed
+    } catch {
+      const feedback = installmentMonitorFeedback(null, targets.value.length)
+      queued = feedback.accepted
+      failed = feedback.failed
+    } finally {
+      queryingPgmei.value = false
+    }
+  } else if (isPgmei.value) {
     queryingPgmei.value = true
     try {
       const response = await requestPgmeiConsult(targets.value, currentYear.value)
@@ -119,8 +144,14 @@ async function submitSearch() {
   }
 
   toast.add({
-    title: queued > 0 ? 'Busca de pendências solicitada' : 'Nenhuma consulta foi solicitada',
-    description: `${queued} enfileirada(s)${failed ? ` · ${failed} falha(s)` : ''}. Os resultados aparecerão após o processamento.`,
+    title: queued > 0
+      ? (isInstallments.value
+          ? 'Consulta de parcelamentos solicitada'
+          : isFgts.value
+            ? 'Sincronização eSocial solicitada'
+            : 'Busca de pendências solicitada')
+      : 'Nenhuma consulta foi solicitada',
+    description: `${queued} run(s) enfileirada(s)${failed ? ` · ${failed} falha(s)` : ''}. Os resultados aparecerão após o processamento.`,
     color: queued > 0 ? (failed ? 'warning' : 'success') : 'error'
   })
 
@@ -154,9 +185,13 @@ async function submitSearch() {
     v-if="visible"
     v-model:open="open"
     :title="confirmationTitle"
-    :description="`Será solicitada uma consulta de leitura para ${targets.length} cliente(s) ${scopeLabel}.`"
+    :description="isInstallments
+      ? `Serão consultadas até oito modalidades produtivas para ${targets.length} cliente(s) ${scopeLabel}.`
+      : isFgts
+        ? `Serão consultados S-1299 e S-5013 no eSocial BX para ${targets.length} cliente(s) ${scopeLabel}; guia e pagamento não serão consultados.`
+        : `Será solicitada uma consulta de leitura para ${targets.length} cliente(s) ${scopeLabel}.`"
     content-class="w-[calc(100vw-1rem)] sm:max-w-lg"
-    :confirm-label="isDctfweb ? 'Confirmar consulta' : 'Confirmar busca'"
+    :confirm-label="isDctfweb || isInstallments ? 'Confirmar consulta' : 'Confirmar busca'"
     confirm-icon="i-lucide-search-check"
     :loading="searching"
     confirm-test-id="monitoring-pending-search-confirm"
@@ -167,10 +202,18 @@ async function submitSearch() {
         color="warning"
         variant="subtle"
         icon="i-lucide-triangle-alert"
-        title="Uma consulta por cliente"
+        :title="isInstallments
+          ? 'Até oito consultas compostas por cliente'
+          : isFgts
+            ? 'Até quatro acessos oficiais por cliente'
+            : 'Uma consulta por cliente'"
       >
         <template #description>
-          A ação é somente de leitura, mas pode consumir a franquia da integração. Abrir esta confirmação não realiza nenhuma chamada.
+          {{ isInstallments
+            ? 'Cada modalidade é processada de forma independente e pode consumir a franquia da integração. PAEX e SIPADE não serão chamadas enquanto estiverem em prospecção.'
+            : isFgts
+              ? 'Cada tipo de evento pode consumir uma consulta de identificadores e outra de download da cota diária do empregador. S-5003 exige contexto do trabalhador e não é buscado automaticamente.'
+              : 'A ação é somente de leitura, mas pode consumir a franquia da integração. Abrir esta confirmação não realiza nenhuma chamada.' }}
         </template>
       </UAlert>
     </template>

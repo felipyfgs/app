@@ -8,11 +8,18 @@ import { canManageWorkCatalog, canViewWork } from '~/utils/permissions'
 
 export const WORK_NAV_ITEMS: NavLayerItem[] = [
   {
-    id: 'work-queue',
-    label: 'Minha fila',
-    icon: 'i-lucide-inbox',
+    id: 'work-overview',
+    label: 'Visão geral',
+    icon: 'i-lucide-layout-dashboard',
     to: '/work',
     exact: true,
+    capability: 'view-work'
+  },
+  {
+    id: 'work-queue',
+    label: 'Tarefas',
+    icon: 'i-lucide-inbox',
+    to: '/work/tasks',
     capability: 'view-work'
   },
   {

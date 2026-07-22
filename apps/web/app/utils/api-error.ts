@@ -1,6 +1,7 @@
 interface ApiErrorPayload {
   message?: string
   errors?: Record<string, string[]>
+  data?: unknown
 }
 
 function payloadFrom(error: unknown): ApiErrorPayload | undefined {
@@ -26,4 +27,8 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
 
 export function apiFieldErrors(error: unknown): Record<string, string[]> {
   return payloadFrom(error)?.errors || {}
+}
+
+export function apiErrorData<T>(error: unknown): T | null {
+  return (payloadFrom(error)?.data as T | undefined) ?? null
 }

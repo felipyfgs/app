@@ -8,8 +8,8 @@ const MIGRATED = [
   'app/pages/closing.vue',
   'app/pages/docs/imports/index.vue',
   'app/pages/docs/imports/[id].vue',
-  'app/pages/work/processes/index.vue',
   'app/pages/work/templates/index.vue',
+  'app/pages/work/processes/index.vue',
   'app/pages/admin/offices/index.vue',
   'app/pages/admin/serpro/catalog.vue',
   'app/pages/admin/serpro/contracts.vue',
@@ -33,5 +33,22 @@ describe('shell-list-migration-gate', () => {
       expect(source, rel).toContain('ShellDataTable')
       expect(source, rel).not.toMatch(/<UTable[\s>]/)
     }
+  })
+
+  it('visão de processos usa ShellDataTable sem UTable cru nem accordion', () => {
+    const page = readFileSync(resolve(process.cwd(), 'app/pages/work/processes/index.vue'), 'utf8')
+
+    expect(page).toContain('ShellDataTable')
+    expect(page).toContain('ShellListFilterToolbar')
+    expect(page).toContain('work-processes-table')
+    expect(page).not.toMatch(/<UTable[\s>]/)
+    expect(page).not.toContain('WorkProcessAccordionList')
+  })
+
+  it('ShellPagePanel encaminha #toolbar para o header do painel', () => {
+    const source = readFileSync(resolve(process.cwd(), 'app/components/shell/PagePanel.vue'), 'utf8')
+    expect(source).toContain('$slots.toolbar')
+    expect(source).toContain('<slot name="toolbar" />')
+    expect(source).toContain('<slot name="header" />')
   })
 })

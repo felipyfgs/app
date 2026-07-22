@@ -240,7 +240,7 @@ function onKpiSelect(key: Parameters<typeof fiscalKpiSituationFilter>[0]) {
 
         <div
           v-if="$slots.submodules"
-          class="w-full min-w-0 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]"
+          class="w-full min-w-0 shrink-0 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]"
           data-testid="fiscal-submodules"
         >
           <slot name="submodules" />

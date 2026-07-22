@@ -15,16 +15,18 @@ type Slice = { key: string, label: string, value: number, color: string }
 
 const slices = computed((): Slice[] => {
   const c = props.data?.counters
-  if (!c) return []
-  const other = (c.error ?? 0) + (c.processing ?? 0) + (c.unknown ?? 0) + (c.blocked ?? 0)
+  if (!c || props.data?.is_synthetic) return []
   const rows: Slice[] = [
     { key: 'up', label: 'Em dia', value: c.up_to_date ?? 0, color: 'var(--ui-success)' },
     { key: 'pending', label: 'Pendentes', value: c.pending ?? 0, color: 'var(--ui-warning)' },
-    { key: 'attention', label: 'Atenção', value: c.attention ?? 0, color: 'var(--ui-error)' }
+    { key: 'attention', label: 'Atenção', value: c.attention ?? 0, color: 'var(--ui-error)' },
+    { key: 'error', label: 'Erro', value: c.error ?? 0, color: 'var(--ui-error)' },
+    { key: 'processing', label: 'Processando', value: c.processing ?? 0, color: 'var(--ui-info)' },
+    { key: 'blocked', label: 'Bloqueados', value: c.blocked ?? 0, color: 'var(--ui-warning)' },
+    { key: 'unknown', label: 'Desconhecidos', value: c.unknown ?? 0, color: 'var(--ui-neutral)' },
+    { key: 'unsupported', label: 'Não suportados', value: c.unsupported ?? 0, color: 'var(--ui-neutral)' },
+    { key: 'not_applicable', label: 'Não aplicáveis', value: c.not_applicable ?? 0, color: 'var(--ui-neutral)' }
   ]
-  if (other > 0) {
-    rows.push({ key: 'other', label: 'Outros', value: other, color: 'var(--ui-neutral)' })
-  }
   return rows.filter(r => r.value > 0)
 })
 
@@ -35,9 +37,9 @@ const total = computed(() => slices.value.reduce((s, r) => s + r.value, 0))
 
 <template>
   <UPageCard
-    ref="chartCard"
     variant="subtle"
     data-testid="insights-sitfis-donut-card"
+    :ui="{ root: 'min-w-0 overflow-hidden', body: 'min-w-0' }"
   >
     <template #header>
       <div class="flex items-start justify-between gap-3">
@@ -71,8 +73,15 @@ const total = computed(() => slices.value.reduce((s, r) => s + r.value, 0))
     >
       Carregando…
     </div>
+    <MonitoringTableEmptyState
+      v-else-if="!data || data.is_synthetic || !slices.length"
+      kind="empty"
+      title="Sem situação fiscal consolidada"
+      :description="data?.is_synthetic ? 'A carteira não possui cobertura produtiva confirmada.' : 'Nenhum estado SITFIS foi registrado para o escritório.'"
+    />
     <div
       v-else
+      ref="chartCard"
       class="flex flex-wrap items-center gap-4"
     >
       <ClientOnly>

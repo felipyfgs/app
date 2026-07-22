@@ -98,6 +98,18 @@ export function normalizeFiscalSituation(value?: string | null): FiscalSituation
  * Evita badges em inglês cru (CONFIRMED, TRANSMITTED, …) na UI.
  */
 const ALIASES: Record<string, Omit<FiscalStatusMeta, 'code'>> = {
+  ACTIVE: {
+    label: 'Ativo',
+    description: 'Parcelamento ou operação em situação ativa.',
+    icon: 'i-lucide-circle-check',
+    color: 'success'
+  },
+  DEFAULT_RISK: {
+    label: 'Risco de inadimplência',
+    description: 'Há risco de inadimplência e o parcelamento requer acompanhamento.',
+    icon: 'i-lucide-triangle-alert',
+    color: 'warning'
+  },
   CONFIRMED: {
     label: 'Confirmado',
     description: 'Confirmação oficial registrada.',

@@ -20,9 +20,10 @@ const props = defineProps<{
   clientId: number | null
   clientName?: string | null
   preference?: PgdasdCommunicationPreference | null
-  /** Mantém o mesmo shell TEMPLATE_ONLY, isolando as APIs por domínio. */
-  context?: 'PGDASD' | 'PGMEI' | 'DCTFWEB' | 'SITFIS'
+  /** Mantém o mesmo shell e isola as APIs por domínio fiscal. */
+  context?: 'PGDASD' | 'PGMEI' | 'DCTFWEB' | 'SITFIS' | 'FGTS'
   year?: number | null
+  periodKey?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -35,6 +36,7 @@ const pgdasdMonitoring = usePgdasdMonitoring()
 const pgmeiMonitoring = usePgmeiMonitoring()
 const dctfwebMonitoring = useDctfwebMonitoring()
 const sitfisMonitoring = useSitfisMonitoring()
+const api = useApi()
 const { download: downloadAuthenticated, downloading: downloadBusy } = useAuthenticatedDownload()
 
 const previewLoading = ref(false)
@@ -49,11 +51,13 @@ let trackingGeneration = 0
 const isPgmei = computed(() => props.context === 'PGMEI')
 const isDctfweb = computed(() => props.context === 'DCTFWEB')
 const isSitfis = computed(() => props.context === 'SITFIS')
+const isFgts = computed(() => props.context === 'FGTS')
 
 function fetchPreview(clientId: number) {
   if (isPgmei.value) return pgmeiMonitoring.fetchPreview(clientId)
   if (isDctfweb.value) return dctfwebMonitoring.fetchPreview(clientId)
   if (isSitfis.value) return sitfisMonitoring.fetchPreview(clientId)
+  if (isFgts.value) return api.fiscal.communication.preview('fgts', clientId)
   return pgdasdMonitoring.fetchPreview(clientId)
 }
 
@@ -61,6 +65,7 @@ function fetchTracking(clientId: number) {
   if (isPgmei.value) return pgmeiMonitoring.fetchTracking(clientId)
   if (isDctfweb.value) return dctfwebMonitoring.fetchTracking(clientId)
   if (isSitfis.value) return sitfisMonitoring.fetchTracking(clientId)
+  if (isFgts.value) return api.fiscal.communication.tracking('fgts', clientId)
   return pgdasdMonitoring.fetchTracking(clientId)
 }
 
@@ -68,6 +73,7 @@ function requestSend(clientId: number) {
   if (isPgmei.value) return pgmeiMonitoring.requestSend(clientId)
   if (isDctfweb.value) return dctfwebMonitoring.requestSend(clientId)
   if (isSitfis.value) return sitfisMonitoring.requestSend(clientId)
+  if (isFgts.value) return api.fiscal.communication.send('fgts', clientId, props.periodKey || undefined)
   return pgdasdMonitoring.requestSend(clientId)
 }
 
@@ -83,6 +89,7 @@ function updatePreferences(
   if (isPgmei.value) return pgmeiMonitoring.updatePreferences(clientId, body)
   if (isDctfweb.value) return dctfwebMonitoring.updatePreferences(clientId, body)
   if (isSitfis.value) return sitfisMonitoring.updatePreferences(clientId, body)
+  if (isFgts.value) return api.fiscal.communication.updatePreference('fgts', clientId, body)
   return pgdasdMonitoring.updatePreferences(clientId, body)
 }
 
@@ -148,6 +155,7 @@ async function savePreferences() {
 
 function documentDownloadHref(document: { id: number, download_href?: string | null }): string | undefined {
   if (isPgmei.value) return document.download_href?.trim() || undefined
+  if (isFgts.value) return document.download_href?.trim() || undefined
   if (isDctfweb.value && props.clientId) {
     return dctfwebMonitoring.evidenceDownloadUrl(props.clientId, document.id)
   }
@@ -249,7 +257,7 @@ function openPreferences() {
   <ShellScrollableModal
     :open="previewOpen"
     title="Informações de comunicação"
-    description="Destinatários, documentos e preferências locais em modo somente leitura."
+    description="Destinatários, documento canônico, canais e elegibilidade do envio."
     content-class="w-[calc(100vw-1rem)] sm:max-w-3xl"
     :test-id="isPgmei ? 'pgmei-communication-preview' : 'pgdasd-communication-preview'"
     :show-default-footer="false"
@@ -263,20 +271,35 @@ function openPreferences() {
             {{ preview?.client?.legal_name || clientName || `Cliente #${clientId || '—'}` }}
           </p>
           <p class="text-xs text-muted">
-            {{ isPgmei ? `Ano ${year || '—'}` : isSitfis ? 'Situação Fiscal' : `PA ${formatPgdasdPeriod(preview?.period_key)}` }}
+            {{ isPgmei
+              ? `Ano ${year || '—'}`
+              : isSitfis
+                ? 'Situação Fiscal'
+                : isFgts
+                  ? `Competência ${formatPgdasdPeriod(preview?.period_key || periodKey)}`
+                  : `PA ${formatPgdasdPeriod(preview?.period_key)}` }}
           </p>
         </div>
 
         <UAlert
+          v-if="!previewLoading && preview && !preview.provider_enabled"
           color="warning"
           variant="subtle"
           icon="i-lucide-info"
           title="Comunicação externa indisponível"
         >
           <template #description>
-            Nenhum provider de e-mail ou WhatsApp está instalado nesta capacidade. Esta tela não envia mensagens.
+            Nenhum transporte está ativo nesta capacidade. A fila permanece fail-closed e não executa egress.
           </template>
         </UAlert>
+        <UAlert
+          v-else-if="preview?.provider_enabled && preview.execution_mode === 'WHATSAPP_NATIVE'"
+          color="success"
+          variant="subtle"
+          icon="i-lucide-message-circle-check"
+          title="WhatsApp nativo disponível"
+          description="O envio usa a inbox geral do escritório, aparece na timeline compartilhada e preserva receipts auditáveis."
+        />
 
         <UAlert v-if="previewError" color="error" :title="previewError">
           <template #actions>
@@ -395,7 +418,7 @@ function openPreferences() {
   <ShellScrollableModal
     :open="prefsOpen"
     title="Preferências de comunicação"
-    description="Canais e envio automático na consulta agendada."
+    description="Canais e intenção automática; o envio ocorre somente no cutoff da política."
     content-class="w-[calc(100vw-1rem)] sm:max-w-xl"
     :test-id="isPgmei ? 'pgmei-communication-preferences' : 'pgdasd-communication-preferences'"
     :show-default-footer="false"
@@ -424,7 +447,7 @@ function openPreferences() {
             <USwitch v-model="draftWhatsapp" size="sm" aria-label="Habilitar WhatsApp" />
           </div>
           <div class="flex items-center justify-between gap-3 p-3">
-            <span class="text-sm text-highlighted">Envio automático na consulta agendada</span>
+            <span class="text-sm text-highlighted">Envio automático no cutoff da política</span>
             <USwitch v-model="draftAutomatic" size="sm" aria-label="Envio automático" />
           </div>
         </div>
@@ -495,7 +518,13 @@ function openPreferences() {
                 >
                   <p class="font-medium text-highlighted">
                     {{ dispatch.recipient_masked || 'Destinatário protegido' }} ·
-                    {{ isPgmei ? `Ano ${dispatch.period_key || '—'}` : isSitfis ? (dispatch.period_key || 'SITFIS') : `PA ${formatPgdasdPeriod(dispatch.period_key)}` }}
+                    {{ isPgmei
+                      ? `Ano ${dispatch.period_key || '—'}`
+                      : isSitfis
+                        ? (dispatch.period_key || 'SITFIS')
+                        : isFgts
+                          ? `Competência ${formatPgdasdPeriod(dispatch.period_key)}`
+                          : `PA ${formatPgdasdPeriod(dispatch.period_key)}` }}
                   </p>
                   <p class="mt-1 text-xs text-muted">
                     {{ pgdasdTrackingMeta(dispatch.status).label }} ·

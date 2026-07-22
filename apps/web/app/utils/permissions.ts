@@ -2,12 +2,18 @@ import type { MeResponse, MeUser, OfficeRole } from '~/types/api'
 
 export type MeIdentity = MeUser | MeResponse | null | undefined
 
-export function unwrapMeUser(identity: MeIdentity): MeUser | null {
-  if (!identity) {
+function isIdentityObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function unwrapMeUser(identity: unknown): MeUser | null {
+  if (!isIdentityObject(identity)) {
     return null
   }
 
-  return 'data' in identity ? identity.data : identity
+  const candidate = 'data' in identity ? identity.data : identity
+
+  return isIdentityObject(candidate) ? candidate as unknown as MeUser : null
 }
 
 /**
@@ -140,6 +146,27 @@ export function canAssociateCategories(user?: MeUser | null): boolean {
 /** Triagem interna da Caixa Postal (ADMIN/OPERATOR). */
 export function canTriageMailbox(user?: MeUser | null): boolean {
   return hasMutationAccess(user)
+}
+
+/** Atendimento compartilhado: leitura é uma capacidade explícita do perfil. */
+export function canViewCommunication(user?: MeUser | null): boolean {
+  return hasEffectivePermission(user, 'communication.view')
+    ?? (!!user?.role || isPlatformPrivilegedContext(user))
+}
+
+/** Responder, anotar e triar conversas. */
+export function canReplyCommunication(user?: MeUser | null): boolean {
+  return hasEffectivePermission(user, 'communication.reply')
+    ?? hasMutationAccess(user)
+}
+
+/** Canais, membros, catálogos, retenção e políticas de automação. */
+export function canManageCommunication(user?: MeUser | null): boolean {
+  const canonical = hasEffectivePermission(user, 'communication.manage_inboxes')
+  if (canonical !== null) {
+    return canonical || hasEffectivePermission(user, 'communication.manage') === true
+  }
+  return hasOfficeAdminSurface(user)
 }
 
 /**

@@ -31,10 +31,9 @@ const xTicks = (_: number, i: number) => chartData.value[i]?.name ?? ''
 
 <template>
   <UPageCard
-    ref="chartCard"
     variant="subtle"
     data-testid="insights-rbt12-card"
-    :ui="{ root: 'overflow-visible', body: 'px-0! pt-0! pb-3!' }"
+    :ui="{ root: 'min-w-0 overflow-hidden', body: 'min-w-0 px-0! pt-0! pb-3!' }"
   >
     <template #header>
       <div>
@@ -47,44 +46,49 @@ const xTicks = (_: number, i: number) => chartData.value[i]?.name ?? ''
       </div>
     </template>
 
-    <p
-      v-if="error"
-      class="px-4 py-6 text-sm text-error"
+    <div
+      ref="chartCard"
+      class="min-w-0 overflow-hidden"
     >
-      {{ error }}
-    </p>
-    <ClientOnly>
-      <VisXYContainer
-        v-if="!error && chartReady"
-        :data="chartData"
-        :padding="{ top: 24, bottom: 8, left: 8, right: 8 }"
-        class="h-64 w-full"
-        :width="chartWidth"
+      <p
+        v-if="error"
+        class="px-4 py-6 text-sm text-error"
       >
-        <VisGroupedBar
-          :x="x"
-          :y="y"
-          color="var(--ui-success)"
-          :bar-padding="0.25"
-        />
-        <VisAxis
-          type="x"
-          :x="x"
-          :tick-format="xTicks"
-          :tick-line="false"
-        />
-        <VisAxis
-          type="y"
-          :tick-format="(v: number) => `${v.toFixed(1)} M`"
-        />
-        <VisTooltip />
-      </VisXYContainer>
-      <div
-        v-else-if="!error"
-        class="flex h-64 items-center justify-center px-4 text-center text-sm text-muted"
-      >
-        {{ loading ? 'Carregando…' : 'Sem RBT12 parseado na carteira PGDAS-D.' }}
-      </div>
-    </ClientOnly>
+        {{ error }}
+      </p>
+      <ClientOnly>
+        <VisXYContainer
+          v-if="!error && chartReady"
+          :data="chartData"
+          :padding="{ top: 24, bottom: 8, left: 8, right: 8 }"
+          class="h-64 w-full"
+          :width="chartWidth"
+        >
+          <VisGroupedBar
+            :x="x"
+            :y="y"
+            color="var(--ui-success)"
+            :bar-padding="0.25"
+          />
+          <VisAxis
+            type="x"
+            :x="x"
+            :tick-format="xTicks"
+            :tick-line="false"
+          />
+          <VisAxis
+            type="y"
+            :tick-format="(v: number) => `${v.toFixed(1)} M`"
+          />
+          <VisTooltip />
+        </VisXYContainer>
+        <div
+          v-else-if="!error"
+          class="flex h-64 items-center justify-center px-4 text-center text-sm text-muted"
+        >
+          {{ loading ? 'Carregando…' : 'Sem RBT12 parseado na carteira PGDAS-D.' }}
+        </div>
+      </ClientOnly>
+    </div>
   </UPageCard>
 </template>

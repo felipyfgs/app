@@ -2,7 +2,12 @@
  * Ações reais da carteira fiscal (8.1–8.6).
  * Conecta UI a endpoints existentes; nunca simula sucesso visual sem backend.
  */
-import type { ExportFilters, FiscalCategory, FiscalMonitoringRun } from '~/types/api'
+import type {
+  ExportFilters,
+  FgtsEsocialSyncAccepted,
+  FiscalCategory,
+  FiscalMonitoringRun
+} from '~/types/api'
 import type { FiscalModuleKey } from '~/types/fiscal-modules'
 import { defaultReadCodesForModule } from '~/utils/fiscal-high-risk'
 import {
@@ -117,7 +122,7 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
     operation_code?: string
     /** Lotes exibem um único feedback consolidado no caller. */
     silent?: boolean
-  }): Promise<FiscalMonitoringRun | Record<string, unknown> | null> {
+  }): Promise<FiscalMonitoringRun | FgtsEsocialSyncAccepted | Record<string, unknown> | null> {
     if (!canTriggerSync.value) {
       if (!input.silent) {
         toast.add({ title: 'Sem permissão para enfileirar consultas.', color: 'warning' })
@@ -199,7 +204,7 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
             color: 'success'
           })
         }
-        return res.data as Record<string, unknown>
+        return res.data
       }
 
       if (key === 'dctfweb') {
@@ -217,6 +222,22 @@ export function useMonitoringActions(moduleKey: MaybeRefOrGetter<FiscalModuleKey
           })
         }
         return res.data
+      }
+
+      if (key === 'installments') {
+        const res = await api.fiscal.installments.monitorAll({
+          client_ids: [input.client_id]
+        })
+        if (!input.silent) {
+          toast.add({
+            title: res.data.accepted > 0
+              ? 'Consulta de parcelamentos solicitada'
+              : 'Nenhuma consulta foi solicitada',
+            description: `${res.data.accepted} modalidade(s) enfileirada(s)${res.data.failed ? ` · ${res.data.failed} falha(s)` : ''}.`,
+            color: res.data.accepted > 0 ? (res.data.failed ? 'warning' : 'success') : 'error'
+          })
+        }
+        return res.data as unknown as Record<string, unknown>
       }
 
       const defaults = defaultReadCodesForModule(key)

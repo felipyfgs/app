@@ -91,6 +91,8 @@ export interface WorkProcessesSavedFilterPayload {
   competence: string
   /** 'all' ou status do processo. */
   status: string
+  client_id: number | null
+  department_id: number | null
 }
 
 /** Payload closing.list v1. */

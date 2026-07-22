@@ -1,5 +1,13 @@
 import type {
   FgtsCoverageManifest,
+  FgtsDigitalCoverage,
+  FgtsDigitalPreviewResponse,
+  FgtsDigitalReadiness,
+  FgtsDigitalRun,
+  FgtsDigitalSessionDescriptor,
+  FgtsEsocialReadiness,
+  FgtsEsocialSyncAccepted,
+  FgtsEsocialSyncRequest,
   FiscalCategory,
   FiscalFinding,
   FiscalMonitoringRun,
@@ -44,9 +52,24 @@ import type {
   ManualConsultInventory,
   ManualConsultExecuteResult,
   FiscalPnrRenunciation,
-  MonitoringCoverageContract
+  MonitoringCoverageContract,
+  InstallmentModalityCatalogItem,
+  InstallmentMonitorBulkResponse,
+  InstallmentOrder,
+  InstallmentParcel,
+  DeclarationCatalogPayload,
+  DeclarationOperationMutation,
+  DeclarationOperationPreflight,
+  DeclarationOperationReadResult
 } from '~/types/fiscal-modules'
 import type { MonitoringInsightsPayload } from '~/types/monitoring-insights'
+import type {
+  MailboxCostPreview,
+  MailboxMonitoringMode,
+  MailboxMonitoringStatus,
+  MailboxSyncPreview,
+  MailboxSyncResponse
+} from '~/types/mailbox-monitoring'
 import type { ApiClient, ApiUrl } from './types'
 import { createMeiPublicServicesApi } from './createMeiPublicServicesApi'
 
@@ -64,6 +87,37 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
         client<{ data: MonitoringInsightsPayload }>('/api/v1/fiscal/monitoring/insights', {
           signal: options?.signal
         }),
+      communication: {
+        updatePreference: (
+          module: 'fgts' | 'sitfis' | 'mit',
+          clientId: number,
+          body: {
+            automatic_requested: boolean
+            email_enabled: boolean
+            whatsapp_enabled: boolean
+            lock_version: number
+          }
+        ) => client<{ data: PgdasdCommunicationPreference }>(
+          `/api/v1/fiscal/${module}/clients/${clientId}/communication-preference`,
+          { method: 'PATCH', body }
+        ).then(response => response.data),
+        preview: (module: 'fgts' | 'sitfis' | 'mit', clientId: number) =>
+          client<{ data: PgdasdCommunicationPreview }>(
+            `/api/v1/fiscal/${module}/clients/${clientId}/communication-preview`
+          ).then(response => response.data),
+        tracking: (module: 'fgts' | 'sitfis' | 'mit', clientId: number) =>
+          client<{ data: PgdasdCommunicationTracking }>(
+            `/api/v1/fiscal/${module}/clients/${clientId}/communications`
+          ).then(response => response.data),
+        send: (
+          module: 'fgts' | 'sitfis' | 'mit',
+          clientId: number,
+          periodKey?: string
+        ) => client<{ data: { queued: number, provider_enabled: boolean, dispatches: unknown[] } }>(
+          `/api/v1/fiscal/${module}/clients/${clientId}/communication-send`,
+          { method: 'POST', body: periodKey ? { period_key: periodKey } : {} }
+        ).then(response => response.data)
+      },
       categories: () =>
         client<{ data: FiscalCategory[] }>('/api/v1/fiscal/categories'),
       categoryLinks: {
@@ -459,16 +513,16 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
       },
       installments: {
         modalities: () =>
-          client<{ data: Array<Record<string, unknown>> }>('/api/v1/fiscal/installments/modalities'),
-        orders: (params?: { page?: number, per_page?: number, client_id?: number }) =>
-          client<{ data: Array<Record<string, unknown>>, meta?: PageMeta, current_page?: number, last_page?: number, total?: number }>(
+          client<{ data: InstallmentModalityCatalogItem[] }>('/api/v1/fiscal/installments/modalities'),
+        orders: (params?: { page?: number, per_page?: number, client_id?: number, modality?: string }) =>
+          client<{ data: InstallmentOrder[], meta?: PageMeta, current_page?: number, last_page?: number, total?: number }>(
             '/api/v1/fiscal/installments/orders',
             { query: params }
           ),
         order: (id: number) =>
-          client<{ data: Record<string, unknown> }>(`/api/v1/fiscal/installments/orders/${id}`),
-        parcels: (params?: { page?: number, per_page?: number, order_id?: number }) =>
-          client<{ data: Array<Record<string, unknown>>, meta?: PageMeta }>('/api/v1/fiscal/installments/parcels', {
+          client<{ data: InstallmentOrder }>(`/api/v1/fiscal/installments/orders/${id}`),
+        parcels: (params?: { page?: number, per_page?: number, client_id?: number, order_id?: number, modality?: string }) =>
+          client<{ data: InstallmentParcel[], meta?: PageMeta }>('/api/v1/fiscal/installments/parcels', {
             query: params
           }),
         guides: (params?: { page?: number, per_page?: number, client_id?: number }) =>
@@ -476,7 +530,12 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
             query: params
           }),
         enqueue: (body: Record<string, unknown>) =>
-          client<{ data: unknown }>('/api/v1/fiscal/installments/runs', { method: 'POST', body })
+          client<{ data: unknown }>('/api/v1/fiscal/installments/runs', { method: 'POST', body }),
+        monitorAll: (body: { client_ids: number[], correlation_id?: string }) =>
+          client<{ data: InstallmentMonitorBulkResponse }>('/api/v1/fiscal/installments/monitor', {
+            method: 'POST',
+            body
+          })
       },
       sitfis: {
         history: (clientId: number) =>
@@ -583,6 +642,40 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
           client<{ data: Record<string, unknown> }>('/api/v1/fiscal/mailbox/state', { query: params }),
         alerts: (params?: { client_id?: number }) =>
           client<{ data: Array<Record<string, unknown>> }>('/api/v1/fiscal/mailbox/alerts', { query: params }),
+        monitoring: {
+          get: () =>
+            client<{ data: MailboxMonitoringStatus }>('/api/v1/fiscal/mailbox/monitoring'),
+          update: (body: {
+            enabled?: boolean
+            mode?: MailboxMonitoringMode
+            daily_time?: string
+            reconciliation_days?: number
+            auto_detail_limit?: number
+            monthly_budget_micros?: number | null
+          }) => client<{ data: MailboxMonitoringStatus }>('/api/v1/fiscal/mailbox/monitoring', {
+            method: 'PATCH',
+            body
+          }),
+          preview: (body: { force_all?: boolean }) =>
+            client<{ data: MailboxSyncPreview }>('/api/v1/fiscal/mailbox/monitoring/preview', {
+              method: 'POST',
+              body
+            }),
+          sync: (body: { force_all?: boolean, idempotency_key: string }) =>
+            client<{ data: MailboxSyncResponse }>('/api/v1/fiscal/mailbox/monitoring/sync', {
+              method: 'POST',
+              body
+            })
+        },
+        detailPreview: (id: number) =>
+          client<{ data: { has_body: boolean, cost: MailboxCostPreview } }>(
+            `/api/v1/fiscal/mailbox/messages/${id}/detail-preview`
+          ),
+        enqueueDetail: (id: number) =>
+          client<{ data: { status: 'ACCEPTED', run_id: number, cost: MailboxCostPreview } }>(
+            `/api/v1/fiscal/mailbox/messages/${id}/detail`,
+            { method: 'POST' }
+          ),
         bodyDownloadUrl: (id: number) =>
           apiUrl(`/api/v1/fiscal/mailbox/messages/${id}/body`),
         attachmentDownloadUrl: (messageId: number, attachmentId: number) =>
@@ -590,7 +683,7 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
       },
       declarations: {
         catalog: () =>
-          client<{ data: Array<Record<string, unknown>> }>('/api/v1/fiscal/declarations/catalog'),
+          client<{ data: DeclarationCatalogPayload }>('/api/v1/fiscal/declarations/catalog'),
         summary: (params?: { client_id?: number }) =>
           client<{ data: Record<string, unknown> }>('/api/v1/fiscal/declarations/summary', { query: params }),
         list: (params?: {
@@ -605,7 +698,44 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
             { query: params }
           ),
         get: (id: number) =>
-          client<{ data: Record<string, unknown> }>(`/api/v1/fiscal/declarations/${id}`)
+          client<{ data: Record<string, unknown> }>(`/api/v1/fiscal/declarations/${id}`),
+        operations: {
+          read: (
+            actionId: string,
+            body: { client_id: number, confirmed: true, params: Record<string, unknown> }
+          ) => client<{ data: DeclarationOperationReadResult }>(
+            `/api/v1/fiscal/declarations/operations/${encodeURIComponent(actionId)}/read`,
+            { method: 'POST', body }
+          ),
+          preflight: (
+            actionId: string,
+            body: { client_id: number, idempotency_key: string, params: Record<string, unknown> }
+          ) => client<{ data: DeclarationOperationPreflight }>(
+            `/api/v1/fiscal/declarations/operations/${encodeURIComponent(actionId)}/preflight`,
+            { method: 'POST', body }
+          ),
+          execute: (
+            actionId: string,
+            body: {
+              client_id: number
+              idempotency_key: string
+              preflight_token: string
+              confirmation_phrase: string
+              confirmed: boolean
+              params: Record<string, unknown>
+            }
+          ) => client<{ data: DeclarationOperationMutation }>(
+            `/api/v1/fiscal/declarations/operations/${encodeURIComponent(actionId)}/execute`,
+            { method: 'POST', body }
+          ),
+          getMutation: (id: number) => client<{ data: DeclarationOperationMutation }>(
+            `/api/v1/fiscal/declarations/operations/mutations/${id}`
+          ),
+          reconcile: (id: number) => client<{ data: DeclarationOperationMutation }>(
+            `/api/v1/fiscal/declarations/operations/mutations/${id}/reconcile`,
+            { method: 'POST' }
+          )
+        }
       },
       guides: {
         list: (params?: {
@@ -730,6 +860,10 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
       fgts: {
         coverage: () =>
           client<{ data: FgtsCoverageManifest }>('/api/v1/fiscal/fgts/coverage'),
+        readiness: (clientId: number) =>
+          client<{ data: FgtsEsocialReadiness }>('/api/v1/fiscal/fgts/readiness', {
+            query: { client_id: clientId }
+          }),
         competences: (params?: {
           page?: number
           per_page?: number
@@ -758,8 +892,45 @@ export function createFiscalApi(client: ApiClient, apiUrl: ApiUrl) {
             meta?: PageMeta
             coverage?: Record<string, unknown>
           }>('/api/v1/fiscal/fgts/events', { query: params }),
-        sync: (body: Record<string, unknown>) =>
-          client<{ data: unknown }>('/api/v1/fiscal/fgts/sync', { method: 'POST', body })
+        sync: (body: FgtsEsocialSyncRequest) =>
+          client<{ data: FgtsEsocialSyncAccepted }>('/api/v1/fiscal/fgts/sync', {
+            method: 'POST',
+            body
+          }),
+        digital: {
+          coverage: () =>
+            client<{ data: FgtsDigitalCoverage }>('/api/v1/fiscal/fgts/digital/coverage'),
+          readiness: (clientId: number) =>
+            client<{ data: FgtsDigitalReadiness }>('/api/v1/fiscal/fgts/digital/readiness', {
+              query: { client_id: clientId }
+            }),
+          runs: (params?: { client_id?: number, page?: number, per_page?: number }) =>
+            client<{ data: FgtsDigitalRun[], current_page?: number, last_page?: number, total?: number }>(
+              '/api/v1/fiscal/fgts/digital/runs',
+              { query: params }
+            ),
+          sync: (body: { client_id: number, parameters?: Record<string, unknown> }) =>
+            client<{ data: FgtsDigitalRun }>('/api/v1/fiscal/fgts/digital/sync', { method: 'POST', body }),
+          syncNow: (body: { client_id: number, parameters?: Record<string, unknown> }) =>
+            client<{ data: FgtsDigitalRun }>('/api/v1/fiscal/fgts/digital/sync-now', { method: 'POST', body }),
+          preview: (body: { client_id: number, guide_type: string, parameters: Record<string, unknown> }) =>
+            client<{ data: FgtsDigitalPreviewResponse }>('/api/v1/fiscal/fgts/digital/preview', { method: 'POST', body }),
+          emit: (previewRunId: number, body: { preview_token: string, confirmation_phrase: string }) =>
+            client<{ data: { run: FgtsDigitalRun, reused: boolean } }>(
+              `/api/v1/fiscal/fgts/digital/previews/${previewRunId}/emit`,
+              { method: 'POST', body }
+            ),
+          importSession: (body: { client_id: number, storage_state: Record<string, unknown> }) =>
+            client<{ data: FgtsDigitalSessionDescriptor }>('/api/v1/fiscal/fgts/digital/sessions/import', {
+              method: 'POST',
+              body
+            }),
+          createRepresentation: (body: { client_id: number, valid_to: string, confirmed: boolean, profile_type?: string }) =>
+            client<{ data: Record<string, unknown> }>('/api/v1/fiscal/fgts/digital/representations', {
+              method: 'POST',
+              body
+            })
+        }
       },
       mutations: {
         confirmTotp: (code: string) =>

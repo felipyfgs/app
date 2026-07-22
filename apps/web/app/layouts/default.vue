@@ -18,11 +18,14 @@ import {
  * - SEM v-model / modelValue / remount / handlers de “nudge”
  * - type padrão = multiple (como o template e o default do componente)
  *
- * Só adaptamos: OfficeIdentity, destinos/permissões, command palette, slot flex.
+ * Só adaptamos: OfficeIdentity, destinos/permissões, command palette.
+ * Slot direto no UDashboardGroup (sem wrapper) — obrigatório para
+ * master–detalhe (work, communication, mailbox) com UDashboardPanel irmãos.
  *
  * @see .local/reference/nuxt-dashboard-template/app/layouts/default.vue
  * @see https://ui.nuxt.com/docs/components/navigation-menu#orientation
  * @see https://ui.nuxt.com/docs/components/dashboard-sidebar
+ * @see https://ui.nuxt.com/docs/components/dashboard-group
  */
 const route = useRoute()
 const open = ref(false)
@@ -154,9 +157,7 @@ const groups = computed(() => {
 
     <UDashboardSearch :groups="groups" />
 
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col">
-      <slot />
-    </div>
+    <slot />
 
     <NotificationsSlideover />
   </UDashboardGroup>

@@ -288,6 +288,45 @@ describe('tabs locais', () => {
     }
   })
 
+  it('padroniza Parcelamentos e Declarações pela cápsula KPI de Simples Nacional', () => {
+    const paths = [
+      'app/components/monitoring/KpiStrip.vue',
+      'app/pages/monitoring/installments.vue',
+      'app/pages/monitoring/declarations.vue'
+    ]
+
+    for (const path of paths) {
+      const source = readFileSync(resolve(process.cwd(), path), 'utf8')
+      const start = source.indexOf('<ShellScrollableTabs')
+      const markup = source.slice(start, source.indexOf('/>', start) + 2)
+
+      expect(start, path).toBeGreaterThan(-1)
+      expect(markup, path).toContain('size="md"')
+      expect(markup, path).toContain('class="w-full min-w-0 max-w-full"')
+      expect(markup, path).not.toContain('color=')
+      expect(markup, path).not.toContain('variant=')
+      expect(markup, path).not.toContain(':ui=')
+    }
+
+    const kpiSource = readFileSync(
+      resolve(process.cwd(), 'app/components/monitoring/KpiStrip.vue'),
+      'utf8'
+    )
+    const installmentsSource = readFileSync(
+      resolve(process.cwd(), 'app/pages/monitoring/installments.vue'),
+      'utf8'
+    )
+    const declarationsSource = readFileSync(
+      resolve(process.cwd(), 'app/pages/monitoring/declarations.vue'),
+      'utf8'
+    )
+
+    expect(kpiSource).toContain('badge: loadingPlaceholder ? \'…\' : count')
+    expect(installmentsSource).toContain('badge: tabBadge(\'all\')')
+    expect(installmentsSource).toContain('badge: tabBadge(item.code)')
+    expect(declarationsSource).toContain('badge: tabBadge(t.value)')
+  })
+
   it('simplifica o chrome da carteira Simples Nacional sem afetar outras carteiras', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'app/components/monitoring/simples-mei/Portfolio.vue'),

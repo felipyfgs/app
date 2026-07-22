@@ -1046,6 +1046,114 @@ export interface BackupStatus {
   never: boolean
 }
 
+export interface OperationsSerproAuthorization {
+  configured: boolean
+  status: string | null
+  actions_required?: Array<{ code?: string, message?: string }>
+  has_termo?: boolean
+  has_procurador_token?: boolean
+  termo_valid_to?: string | null
+  procurador_token_expires_at?: string | null
+  next_action?: string | null
+}
+
+export interface OperationsProxyPowers {
+  active: number
+  expired: number
+  revoked: number
+  insufficient: number
+  expiring_30d: number
+}
+
+export interface OperationsModulesSummary {
+  kill_switch: boolean
+  global_enabled: boolean
+  modules: Record<string, { enabled: boolean, mutating_enabled: boolean }>
+}
+
+export interface OperationsFiscalPending {
+  open_total: number
+  open_critical: number
+  open_high: number
+  due_7d: number
+}
+
+export interface OperationsFiscalCoverage {
+  by_situation: Record<string, number>
+  by_coverage: Record<string, number>
+  up_to_date_full_only: number
+  note?: string
+}
+
+export interface OperationsUsageSummary {
+  available: boolean
+  period_year?: number | null
+  period_month?: number | null
+  used_quantity?: number
+  reserved_open_quantity?: number
+  franchise_quota?: number | null
+  remaining?: number | null
+  franchise_ratio?: number | null
+  alert_threshold_reached?: boolean
+  deep_link?: string
+}
+
+export interface OperationsSubscriptionSummary {
+  plan?: string | null
+  status?: string | null
+  limits?: Record<string, unknown> | null
+  allows_mutations?: boolean
+  allows_external_calls?: boolean
+}
+
+export interface OperationsBlocks {
+  blocked: boolean
+  reasons: string[]
+  next_action?: string | null
+}
+
+export interface OperationsUncertainResults {
+  mutations_uncertain: number
+  note?: string
+}
+
+export interface OperationsPlatformHealth {
+  environment?: string
+  available: boolean
+  status?: string
+  kill_switch: boolean
+  circuit_open: boolean
+  cert_expiring_soon: boolean
+}
+
+export interface OperationsCommunicationSummary {
+  available: boolean
+  global_enabled?: boolean
+  gateway_enabled?: boolean
+  office_enabled?: boolean
+  inboxes_by_status?: Record<string, number>
+  outbox_retry?: number
+  outbox_dead?: number
+  conversations_open?: number
+  conversations_pending?: number
+  deep_link?: string
+}
+
+export interface OperationsMeiAutomationSummary {
+  available: boolean
+  failed_24h?: number
+  uncertain_24h?: number
+  running?: number
+  deep_link?: string
+}
+
+export interface OperationsFiscalRunsSummary {
+  available: boolean
+  failed_24h?: number
+  running?: number
+  deep_link?: string
+}
+
 export interface OperationsSummary {
   clients: number
   establishments: number
@@ -1067,6 +1175,20 @@ export interface OperationsSummary {
     breaker_global: string
     backlog: number
   }
+  serpro_authorization?: OperationsSerproAuthorization
+  proxy_powers?: OperationsProxyPowers
+  modules?: OperationsModulesSummary
+  fiscal_pending?: OperationsFiscalPending
+  fiscal_coverage?: OperationsFiscalCoverage
+  usage?: OperationsUsageSummary
+  subscription?: OperationsSubscriptionSummary | null
+  blocks?: OperationsBlocks
+  uncertain_results?: OperationsUncertainResults
+  platform_health?: OperationsPlatformHealth
+  guides_due_7d?: number
+  communication?: OperationsCommunicationSummary
+  mei_automation?: OperationsMeiAutomationSummary
+  fiscal_runs?: OperationsFiscalRunsSummary
   generated_at: string
 }
 
@@ -2014,13 +2136,159 @@ export interface FgtsCoverageManifest {
   coverage_label: string
   system_code?: string
   service_code?: string
+  source?: 'ESOCIAL_BX_OFFICIAL' | string
+  source_available: boolean
+  transport?: 'SOAP_1_1_MTLS' | string
+  driver?: 'disabled' | 'official_bx' | string
+  environment?: 'restricted' | 'production' | string
+  accepted_events?: Array<{ code: string, label: string }>
   supported_events?: Array<{ code: string, label: string }>
+  automatic_events?: Array<{ code: string, label: string }>
+  context_required_events?: Array<{
+    code: string
+    label: string
+    required_context: string
+  }>
   independent_states?: Record<string, string>
   limitations?: string[] | Array<Record<string, unknown>>
   declares_fgts_digital_debt: boolean
   scraping_allowed: boolean
   portal_fallback: boolean
   totalizer_absence_window_hours?: number
+  official_limits?: {
+    blocked_days: number[]
+    daily_accesses_per_employer: number
+    max_ids_per_download: number
+    minimum_lag_minutes: number
+    max_query_interval_days: number
+    parallel_requests_allowed: boolean
+  }
+  documentation_url?: string
+  official_links?: {
+    manual?: string
+    announcement?: string
+    communication_package?: string
+  }
+  wsdl_sha256?: {
+    identifiers?: string
+    downloads?: string
+  }
+}
+
+export interface FgtsEsocialReadiness {
+  ready: boolean
+  driver: string
+  environment: string
+  blockers: Array<{ code: string, message: string }>
+  daily_limit: number
+  locally_consumed: number
+  locally_remaining: number
+  credential?: {
+    fingerprint_suffix: string
+    expires_at?: string | null
+  } | null
+  blocked_days: number[]
+  quota_scope: string
+}
+
+export interface FgtsEsocialSyncRequest {
+  client_id: number
+  competence_period_key: string
+  establishment_id?: number | null
+  dispatch_job?: boolean
+  create_run?: boolean
+  correlation_id?: string
+}
+
+export interface FgtsEsocialSyncAccepted {
+  queued: true
+  client_id: number
+  competence_period_key: string
+  establishment_id?: number | null
+  run?: FiscalMonitoringRun | null
+  coverage: FgtsCoverageManifest
+}
+
+export interface FgtsDigitalCoverage {
+  source: 'FGTS_DIGITAL_PORTAL'
+  driver: 'disabled' | 'fixture' | 'portal_browser' | string
+  official_portal: string
+  capabilities: {
+    query_guides: boolean
+    query_payment: boolean
+    download_pdf: boolean
+    quick_guides: string[]
+    parameterized_preview: boolean
+    emit_after_explicit_authorization: boolean
+    pix_payment: false
+  }
+  human_challenge_policy: 'PAUSE_AND_IMPORT_AUTHORIZED_SESSION' | string
+  fail_closed: boolean
+  portal_manifest_version: string
+  scheduler: {
+    enabled: boolean
+    emissions_enabled: boolean
+    max_amount_cents: number
+  }
+}
+
+export interface FgtsDigitalSessionDescriptor {
+  id: number
+  office_id: number
+  client_id: number
+  credential_source: 'CLIENT' | 'OFFICE'
+  profile_type: 'EMPREGADOR' | 'PROCURADOR' | 'PROCURADOR_PJ' | 'RESPONSAVEL_LEGAL' | string
+  status: 'READY' | 'CHALLENGE' | 'EXPIRED' | 'REVOKED' | string
+  expires_at?: string | null
+  last_used_at?: string | null
+  created_at?: string | null
+}
+
+export interface FgtsDigitalReadiness {
+  driver: 'disabled' | 'fixture' | 'portal_browser' | string
+  ready_for_read: boolean
+  ready_for_mutation: boolean
+  mutations_enabled: boolean
+  credential_source?: 'CLIENT' | 'OFFICE' | null
+  has_authorized_session: boolean
+  session?: FgtsDigitalSessionDescriptor | null
+  human_challenge_possible: boolean
+  captcha: {
+    driver: 'disabled' | 'nopecha' | string
+    external_api?: boolean
+    shared_proxy_configured?: boolean
+    max_attempts?: number
+    max_credits_per_run?: number
+  }
+  blockers: Array<{ code: string, message: string }>
+  supports_pdf_download: boolean
+  supports_pix_payment: false
+}
+
+export interface FgtsDigitalRun {
+  id: number
+  office_id: number
+  client_id: number
+  operation: 'READINESS' | 'AUTHENTICATE' | 'QUERY_GUIDES' | 'QUERY_PAYMENT' | 'PREVIEW' | 'EMIT_GUIDE' | 'DOWNLOAD_GUIDE' | string
+  guide_type?: 'MONTHLY' | 'TERMINATION' | 'CONSIGNMENT' | 'MIXED' | 'PARAMETERIZED' | string | null
+  status: 'PENDING' | 'PREVIEWED' | 'AUTHORIZED' | 'RUNNING' | 'SUCCEEDED' | 'REUSED' | 'HUMAN_CHALLENGE_REQUIRED' | 'PORTAL_CONTRACT_CHANGED' | 'RECONCILIATION_REQUIRED' | 'BLOCKED' | 'FAILED' | string
+  code?: string | null
+  confirmation_phrase?: string | null
+  preview_expires_at?: string | null
+  request?: Record<string, unknown> | null
+  result?: Record<string, unknown> | null
+  tax_guide_id?: number | null
+  tax_guide_version_id?: number | null
+  fiscal_mutation_operation_id?: number | null
+  correlation_id?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  created_at?: string | null
+}
+
+export interface FgtsDigitalPreviewResponse {
+  run: FgtsDigitalRun
+  preview_token: string | null
 }
 
 export interface FiscalMutationPreflight {

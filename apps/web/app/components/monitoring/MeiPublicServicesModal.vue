@@ -7,13 +7,16 @@ import type {
 } from '~/types/fiscal-modules'
 import type { DasnHistoryPayload, MeiCoverage } from '~/types/mei-public-services'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean
   clientId: number | null
   clientName?: string | null
   cnpjMasked?: string | null
   canRefresh: boolean
-}>()
+  initialService?: 'ccmei' | 'dasn'
+}>(), {
+  initialService: 'ccmei'
+})
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -25,7 +28,7 @@ const { sessionEpoch } = useDashboard()
 const ccmei = useCcmeiMonitoring()
 const ccmeiRegistration = useCcmeiRegistrationStatusMonitoring()
 
-const activeService = ref<'ccmei' | 'dasn'>('ccmei')
+const activeService = ref<'ccmei' | 'dasn'>(props.initialService)
 const serviceTabs = [
   { label: 'CCMEI', value: 'ccmei', icon: 'i-lucide-badge-check' },
   { label: 'DASN-SIMEI', value: 'dasn', icon: 'i-lucide-files' }
@@ -70,7 +73,7 @@ function clearTimers() {
 
 function resetState() {
   clearTimers()
-  activeService.value = 'ccmei'
+  activeService.value = props.initialService
   ccmeiGeneration += 1
   dasnGeneration += 1
   ccmeiHistory.value = null
@@ -231,7 +234,10 @@ watch(
   ([open, clientId], previous) => {
     const clientChanged = previous && clientId !== previous[1]
     if (!open || clientChanged) resetState()
-    if (open && clientId) void loadCcmei()
+    if (open && clientId) {
+      if (activeService.value === 'dasn') void loadDasnHistory()
+      else void loadCcmei()
+    }
   },
   { immediate: true }
 )

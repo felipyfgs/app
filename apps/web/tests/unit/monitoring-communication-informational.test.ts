@@ -11,22 +11,27 @@ describe('comunicação informativa do monitor fiscal', () => {
     expect(modal).toContain('displayedPreference')
     expect(modal).toContain('loadTracking')
     expect(modal).toContain('Histórico local de comunicação')
-    expect(modal).toContain('Nenhum provider de e-mail ou WhatsApp')
+    expect(modal).toContain('Nenhum transporte está ativo nesta capacidade')
+    expect(modal).toContain('WhatsApp nativo disponível')
     expect(modal).toContain('<USwitch')
     expect(modal).toContain('savePreferences')
     expect(modal).toContain('updatePreferences')
     expect(modal).toContain('requestSend')
     expect(modal).toContain('label="Enviar"')
+    expect(modal).toContain('if (isFgts.value) return document.download_href?.trim() || undefined')
   })
 
-  it('monta o modal nas carteiras PGDAS-D, MEI e DCTFWeb', () => {
+  it('monta o modal nas carteiras PGDAS-D, MEI, DCTFWeb e FGTS', () => {
     const simples = read('app/components/monitoring/simples-mei/Portfolio.vue')
     const dctfweb = read('app/pages/monitoring/dctfweb/index.vue')
+    const fgts = read('app/pages/monitoring/fgts.vue')
 
     expect(simples.match(/<MonitoringPgdasdCommunicationModals/gu)?.length).toBeGreaterThanOrEqual(1)
     expect(simples).toContain('context="PGMEI"')
     expect(dctfweb).toContain('context="DCTFWEB"')
     expect(dctfweb).toContain('<MonitoringPgdasdCommunicationModals')
+    expect(fgts).toContain('context="FGTS"')
+    expect(fgts).toContain('<MonitoringPgdasdCommunicationModals')
   })
 
   it('remove switches individuais e em lote das tabelas e toolbars', () => {

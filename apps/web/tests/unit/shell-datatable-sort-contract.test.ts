@@ -57,6 +57,24 @@ describe('shell-datatable-sort-contract', () => {
     expect(source).not.toMatch(/ShellDataTable[\s\S]*v-if="loading \|\| rows\.length"/)
   })
 
+  it('work processos e fila Lista: sortHeader só com whitelist API', () => {
+    const processes = read('app/pages/work/processes/index.vue')
+    expect(processes).toContain(':manual-sorting="true"')
+    expect(processes).toContain('sortHeader(\'Processo\'')
+    expect(processes).toContain('sortHeader(\'Prazo\'')
+    expect(processes).toContain('enableSorting: false')
+    expect(processes).toContain('sort.value')
+    expect(processes).toContain('direction.value')
+
+    const queue = read('app/components/work/WorkQueueWorkspace.vue')
+    expect(queue).toContain(':manual-sorting="true"')
+    expect(queue).toContain('sortHeader(\'Tarefa\'')
+    expect(queue).toContain('effective_due_date')
+    expect(queue).toContain('client_name')
+    expect(queue).toContain('assignee_name')
+    expect(queue).toContain('enableSorting: false')
+  })
+
   it('listas N1: empty no #empty do ShellDataTable', () => {
     for (const rel of [
       'app/pages/syncs.vue',

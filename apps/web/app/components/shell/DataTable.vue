@@ -52,6 +52,8 @@ const props = withDefaults(defineProps<{
   sorting?: Array<{ id: string, desc: boolean }>
   rowSelection?: Record<string, boolean>
   columnVisibility?: Record<string, boolean>
+  /** Estado de linhas expansíveis (TanStack / UTable `v-model:expanded`). */
+  expanded?: true | Record<string, boolean>
   manualSorting?: boolean
   /**
    * Cards no viewport &lt; md (default true).
@@ -86,6 +88,7 @@ const props = withDefaults(defineProps<{
   sorting: undefined,
   rowSelection: undefined,
   columnVisibility: undefined,
+  expanded: undefined,
   manualSorting: false,
   mobileCards: true,
   selectionEnabled: false,
@@ -102,6 +105,7 @@ const emit = defineEmits<{
   'update:sorting': [value: Array<{ id: string, desc: boolean }>]
   'update:rowSelection': [value: Record<string, boolean>]
   'update:columnVisibility': [value: Record<string, boolean>]
+  'update:expanded': [value: true | Record<string, boolean>]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- compat TableRow/TanStack das pages
   'select': [event: Event, row: any]
   'retry': []
@@ -143,6 +147,16 @@ const rowSelectionModel = computed({
 const columnVisibilityModel = computed({
   get: () => props.columnVisibility ?? {},
   set: (value: Record<string, boolean>) => emit('update:columnVisibility', value)
+})
+const expandedAttrs = computed(() => {
+  if (props.expanded === undefined) return {}
+  return {
+    'expanded': props.expanded,
+    'onUpdate:expanded': (value: true | Record<string, boolean> | undefined) => {
+      if (value === undefined) return
+      emit('update:expanded', value)
+    }
+  }
 })
 
 const resolvedGetRowId = computed(() =>
@@ -228,10 +242,11 @@ defineExpose({
         v-model:column-visibility="columnVisibilityModel"
         v-model:row-selection="rowSelectionModel"
         v-model:sorting="sortingModel"
+        v-bind="expandedAttrs"
         :data="data"
         :columns="columns"
         :loading="loading"
-        :get-row-id="getRowId"
+        :get-row-id="resolvedGetRowId"
         :sorting-options="manualSorting
           ? { manualSorting: true, enableMultiSort: false }
           : undefined"
