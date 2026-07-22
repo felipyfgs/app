@@ -11,7 +11,7 @@ A SERPRO define E0601 como sinal de nova mensagem, retornado por `/Monitorar` em
 - Fazer uma verificação diária gratuita por escritório e condicionar consultas pagas a eventos ou reconciliações devidas.
 - Nunca perder o resultado remoto one-shot por falha entre HTTP 200 e processamento local.
 - Manter isolamento por `Office`, idempotência, limites oficiais, kill switches e orçamento antes de egress.
-- Entregar bootstrap, reconciliação, detalhe sob demanda e uma UX que explique cobertura, custo e bloqueios.
+- Entregar bootstrap, reconciliação, detalhe sob demanda e uma UX simples para o contador, sem expor custo, logs de busca ou controles técnicos.
 - Suportar CNPJ alfanumérico e procuração negada por cliente sem falhar o lote inteiro.
 
 **Non-Goals:**
@@ -47,7 +47,7 @@ Alternativa rejeitada: persistir apenas contagens/digest, como hoje. Um crash de
 
 E0601 informa apenas a data da atualização mais recente. No modo econômico, uma data igual ao dia corrente do escritório é guardada como pendente; LISTAR é disparado quando essa data já pertence a um dia encerrado e é maior que `last_reconciled_event_date`. Assim, uma única lista captura todas as mensagens daquele dia sem repetir chamadas a cada poll. A data só avança após LISTAR bem-sucedido.
 
-Isso produz SLA típico próximo de 24 horas, acrescido do atraso de sincronização da fonte, e será comunicado na UI. “Atualizar agora” permite antecipar a consulta mediante preview/confirmação de custo.
+Isso produz SLA típico próximo de 24 horas, acrescido do atraso de sincronização da fonte. “Atualizar agora” permite antecipar a consulta mediante preflight silencioso de custo e confirmação em linguagem de negócio; valores e detalhes de execução não são exibidos ao contador.
 
 Alternativa rejeitada: disparar imediatamente para qualquer data nova e marcá-la reconciliada. Uma segunda mensagem no mesmo dia manteria o mesmo `AAMMDD` e poderia ser perdida até a reconciliação completa.
 
@@ -59,7 +59,7 @@ Alternativa rejeitada: depender somente dos últimos 60 dias de E0601. Clientes 
 
 ### 6. Orçamento antes do egress e DETALHE sob demanda
 
-Toda LISTAR/DETALHE passa pelo ledger/eligibilidade e por um guard de orçamento usando a versão de preço vigente. Versões shadow retornam valor com fonte `SHADOW` e aviso; falta de preço retorna `UNKNOWN`, nunca zero. O preview soma chamadas mínimas, deixando explícito que paginação e quantidade de detalhes podem aumentar o custo.
+Toda LISTAR/DETALHE passa pelo ledger/eligibilidade e por um guard de orçamento usando a versão de preço vigente. Versões shadow retornam valor com fonte `SHADOW`; falta de preço retorna `UNKNOWN`, nunca zero. O preflight soma as chamadas mínimas e permanece disponível no contrato da API para operação interna, mas a inbox do contador apresenta somente permitido/bloqueado em linguagem de negócio.
 
 No modo econômico, `max_detail_fetches_per_sync` efetivo será zero. O usuário solicita DETALHE ao abrir mensagem sem corpo, após preview, ou uma política futura opt-in pode habilitar cap baixo. O modo diário completo também mantém cap configurável, não herda silenciosamente dez detalhes.
 
@@ -69,7 +69,7 @@ Alternativa rejeitada: pré-buscar dez corpos por LISTAR como default global. Is
 
 Adicionar endpoints Sanctum no contexto `CurrentOffice` para consultar/alterar configuração, obter estado, gerar preview e confirmar sync. Nenhum recebe `office_id`; referências a clientes são revalidadas no office. O POST de confirmação usa idempotency key e retorna runs enfileiradas, nunca aguarda a SERPRO.
 
-`/monitoring/mailbox` ganha card compacto de estado, ação “Atualizar agora”, modo, cobertura, última verificação gratuita/paga, próxima execução, gasto estimado e clientes com `x`. Empty states distinguem nunca sincronizada, vazia após sucesso, bloqueada, atrasada e falha. O shell do dashboard permanece o do arquétipo.
+`/monitoring/mailbox` ganha uma faixa operacional compacta de estado, switch com salvamento imediato e ação “Atualizar agora”. A UI omite custos, logs e contadores internos; avisos excepcionais aparecem em uma única linha discreta. Empty states distinguem nunca sincronizada, vazia após sucesso, bloqueada, atrasada e falha. O shell do dashboard permanece o do arquétipo.
 
 ### 8. INNOVAMSG63 como diagnóstico secundário
 
@@ -115,7 +115,7 @@ operacionalizar-caixa-postal-ecac-monitoramento-economico (C1)
 
 1. Aplicar migrations aditivas para settings, estado por cliente, itens one-shot e referências do artefato; manter monitoramento desabilitado.
 2. Implantar codec/processor/jobs e executar testes locais com fixtures, sem egress live.
-3. Implantar APIs e UI; mostrar preço shadow como estimativa e contratos não reconciliados como bloqueio.
+3. Implantar APIs e UI; preservar preço shadow no contrato operacional e mostrar ao contador apenas disponibilidade ou bloqueio em linguagem de negócio.
 4. Em ambiente autorizado, reconciliar o campo PJ com Trial/canário controlado e registrar a versão de contrato; isso não faz parte do apply automático.
 5. Habilitar `ECONOMICO` por escritório, apresentar preview e executar bootstrap confirmado.
 6. Observar primeira rotina diária, one-shot, custos e reconciliação; somente então avaliar `DIARIO_COMPLETO`.

@@ -18,5 +18,5 @@
 
 - [x] 3.1 Testes unitários web: item do menu navega para a página; histórico incorporado; download ausente sem evidência; abrir histórico não chama refresh
   Depende de: 2.3
-- [ ] 3.2 Gates da área: API (`vendor/bin/pint --test` nos arquivos tocados + Feature history) e Web (`pnpm run lint`, `typecheck`, `test` relevantes); `npx @fission-ai/openspec@1.6.0 validate sitfis-historico-busca --strict --type change`
+- [x] 3.2 Gates da área: API (`vendor/bin/pint --test` nos arquivos tocados + Feature history) e Web (`pnpm run lint`, `typecheck`, `test` relevantes); `npx @fission-ai/openspec@1.6.0 validate sitfis-historico-busca --strict --type change`
   Depende de: 1.3, 3.1

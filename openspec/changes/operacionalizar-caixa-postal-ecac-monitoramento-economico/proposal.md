@@ -29,7 +29,7 @@ Non-goals: ligar flags SERPRO de produção; executar canário live ou chamadas 
 
 - API: fluxo `EventosAtualizacao`, scheduler/jobs, resolução de CNPJ por estabelecimento, `MailboxEventService`, política LISTAR/DETALHE, endpoints de estado/sync e registro do indicador.
 - Dados: persistência dos itens recebidos por protocolo e do estado de monitoramento/reconciliação por escritório/cliente, sem armazenar payload fiscal bruto ou CNPJ em logs.
-- Web: página `/monitoring/mailbox`, ação visível de atualização, estados vazios honestos, cobertura/procurações e painel de custo.
+- Web: página `/monitoring/mailbox`, ação visível de atualização e estados vazios honestos em linguagem de negócio; custo, execução e diagnóstico técnico permanecem protegidos no backend e fora da tela do contador.
 - SERPRO: `SOLICEVENTOSPJ132`, `OBTEREVENTOSPJ134`, E0601 e, opcionalmente, `INNOVAMSG63`; `/Consultar` permanece sujeito a bilhetagem e kill switches fail-closed.
 - Testes: PHPUnit Unit/Feature, Vitest e gates completos das áreas API, Web e OpenSpec.
 

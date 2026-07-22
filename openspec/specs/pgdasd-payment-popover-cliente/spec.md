@@ -4,7 +4,7 @@ Capability `pgdasd-payment-popover-cliente` — popover Pagamento no nível do c
 
 ## Requirements
 
-### Requirement: Popover Pagamento no nível do cliente
+### Requirement: Popover/tooltip Situação para estados simples
 
 O popover da coluna **Situação** (pagamento DAS) na carteira PGDAS-D SHALL apresentar o sinal operacional no nível do cliente, sem contagens de DAS e sem exibir reason codes máquina (`DAS_PAYMENT_NOT_LOCATED`, `DAS_PAYMENT_LOCATED`, etc.).
 
@@ -12,7 +12,7 @@ Quando o pagamento estiver em dia, o popover MUST mostrar o estado “Em dia” 
 
 Quando houver pendências de pagamento, o popover MUST listar as competências em aberto do cliente (ver requirement de competências).
 
-Quando o estado for Sem DAS, o popover MUST mostrar o label do estado e a descrição humana correspondente (sem lista de competências).
+Quando o estado for Sem movimento (`NO_DAS`), a UI MUST oferecer detalhe limpo (tooltip e/ou cartão curto no popover) com a descrição humana correspondente. MUST NOT exigir lista de competências e MUST NOT apresentar o detalhe como pares rotulados Situação | Detalhe.
 
 Quando não houver evidência de pagamento (incluindo estado interno sem classificação), a célula MUST NOT abrir popover de negócio com rótulo “Não verificado”; MUST exibir Sem procuração ou `—` conforme a regra da coluna Situação.
 
@@ -26,9 +26,9 @@ A badge da Situação (pagamento) MUST continuar derivada só do PA esperado (`P
 - **WHEN** a linha tem pagamento em aberto e o operador abre o popover Situação
 - **THEN** o popover MUST listar competências em aberto e MUST NOT exibir contagens de DAS nem reason code cru
 
-#### Scenario: Popover sem DAS
-- **WHEN** a linha está Sem DAS e o operador abre o popover Situação
-- **THEN** o popover MUST exibir o estado “Sem DAS” com descrição humana e MUST NOT exigir lista de competências
+#### Scenario: Sem movimento com tooltip limpo
+- **WHEN** a linha está `NO_DAS` e o operador inspeciona o detalhe de Situação
+- **THEN** a UI MUST exibir o estado “Sem movimento” com descrição humana curta e MUST NOT exigir lista de competências nem linhas Situação/Detalhe
 
 ### Requirement: Competências em aberto no detalhe do cliente
 

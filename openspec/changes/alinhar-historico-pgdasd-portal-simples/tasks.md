@@ -16,7 +16,7 @@
 
 - [x] 3.1 Atualizar `company-first-monitoring.test.ts` para o novo contrato da superfície
   Depende de: 2.2
-- [ ] 3.2 Rodar gates web (`pnpm lint`, `typecheck`, `test` / fidelity se tocado) e `openspec validate --change alinhar-historico-pgdasd-portal-simples --strict`
+- [x] 3.2 Rodar gates web (`pnpm lint`, `typecheck`, `test` / fidelity se tocado) e `openspec validate --change alinhar-historico-pgdasd-portal-simples --strict`
   Depende de: 3.1, 2.3
   - Evidência verde da change: ESLint direcionado; 18 testes direcionados; suite completa com 208 testes; `pnpm run generate`; validação OpenSpec estrita.
   - Bloqueios globais fora da change: lint em arquivos MEI/monitoramento não tocados aqui; 5 erros preexistentes de typecheck; fidelity sem `tests/fixtures/template-parity-matrix.md`; artifacts sem `tests/security/scan-artifacts.mjs`.

@@ -39,11 +39,14 @@ Precedência MUST ser:
 - **AND** há evidência produtiva suficiente de consulta PGDAS
 - **THEN** o `payment_state` SHALL ser `NO_DAS`
 
-### Requirement: Coluna Pagamento na carteira PGDAS-D
+### Requirement: Coluna Situação exibe pagamento DAS com labels humanos
 
-A carteira Simples/MEI submódulo PGDASD SHALL exibir a coluna **Pagamento** na spine após RBT12 e antes de Cliente, com labels: `PAID`→Em dia, `UNPAID`→Pendências, `NO_DAS`→Sem DAS, `UNVERIFIED`→Não verificado. A coluna Situação MUST continuar refletindo só a entrega do PA.
+A carteira Simples/MEI submódulo PGDASD SHALL exibir o estado de pagamento DAS na coluna **Situação**, com labels humanos: Em dia, Pendências, Sem movimento. A UI MUST NOT exibir flags de máquina nem o rótulo “Não verificado”; quando não houver evidência de pagamento e a procuração estiver ausente, MUST exibir Sem procuração; nos demais casos sem evidência MUST exibir `—` (ou skeleton de consulta pendente). A entrega do PA MUST NOT aparecer como badge texto nesta coluna — mora na coluna Declaração colorida.
 
-A badge da coluna Pagamento MUST usar cor de sucesso (verde / token `success`) quando `payment_state` for `PAID`.
+#### Scenario: NO_DAS exibe Sem movimento
+
+- **WHEN** `payment_state` é `NO_DAS`
+- **THEN** a coluna Situação MUST exibir o label “Sem movimento” (MUST NOT exibir “Sem DAS” como rótulo principal)
 
 #### Scenario: Ordem da spine com Pagamento
 - **WHEN** o operador abre a carteira PGDAS-D

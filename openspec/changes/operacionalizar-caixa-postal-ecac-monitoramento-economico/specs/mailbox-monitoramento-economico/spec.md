@@ -83,22 +83,22 @@ Ao habilitar o monitoramento, o sistema SHALL oferecer um bootstrap que enfileir
 - **THEN** todos os clientes elegíveis recebem uma LISTAR diária, independentemente do E0601
 
 ### Requirement: Orçamento e política de detalhes
-Antes de qualquer chamada potencialmente faturável, o sistema MUST consultar a elegibilidade, a tabela de preços vigente e o orçamento do escritório. Estimativas shadow MUST ser identificadas como estimativas não oficiais; custo desconhecido MUST aparecer como desconhecido e MUST NOT ser convertido em zero. No modo `ECONOMICO`, o limite padrão de DETALHE automático SHALL ser zero e o corpo SHALL ser buscado sob demanda ou por política explícita com cap e idempotência.
+Antes de qualquer chamada potencialmente faturável, o sistema MUST consultar a elegibilidade, a tabela de preços vigente e o orçamento do escritório. Estimativas shadow MUST ser identificadas como estimativas não oficiais no contrato operacional da API; custo desconhecido MUST permanecer desconhecido e MUST NOT ser convertido em zero. A inbox do contador MUST NOT exibir valores, fontes de preço ou logs de execução. No modo `ECONOMICO`, o limite padrão de DETALHE automático SHALL ser zero e o corpo SHALL ser buscado sob demanda ou por política explícita com cap e idempotência.
 
 #### Scenario: Orçamento insuficiente
 - **WHEN** uma LISTAR ou DETALHE excederia o orçamento configurado
-- **THEN** a chamada é bloqueada antes do egress e a UI informa o motivo e a operação não executada
+- **THEN** a chamada é bloqueada antes do egress e a UI informa em linguagem de negócio que nenhuma busca foi realizada, sem expor orçamento ou diagnóstico técnico
 
 #### Scenario: Corpo solicitado pelo usuário
-- **WHEN** uma mensagem sem corpo é aberta e o usuário confirma a consulta DETALHE com custo conhecido ou explicitamente desconhecido
+- **WHEN** uma mensagem sem corpo é aberta, o preflight interno autoriza a operação e o usuário confirma “Buscar conteúdo”
 - **THEN** o sistema enfileira no máximo uma run idempotente para o ISN daquela mensagem
 
 #### Scenario: Tabela shadow ativa
 - **WHEN** a estimativa usa uma versão de preço marcada como shadow
-- **THEN** API e UI exibem “estimativa interna, não é preço oficial” junto do valor
+- **THEN** a API operacional preserva fonte e valor como estimativa interna, enquanto a UI do contador não exibe preço nem a classificação técnica
 
 ### Requirement: Operação manual e estado visíveis na inbox
-A página `/monitoring/mailbox` SHALL exibir uma ação primária “Atualizar agora” e o estado operacional do monitoramento sem exigir acesso ao accordion “Consulta manual” do painel geral. A ação MUST apresentar preview de escopo e custo antes de enfileirar chamadas pagas. A UI SHALL diferenciar: nunca sincronizada, sincronizada sem mensagens, bloqueada por autorização, monitoramento saudável, processamento com falha e reconciliação atrasada.
+A página `/monitoring/mailbox` SHALL exibir uma ação primária “Atualizar agora” e o estado de negócio do monitoramento sem exigir acesso ao accordion “Consulta manual” do painel geral. A ação MUST executar preflight interno de escopo, preço e orçamento antes de abrir uma confirmação simples; a UI do contador MUST NOT exibir valores, contadores internos, logs de busca, nomes de operações SERPRO ou variáveis de ambiente. A UI SHALL diferenciar: nunca sincronizada, sincronizada sem mensagens, bloqueada por autorização, monitoramento saudável, processamento com falha e reconciliação atrasada.
 
 #### Scenario: Caixa nunca sincronizada
 - **WHEN** não existem mensagens nem bootstrap concluído para o escritório
@@ -106,7 +106,7 @@ A página `/monitoring/mailbox` SHALL exibir uma ação primária “Atualizar a
 
 #### Scenario: Sincronização concluída sem mensagens
 - **WHEN** a última LISTAR concluiu com sucesso e não retornou mensagens
-- **THEN** a inbox mostra “Nenhuma mensagem encontrada” e as datas da última e da próxima verificação, sem sugerir falha
+- **THEN** a inbox mostra “Nenhuma mensagem encontrada” sem expor histórico técnico de execução nem sugerir falha
 
 #### Scenario: Atualização manual
 - **WHEN** o usuário autorizado aciona “Atualizar agora”
@@ -144,4 +144,3 @@ O scheduler SHALL despachar jobs Horizon sem sobreposição por escritório/lote
 #### Scenario: Limite remoto atingido
 - **WHEN** a SERPRO retorna HTTP 429 para eventos PJ
 - **THEN** o escritório fica suspenso para novas solicitações PJ até a janela registrada e a UI mostra a próxima tentativa possível
-
