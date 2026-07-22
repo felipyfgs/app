@@ -36,6 +36,18 @@
     "notes": "layout: `auth`; first admin setup"
   },
   {
+    "section": "communication",
+    "file": "app/pages/communication/index.vue",
+    "route": "/communication",
+    "notes": "Inbox WhatsApp compartilhada com lista, timeline, contexto e administração"
+  },
+  {
+    "section": "communication",
+    "file": "app/pages/communication/conversations/[id].vue",
+    "route": "/communication/conversations/:id",
+    "notes": "Deep-link canônico de uma conversa no workspace compartilhado"
+  },
+  {
     "section": "auth",
     "file": "app/pages/login.vue",
     "route": "/login",
@@ -574,6 +586,12 @@
     "file": "app/pages/work/templates/index.vue",
     "route": "/work/templates",
     "notes": "Templates (guarded: redirects to `/work` if no permission)"
+  },
+  {
+    "section": "work",
+    "file": "app/pages/work/tasks/index.vue",
+    "route": "/work/tasks",
+    "notes": "Tasks list"
   },
   {
     "section": "work",

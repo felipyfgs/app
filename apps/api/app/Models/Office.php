@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'slug', 'is_active', 'lifecycle_status', 'serpro_segregation_class', 'deadline_timezone', 'timezone'])]
+#[Fillable(['name', 'slug', 'is_active', 'communication_enabled', 'lifecycle_status', 'serpro_segregation_class', 'deadline_timezone', 'timezone'])]
 class Office extends Model
 {
     /** @use HasFactory<OfficeFactory> */
@@ -21,6 +21,7 @@ class Office extends Model
     {
         return [
             'is_active' => 'boolean',
+            'communication_enabled' => 'boolean',
             'lifecycle_status' => OfficeLifecycleStatus::class,
         ];
     }
@@ -102,5 +103,20 @@ class Office extends Model
     public function accountActivations(): HasMany
     {
         return $this->hasMany(AccountActivation::class);
+    }
+
+    public function communicationInboxes(): HasMany
+    {
+        return $this->hasMany(CommunicationInbox::class);
+    }
+
+    public function communicationContacts(): HasMany
+    {
+        return $this->hasMany(CommunicationContact::class);
+    }
+
+    public function communicationAutomationPolicies(): HasMany
+    {
+        return $this->hasMany(CommunicationAutomationPolicy::class);
     }
 }

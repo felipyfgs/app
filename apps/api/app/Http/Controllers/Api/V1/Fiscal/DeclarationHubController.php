@@ -9,6 +9,8 @@ use App\Models\Client;
 use App\Models\TaxObligationDefinition;
 use App\Services\Fiscal\Declarations\DeclarationDctfwebEnrichmentService;
 use App\Services\Fiscal\Declarations\DeclarationHubQueryService;
+use App\Services\Fiscal\Declarations\DeclarationIntegrationCoverageService;
+use App\Services\Fiscal\Declarations\DeclarationOperationCatalogService;
 use App\Services\Fiscal\Declarations\DeclarationPgdasdEnrichmentService;
 use App\Services\Fiscal\Declarations\TaxDeadlineCalendarService;
 use App\Services\Fiscal\Declarations\TaxDeliveryEvidenceService;
@@ -35,6 +37,8 @@ class DeclarationHubController extends Controller
         private readonly DeclarationHubQueryService $hub,
         private readonly DeclarationPgdasdEnrichmentService $pgdasdEnrichment,
         private readonly DeclarationDctfwebEnrichmentService $dctfwebEnrichment,
+        private readonly DeclarationIntegrationCoverageService $integrationCoverage,
+        private readonly DeclarationOperationCatalogService $operationCatalog,
     ) {}
 
     /** Catálogo versionado (global, leitura). */
@@ -46,6 +50,8 @@ class DeclarationHubController extends Controller
             'data' => [
                 'obligations' => $this->catalog->catalogPayload(),
                 'calendar' => $this->catalog->currentCalendar()?->toPublicArray(),
+                'integration_coverage' => $this->integrationCoverage->publicCoverage(),
+                'operation_catalog' => $this->operationCatalog->publicCatalog(),
             ],
         ]);
     }

@@ -6,6 +6,7 @@ use App\Enums\OfficeRole;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
+use App\Services\Integra\Parcelamento\ParcelamentoMonitorAllService;
 use App\Services\Integra\Parcelamento\ParcelamentoQueryService;
 use App\Services\Integra\Parcelamento\ParcelamentoServiceCatalog;
 use App\Support\CurrentOffice;
@@ -19,6 +20,7 @@ class TaxInstallmentController extends Controller
         private readonly CurrentOffice $currentOffice,
         private readonly ParcelamentoQueryService $query,
         private readonly FiscalMonitoringRunService $runs,
+        private readonly ParcelamentoMonitorAllService $monitorAll,
     ) {}
 
     public function modalities(): JsonResponse
@@ -61,10 +63,16 @@ class TaxInstallmentController extends Controller
             ->where('office_id', $office->id)
             ->get()
             ->map(fn ($p) => $p->toPublicArray());
+        $payments = $model->payments()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->get()
+            ->map(fn ($payment) => $payment->toPublicArray());
 
         return response()->json([
             'data' => array_merge($model->toPublicArray(), [
                 'parcels' => $parcels,
+                'payments' => $payments,
             ]),
         ]);
     }
@@ -121,8 +129,14 @@ class TaxInstallmentController extends Controller
         ]);
 
         $modality = strtoupper($data['modality']);
-        if (ParcelamentoServiceCatalog::parseModality($modality) === null) {
+        if (! ParcelamentoServiceCatalog::isKnownModality($modality)) {
             return response()->json(['message' => 'Modalidade de parcelamento inválida.'], 422);
+        }
+        if (! ParcelamentoServiceCatalog::isExecutableModality($modality)) {
+            return response()->json([
+                'message' => 'Modalidade inventariada pela SERPRO, mas ainda não disponível para execução.',
+                'code' => 'MODALITY_NOT_EXECUTABLE',
+            ], 422);
         }
 
         $client = Client::query()
@@ -162,6 +176,64 @@ class TaxInstallmentController extends Controller
         }
 
         return response()->json(['data' => $run->toPublicArray()], 201);
+    }
+
+    /** Enfileira as oito modalidades produtivas para até 25 clientes do escritório ativo. */
+    public function monitor(Request $request): JsonResponse
+    {
+        $this->assertCanWrite();
+        $office = $this->currentOffice->office();
+
+        $data = $request->validate([
+            'client_ids' => ['required', 'array', 'min:1', 'max:25'],
+            'client_ids.*' => ['required', 'integer', 'distinct'],
+            'correlation_id' => ['sometimes', 'string', 'max:48'],
+        ]);
+
+        $clients = Client::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereIn('id', $data['client_ids'])
+            ->get()
+            ->keyBy('id');
+
+        if ($clients->count() !== count($data['client_ids'])) {
+            return response()->json([
+                'message' => 'Um ou mais clientes não pertencem ao escritório ativo.',
+                'code' => 'CLIENT_SCOPE_INVALID',
+            ], 422);
+        }
+
+        $results = [];
+        $accepted = 0;
+        $failed = 0;
+        foreach ($data['client_ids'] as $clientId) {
+            $result = $this->monitorAll->enqueueClient(
+                office: $office,
+                client: $clients->get($clientId),
+                actorId: $request->user()?->id,
+                correlationId: isset($data['correlation_id'])
+                    ? $data['correlation_id'].':'.$clientId
+                    : null,
+                dispatch: true,
+            );
+            $accepted += $result['accepted'];
+            $failed += $result['failed'];
+            $results[] = [
+                'client_id' => $clientId,
+                ...$result,
+            ];
+        }
+
+        return response()->json([
+            'data' => [
+                'clients' => count($results),
+                'requested_modalities_per_client' => count(ParcelamentoServiceCatalog::supportedModalities()),
+                'accepted' => $accepted,
+                'failed' => $failed,
+                'results' => $results,
+            ],
+        ], 202);
     }
 
     private function assertCanRead(): void

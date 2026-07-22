@@ -2,6 +2,7 @@
 
 namespace App\Services\Fiscal\SimplesMei\Pgdasd;
 
+use App\Enums\Communication\RecipientMode;
 use App\Enums\CommunicationChannel;
 use App\Enums\CommunicationDispatchStatus;
 use App\Enums\CommunicationExecutionMode;
@@ -10,11 +11,14 @@ use App\Models\Client;
 use App\Models\ClientCommunicationDispatch;
 use App\Models\ClientCommunicationPreference;
 use App\Models\ClientContact;
+use App\Models\CommunicationAutomationPolicy;
 use App\Models\Office;
 use App\Models\PgdasdArtifact;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use App\Services\Authorization\TenantAuthorization;
+use App\Services\Communication\Automation\CommunicationRecipientResolver;
+use App\Services\Communication\Automation\FiscalCommunicationAutomationService;
 use App\Services\Fiscal\Dctfweb\DctfwebPeriod;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
@@ -477,7 +481,7 @@ final class PgdasdCommunicationService
      *
      * @return array{queued:int, provider_enabled:bool, dispatches:list<array<string, mixed>>}
      */
-    public function requestSend(Office $office, Client $client, User $actor): array
+    public function requestSend(Office $office, Client $client, User $actor, ?string $periodKey = null): array
     {
         $this->assertClient($office, $client);
         $this->assertCanWrite($actor, $client);
@@ -485,6 +489,29 @@ final class PgdasdCommunicationService
         $preference = $this->getPreferences($office, $client);
         if (! $preference->exists) {
             throw new HttpException(422, 'Configure canais de comunicação antes de enviar.');
+        }
+
+        if (config('communication.enabled') && config('communication.gateway.enabled')) {
+            try {
+                $dispatches = app(FiscalCommunicationAutomationService::class)->sendManual(
+                    $office,
+                    $client,
+                    $this->moduleKey,
+                    $this->submoduleKey,
+                    $periodKey ?? $this->defaultPeriodKey($office),
+                    (int) $actor->id,
+                );
+            } catch (\DomainException $error) {
+                throw new HttpException(422, $error->getMessage());
+            }
+
+            return [
+                'queued' => $dispatches->count(),
+                'provider_enabled' => true,
+                'dispatches' => $dispatches->map(
+                    static fn (ClientCommunicationDispatch $dispatch): array => $dispatch->toPublicArray(),
+                )->values()->all(),
+            ];
         }
 
         $contacts = $this->eligibleContacts($office, $client);
@@ -544,9 +571,23 @@ final class PgdasdCommunicationService
     /**
      * Hook pós-consulta agendada: enfileira se automatic_requested e elegível.
      */
-    public function maybeQueueAutomaticAfterConsult(Office $office, Client $client): void
+    public function maybeQueueAutomaticAfterConsult(Office $office, Client $client, ?string $periodKey = null): void
     {
         try {
+            if (config('communication.enabled') && config('communication.gateway.enabled')) {
+                if ($periodKey !== null && preg_match('/^\d{4}-\d{2}$/', $periodKey)) {
+                    app(FiscalCommunicationAutomationService::class)->scheduleAutomatic(
+                        $office,
+                        $client,
+                        $this->moduleKey,
+                        $this->submoduleKey,
+                        $periodKey,
+                    );
+                }
+
+                return;
+            }
+
             $preference = ClientCommunicationPreference::query()
                 ->withoutGlobalScopes()
                 ->where('office_id', $office->id)
@@ -570,6 +611,18 @@ final class PgdasdCommunicationService
         } catch (\Throwable) {
             // Fail-soft: consulta já concluiu; envio automático não deve derrubar a run.
         }
+    }
+
+    private function defaultPeriodKey(Office $office): string
+    {
+        $timezone = is_string($office->timezone) && $office->timezone !== ''
+            ? $office->timezone
+            : 'America/Sao_Paulo';
+
+        return match ($this->submoduleKey) {
+            'dctfweb', 'mit' => DctfwebPeriod::toPeriodKey(DctfwebPeriod::expectedPa(null, $timezone)),
+            default => PgdasdPeriod::toPeriodKey(PgdasdPeriod::expectedPa(null, $timezone)),
+        };
     }
 
     /**
@@ -740,6 +793,31 @@ final class PgdasdCommunicationService
     ): bool {
         if (! $preference->automatic_requested) {
             return false;
+        }
+
+        if (config('communication.enabled') && config('communication.gateway.enabled')) {
+            $office = Office::query()->find($preference->office_id);
+            $policy = CommunicationAutomationPolicy::query()->withoutGlobalScopes()
+                ->with('inbox')
+                ->where('office_id', $preference->office_id)
+                ->where('module_key', $preference->module_key)
+                ->where('submodule_key', $preference->submodule_key)
+                ->where('is_enabled', true)
+                ->first();
+            if (! $office?->communication_enabled
+                || ! $preference->whatsapp_enabled
+                || $policy?->inbox === null
+                || ! $policy->inbox->is_enabled
+                || $policy->inbox->revoked_at !== null) {
+                return false;
+            }
+
+            return app(CommunicationRecipientResolver::class)->resolve(
+                $preference,
+                $policy->recipient_mode instanceof RecipientMode
+                    ? $policy->recipient_mode
+                    : RecipientMode::Primary,
+            )->isNotEmpty();
         }
 
         return $this->resolveCanSend($preference, $eligibleChannels, $hasLocalDocuments);

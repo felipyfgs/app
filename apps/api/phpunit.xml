@@ -20,6 +20,7 @@
     <php>
         <!-- server: Laravel Env lê $_SERVER com prioridade sobre putenv/$_ENV no container Docker -->
         <server name="APP_ENV" value="testing"/>
+        <server name="APP_KEY" value="base64:QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE="/>
         <server name="AUTH_TWO_FACTOR_REQUIRED" value="false"/>
         <server name="APP_MAINTENANCE_DRIVER" value="file"/>
         <server name="BCRYPT_ROUNDS" value="4"/>
@@ -79,8 +80,13 @@
         <server name="PLATFORM_PRIVILEGED_CONTEXT" value="false"/>
         <server name="INITIAL_ONBOARDING_ENABLED" value="false"/>
         <server name="INITIAL_ONBOARDING_TOKEN" value=""/>
+        <server name="COMMUNICATION_ENABLED" value="false"/>
+        <server name="WHATSAPP_GATEWAY_ENABLED" value="false"/>
+        <server name="WHATSAPP_GATEWAY_HMAC_KEY_ID" value=""/>
+        <server name="WHATSAPP_GATEWAY_HMAC_SECRET" value=""/>
 
         <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_KEY" value="base64:QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=" force="true"/>
         <env name="AUTH_TWO_FACTOR_REQUIRED" value="false" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
@@ -149,6 +155,10 @@
         <env name="PLATFORM_PRIVILEGED_CONTEXT" value="false" force="true"/>
         <env name="INITIAL_ONBOARDING_ENABLED" value="false" force="true"/>
         <env name="INITIAL_ONBOARDING_TOKEN" value="" force="true"/>
+        <env name="COMMUNICATION_ENABLED" value="false" force="true"/>
+        <env name="WHATSAPP_GATEWAY_ENABLED" value="false" force="true"/>
+        <env name="WHATSAPP_GATEWAY_HMAC_KEY_ID" value="" force="true"/>
+        <env name="WHATSAPP_GATEWAY_HMAC_SECRET" value="" force="true"/>
         <env name="SVRS_EGRESS_MIN_INTERVAL_GLOBAL" value="120" force="true"/>
         <env name="SVRS_EGRESS_MIN_INTERVAL_ROOT" value="900" force="true"/>
         <env name="SVRS_EGRESS_MAX_KEYS_PER_JOB" value="1" force="true"/>

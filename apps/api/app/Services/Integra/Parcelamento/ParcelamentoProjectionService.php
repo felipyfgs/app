@@ -63,6 +63,7 @@ final class ParcelamentoProjectionService
                 }
 
                 $sourceStatus = isset($pedido['situacao']) ? (string) $pedido['situacao'] : null;
+                $orderSituation = $this->mapOrderSituation($sourceStatus);
                 $order = TaxInstallmentOrder::query()->updateOrCreate(
                     [
                         'office_id' => $office->id,
@@ -73,10 +74,13 @@ final class ParcelamentoProjectionService
                     [
                         'run_id' => $run?->id,
                         'regime' => $modality->regime(),
-                        'situation' => $this->mapOrderSituation($sourceStatus)->value,
+                        'situation' => $orderSituation->value,
                         'source_status' => $sourceStatus,
-                        'requested_at' => isset($pedido['dataPedido'])
+                        'requested_at' => ! empty($pedido['dataPedido'])
                             ? CarbonImmutable::parse((string) $pedido['dataPedido'])
+                            : null,
+                        'consolidated_at' => ! empty($pedido['dataConsolidacao'])
+                            ? CarbonImmutable::parse((string) $pedido['dataConsolidacao'])
                             : null,
                         'parcel_count' => isset($pedido['quantidadeParcelas'])
                             ? (int) $pedido['quantidadeParcelas']
@@ -92,28 +96,32 @@ final class ParcelamentoProjectionService
                         'metadata' => [
                             'regime' => $modality->regime(),
                             'label' => $modality->label(),
+                            'data_situacao' => $pedido['dataSituacao'] ?? null,
+                            'alteracoes_divida' => $pedido['alteracoesDivida'] ?? [],
+                            'detalhes_consolidacao' => $pedido['detalhesConsolidacao'] ?? [],
                         ],
                     ],
                 );
                 $orders[] = $order;
+                $worst = $this->worseSituation($worst, $orderSituation);
 
-                $parcelRows = $sourceBody['parcelas']
-                    ?? $sourceBody['parcelasParaGerar']
-                    ?? [];
-
-                // Detalhe embutido no mesmo body (MONITOR consolidado)
-                if ($parcelRows === [] && isset($sourceBody['detalhes'][$externalId]['parcelas'])) {
-                    $parcelRows = $sourceBody['detalhes'][$externalId]['parcelas'];
-                }
+                // O codec ancora cada parcela no pedido de origem. Nunca usar lista global.
+                $parcelRows = is_array($pedido['parcelas'] ?? null) ? $pedido['parcelas'] : [];
+                $paymentRows = is_array($pedido['pagamentos'] ?? null) ? $pedido['pagamentos'] : [];
 
                 foreach ($parcelRows as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
                     $projected = $this->projectParcel(
                         $office,
                         $client,
                         $order,
                         $modality,
                         $row,
-                        $sourceBody['pagamentos'][$this->parcelKey($row)] ?? null,
+                        is_array($paymentRows[$this->parcelKey($row)] ?? null)
+                            ? $paymentRows[$this->parcelKey($row)]
+                            : null,
                     );
                     $parcels[] = $projected['parcel'];
                     if ($projected['payment'] !== null) {
@@ -136,6 +144,19 @@ final class ParcelamentoProjectionService
                     'situation' => FiscalSituation::Unknown->value,
                     'creates_pending' => false,
                 ];
+            }
+
+            $unassigned = $sourceBody['unassigned_available_parcels'] ?? [];
+            if (is_array($unassigned) && $unassigned !== []) {
+                $findings[] = [
+                    'code' => 'PARCELAS_SEM_PEDIDO_CORRENTE',
+                    'severity' => FiscalFindingSeverity::Info->value,
+                    'title' => 'Parcelas disponíveis sem pedido corrente identificável',
+                    'detail' => count($unassigned).' parcela(s) não foram persistidas porque a resposta não identifica o pedido.',
+                    'situation' => FiscalSituation::Unknown->value,
+                    'creates_pending' => false,
+                ];
+                $worst = $this->worseSituation($worst, FiscalSituation::Unknown);
             }
 
             return [
@@ -167,7 +188,7 @@ final class ParcelamentoProjectionService
         ?array $paymentRow = null,
     ): array {
         $key = $this->parcelKey($row);
-        $dueAt = isset($row['vencimento'])
+        $dueAt = ! empty($row['vencimento'])
             ? CarbonImmutable::parse((string) $row['vencimento'])->startOfDay()
             : null;
         $sourceStatus = isset($row['situacaoFonte'])
@@ -200,7 +221,9 @@ final class ParcelamentoProjectionService
             [
                 'client_id' => $client->id,
                 'modality' => $modality->value,
-                'parcel_number' => isset($row['numero']) ? (int) $row['numero'] : null,
+                'parcel_number' => isset($row['numero']) && is_numeric($row['numero'])
+                    ? (int) $row['numero']
+                    : null,
                 'status' => $status,
                 'source_status' => $sourceStatus,
                 'due_at' => $dueAt,
@@ -215,6 +238,7 @@ final class ParcelamentoProjectionService
                 'logical_key' => $logical,
                 'metadata' => [
                     'source_status' => $sourceStatus,
+                    'association_source' => $row['association_source'] ?? null,
                     // Explicitamente NÃO gravamos "inadimplente" inferido.
                     'overdue_without_payment_confirmation' => $status === TaxInstallmentParcelStatus::Attention,
                 ],
@@ -244,6 +268,7 @@ final class ParcelamentoProjectionService
                     'evidence_sha256' => isset($paymentRow['evidence_sha256'])
                         ? (string) $paymentRow['evidence_sha256']
                         : null,
+                    'run_id' => $order->run_id,
                     'metadata' => ['from_source' => true],
                 ],
             );

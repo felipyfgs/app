@@ -9,6 +9,14 @@ use App\Http\Controllers\Api\V1\ClientContactController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\ClientCredentialController;
 use App\Http\Controllers\Api\V1\CnpjLookupController;
+use App\Http\Controllers\Api\V1\Communication\CommunicationAutomationController;
+use App\Http\Controllers\Api\V1\Communication\CommunicationCatalogController;
+use App\Http\Controllers\Api\V1\Communication\CommunicationContactController;
+use App\Http\Controllers\Api\V1\Communication\CommunicationConversationController;
+use App\Http\Controllers\Api\V1\Communication\CommunicationConversationGatewayController;
+use App\Http\Controllers\Api\V1\Communication\CommunicationDataController;
+use App\Http\Controllers\Api\V1\Communication\CommunicationInboxController;
+use App\Http\Controllers\Api\V1\Communication\CommunicationInboxGatewayController;
 use App\Http\Controllers\Api\V1\CteEmitterPushController;
 use App\Http\Controllers\Api\V1\CteOperationsController;
 use App\Http\Controllers\Api\V1\DocumentImportBatchController;
@@ -21,9 +29,11 @@ use App\Http\Controllers\Api\V1\Fiscal\DasnSimeiController;
 use App\Http\Controllers\Api\V1\Fiscal\DctfwebController;
 use App\Http\Controllers\Api\V1\Fiscal\DctfwebMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\DeclarationHubController;
+use App\Http\Controllers\Api\V1\Fiscal\DeclarationOperationController;
 use App\Http\Controllers\Api\V1\Fiscal\DefisDeclarationsMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\DefisLatestDeclarationMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\DefisSpecificDeclarationMonitoringController;
+use App\Http\Controllers\Api\V1\Fiscal\FgtsDigitalController;
 use App\Http\Controllers\Api\V1\Fiscal\FgtsEsocialController;
 use App\Http\Controllers\Api\V1\Fiscal\FiscalCategoryController;
 use App\Http\Controllers\Api\V1\Fiscal\FiscalModulePortfolioController;
@@ -31,6 +41,7 @@ use App\Http\Controllers\Api\V1\Fiscal\FiscalMonitoringRunController;
 use App\Http\Controllers\Api\V1\Fiscal\FiscalMutationController;
 use App\Http\Controllers\Api\V1\Fiscal\FiscalSnapshotController;
 use App\Http\Controllers\Api\V1\Fiscal\MailboxMessageController;
+use App\Http\Controllers\Api\V1\Fiscal\MailboxMonitoringController;
 use App\Http\Controllers\Api\V1\Fiscal\ManualConsultController;
 use App\Http\Controllers\Api\V1\Fiscal\MeiAutomationAttemptController;
 use App\Http\Controllers\Api\V1\Fiscal\MeiDasController;
@@ -87,8 +98,11 @@ use App\Http\Controllers\Api\V1\Work\OperationalDashboardController;
 use App\Http\Controllers\Api\V1\Work\OperationalProcessController;
 use App\Http\Controllers\Api\V1\Work\OperationalTaskController;
 use App\Http\Controllers\Api\V1\Work\ProcessGenerationController;
+use App\Http\Controllers\Api\V1\Work\ProcessTemplateCatalogController;
 use App\Http\Controllers\Api\V1\Work\ProcessTemplateController;
 use App\Http\Controllers\Api\V1\Work\WorkDepartmentController;
+use App\Http\Controllers\Internal\CommunicationGatewayEventController;
+use App\Http\Controllers\Internal\CommunicationGatewayMediaController;
 use App\Http\Middleware\EnsureActiveUser;
 use App\Http\Middleware\EnsureOfficeContext;
 use App\Http\Middleware\EnsureOfficeSubscriptionWritable;
@@ -96,6 +110,11 @@ use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\EnsureRecentPasswordConfirmation;
 use App\Http\Middleware\EnsureWorkRealMembership;
 use Illuminate\Support\Facades\Route;
+
+Route::post('/internal/v1/communication/gateway/events', CommunicationGatewayEventController::class)
+    ->middleware('throttle:600,1');
+Route::get('/internal/v1/communication/gateway/media/{command}', CommunicationGatewayMediaController::class)
+    ->middleware('throttle:600,1');
 
 Route::prefix('v1')->group(function (): void {
     // EMITTER_PUSH — autenticação por token de integração (sem sessão)
@@ -242,6 +261,91 @@ Route::prefix('v1')->group(function (): void {
             // Assinatura/limites do office atual (leitura liberada mesmo suspenso — middleware só bloqueia mutações)
             Route::get('/office/subscription', [OfficeSubscriptionController::class, 'show']);
 
+            Route::prefix('communication')->group(function (): void {
+                Route::get('/inboxes', [CommunicationInboxController::class, 'index']);
+                Route::post('/inboxes', [CommunicationInboxController::class, 'store']);
+                Route::patch('/inboxes/{inbox}', [CommunicationInboxController::class, 'update']);
+                Route::put('/inboxes/{inbox}/members', [CommunicationInboxController::class, 'replaceMembers']);
+                Route::post('/inboxes/{inbox}/pairing', [CommunicationInboxController::class, 'startPairing'])
+                    ->middleware('throttle:10,1');
+                Route::get('/inboxes/{inbox}/pairing', [CommunicationInboxController::class, 'pairing']);
+                Route::delete('/inboxes/{inbox}/session', [CommunicationInboxController::class, 'revoke'])
+                    ->middleware('throttle:10,1');
+                Route::get('/inboxes/{inbox}/session/status', [CommunicationInboxGatewayController::class, 'sessionStatus']);
+                Route::post('/inboxes/{inbox}/session/connect', [CommunicationInboxGatewayController::class, 'connect']);
+                Route::post('/inboxes/{inbox}/session/disconnect', [CommunicationInboxGatewayController::class, 'disconnect']);
+                Route::post('/inboxes/{inbox}/session/reset', [CommunicationInboxGatewayController::class, 'reset']);
+                Route::put('/inboxes/{inbox}/session/passive', [CommunicationInboxGatewayController::class, 'passive']);
+                Route::post('/inboxes/{inbox}/session/pair-phone', [CommunicationInboxGatewayController::class, 'pairPhone'])
+                    ->middleware('throttle:10,1');
+                Route::post('/inboxes/{inbox}/session/passkey/respond', [CommunicationInboxGatewayController::class, 'respondPasskey'])
+                    ->middleware('throttle:20,1');
+                Route::post('/inboxes/{inbox}/session/passkey/confirm', [CommunicationInboxGatewayController::class, 'confirmPasskey'])
+                    ->middleware('throttle:20,1');
+                Route::put('/inboxes/{inbox}/presence', [CommunicationInboxGatewayController::class, 'globalPresence']);
+                Route::put('/inboxes/{inbox}/default-disappearing', [CommunicationInboxGatewayController::class, 'defaultDisappearing']);
+                Route::post('/inboxes/{inbox}/app-state/sync', [CommunicationInboxGatewayController::class, 'syncState']);
+                Route::post('/inboxes/{inbox}/app-state/mark-clean', [CommunicationInboxGatewayController::class, 'markStateClean']);
+                Route::get('/inboxes/{inbox}/blocklist', [CommunicationInboxGatewayController::class, 'blocklist']);
+                Route::put('/inboxes/{inbox}/blocklist', [CommunicationInboxGatewayController::class, 'updateBlocklist']);
+                Route::get('/inboxes/{inbox}/privacy', [CommunicationInboxGatewayController::class, 'privacy']);
+                Route::put('/inboxes/{inbox}/privacy', [CommunicationInboxGatewayController::class, 'updatePrivacy']);
+                Route::post('/inboxes/{inbox}/contacts/check', [CommunicationInboxGatewayController::class, 'checkUsers']);
+                Route::post('/inboxes/{inbox}/contacts/info', [CommunicationInboxGatewayController::class, 'userInfo']);
+                Route::post('/inboxes/{inbox}/contacts/business-profiles', [CommunicationInboxGatewayController::class, 'businessProfiles']);
+                Route::post('/inboxes/{inbox}/contacts/profile-picture', [CommunicationInboxGatewayController::class, 'profilePicture']);
+                Route::post('/inboxes/{inbox}/contacts/qr-link', [CommunicationInboxGatewayController::class, 'contactQrLink']);
+                Route::post('/inboxes/{inbox}/contacts/qr-resolve', [CommunicationInboxGatewayController::class, 'resolveContactQr']);
+                Route::post('/inboxes/{inbox}/contacts/business-link-resolve', [CommunicationInboxGatewayController::class, 'resolveBusinessLink']);
+                Route::patch('/settings', [CommunicationInboxController::class, 'updateOfficeSettings']);
+
+                Route::get('/automation-policies', [CommunicationAutomationController::class, 'index']);
+                Route::put('/automation-policies', [CommunicationAutomationController::class, 'upsert']);
+                Route::get('/clients/{client}/automation-recipients', [CommunicationAutomationController::class, 'recipients']);
+                Route::put('/clients/{client}/automation-recipients', [CommunicationAutomationController::class, 'updateRecipients']);
+
+                Route::get('/contacts', [CommunicationContactController::class, 'index']);
+                Route::post('/contacts', [CommunicationContactController::class, 'store']);
+                Route::get('/contacts/{contact}', [CommunicationContactController::class, 'show']);
+                Route::patch('/contacts/{contact}', [CommunicationContactController::class, 'update']);
+                Route::post('/contacts/{contact}/identities', [CommunicationContactController::class, 'addIdentity']);
+                Route::post('/identities/{identity}/links', [CommunicationContactController::class, 'linkIdentity']);
+                Route::delete('/identities/{identity}/links/{link}', [CommunicationContactController::class, 'unlinkIdentity']);
+
+                Route::get('/conversations', [CommunicationConversationController::class, 'index']);
+                Route::get('/conversations/{conversation}', [CommunicationConversationController::class, 'show']);
+                Route::patch('/conversations/{conversation}', [CommunicationConversationController::class, 'update']);
+                Route::post('/conversations/{conversation}/messages', [CommunicationConversationController::class, 'send'])
+                    ->middleware('throttle:120,1');
+                Route::put('/conversations/{conversation}/messages/{message}/edit', [CommunicationConversationGatewayController::class, 'edit']);
+                Route::delete('/conversations/{conversation}/messages/{message}', [CommunicationConversationGatewayController::class, 'revoke']);
+                Route::put('/conversations/{conversation}/messages/{message}/reaction', [CommunicationConversationGatewayController::class, 'react']);
+                Route::post('/conversations/{conversation}/messages/{message}/poll-votes', [CommunicationConversationGatewayController::class, 'votePoll']);
+                Route::post('/conversations/{conversation}/messages/{message}/receipts', [CommunicationConversationGatewayController::class, 'receipt']);
+                Route::post('/conversations/{conversation}/messages/{message}/history', [CommunicationConversationGatewayController::class, 'history']);
+                Route::post('/conversations/{conversation}/messages/{message}/recovery', [CommunicationConversationGatewayController::class, 'recovery']);
+                Route::post('/conversations/{conversation}/presence/subscribe', [CommunicationConversationGatewayController::class, 'subscribePresence']);
+                Route::put('/conversations/{conversation}/presence', [CommunicationConversationGatewayController::class, 'chatPresence']);
+                Route::put('/conversations/{conversation}/disappearing', [CommunicationConversationGatewayController::class, 'disappearing']);
+                Route::put('/conversations/{conversation}/state', [CommunicationConversationGatewayController::class, 'state']);
+                Route::put('/conversations/{conversation}/labels/{label}', [CommunicationConversationController::class, 'addLabel']);
+                Route::delete('/conversations/{conversation}/labels/{label}', [CommunicationConversationController::class, 'removeLabel']);
+
+                Route::get('/labels', [CommunicationCatalogController::class, 'labels']);
+                Route::post('/labels', [CommunicationCatalogController::class, 'storeLabel']);
+                Route::delete('/labels/{label}', [CommunicationCatalogController::class, 'deleteLabel']);
+                Route::get('/canned-responses', [CommunicationCatalogController::class, 'cannedResponses']);
+                Route::post('/canned-responses', [CommunicationCatalogController::class, 'storeCannedResponse']);
+                Route::put('/canned-responses/{canned}', [CommunicationCatalogController::class, 'updateCannedResponse']);
+                Route::delete('/canned-responses/{canned}', [CommunicationCatalogController::class, 'deleteCannedResponse']);
+
+                Route::get('/events', [CommunicationDataController::class, 'sync']);
+                Route::get('/attachments/{attachment}/download', [CommunicationDataController::class, 'downloadAttachment']);
+                Route::get('/attachments/{attachment}/preview', [CommunicationDataController::class, 'previewAttachment']);
+                Route::get('/contacts/{contact}/export', [CommunicationDataController::class, 'exportContact']);
+                Route::delete('/contacts/{contact}/personal-data', [CommunicationDataController::class, 'purgeContact']);
+            });
+
             // Tenant SERPRO namespace canônico (/api/v1/serpro/*) — office_id só via CurrentOffice
             Route::get('/serpro/authorization', [SerproTenantController::class, 'authorization']);
             Route::get('/serpro/readiness', [SerproTenantController::class, 'readiness']);
@@ -322,6 +426,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/fiscal/installments/orders/{order}', [TaxInstallmentController::class, 'showOrder']);
             Route::get('/fiscal/installments/parcels', [TaxInstallmentController::class, 'parcels']);
             Route::get('/fiscal/installments/guides', [TaxInstallmentController::class, 'guides']);
+            Route::post('/fiscal/installments/monitor', [TaxInstallmentController::class, 'monitor']);
             Route::post('/fiscal/installments/runs', [TaxInstallmentController::class, 'enqueue']);
 
             // Operações fiscais mutantes (OFF por default; senha recente + confirmação + idempotência)
@@ -376,11 +481,30 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/fiscal/mailbox/messages/{message}/attachments/{attachment}', [MailboxMessageController::class, 'downloadAttachment']);
             Route::get('/fiscal/mailbox/state', [MailboxMessageController::class, 'state']);
             Route::get('/fiscal/mailbox/alerts', [MailboxMessageController::class, 'alerts']);
+            Route::get('/fiscal/mailbox/monitoring', [MailboxMonitoringController::class, 'show']);
+            Route::patch('/fiscal/mailbox/monitoring', [MailboxMonitoringController::class, 'update']);
+            Route::post('/fiscal/mailbox/monitoring/preview', [MailboxMonitoringController::class, 'preview']);
+            Route::post('/fiscal/mailbox/monitoring/sync', [MailboxMonitoringController::class, 'sync'])
+                ->middleware('throttle:20,1');
+            Route::get('/fiscal/mailbox/messages/{message}/detail-preview', [MailboxMonitoringController::class, 'detailPreview']);
+            Route::post('/fiscal/mailbox/messages/{message}/detail', [MailboxMonitoringController::class, 'detail'])
+                ->middleware('throttle:20,1');
 
             // Central de declarações (catálogo versionado, projeções, recibos — sem guias)
             Route::get('/fiscal/declarations/catalog', [DeclarationHubController::class, 'catalog']);
             Route::get('/fiscal/declarations/summary', [DeclarationHubController::class, 'summary']);
             Route::get('/fiscal/declarations', [DeclarationHubController::class, 'index']);
+            Route::post('/fiscal/declarations/operations/{action}/read', [DeclarationOperationController::class, 'read'])
+                ->middleware('throttle:30,1');
+            Route::post('/fiscal/declarations/operations/{action}/preflight', [DeclarationOperationController::class, 'preflight'])
+                ->middleware('throttle:30,1');
+            Route::post('/fiscal/declarations/operations/{action}/execute', [DeclarationOperationController::class, 'execute'])
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
+            Route::get('/fiscal/declarations/operations/mutations/{mutation}', [DeclarationOperationController::class, 'show'])
+                ->whereNumber('mutation');
+            Route::post('/fiscal/declarations/operations/mutations/{mutation}/reconcile', [DeclarationOperationController::class, 'reconcile'])
+                ->whereNumber('mutation')
+                ->middleware(['throttle:20,1', EnsureRecentPasswordConfirmation::class]);
             Route::post('/fiscal/declarations/project', [DeclarationHubController::class, 'project']);
             Route::post('/fiscal/declarations/calendar', [DeclarationHubController::class, 'publishCalendar']);
             Route::get('/fiscal/declarations/{projection}', [DeclarationHubController::class, 'show']);
@@ -499,11 +623,23 @@ Route::prefix('v1')->group(function (): void {
 
             // FGTS parcial via eSocial (cobertura explícita; sem portal FGTS Digital)
             Route::get('/fiscal/fgts/coverage', [FgtsEsocialController::class, 'coverage']);
+            Route::get('/fiscal/fgts/readiness', [FgtsEsocialController::class, 'readiness']);
             Route::get('/fiscal/fgts/competences', [FgtsEsocialController::class, 'competences']);
             Route::get('/fiscal/fgts/competences/{status}', [FgtsEsocialController::class, 'showCompetence']);
             Route::get('/fiscal/fgts/events', [FgtsEsocialController::class, 'events']);
             Route::post('/fiscal/fgts/sync', [FgtsEsocialController::class, 'sync']);
             Route::post('/fiscal/fgts/sync-now', [FgtsEsocialController::class, 'syncNow']);
+
+            // FGTS Digital portal — guia/PDF/pagamento; driver disabled por default.
+            Route::get('/fiscal/fgts/digital/coverage', [FgtsDigitalController::class, 'coverage']);
+            Route::get('/fiscal/fgts/digital/readiness', [FgtsDigitalController::class, 'readiness']);
+            Route::get('/fiscal/fgts/digital/runs', [FgtsDigitalController::class, 'runs']);
+            Route::post('/fiscal/fgts/digital/sync', [FgtsDigitalController::class, 'sync'])->middleware('throttle:20,1');
+            Route::post('/fiscal/fgts/digital/sync-now', [FgtsDigitalController::class, 'syncNow'])->middleware('throttle:10,1');
+            Route::post('/fiscal/fgts/digital/preview', [FgtsDigitalController::class, 'preview'])->middleware('throttle:10,1');
+            Route::post('/fiscal/fgts/digital/previews/{run}/emit', [FgtsDigitalController::class, 'emit'])->whereNumber('run')->middleware('throttle:10,1');
+            Route::post('/fiscal/fgts/digital/sessions/import', [FgtsDigitalController::class, 'importSession'])->middleware('throttle:10,1');
+            Route::post('/fiscal/fgts/digital/representations', [FgtsDigitalController::class, 'storeRepresentation'])->middleware('throttle:10,1');
 
             Route::get('/clients', [ClientController::class, 'index']);
             Route::get('/cnpj/{cnpj}/lookup', CnpjLookupController::class)->middleware('throttle:30,1');
@@ -636,6 +772,7 @@ Route::prefix('v1')->group(function (): void {
             // @see config/work_route_matrix.php
             Route::prefix('work')->group(function (): void {
                 Route::get('/departments', [WorkDepartmentController::class, 'index']);
+                Route::get('/template-catalog', [ProcessTemplateCatalogController::class, 'index']);
                 Route::get('/templates', [ProcessTemplateController::class, 'index']);
                 Route::get('/templates/{template}', [ProcessTemplateController::class, 'show']);
                 Route::get('/generation-batches/{batch}', [ProcessGenerationController::class, 'show']);
@@ -657,12 +794,14 @@ Route::prefix('v1')->group(function (): void {
                     Route::post('/departments/{department}/assign-membership', [WorkDepartmentController::class, 'assignMembership']);
 
                     Route::post('/templates', [ProcessTemplateController::class, 'store']);
+                    Route::post('/template-catalog/{catalogKey}/install', [ProcessTemplateCatalogController::class, 'install']);
                     Route::patch('/templates/{template}', [ProcessTemplateController::class, 'update']);
                     Route::post('/templates/{template}/preview', [ProcessGenerationController::class, 'preview']);
                     Route::post('/generation-batches/{batch}/confirm', [ProcessGenerationController::class, 'confirm']);
 
                     Route::post('/processes', [OperationalProcessController::class, 'store']);
                     Route::patch('/processes/{process}', [OperationalProcessController::class, 'update']);
+                    Route::post('/processes/bulk', [OperationalProcessController::class, 'bulk']);
                     Route::post('/processes/{process}/archive', [OperationalProcessController::class, 'archive']);
                     Route::post('/processes/{process}/comments', [OperationalProcessController::class, 'comment']);
 

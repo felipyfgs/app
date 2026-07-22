@@ -40,11 +40,12 @@ class MonitoringInsightsApiTest extends TestCase
 
         $response = $this->getJson('/api/v1/fiscal/monitoring/insights')
             ->assertOk()
+            ->assertJsonPath('data.kpis.clients_total', 1)
             ->assertJsonPath('data.kpis.pending_open', 1)
             ->assertJsonStructure([
                 'data' => [
                     'as_of',
-                    'kpis' => ['pending_open', 'findings_active', 'modules_with_error'],
+                    'kpis' => ['clients_total', 'pending_open', 'findings_active', 'modules_with_error'],
                     'pending' => ['total', 'by_severity', 'items'],
                     'rbt12' => ['clients'],
                     'mailbox' => ['buckets'],
@@ -110,6 +111,7 @@ class MonitoringInsightsApiTest extends TestCase
 
         $this->getJson('/api/v1/fiscal/monitoring/insights')
             ->assertOk()
+            ->assertJsonPath('data.kpis.clients_total', 1)
             ->assertJsonPath('data.kpis.pending_open', 1)
             ->assertJsonPath('data.pending.total', 1)
             ->assertJsonPath('data.pending.items.0.title', 'Própria');

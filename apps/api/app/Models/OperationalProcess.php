@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'origin',
     'title',
     'description',
+    'monitoring_module_key',
     'competence',
     'due_date',
     'target_due_date',

@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('mailbox_monitoring_settings', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('office_id')->constrained()->cascadeOnDelete()->unique();
+            $table->foreignId('office_id')->constrained()->cascadeOnDelete();
             $table->boolean('enabled')->default(false);
             $table->string('mode', 24)->default('ECONOMICO');
             $table->string('daily_time', 5)->default('00:30');
@@ -22,6 +22,7 @@ return new class extends Migration
             $table->timestampTz('next_due_at')->nullable();
             $table->timestamps();
 
+            $table->unique('office_id', 'mailbox_monitoring_office_uq');
             $table->index(['enabled', 'next_due_at'], 'mailbox_monitoring_due_idx');
         });
 

@@ -108,6 +108,11 @@ return [
         'backfill_max_documents' => (int) env('PGDASD_PAGTOWEB_BACKFILL_MAX_DOCUMENTS', 500),
     ],
 
+    'installments' => [
+        // Limita OBTERPARC por run; evita explosão de consultas faturáveis históricas.
+        'max_orders_per_run' => (int) env('INSTALLMENTS_MAX_ORDERS_PER_RUN', 25),
+    ],
+
     /**
      * Integra-SITFIS — fluxo assíncrono solicitação/protocolo/espera/emissão.
      * Polling respeitoso: nunca mais agressivo que poll_interval; espera min_wait antes da 1ª emissão.
@@ -156,7 +161,16 @@ return [
          * Após LISTAR, quantas mensagens sem corpo enfileiram DETALHE (bilhetagem).
          * 0 = desliga o enqueue automático.
          */
-        'max_detail_fetches_per_sync' => (int) env('MAILBOX_MAX_DETAIL_FETCHES_PER_SYNC', 10),
+        'max_detail_fetches_per_sync' => (int) env('MAILBOX_MAX_DETAIL_FETCHES_PER_SYNC', 0),
+        /** Monitoramento econômico por escritório permanece OFF até opt-in persistido. */
+        'economic_monitoring' => [
+            'enabled' => (bool) env('MAILBOX_ECONOMIC_MONITORING_ENABLED', false),
+            'default_mode' => 'ECONOMICO',
+            'daily_time' => '00:30',
+            'timezone' => 'America/Sao_Paulo',
+            'reconciliation_days' => 30,
+            'auto_detail_limit' => 0,
+        ],
         'retention_days' => (int) env('MAILBOX_RETENTION_DAYS', 2555), // ~7 anos
         'max_body_bytes' => (int) env('MAILBOX_MAX_BODY_BYTES', 2_097_152), // 2 MiB
         'max_attachment_bytes' => (int) env('MAILBOX_MAX_ATTACHMENT_BYTES', 10_485_760), // 10 MiB

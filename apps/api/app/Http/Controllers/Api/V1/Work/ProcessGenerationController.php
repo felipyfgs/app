@@ -11,6 +11,7 @@ use App\Support\CurrentOffice;
 use App\Support\Work\RejectClientOfficeId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class ProcessGenerationController extends Controller
 {
@@ -21,8 +22,21 @@ class ProcessGenerationController extends Controller
 
         $data = $request->validate([
             'competence' => ['required', 'string', 'regex:/^\d{4}-\d{2}$/'],
-            'client_ids' => ['required', 'array', 'min:1', 'max:200'],
+            'client_ids' => ['sometimes', 'array', 'min:1', 'max:1000'],
             'client_ids.*' => ['integer', 'min:1'],
+            'selection' => ['sometimes', 'array'],
+            'selection.rules' => ['sometimes', 'array'],
+            'selection.rules.tax_regimes' => ['sometimes', 'array', 'max:6'],
+            'selection.rules.tax_regimes.*' => ['string', 'max:40'],
+            'selection.rules.category_ids' => ['sometimes', 'array', 'max:100'],
+            'selection.rules.category_ids.*' => ['integer', 'min:1'],
+            'selection.rules.category_match' => ['sometimes', 'string', 'in:ANY,ALL'],
+            'selection.rules.excluded_category_ids' => ['sometimes', 'array', 'max:100'],
+            'selection.rules.excluded_category_ids.*' => ['integer', 'min:1'],
+            'selection.include_client_ids' => ['sometimes', 'array', 'max:1000'],
+            'selection.include_client_ids.*' => ['integer', 'min:1'],
+            'selection.exclude_client_ids' => ['sometimes', 'array', 'max:1000'],
+            'selection.exclude_client_ids.*' => ['integer', 'min:1'],
             'overrides' => ['sometimes', 'array'],
             'overrides.due_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'overrides.target_due_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
@@ -30,12 +44,19 @@ class ProcessGenerationController extends Controller
             'idempotency_key' => ['sometimes', 'nullable', 'string', 'max:64'],
         ]);
 
+        if (! $request->exists('client_ids') && ! $request->exists('selection')) {
+            throw ValidationException::withMessages([
+                'selection' => ['Informe a seleção estruturada ou client_ids para compatibilidade.'],
+            ]);
+        }
+
         $batch = $service->preview(
             $template,
             $data['competence'],
-            $data['client_ids'],
+            $data['client_ids'] ?? [],
             $data['overrides'] ?? [],
             $data['idempotency_key'] ?? null,
+            $data['selection'] ?? [],
         );
 
         return response()->json(['data' => $this->publicBatch($batch)], 201);

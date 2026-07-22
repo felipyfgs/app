@@ -5,11 +5,16 @@ namespace App\Providers;
 use App\Contracts\AdnContributorClient;
 use App\Contracts\AutenticarProcuradorClient;
 use App\Contracts\CaixaPostalClient;
+use App\Contracts\CaixaPostalIndicatorClient;
 use App\Contracts\CnpjRegistrationLookup;
+use App\Contracts\CommunicationTransport;
 use App\Contracts\CteXmlSignatureValidator;
 use App\Contracts\DteIndicatorClient;
 use App\Contracts\EnsuresClientProcuracaoForConsult;
+use App\Contracts\EsocialBxCurlRuntime;
+use App\Contracts\EsocialBxSoapTransport;
 use App\Contracts\EsocialEventClient;
+use App\Contracts\FgtsDigitalPortalClient;
 use App\Contracts\FiscalMutationTransport;
 use App\Contracts\GuideEmissionClient;
 use App\Contracts\IntegraContadorClient;
@@ -78,8 +83,16 @@ use App\Services\Clients\NullCcmeiDadosFetcher;
 use App\Services\Clients\RegistrationLookupMerger;
 use App\Services\Clients\RegistrationLookupOrchestrator;
 use App\Services\Clients\SerproConsultaCnpjLookup;
+use App\Services\Communication\Media\CommunicationMediaStore;
+use App\Services\Communication\Transport\HttpCommunicationTransport;
+use App\Services\Esocial\CurlEsocialBxSoapTransport;
 use App\Services\Esocial\DisabledEsocialEventClient;
 use App\Services\Esocial\FgtsEsocialSourceAdapter;
+use App\Services\Esocial\HttpEsocialBxEventClient;
+use App\Services\Esocial\NativeEsocialBxCurlRuntime;
+use App\Services\FgtsDigital\Clients\DisabledFgtsDigitalPortalClient;
+use App\Services\FgtsDigital\Clients\FixtureFgtsDigitalPortalClient;
+use App\Services\FgtsDigital\Clients\ProcessFgtsDigitalPortalClient;
 use App\Services\Fiscal\Guides\PagtowebArrecadacaoReceiptAdapter;
 use App\Services\Fiscal\Guides\PagtowebPaymentCountAdapter;
 use App\Services\Fiscal\Guides\PagtowebPaymentListAdapter;
@@ -116,9 +129,11 @@ use App\Services\Integra\HttpAutenticarProcuradorClient;
 use App\Services\Integra\HttpIntegraProcuracoesClient;
 use App\Services\Integra\IntegraEligibilityService;
 use App\Services\Integra\Mailbox\CaixaPostalDetailAdapter;
+use App\Services\Integra\Mailbox\CaixaPostalIndicatorAdapter;
 use App\Services\Integra\Mailbox\CaixaPostalListAdapter;
 use App\Services\Integra\Mailbox\DteIndicatorAdapter;
 use App\Services\Integra\Mailbox\SerproCaixaPostalClient;
+use App\Services\Integra\Mailbox\SerproCaixaPostalIndicatorClient;
 use App\Services\Integra\Mailbox\SerproDteIndicatorClient;
 use App\Services\Integra\OfficeSerproAuthorizationService;
 use App\Services\Integra\Parcelamento\ParcelamentoEmitDocumentAdapter;
@@ -127,8 +142,8 @@ use App\Services\Integra\Parcelamento\ParcelamentoReadAdapter;
 use App\Services\Integra\Parcelamento\SerproParcelamentoSource;
 use App\Services\Integra\Parcelamento\StubTaxGuideEnrollment;
 use App\Services\Integra\Sitfis\SitfisIdentityResolver;
-use App\Services\Integra\Sitfis\SmalotSitfisPdfTextExtractor;
 use App\Services\Integra\Sitfis\SitfisSourceAdapter;
+use App\Services\Integra\Sitfis\SmalotSitfisPdfTextExtractor;
 use App\Services\MeiAutomation\MeiAutomationAttemptRepository;
 use App\Services\MeiAutomation\MeiPortalFiscalMutationTransport;
 use App\Services\MeiAutomation\MeiProviderPolicy;
@@ -218,6 +233,14 @@ class AppServiceProvider extends ServiceProvider
                 (string) config('vault.disk_root'),
             );
         });
+
+        $this->app->singleton(CommunicationMediaStore::class, function ($app) {
+            return new CommunicationMediaStore(
+                $app->make(EnvelopeCrypto::class),
+                (string) config('communication.media.disk_root'),
+            );
+        });
+        $this->app->bind(CommunicationTransport::class, HttpCommunicationTransport::class);
 
         $this->app->singleton(CurlMtlsTransport::class, function () {
             return new CurlMtlsTransport(
@@ -357,13 +380,33 @@ class AppServiceProvider extends ServiceProvider
         // Núcleo fiscal — registry de adapters (módulos filhos registram em boot de seus providers)
         $this->app->singleton(FiscalAdapterRegistry::class);
 
-        // FGTS / eSocial — universalmente fail-closed até existir provider M2M oficial aprovado.
-        // Dublês só podem ser instalados explicitamente pela suíte de testes.
+        // FGTS / eSocial BX — provider oficial somente por opt-in; default fail-closed.
         $this->app->singleton(DisabledEsocialEventClient::class);
-        $this->app->bind(EsocialEventClient::class, DisabledEsocialEventClient::class);
+        $this->app->bind(EsocialBxCurlRuntime::class, NativeEsocialBxCurlRuntime::class);
+        $this->app->bind(EsocialBxSoapTransport::class, CurlEsocialBxSoapTransport::class);
+        $this->app->bind(EsocialEventClient::class, function ($app) {
+            return match ((string) config('fgts_esocial.driver', 'disabled')) {
+                'official_bx' => $app->make(HttpEsocialBxEventClient::class),
+                'disabled' => $app->make(DisabledEsocialEventClient::class),
+                default => new DisabledEsocialEventClient(
+                    errorCode: 'ESOCIAL_BX_DRIVER_INVALID',
+                    message: 'Driver eSocial BX inválido; integração bloqueada.',
+                ),
+            };
+        });
+
+        // FGTS Digital portal — browser apenas por opt-in; fixture nunca realiza rede.
+        $this->app->bind(FgtsDigitalPortalClient::class, function ($app) {
+            return match ((string) config('fgts_digital.driver', 'disabled')) {
+                'fixture' => $app->make(FixtureFgtsDigitalPortalClient::class),
+                'portal_browser' => $app->make(ProcessFgtsDigitalPortalClient::class),
+                default => $app->make(DisabledFgtsDigitalPortalClient::class),
+            };
+        });
 
         // Caixa Postal / DTE — o runtime só resolve clientes SERPRO reais.
         $this->app->bind(CaixaPostalClient::class, SerproCaixaPostalClient::class);
+        $this->app->bind(CaixaPostalIndicatorClient::class, SerproCaixaPostalIndicatorClient::class);
         $this->app->bind(DteIndicatorClient::class, SerproDteIndicatorClient::class);
 
         // Mutações fiscais — transporte oficial; doubles são registrados apenas em tests/Support.
@@ -449,6 +492,7 @@ class AppServiceProvider extends ServiceProvider
         $registry->register($this->app->make(FgtsEsocialSourceAdapter::class));
         $registry->register($this->app->make(CaixaPostalListAdapter::class));
         $registry->register($this->app->make(CaixaPostalDetailAdapter::class));
+        $registry->register($this->app->make(CaixaPostalIndicatorAdapter::class));
         $registry->register($this->app->make(DteIndicatorAdapter::class));
         $registry->register($this->app->make(SicalcRevenueSupportAdapter::class));
         $registry->register($this->app->make(PagtowebPaymentCountAdapter::class));

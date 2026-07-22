@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Fiscal;
 
+use App\DTO\Esocial\EsocialBxReadiness;
 use App\Enums\OfficeRole;
 use App\Http\Controllers\Controller;
 use App\Jobs\Fiscal\SyncFgtsEsocialCompetenceJob;
@@ -9,10 +10,10 @@ use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\FiscalCategory;
 use App\Models\FiscalCompetence;
+use App\Services\Esocial\EsocialBxReadinessService;
 use App\Services\Esocial\FgtsEsocialMonitoringService;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
 use App\Support\CurrentOffice;
-use App\Support\FeatureFlags;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -26,6 +27,7 @@ class FgtsEsocialController extends Controller
     public function __construct(
         private readonly CurrentOffice $currentOffice,
         private readonly FgtsEsocialMonitoringService $monitoring,
+        private readonly EsocialBxReadinessService $readiness,
         private readonly FiscalMonitoringRunService $runs,
     ) {}
 
@@ -39,6 +41,23 @@ class FgtsEsocialController extends Controller
         return response()->json([
             'data' => $this->monitoring->coverageManifest(),
         ]);
+    }
+
+    public function readiness(Request $request): JsonResponse
+    {
+        $this->assertCanRead();
+        $office = $this->currentOffice->office();
+        $data = $request->validate(['client_id' => ['required', 'integer']]);
+        $client = Client::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereKey($data['client_id'])
+            ->first();
+        if ($client === null) {
+            return response()->json(['message' => 'Cliente não encontrado.'], 404);
+        }
+
+        return response()->json(['data' => $this->readiness->check($office, $client)->toArray()]);
     }
 
     public function competences(Request $request): JsonResponse
@@ -123,19 +142,6 @@ class FgtsEsocialController extends Controller
         $this->assertCanWrite();
         $office = $this->currentOffice->office();
 
-        if (! $this->monitoring->isSourceAvailable()) {
-            return $this->sourceUnavailableResponse();
-        }
-
-        if ((bool) config('fgts_esocial.kill_switch', false)) {
-            return response()->json(['message' => 'Módulo FGTS/eSocial desabilitado (kill switch).'], 423);
-        }
-
-        if (! FeatureFlags::isModuleEnabled('fgts', (int) $office->id)
-            && ! (bool) config('fiscal_monitoring.enabled', false)) {
-            return response()->json(['message' => 'Módulo FGTS desabilitado para este escritório.'], 403);
-        }
-
         $data = $request->validate([
             'client_id' => ['required', 'integer'],
             'competence_period_key' => ['required', 'string', 'regex:/^\d{4}-\d{2}$/'],
@@ -153,6 +159,11 @@ class FgtsEsocialController extends Controller
 
         if ($client === null) {
             return response()->json(['message' => 'Cliente não encontrado.'], 404);
+        }
+
+        $readiness = $this->readiness->check($office, $client);
+        if (! $readiness->ready) {
+            return $this->readinessBlockedResponse($readiness);
         }
 
         $establishment = null;
@@ -216,8 +227,11 @@ class FgtsEsocialController extends Controller
                         ]),
                     ])->save();
                 }
-            } catch (RuntimeException $e) {
-                return response()->json(['message' => $e->getMessage()], 422);
+            } catch (RuntimeException) {
+                return response()->json([
+                    'message' => 'Não foi possível criar a execução de monitoramento FGTS.',
+                    'code' => 'ESOCIAL_RUN_CREATION_FAILED',
+                ], 422);
             }
         }
 
@@ -251,19 +265,6 @@ class FgtsEsocialController extends Controller
         $this->assertCanWrite();
         $office = $this->currentOffice->office();
 
-        if (! $this->monitoring->isSourceAvailable()) {
-            return $this->sourceUnavailableResponse();
-        }
-
-        if ((bool) config('fgts_esocial.kill_switch', false)) {
-            return response()->json(['message' => 'Módulo FGTS/eSocial desabilitado (kill switch).'], 423);
-        }
-
-        if (! FeatureFlags::isModuleEnabled('fgts', (int) $office->id)
-            && ! (bool) config('fiscal_monitoring.enabled', false)) {
-            return response()->json(['message' => 'Módulo FGTS desabilitado para este escritório.'], 403);
-        }
-
         $data = $request->validate([
             'client_id' => ['required', 'integer'],
             'competence_period_key' => ['required', 'string', 'regex:/^\d{4}-\d{2}$/'],
@@ -280,6 +281,11 @@ class FgtsEsocialController extends Controller
             return response()->json(['message' => 'Cliente não encontrado.'], 404);
         }
 
+        $readiness = $this->readiness->check($office, $client);
+        if (! $readiness->ready) {
+            return $this->readinessBlockedResponse($readiness);
+        }
+
         $establishment = null;
         if (! empty($data['establishment_id'])) {
             $establishment = Establishment::query()
@@ -288,6 +294,9 @@ class FgtsEsocialController extends Controller
                 ->where('client_id', $client->id)
                 ->whereKey($data['establishment_id'])
                 ->first();
+            if ($establishment === null) {
+                return response()->json(['message' => 'Estabelecimento não encontrado.'], 404);
+            }
         }
 
         try {
@@ -297,8 +306,11 @@ class FgtsEsocialController extends Controller
                 competencePeriodKey: $data['competence_period_key'],
                 establishment: $establishment,
             );
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (RuntimeException) {
+            return response()->json([
+                'message' => 'Falha sanitizada ao sincronizar o eSocial BX.',
+                'code' => 'ESOCIAL_SYNC_FAILED',
+            ], 502);
         }
 
         if ($out['status']->is_quarantined) {
@@ -329,12 +341,49 @@ class FgtsEsocialController extends Controller
         }
     }
 
-    private function sourceUnavailableResponse(): JsonResponse
+    private function readinessBlockedResponse(EsocialBxReadiness $readiness): JsonResponse
     {
+        $blocker = $readiness->blockers[0] ?? [
+            'code' => 'ESOCIAL_BX_NOT_READY',
+            'message' => 'Provider eSocial BX indisponível.',
+        ];
+
         return response()->json([
-            'message' => $this->monitoring->sourceUnavailableMessage(),
-            'code' => 'ESOCIAL_SOURCE_UNAVAILABLE',
-        ], 503);
+            'message' => $blocker['message'],
+            'code' => $blocker['code'],
+            'readiness' => $readiness->toArray(),
+        ], $this->blockerHttpStatus($blocker['code']));
+    }
+
+    private function blockerHttpStatus(string $code): int
+    {
+        if ($code === 'ESOCIAL_BX_QUOTA_EXHAUSTED') {
+            return 429;
+        }
+        if ($code === 'ESOCIAL_BX_CONCURRENT_REQUEST') {
+            return 409;
+        }
+        if (str_starts_with($code, 'ESOCIAL_BX_CREDENTIAL_')) {
+            return 422;
+        }
+        if ($code === 'ESOCIAL_BX_CLIENT_NOT_FOUND') {
+            return 404;
+        }
+        if (in_array($code, [
+            'ESOCIAL_BX_DISABLED',
+            'ESOCIAL_BX_DRIVER_INVALID',
+            'ESOCIAL_BX_ENVIRONMENT_INVALID',
+            'ESOCIAL_BX_PRODUCTION_EGRESS_DISABLED',
+            'ESOCIAL_BX_ENDPOINT_NOT_ALLOWED',
+            'ESOCIAL_BX_LIMITS_INVALID',
+            'ESOCIAL_BX_TIMEOUTS_INVALID',
+            'ESOCIAL_BX_TIMEZONE_INVALID',
+            'ESOCIAL_BX_BLOCKED_DAYS_INVALID',
+        ], true)) {
+            return 503;
+        }
+
+        return 423;
     }
 
     private function assertCanWrite(): void

@@ -33,6 +33,16 @@ class WorkDepartment extends Model
         return $this->hasMany(OfficeMembership::class, 'work_department_id');
     }
 
+    public function communicationInboxes(): HasMany
+    {
+        return $this->hasMany(CommunicationInbox::class, 'work_department_id');
+    }
+
+    public function communicationConversations(): HasMany
+    {
+        return $this->hasMany(CommunicationConversation::class, 'work_department_id');
+    }
+
     protected static function newFactory(): WorkDepartmentFactory
     {
         return WorkDepartmentFactory::new();

@@ -4,23 +4,32 @@ namespace App\Http\Controllers\Api\V1\Work;
 
 use App\Domain\Work\DueDateCalculator;
 use App\Domain\Work\WorkRiskCalculator;
+use App\Enums\Work\ProcessStatus;
 use App\Enums\Work\TaskStatus;
 use App\Enums\Work\WorkRisk;
 use App\Http\Controllers\Controller;
+use App\Models\Client;
 use App\Models\OperationalComment;
 use App\Models\OperationalProcess;
 use App\Models\OperationalTask;
 use App\Services\Audit\AuditLogger;
+use App\Services\Work\OperationalProcessBulkService;
 use App\Services\Work\OperationalProcessService;
 use App\Services\Work\OperationalTimelineQuery;
+use App\Services\Work\WorkMonitoringContextRegistry;
 use App\Support\CurrentOffice;
 use App\Support\Work\OfficeTimezone;
 use App\Support\Work\RejectClientOfficeId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class OperationalProcessController extends Controller
 {
+    public function __construct(
+        private readonly WorkMonitoringContextRegistry $monitoringContexts,
+    ) {}
+
     public function index(Request $request, CurrentOffice $currentOffice): JsonResponse
     {
         $this->authorize('viewAny', OperationalProcess::class);
@@ -29,8 +38,11 @@ class OperationalProcessController extends Controller
         $perPage = min(max((int) $request->input('per_page', 25), 1), 100);
         $q = OperationalProcess::query()
             ->with([
-                'client:id,legal_name,display_name',
-                'tasks',
+                'client:id,legal_name,display_name,root_cnpj',
+                'client.establishments:id,client_id,cnpj,is_matrix',
+                'tasks.department:id,name,code',
+                'tasks.assigneeMembership:id,user_id,office_id',
+                'tasks.assigneeMembership.user:id,name',
                 'department:id,name,code',
                 'assigneeMembership:id,user_id,office_id',
                 'assigneeMembership.user:id,name',
@@ -45,6 +57,12 @@ class OperationalProcessController extends Controller
         }
         if ($request->filled('status')) {
             $q->where('status', $request->string('status')->toString());
+        }
+        if ($request->boolean('active_only')) {
+            $q->whereNotIn('status', [
+                ProcessStatus::Concluido->value,
+                ProcessStatus::Arquivado->value,
+            ]);
         }
         if ($request->filled('department_id')) {
             $q->where('work_department_id', (int) $request->input('department_id'));
@@ -93,7 +111,7 @@ class OperationalProcessController extends Controller
     public function show(OperationalProcess $process, CurrentOffice $currentOffice): JsonResponse
     {
         $this->authorize('view', $process);
-        $process->load(['client', 'tasks.evidences', 'tasks.assigneeMembership.user', 'department', 'assigneeMembership.user', 'comments']);
+        $process->load(['client.establishments', 'tasks.evidences', 'tasks.assigneeMembership.user', 'tasks.department', 'department', 'assigneeMembership.user', 'comments']);
         $today = (new DueDateCalculator)->todayInOffice(OfficeTimezone::for($currentOffice->office()));
 
         return response()->json(['data' => $this->public($process, detailed: true, today: $today)]);
@@ -108,6 +126,7 @@ class OperationalProcessController extends Controller
             'client_id' => ['required', 'integer'],
             'title' => ['required', 'string', 'max:200'],
             'description' => ['nullable', 'string'],
+            'monitoring_module_key' => ['nullable', 'string', Rule::in($this->monitoringContexts->keys())],
             'competence' => ['required', 'string', 'regex:/^\d{4}-\d{2}$/'],
             'due_date' => ['nullable', 'date_format:Y-m-d'],
             'target_due_date' => ['nullable', 'date_format:Y-m-d'],
@@ -140,6 +159,7 @@ class OperationalProcessController extends Controller
             'lock_version' => ['required', 'integer', 'min:1'],
             'title' => ['sometimes', 'string', 'max:200'],
             'description' => ['nullable', 'string'],
+            'monitoring_module_key' => ['nullable', 'string', Rule::in($this->monitoringContexts->keys())],
             'due_date' => ['nullable', 'date_format:Y-m-d'],
             'target_due_date' => ['nullable', 'date_format:Y-m-d'],
             'subject_to_fine' => ['sometimes', 'boolean'],
@@ -164,6 +184,33 @@ class OperationalProcessController extends Controller
         $process = $service->archive($process, (int) $data['lock_version']);
 
         return response()->json(['data' => $this->public($process)]);
+    }
+
+    public function bulk(Request $request, OperationalProcessBulkService $service): JsonResponse
+    {
+        $this->authorize('bulk', OperationalProcess::class);
+        RejectClientOfficeId::strip($request);
+
+        $data = $request->validate([
+            'items' => ['required', 'array', 'min:1', 'max:100'],
+            'items.*.id' => ['required', 'integer'],
+            'items.*.lock_version' => ['required', 'integer'],
+            'changes' => ['required', 'array'],
+            'changes.action' => ['required', 'string', 'in:archive,assign,set_department,set_due_date'],
+            'changes.assignee_membership_id' => ['sometimes', 'nullable', 'integer'],
+            'changes.work_department_id' => ['sometimes', 'nullable', 'integer'],
+            'changes.due_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+        ]);
+
+        $result = $service->apply($data['items'], $data['changes'], $request->user());
+
+        return response()->json([
+            'data' => collect($result['succeeded'])->map(fn (OperationalProcess $p) => $this->public($p))->values(),
+            'meta' => [
+                'succeeded' => count($result['succeeded']),
+                'failed' => $result['failed'],
+            ],
+        ]);
     }
 
     public function comment(Request $request, OperationalProcess $process, CurrentOffice $currentOffice, AuditLogger $audit): JsonResponse
@@ -249,6 +296,7 @@ class OperationalProcessController extends Controller
             'id' => $p->id,
             'title' => $p->title,
             'description' => $p->description,
+            'monitoring_module_key' => $p->monitoring_module_key,
             'competence' => $p->competence,
             'origin' => $p->origin->value,
             'status' => $p->status->value,
@@ -263,7 +311,16 @@ class OperationalProcessController extends Controller
             'client' => $p->relationLoaded('client') && $p->client ? [
                 'id' => $p->client->id,
                 'name' => $p->client->display_name ?: $p->client->legal_name,
+                'cnpj_masked' => $this->clientCnpjMasked($p->client),
             ] : null,
+            'links' => $p->client_id ? [
+                'client' => "/clients/{$p->client_id}/cadastro",
+                'monitoring' => "/monitoring/clients/{$p->client_id}",
+            ] : null,
+            'monitoring_context' => $this->monitoringContexts->forClient(
+                $p->monitoring_module_key,
+                (int) $p->client_id,
+            ),
             'department' => $p->relationLoaded('department') && $p->department ? [
                 'id' => $p->department->id,
                 'name' => $p->department->name,
@@ -280,7 +337,7 @@ class OperationalProcessController extends Controller
             'risks' => array_keys($risks),
         ];
 
-        if ($detailed && $p->relationLoaded('tasks')) {
+        if ($p->relationLoaded('tasks')) {
             $data['tasks'] = $p->tasks->map(function (OperationalTask $t) use ($p, $riskCalc, $today) {
                 $taskRisks = $riskCalc->forTask(
                     $t->status,
@@ -306,6 +363,11 @@ class OperationalProcessController extends Controller
                     'work_department_id' => $t->work_department_id,
                     'lock_version' => $t->lock_version,
                     'risks' => array_map(fn (WorkRisk $r) => $r->value, $taskRisks),
+                    'department' => $t->relationLoaded('department') && $t->department ? [
+                        'id' => $t->department->id,
+                        'name' => $t->department->name,
+                        'code' => $t->department->code,
+                    ] : null,
                     'assignee' => $t->relationLoaded('assigneeMembership') && $t->assigneeMembership?->user ? [
                         'membership_id' => $t->assigneeMembership->id,
                         'name' => $t->assigneeMembership->user->name,
@@ -314,16 +376,34 @@ class OperationalProcessController extends Controller
                 ];
             })->values();
 
-            if ($p->relationLoaded('comments')) {
-                $data['comments'] = $p->comments->map(fn (OperationalComment $c) => [
-                    'id' => $c->id,
-                    'body' => $c->body,
-                    'author_membership_id' => $c->author_membership_id,
-                    'created_at' => $c->created_at?->toIso8601String(),
-                ])->values();
-            }
+        }
+
+        if ($detailed && $p->relationLoaded('comments')) {
+            $data['comments'] = $p->comments->map(fn (OperationalComment $c) => [
+                'id' => $c->id,
+                'body' => $c->body,
+                'author_membership_id' => $c->author_membership_id,
+                'created_at' => $c->created_at?->toIso8601String(),
+            ])->values();
         }
 
         return $data;
+    }
+
+    private function clientCnpjMasked(Client $client): ?string
+    {
+        $cnpj = null;
+        if ($client->relationLoaded('establishments')) {
+            $cnpj = $client->establishments
+                ->sortByDesc('is_matrix')
+                ->first()?->cnpj;
+        }
+        $digits = preg_replace('/\D+/', '', (string) $cnpj) ?? '';
+        if (strlen($digits) !== 14) {
+            return null;
+        }
+
+        return substr($digits, 0, 2).'.'.substr($digits, 2, 3).'.'.substr($digits, 5, 3)
+            .'/'.substr($digits, 8, 4).'-'.substr($digits, 12, 2);
     }
 }

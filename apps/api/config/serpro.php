@@ -459,6 +459,9 @@ return [
         'solicit_pj_operation_key' => 'eventosatualizacao.soliceventospj',
         'obter_pf_operation_key' => 'eventosatualizacao.obtereventospf',
         'obter_pj_operation_key' => 'eventosatualizacao.obtereventospj',
+        /** Contrato PJ versionado; sem fallback automático entre campos. */
+        'pj_contract_version' => env('SERPRO_EVENTOS_PJ_CONTRACT_VERSION', 'pj-v1-2026-04-10'),
+        'pj_event_field' => env('SERPRO_EVENTOS_PJ_EVENT_FIELD', 'evento'),
     ],
 
     /*

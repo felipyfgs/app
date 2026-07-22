@@ -9,6 +9,7 @@ public/storage
 storage/app/private/
 storage/app/backups/
 storage/app/certs/
+storage/app/vault/
 storage/app/tmp-manual-nfce/
 storage/framework/cache/data/
 storage/framework/sessions/

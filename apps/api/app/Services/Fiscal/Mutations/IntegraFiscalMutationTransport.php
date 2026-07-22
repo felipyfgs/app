@@ -6,12 +6,13 @@ use App\Contracts\SerproFiscalMutationTransport;
 use App\DTO\Serpro\IntegraRequest;
 use App\DTO\Serpro\IntegraResponse;
 use App\DTO\Serpro\MutationAuthorization;
+use App\Models\FiscalMutationOperation;
 use App\Services\Serpro\Catalog\OperationKeyMap;
 use App\Services\Serpro\SerproOperationService;
 
 /**
- * Transporte mutante via executor central.
- * Nesta change, mutações permanecem bloqueadas por MutationAuthorization tipada.
+ * Transporte mutante via executor central, autorizado exclusivamente por uma
+ * operação persistida e revalidada pelo FiscalMutationService.
  */
 final class IntegraFiscalMutationTransport implements SerproFiscalMutationTransport
 {
@@ -21,9 +22,14 @@ final class IntegraFiscalMutationTransport implements SerproFiscalMutationTransp
 
     public function execute(IntegraRequest $request): IntegraResponse
     {
+        $operation = $this->persistedOperation($request);
+
         return $this->operations->executeRequest(
             $request,
-            mutationAuth: MutationAuthorization::none(),
+            mutationAuth: $operation === null
+                ? MutationAuthorization::none()
+                : MutationAuthorization::fromPersistedOperation($operation, $request->operationKey),
+            module: $operation?->module_key,
         );
     }
 
@@ -75,5 +81,32 @@ final class IntegraFiscalMutationTransport implements SerproFiscalMutationTransp
         $upper = strtoupper($operationCode);
 
         return $map[$upper] ?? 'CONSULTAR_RECIBO';
+    }
+
+    private function persistedOperation(IntegraRequest $request): ?FiscalMutationOperation
+    {
+        $id = $request->payload['mutation_operation_id'] ?? null;
+        if (! is_int($id) && ! (is_string($id) && ctype_digit($id))) {
+            return null;
+        }
+
+        $operation = FiscalMutationOperation::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $request->officeId)
+            ->where('client_id', $request->clientId)
+            ->whereKey((int) $id)
+            ->first();
+        if ($operation === null) {
+            return null;
+        }
+
+        $digest = FiscalMutationPayload::digest($request->businessData);
+        if (! is_string($operation->request_payload_digest)
+            || ! hash_equals($operation->request_payload_digest, $digest)
+        ) {
+            return null;
+        }
+
+        return $operation;
     }
 }

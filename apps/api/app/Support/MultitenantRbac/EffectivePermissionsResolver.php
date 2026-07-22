@@ -73,7 +73,7 @@ final class EffectivePermissionsResolver
         if ($tenantRole === TenantRole::TenantUser) {
             if ($membership->tenant_role instanceof TenantRole
                 && $membership->permissionProfile?->is_active) {
-                return $membership->permissionProfile->permissionKeys();
+                return $this->withCanonicalAliases($membership->permissionProfile->permissionKeys());
             }
 
             return $this->fromLegacyOfficeRole(
@@ -86,6 +86,25 @@ final class EffectivePermissionsResolver
         }
 
         return [];
+    }
+
+    /**
+     * Mantém clientes antigos funcionais, mas sempre anuncia a chave nova para
+     * que autorização de UI e API convirjam durante a migração dos perfis.
+     *
+     * @param  list<string>  $keys
+     * @return list<string>
+     */
+    private function withCanonicalAliases(array $keys): array
+    {
+        if (in_array(TenantPermission::CommunicationManage->value, $keys, true)
+            && ! in_array(TenantPermission::CommunicationManageInboxes->value, $keys, true)) {
+            $keys[] = TenantPermission::CommunicationManageInboxes->value;
+        }
+        $keys = array_values(array_unique($keys));
+        sort($keys, SORT_STRING);
+
+        return $keys;
     }
 
     /**

@@ -43,16 +43,28 @@ final class FiscalMutationIntegraRequestFactory
             $forceSerpro,
         );
 
+        $businessData = $operation->request_payload_encrypted ?? [];
         $request = $operation->request_sanitized ?? [];
         $payload = [
             'competence' => $operation->competence_period_key,
-            'request_keys' => array_keys($request),
+            'request_keys' => array_keys($businessData),
             'contributor_ref' => $this->maskedReference($contributorCnpj),
             'mutation_operation_id' => (int) $operation->id,
         ];
         if ($this->isMeiDas($operation)) {
-            $payload['competencies'] = array_values((array) ($request['competencies'] ?? []));
-            $payload['output_format'] = strtoupper((string) ($request['output_format'] ?? 'PDF'));
+            $payload['competencies'] = array_values((array) ($businessData['competencies'] ?? $request['competencies'] ?? []));
+            $payload['due_date'] = $businessData['due_date'] ?? $request['due_date'] ?? null;
+            $payload['output_format'] = strtoupper((string) ($businessData['output_format'] ?? $request['output_format'] ?? 'PDF'));
+        }
+
+        $operationKey = trim((string) $operation->provider_operation_key);
+        if ($operationKey === '') {
+            $operationKey = OperationKeyMap::require(
+                null,
+                $operation->solution_code,
+                $operation->service_code,
+                $operation->operation_code,
+            );
         }
 
         return new IntegraRequest(
@@ -62,12 +74,8 @@ final class FiscalMutationIntegraRequestFactory
             contractorCnpj: $contractorCnpj,
             authorIdentity: $authorIdentity,
             contributorCnpj: $contributorCnpj,
-            operationKey: OperationKeyMap::require(
-                null,
-                $operation->solution_code,
-                $operation->service_code,
-                $operation->operation_code,
-            ),
+            operationKey: $operationKey,
+            businessData: $businessData,
             payload: $payload,
             idempotencyKey: $operation->idempotency_key,
             correlationId: $operation->correlation_id,

@@ -442,7 +442,7 @@ class ClientController extends Controller
     }
 
     public function updateCustomField(
-        \Illuminate\Http\Request $request,
+        Request $request,
         Client $client,
         ClientCustomField $customField,
         AuditLogger $audit,

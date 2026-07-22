@@ -12,13 +12,28 @@ use App\DTO\Esocial\EsocialFetchResult;
  */
 final class DisabledEsocialEventClient implements EsocialEventClient
 {
-    public const UNAVAILABLE_MESSAGE = 'Integração FGTS/eSocial indisponível: não há provider M2M oficial habilitado.';
+    public const UNAVAILABLE_MESSAGE = 'Integração eSocial BX oficial desabilitada por configuração.';
+
+    public function __construct(
+        private readonly string $errorCode = 'ESOCIAL_SOURCE_UNAVAILABLE',
+        private readonly string $message = self::UNAVAILABLE_MESSAGE,
+    ) {}
 
     public function fetchEvents(EsocialFetchRequest $request): EsocialFetchResult
     {
         return EsocialFetchResult::failed(
-            self::UNAVAILABLE_MESSAGE,
-            'ESOCIAL_SOURCE_UNAVAILABLE',
+            $this->message,
+            $this->errorCode,
         );
+    }
+
+    public function unavailableCode(): string
+    {
+        return $this->errorCode;
+    }
+
+    public function unavailableMessage(): string
+    {
+        return $this->message;
     }
 }

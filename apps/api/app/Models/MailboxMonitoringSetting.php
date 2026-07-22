@@ -23,6 +23,15 @@ class MailboxMonitoringSetting extends Model
 {
     use BelongsToOffice;
 
+    protected $attributes = [
+        'enabled' => false,
+        'mode' => MailboxMonitoringMode::Economic->value,
+        'daily_time' => '00:30',
+        'timezone' => 'America/Sao_Paulo',
+        'reconciliation_days' => 30,
+        'auto_detail_limit' => 0,
+    ];
+
     protected function casts(): array
     {
         return [

@@ -12,6 +12,7 @@ use App\Models\FiscalMutationOperationEvent;
 use App\Models\Office;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Serpro\Catalog\OperationKeyMap;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -45,6 +46,8 @@ final class FiscalMutationService
         ?string $environment = null,
         array $requestPayload = [],
         ?string $module = null,
+        ?string $providerOperationKey = null,
+        bool $requireRecentAuth = true,
     ): MutationPreflightResult {
         $environment = SerproEnvironment::tryFrom(
             strtoupper($environment ?? (string) config('fiscal_mutations.default_environment', 'TRIAL'))
@@ -53,6 +56,17 @@ final class FiscalMutationService
         $solutionCode = strtoupper($solutionCode);
         $serviceCode = strtoupper($serviceCode);
         $operationCode = strtoupper($operationCode);
+        $providerOperationKey ??= $this->meiProviderOperationKey(
+            $solutionCode,
+            $serviceCode,
+            $operationCode,
+            $requestPayload,
+        ) ?? OperationKeyMap::resolve(
+            null,
+            $solutionCode,
+            $serviceCode,
+            $operationCode,
+        );
         $module = $module ?? FiscalMutationCohort::moduleForSolution($solutionCode);
         $idempotencyKey = $this->normalizeIdempotencyKey($idempotencyKey);
         $correlationId = $this->audit->correlationId();
@@ -73,6 +87,15 @@ final class FiscalMutationService
             ->first();
 
         if ($existing !== null) {
+            $this->assertIdempotentRequestMatches(
+                $existing,
+                $client,
+                $solutionCode,
+                $serviceCode,
+                $operationCode,
+                $requestPayload,
+                $providerOperationKey,
+            );
             $replayEligible = $existing->status === FiscalMutationStatus::Pending
                 && $existing->isPreflightValid()
                 && $existing->denial_code === null;
@@ -95,9 +118,9 @@ final class FiscalMutationService
             competencePeriodKey: $competencePeriodKey,
             module: $module,
             options: [
-                'require_totp' => true,
+                'require_totp' => $requireRecentAuth,
                 'skip_anti_repeat' => false,
-                'provider_operation_key' => $this->meiProviderOperationKey(
+                'provider_operation_key' => $providerOperationKey ?? $this->meiProviderOperationKey(
                     $solutionCode,
                     $serviceCode,
                     $operationCode,
@@ -125,6 +148,7 @@ final class FiscalMutationService
             'solution_code' => $solutionCode,
             'service_code' => $serviceCode,
             'operation_code' => $operationCode,
+            'provider_operation_key' => $providerOperationKey,
             'module_key' => $module,
             'competence_period_key' => $competencePeriodKey,
             'status' => FiscalMutationStatus::Pending,
@@ -132,6 +156,8 @@ final class FiscalMutationService
             'confirmation_phrase' => $confirmationPhrase,
             'confirmation_required' => true,
             'request_sanitized' => $sanitizedRequest,
+            'request_payload_encrypted' => $requestPayload,
+            'request_payload_digest' => FiscalMutationPayload::digest($requestPayload),
             'pre_operation_snapshot' => $snapshot,
             'eligibility_snapshot' => $policy->toArray(),
             'cost_estimate' => is_array($cost) ? $cost : null,
@@ -216,6 +242,7 @@ final class FiscalMutationService
         ?string $environment = null,
         array $requestPayload = [],
         ?string $module = null,
+        ?string $providerOperationKey = null,
     ): FiscalMutationOperation {
         $idempotencyKey = $this->normalizeIdempotencyKey($idempotencyKey);
 
@@ -227,6 +254,15 @@ final class FiscalMutationService
             ->first();
 
         if ($existing !== null) {
+            $this->assertIdempotentRequestMatches(
+                $existing,
+                $client,
+                strtoupper($solutionCode),
+                strtoupper($serviceCode),
+                strtoupper($operationCode),
+                $requestPayload,
+                $providerOperationKey,
+            );
             if ($existing->status->blocksBlindRetry() && $existing->status !== FiscalMutationStatus::Pending) {
                 // Replay seguro — não reenvia
                 $this->audit->record('fiscal.mutation.execute_replay', 'SUCCESS', $existing, [
@@ -255,6 +291,7 @@ final class FiscalMutationService
                 environment: $environment,
                 requestPayload: $requestPayload,
                 module: $module,
+                providerOperationKey: $providerOperationKey,
             );
             $operation = $pf->operation;
             if ($operation === null) {
@@ -292,7 +329,7 @@ final class FiscalMutationService
                 'require_confirmation' => true,
                 'confirmed' => $confirmed,
                 'exclude_operation_id' => (int) $operation->id,
-                'provider_operation_key' => $this->meiProviderOperationKey(
+                'provider_operation_key' => $operation->provider_operation_key ?? $this->meiProviderOperationKey(
                     (string) $operation->solution_code,
                     (string) $operation->service_code,
                     (string) $operation->operation_code,
@@ -335,9 +372,7 @@ final class FiscalMutationService
             'eligibility_snapshot' => $policy->toArray(),
             'denial_code' => null,
             'denial_message' => null,
-            'request_sanitized' => $this->sanitizeRequest(
-                array_merge($operation->request_sanitized ?? [], $requestPayload)
-            ),
+            'request_sanitized' => $this->sanitizeRequest($operation->request_payload_encrypted ?? $requestPayload),
             'attempt_count' => $operation->attempt_count + 1,
         ])->save();
 
@@ -750,6 +785,31 @@ final class FiscalMutationService
         }
 
         return mb_substr($key, 0, 160);
+    }
+
+    /** @param array<string, mixed> $requestPayload */
+    private function assertIdempotentRequestMatches(
+        FiscalMutationOperation $operation,
+        Client $client,
+        string $solutionCode,
+        string $serviceCode,
+        string $operationCode,
+        array $requestPayload,
+        ?string $providerOperationKey,
+    ): void {
+        $sameIdentity = (int) $operation->client_id === (int) $client->id
+            && strtoupper((string) $operation->solution_code) === strtoupper($solutionCode)
+            && strtoupper((string) $operation->service_code) === strtoupper($serviceCode)
+            && strtoupper((string) $operation->operation_code) === strtoupper($operationCode);
+        $sameProviderKey = $providerOperationKey === null
+            || hash_equals((string) $operation->provider_operation_key, $providerOperationKey);
+        $samePayload = $requestPayload === []
+            || (is_string($operation->request_payload_digest)
+                && hash_equals($operation->request_payload_digest, FiscalMutationPayload::digest($requestPayload)));
+
+        if (! $sameIdentity || ! $sameProviderKey || ! $samePayload) {
+            throw new FiscalMutationException(FiscalMutationDenialCode::IdempotencyConflict, $operation);
+        }
     }
 
     /** @param array<string, mixed> $payload */

@@ -61,6 +61,7 @@ final class OperationalProcessService
                 'origin' => ProcessOrigin::Manual,
                 'title' => $data['title'],
                 'description' => $data['description'] ?? null,
+                'monitoring_module_key' => $data['monitoring_module_key'] ?? null,
                 'competence' => $competence->value(),
                 'due_date' => $data['due_date'] ?? null,
                 'target_due_date' => $data['target_due_date'] ?? null,
@@ -125,6 +126,7 @@ final class OperationalProcessService
 
         $allowed = collect($data)->only([
             'title', 'description', 'due_date', 'target_due_date',
+            'monitoring_module_key',
             'subject_to_fine', 'work_department_id', 'assignee_membership_id',
         ])->all();
 

@@ -7,6 +7,7 @@ use App\Models\Concerns\BelongsToOffice;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'office_id',
@@ -28,6 +29,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'evento',
     'contributors_in_batch',
     'result_fingerprint',
+    'result_vault_object_id',
+    'result_payload_sha256',
+    'remote_result_received_at',
+    'local_processing_status',
+    'local_processed_at',
     'error_code',
     'error_message',
     'simulated',
@@ -83,12 +89,19 @@ class SerproEventosRun extends Model
             'expires_at' => 'immutable_datetime',
             'solicited_at' => 'immutable_datetime',
             'obtained_at' => 'immutable_datetime',
+            'remote_result_received_at' => 'immutable_datetime',
+            'local_processed_at' => 'immutable_datetime',
         ];
     }
 
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(SerproEventosRunItem::class, 'serpro_eventos_run_id');
     }
 
     public function isOneShotConsumed(): bool
@@ -122,6 +135,9 @@ class SerproEventosRun extends Model
             'evento' => $this->evento,
             'contributors_in_batch' => $this->contributors_in_batch,
             'result_fingerprint' => $this->result_fingerprint,
+            'local_processing_status' => $this->local_processing_status,
+            'remote_result_received_at' => $this->remote_result_received_at?->toIso8601String(),
+            'local_processed_at' => $this->local_processed_at?->toIso8601String(),
             'error_code' => $this->error_code,
             'error_message' => $this->error_message,
             'simulated' => $this->simulated,

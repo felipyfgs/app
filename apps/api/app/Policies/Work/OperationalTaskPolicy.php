@@ -99,6 +99,7 @@ class OperationalTaskPolicy
 
     public function bulk(User $user): bool
     {
-        return $this->allowsWork($user, TenantPermission::WorkAdminister);
+        return $this->allowsWork($user, TenantPermission::WorkTasksExecute)
+            || $this->allowsWork($user, TenantPermission::WorkAdminister);
     }
 }

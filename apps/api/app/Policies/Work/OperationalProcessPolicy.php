@@ -40,6 +40,15 @@ class OperationalProcessPolicy
         return $this->allowsWork($user, TenantPermission::WorkAdminister, $process);
     }
 
+    public function bulk(User $user): bool
+    {
+        if ($this->allowsWork($user, TenantPermission::WorkAdminister)) {
+            return true;
+        }
+
+        return $this->allowsWork($user, TenantPermission::WorkProcessesCreate);
+    }
+
     public function comment(User $user, OperationalProcess $process): bool
     {
         return $this->allowsWork($user, TenantPermission::WorkTasksExecute, $process);

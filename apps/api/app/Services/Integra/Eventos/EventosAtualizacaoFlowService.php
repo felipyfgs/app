@@ -11,6 +11,7 @@ use App\Enums\SerproEnvironment;
 use App\Models\Client;
 use App\Models\Office;
 use App\Models\SerproEventosRun;
+use App\Services\Integra\Mailbox\MailboxEventosResultProcessor;
 use App\Services\Serpro\CapabilityDriverResolver;
 use App\Services\Serpro\EventosRateLimiter;
 use App\Services\Serpro\SerproJobFlagGuard;
@@ -34,6 +35,9 @@ final class EventosAtualizacaoFlowService
         private readonly EventosRateLimiter $limits,
         private readonly CapabilityDriverResolver $drivers,
         private readonly SerproJobFlagGuard $flags,
+        private readonly EventosPjCodec $pjCodec,
+        private readonly EventosResultArtifactStore $artifacts,
+        private readonly MailboxEventosResultProcessor $processor,
     ) {}
 
     /**
@@ -69,12 +73,6 @@ final class EventosAtualizacaoFlowService
         $contributorsCount = count($batch->numbers);
         $this->limits->assertBatchSize($contributorsCount);
 
-        // A própria referência oficial PJ lista nomes divergentes para este campo.
-        // Sem uma fonte reconciliada versionada, não há egress, inclusive Trial.
-        if ($personType === 'PJ') {
-            throw new RuntimeException('EVENTOS_PJ_CONTRACT_UNRECONCILED: campo oficial PJ ainda divergente.');
-        }
-
         $this->limits->attemptDaily((int) $office->id, $personType);
 
         $environment ??= SerproEnvironment::tryFrom(strtoupper((string) config('serpro.default_environment', 'TRIAL')))
@@ -88,7 +86,9 @@ final class EventosAtualizacaoFlowService
             ? (string) config('serpro.eventos.obter_pf_operation_key')
             : (string) config('serpro.eventos.obter_pj_operation_key');
 
-        $businessData = ['evento' => $evento];
+        $businessData = $personType === 'PJ'
+            ? $this->pjCodec->solicit($evento)
+            : ['evento' => $evento];
 
         $response = $this->operations->run(new SerproOperationCommand(
             office: $office,
@@ -209,7 +209,9 @@ final class EventosAtualizacaoFlowService
     public function obtain(SerproEventosRun $run): SerproEventosRun
     {
         if ($run->isOneShotConsumed()) {
-            return $run;
+            return $run->local_processing_status === MailboxEventosResultProcessor::LOCAL_SUCCEEDED
+                ? $run
+                : $this->processor->process($run);
         }
 
         if ($run->protocol === null || $run->protocol === '') {
@@ -262,11 +264,15 @@ final class EventosAtualizacaoFlowService
 
         $run->forceFill(['phase' => SerproEventosRun::PHASE_OBTAINING])->save();
 
+        $businessData = strtoupper((string) $run->person_type) === 'PJ'
+            ? $this->pjCodec->obtain((string) $run->protocol, (string) $run->evento)
+            : ['protocolo' => $run->protocol, 'evento' => $run->evento];
+
         $response = $this->operations->run(new SerproOperationCommand(
             office: $office,
             client: $client,
             operationKey: (string) $run->operation_key_obter,
-            businessData: ['protocolo' => $run->protocol, 'evento' => $run->evento],
+            businessData: $businessData,
             idempotencyKey: sprintf('eventos:obter:%d:%s', $run->office_id, $run->protocol),
             correlationId: $run->correlation_id,
             module: 'authorization',
@@ -320,25 +326,25 @@ final class EventosAtualizacaoFlowService
             return $run->fresh() ?? $run;
         }
 
-        // One-shot: 200 consome resultado remoto — persistir atomicamente antes de nova tentativa
-        return DB::transaction(function () use ($run, $response) {
+        // O 200 é one-shot: cifrar o payload antes de marcar consumo remoto.
+        $artifact = $this->artifacts->store($run, $response->dados);
+
+        $consumed = DB::transaction(function () use ($run, $response, $artifact) {
             $locked = SerproEventosRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
             if ($locked->isOneShotConsumed()) {
                 return $locked;
             }
 
-            $fingerprint = substr(hash('sha256', json_encode([
-                'status' => $response->httpStatus,
-                'business' => $response->businessStatus,
-                'keys' => is_array($response->dados) ? array_keys($response->dados) : ['scalar'],
-            ], JSON_THROW_ON_ERROR)), 0, 64);
-
             $locked->forceFill([
                 'phase' => SerproEventosRun::PHASE_CONSUMED,
-                'status' => SerproEventosRun::STATUS_SUCCEEDED,
+                'status' => SerproEventosRun::STATUS_RUNNING,
                 'result_consumed' => true,
                 'one_shot_complete' => true,
-                'result_fingerprint' => $fingerprint,
+                'result_fingerprint' => $artifact['sha256'],
+                'result_vault_object_id' => $artifact['object_id'],
+                'result_payload_sha256' => $artifact['sha256'],
+                'remote_result_received_at' => now(),
+                'local_processing_status' => MailboxEventosResultProcessor::LOCAL_PENDING,
                 'result_summary' => [
                     'http_status' => $response->httpStatus,
                     'business_status' => $response->businessStatus,
@@ -357,6 +363,8 @@ final class EventosAtualizacaoFlowService
 
             return $locked->fresh() ?? $locked;
         });
+
+        return $this->processor->process($consumed);
     }
 
     /**

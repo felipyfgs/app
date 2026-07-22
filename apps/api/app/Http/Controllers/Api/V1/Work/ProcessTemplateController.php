@@ -8,6 +8,8 @@ use App\Models\ProcessTemplate;
 use App\Models\ProcessTemplateTask;
 use App\Services\Audit\AuditLogger;
 use App\Services\Work\MembershipResolver;
+use App\Services\Work\ProcessAudienceResolver;
+use App\Services\Work\WorkMonitoringContextRegistry;
 use App\Support\CurrentOffice;
 use App\Support\Work\OptimisticLock;
 use App\Support\Work\RejectClientOfficeId;
@@ -76,12 +78,20 @@ class ProcessTemplateController extends Controller
         return response()->json(['data' => $this->public($template)]);
     }
 
-    public function store(Request $request, CurrentOffice $currentOffice, MembershipResolver $memberships, AuditLogger $audit): JsonResponse
-    {
+    public function store(
+        Request $request,
+        CurrentOffice $currentOffice,
+        MembershipResolver $memberships,
+        ProcessAudienceResolver $audiences,
+        AuditLogger $audit,
+    ): JsonResponse {
         $this->authorize('create', ProcessTemplate::class);
         RejectClientOfficeId::strip($request);
 
         $data = $this->validated($request, $currentOffice);
+        if (array_key_exists('audience_rules', $data)) {
+            $data['audience_rules'] = $audiences->normalizeRules($data['audience_rules'] ?? []);
+        }
         $this->validateRelations($data, $memberships);
 
         $template = DB::transaction(function () use ($data, $currentOffice): ProcessTemplate {
@@ -89,6 +99,8 @@ class ProcessTemplateController extends Controller
                 'office_id' => $currentOffice->id(),
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
+                'monitoring_module_key' => $data['monitoring_module_key'] ?? null,
+                'audience_rules' => $data['audience_rules'] ?? [],
                 'default_department_id' => $data['default_department_id'] ?? null,
                 'default_due_rule_type' => $data['default_due_rule_type'] ?? null,
                 'default_due_rule_value' => $data['default_due_rule_value'] ?? null,
@@ -107,19 +119,28 @@ class ProcessTemplateController extends Controller
         return response()->json(['data' => $this->public($template)], 201);
     }
 
-    public function update(Request $request, ProcessTemplate $template, CurrentOffice $currentOffice, MembershipResolver $memberships, AuditLogger $audit): JsonResponse
-    {
+    public function update(
+        Request $request,
+        ProcessTemplate $template,
+        CurrentOffice $currentOffice,
+        MembershipResolver $memberships,
+        ProcessAudienceResolver $audiences,
+        AuditLogger $audit,
+    ): JsonResponse {
         $this->authorize('update', $template);
         RejectClientOfficeId::strip($request);
 
         $data = $this->validated($request, $currentOffice, $template->id);
+        if (array_key_exists('audience_rules', $data)) {
+            $data['audience_rules'] = $audiences->normalizeRules($data['audience_rules'] ?? []);
+        }
         $lockVersion = (int) $request->input('lock_version', $template->lock_version);
         OptimisticLock::assert($template, $lockVersion, 'process_template');
         $this->validateRelations($data, $memberships);
 
         $template = DB::transaction(function () use ($template, $data, $lockVersion, $currentOffice): ProcessTemplate {
             $attrs = collect($data)->only([
-                'name', 'description', 'default_department_id',
+                'name', 'description', 'monitoring_module_key', 'audience_rules', 'default_department_id',
                 'default_due_rule_type', 'default_due_rule_value', 'is_active',
             ])->all();
 
@@ -153,9 +174,20 @@ class ProcessTemplateController extends Controller
             $nameRule = $nameRule->ignore($ignoreId);
         }
 
+        $monitoringKeys = app(WorkMonitoringContextRegistry::class)->keys();
+
         return $request->validate([
             'name' => ['required', 'string', 'max:160', $nameRule],
             'description' => ['nullable', 'string'],
+            'monitoring_module_key' => ['nullable', 'string', Rule::in($monitoringKeys)],
+            'audience_rules' => ['sometimes', 'array'],
+            'audience_rules.tax_regimes' => ['sometimes', 'array', 'max:6'],
+            'audience_rules.tax_regimes.*' => ['string', 'max:40'],
+            'audience_rules.category_ids' => ['sometimes', 'array', 'max:100'],
+            'audience_rules.category_ids.*' => ['integer', 'min:1'],
+            'audience_rules.category_match' => ['sometimes', 'string', Rule::in(['ANY', 'ALL'])],
+            'audience_rules.excluded_category_ids' => ['sometimes', 'array', 'max:100'],
+            'audience_rules.excluded_category_ids.*' => ['integer', 'min:1'],
             'default_department_id' => ['nullable', 'integer'],
             'default_due_rule_type' => ['nullable', 'string', Rule::enum(DueRuleType::class)],
             'default_due_rule_value' => ['nullable', 'integer', 'min:0', 'max:366'],
@@ -232,8 +264,17 @@ class ProcessTemplateController extends Controller
     {
         return [
             'id' => $t->id,
+            'catalog_key' => $t->catalog_key,
+            'catalog_version' => $t->catalog_version,
             'name' => $t->name,
             'description' => $t->description,
+            'monitoring_module_key' => $t->monitoring_module_key,
+            'audience_rules' => $t->audience_rules ?? [
+                'tax_regimes' => [],
+                'category_ids' => [],
+                'category_match' => 'ANY',
+                'excluded_category_ids' => [],
+            ],
             'default_department_id' => $t->default_department_id,
             'default_due_rule_type' => $t->default_due_rule_type?->value,
             'default_due_rule_value' => $t->default_due_rule_value,

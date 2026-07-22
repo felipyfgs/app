@@ -77,6 +77,10 @@ return [
      * @var array<string, string>
      */
     'solution_modules' => [
+        'PGDASD' => 'simples_mei',
+        'DEFIS' => 'simples_mei',
+        'DCTFWEB' => 'dctfweb_mit',
+        'MIT' => 'dctfweb_mit',
         'INTEGRA_SN' => 'simples_mei',
         'INTEGRA_MEI' => 'simples_mei',
         'INTEGRA_DCTFWEB' => 'dctfweb_mit',
@@ -94,6 +98,19 @@ return [
      * @var array<string, array{enabled: bool, office_allowlist: list<int>, allow_all_offices: bool}>
      */
     'operations' => [
+        // Central de declarações — coordenadas oficiais; todas OFF por default.
+        'PGDASD.PGDASD.TRANSDECLARACAO11' => $operationDefaults('FEATURE_MUT_DECL_PGDASD_TRANSMITIR'),
+        'PGDASD.PGDASD.GERARDAS12' => $operationDefaults('FEATURE_MUT_DECL_PGDASD_GERAR_DAS'),
+        'PGDASD.PGDASD.GERARDASCOBRANCA17' => $operationDefaults('FEATURE_MUT_DECL_PGDASD_DAS_COBRANCA'),
+        'PGDASD.PGDASD.GERARDASPROCESSO18' => $operationDefaults('FEATURE_MUT_DECL_PGDASD_DAS_PROCESSO'),
+        'PGDASD.PGDASD.GERARDASAVULSO19' => $operationDefaults('FEATURE_MUT_DECL_PGDASD_DAS_AVULSO'),
+        'DEFIS.DEFIS.TRANSDECLARACAO141' => $operationDefaults('FEATURE_MUT_DECL_DEFIS_TRANSMITIR'),
+        'DCTFWEB.DCTFWEB.GERARGUIA31' => $operationDefaults('FEATURE_MUT_DECL_DCTFWEB_GERAR_GUIA'),
+        'DCTFWEB.DCTFWEB.TRANSDECLARACAO310' => $operationDefaults('FEATURE_MUT_DECL_DCTFWEB_TRANSMITIR'),
+        'DCTFWEB.DCTFWEB.GERARGUIAANDAMENTO313' => $operationDefaults('FEATURE_MUT_DECL_DCTFWEB_GUIA_ANDAMENTO'),
+        'MIT.MIT.ENCAPURACAO314' => $operationDefaults('FEATURE_MUT_DECL_MIT_ENCERRAR'),
+
+        // Contratos legados mantidos até as superfícies antigas migrarem.
         'INTEGRA_SN.PGDASD.TRANSMITIR' => $operationDefaults('FEATURE_MUT_PGDASD_TRANSMITIR'),
         'INTEGRA_MEI.PGMEI.GERAR_DAS' => $operationDefaults('FEATURE_MUT_PGMEI_GERAR_DAS'),
         'INTEGRA_PAGAMENTO.SICALC.EMITIR_GUIA' => $operationDefaults('FEATURE_MUT_SICALC_EMITIR_GUIA'),

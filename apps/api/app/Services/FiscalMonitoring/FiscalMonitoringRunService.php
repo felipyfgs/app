@@ -459,6 +459,7 @@ final class FiscalMonitoringRunService
                     $client,
                     $adapter->moduleKey(),
                     (string) $fresh->service_code,
+                    $this->communicationPeriodKey($fresh),
                 );
             }
 
@@ -718,13 +719,14 @@ final class FiscalMonitoringRunService
         Client $client,
         ?string $moduleKey,
         string $serviceCode = '',
+        ?string $periodKey = null,
     ): void {
         $serviceCode = strtoupper($serviceCode);
         $service = match (true) {
             $moduleKey === 'simples_mei' && str_contains($serviceCode, 'PGMEI') => app(PgmeiCommunicationService::class),
             $moduleKey === 'simples_mei' && str_contains($serviceCode, 'PGDASD') => app(PgdasdCommunicationService::class),
             $moduleKey === 'dctfweb' && str_contains($serviceCode, 'MIT') => app(MitCommunicationService::class),
-            $moduleKey === 'dctfweb' => app(DctfwebCommunicationService::class),
+            $moduleKey === 'dctfweb' && str_contains($serviceCode, 'DCTFWEB') => app(DctfwebCommunicationService::class),
             $moduleKey === 'sitfis' => app(SitfisCommunicationService::class),
             $moduleKey === 'fgts' => app(FgtsCommunicationService::class),
             default => null,
@@ -732,6 +734,19 @@ final class FiscalMonitoringRunService
         if ($service === null) {
             return;
         }
-        $service->maybeQueueAutomaticAfterConsult($office, $client);
+        $service->maybeQueueAutomaticAfterConsult($office, $client, $periodKey);
+    }
+
+    private function communicationPeriodKey(FiscalMonitoringRun $run): ?string
+    {
+        $period = $run->competence_id
+            ? FiscalCompetence::query()->withoutGlobalScopes()->whereKey($run->competence_id)->value('period_key')
+            : null;
+        if (! is_string($period) || ! preg_match('/^\d{4}-\d{2}$/', $period)) {
+            $progress = is_array($run->progress) ? $run->progress : [];
+            $period = $progress['period_key'] ?? $progress['competence_period_key'] ?? null;
+        }
+
+        return is_string($period) && preg_match('/^\d{4}-\d{2}$/', $period) ? $period : null;
     }
 }

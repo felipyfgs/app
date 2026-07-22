@@ -79,4 +79,41 @@ final class MailboxStateService
             ->where('client_id', $clientId)
             ->first();
     }
+
+    public function applyNewMessagesIndicator(
+        Office $office,
+        Client $client,
+        int $indicator,
+        ?int $runId = null,
+    ): MailboxContributorState {
+        if (! in_array($indicator, [0, 1, 2], true)) {
+            throw new \InvalidArgumentException('Indicador de mensagens novas inválido.');
+        }
+
+        return DB::transaction(function () use ($office, $client, $indicator, $runId) {
+            $state = MailboxContributorState::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $office->id)
+                ->where('client_id', $client->id)
+                ->lockForUpdate()
+                ->first();
+            if ($state === null) {
+                $state = MailboxContributorState::query()->create([
+                    'office_id' => $office->id,
+                    'client_id' => $client->id,
+                    'dte_status' => MailboxDteStatus::Unknown,
+                    'messages_status' => MailboxMessagesConsultStatus::Unknown,
+                ]);
+            }
+
+            // Diagnóstico de mensagens ainda não abertas: não altera messages_*.
+            $state->forceFill([
+                'new_messages_indicator' => $indicator,
+                'new_messages_indicator_observed_at' => CarbonImmutable::now(),
+                'last_new_messages_indicator_run_id' => $runId,
+            ])->save();
+
+            return $state->fresh();
+        });
+    }
 }

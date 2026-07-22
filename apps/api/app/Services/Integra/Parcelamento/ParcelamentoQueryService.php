@@ -2,7 +2,6 @@
 
 namespace App\Services\Integra\Parcelamento;
 
-use App\Enums\TaxInstallmentModality;
 use App\Models\Office;
 use App\Models\TaxGuide;
 use App\Models\TaxInstallmentOrder;
@@ -94,21 +93,9 @@ final class ParcelamentoQueryService
             ->first();
     }
 
-    /**
-     * @return list<array{code:string,label:string,regime:string}>
-     */
+    /** @return list<array<string, mixed>> */
     public function modalities(): array
     {
-        $out = [];
-        foreach (TaxInstallmentModality::all() as $m) {
-            $out[] = [
-                'code' => $m->value,
-                'label' => $m->label(),
-                'regime' => $m->regime(),
-                'required_power' => $m->requiredPowerCode(),
-            ];
-        }
-
-        return $out;
+        return ParcelamentoServiceCatalog::modalities();
     }
 }

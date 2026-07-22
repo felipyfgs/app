@@ -47,8 +47,17 @@ enum SecureObjectPurpose: string
     /** Evidência oficial de pagamento de guia (independente da emissão). */
     case TaxGuidePaymentEvidence = 'TAX_GUIDE_PAYMENT_EVIDENCE';
 
+    /** Estado de sessão autorizada do portal FGTS Digital (cookies/storage cifrados). */
+    case FgtsDigitalSession = 'FGTS_DIGITAL_SESSION';
+
+    /** Seleção privada de débitos/empregados vinculada a uma execução FGTS Digital. */
+    case FgtsDigitalRequest = 'FGTS_DIGITAL_REQUEST';
+
     /** Evidência de tarefa operacional (PDF/imagem/texto — tenant-scoped, sem fiscal). */
     case OperationalTaskEvidence = 'OPERATIONAL_TASK_EVIDENCE';
+
+    /** Mídia privada de conversa; persistência cifrada em chunks. */
+    case CommunicationMedia = 'COMMUNICATION_MEDIA';
 
     public function label(): string
     {
@@ -66,7 +75,10 @@ enum SecureObjectPurpose: string
             self::MailboxAttachment => 'Anexo Caixa Postal',
             self::TaxGuideDocument => 'Documento de guia fiscal',
             self::TaxGuidePaymentEvidence => 'Evidência de pagamento de guia',
+            self::FgtsDigitalSession => 'Sessão autorizada do FGTS Digital',
+            self::FgtsDigitalRequest => 'Seleção privada do FGTS Digital',
             self::OperationalTaskEvidence => 'Evidência de tarefa operacional',
+            self::CommunicationMedia => 'Mídia privada de atendimento',
         };
     }
 

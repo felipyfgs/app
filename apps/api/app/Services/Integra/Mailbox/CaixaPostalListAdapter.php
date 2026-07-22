@@ -22,6 +22,7 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
         private readonly CaixaPostalClient $client,
         private readonly MailboxMessageStore $store,
         private readonly MailboxDetailEnqueueService $detailEnqueue,
+        private readonly MailboxSyncStateService $syncState,
     ) {}
 
     public function systemCode(): string
@@ -91,6 +92,11 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
             $list = $this->client->listMessages($context);
             if (! $list->success) {
                 $this->store->markListError($request->office, $request->client, $request->run->id);
+                $this->syncState->markListFailed(
+                    $request->office,
+                    $request->client,
+                    $list->errorCode ?? 'MAILBOX_LIST_FAILED',
+                );
 
                 return FiscalAdapterResult::failed(
                     $list->errorMessage ?? 'Falha ao listar Caixa Postal.',
@@ -177,6 +183,12 @@ final class CaixaPostalListAdapter implements FiscalSourceAdapter
             $request->client,
             $list,
             $request->run->id,
+        );
+
+        $this->syncState->markListSucceeded(
+            $request->office,
+            $request->client,
+            (bool) ($request->run->progress['mailbox_full_reconciliation'] ?? false),
         );
 
         $detailRuns = $this->detailEnqueue->enqueueAfterList($request->office, $request->client);

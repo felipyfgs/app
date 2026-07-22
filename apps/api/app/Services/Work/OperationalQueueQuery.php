@@ -14,12 +14,22 @@ use App\Support\CurrentOffice;
 use App\Support\Work\OfficeTimezone;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 /**
  * Fila determinística “Minha fila” com buckets e filtros.
  */
 final class OperationalQueueQuery
 {
+    public const SORT_WHITELIST = [
+        'title',
+        'status',
+        'effective_due_date',
+        'due_date',
+        'client_name',
+        'assignee_name',
+    ];
+
     public function __construct(
         private readonly CurrentOffice $currentOffice,
         private readonly WorkRiskCalculator $risks = new WorkRiskCalculator,
@@ -36,7 +46,9 @@ final class OperationalQueueQuery
      *   q?: string|null,
      *   per_page?: int,
      *   page?: int,
-     *   scope?: string
+     *   scope?: string,
+     *   sort?: string|null,
+     *   direction?: string|null
      * }  $filters
      */
     public function paginate(array $filters = []): LengthAwarePaginator
@@ -153,7 +165,7 @@ final class OperationalQueueQuery
             ], true));
         }
 
-        $sorted = $enriched->sort(fn ($a, $b) => $this->buckets->compare($a['sort'], $b['sort']))->values();
+        $sorted = $this->sortEnriched($enriched, $filters)->values();
 
         $page = max((int) ($filters['page'] ?? 1), 1);
         $total = $sorted->count();
@@ -202,5 +214,71 @@ final class OperationalQueueQuery
             $page,
             ['path' => request()->url(), 'query' => request()->query()],
         );
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $enriched
+     * @param  array<string, mixed>  $filters
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function sortEnriched($enriched, array $filters)
+    {
+        $sort = isset($filters['sort']) && is_string($filters['sort']) ? $filters['sort'] : null;
+        if ($sort === 'due_date') {
+            $sort = 'effective_due_date';
+        }
+        if ($sort === null || $sort === '' || ! in_array($sort, self::SORT_WHITELIST, true)) {
+            return $enriched->sort(fn ($a, $b) => $this->buckets->compare($a['sort'], $b['sort']));
+        }
+
+        $direction = strtolower((string) ($filters['direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
+        $factor = $direction === 'desc' ? -1 : 1;
+
+        return $enriched->sort(function ($a, $b) use ($sort, $factor) {
+            $left = $this->sortValue($a, $sort);
+            $right = $this->sortValue($b, $sort);
+            $cmp = $this->compareSortValues($left, $right);
+            if ($cmp !== 0) {
+                return $cmp * $factor;
+            }
+
+            return ((int) $a['task']->id) <=> ((int) $b['task']->id);
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function sortValue(array $row, string $sort): mixed
+    {
+        $task = $row['task'];
+
+        return match ($sort) {
+            'title' => mb_strtolower((string) $task->title),
+            'status' => (string) $task->status->value,
+            'effective_due_date' => $row['effective_due'] ?? null,
+            'client_name' => mb_strtolower((string) (
+                $task->process?->client?->display_name
+                ?: $task->process?->client?->legal_name
+                ?: ''
+            )),
+            'assignee_name' => mb_strtolower((string) ($task->assigneeMembership?->user?->name ?? '')),
+            default => null,
+        };
+    }
+
+    private function compareSortValues(mixed $left, mixed $right): int
+    {
+        if ($left === null && $right === null) {
+            return 0;
+        }
+        if ($left === null) {
+            return 1;
+        }
+        if ($right === null) {
+            return -1;
+        }
+
+        return $left <=> $right;
     }
 }

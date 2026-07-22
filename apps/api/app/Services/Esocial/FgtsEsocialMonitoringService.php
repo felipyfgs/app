@@ -8,6 +8,7 @@ use App\DTO\Esocial\FgtsCompetenceProjection;
 use App\Enums\EsocialEventCode;
 use App\Enums\FgtsIndependentState;
 use App\Enums\FiscalCoverage;
+use App\Exceptions\EsocialBxException;
 use App\Models\Client;
 use App\Models\EsocialEventEvidence;
 use App\Models\Establishment;
@@ -19,7 +20,6 @@ use App\Models\Office;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 
 /**
  * Orquestra consulta eSocial (fake/M2M), persistência de evidências e projeção de estados FGTS.
@@ -45,7 +45,16 @@ final class FgtsEsocialMonitoringService
 
     public function sourceUnavailableMessage(): string
     {
-        return DisabledEsocialEventClient::UNAVAILABLE_MESSAGE;
+        return $this->client instanceof DisabledEsocialEventClient
+            ? $this->client->unavailableMessage()
+            : DisabledEsocialEventClient::UNAVAILABLE_MESSAGE;
+    }
+
+    public function sourceUnavailableCode(): string
+    {
+        return $this->client instanceof DisabledEsocialEventClient
+            ? $this->client->unavailableCode()
+            : 'ESOCIAL_SOURCE_UNAVAILABLE';
     }
 
     /**
@@ -61,10 +70,28 @@ final class FgtsEsocialMonitoringService
             'coverage_label' => (string) config('fgts_esocial.coverage_label', 'FGTS (parcial eSocial)'),
             'system_code' => (string) config('fgts_esocial.system_code', 'ESOCIAL'),
             'service_code' => (string) config('fgts_esocial.service_code', 'FGTS'),
+            'source' => 'ESOCIAL_BX_OFFICIAL',
+            'source_available' => $this->isSourceAvailable(),
+            'transport' => 'SOAP_1_1_MTLS',
+            'driver' => (string) config('fgts_esocial.driver', 'disabled'),
+            'environment' => (string) config('fgts_esocial.environment', 'restricted'),
+            'accepted_events' => array_map(
+                static fn ($c) => ['code' => $c->value, 'label' => $c->label()],
+                EsocialEventCode::supported(),
+            ),
             'supported_events' => array_map(
                 static fn ($c) => ['code' => $c->value, 'label' => $c->label()],
                 EsocialEventCode::supported(),
             ),
+            'automatic_events' => array_map(
+                static fn ($c) => ['code' => $c->value, 'label' => $c->label()],
+                [EsocialEventCode::S1299, EsocialEventCode::S5013],
+            ),
+            'context_required_events' => [[
+                'code' => EsocialEventCode::S5003->value,
+                'label' => EsocialEventCode::S5003->label(),
+                'required_context' => 'worker_identifier',
+            ]],
             'independent_states' => [
                 'closure' => 'Fechamento eSocial (S-1299) — independente de guia/pagamento',
                 'totalization' => 'Totalização (S-5003/S-5013) — base conhecida',
@@ -76,6 +103,21 @@ final class FgtsEsocialMonitoringService
             'scraping_allowed' => false,
             'portal_fallback' => false,
             'totalizer_absence_window_hours' => (int) config('fgts_esocial.totalizer_absence_window_hours', 72),
+            'official_limits' => [
+                'blocked_days' => config('fgts_esocial.official_bx.blocked_days', range(1, 7)),
+                'daily_accesses_per_employer' => (int) config('fgts_esocial.official_bx.daily_access_limit', 10),
+                'max_ids_per_download' => (int) config('fgts_esocial.official_bx.batch_limit', 50),
+                'minimum_lag_minutes' => (int) config('fgts_esocial.official_bx.minimum_lag_minutes', 60),
+                'max_query_interval_days' => (int) config('fgts_esocial.official_bx.max_query_interval_days', 31),
+                'parallel_requests_allowed' => false,
+            ],
+            'documentation_url' => (string) config('fgts_esocial.official_bx.manual_url'),
+            'official_links' => [
+                'manual' => (string) config('fgts_esocial.official_bx.manual_url'),
+                'announcement' => (string) config('fgts_esocial.official_bx.official_announcement_url'),
+                'communication_package' => (string) config('fgts_esocial.official_bx.communication_package_url'),
+            ],
+            'wsdl_sha256' => (array) config('fgts_esocial.official_bx.wsdl_sha256', []),
         ];
     }
 
@@ -101,11 +143,23 @@ final class FgtsEsocialMonitoringService
         $this->assertCompetenceKey($competencePeriodKey);
 
         if (! $this->isSourceAvailable()) {
-            throw new RuntimeException($this->sourceUnavailableMessage());
+            $code = $this->sourceUnavailableCode();
+
+            throw new EsocialBxException(
+                preg_match('/^ESOCIAL_BX_[A-Z0-9_]+$/', $code) === 1
+                    ? $code
+                    : 'ESOCIAL_BX_DISABLED',
+                'Integração oficial eSocial BX indisponível.',
+                blocked: true,
+            );
         }
 
         if ((bool) config('fgts_esocial.kill_switch', false)) {
-            throw new RuntimeException('Módulo FGTS/eSocial desabilitado (kill switch).');
+            throw new EsocialBxException(
+                'ESOCIAL_BX_KILL_SWITCH',
+                'Kill switch do eSocial BX ativo.',
+                blocked: true,
+            );
         }
 
         $now ??= CarbonImmutable::now();
@@ -119,8 +173,20 @@ final class FgtsEsocialMonitoringService
         ));
 
         if (! $fetch->success) {
-            throw new RuntimeException(
-                $fetch->errorMessage ?? 'Falha ao consultar eventos eSocial.',
+            $code = is_string($fetch->errorCode)
+                && preg_match('/^ESOCIAL_BX_[A-Z0-9_]+$/', $fetch->errorCode) === 1
+                    ? $fetch->errorCode
+                    : 'ESOCIAL_BX_FETCH_FAILED';
+            $officialCode = $fetch->diagnostics['official_code'] ?? null;
+
+            throw new EsocialBxException(
+                stableCode: $code,
+                message: 'Falha sanitizada ao consultar eventos no eSocial BX.',
+                retryable: ($fetch->diagnostics['retryable'] ?? false) === true,
+                blocked: ($fetch->diagnostics['blocked'] ?? false) === true,
+                officialCode: is_string($officialCode) && preg_match('/^\d{3}$/', $officialCode) === 1
+                    ? $officialCode
+                    : null,
             );
         }
 

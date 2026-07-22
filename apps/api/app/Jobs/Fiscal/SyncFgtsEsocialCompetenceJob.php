@@ -2,11 +2,12 @@
 
 namespace App\Jobs\Fiscal;
 
+use App\Exceptions\EsocialBxException;
 use App\Models\Client;
 use App\Models\Establishment;
 use App\Models\Office;
+use App\Services\Esocial\EsocialBxReadinessService;
 use App\Services\Esocial\FgtsEsocialMonitoringService;
-use App\Support\FeatureFlags;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -34,36 +35,10 @@ class SyncFgtsEsocialCompetenceJob implements ShouldQueue
         $this->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
     }
 
-    public function handle(FgtsEsocialMonitoringService $monitoring): void
-    {
-        if (! $monitoring->isSourceAvailable()) {
-            Log::info('fgts_esocial.job_skipped_source_unavailable', [
-                'office_id' => $this->officeId,
-                'client_id' => $this->clientId,
-                'reason' => 'ESOCIAL_SOURCE_UNAVAILABLE',
-            ]);
-
-            return;
-        }
-
-        if ((bool) config('fgts_esocial.kill_switch', false)) {
-            Log::info('fgts_esocial.job_skipped_kill_switch', [
-                'office_id' => $this->officeId,
-                'client_id' => $this->clientId,
-            ]);
-
-            return;
-        }
-
-        if (! FeatureFlags::isModuleEnabled('fgts', $this->officeId)
-            && ! (bool) config('fiscal_monitoring.enabled', false)) {
-            Log::info('fgts_esocial.job_skipped_feature', [
-                'office_id' => $this->officeId,
-            ]);
-
-            return;
-        }
-
+    public function handle(
+        FgtsEsocialMonitoringService $monitoring,
+        EsocialBxReadinessService $readinessService,
+    ): void {
         $office = Office::query()->find($this->officeId);
         $client = Client::query()->withoutGlobalScopes()
             ->where('office_id', $this->officeId)
@@ -74,6 +49,17 @@ class SyncFgtsEsocialCompetenceJob implements ShouldQueue
             Log::warning('fgts_esocial.job_missing_tenant', [
                 'office_id' => $this->officeId,
                 'client_id' => $this->clientId,
+            ]);
+
+            return;
+        }
+
+        $readiness = $readinessService->check($office, $client);
+        if (! $readiness->ready) {
+            Log::info('fgts_esocial.job_skipped_not_ready', [
+                'office_id' => $this->officeId,
+                'client_id' => $this->clientId,
+                'reason' => $readiness->blockers[0]['code'] ?? 'ESOCIAL_BX_NOT_READY',
             ]);
 
             return;
@@ -95,12 +81,24 @@ class SyncFgtsEsocialCompetenceJob implements ShouldQueue
                 competencePeriodKey: $this->competencePeriodKey,
                 establishment: $establishment,
             );
+        } catch (EsocialBxException $exception) {
+            Log::warning('fgts_esocial.job_failed', [
+                'office_id' => $this->officeId,
+                'client_id' => $this->clientId,
+                'competence' => $this->competencePeriodKey,
+                ...$exception->toSanitizedArray(),
+            ]);
+
+            if ($exception->retryable && ! $exception->blocked) {
+                throw $exception;
+            }
         } catch (Throwable $e) {
             Log::warning('fgts_esocial.job_failed', [
                 'office_id' => $this->officeId,
                 'client_id' => $this->clientId,
                 'competence' => $this->competencePeriodKey,
-                'error' => $e->getMessage(),
+                'code' => 'ESOCIAL_BX_INTERNAL_ERROR',
+                'exception_class' => $e::class,
             ]);
             throw $e;
         }

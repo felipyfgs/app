@@ -175,7 +175,33 @@ final class FeatureFlags
      */
     public static function isMutatingEnabled(string $module, ?int $officeId = null): bool
     {
-        return false;
+        if (self::isKillSwitchActive()
+            || (bool) config('features.mutating.kill_switch', false)
+            || ! (bool) config('features.global_enabled', false)
+            || ! (bool) config('features.mutating.enabled', false)
+        ) {
+            return false;
+        }
+
+        self::assertKnownModule($module);
+        if (! (bool) config("features.modules.{$module}.enabled", false)
+            || ! (bool) config("features.modules.{$module}.mutating_enabled", false)
+        ) {
+            return false;
+        }
+
+        if ($officeId === null) {
+            return true;
+        }
+
+        $allowlist = config("features.modules.{$module}.office_allowlist", []);
+        if (! is_array($allowlist)) {
+            $allowlist = [];
+        }
+
+        return $allowlist === []
+            ? (bool) config("features.modules.{$module}.allow_all_offices", false)
+            : in_array($officeId, $allowlist, true);
     }
 
     public static function isOfficeAllowedForModule(string $module, int $officeId): bool

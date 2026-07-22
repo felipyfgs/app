@@ -47,11 +47,9 @@ final class SerproParcelamentoSource implements ParcelamentoSource
                 'body' => [],
             ];
         }
-        $system = strtoupper($modality->value);
         $op = strtoupper($operation);
         try {
-            $idServico = ParcelamentoServiceCatalog::idServico($modality, $op);
-            $operationKey = strtolower(str_replace('-', '_', $system)).'.'.strtolower((string) preg_replace('/\d+$/', '', $idServico));
+            $operationKey = ParcelamentoServiceCatalog::operationKey($modality, $op);
         } catch (\InvalidArgumentException) {
             $operationKey = null;
         }
@@ -61,7 +59,7 @@ final class SerproParcelamentoSource implements ParcelamentoSource
                 'success' => false,
                 'simulated' => false,
                 'error_code' => 'OPERATION_KEY_UNKNOWN',
-                'error_message' => "Sem operation_key oficial para {$system}/{$op}.",
+                'error_message' => "Sem operation_key oficial para {$modality->value}/{$op}.",
                 'body' => [],
             ];
         }

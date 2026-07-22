@@ -25,6 +25,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
         private readonly ParcelamentoSource $source,
         private readonly ParcelamentoProjectionService $projection,
         private readonly TaxProxyPowerService $proxyPowers,
+        private readonly ParcelamentoOfficialCodec $codec,
     ) {}
 
     public function systemCode(): string
@@ -169,13 +170,13 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
             );
         }
 
-        $pedidos = $pedidosResp['body']['pedidos'] ?? [];
+        $pedidos = $this->codec->orders($pedidosResp['body']);
         $isTrial = (bool) ($pedidosResp['simulated'] ?? false);
         $detalhes = [];
-        $pagamentos = [];
-        $parcelasMerged = [];
+        $partialFindings = [];
+        $maxOrders = max(1, (int) config('fiscal_monitoring.installments.max_orders_per_run', 25));
 
-        foreach ($pedidos as $pedido) {
+        foreach (array_slice($pedidos, 0, $maxOrders) as $pedido) {
             $numero = (string) ($pedido['numero'] ?? '');
             if ($numero === '') {
                 continue;
@@ -186,44 +187,41 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
             ], $request);
             if ($det['success']) {
                 $detalhes[$numero] = $det['body'];
-                foreach ($det['body']['parcelas'] ?? [] as $p) {
-                    $parcelasMerged[] = $p;
-                }
-            }
-
-            $paraGerar = $this->source->execute($modality, 'CONSULTAR_PARCELAS', [
-                'numeroParcelamento' => $numero,
-            ], $request);
-            if ($paraGerar['success']) {
-                foreach ($paraGerar['body']['parcelasParaGerar'] ?? [] as $p) {
-                    $parcelasMerged[] = $p;
-                }
-            }
-
-            // Pagamento da parcela mais antiga do detalhe (quando houver)
-            foreach ($det['body']['parcelas'] ?? [] as $p) {
-                $key = (string) ($p['parcela'] ?? '');
-                if ($key === '') {
-                    continue;
-                }
-                $pag = $this->source->execute($modality, 'CONSULTAR_PAGAMENTO', [
-                    'numeroParcelamento' => $numero,
-                    'anoMesParcela' => $key,
-                ], $request);
-                if ($pag['success']) {
-                    $pagamentos[$key] = $pag['body'];
-                }
+            } else {
+                $partialFindings[] = $this->partialFailureFinding(
+                    'PARCELAMENTO_DETALHE_PARCIAL',
+                    "Pedido {$numero} sem detalhe nesta execução.",
+                    $det['error_code'] ?? null,
+                );
             }
         }
 
-        $consolidated = [
-            'pedidos' => $pedidos,
-            'parcelas' => $this->uniqueParcels($parcelasMerged),
-            'pagamentos' => $pagamentos,
-            'detalhes' => $detalhes,
-            'modality' => $modality->value,
-            'regime' => $modality->regime(),
-        ];
+        if (count($pedidos) > $maxOrders) {
+            $partialFindings[] = $this->partialFailureFinding(
+                'PARCELAMENTO_LIMITE_PEDIDOS',
+                'A execução processou os '.$maxOrders.' pedidos mais recentes do limite configurado.',
+                null,
+            );
+        }
+
+        // Contrato oficial: PARCELASPARAGERAR não recebe numeroParcelamento.
+        $paraGerar = $this->source->execute($modality, 'CONSULTAR_PARCELAS', [], $request);
+        $availableBody = $paraGerar['success'] ? $paraGerar['body'] : [];
+        if (! $paraGerar['success']) {
+            $partialFindings[] = $this->partialFailureFinding(
+                'PARCELAMENTO_PARCELAS_PARCIAL',
+                'Parcelas disponíveis para emissão não foram atualizadas nesta execução.',
+                $paraGerar['error_code'] ?? null,
+            );
+        }
+
+        $consolidated = array_merge(
+            $this->codec->normalizeMonitor($pedidosResp['body'], $detalhes, $availableBody),
+            [
+                'modality' => $modality->value,
+                'regime' => $modality->regime(),
+            ],
+        );
 
         $evidence = json_encode($consolidated, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         $sha = hash('sha256', $evidence);
@@ -253,7 +251,7 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
                 'payment_count' => count($projected['payments']),
                 'simulated' => $isTrial,
             ],
-            findings: $projected['findings'],
+            findings: [...$projected['findings'], ...$partialFindings],
             itemsProcessed: count($projected['orders']) + count($projected['parcels']),
         );
     }
@@ -270,58 +268,56 @@ final class ParcelamentoReadAdapter implements FiscalSourceAdapter
         array $payload,
     ): array {
         if ($operation === 'CONSULTAR_PAGAMENTO') {
-            $key = (string) ($body['anoMesParcela'] ?? $payload['anoMesParcela'] ?? '');
-            $orderId = (string) ($body['numeroParcelamento'] ?? $payload['numeroParcelamento'] ?? '');
+            $key = (string) ($payload['anoMesParcela'] ?? $body['paDasGerado'] ?? $body['numeroParcela'] ?? '');
+            $orderId = (string) ($payload['numeroParcelamento'] ?? $body['numeroParcelamento'] ?? '');
+            $payment = $this->codec->paymentDetail($body, $orderId, $key);
 
             return [
                 'pedidos' => [[
                     'numero' => $orderId !== '' ? $orderId : 'UNKNOWN',
                     'situacao' => 'EM_ANDAMENTO',
+                    'parcelas' => [[
+                        'parcela' => $key,
+                        'vencimento' => $body['dataVencimento'] ?? null,
+                        'valorCentavos' => $payment['valorPagoCentavos'] ?? null,
+                        'situacaoFonte' => ! empty($payment['pagamentoConfirmado']) ? 'PAGA' : 'EM_ABERTO',
+                    ]],
+                    'pagamentos' => $key !== '' ? [$key => $payment] : [],
                 ]],
-                'parcelas' => [[
-                    'parcela' => $key,
-                    'situacaoFonte' => ! empty($body['pagamentoConfirmado']) ? 'PAGA' : 'EM_ABERTO',
-                ]],
-                'pagamentos' => $key !== '' ? [$key => $body] : [],
             ];
         }
 
         if ($operation === 'CONSULTAR_PARCELAS') {
             return [
-                'pedidos' => [[
-                    'numero' => (string) ($body['numeroParcelamento'] ?? 'UNKNOWN'),
-                    'situacao' => 'EM_ANDAMENTO',
-                ]],
-                'parcelas' => $body['parcelasParaGerar'] ?? [],
+                'pedidos' => [],
+                'unassigned_available_parcels' => $this->codec->availableParcels($body),
             ];
         }
 
         if ($operation === 'CONSULTAR_PARCELAMENTO') {
-            return [
-                'pedidos' => [[
-                    'numero' => (string) ($body['numeroParcelamento'] ?? 'UNKNOWN'),
-                    'situacao' => (string) ($body['situacao'] ?? 'EM_ANDAMENTO'),
-                ]],
-                'parcelas' => $body['parcelas'] ?? [],
-            ];
+            $orderId = (string) ($body['numero'] ?? $body['numeroParcelamento'] ?? $payload['numeroParcelamento'] ?? 'UNKNOWN');
+
+            return $this->codec->normalizeMonitor([], [$orderId => $body], []);
+        }
+
+        if ($operation === 'CONSULTAR_PEDIDOS') {
+            return $this->codec->normalizeMonitor($body, [], []);
         }
 
         return $body;
     }
 
-    /**
-     * @param  list<array<string, mixed>>  $rows
-     * @return list<array<string, mixed>>
-     */
-    private function uniqueParcels(array $rows): array
+    /** @return array<string, mixed> */
+    private function partialFailureFinding(string $code, string $detail, ?string $sourceCode): array
     {
-        $byKey = [];
-        foreach ($rows as $row) {
-            $k = (string) ($row['parcela'] ?? $row['numero'] ?? uniqid('p', true));
-            $byKey[$k] = array_merge($byKey[$k] ?? [], $row);
-        }
-
-        return array_values($byKey);
+        return [
+            'code' => $code,
+            'severity' => FiscalFindingSeverity::Info->value,
+            'title' => 'Monitoramento parcial de parcelamento',
+            'detail' => $detail.($sourceCode !== null ? " Código: {$sourceCode}." : ''),
+            'situation' => FiscalSituation::Unknown->value,
+            'creates_pending' => false,
+        ];
     }
 
     private function assertPower(

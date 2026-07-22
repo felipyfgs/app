@@ -23,6 +23,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'last_list_run_id',
     'official_unread_count',
     'stored_message_count',
+    'new_messages_indicator',
+    'new_messages_indicator_observed_at',
+    'last_new_messages_indicator_run_id',
     'metadata',
 ])]
 class MailboxContributorState extends Model
@@ -40,6 +43,8 @@ class MailboxContributorState extends Model
             'messages_observed_at' => 'immutable_datetime',
             'official_unread_count' => 'integer',
             'stored_message_count' => 'integer',
+            'new_messages_indicator' => 'integer',
+            'new_messages_indicator_observed_at' => 'immutable_datetime',
             'metadata' => 'array',
         ];
     }
@@ -71,6 +76,12 @@ class MailboxContributorState extends Model
                 'observed_at' => $this->messages_observed_at?->toIso8601String(),
                 'official_unread_count' => $this->official_unread_count,
                 'stored_message_count' => $this->stored_message_count,
+            ],
+            'new_messages_indicator' => [
+                'value' => $this->new_messages_indicator,
+                'semantic' => 'UNOPENED_ONLY',
+                'observed_at' => $this->new_messages_indicator_observed_at?->toIso8601String(),
+                'reconciles_mailbox' => false,
             ],
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

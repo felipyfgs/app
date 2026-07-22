@@ -71,7 +71,8 @@ class MailboxMessageApiTest extends TestCase
         $this->getJson('/api/v1/fiscal/mailbox/state?client_id='.$client->id)
             ->assertOk()
             ->assertJsonPath('data.dte.status', 'UNKNOWN')
-            ->assertJsonPath('data.messages.stored_message_count', 0);
+            ->assertJsonPath('data.messages.stored_message_count', 0)
+            ->assertJsonPath('data.monitoring.status', 'NEVER_SYNCED');
     }
 
     public function test_alerts_list_active_only(): void

@@ -9,6 +9,7 @@ use Database\Factories\OfficeMembershipFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 use InvalidArgumentException;
 use RuntimeException;
@@ -67,6 +68,21 @@ class OfficeMembership extends Pivot
     public function workDepartment(): BelongsTo
     {
         return $this->belongsTo(WorkDepartment::class, 'work_department_id');
+    }
+
+    public function communicationInboxMemberships(): HasMany
+    {
+        return $this->hasMany(CommunicationInboxMember::class, 'office_membership_id');
+    }
+
+    public function assignedCommunicationConversations(): HasMany
+    {
+        return $this->hasMany(CommunicationConversation::class, 'assignee_membership_id');
+    }
+
+    public function authoredCommunicationMessages(): HasMany
+    {
+        return $this->hasMany(CommunicationMessage::class, 'author_membership_id');
     }
 
     public function resolvedTenantRole(): ?TenantRole

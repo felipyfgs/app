@@ -67,10 +67,13 @@ final class MonitoringActionMetadataRegistry
             ['name' => 'declaration_number', 'type' => 'string', 'required' => false, 'label' => 'Número da declaração'],
         ];
         $explicit = [
-            'pgdasd.consdeclaracao' => $pgdasd,
-            'pgdasd.consultimadecrec' => $pgdasd,
+            'pgdasd.consdeclaracao' => [
+                ['name' => 'year', 'type' => 'integer', 'required' => false, 'label' => 'Ano-calendário'],
+                ['name' => 'period_key', 'type' => 'string', 'required' => false, 'label' => 'Competência (AAAA-MM)', 'pattern' => '^\d{4}-(0[1-9]|1[0-2])$'],
+            ],
+            'pgdasd.consultimadecrec' => $period,
             'pgdasd.consdecrec' => $pgdasd,
-            'pgdasd.consextrato' => $period,
+            'pgdasd.consextrato' => [['name' => 'numero_das', 'type' => 'string', 'required' => true, 'label' => 'Número do DAS']],
             'pgmei.dividaativa' => $year,
             'defis.consultimadecrec' => $year,
             'defis.consdecrec' => [['name' => 'reference_id', 'type' => 'integer', 'required' => true, 'label' => 'Referência da declaração']],

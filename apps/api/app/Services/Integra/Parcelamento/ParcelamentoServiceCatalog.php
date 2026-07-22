@@ -5,14 +5,7 @@ namespace App\Services\Integra\Parcelamento;
 use App\Enums\TaxInstallmentModality;
 use InvalidArgumentException;
 
-/**
- * Catálogo de idSistema / idServico Integra-Parcelamento.
- * Service codes oficiais por modalidade (não fundir SN/MEI).
- *
- * Referência trial PARCMEI: PEDIDOSPARC203, OBTERPARC204, PARCELASPARAGERAR202,
- * DETPAGTOPARC205, GERARDAS201. Demais modalidades seguem o mesmo padrão de idServico
- * com sufixos oficiais conhecidos; ajustes finos quando swagger prod for pinado.
- */
+/** Catálogo de produto do Integra-Parcelamento, ancorado no snapshot oficial. */
 final class ParcelamentoServiceCatalog
 {
     public const SOLUTION = 'INTEGRA_PARCELAMENTO';
@@ -39,6 +32,109 @@ final class ParcelamentoServiceCatalog
         'REPARCELAR',
         'DESISTIR',
     ];
+
+    /** @var array<string, string> */
+    private const OPERATION_SUFFIXES = [
+        'MONITOR' => 'pedidosparc',
+        'CONSULTAR_PEDIDOS' => 'pedidosparc',
+        'CONSULTAR_PARCELAMENTO' => 'obterparc',
+        'CONSULTAR_PARCELAS' => 'parcelasparagerar',
+        'CONSULTAR_PAGAMENTO' => 'detpagtoparc',
+        'EMITIR_DOCUMENTO' => 'gerardas',
+    ];
+
+    /**
+     * Sistemas apenas inventariados pela SERPRO. Sem schema produtivo, fixture ou poder.
+     *
+     * @var array<string, array{label:string,regime:string,official_state:string}>
+     */
+    private const PROSPECTION_MODALITIES = [
+        'PARC-PAEX' => [
+            'label' => 'Parcelamento PAEX',
+            'regime' => 'GERAL',
+            'official_state' => 'PROSPECTION',
+        ],
+        'PARC-SIPADE' => [
+            'label' => 'Parcelamento SIPADE',
+            'regime' => 'GERAL',
+            'official_state' => 'PROSPECTION',
+        ],
+    ];
+
+    /**
+     * @return list<TaxInstallmentModality>
+     */
+    public static function supportedModalities(): array
+    {
+        return TaxInstallmentModality::all();
+    }
+
+    /**
+     * Catálogo entregue à API/UI. As modalidades de prospecção são visíveis, nunca executáveis.
+     *
+     * @return list<array{
+     *   code:string,label:string,regime:string,official_state:string,
+     *   official_state_label:string,monitoring_supported:bool,executable:bool,
+     *   required_power:?string
+     * }>
+     */
+    public static function modalities(): array
+    {
+        $production = array_map(
+            static fn (TaxInstallmentModality $modality): array => [
+                'code' => $modality->value,
+                'label' => $modality->label(),
+                'regime' => $modality->regime(),
+                'official_state' => 'PRODUCTION',
+                'official_state_label' => 'Em produção',
+                'monitoring_supported' => true,
+                'executable' => true,
+                'required_power' => $modality->requiredPowerCode(),
+            ],
+            self::supportedModalities(),
+        );
+
+        $prospection = [];
+        foreach (self::PROSPECTION_MODALITIES as $code => $metadata) {
+            $prospection[] = [
+                'code' => $code,
+                'label' => $metadata['label'],
+                'regime' => $metadata['regime'],
+                'official_state' => $metadata['official_state'],
+                'official_state_label' => 'Em prospecção',
+                'monitoring_supported' => false,
+                'executable' => false,
+                'required_power' => null,
+            ];
+        }
+
+        return [...$production, ...$prospection];
+    }
+
+    public static function isKnownModality(string $serviceCode): bool
+    {
+        $code = strtoupper(trim($serviceCode));
+
+        return self::parseModality($code) !== null || isset(self::PROSPECTION_MODALITIES[$code]);
+    }
+
+    public static function isExecutableModality(string $serviceCode): bool
+    {
+        return self::parseModality($serviceCode) !== null;
+    }
+
+    public static function operationKey(TaxInstallmentModality $modality, string $operation): string
+    {
+        $operation = strtoupper(trim($operation));
+        $suffix = self::OPERATION_SUFFIXES[$operation] ?? null;
+        if ($suffix === null) {
+            throw new InvalidArgumentException(
+                "Operação {$operation} sem operation_key para modalidade {$modality->value}."
+            );
+        }
+
+        return strtolower(str_replace('-', '_', $modality->value)).'.'.$suffix;
+    }
 
     /**
      * idServico SERPRO por operação canônica, por modalidade.

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Fiscal;
 
 use App\Enums\TenantPermission;
 use App\Http\Controllers\Controller;
+use App\Models\MailboxClientSyncState;
 use App\Models\User;
 use App\Services\Authorization\TenantAuthorization;
 use App\Services\Integra\Mailbox\MailboxAccessService;
@@ -163,6 +164,8 @@ class MailboxMessageController extends Controller
         }
 
         $state = $this->queries->state($office, (int) $clientId);
+        $sync = MailboxClientSyncState::query()->withoutGlobalScopes()
+            ->where('office_id', $office->id)->where('client_id', (int) $clientId)->first();
         if ($state === null) {
             return response()->json([
                 'data' => [
@@ -176,11 +179,14 @@ class MailboxMessageController extends Controller
                         'official_unread_count' => null,
                         'stored_message_count' => 0,
                     ],
+                    'monitoring' => $this->syncStateArray($sync),
                 ],
             ]);
         }
 
-        return response()->json(['data' => $state->toPublicArray()]);
+        return response()->json(['data' => array_merge($state->toPublicArray(), [
+            'monitoring' => $this->syncStateArray($sync),
+        ])]);
     }
 
     public function alerts(Request $request): JsonResponse
@@ -208,6 +214,28 @@ class MailboxMessageController extends Controller
         if ($office === null || ! FeatureFlags::isModuleEnabled('mailbox', (int) $office->id)) {
             abort(403, 'Módulo Caixa Postal não disponível.');
         }
+    }
+
+    /** @return array<string,mixed> */
+    private function syncStateArray(?MailboxClientSyncState $state): array
+    {
+        return [
+            'status' => match (true) {
+                $state === null || $state->bootstrap_completed_at === null => 'NEVER_SYNCED',
+                $state->last_error_code !== null => 'FAILED',
+                $state->authorization_status === 'DENIED' => 'BLOCKED',
+                $state->pending_event_date !== null => 'PENDING_RECONCILIATION',
+                default => 'HEALTHY',
+            },
+            'bootstrap_completed_at' => $state?->bootstrap_completed_at?->toIso8601String(),
+            'last_event_observed_date' => $state?->last_event_observed_date?->toDateString(),
+            'pending_event_date' => $state?->pending_event_date?->toDateString(),
+            'last_reconciled_event_date' => $state?->last_reconciled_event_date?->toDateString(),
+            'last_paid_check_at' => $state?->last_list_at?->toIso8601String(),
+            'last_full_reconciliation_at' => $state?->last_full_reconciliation_at?->toIso8601String(),
+            'authorization_status' => $state?->authorization_status ?? 'UNKNOWN',
+            'block_code' => $state?->last_error_code,
+        ];
     }
 
     private function assertCanWriteTriage(): void

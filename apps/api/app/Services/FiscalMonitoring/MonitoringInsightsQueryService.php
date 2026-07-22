@@ -4,6 +4,7 @@ namespace App\Services\FiscalMonitoring;
 
 use App\DTO\Fiscal\Module\ModulePortfolioFilters;
 use App\Enums\FiscalModuleKey;
+use App\Models\Client;
 use App\Models\FiscalFinding;
 use App\Models\FiscalPendingItem;
 use App\Models\MailboxAlert;
@@ -41,6 +42,14 @@ final class MonitoringInsightsQueryService
         $partialErrors = [];
         $asOf = now()->toIso8601String();
 
+        $clientsTotal = $this->safeSection(
+            'portfolio',
+            $partialErrors,
+            fn () => Client::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $office->id)
+                ->count(),
+        );
         $pending = $this->safeSection('pending', $partialErrors, fn () => $this->buildPending($office));
         $findingsPreview = $this->safeSection('findings', $partialErrors, fn () => $this->buildFindingsPreview($office));
         $rbt12 = $this->safeSection('rbt12', $partialErrors, fn () => $this->buildRbt12($office));
@@ -62,11 +71,12 @@ final class MonitoringInsightsQueryService
             fn () => $this->buildObligationsProgress($office),
         );
 
-        $modulesWithError = 0;
-        if (is_array($sitfis) && ! ($sitfis['is_synthetic'] ?? false)) {
-            $modulesWithError += ((int) ($sitfis['counters']['error'] ?? 0)) > 0 ? 1 : 0;
-        }
-        if (is_array($obligationsProgress)) {
+        $modulesWithError = null;
+        if (is_array($sitfis) && is_array($obligationsProgress)) {
+            $modulesWithError = 0;
+            if (! ($sitfis['is_synthetic'] ?? false)) {
+                $modulesWithError += ((int) ($sitfis['counters']['error'] ?? 0)) > 0 ? 1 : 0;
+            }
             foreach ($obligationsProgress as $row) {
                 if (($row['is_synthetic'] ?? false) === true) {
                     continue;
@@ -83,6 +93,7 @@ final class MonitoringInsightsQueryService
         return [
             'as_of' => $asOf,
             'kpis' => [
+                'clients_total' => is_int($clientsTotal) ? $clientsTotal : null,
                 'pending_open' => is_array($pending) ? (int) ($pending['total'] ?? 0) : null,
                 'findings_active' => is_array($findingsPreview) ? (int) ($findingsPreview['total'] ?? 0) : null,
                 'modules_with_error' => $modulesWithError,

@@ -10,7 +10,6 @@ use App\Enums\Work\GenerationItemStatus;
 use App\Enums\Work\ProcessOrigin;
 use App\Enums\Work\ProcessStatus;
 use App\Enums\Work\TaskStatus;
-use App\Models\Client;
 use App\Models\OperationalProcess;
 use App\Models\OperationalTask;
 use App\Models\ProcessGenerationBatch;
@@ -35,12 +34,14 @@ final class OperationalProcessGenerationService
         private readonly CurrentOffice $currentOffice,
         private readonly DueDateCalculator $dueDates,
         private readonly MembershipResolver $memberships,
+        private readonly ProcessAudienceResolver $audiences,
         private readonly AuditLogger $audit,
     ) {}
 
     /**
      * @param  list<int>  $clientIds
      * @param  array<string, mixed>  $overrides  due_date, target_due_date, subject_to_fine, etc.
+     * @param  array<string, mixed>  $selection
      */
     public function preview(
         ProcessTemplate $template,
@@ -48,6 +49,7 @@ final class OperationalProcessGenerationService
         array $clientIds,
         array $overrides = [],
         ?string $idempotencyKey = null,
+        array $selection = [],
     ): ProcessGenerationBatch {
         $office = $this->currentOffice->office();
         $competenceMonth = CompetenceMonth::fromString($competence);
@@ -66,35 +68,16 @@ final class OperationalProcessGenerationService
             ]);
         }
 
-        $clientIds = array_values(array_unique(array_map('intval', $clientIds)));
-        if ($clientIds === []) {
-            throw ValidationException::withMessages([
-                'client_ids' => ['Selecione ao menos um cliente.'],
-            ]);
-        }
-
-        $clients = Client::query()
-            ->where('office_id', $office->id)
-            ->whereIn('id', $clientIds)
-            ->get()
-            ->keyBy('id');
+        $audience = $this->audiences->resolve($template, $competenceMonth->value(), $selection, $clientIds);
 
         $processDue = $this->resolveProcessDue($template, $competenceMonth, $tz, $overrides);
 
         $itemsPayload = [];
-        foreach ($clientIds as $clientId) {
-            $client = $clients->get($clientId);
-            $conflicts = [];
-            $alerts = [];
-            $blocked = false;
-
-            if ($client === null) {
-                $blocked = true;
-                $conflicts[] = ['code' => 'CLIENT_NOT_FOUND', 'message' => 'Cliente inexistente neste escritório.'];
-            } elseif (! $client->is_active) {
-                $blocked = true;
-                $conflicts[] = ['code' => 'CLIENT_INACTIVE', 'message' => 'Cliente inativo.'];
-            }
+        foreach ($audience['items'] as $selectedClient) {
+            $clientId = (int) $selectedClient['client_id'];
+            $conflicts = $selectedClient['conflicts'];
+            $alerts = $selectedClient['alerts'];
+            $blocked = (bool) $selectedClient['is_blocked'];
 
             $duplicate = OperationalProcess::query()
                 ->where('office_id', $office->id)
@@ -146,7 +129,16 @@ final class OperationalProcessGenerationService
                     'due_date' => $processDue,
                     'target_due_date' => $overrides['target_due_date'] ?? null,
                     'subject_to_fine' => (bool) ($overrides['subject_to_fine'] ?? false),
+                    'monitoring_module_key' => $template->monitoring_module_key,
                     'work_department_id' => $template->default_department_id,
+                    'selection' => [
+                        'client_name' => $selectedClient['client_name'],
+                        'cnpj_masked' => $selectedClient['cnpj_masked'],
+                        'tax_regime' => $selectedClient['tax_regime'],
+                        'regime_source' => $selectedClient['regime_source'],
+                        'categories' => $selectedClient['categories'],
+                        'selection_source' => $selectedClient['selection_source'],
+                    ],
                     'tasks' => $taskPreviews,
                 ],
                 'alerts' => $alerts,
@@ -154,11 +146,30 @@ final class OperationalProcessGenerationService
             ];
         }
 
+        $selectedClientIds = array_map(
+            static fn (array $item): int => (int) $item['client_id'],
+            $audience['items'],
+        );
         $requestSnapshot = [
             'process_template_id' => $template->id,
             'template_lock_version' => $template->lock_version,
             'competence' => $competenceMonth->value(),
-            'client_ids' => $clientIds,
+            'client_ids' => $selectedClientIds,
+            'selection' => [
+                'rules' => $audience['rules'],
+                'include_client_ids' => $audience['include_client_ids'],
+                'exclude_client_ids' => $audience['exclude_client_ids'],
+                'selected' => array_map(static fn (array $item): array => [
+                    'client_id' => $item['client_id'],
+                    'tax_regime' => $item['tax_regime'],
+                    'regime_source' => $item['regime_source'],
+                    'category_ids' => array_column($item['categories'], 'id'),
+                    'selection_source' => $item['selection_source'],
+                    'is_blocked' => $item['is_blocked'],
+                ], $audience['items']),
+                'excluded' => $audience['excluded_items'],
+                'invalid_reference_count' => $audience['invalid_reference_count'],
+            ],
             'overrides' => $overrides,
         ];
         $payloadHash = hash('sha256', json_encode($requestSnapshot, JSON_THROW_ON_ERROR));
@@ -167,7 +178,7 @@ final class OperationalProcessGenerationService
 
         return DB::transaction(function () use (
             $office, $template, $competenceMonth, $payloadHash, $idempotencyKey,
-            $requestSnapshot, $itemsPayload,
+            $requestSnapshot, $itemsPayload, $audience,
         ): ProcessGenerationBatch {
             $existing = ProcessGenerationBatch::query()
                 ->where('office_id', $office->id)
@@ -190,8 +201,10 @@ final class OperationalProcessGenerationService
                     'total' => count($itemsPayload),
                     'blocked' => count(array_filter($itemsPayload, fn ($i) => $i['is_blocked'])),
                     'ready' => count(array_filter($itemsPayload, fn ($i) => ! $i['is_blocked'])),
+                    ...$audience['stats'],
+                    'excluded_items' => $audience['excluded_items'],
                 ],
-                'requested_by_membership_id' => $this->currentOffice->membership()?->id,
+                'requested_by_membership_id' => $this->currentOffice->realMembership()?->id,
                 'expires_at' => now()->addMinutes(30),
             ]);
 
@@ -212,6 +225,8 @@ final class OperationalProcessGenerationService
                 'template_id' => $template->id,
                 'competence' => $competenceMonth->value(),
                 'clients' => count($itemsPayload),
+                'excluded' => count($audience['excluded_items']),
+                'invalid_references' => $audience['invalid_reference_count'],
             ]);
 
             return $batch->load('items');
@@ -351,6 +366,7 @@ final class OperationalProcessGenerationService
                 'origin' => ProcessOrigin::Template,
                 'title' => $payload['title'] ?? 'Processo',
                 'description' => $payload['description'] ?? null,
+                'monitoring_module_key' => $payload['monitoring_module_key'] ?? null,
                 'competence' => $batch->competence,
                 'due_date' => $payload['due_date'] ?? null,
                 'target_due_date' => $payload['target_due_date'] ?? null,

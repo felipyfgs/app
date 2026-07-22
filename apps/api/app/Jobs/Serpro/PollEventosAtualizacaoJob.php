@@ -4,6 +4,7 @@ namespace App\Jobs\Serpro;
 
 use App\Models\SerproEventosRun;
 use App\Services\Integra\Eventos\EventosAtualizacaoFlowService;
+use App\Services\Integra\Mailbox\MailboxEventosResultProcessor;
 use App\Services\Serpro\SerproJobFlagGuard;
 use App\Services\Serpro\SerproMetricsExporter;
 use App\Support\LogSanitizer;
@@ -50,7 +51,8 @@ final class PollEventosAtualizacaoJob implements ShouldQueue
             return;
         }
 
-        if ($run->isOneShotConsumed() || $run->status === SerproEventosRun::STATUS_SUCCEEDED) {
+        if ($run->status === SerproEventosRun::STATUS_SUCCEEDED
+            && $run->local_processing_status === MailboxEventosResultProcessor::LOCAL_SUCCEEDED) {
             return;
         }
 

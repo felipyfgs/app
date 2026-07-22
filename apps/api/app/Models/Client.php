@@ -166,6 +166,23 @@ class Client extends Model
         return $this->hasMany(ClientCommunicationDispatch::class);
     }
 
+    public function communicationIdentityLinks(): HasMany
+    {
+        return $this->hasMany(CommunicationIdentityLink::class);
+    }
+
+    /** Processos operacionais deste contribuinte no escritório. */
+    public function operationalProcesses(): HasMany
+    {
+        return $this->hasMany(OperationalProcess::class);
+    }
+
+    /** Histórico de regimes usado para selecionar rotinas por competência. */
+    public function taxRegimePeriods(): HasMany
+    {
+        return $this->hasMany(ClientTaxRegimePeriod::class);
+    }
+
     public function pgdasdOperations(): HasMany
     {
         return $this->hasMany(PgdasdOperation::class);

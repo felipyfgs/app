@@ -71,13 +71,13 @@ final class SitfisCommunicationService
     }
 
     /** @return array{queued:int, provider_enabled:bool, dispatches:list<array<string, mixed>>} */
-    public function requestSend(Office $office, Client $client, User $actor): array
+    public function requestSend(Office $office, Client $client, User $actor, ?string $periodKey = null): array
     {
-        return $this->inner->requestSend($office, $client, $actor);
+        return $this->inner->requestSend($office, $client, $actor, $periodKey);
     }
 
-    public function maybeQueueAutomaticAfterConsult(Office $office, Client $client): void
+    public function maybeQueueAutomaticAfterConsult(Office $office, Client $client, ?string $periodKey = null): void
     {
-        $this->inner->maybeQueueAutomaticAfterConsult($office, $client);
+        $this->inner->maybeQueueAutomaticAfterConsult($office, $client, $periodKey);
     }
 }

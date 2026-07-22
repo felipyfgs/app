@@ -148,7 +148,16 @@ enum FiscalModuleKey: string
             self::Sitfis => ['SITFIS'],
             self::Mailbox => ['CAIXA_POSTAL'],
             // Abas do hub Declarações + agregado legado DECLARACOES.
-            self::Declarations => ['PGDAS', 'DCTFWEB', 'FGTS', 'DEFIS', 'DIRF', 'DECLARACOES'],
+            self::Declarations => [
+                'PGDAS',
+                'DEFIS',
+                'DASN_SIMEI',
+                'DCTFWEB',
+                'MIT',
+                'FGTS',
+                'DIRF',
+                'DECLARACOES',
+            ],
             self::Guides => ['GUIAS'],
             self::Fgts => ['FGTS'],
             self::Registrations => ['PNRCONTADOR'],

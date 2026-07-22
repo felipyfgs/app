@@ -1,5 +1,5 @@
 {
-  "digest": "ff66d72fab0bdfedd12e0b7580d8df6fa3ee4f1992a2c5662ea9c734cda56b79",
+  "digest": "42b7020eec17d5a407368f97585653fadd96723784a2bd18291d8001cf832ab7",
   "schemaVersion": 1,
   "source": {
     "catalog": "apps/web/tests/fixtures/use-case-testability/catalog.json",
@@ -7,13 +7,13 @@
     "pages": "apps/*/tests/fixtures/surface-inventory/web-pages.json"
   },
   "summary": {
-    "journeys": 10,
+    "journeys": 11,
     "criticalJourneys": 4,
-    "apiRoutes": 456,
-    "pages": 97,
-    "handlers": 444,
-    "apiClients": 14,
-    "tests": 10,
+    "apiRoutes": 555,
+    "pages": 100,
+    "handlers": 543,
+    "apiClients": 15,
+    "tests": 12,
     "unmatchedApiClientEndpoints": 0
   },
   "matrix": [
@@ -120,10 +120,27 @@
       ]
     },
     {
+      "journeyId": "communication-inbox",
+      "title": "Atendimento WhatsApp compartilhado",
+      "critical": false,
+      "apiRoutes": 74,
+      "pages": 2,
+      "apiClients": 1,
+      "levels": {
+        "L0": true,
+        "L1": true,
+        "L2": true,
+        "L3": false
+      },
+      "gaps": [
+        "L3"
+      ]
+    },
+    {
       "journeyId": "fiscal-monitoring",
       "title": "Monitoramento fiscal e consultas",
       "critical": true,
-      "apiRoutes": 181,
+      "apiRoutes": 203,
       "pages": 21,
       "apiClients": 3,
       "levels": {
@@ -138,8 +155,8 @@
       "journeyId": "operational-work",
       "title": "Fila e processos operacionais",
       "critical": true,
-      "apiRoutes": 50,
-      "pages": 7,
+      "apiRoutes": 53,
+      "pages": 8,
       "apiClients": 3,
       "levels": {
         "L0": true,
@@ -249,6 +266,18 @@
       "file": "apps/web/tests/e2e/specs/critical-use-case-journeys.spec.ts",
       "anchor": "catálogo de clientes",
       "journeyId": "client-lifecycle"
+    },
+    {
+      "level": "L1",
+      "file": "apps/api/tests/Feature/Communication/CommunicationApiTest.php",
+      "anchor": "test_rbac_limits_non_admin_to_membership_and_hides_foreign_office",
+      "journeyId": "communication-inbox"
+    },
+    {
+      "level": "L2",
+      "file": "apps/web/tests/unit/communication-workspace-ui-gate.test.ts",
+      "anchor": "integra REST office-scoped",
+      "journeyId": "communication-inbox"
     },
     {
       "level": "L1",
@@ -371,6 +400,21 @@
       "gaps": [
         "L1",
         "L2",
+        "L3"
+      ]
+    },
+    {
+      "id": "journey:communication-inbox",
+      "type": "journey",
+      "journeyId": "communication-inbox",
+      "title": "Atendimento WhatsApp compartilhado",
+      "critical": false,
+      "actors": [
+        "office-admin",
+        "operator",
+        "viewer"
+      ],
+      "gaps": [
         "L3"
       ]
     },
@@ -524,6 +568,26 @@
       "file": "app/pages/onboarding.vue",
       "route": "/onboarding",
       "notes": "layout: `auth`; first admin setup"
+    },
+    {
+      "id": "page:app/pages/communication/index.vue",
+      "type": "page",
+      "journeyId": "communication-inbox",
+      "redirectOnly": false,
+      "section": "communication",
+      "file": "app/pages/communication/index.vue",
+      "route": "/communication",
+      "notes": "Inbox WhatsApp compartilhada com lista, timeline, contexto e administração"
+    },
+    {
+      "id": "page:app/pages/communication/conversations/[id].vue",
+      "type": "page",
+      "journeyId": "communication-inbox",
+      "redirectOnly": false,
+      "section": "communication",
+      "file": "app/pages/communication/conversations/[id].vue",
+      "route": "/communication/conversations/:id",
+      "notes": "Deep-link canônico de uma conversa no workspace compartilhado"
     },
     {
       "id": "page:app/pages/login.vue",
@@ -1426,6 +1490,16 @@
       "notes": "Templates (guarded: redirects to `/work` if no permission)"
     },
     {
+      "id": "page:app/pages/work/tasks/index.vue",
+      "type": "page",
+      "journeyId": "operational-work",
+      "redirectOnly": false,
+      "section": "work",
+      "file": "app/pages/work/tasks/index.vue",
+      "route": "/work/tasks",
+      "notes": "Tasks list"
+    },
+    {
       "id": "page:app/pages/work/tasks/[id].vue",
       "type": "page",
       "journeyId": "operational-work",
@@ -1480,6 +1554,47 @@
       ]
     },
     {
+      "id": "api-client:app/composables/api/createCommunicationApi.ts",
+      "type": "api-client",
+      "file": "app/composables/api/createCommunicationApi.ts",
+      "endpoints": [
+        "api/v1/communication/attachments/:param/download",
+        "api/v1/communication/automation-policies",
+        "api/v1/communication/canned-responses",
+        "api/v1/communication/canned-responses/:param",
+        "api/v1/communication/clients/:param/automation-recipients",
+        "api/v1/communication/contacts",
+        "api/v1/communication/contacts/:param",
+        "api/v1/communication/contacts/:param/export",
+        "api/v1/communication/contacts/:param/identities",
+        "api/v1/communication/contacts/:param/personal-data",
+        "api/v1/communication/conversations",
+        "api/v1/communication/conversations/:param",
+        "api/v1/communication/conversations/:param/disappearing",
+        "api/v1/communication/conversations/:param/labels/:param",
+        "api/v1/communication/conversations/:param/messages",
+        "api/v1/communication/conversations/:param/messages/:param",
+        "api/v1/communication/conversations/:param/messages/:param/edit",
+        "api/v1/communication/conversations/:param/messages/:param/poll-votes",
+        "api/v1/communication/conversations/:param/messages/:param/reaction",
+        "api/v1/communication/conversations/:param/messages/:param/receipts",
+        "api/v1/communication/conversations/:param/messages/:param/recovery",
+        "api/v1/communication/conversations/:param/presence",
+        "api/v1/communication/conversations/:param/presence/subscribe",
+        "api/v1/communication/events",
+        "api/v1/communication/identities/:param/links",
+        "api/v1/communication/identities/:param/links/:param",
+        "api/v1/communication/inboxes",
+        "api/v1/communication/inboxes/:param",
+        "api/v1/communication/inboxes/:param/members",
+        "api/v1/communication/inboxes/:param/pairing",
+        "api/v1/communication/inboxes/:param/session",
+        "api/v1/communication/labels",
+        "api/v1/communication/labels/:param",
+        "api/v1/communication/settings"
+      ]
+    },
+    {
       "id": "api-client:app/composables/api/createDocumentsApi.ts",
       "type": "api-client",
       "file": "app/composables/api/createDocumentsApi.ts",
@@ -1505,6 +1620,10 @@
       "file": "app/composables/api/createFiscalApi.ts",
       "endpoints": [
         "api/v1/auth/confirm-totp",
+        "api/v1/fiscal/:param/clients/:param/communication-preference",
+        "api/v1/fiscal/:param/clients/:param/communication-preview",
+        "api/v1/fiscal/:param/clients/:param/communication-send",
+        "api/v1/fiscal/:param/clients/:param/communications",
         "api/v1/fiscal/categories",
         "api/v1/fiscal/category-links",
         "api/v1/fiscal/category-links/batch",
@@ -1530,12 +1649,27 @@
         "api/v1/fiscal/declarations",
         "api/v1/fiscal/declarations/:param",
         "api/v1/fiscal/declarations/catalog",
+        "api/v1/fiscal/declarations/operations/:param/execute",
+        "api/v1/fiscal/declarations/operations/:param/preflight",
+        "api/v1/fiscal/declarations/operations/:param/read",
+        "api/v1/fiscal/declarations/operations/mutations/:param",
+        "api/v1/fiscal/declarations/operations/mutations/:param/reconcile",
         "api/v1/fiscal/declarations/summary",
         "api/v1/fiscal/evidence/:param/download",
         "api/v1/fiscal/fgts/competences",
         "api/v1/fiscal/fgts/competences/:param",
         "api/v1/fiscal/fgts/coverage",
+        "api/v1/fiscal/fgts/digital/coverage",
+        "api/v1/fiscal/fgts/digital/preview",
+        "api/v1/fiscal/fgts/digital/previews/:param/emit",
+        "api/v1/fiscal/fgts/digital/readiness",
+        "api/v1/fiscal/fgts/digital/representations",
+        "api/v1/fiscal/fgts/digital/runs",
+        "api/v1/fiscal/fgts/digital/sessions/import",
+        "api/v1/fiscal/fgts/digital/sync",
+        "api/v1/fiscal/fgts/digital/sync-now",
         "api/v1/fiscal/fgts/events",
+        "api/v1/fiscal/fgts/readiness",
         "api/v1/fiscal/fgts/sync",
         "api/v1/fiscal/findings",
         "api/v1/fiscal/guides",
@@ -1554,6 +1688,7 @@
         "api/v1/fiscal/guides/revenue-support/clients/:param/history",
         "api/v1/fiscal/installments/guides",
         "api/v1/fiscal/installments/modalities",
+        "api/v1/fiscal/installments/monitor",
         "api/v1/fiscal/installments/orders",
         "api/v1/fiscal/installments/orders/:param",
         "api/v1/fiscal/installments/parcels",
@@ -1563,7 +1698,12 @@
         "api/v1/fiscal/mailbox/messages/:param",
         "api/v1/fiscal/mailbox/messages/:param/attachments/:param",
         "api/v1/fiscal/mailbox/messages/:param/body",
+        "api/v1/fiscal/mailbox/messages/:param/detail",
+        "api/v1/fiscal/mailbox/messages/:param/detail-preview",
         "api/v1/fiscal/mailbox/messages/:param/triage",
+        "api/v1/fiscal/mailbox/monitoring",
+        "api/v1/fiscal/mailbox/monitoring/preview",
+        "api/v1/fiscal/mailbox/monitoring/sync",
         "api/v1/fiscal/mailbox/state",
         "api/v1/fiscal/manual-consults",
         "api/v1/fiscal/mit/apuracoes",
@@ -1818,7 +1958,7 @@
       "type": "api-client",
       "file": "app/composables/api/createSavedListFiltersApi.ts",
       "endpoints": [
-        "api/v1/list-filters"
+        "api/v1/list-filters/:param"
       ]
     },
     {
@@ -1842,6 +1982,7 @@
         "api/v1/work/processes/:param/archive",
         "api/v1/work/processes/:param/comments",
         "api/v1/work/processes/:param/timeline",
+        "api/v1/work/processes/bulk",
         "api/v1/work/queue",
         "api/v1/work/tasks/:param",
         "api/v1/work/tasks/:param/block",
@@ -1853,6 +1994,9 @@
         "api/v1/work/tasks/:param/evidences/:param/download",
         "api/v1/work/tasks/:param/resume",
         "api/v1/work/tasks/:param/start",
+        "api/v1/work/tasks/bulk",
+        "api/v1/work/template-catalog",
+        "api/v1/work/template-catalog/:param/install",
         "api/v1/work/templates",
         "api/v1/work/templates/:param",
         "api/v1/work/templates/:param/preview"
@@ -1865,6 +2009,33 @@
       "endpoints": [
         "api/v1/fiscal/evidence/:param/download"
       ]
+    },
+    {
+      "id": "api:GET:api/broadcasting/auth",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/broadcasting/auth",
+      "group": "communication",
+      "action": "BroadcastController@authenticate"
+    },
+    {
+      "id": "api:POST:api/internal/v1/communication/gateway/events",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/internal/v1/communication/gateway/events",
+      "group": "communication",
+      "action": "CommunicationGatewayEventController"
+    },
+    {
+      "id": "api:GET:api/internal/v1/communication/gateway/media/{command}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/internal/v1/communication/gateway/media/{command}",
+      "group": "communication",
+      "action": "CommunicationGatewayMediaController"
     },
     {
       "id": "api:PATCH:api/v1/account",
@@ -2090,6 +2261,645 @@
       "uri": "api/v1/cnpj/{cnpj}/lookup",
       "group": "cnpj",
       "action": "CnpjLookupController"
+    },
+    {
+      "id": "api:GET:api/v1/communication/attachments/{attachment}/download",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/attachments/{attachment}/download",
+      "group": "communication",
+      "action": "CommunicationDataController@downloadAttachment"
+    },
+    {
+      "id": "api:GET:api/v1/communication/attachments/{attachment}/preview",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/attachments/{attachment}/preview",
+      "group": "communication",
+      "action": "CommunicationDataController@previewAttachment"
+    },
+    {
+      "id": "api:GET:api/v1/communication/automation-policies",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/automation-policies",
+      "group": "communication",
+      "action": "CommunicationAutomationController@index"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/automation-policies",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/automation-policies",
+      "group": "communication",
+      "action": "CommunicationAutomationController@upsert"
+    },
+    {
+      "id": "api:GET:api/v1/communication/canned-responses",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/canned-responses",
+      "group": "communication",
+      "action": "CommunicationCatalogController@cannedResponses"
+    },
+    {
+      "id": "api:POST:api/v1/communication/canned-responses",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/canned-responses",
+      "group": "communication",
+      "action": "CommunicationCatalogController@storeCannedResponse"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/canned-responses/{canned}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/canned-responses/{canned}",
+      "group": "communication",
+      "action": "CommunicationCatalogController@updateCannedResponse"
+    },
+    {
+      "id": "api:DELETE:api/v1/communication/canned-responses/{canned}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "DELETE",
+      "uri": "api/v1/communication/canned-responses/{canned}",
+      "group": "communication",
+      "action": "CommunicationCatalogController@deleteCannedResponse"
+    },
+    {
+      "id": "api:GET:api/v1/communication/clients/{client}/automation-recipients",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/clients/{client}/automation-recipients",
+      "group": "communication",
+      "action": "CommunicationAutomationController@recipients"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/clients/{client}/automation-recipients",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/clients/{client}/automation-recipients",
+      "group": "communication",
+      "action": "CommunicationAutomationController@updateRecipients"
+    },
+    {
+      "id": "api:GET:api/v1/communication/contacts",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/contacts",
+      "group": "communication",
+      "action": "CommunicationContactController@index"
+    },
+    {
+      "id": "api:POST:api/v1/communication/contacts",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/contacts",
+      "group": "communication",
+      "action": "CommunicationContactController@store"
+    },
+    {
+      "id": "api:GET:api/v1/communication/contacts/{contact}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/contacts/{contact}",
+      "group": "communication",
+      "action": "CommunicationContactController@show"
+    },
+    {
+      "id": "api:PATCH:api/v1/communication/contacts/{contact}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PATCH",
+      "uri": "api/v1/communication/contacts/{contact}",
+      "group": "communication",
+      "action": "CommunicationContactController@update"
+    },
+    {
+      "id": "api:GET:api/v1/communication/contacts/{contact}/export",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/contacts/{contact}/export",
+      "group": "communication",
+      "action": "CommunicationDataController@exportContact"
+    },
+    {
+      "id": "api:POST:api/v1/communication/contacts/{contact}/identities",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/contacts/{contact}/identities",
+      "group": "communication",
+      "action": "CommunicationContactController@addIdentity"
+    },
+    {
+      "id": "api:DELETE:api/v1/communication/contacts/{contact}/personal-data",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "DELETE",
+      "uri": "api/v1/communication/contacts/{contact}/personal-data",
+      "group": "communication",
+      "action": "CommunicationDataController@purgeContact"
+    },
+    {
+      "id": "api:GET:api/v1/communication/conversations",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/conversations",
+      "group": "communication",
+      "action": "CommunicationConversationController@index"
+    },
+    {
+      "id": "api:GET:api/v1/communication/conversations/{conversation}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/conversations/{conversation}",
+      "group": "communication",
+      "action": "CommunicationConversationController@show"
+    },
+    {
+      "id": "api:PATCH:api/v1/communication/conversations/{conversation}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PATCH",
+      "uri": "api/v1/communication/conversations/{conversation}",
+      "group": "communication",
+      "action": "CommunicationConversationController@update"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/conversations/{conversation}/disappearing",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/conversations/{conversation}/disappearing",
+      "group": "communication",
+      "action": "CommunicationConversationGatewayController@disappearing"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/conversations/{conversation}/labels/{label}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/conversations/{conversation}/labels/{label}",
+      "group": "communication",
+      "action": "CommunicationConversationController@addLabel"
+    },
+    {
+      "id": "api:DELETE:api/v1/communication/conversations/{conversation}/labels/{label}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "DELETE",
+      "uri": "api/v1/communication/conversations/{conversation}/labels/{label}",
+      "group": "communication",
+      "action": "CommunicationConversationController@removeLabel"
+    },
+    {
+      "id": "api:POST:api/v1/communication/conversations/{conversation}/messages",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/conversations/{conversation}/messages",
+      "group": "communication",
+      "action": "CommunicationConversationController@send"
+    },
+    {
+      "id": "api:DELETE:api/v1/communication/conversations/{conversation}/messages/{message}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "DELETE",
+      "uri": "api/v1/communication/conversations/{conversation}/messages/{message}",
+      "group": "communication",
+      "action": "CommunicationConversationGatewayController@revoke"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/conversations/{conversation}/messages/{message}/edit",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/conversations/{conversation}/messages/{message}/edit",
+      "group": "communication",
+      "action": "CommunicationConversationGatewayController@edit"
+    },
+    {
+      "id": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/history",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/conversations/{conversation}/messages/{message}/history",
+      "group": "communication",
+      "action": "CommunicationConversationGatewayController@history"
+    },
+    {
+      "id": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/poll-votes",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/conversations/{conversation}/messages/{message}/poll-votes",
+      "group": "communication",
+      "action": "CommunicationConversationGatewayController@votePoll"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/conversations/{conversation}/messages/{message}/reaction",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/conversations/{conversation}/messages/{message}/reaction",
+      "group": "communication",
+      "action": "CommunicationConversationGatewayController@react"
+    },
+    {
+      "id": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/receipts",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/conversations/{conversation}/messages/{message}/receipts",
+      "group": "communication",
+      "action": "CommunicationConversationGatewayController@receipt"
+    },
+    {
+      "id": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/recovery",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/conversations/{conversation}/messages/{message}/recovery",
+      "group": "communication",
+      "action": "CommunicationConversationGatewayController@recovery"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/conversations/{conversation}/presence",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/conversations/{conversation}/presence",
+      "group": "communication",
+      "action": "CommunicationConversationGatewayController@chatPresence"
+    },
+    {
+      "id": "api:POST:api/v1/communication/conversations/{conversation}/presence/subscribe",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/conversations/{conversation}/presence/subscribe",
+      "group": "communication",
+      "action": "CommunicationConversationGatewayController@subscribePresence"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/conversations/{conversation}/state",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/conversations/{conversation}/state",
+      "group": "communication",
+      "action": "CommunicationConversationGatewayController@state"
+    },
+    {
+      "id": "api:GET:api/v1/communication/events",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/events",
+      "group": "communication",
+      "action": "CommunicationDataController@sync"
+    },
+    {
+      "id": "api:POST:api/v1/communication/identities/{identity}/links",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/identities/{identity}/links",
+      "group": "communication",
+      "action": "CommunicationContactController@linkIdentity"
+    },
+    {
+      "id": "api:DELETE:api/v1/communication/identities/{identity}/links/{link}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "DELETE",
+      "uri": "api/v1/communication/identities/{identity}/links/{link}",
+      "group": "communication",
+      "action": "CommunicationContactController@unlinkIdentity"
+    },
+    {
+      "id": "api:GET:api/v1/communication/inboxes",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/inboxes",
+      "group": "communication",
+      "action": "CommunicationInboxController@index"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes",
+      "group": "communication",
+      "action": "CommunicationInboxController@store"
+    },
+    {
+      "id": "api:PATCH:api/v1/communication/inboxes/{inbox}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PATCH",
+      "uri": "api/v1/communication/inboxes/{inbox}",
+      "group": "communication",
+      "action": "CommunicationInboxController@update"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/app-state/mark-clean",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/app-state/mark-clean",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@markStateClean"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/app-state/sync",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/app-state/sync",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@syncState"
+    },
+    {
+      "id": "api:GET:api/v1/communication/inboxes/{inbox}/blocklist",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/inboxes/{inbox}/blocklist",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@blocklist"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/inboxes/{inbox}/blocklist",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/inboxes/{inbox}/blocklist",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@updateBlocklist"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/business-link-resolve",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/contacts/business-link-resolve",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@resolveBusinessLink"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/business-profiles",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/contacts/business-profiles",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@businessProfiles"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/check",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/contacts/check",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@checkUsers"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/info",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/contacts/info",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@userInfo"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/profile-picture",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/contacts/profile-picture",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@profilePicture"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/qr-link",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/contacts/qr-link",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@contactQrLink"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/qr-resolve",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/contacts/qr-resolve",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@resolveContactQr"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/inboxes/{inbox}/default-disappearing",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/inboxes/{inbox}/default-disappearing",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@defaultDisappearing"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/inboxes/{inbox}/members",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/inboxes/{inbox}/members",
+      "group": "communication",
+      "action": "CommunicationInboxController@replaceMembers"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/pairing",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/pairing",
+      "group": "communication",
+      "action": "CommunicationInboxController@startPairing"
+    },
+    {
+      "id": "api:GET:api/v1/communication/inboxes/{inbox}/pairing",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/inboxes/{inbox}/pairing",
+      "group": "communication",
+      "action": "CommunicationInboxController@pairing"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/inboxes/{inbox}/presence",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/inboxes/{inbox}/presence",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@globalPresence"
+    },
+    {
+      "id": "api:GET:api/v1/communication/inboxes/{inbox}/privacy",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/inboxes/{inbox}/privacy",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@privacy"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/inboxes/{inbox}/privacy",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/inboxes/{inbox}/privacy",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@updatePrivacy"
+    },
+    {
+      "id": "api:DELETE:api/v1/communication/inboxes/{inbox}/session",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "DELETE",
+      "uri": "api/v1/communication/inboxes/{inbox}/session",
+      "group": "communication",
+      "action": "CommunicationInboxController@revoke"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/session/connect",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/session/connect",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@connect"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/session/disconnect",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/session/disconnect",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@disconnect"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/session/pair-phone",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/session/pair-phone",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@pairPhone"
+    },
+    {
+      "id": "api:PUT:api/v1/communication/inboxes/{inbox}/session/passive",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PUT",
+      "uri": "api/v1/communication/inboxes/{inbox}/session/passive",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@passive"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/session/passkey/confirm",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/session/passkey/confirm",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@confirmPasskey"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/session/passkey/respond",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/session/passkey/respond",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@respondPasskey"
+    },
+    {
+      "id": "api:POST:api/v1/communication/inboxes/{inbox}/session/reset",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/inboxes/{inbox}/session/reset",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@reset"
+    },
+    {
+      "id": "api:GET:api/v1/communication/inboxes/{inbox}/session/status",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/inboxes/{inbox}/session/status",
+      "group": "communication",
+      "action": "CommunicationInboxGatewayController@sessionStatus"
+    },
+    {
+      "id": "api:GET:api/v1/communication/labels",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "GET",
+      "uri": "api/v1/communication/labels",
+      "group": "communication",
+      "action": "CommunicationCatalogController@labels"
+    },
+    {
+      "id": "api:POST:api/v1/communication/labels",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "POST",
+      "uri": "api/v1/communication/labels",
+      "group": "communication",
+      "action": "CommunicationCatalogController@storeLabel"
+    },
+    {
+      "id": "api:DELETE:api/v1/communication/labels/{label}",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "DELETE",
+      "uri": "api/v1/communication/labels/{label}",
+      "group": "communication",
+      "action": "CommunicationCatalogController@deleteLabel"
+    },
+    {
+      "id": "api:PATCH:api/v1/communication/settings",
+      "type": "api-route",
+      "journeyId": "communication-inbox",
+      "method": "PATCH",
+      "uri": "api/v1/communication/settings",
+      "group": "communication",
+      "action": "CommunicationInboxController@updateOfficeSettings"
     },
     {
       "id": "api:GET:api/v1/cte/coverage",
@@ -2560,6 +3370,51 @@
       "action": "DeclarationHubController@catalog"
     },
     {
+      "id": "api:GET:api/v1/fiscal/declarations/operations/mutations/{mutation}",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "GET",
+      "uri": "api/v1/fiscal/declarations/operations/mutations/{mutation}",
+      "group": "fiscal",
+      "action": "DeclarationOperationController@show"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/declarations/operations/mutations/{mutation}/reconcile",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/declarations/operations/mutations/{mutation}/reconcile",
+      "group": "fiscal",
+      "action": "DeclarationOperationController@reconcile"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/declarations/operations/{action}/execute",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/declarations/operations/{action}/execute",
+      "group": "fiscal",
+      "action": "DeclarationOperationController@execute"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/declarations/operations/{action}/preflight",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/declarations/operations/{action}/preflight",
+      "group": "fiscal",
+      "action": "DeclarationOperationController@preflight"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/declarations/operations/{action}/read",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/declarations/operations/{action}/read",
+      "group": "fiscal",
+      "action": "DeclarationOperationController@read"
+    },
+    {
       "id": "api:POST:api/v1/fiscal/declarations/project",
       "type": "api-route",
       "journeyId": "fiscal-monitoring",
@@ -2641,6 +3496,87 @@
       "action": "FgtsEsocialController@coverage"
     },
     {
+      "id": "api:GET:api/v1/fiscal/fgts/digital/coverage",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "GET",
+      "uri": "api/v1/fiscal/fgts/digital/coverage",
+      "group": "fiscal",
+      "action": "FgtsDigitalController@coverage"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/fgts/digital/preview",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/fgts/digital/preview",
+      "group": "fiscal",
+      "action": "FgtsDigitalController@preview"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/fgts/digital/previews/{run}/emit",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/fgts/digital/previews/{run}/emit",
+      "group": "fiscal",
+      "action": "FgtsDigitalController@emit"
+    },
+    {
+      "id": "api:GET:api/v1/fiscal/fgts/digital/readiness",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "GET",
+      "uri": "api/v1/fiscal/fgts/digital/readiness",
+      "group": "fiscal",
+      "action": "FgtsDigitalController@readiness"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/fgts/digital/representations",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/fgts/digital/representations",
+      "group": "fiscal",
+      "action": "FgtsDigitalController@storeRepresentation"
+    },
+    {
+      "id": "api:GET:api/v1/fiscal/fgts/digital/runs",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "GET",
+      "uri": "api/v1/fiscal/fgts/digital/runs",
+      "group": "fiscal",
+      "action": "FgtsDigitalController@runs"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/fgts/digital/sessions/import",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/fgts/digital/sessions/import",
+      "group": "fiscal",
+      "action": "FgtsDigitalController@importSession"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/fgts/digital/sync",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/fgts/digital/sync",
+      "group": "fiscal",
+      "action": "FgtsDigitalController@sync"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/fgts/digital/sync-now",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/fgts/digital/sync-now",
+      "group": "fiscal",
+      "action": "FgtsDigitalController@syncNow"
+    },
+    {
       "id": "api:GET:api/v1/fiscal/fgts/events",
       "type": "api-route",
       "journeyId": "fiscal-monitoring",
@@ -2648,6 +3584,15 @@
       "uri": "api/v1/fiscal/fgts/events",
       "group": "fiscal",
       "action": "FgtsEsocialController@events"
+    },
+    {
+      "id": "api:GET:api/v1/fiscal/fgts/readiness",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "GET",
+      "uri": "api/v1/fiscal/fgts/readiness",
+      "group": "fiscal",
+      "action": "FgtsEsocialController@readiness"
     },
     {
       "id": "api:POST:api/v1/fiscal/fgts/sync",
@@ -2857,6 +3802,15 @@
       "action": "TaxInstallmentController@modalities"
     },
     {
+      "id": "api:POST:api/v1/fiscal/installments/monitor",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/installments/monitor",
+      "group": "fiscal",
+      "action": "TaxInstallmentController@monitor"
+    },
+    {
       "id": "api:GET:api/v1/fiscal/installments/orders",
       "type": "api-route",
       "journeyId": "fiscal-monitoring",
@@ -2938,6 +3892,24 @@
       "action": "MailboxMessageController@downloadBody"
     },
     {
+      "id": "api:POST:api/v1/fiscal/mailbox/messages/{message}/detail",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/mailbox/messages/{message}/detail",
+      "group": "fiscal",
+      "action": "MailboxMonitoringController@detail"
+    },
+    {
+      "id": "api:GET:api/v1/fiscal/mailbox/messages/{message}/detail-preview",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "GET",
+      "uri": "api/v1/fiscal/mailbox/messages/{message}/detail-preview",
+      "group": "fiscal",
+      "action": "MailboxMonitoringController@detailPreview"
+    },
+    {
       "id": "api:PATCH:api/v1/fiscal/mailbox/messages/{message}/triage",
       "type": "api-route",
       "journeyId": "fiscal-monitoring",
@@ -2945,6 +3917,42 @@
       "uri": "api/v1/fiscal/mailbox/messages/{message}/triage",
       "group": "fiscal",
       "action": "MailboxMessageController@triage"
+    },
+    {
+      "id": "api:GET:api/v1/fiscal/mailbox/monitoring",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "GET",
+      "uri": "api/v1/fiscal/mailbox/monitoring",
+      "group": "fiscal",
+      "action": "MailboxMonitoringController@show"
+    },
+    {
+      "id": "api:PATCH:api/v1/fiscal/mailbox/monitoring",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "PATCH",
+      "uri": "api/v1/fiscal/mailbox/monitoring",
+      "group": "fiscal",
+      "action": "MailboxMonitoringController@update"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/mailbox/monitoring/preview",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/mailbox/monitoring/preview",
+      "group": "fiscal",
+      "action": "MailboxMonitoringController@preview"
+    },
+    {
+      "id": "api:POST:api/v1/fiscal/mailbox/monitoring/sync",
+      "type": "api-route",
+      "journeyId": "fiscal-monitoring",
+      "method": "POST",
+      "uri": "api/v1/fiscal/mailbox/monitoring/sync",
+      "group": "fiscal",
+      "action": "MailboxMonitoringController@sync"
     },
     {
       "id": "api:GET:api/v1/fiscal/mailbox/state",
@@ -5413,6 +6421,15 @@
       "action": "OperationalProcessController@store"
     },
     {
+      "id": "api:POST:api/v1/work/processes/bulk",
+      "type": "api-route",
+      "journeyId": "operational-work",
+      "method": "POST",
+      "uri": "api/v1/work/processes/bulk",
+      "group": "work",
+      "action": "OperationalProcessController@bulk"
+    },
+    {
       "id": "api:GET:api/v1/work/processes/{process}",
       "type": "api-route",
       "journeyId": "operational-work",
@@ -5618,6 +6635,24 @@
       "uri": "api/v1/work/tasks/{task}/structure",
       "group": "work",
       "action": "OperationalTaskController@updateStructure"
+    },
+    {
+      "id": "api:GET:api/v1/work/template-catalog",
+      "type": "api-route",
+      "journeyId": "operational-work",
+      "method": "GET",
+      "uri": "api/v1/work/template-catalog",
+      "group": "work",
+      "action": "ProcessTemplateCatalogController@index"
+    },
+    {
+      "id": "api:POST:api/v1/work/template-catalog/{catalogKey}/install",
+      "type": "api-route",
+      "journeyId": "operational-work",
+      "method": "POST",
+      "uri": "api/v1/work/template-catalog/{catalogKey}/install",
+      "group": "work",
+      "action": "ProcessTemplateCatalogController@install"
     },
     {
       "id": "api:GET:api/v1/work/templates",
@@ -5996,6 +7031,11 @@
       "action": "BatchesController@show"
     },
     {
+      "id": "handler:BroadcastController@authenticate",
+      "type": "handler",
+      "action": "BroadcastController@authenticate"
+    },
+    {
       "id": "handler:CcmeiMonitoringController@consult",
       "type": "handler",
       "action": "CcmeiMonitoringController@consult"
@@ -6129,6 +7169,371 @@
       "id": "handler:CnpjLookupController",
       "type": "handler",
       "action": "CnpjLookupController"
+    },
+    {
+      "id": "handler:CommunicationAutomationController@index",
+      "type": "handler",
+      "action": "CommunicationAutomationController@index"
+    },
+    {
+      "id": "handler:CommunicationAutomationController@recipients",
+      "type": "handler",
+      "action": "CommunicationAutomationController@recipients"
+    },
+    {
+      "id": "handler:CommunicationAutomationController@updateRecipients",
+      "type": "handler",
+      "action": "CommunicationAutomationController@updateRecipients"
+    },
+    {
+      "id": "handler:CommunicationAutomationController@upsert",
+      "type": "handler",
+      "action": "CommunicationAutomationController@upsert"
+    },
+    {
+      "id": "handler:CommunicationCatalogController@cannedResponses",
+      "type": "handler",
+      "action": "CommunicationCatalogController@cannedResponses"
+    },
+    {
+      "id": "handler:CommunicationCatalogController@deleteCannedResponse",
+      "type": "handler",
+      "action": "CommunicationCatalogController@deleteCannedResponse"
+    },
+    {
+      "id": "handler:CommunicationCatalogController@deleteLabel",
+      "type": "handler",
+      "action": "CommunicationCatalogController@deleteLabel"
+    },
+    {
+      "id": "handler:CommunicationCatalogController@labels",
+      "type": "handler",
+      "action": "CommunicationCatalogController@labels"
+    },
+    {
+      "id": "handler:CommunicationCatalogController@storeCannedResponse",
+      "type": "handler",
+      "action": "CommunicationCatalogController@storeCannedResponse"
+    },
+    {
+      "id": "handler:CommunicationCatalogController@storeLabel",
+      "type": "handler",
+      "action": "CommunicationCatalogController@storeLabel"
+    },
+    {
+      "id": "handler:CommunicationCatalogController@updateCannedResponse",
+      "type": "handler",
+      "action": "CommunicationCatalogController@updateCannedResponse"
+    },
+    {
+      "id": "handler:CommunicationContactController@addIdentity",
+      "type": "handler",
+      "action": "CommunicationContactController@addIdentity"
+    },
+    {
+      "id": "handler:CommunicationContactController@index",
+      "type": "handler",
+      "action": "CommunicationContactController@index"
+    },
+    {
+      "id": "handler:CommunicationContactController@linkIdentity",
+      "type": "handler",
+      "action": "CommunicationContactController@linkIdentity"
+    },
+    {
+      "id": "handler:CommunicationContactController@show",
+      "type": "handler",
+      "action": "CommunicationContactController@show"
+    },
+    {
+      "id": "handler:CommunicationContactController@store",
+      "type": "handler",
+      "action": "CommunicationContactController@store"
+    },
+    {
+      "id": "handler:CommunicationContactController@unlinkIdentity",
+      "type": "handler",
+      "action": "CommunicationContactController@unlinkIdentity"
+    },
+    {
+      "id": "handler:CommunicationContactController@update",
+      "type": "handler",
+      "action": "CommunicationContactController@update"
+    },
+    {
+      "id": "handler:CommunicationConversationController@addLabel",
+      "type": "handler",
+      "action": "CommunicationConversationController@addLabel"
+    },
+    {
+      "id": "handler:CommunicationConversationController@index",
+      "type": "handler",
+      "action": "CommunicationConversationController@index"
+    },
+    {
+      "id": "handler:CommunicationConversationController@removeLabel",
+      "type": "handler",
+      "action": "CommunicationConversationController@removeLabel"
+    },
+    {
+      "id": "handler:CommunicationConversationController@send",
+      "type": "handler",
+      "action": "CommunicationConversationController@send"
+    },
+    {
+      "id": "handler:CommunicationConversationController@show",
+      "type": "handler",
+      "action": "CommunicationConversationController@show"
+    },
+    {
+      "id": "handler:CommunicationConversationController@update",
+      "type": "handler",
+      "action": "CommunicationConversationController@update"
+    },
+    {
+      "id": "handler:CommunicationConversationGatewayController@chatPresence",
+      "type": "handler",
+      "action": "CommunicationConversationGatewayController@chatPresence"
+    },
+    {
+      "id": "handler:CommunicationConversationGatewayController@disappearing",
+      "type": "handler",
+      "action": "CommunicationConversationGatewayController@disappearing"
+    },
+    {
+      "id": "handler:CommunicationConversationGatewayController@edit",
+      "type": "handler",
+      "action": "CommunicationConversationGatewayController@edit"
+    },
+    {
+      "id": "handler:CommunicationConversationGatewayController@history",
+      "type": "handler",
+      "action": "CommunicationConversationGatewayController@history"
+    },
+    {
+      "id": "handler:CommunicationConversationGatewayController@react",
+      "type": "handler",
+      "action": "CommunicationConversationGatewayController@react"
+    },
+    {
+      "id": "handler:CommunicationConversationGatewayController@receipt",
+      "type": "handler",
+      "action": "CommunicationConversationGatewayController@receipt"
+    },
+    {
+      "id": "handler:CommunicationConversationGatewayController@recovery",
+      "type": "handler",
+      "action": "CommunicationConversationGatewayController@recovery"
+    },
+    {
+      "id": "handler:CommunicationConversationGatewayController@revoke",
+      "type": "handler",
+      "action": "CommunicationConversationGatewayController@revoke"
+    },
+    {
+      "id": "handler:CommunicationConversationGatewayController@state",
+      "type": "handler",
+      "action": "CommunicationConversationGatewayController@state"
+    },
+    {
+      "id": "handler:CommunicationConversationGatewayController@subscribePresence",
+      "type": "handler",
+      "action": "CommunicationConversationGatewayController@subscribePresence"
+    },
+    {
+      "id": "handler:CommunicationConversationGatewayController@votePoll",
+      "type": "handler",
+      "action": "CommunicationConversationGatewayController@votePoll"
+    },
+    {
+      "id": "handler:CommunicationDataController@downloadAttachment",
+      "type": "handler",
+      "action": "CommunicationDataController@downloadAttachment"
+    },
+    {
+      "id": "handler:CommunicationDataController@exportContact",
+      "type": "handler",
+      "action": "CommunicationDataController@exportContact"
+    },
+    {
+      "id": "handler:CommunicationDataController@previewAttachment",
+      "type": "handler",
+      "action": "CommunicationDataController@previewAttachment"
+    },
+    {
+      "id": "handler:CommunicationDataController@purgeContact",
+      "type": "handler",
+      "action": "CommunicationDataController@purgeContact"
+    },
+    {
+      "id": "handler:CommunicationDataController@sync",
+      "type": "handler",
+      "action": "CommunicationDataController@sync"
+    },
+    {
+      "id": "handler:CommunicationGatewayEventController",
+      "type": "handler",
+      "action": "CommunicationGatewayEventController"
+    },
+    {
+      "id": "handler:CommunicationGatewayMediaController",
+      "type": "handler",
+      "action": "CommunicationGatewayMediaController"
+    },
+    {
+      "id": "handler:CommunicationInboxController@index",
+      "type": "handler",
+      "action": "CommunicationInboxController@index"
+    },
+    {
+      "id": "handler:CommunicationInboxController@pairing",
+      "type": "handler",
+      "action": "CommunicationInboxController@pairing"
+    },
+    {
+      "id": "handler:CommunicationInboxController@replaceMembers",
+      "type": "handler",
+      "action": "CommunicationInboxController@replaceMembers"
+    },
+    {
+      "id": "handler:CommunicationInboxController@revoke",
+      "type": "handler",
+      "action": "CommunicationInboxController@revoke"
+    },
+    {
+      "id": "handler:CommunicationInboxController@startPairing",
+      "type": "handler",
+      "action": "CommunicationInboxController@startPairing"
+    },
+    {
+      "id": "handler:CommunicationInboxController@store",
+      "type": "handler",
+      "action": "CommunicationInboxController@store"
+    },
+    {
+      "id": "handler:CommunicationInboxController@update",
+      "type": "handler",
+      "action": "CommunicationInboxController@update"
+    },
+    {
+      "id": "handler:CommunicationInboxController@updateOfficeSettings",
+      "type": "handler",
+      "action": "CommunicationInboxController@updateOfficeSettings"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@blocklist",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@blocklist"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@businessProfiles",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@businessProfiles"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@checkUsers",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@checkUsers"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@confirmPasskey",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@confirmPasskey"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@connect",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@connect"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@contactQrLink",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@contactQrLink"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@defaultDisappearing",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@defaultDisappearing"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@disconnect",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@disconnect"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@globalPresence",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@globalPresence"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@markStateClean",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@markStateClean"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@pairPhone",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@pairPhone"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@passive",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@passive"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@privacy",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@privacy"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@profilePicture",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@profilePicture"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@reset",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@reset"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@resolveBusinessLink",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@resolveBusinessLink"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@resolveContactQr",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@resolveContactQr"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@respondPasskey",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@respondPasskey"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@sessionStatus",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@sessionStatus"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@syncState",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@syncState"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@updateBlocklist",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@updateBlocklist"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@updatePrivacy",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@updatePrivacy"
+    },
+    {
+      "id": "handler:CommunicationInboxGatewayController@userInfo",
+      "type": "handler",
+      "action": "CommunicationInboxGatewayController@userInfo"
     },
     {
       "id": "handler:CompletedJobsController@index",
@@ -6321,6 +7726,31 @@
       "action": "DeclarationHubController@summary"
     },
     {
+      "id": "handler:DeclarationOperationController@execute",
+      "type": "handler",
+      "action": "DeclarationOperationController@execute"
+    },
+    {
+      "id": "handler:DeclarationOperationController@preflight",
+      "type": "handler",
+      "action": "DeclarationOperationController@preflight"
+    },
+    {
+      "id": "handler:DeclarationOperationController@read",
+      "type": "handler",
+      "action": "DeclarationOperationController@read"
+    },
+    {
+      "id": "handler:DeclarationOperationController@reconcile",
+      "type": "handler",
+      "action": "DeclarationOperationController@reconcile"
+    },
+    {
+      "id": "handler:DeclarationOperationController@show",
+      "type": "handler",
+      "action": "DeclarationOperationController@show"
+    },
+    {
       "id": "handler:DefisDeclarationsMonitoringController@consult",
       "type": "handler",
       "action": "DefisDeclarationsMonitoringController@consult"
@@ -6446,6 +7876,51 @@
       "action": "FailedJobsController@show"
     },
     {
+      "id": "handler:FgtsDigitalController@coverage",
+      "type": "handler",
+      "action": "FgtsDigitalController@coverage"
+    },
+    {
+      "id": "handler:FgtsDigitalController@emit",
+      "type": "handler",
+      "action": "FgtsDigitalController@emit"
+    },
+    {
+      "id": "handler:FgtsDigitalController@importSession",
+      "type": "handler",
+      "action": "FgtsDigitalController@importSession"
+    },
+    {
+      "id": "handler:FgtsDigitalController@preview",
+      "type": "handler",
+      "action": "FgtsDigitalController@preview"
+    },
+    {
+      "id": "handler:FgtsDigitalController@readiness",
+      "type": "handler",
+      "action": "FgtsDigitalController@readiness"
+    },
+    {
+      "id": "handler:FgtsDigitalController@runs",
+      "type": "handler",
+      "action": "FgtsDigitalController@runs"
+    },
+    {
+      "id": "handler:FgtsDigitalController@storeRepresentation",
+      "type": "handler",
+      "action": "FgtsDigitalController@storeRepresentation"
+    },
+    {
+      "id": "handler:FgtsDigitalController@sync",
+      "type": "handler",
+      "action": "FgtsDigitalController@sync"
+    },
+    {
+      "id": "handler:FgtsDigitalController@syncNow",
+      "type": "handler",
+      "action": "FgtsDigitalController@syncNow"
+    },
+    {
       "id": "handler:FgtsEsocialController@competences",
       "type": "handler",
       "action": "FgtsEsocialController@competences"
@@ -6459,6 +7934,11 @@
       "id": "handler:FgtsEsocialController@events",
       "type": "handler",
       "action": "FgtsEsocialController@events"
+    },
+    {
+      "id": "handler:FgtsEsocialController@readiness",
+      "type": "handler",
+      "action": "FgtsEsocialController@readiness"
     },
     {
       "id": "handler:FgtsEsocialController@showCompetence",
@@ -6664,6 +8144,36 @@
       "id": "handler:MailboxMessageController@triage",
       "type": "handler",
       "action": "MailboxMessageController@triage"
+    },
+    {
+      "id": "handler:MailboxMonitoringController@detail",
+      "type": "handler",
+      "action": "MailboxMonitoringController@detail"
+    },
+    {
+      "id": "handler:MailboxMonitoringController@detailPreview",
+      "type": "handler",
+      "action": "MailboxMonitoringController@detailPreview"
+    },
+    {
+      "id": "handler:MailboxMonitoringController@preview",
+      "type": "handler",
+      "action": "MailboxMonitoringController@preview"
+    },
+    {
+      "id": "handler:MailboxMonitoringController@show",
+      "type": "handler",
+      "action": "MailboxMonitoringController@show"
+    },
+    {
+      "id": "handler:MailboxMonitoringController@sync",
+      "type": "handler",
+      "action": "MailboxMonitoringController@sync"
+    },
+    {
+      "id": "handler:MailboxMonitoringController@update",
+      "type": "handler",
+      "action": "MailboxMonitoringController@update"
     },
     {
       "id": "handler:ManualConsultController@index",
@@ -7099,6 +8609,11 @@
       "id": "handler:OperationalProcessController@archive",
       "type": "handler",
       "action": "OperationalProcessController@archive"
+    },
+    {
+      "id": "handler:OperationalProcessController@bulk",
+      "type": "handler",
+      "action": "OperationalProcessController@bulk"
     },
     {
       "id": "handler:OperationalProcessController@comment",
@@ -7554,6 +9069,16 @@
       "id": "handler:ProcessGenerationController@show",
       "type": "handler",
       "action": "ProcessGenerationController@show"
+    },
+    {
+      "id": "handler:ProcessTemplateCatalogController@index",
+      "type": "handler",
+      "action": "ProcessTemplateCatalogController@index"
+    },
+    {
+      "id": "handler:ProcessTemplateCatalogController@install",
+      "type": "handler",
+      "action": "ProcessTemplateCatalogController@install"
     },
     {
       "id": "handler:ProcessTemplateController@index",
@@ -8101,6 +9626,11 @@
       "action": "TaxInstallmentController@modalities"
     },
     {
+      "id": "handler:TaxInstallmentController@monitor",
+      "type": "handler",
+      "action": "TaxInstallmentController@monitor"
+    },
+    {
       "id": "handler:TaxInstallmentController@orders",
       "type": "handler",
       "action": "TaxInstallmentController@orders"
@@ -8215,6 +9745,11 @@
       "type": "integration"
     },
     {
+      "id": "test:apps/api/tests/Feature/Communication/CommunicationApiTest.php",
+      "type": "test",
+      "file": "apps/api/tests/Feature/Communication/CommunicationApiTest.php"
+    },
+    {
       "id": "test:apps/api/tests/Feature/CriticalUseCaseJourneyApiTest.php",
       "type": "test",
       "file": "apps/api/tests/Feature/CriticalUseCaseJourneyApiTest.php"
@@ -8250,6 +9785,11 @@
       "file": "apps/web/tests/unit/admin-serpro-inventory-gate.test.ts"
     },
     {
+      "id": "test:apps/web/tests/unit/communication-workspace-ui-gate.test.ts",
+      "type": "test",
+      "file": "apps/web/tests/unit/communication-workspace-ui-gate.test.ts"
+    },
+    {
       "id": "test:apps/web/tests/unit/critical-use-case-journeys.test.ts",
       "type": "test",
       "file": "apps/web/tests/unit/critical-use-case-journeys.test.ts"
@@ -8266,6 +9806,36 @@
     }
   ],
   "edges": [
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/broadcasting/auth",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/broadcasting/auth",
+      "to": "handler:BroadcastController@authenticate",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/internal/v1/communication/gateway/events",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/internal/v1/communication/gateway/events",
+      "to": "handler:CommunicationGatewayEventController",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/internal/v1/communication/gateway/media/{command}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/internal/v1/communication/gateway/media/{command}",
+      "to": "handler:CommunicationGatewayMediaController",
+      "type": "handled-by"
+    },
     {
       "from": "journey:identity-tenancy",
       "to": "api:PATCH:api/v1/account",
@@ -8514,6 +10084,716 @@
     {
       "from": "api:GET:api/v1/cnpj/{cnpj}/lookup",
       "to": "handler:CnpjLookupController",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/attachments/{attachment}/download",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/attachments/{attachment}/download",
+      "to": "handler:CommunicationDataController@downloadAttachment",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/attachments/{attachment}/preview",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/attachments/{attachment}/preview",
+      "to": "handler:CommunicationDataController@previewAttachment",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/automation-policies",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/automation-policies",
+      "to": "handler:CommunicationAutomationController@index",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/automation-policies",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/automation-policies",
+      "to": "handler:CommunicationAutomationController@upsert",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/canned-responses",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/canned-responses",
+      "to": "handler:CommunicationCatalogController@cannedResponses",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/canned-responses",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/canned-responses",
+      "to": "handler:CommunicationCatalogController@storeCannedResponse",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/canned-responses/{canned}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/canned-responses/{canned}",
+      "to": "handler:CommunicationCatalogController@updateCannedResponse",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:DELETE:api/v1/communication/canned-responses/{canned}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:DELETE:api/v1/communication/canned-responses/{canned}",
+      "to": "handler:CommunicationCatalogController@deleteCannedResponse",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/clients/{client}/automation-recipients",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/clients/{client}/automation-recipients",
+      "to": "handler:CommunicationAutomationController@recipients",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/clients/{client}/automation-recipients",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/clients/{client}/automation-recipients",
+      "to": "handler:CommunicationAutomationController@updateRecipients",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/contacts",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/contacts",
+      "to": "handler:CommunicationContactController@index",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/contacts",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/contacts",
+      "to": "handler:CommunicationContactController@store",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/contacts/{contact}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/contacts/{contact}",
+      "to": "handler:CommunicationContactController@show",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PATCH:api/v1/communication/contacts/{contact}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PATCH:api/v1/communication/contacts/{contact}",
+      "to": "handler:CommunicationContactController@update",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/contacts/{contact}/export",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/contacts/{contact}/export",
+      "to": "handler:CommunicationDataController@exportContact",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/contacts/{contact}/identities",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/contacts/{contact}/identities",
+      "to": "handler:CommunicationContactController@addIdentity",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:DELETE:api/v1/communication/contacts/{contact}/personal-data",
+      "type": "exposes"
+    },
+    {
+      "from": "api:DELETE:api/v1/communication/contacts/{contact}/personal-data",
+      "to": "handler:CommunicationDataController@purgeContact",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/conversations",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/conversations",
+      "to": "handler:CommunicationConversationController@index",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/conversations/{conversation}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/conversations/{conversation}",
+      "to": "handler:CommunicationConversationController@show",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PATCH:api/v1/communication/conversations/{conversation}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PATCH:api/v1/communication/conversations/{conversation}",
+      "to": "handler:CommunicationConversationController@update",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/conversations/{conversation}/disappearing",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/conversations/{conversation}/disappearing",
+      "to": "handler:CommunicationConversationGatewayController@disappearing",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/conversations/{conversation}/labels/{label}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/conversations/{conversation}/labels/{label}",
+      "to": "handler:CommunicationConversationController@addLabel",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:DELETE:api/v1/communication/conversations/{conversation}/labels/{label}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:DELETE:api/v1/communication/conversations/{conversation}/labels/{label}",
+      "to": "handler:CommunicationConversationController@removeLabel",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/conversations/{conversation}/messages",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/conversations/{conversation}/messages",
+      "to": "handler:CommunicationConversationController@send",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:DELETE:api/v1/communication/conversations/{conversation}/messages/{message}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:DELETE:api/v1/communication/conversations/{conversation}/messages/{message}",
+      "to": "handler:CommunicationConversationGatewayController@revoke",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/conversations/{conversation}/messages/{message}/edit",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/conversations/{conversation}/messages/{message}/edit",
+      "to": "handler:CommunicationConversationGatewayController@edit",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/history",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/history",
+      "to": "handler:CommunicationConversationGatewayController@history",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/poll-votes",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/poll-votes",
+      "to": "handler:CommunicationConversationGatewayController@votePoll",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/conversations/{conversation}/messages/{message}/reaction",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/conversations/{conversation}/messages/{message}/reaction",
+      "to": "handler:CommunicationConversationGatewayController@react",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/receipts",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/receipts",
+      "to": "handler:CommunicationConversationGatewayController@receipt",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/recovery",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/recovery",
+      "to": "handler:CommunicationConversationGatewayController@recovery",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/conversations/{conversation}/presence",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/conversations/{conversation}/presence",
+      "to": "handler:CommunicationConversationGatewayController@chatPresence",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/conversations/{conversation}/presence/subscribe",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/conversations/{conversation}/presence/subscribe",
+      "to": "handler:CommunicationConversationGatewayController@subscribePresence",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/conversations/{conversation}/state",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/conversations/{conversation}/state",
+      "to": "handler:CommunicationConversationGatewayController@state",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/events",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/events",
+      "to": "handler:CommunicationDataController@sync",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/identities/{identity}/links",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/identities/{identity}/links",
+      "to": "handler:CommunicationContactController@linkIdentity",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:DELETE:api/v1/communication/identities/{identity}/links/{link}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:DELETE:api/v1/communication/identities/{identity}/links/{link}",
+      "to": "handler:CommunicationContactController@unlinkIdentity",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/inboxes",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/inboxes",
+      "to": "handler:CommunicationInboxController@index",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes",
+      "to": "handler:CommunicationInboxController@store",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PATCH:api/v1/communication/inboxes/{inbox}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PATCH:api/v1/communication/inboxes/{inbox}",
+      "to": "handler:CommunicationInboxController@update",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/app-state/mark-clean",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/app-state/mark-clean",
+      "to": "handler:CommunicationInboxGatewayController@markStateClean",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/app-state/sync",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/app-state/sync",
+      "to": "handler:CommunicationInboxGatewayController@syncState",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/inboxes/{inbox}/blocklist",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/inboxes/{inbox}/blocklist",
+      "to": "handler:CommunicationInboxGatewayController@blocklist",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/inboxes/{inbox}/blocklist",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/inboxes/{inbox}/blocklist",
+      "to": "handler:CommunicationInboxGatewayController@updateBlocklist",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/business-link-resolve",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/business-link-resolve",
+      "to": "handler:CommunicationInboxGatewayController@resolveBusinessLink",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/business-profiles",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/business-profiles",
+      "to": "handler:CommunicationInboxGatewayController@businessProfiles",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/check",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/check",
+      "to": "handler:CommunicationInboxGatewayController@checkUsers",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/info",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/info",
+      "to": "handler:CommunicationInboxGatewayController@userInfo",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/profile-picture",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/profile-picture",
+      "to": "handler:CommunicationInboxGatewayController@profilePicture",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/qr-link",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/qr-link",
+      "to": "handler:CommunicationInboxGatewayController@contactQrLink",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/qr-resolve",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/contacts/qr-resolve",
+      "to": "handler:CommunicationInboxGatewayController@resolveContactQr",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/inboxes/{inbox}/default-disappearing",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/inboxes/{inbox}/default-disappearing",
+      "to": "handler:CommunicationInboxGatewayController@defaultDisappearing",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/inboxes/{inbox}/members",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/inboxes/{inbox}/members",
+      "to": "handler:CommunicationInboxController@replaceMembers",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/pairing",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/pairing",
+      "to": "handler:CommunicationInboxController@startPairing",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/inboxes/{inbox}/pairing",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/inboxes/{inbox}/pairing",
+      "to": "handler:CommunicationInboxController@pairing",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/inboxes/{inbox}/presence",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/inboxes/{inbox}/presence",
+      "to": "handler:CommunicationInboxGatewayController@globalPresence",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/inboxes/{inbox}/privacy",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/inboxes/{inbox}/privacy",
+      "to": "handler:CommunicationInboxGatewayController@privacy",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/inboxes/{inbox}/privacy",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/inboxes/{inbox}/privacy",
+      "to": "handler:CommunicationInboxGatewayController@updatePrivacy",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:DELETE:api/v1/communication/inboxes/{inbox}/session",
+      "type": "exposes"
+    },
+    {
+      "from": "api:DELETE:api/v1/communication/inboxes/{inbox}/session",
+      "to": "handler:CommunicationInboxController@revoke",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/session/connect",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/session/connect",
+      "to": "handler:CommunicationInboxGatewayController@connect",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/session/disconnect",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/session/disconnect",
+      "to": "handler:CommunicationInboxGatewayController@disconnect",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/session/pair-phone",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/session/pair-phone",
+      "to": "handler:CommunicationInboxGatewayController@pairPhone",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PUT:api/v1/communication/inboxes/{inbox}/session/passive",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PUT:api/v1/communication/inboxes/{inbox}/session/passive",
+      "to": "handler:CommunicationInboxGatewayController@passive",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/session/passkey/confirm",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/session/passkey/confirm",
+      "to": "handler:CommunicationInboxGatewayController@confirmPasskey",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/session/passkey/respond",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/session/passkey/respond",
+      "to": "handler:CommunicationInboxGatewayController@respondPasskey",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/session/reset",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/inboxes/{inbox}/session/reset",
+      "to": "handler:CommunicationInboxGatewayController@reset",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/inboxes/{inbox}/session/status",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/inboxes/{inbox}/session/status",
+      "to": "handler:CommunicationInboxGatewayController@sessionStatus",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:GET:api/v1/communication/labels",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/communication/labels",
+      "to": "handler:CommunicationCatalogController@labels",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:POST:api/v1/communication/labels",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/communication/labels",
+      "to": "handler:CommunicationCatalogController@storeLabel",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:DELETE:api/v1/communication/labels/{label}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:DELETE:api/v1/communication/labels/{label}",
+      "to": "handler:CommunicationCatalogController@deleteLabel",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "api:PATCH:api/v1/communication/settings",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PATCH:api/v1/communication/settings",
+      "to": "handler:CommunicationInboxController@updateOfficeSettings",
       "type": "handled-by"
     },
     {
@@ -9038,6 +11318,56 @@
     },
     {
       "from": "journey:fiscal-monitoring",
+      "to": "api:GET:api/v1/fiscal/declarations/operations/mutations/{mutation}",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/fiscal/declarations/operations/mutations/{mutation}",
+      "to": "handler:DeclarationOperationController@show",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/declarations/operations/mutations/{mutation}/reconcile",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/declarations/operations/mutations/{mutation}/reconcile",
+      "to": "handler:DeclarationOperationController@reconcile",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/declarations/operations/{action}/execute",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/declarations/operations/{action}/execute",
+      "to": "handler:DeclarationOperationController@execute",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/declarations/operations/{action}/preflight",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/declarations/operations/{action}/preflight",
+      "to": "handler:DeclarationOperationController@preflight",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/declarations/operations/{action}/read",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/declarations/operations/{action}/read",
+      "to": "handler:DeclarationOperationController@read",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
       "to": "api:POST:api/v1/fiscal/declarations/project",
       "type": "exposes"
     },
@@ -9128,12 +11458,112 @@
     },
     {
       "from": "journey:fiscal-monitoring",
+      "to": "api:GET:api/v1/fiscal/fgts/digital/coverage",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/fiscal/fgts/digital/coverage",
+      "to": "handler:FgtsDigitalController@coverage",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/preview",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/fgts/digital/preview",
+      "to": "handler:FgtsDigitalController@preview",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/previews/{run}/emit",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/fgts/digital/previews/{run}/emit",
+      "to": "handler:FgtsDigitalController@emit",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:GET:api/v1/fiscal/fgts/digital/readiness",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/fiscal/fgts/digital/readiness",
+      "to": "handler:FgtsDigitalController@readiness",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/representations",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/fgts/digital/representations",
+      "to": "handler:FgtsDigitalController@storeRepresentation",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:GET:api/v1/fiscal/fgts/digital/runs",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/fiscal/fgts/digital/runs",
+      "to": "handler:FgtsDigitalController@runs",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/sessions/import",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/fgts/digital/sessions/import",
+      "to": "handler:FgtsDigitalController@importSession",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/sync",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/fgts/digital/sync",
+      "to": "handler:FgtsDigitalController@sync",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/sync-now",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/fgts/digital/sync-now",
+      "to": "handler:FgtsDigitalController@syncNow",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
       "to": "api:GET:api/v1/fiscal/fgts/events",
       "type": "exposes"
     },
     {
       "from": "api:GET:api/v1/fiscal/fgts/events",
       "to": "handler:FgtsEsocialController@events",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:GET:api/v1/fiscal/fgts/readiness",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/fiscal/fgts/readiness",
+      "to": "handler:FgtsEsocialController@readiness",
       "type": "handled-by"
     },
     {
@@ -9368,6 +11798,16 @@
     },
     {
       "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/installments/monitor",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/installments/monitor",
+      "to": "handler:TaxInstallmentController@monitor",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
       "to": "api:GET:api/v1/fiscal/installments/orders",
       "type": "exposes"
     },
@@ -9458,12 +11898,72 @@
     },
     {
       "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/mailbox/messages/{message}/detail",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/mailbox/messages/{message}/detail",
+      "to": "handler:MailboxMonitoringController@detail",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:GET:api/v1/fiscal/mailbox/messages/{message}/detail-preview",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/fiscal/mailbox/messages/{message}/detail-preview",
+      "to": "handler:MailboxMonitoringController@detailPreview",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
       "to": "api:PATCH:api/v1/fiscal/mailbox/messages/{message}/triage",
       "type": "exposes"
     },
     {
       "from": "api:PATCH:api/v1/fiscal/mailbox/messages/{message}/triage",
       "to": "handler:MailboxMessageController@triage",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:GET:api/v1/fiscal/mailbox/monitoring",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/fiscal/mailbox/monitoring",
+      "to": "handler:MailboxMonitoringController@show",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:PATCH:api/v1/fiscal/mailbox/monitoring",
+      "type": "exposes"
+    },
+    {
+      "from": "api:PATCH:api/v1/fiscal/mailbox/monitoring",
+      "to": "handler:MailboxMonitoringController@update",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/mailbox/monitoring/preview",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/mailbox/monitoring/preview",
+      "to": "handler:MailboxMonitoringController@preview",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:fiscal-monitoring",
+      "to": "api:POST:api/v1/fiscal/mailbox/monitoring/sync",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/fiscal/mailbox/monitoring/sync",
+      "to": "handler:MailboxMonitoringController@sync",
       "type": "handled-by"
     },
     {
@@ -12208,6 +14708,16 @@
     },
     {
       "from": "journey:operational-work",
+      "to": "api:POST:api/v1/work/processes/bulk",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/work/processes/bulk",
+      "to": "handler:OperationalProcessController@bulk",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:operational-work",
       "to": "api:GET:api/v1/work/processes/{process}",
       "type": "exposes"
     },
@@ -12434,6 +14944,26 @@
     {
       "from": "api:PATCH:api/v1/work/tasks/{task}/structure",
       "to": "handler:OperationalTaskController@updateStructure",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:operational-work",
+      "to": "api:GET:api/v1/work/template-catalog",
+      "type": "exposes"
+    },
+    {
+      "from": "api:GET:api/v1/work/template-catalog",
+      "to": "handler:ProcessTemplateCatalogController@index",
+      "type": "handled-by"
+    },
+    {
+      "from": "journey:operational-work",
+      "to": "api:POST:api/v1/work/template-catalog/{catalogKey}/install",
+      "type": "exposes"
+    },
+    {
+      "from": "api:POST:api/v1/work/template-catalog/{catalogKey}/install",
+      "to": "handler:ProcessTemplateCatalogController@install",
       "type": "handled-by"
     },
     {
@@ -12854,6 +15384,16 @@
     {
       "from": "journey:public-access",
       "to": "page:app/pages/onboarding.vue",
+      "type": "enters"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "page:app/pages/communication/index.vue",
+      "type": "enters"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "page:app/pages/communication/conversations/[id].vue",
       "type": "enters"
     },
     {
@@ -13308,6 +15848,11 @@
     },
     {
       "from": "journey:operational-work",
+      "to": "page:app/pages/work/tasks/index.vue",
+      "type": "enters"
+    },
+    {
+      "from": "journey:operational-work",
       "to": "page:app/pages/work/tasks/[id].vue",
       "type": "enters"
     },
@@ -13379,6 +15924,21 @@
     {
       "from": "actor:viewer",
       "to": "journey:documents-notes",
+      "type": "performs"
+    },
+    {
+      "from": "actor:office-admin",
+      "to": "journey:communication-inbox",
+      "type": "performs"
+    },
+    {
+      "from": "actor:operator",
+      "to": "journey:communication-inbox",
+      "type": "performs"
+    },
+    {
+      "from": "actor:viewer",
+      "to": "journey:communication-inbox",
       "type": "performs"
     },
     {
@@ -13469,6 +16029,11 @@
     {
       "from": "journey:documents-notes",
       "to": "integration:sefaz",
+      "type": "may-egress-to"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "integration:communication-provider",
       "type": "may-egress-to"
     },
     {
@@ -13842,6 +16407,16 @@
       "type": "uses-client"
     },
     {
+      "from": "page:app/pages/communication/index.vue",
+      "to": "api-client:app/composables/api/createCommunicationApi.ts",
+      "type": "uses-client"
+    },
+    {
+      "from": "page:app/pages/communication/conversations/[id].vue",
+      "to": "api-client:app/composables/api/createCommunicationApi.ts",
+      "type": "uses-client"
+    },
+    {
       "from": "page:app/pages/health.vue",
       "to": "api-client:app/composables/api/createFiscalApi.ts",
       "type": "uses-client"
@@ -14183,6 +16758,11 @@
     },
     {
       "from": "page:app/pages/work/templates/index.vue",
+      "to": "api-client:app/composables/api/createWorkApi.ts",
+      "type": "uses-client"
+    },
+    {
+      "from": "page:app/pages/work/tasks/index.vue",
       "to": "api-client:app/composables/api/createWorkApi.ts",
       "type": "uses-client"
     },
@@ -14222,6 +16802,11 @@
       "type": "uses-client"
     },
     {
+      "from": "page:app/pages/work/tasks/index.vue",
+      "to": "api-client:app/composables/api/createOperationsApi.ts",
+      "type": "uses-client"
+    },
+    {
       "from": "page:app/pages/work/tasks/[id].vue",
       "to": "api-client:app/composables/api/createOperationsApi.ts",
       "type": "uses-client"
@@ -14253,6 +16838,11 @@
     },
     {
       "from": "page:app/pages/work/templates/index.vue",
+      "to": "api-client:app/composables/api/createSavedListFiltersApi.ts",
+      "type": "uses-client"
+    },
+    {
+      "from": "page:app/pages/work/tasks/index.vue",
       "to": "api-client:app/composables/api/createSavedListFiltersApi.ts",
       "type": "uses-client"
     },
@@ -14452,6 +17042,231 @@
       "type": "calls"
     },
     {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/attachments/{attachment}/download",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/automation-policies",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PUT:api/v1/communication/automation-policies",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/canned-responses",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/canned-responses",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PUT:api/v1/communication/canned-responses/{canned}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:DELETE:api/v1/communication/canned-responses/{canned}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/clients/{client}/automation-recipients",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PUT:api/v1/communication/clients/{client}/automation-recipients",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/contacts",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/contacts",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/contacts/{contact}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PATCH:api/v1/communication/contacts/{contact}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/contacts/{contact}/export",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/contacts/{contact}/identities",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:DELETE:api/v1/communication/contacts/{contact}/personal-data",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/conversations",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/conversations/{conversation}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PATCH:api/v1/communication/conversations/{conversation}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PUT:api/v1/communication/conversations/{conversation}/disappearing",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PUT:api/v1/communication/conversations/{conversation}/labels/{label}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:DELETE:api/v1/communication/conversations/{conversation}/labels/{label}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/conversations/{conversation}/messages",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:DELETE:api/v1/communication/conversations/{conversation}/messages/{message}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PUT:api/v1/communication/conversations/{conversation}/messages/{message}/edit",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/poll-votes",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PUT:api/v1/communication/conversations/{conversation}/messages/{message}/reaction",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/receipts",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/conversations/{conversation}/messages/{message}/recovery",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PUT:api/v1/communication/conversations/{conversation}/presence",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/conversations/{conversation}/presence/subscribe",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/events",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/identities/{identity}/links",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:DELETE:api/v1/communication/identities/{identity}/links/{link}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/inboxes",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/inboxes",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PATCH:api/v1/communication/inboxes/{inbox}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PUT:api/v1/communication/inboxes/{inbox}/members",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/inboxes/{inbox}/pairing",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/inboxes/{inbox}/pairing",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:DELETE:api/v1/communication/inboxes/{inbox}/session",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:GET:api/v1/communication/labels",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:POST:api/v1/communication/labels",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:DELETE:api/v1/communication/labels/{label}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createCommunicationApi.ts",
+      "to": "api:PATCH:api/v1/communication/settings",
+      "type": "calls"
+    },
+    {
       "from": "api-client:app/composables/api/createDocumentsApi.ts",
       "to": "api:GET:api/v1/documents",
       "type": "calls"
@@ -14599,6 +17414,66 @@
     {
       "from": "api-client:app/composables/api/createFiscalApi.ts",
       "to": "api:POST:api/v1/auth/confirm-totp",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:PATCH:api/v1/fiscal/dctfweb/clients/{client}/communication-preference",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/declarations/{projection}/evidences/{evidence}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:PATCH:api/v1/fiscal/{module}/clients/{client}/communication-preference",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/dctfweb/clients/{client}/communication-preview",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/declarations/{projection}/evidences/{evidence}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/{module}/clients/{client}/communication-preview",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/dctfweb/clients/{client}/communication-send",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/declarations/{projection}/evidences/{evidence}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/{module}/clients/{client}/communication-send",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/dctfweb/clients/{client}/communications",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/declarations/{projection}/evidences/{evidence}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/{module}/clients/{client}/communications",
       "type": "calls"
     },
     {
@@ -14778,6 +17653,76 @@
     },
     {
       "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/declarations/operations/mutations/{mutation}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/declarations/operations/{action}/execute",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/declarations/{projection}/evidences/{evidence}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/declarations/operations/mutations/{mutation}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/declarations/operations/{action}/preflight",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/declarations/{projection}/evidences/{evidence}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/declarations/operations/mutations/{mutation}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/declarations/operations/{action}/read",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/declarations/{projection}/evidences/{evidence}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/declarations/operations/mutations/{mutation}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/declarations/operations/{action}/execute",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/declarations/operations/{action}/preflight",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/declarations/operations/{action}/read",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/declarations/operations/mutations/{mutation}/reconcile",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
       "to": "api:GET:api/v1/fiscal/declarations/summary",
       "type": "calls"
     },
@@ -14808,7 +17753,57 @@
     },
     {
       "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/fgts/digital/coverage",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/preview",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/previews/{run}/emit",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/fgts/digital/readiness",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/representations",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/fgts/digital/runs",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/sessions/import",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/sync",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/fgts/digital/sync-now",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
       "to": "api:GET:api/v1/fiscal/fgts/events",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/fgts/readiness",
       "type": "calls"
     },
     {
@@ -14943,6 +17938,11 @@
     },
     {
       "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/installments/monitor",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
       "to": "api:GET:api/v1/fiscal/installments/orders",
       "type": "calls"
     },
@@ -14988,7 +17988,37 @@
     },
     {
       "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/mailbox/messages/{message}/detail",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/mailbox/messages/{message}/detail-preview",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
       "to": "api:PATCH:api/v1/fiscal/mailbox/messages/{message}/triage",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:GET:api/v1/fiscal/mailbox/monitoring",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:PATCH:api/v1/fiscal/mailbox/monitoring",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/mailbox/monitoring/preview",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createFiscalApi.ts",
+      "to": "api:POST:api/v1/fiscal/mailbox/monitoring/sync",
       "type": "calls"
     },
     {
@@ -16193,12 +19223,12 @@
     },
     {
       "from": "api-client:app/composables/api/createSavedListFiltersApi.ts",
-      "to": "api:GET:api/v1/list-filters",
+      "to": "api:PATCH:api/v1/list-filters/{listFilter}",
       "type": "calls"
     },
     {
       "from": "api-client:app/composables/api/createSavedListFiltersApi.ts",
-      "to": "api:POST:api/v1/list-filters",
+      "to": "api:DELETE:api/v1/list-filters/{listFilter}",
       "type": "calls"
     },
     {
@@ -16273,6 +19303,11 @@
     },
     {
       "from": "api-client:app/composables/api/createWorkApi.ts",
+      "to": "api:POST:api/v1/work/processes/bulk",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createWorkApi.ts",
       "to": "api:GET:api/v1/work/processes/{process}",
       "type": "calls"
     },
@@ -16294,6 +19329,21 @@
     {
       "from": "api-client:app/composables/api/createWorkApi.ts",
       "to": "api:GET:api/v1/work/processes/{process}/timeline",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createWorkApi.ts",
+      "to": "api:POST:api/v1/work/processes/bulk",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createWorkApi.ts",
+      "to": "api:GET:api/v1/work/processes/{process}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createWorkApi.ts",
+      "to": "api:PATCH:api/v1/work/processes/{process}",
       "type": "calls"
     },
     {
@@ -16354,6 +19404,26 @@
     {
       "from": "api-client:app/composables/api/createWorkApi.ts",
       "to": "api:POST:api/v1/work/tasks/{task}/start",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createWorkApi.ts",
+      "to": "api:POST:api/v1/work/tasks/bulk",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createWorkApi.ts",
+      "to": "api:GET:api/v1/work/tasks/{task}",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createWorkApi.ts",
+      "to": "api:GET:api/v1/work/template-catalog",
+      "type": "calls"
+    },
+    {
+      "from": "api-client:app/composables/api/createWorkApi.ts",
+      "to": "api:POST:api/v1/work/template-catalog/{catalogKey}/install",
       "type": "calls"
     },
     {
@@ -16455,6 +19525,20 @@
       "type": "proven-by",
       "level": "L3",
       "anchor": "catálogo de clientes"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "test:apps/api/tests/Feature/Communication/CommunicationApiTest.php",
+      "type": "proven-by",
+      "level": "L1",
+      "anchor": "test_rbac_limits_non_admin_to_membership_and_hides_foreign_office"
+    },
+    {
+      "from": "journey:communication-inbox",
+      "to": "test:apps/web/tests/unit/communication-workspace-ui-gate.test.ts",
+      "type": "proven-by",
+      "level": "L2",
+      "anchor": "integra REST office-scoped"
     },
     {
       "from": "journey:fiscal-monitoring",

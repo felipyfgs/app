@@ -45,6 +45,13 @@ enum TenantPermission: string
     case OperationsView = 'operations.view';
     case OperationsTriage = 'operations.triage';
 
+    // ── Comunicação ─────────────────────────────────────────────────────
+    case CommunicationView = 'communication.view';
+    case CommunicationReply = 'communication.reply';
+    case CommunicationManageInboxes = 'communication.manage_inboxes';
+    /** @deprecated Compatibilidade de leitura para perfis persistidos antes da chave canônica. */
+    case CommunicationManage = 'communication.manage';
+
     // ── Work ─────────────────────────────────────────────────────────────
     case WorkView = 'work.view';
     case WorkCatalogManage = 'work.catalog.manage';
@@ -81,6 +88,10 @@ enum TenantPermission: string
             self::FiscalMutationsExecute => 'Executar mutações fiscais',
             self::OperationsView => 'Ver operações / inbox',
             self::OperationsTriage => 'Triagem operacional',
+            self::CommunicationView => 'Ver atendimento e conversas',
+            self::CommunicationReply => 'Responder e triar conversas',
+            self::CommunicationManageInboxes,
+            self::CommunicationManage => 'Administrar canais e políticas de comunicação',
             self::WorkView => 'Ver módulo operacional',
             self::WorkCatalogManage => 'Gerenciar catálogo Work',
             self::WorkProcessesCreate => 'Criar processos operacionais',
@@ -121,6 +132,10 @@ enum TenantPermission: string
             self::FiscalMutationsExecute => 'fiscal',
             self::OperationsView,
             self::OperationsTriage => 'operations',
+            self::CommunicationView,
+            self::CommunicationReply,
+            self::CommunicationManageInboxes,
+            self::CommunicationManage => 'communication',
             self::WorkView,
             self::WorkCatalogManage,
             self::WorkProcessesCreate,
@@ -147,6 +162,7 @@ enum TenantPermission: string
             self::FiscalDocumentsView,
             self::FiscalMonitoringView,
             self::OperationsView,
+            self::CommunicationView,
             self::WorkView => 'low',
 
             self::TenantSettingsManage,
@@ -161,6 +177,7 @@ enum TenantPermission: string
             self::ExportsCreate,
             self::FiltersShare,
             self::OperationsTriage,
+            self::CommunicationReply,
             self::WorkCatalogManage,
             self::WorkProcessesCreate,
             self::WorkTasksExecute,
@@ -171,6 +188,8 @@ enum TenantPermission: string
             self::TenantRolesAssignAdmin,
             self::CredentialsManage,
             self::FiscalMutationsExecute,
+            self::CommunicationManageInboxes,
+            self::CommunicationManage,
             self::WorkAdminister => 'high',
         };
     }
@@ -215,6 +234,8 @@ enum TenantPermission: string
             self::FiltersShare,
             self::OperationsView,
             self::OperationsTriage,
+            self::CommunicationView,
+            self::CommunicationReply,
             self::WorkView,
             self::WorkProcessesCreate,
             self::WorkTasksExecute,
@@ -238,6 +259,7 @@ enum TenantPermission: string
             self::FiscalDocumentsView,
             self::FiscalMonitoringView,
             self::OperationsView,
+            self::CommunicationView,
             self::WorkView,
         ];
     }

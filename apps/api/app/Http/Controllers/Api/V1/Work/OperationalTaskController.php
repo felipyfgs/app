@@ -43,6 +43,8 @@ class OperationalTaskController extends Controller
             'per_page' => $request->input('per_page', 25),
             'page' => $request->input('page', 1),
             'scope' => $request->input('scope', 'default'),
+            'sort' => $request->input('sort'),
+            'direction' => $request->input('direction'),
         ]);
 
         return response()->json([
@@ -255,16 +257,23 @@ class OperationalTaskController extends Controller
             'items.*.id' => ['required', 'integer'],
             'items.*.lock_version' => ['required', 'integer'],
             'changes' => ['required', 'array'],
+            'changes.action' => ['sometimes', 'nullable', 'string', 'in:start,complete,resume,block,claim,assign,set_due_date,set_department'],
             'changes.assignee_membership_id' => ['sometimes', 'nullable', 'integer'],
             'changes.work_department_id' => ['sometimes', 'nullable', 'integer'],
             'changes.due_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'changes.status' => ['sometimes', 'nullable', 'string'],
+            'changes.reason' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'changes.justification' => ['sometimes', 'nullable', 'string', 'max:2000'],
         ]);
 
-        $updated = $service->apply($data['items'], $data['changes']);
+        $result = $service->apply($data['items'], $data['changes'], $request->user());
 
         return response()->json([
-            'data' => collect($updated)->map(fn (OperationalTask $t) => $this->public($t))->values(),
+            'data' => collect($result['succeeded'])->map(fn (OperationalTask $t) => $this->public($t))->values(),
+            'meta' => [
+                'succeeded' => count($result['succeeded']),
+                'failed' => $result['failed'],
+            ],
         ]);
     }
 

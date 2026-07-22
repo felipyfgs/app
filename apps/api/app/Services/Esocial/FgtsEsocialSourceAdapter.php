@@ -9,8 +9,8 @@ use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutability;
 use App\Enums\FiscalRunResult;
 use App\Enums\FiscalSituation;
+use App\Exceptions\EsocialBxException;
 use App\Models\Establishment;
-use App\Support\FeatureFlags;
 use Carbon\CarbonImmutable;
 use Throwable;
 
@@ -22,6 +22,7 @@ final class FgtsEsocialSourceAdapter implements FiscalSourceAdapter
 {
     public function __construct(
         private readonly FgtsEsocialMonitoringService $monitoring,
+        private readonly EsocialBxReadinessService $readiness,
     ) {}
 
     public function systemCode(): string
@@ -62,21 +63,11 @@ final class FgtsEsocialSourceAdapter implements FiscalSourceAdapter
 
     public function execute(FiscalAdapterRequest $request): FiscalAdapterResult
     {
-        if (! $this->monitoring->isSourceAvailable()) {
-            return FiscalAdapterResult::blocked(
-                $this->monitoring->sourceUnavailableMessage(),
-                'ESOCIAL_SOURCE_UNAVAILABLE',
-            );
-        }
+        $readiness = $this->readiness->check($request->office, $request->client);
+        if (! $readiness->ready) {
+            $blocker = $readiness->blockers[0];
 
-        if ((bool) config('fgts_esocial.kill_switch', false)) {
-            return FiscalAdapterResult::blocked('FGTS/eSocial kill switch ativo.', 'FGTS_KILL_SWITCH');
-        }
-
-        $module = $this->moduleKey();
-        if ($module !== null && ! FeatureFlags::isModuleEnabled($module, (int) $request->office->id)
-            && ! (bool) config('fiscal_monitoring.enabled', false)) {
-            return FiscalAdapterResult::blocked("Módulo {$module} desabilitado.", 'FEATURE_DISABLED');
+            return FiscalAdapterResult::blocked($blocker['message'], $blocker['code']);
         }
 
         $competence = $this->resolveCompetenceKey($request);
@@ -107,9 +98,34 @@ final class FgtsEsocialSourceAdapter implements FiscalSourceAdapter
                 run: $request->run,
                 now: CarbonImmutable::now(),
             );
+        } catch (EsocialBxException $exception) {
+            if ($exception->blocked) {
+                return FiscalAdapterResult::blocked(
+                    'Consulta oficial eSocial BX bloqueada por regra operacional.',
+                    $exception->stableCode,
+                );
+            }
+
+            if ($exception->retryable) {
+                return new FiscalAdapterResult(
+                    result: FiscalRunResult::Requeued,
+                    situation: FiscalSituation::Unknown,
+                    coverage: FiscalCoverage::Partial,
+                    shouldRequeue: true,
+                    errorCode: $exception->stableCode,
+                    errorMessage: 'Falha temporária sanitizada na consulta eSocial BX.',
+                    requeueAfterSeconds: 120,
+                );
+            }
+
+            return FiscalAdapterResult::failed(
+                'Falha permanente sanitizada na consulta eSocial BX.',
+                $exception->stableCode,
+                FiscalCoverage::Partial,
+            );
         } catch (Throwable $e) {
             return FiscalAdapterResult::failed(
-                mb_substr($e->getMessage(), 0, 400),
+                'Falha interna sanitizada ao sincronizar eventos eSocial.',
                 'ESOCIAL_SYNC_FAILED',
                 FiscalCoverage::Partial,
             );

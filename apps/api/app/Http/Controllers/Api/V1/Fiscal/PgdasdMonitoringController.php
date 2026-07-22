@@ -344,8 +344,9 @@ class PgdasdMonitoringController extends Controller
         }
         /** @var User $actor */
         $actor = $request->user();
+        $input = $request->validate(['period_key' => ['sometimes', 'string', 'regex:/^\d{4}-\d{2}$/']]);
         try {
-            $data = $this->communication->requestSend($office, $model, $actor);
+            $data = $this->communication->requestSend($office, $model, $actor, $input['period_key'] ?? null);
         } catch (HttpException $e) {
             return response()->json(['message' => $e->getMessage()], $e->getStatusCode());
         }

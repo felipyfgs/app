@@ -303,7 +303,9 @@ final class ClientGuidesQueryService
             return null;
         }
         $row = $guide->toPublicArray();
-        $row['source'] = 'TAX_GUIDE';
+        $row['source'] = ($guide->metadata['source'] ?? null) === 'FGTS_DIGITAL_PORTAL'
+            ? 'FGTS_DIGITAL_PORTAL'
+            : 'TAX_GUIDE';
 
         return $row;
     }

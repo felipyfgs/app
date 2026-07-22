@@ -2,11 +2,16 @@
 
 namespace App\Services\Operations;
 
+use App\Enums\Communication\ConversationStatus;
+use App\Enums\Communication\InboxStatus;
+use App\Enums\Communication\OutboxStatus;
 use App\Enums\CredentialStatus;
 use App\Enums\FiscalCoverage;
 use App\Enums\FiscalMutationStatus;
 use App\Enums\FiscalPendingStatus;
+use App\Enums\FiscalRunStatus;
 use App\Enums\FiscalSituation;
+use App\Enums\MeiAutomationStatus;
 use App\Enums\OutboundRetrievalOrigin;
 use App\Enums\SerproAuthorizationStatus;
 use App\Enums\SerproEnvironment;
@@ -16,14 +21,20 @@ use App\Enums\TaxGuidePaymentStatus;
 use App\Enums\TaxProxyPowerStatus;
 use App\Models\Client;
 use App\Models\ClientCredential;
+use App\Models\CommunicationConversation;
+use App\Models\CommunicationInbox;
+use App\Models\CommunicationOutboxEntry;
 use App\Models\Establishment;
 use App\Models\Export;
 use App\Models\FiscalCompetence;
+use App\Models\FiscalMonitoringRun;
 use App\Models\FiscalMutationOperation;
 use App\Models\FiscalPendingItem;
 use App\Models\InstanceBackupRun;
 use App\Models\MaOutboundRetrievalRequest;
+use App\Models\MeiAutomationAttempt;
 use App\Models\NfseNote;
+use App\Models\Office;
 use App\Models\OfficeSerproAuthorization;
 use App\Models\OfficeSubscription;
 use App\Models\SyncCursor;
@@ -131,8 +142,132 @@ final class OperationsSummaryBuilder
                     TaxGuidePaymentStatus::Confirmed->value,
                 ])
                 ->count(),
+            'communication' => $this->communicationSummary($officeId),
+            'mei_automation' => $this->meiAutomationSummary($officeId),
+            'fiscal_runs' => $this->fiscalRunsSummary($officeId),
             'generated_at' => now()->toIso8601String(),
         ];
+    }
+
+    /**
+     * Rollup de Atendimento — só contagens do office; sem /healthz do gateway.
+     *
+     * @return array<string, mixed>
+     */
+    private function communicationSummary(int $officeId): array
+    {
+        try {
+            $office = Office::query()->find($officeId);
+            $byStatus = [];
+            foreach (InboxStatus::cases() as $status) {
+                $byStatus[$status->value] = CommunicationInbox::query()
+                    ->where('office_id', $officeId)
+                    ->where('status', $status->value)
+                    ->count();
+            }
+
+            return [
+                'available' => true,
+                'global_enabled' => (bool) config('communication.enabled'),
+                'gateway_enabled' => (bool) config('communication.gateway.enabled'),
+                'office_enabled' => (bool) ($office?->communication_enabled ?? false),
+                'inboxes_by_status' => $byStatus,
+                'outbox_retry' => CommunicationOutboxEntry::query()
+                    ->where('office_id', $officeId)
+                    ->where('status', OutboxStatus::Retry->value)
+                    ->count(),
+                'outbox_dead' => CommunicationOutboxEntry::query()
+                    ->where('office_id', $officeId)
+                    ->where('status', OutboxStatus::Dead->value)
+                    ->count(),
+                'conversations_open' => CommunicationConversation::query()
+                    ->where('office_id', $officeId)
+                    ->where('status', ConversationStatus::Open->value)
+                    ->count(),
+                'conversations_pending' => CommunicationConversation::query()
+                    ->where('office_id', $officeId)
+                    ->where('status', ConversationStatus::Pending->value)
+                    ->count(),
+                'deep_link' => '/communication',
+            ];
+        } catch (\Throwable) {
+            return [
+                'available' => false,
+                'deep_link' => '/communication',
+            ];
+        }
+    }
+
+    /**
+     * Contagens leves MEI 24h — fail-closed se a leitura falhar.
+     *
+     * @return array<string, mixed>
+     */
+    private function meiAutomationSummary(int $officeId): array
+    {
+        try {
+            $since = now()->subDay();
+            $base = MeiAutomationAttempt::query()
+                ->where('office_id', $officeId)
+                ->where('created_at', '>=', $since);
+
+            return [
+                'available' => true,
+                'failed_24h' => (clone $base)->where('status', MeiAutomationStatus::Failed->value)->count(),
+                'uncertain_24h' => (clone $base)->whereIn('status', [
+                    MeiAutomationStatus::Uncertain->value,
+                    MeiAutomationStatus::SyncLost->value,
+                ])->count(),
+                'running' => MeiAutomationAttempt::query()
+                    ->where('office_id', $officeId)
+                    ->whereIn('status', [
+                        MeiAutomationStatus::Queued->value,
+                        MeiAutomationStatus::Running->value,
+                        MeiAutomationStatus::WaitingUserAction->value,
+                    ])
+                    ->count(),
+                'deep_link' => '/monitoring/mei',
+            ];
+        } catch (\Throwable) {
+            return [
+                'available' => false,
+                'deep_link' => '/monitoring/mei',
+            ];
+        }
+    }
+
+    /**
+     * Contagens leves de runs fiscais 24h.
+     *
+     * @return array<string, mixed>
+     */
+    private function fiscalRunsSummary(int $officeId): array
+    {
+        try {
+            $since = now()->subDay();
+
+            return [
+                'available' => true,
+                'failed_24h' => FiscalMonitoringRun::query()
+                    ->where('office_id', $officeId)
+                    ->where('status', FiscalRunStatus::Failed->value)
+                    ->where('created_at', '>=', $since)
+                    ->count(),
+                'running' => FiscalMonitoringRun::query()
+                    ->where('office_id', $officeId)
+                    ->whereIn('status', [
+                        FiscalRunStatus::Queued->value,
+                        FiscalRunStatus::Running->value,
+                    ])
+                    ->count(),
+                'deep_link' => '/monitoring',
+            ];
+        } catch (\Throwable) {
+            return [
+                'available' => false,
+                'deep_link' => '/monitoring',
+            ];
+        }
     }
 
     /**

@@ -13,8 +13,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'office_id',
+    'catalog_key',
+    'catalog_version',
     'name',
     'description',
+    'monitoring_module_key',
+    'audience_rules',
     'default_department_id',
     'default_due_rule_type',
     'default_due_rule_value',
@@ -30,6 +34,8 @@ class ProcessTemplate extends Model
     protected function casts(): array
     {
         return [
+            'catalog_version' => 'integer',
+            'audience_rules' => 'array',
             'default_due_rule_type' => DueRuleType::class,
             'default_due_rule_value' => 'integer',
             'is_active' => 'boolean',

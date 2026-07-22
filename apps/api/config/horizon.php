@@ -213,6 +213,8 @@ return [
                 env('SEFAZ_AUTXML_QUEUE', 'sync-sefaz-autxml'),
                 env('SEFAZ_MA_OUTBOUND_QUEUE', 'capture-outbound-ma'),
                 env('IMPORT_QUEUE', 'import-xml'),
+                // Outbox WhatsApp nativo (DispatchCommunicationOutboxJob)
+                'communication',
             ],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',

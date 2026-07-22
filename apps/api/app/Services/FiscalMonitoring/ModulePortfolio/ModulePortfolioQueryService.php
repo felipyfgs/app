@@ -15,6 +15,7 @@ use App\Enums\FiscalDataOrigin;
 use App\Enums\FiscalLinkStatus;
 use App\Enums\FiscalModuleKey;
 use App\Enums\FiscalSituation;
+use App\Enums\TaxInstallmentModality;
 use App\Enums\TaxInstallmentParcelStatus;
 use App\Enums\TaxRegimeCode;
 use App\Models\Client;
@@ -725,10 +726,131 @@ SQL;
                     ->whereIn('payment_status', ['UNKNOWN', 'NOT_CONFIRMED'])
                     ->count(),
             ],
+            FiscalModuleKey::Installments => [
+                'total_clients' => $totalClients,
+                'tab_counts' => $this->installmentTabCounts($office, $filters),
+            ],
+            FiscalModuleKey::Declarations => [
+                'total_clients' => $totalClients,
+                'tab_counts' => $this->declarationsTabCounts($office, $filters),
+            ],
             default => [
                 'total_clients' => $totalClients,
             ],
         };
+    }
+
+    /**
+     * Contagens estáveis das tabs de modalidade: preserva filtros globais e
+     * substitui somente `modality`, a dimensão controlada pela própria faixa.
+     *
+     * @return array<string, int>
+     */
+    private function installmentTabCounts(
+        Office $office,
+        ModulePortfolioFilters $filters,
+    ): array {
+        $counts = [
+            'all' => $this->countTabClients(
+                $office,
+                FiscalModuleKey::Installments,
+                $this->installmentTabFilters($filters, null),
+            ),
+        ];
+
+        foreach (TaxInstallmentModality::cases() as $modality) {
+            $counts[$modality->value] = $this->countTabClients(
+                $office,
+                FiscalModuleKey::Installments,
+                $this->installmentTabFilters($filters, $modality->value),
+            );
+        }
+
+        // Catálogo visível, mas sem read model executável.
+        $counts['PARC-PAEX'] = 0;
+        $counts['PARC-SIPADE'] = 0;
+
+        return $counts;
+    }
+
+    /**
+     * Contagens estáveis das tabs de obrigação: preserva filtros globais e
+     * substitui somente `submodule`, a dimensão controlada pela própria faixa.
+     *
+     * @return array<string, int>
+     */
+    private function declarationsTabCounts(
+        Office $office,
+        ModulePortfolioFilters $filters,
+    ): array {
+        $counts = [];
+        foreach (FiscalModuleKey::Declarations->knownSubmodules() as $submodule) {
+            if ($submodule === 'DECLARACOES') {
+                continue;
+            }
+
+            $counts[$submodule] = $submodule === 'DIRF'
+                ? 0
+                : $this->countTabClients(
+                    $office,
+                    FiscalModuleKey::Declarations,
+                    $this->declarationsTabFilters($filters, $submodule),
+                );
+        }
+
+        return $counts;
+    }
+
+    private function countTabClients(
+        Office $office,
+        FiscalModuleKey $module,
+        ModulePortfolioFilters $filters,
+    ): int {
+        return (int) $this->scopedClientIdsQuery($office, $module, $filters)->count();
+    }
+
+    private function installmentTabFilters(
+        ModulePortfolioFilters $filters,
+        ?string $modality,
+    ): ModulePortfolioFilters {
+        return new ModulePortfolioFilters(
+            page: 1,
+            perPage: 1,
+            q: $filters->q,
+            situation: null,
+            competence: $filters->competence,
+            submodule: $filters->submodule,
+            deliveryStatus: $filters->deliveryStatus,
+            sort: $filters->sort,
+            sortDirection: $filters->sortDirection,
+            clientId: $filters->clientId,
+            coverage: $filters->coverage,
+            modality: $modality,
+            year: $filters->year,
+            sendStatus: $filters->sendStatus,
+        );
+    }
+
+    private function declarationsTabFilters(
+        ModulePortfolioFilters $filters,
+        string $submodule,
+    ): ModulePortfolioFilters {
+        return new ModulePortfolioFilters(
+            page: 1,
+            perPage: 1,
+            q: $filters->q,
+            situation: null,
+            competence: $filters->competence,
+            submodule: $submodule,
+            deliveryStatus: $filters->deliveryStatus,
+            sort: $filters->sort,
+            sortDirection: $filters->sortDirection,
+            clientId: $filters->clientId,
+            coverage: $filters->coverage,
+            modality: $filters->modality,
+            year: $filters->year,
+            sendStatus: $filters->sendStatus,
+        );
     }
 
     /**
@@ -765,7 +887,7 @@ SQL;
         $moduleSql = match ($module) {
             FiscalModuleKey::Dctfweb => $this->dctfwebSituationSql($office, $filters),
             FiscalModuleKey::SimplesMei => $this->simplesMeiSituationSql($office, $filters),
-            FiscalModuleKey::Installments => $this->parcelamentosSituationSql($office),
+            FiscalModuleKey::Installments => $this->parcelamentosSituationSql($office, $filters),
             FiscalModuleKey::Mailbox => $this->mailboxSituationSql($office),
             FiscalModuleKey::Declarations => $this->declaracoesSituationSql($office, $filters),
             FiscalModuleKey::Guides => $this->guiasSituationSql($office),
@@ -870,8 +992,13 @@ SQL;
         )";
     }
 
-    private function parcelamentosSituationSql(Office $office): string
+    private function parcelamentosSituationSql(Office $office, ModulePortfolioFilters $filters): string
     {
+        $modalityList = $filters->modalityList();
+        $modalitySql = $modalityList === [] ? null : $this->quoteList($modalityList);
+        $parcelModalityClause = $modalitySql === null ? '' : " AND tip.modality IN ({$modalitySql})";
+        $orderModalityClause = $modalitySql === null ? '' : " AND tio.modality IN ({$modalitySql})";
+
         // Mapeia situação textual do pedido + atraso de parcela
         return "(
             SELECT CASE
@@ -879,22 +1006,27 @@ SQL;
                     SELECT 1 FROM tax_installment_parcels tip
                     WHERE tip.office_id = {$office->id} AND tip.client_id = clients.id
                       AND tip.status IN ('ATTENTION','PENDING')
+                      {$parcelModalityClause}
                 ) THEN 'ATTENTION'
                 WHEN EXISTS (
                     SELECT 1 FROM tax_installment_orders tio
                     WHERE tio.office_id = {$office->id} AND tio.client_id = clients.id
                       AND UPPER(COALESCE(tio.situation,'')) IN ('ATTENTION','PENDING','ERROR','BLOCKED')
+                      {$orderModalityClause}
                 ) THEN (
                     SELECT UPPER(tio.situation) FROM tax_installment_orders tio
                     WHERE tio.office_id = {$office->id} AND tio.client_id = clients.id
+                      {$orderModalityClause}
                     ORDER BY tio.observed_at DESC, tio.id DESC LIMIT 1
                 )
                 WHEN EXISTS (
                     SELECT 1 FROM tax_installment_orders tio
                     WHERE tio.office_id = {$office->id} AND tio.client_id = clients.id
+                      {$orderModalityClause}
                 ) THEN COALESCE((
                     SELECT UPPER(tio.situation) FROM tax_installment_orders tio
                     WHERE tio.office_id = {$office->id} AND tio.client_id = clients.id
+                      {$orderModalityClause}
                     ORDER BY tio.observed_at DESC, tio.id DESC LIMIT 1
                 ), 'UNKNOWN')
                 ELSE NULL
@@ -1327,7 +1459,8 @@ SQL);
             },
             // Abas de obrigação do hub usam a categoria agregada DECLARACOES.
             FiscalModuleKey::Declarations => match (strtoupper($submodule)) {
-                'PGDAS', 'PGDASD', 'DCTFWEB', 'DCTF', 'FGTS', 'DEFIS', 'DIRF', 'DECLARACOES' => 'DECLARACOES',
+                'PGDAS', 'PGDASD', 'DEFIS', 'DASN_SIMEI', 'DASNSIMEI',
+                'DCTFWEB', 'DCTF', 'MIT', 'FGTS', 'DIRF', 'DECLARACOES' => 'DECLARACOES',
                 default => $submodule,
             },
             default => $submodule,
@@ -1538,7 +1671,7 @@ SQL);
         return match ($module) {
             FiscalModuleKey::SimplesMei => $this->detailSimplesMei($office, $clientIds, $filters),
             FiscalModuleKey::Dctfweb => $this->detailDctfwebMit($office, $clientIds, $filters),
-            FiscalModuleKey::Installments => $this->detailParcelamentos($office, $clientIds),
+            FiscalModuleKey::Installments => $this->detailParcelamentos($office, $clientIds, $filters),
             FiscalModuleKey::Sitfis => $this->detailSitfis($office, $clientIds),
             FiscalModuleKey::Mailbox => $this->detailMailbox($office, $clientIds),
             FiscalModuleKey::Declarations => $this->detailDeclaracoes($office, $clientIds, $filters),
@@ -1816,50 +1949,73 @@ SQL);
      * @param  list<int>  $clientIds
      * @return array<int, array<string, mixed>>
      */
-    private function detailParcelamentos(Office $office, array $clientIds): array
-    {
+    private function detailParcelamentos(
+        Office $office,
+        array $clientIds,
+        ModulePortfolioFilters $filters,
+    ): array {
+        $modalities = $filters->modalityList();
         $orders = TaxInstallmentOrder::query()
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
+            ->when($modalities !== [], fn ($query) => $query->whereIn('modality', $modalities))
             ->orderByDesc('observed_at')
+            ->orderByDesc('id')
             ->get();
 
         $parcels = TaxInstallmentParcel::query()
             ->withoutGlobalScopes()
             ->where('office_id', $office->id)
             ->whereIn('client_id', $clientIds)
+            ->when($modalities !== [], fn ($query) => $query->whereIn('modality', $modalities))
             ->whereNotIn('status', [TaxInstallmentParcelStatus::Paid->value, TaxInstallmentParcelStatus::Cancelled->value])
             ->orderBy('due_at')
             ->get();
 
         $map = [];
         foreach ($clientIds as $cid) {
-            $order = $orders->firstWhere('client_id', $cid);
-            $nextParcel = $parcels->firstWhere('client_id', $cid);
-            $overdue = $parcels->where('client_id', $cid)
+            $clientOrders = $orders->where('client_id', $cid)->values();
+            $clientParcels = $parcels->where('client_id', $cid)->values();
+            $order = $clientOrders->first();
+            $nextParcel = $clientParcels->first();
+            $overdue = $clientParcels
                 ->filter(fn (TaxInstallmentParcel $p) => in_array(
                     $p->status,
                     [TaxInstallmentParcelStatus::Attention, TaxInstallmentParcelStatus::Pending],
                     true,
                 ))
                 ->count();
+            $orderModalities = $clientOrders
+                ->map(fn (TaxInstallmentOrder $item): string => $item->modality?->value
+                    ?? (string) $item->getAttribute('modality'))
+                ->filter()
+                ->unique()
+                ->sort()
+                ->values()
+                ->all();
+            $modalityQuery = $modalities === [] ? '' : '&modality='.urlencode(implode(',', $modalities));
 
             $map[$cid] = [
                 'module_key' => FiscalModuleKey::Installments->value,
                 'order_id' => $order?->id,
                 'modality' => $order?->modality?->value ?? $order?->getAttribute('modality'),
+                'modalities' => $orderModalities,
+                'order_count' => $clientOrders->count(),
+                'orders' => $clientOrders->map(
+                    fn (TaxInstallmentOrder $item): array => $item->toPublicArray()
+                )->all(),
                 'external_order_id' => $order?->external_order_id,
-                'total_amount_cents' => $order?->total_amount_cents,
-                'parcel_count' => $order?->parcel_count,
+                'total_amount_cents' => $clientOrders->sum('total_amount_cents'),
+                'parcel_count' => $clientOrders->sum('parcel_count'),
                 'order_situation' => $order?->situation,
                 'next_parcel_id' => $nextParcel?->id,
                 'next_parcel_due_at' => $nextParcel?->due_at?->toIso8601String(),
                 'next_parcel_amount_cents' => $nextParcel?->amount_cents,
                 'overdue_parcels' => $overdue,
                 'links' => [
-                    'orders' => '/api/v1/fiscal/installments/orders?client_id='.$cid,
-                    'parcels' => '/api/v1/fiscal/installments/parcels?client_id='.$cid,
+                    'orders' => '/api/v1/fiscal/installments/orders?client_id='.$cid.$modalityQuery,
+                    'parcels' => '/api/v1/fiscal/installments/parcels?client_id='.$cid.$modalityQuery,
                     'order' => $order !== null
                         ? '/api/v1/fiscal/installments/orders/'.$order->id
                         : null,
@@ -2136,8 +2292,10 @@ SQL);
     {
         return match (strtoupper(trim((string) $submodule))) {
             'PGDAS', 'PGDASD' => 'PGDAS_D',
-            'DCTFWEB', 'DCTF' => 'DCTFWEB',
             'DEFIS' => 'DEFIS',
+            'DASN_SIMEI', 'DASNSIMEI' => 'DASN_SIMEI',
+            'DCTFWEB', 'DCTF' => 'DCTFWEB',
+            'MIT' => 'MIT',
             default => null,
         };
     }

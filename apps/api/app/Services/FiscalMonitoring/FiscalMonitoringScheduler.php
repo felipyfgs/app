@@ -21,10 +21,12 @@ use App\Models\MonitorCommercialLedgerEntry;
 use App\Models\Office;
 use App\Models\OfficeMonitorSchedulePolicy;
 use App\Models\OfficeSubscription;
+use App\Services\Esocial\EsocialBxReadinessService;
 use App\Services\Fiscal\Availability\FiscalModuleAvailabilityService;
 use App\Services\Fiscal\Dctfweb\DctfwebPeriod;
 use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdPeriod;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiYear;
+use App\Services\Integra\Parcelamento\ParcelamentoServiceCatalog;
 use App\Services\Serpro\CapabilityDriverResolver;
 use App\Services\Usage\CommercialMonitorCatalog;
 use App\Services\Usage\MonitorCommercialLedgerService;
@@ -48,6 +50,7 @@ final class FiscalMonitoringScheduler
         private readonly MonitorCommercialLedgerService $commercialLedger,
         private readonly SubscriptionPeriodService $periods,
         private readonly FiscalModuleAvailabilityService $availability,
+        private readonly EsocialBxReadinessService $esocialReadiness,
     ) {}
 
     public function isCoreEnabled(): bool
@@ -484,6 +487,14 @@ final class FiscalMonitoringScheduler
             return 'blocked';
         }
 
+        if ($monitorKey === 'fgts' && $this->esocialReadinessBlocker($office, $clientId) !== null) {
+            return 'blocked';
+        }
+
+        if ($monitorKey === 'installments') {
+            return $this->enqueueCommercialInstallmentRuns($officeId, $clientId, $entry);
+        }
+
         $systemService = match ($monitorKey) {
             'sitfis' => ['INTEGRA_SITFIS', 'SITFIS', 'MONITOR'],
             'simples_mei' => $this->simplesMeiSystemServiceForClient($officeId, $clientId),
@@ -569,6 +580,84 @@ final class FiscalMonitoringScheduler
         return 'dispatched';
     }
 
+    /**
+     * O item comercial de Parcelamentos representa o pacote; tecnicamente ele se
+     * desdobra nas oito modalidades produtivas, cada uma com idempotência própria.
+     *
+     * @return 'dispatched'|'skipped'
+     */
+    private function enqueueCommercialInstallmentRuns(
+        int $officeId,
+        int $clientId,
+        MonitorCommercialLedgerEntry $entry,
+    ): string {
+        $slot = 'commercial-period:'.$entry->period_key.':'.$entry->id;
+        $correlation = bin2hex(random_bytes(8));
+        $runIds = [];
+        $createdIds = [];
+
+        foreach (ParcelamentoServiceCatalog::supportedModalities() as $modality) {
+            $key = FiscalIdempotency::runKey(
+                $officeId,
+                $clientId,
+                ParcelamentoServiceCatalog::SOLUTION,
+                $modality->value,
+                'MONITOR',
+                null,
+                FiscalTrigger::Scheduled,
+                $slot,
+            );
+
+            $run = FiscalMonitoringRun::query()
+                ->withoutGlobalScopes()
+                ->where('office_id', $officeId)
+                ->where('idempotency_key', $key)
+                ->first();
+
+            if ($run === null) {
+                $run = FiscalMonitoringRun::query()->create([
+                    'office_id' => $officeId,
+                    'client_id' => $clientId,
+                    'system_code' => ParcelamentoServiceCatalog::SOLUTION,
+                    'service_code' => $modality->value,
+                    'operation_code' => 'MONITOR',
+                    'trigger' => FiscalTrigger::Scheduled,
+                    'idempotency_key' => $key,
+                    'status' => FiscalRunStatus::Queued,
+                    'situation' => 'UNKNOWN',
+                    'coverage' => 'UNKNOWN',
+                    'mutability' => 'READ_ONLY',
+                    'correlation_id' => $correlation.':'.strtolower(str_replace('-', '_', $modality->value)),
+                    'progress' => [
+                        'commercial_ledger_entry_id' => $entry->id,
+                        'monitor_key' => 'installments',
+                        'commercial_origin' => $entry->origin->value,
+                        'period_key' => $entry->period_key,
+                    ],
+                ]);
+                $createdIds[] = (int) $run->id;
+            }
+
+            $runIds[] = (int) $run->id;
+        }
+
+        if ($createdIds === []) {
+            return 'skipped';
+        }
+
+        $metadata = is_array($entry->metadata) ? $entry->metadata : [];
+        $metadata['fiscal_monitoring_run_ids'] = $runIds;
+        $metadata['fiscal_monitoring_run_id'] = $runIds[0];
+        $entry->forceFill(['metadata' => $metadata])->save();
+
+        foreach ($createdIds as $runId) {
+            ExecuteFiscalMonitoringRunJob::dispatch($runId)
+                ->onQueue((string) config('fiscal_monitoring.job.queue', 'default'));
+        }
+
+        return 'dispatched';
+    }
+
     public function officeAllowsExternal(int $officeId): bool
     {
         $sub = OfficeSubscription::query()->where('office_id', $officeId)->first();
@@ -594,6 +683,18 @@ final class FiscalMonitoringScheduler
             ])->save();
 
             return 'blocked';
+        }
+
+        if ($module === FiscalControlModule::Fgts && $office !== null) {
+            $blocker = $this->esocialReadinessBlocker($office, (int) $schedule->client_id);
+            if ($blocker !== null) {
+                $schedule->forceFill([
+                    'last_skip_reason' => $blocker,
+                    'next_run_at' => $this->nextRunAfter($schedule, $now),
+                ])->save();
+
+                return 'blocked';
+            }
         }
 
         $run = null;
@@ -722,6 +823,25 @@ final class FiscalMonitoringScheduler
         );
 
         return $monitorKey === null ? null : FiscalControlModule::fromRuntimeKey($monitorKey);
+    }
+
+    private function esocialReadinessBlocker(Office $office, int $clientId): ?string
+    {
+        $client = Client::query()
+            ->withoutGlobalScopes()
+            ->where('office_id', $office->id)
+            ->whereKey($clientId)
+            ->first();
+
+        if ($client === null) {
+            return 'ESOCIAL_BX_CLIENT_NOT_FOUND';
+        }
+
+        $readiness = $this->esocialReadiness->check($office, $client);
+
+        return $readiness->ready
+            ? null
+            : ($readiness->blockers[0]['code'] ?? 'ESOCIAL_BX_NOT_READY');
     }
 
     /**

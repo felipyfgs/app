@@ -88,7 +88,7 @@ final class TenantAuthorization
 
         $keys = $this->canonicalKeysForMembership($membership, (int) $office->id);
 
-        return in_array($permission->value, $keys, true);
+        return $this->keysAllow($keys, $permission);
     }
 
     public function legacyAllows(User $actor, TenantPermission $permission, mixed $target = null): bool
@@ -117,7 +117,7 @@ final class TenantAuthorization
 
         $keys = $this->legacyKeysForRole($role);
 
-        return in_array($permission->value, $keys, true);
+        return $this->keysAllow($keys, $permission);
     }
 
     /**
@@ -200,6 +200,23 @@ final class TenantAuthorization
         $targetOfficeId = $target->getAttribute('office_id');
 
         return $targetOfficeId !== null && (int) $targetOfficeId === $officeId;
+    }
+
+    /**
+     * `communication.manage` permanece aceito apenas para perfis persistidos
+     * antes da chave canônica `communication.manage_inboxes`. Autorizações novas
+     * devem solicitar a chave canônica; a equivalência evita um corte abrupto.
+     *
+     * @param  list<string>  $keys
+     */
+    private function keysAllow(array $keys, TenantPermission $permission): bool
+    {
+        if (in_array($permission->value, $keys, true)) {
+            return true;
+        }
+
+        return $permission === TenantPermission::CommunicationManageInboxes
+            && in_array(TenantPermission::CommunicationManage->value, $keys, true);
     }
 
     private function modelDeclaresOfficeId(Model $model): bool

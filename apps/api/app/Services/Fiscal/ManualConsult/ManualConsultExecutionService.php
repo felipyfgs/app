@@ -21,11 +21,11 @@ use App\Services\Fiscal\SimplesMei\Pgdasd\PgdasdMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\Pgmei\PgmeiMonitoringQueryService;
 use App\Services\Fiscal\SimplesMei\SimplesMeiQueryService;
 use App\Services\FiscalMonitoring\FiscalMonitoringRunService;
-use App\Services\Integra\EnsureClientProcuracaoForConsult;
 use App\Services\Integra\Dctfweb\DctfwebCodes;
 use App\Services\Integra\Dctfweb\DctfwebDeclarationService;
 use App\Services\Integra\Dctfweb\MitApuracaoService;
 use App\Services\Integra\Dctfweb\MitListaApuracoesQueryService;
+use App\Services\Integra\EnsureClientProcuracaoForConsult;
 use App\Services\Integra\Parcelamento\ParcelamentoServiceCatalog;
 use App\Services\Integra\Sitfis\SitfisSnapshotService;
 use Illuminate\Support\Str;
@@ -159,7 +159,9 @@ final class ManualConsultExecutionService
                 $client,
                 $def,
                 $actorUserId,
-                periodKey: isset($params['period_key']) ? (string) $params['period_key'] : null,
+                progress: [
+                    'numero_das' => (string) $this->requireParam($params, 'numero_das'),
+                ],
             ),
             'regime_calendar' => $this->simplesMei->enqueueConsult(
                 office: $office,
@@ -245,12 +247,21 @@ final class ManualConsultExecutionService
     ): array {
         // Serviço 13 (lista declarações) usa run genérico; 14/15 usam coleta documental.
         if ($def->operationKey === 'pgdasd.consdeclaracao') {
+            $year = isset($params['year']) ? trim((string) $params['year']) : null;
+            $periodKey = isset($params['period_key']) ? trim((string) $params['period_key']) : null;
+            if (($year !== null && $year !== '') === ($periodKey !== null && $periodKey !== '')) {
+                throw ValidationException::withMessages([
+                    'params' => ['Informe exatamente um entre ano-calendário e competência.'],
+                ]);
+            }
+
             return $this->enqueueRun(
                 $office,
                 $client,
                 $def,
                 $actorUserId,
-                periodKey: isset($params['period_key']) ? (string) $params['period_key'] : null,
+                periodKey: $periodKey,
+                progress: $year !== null && $year !== '' ? ['ano_calendario' => $year] : [],
             );
         }
 

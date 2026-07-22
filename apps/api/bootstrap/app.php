@@ -13,6 +13,10 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
+    ->withBroadcasting(
+        __DIR__.'/../routes/channels.php',
+        ['prefix' => 'api', 'middleware' => ['api', 'auth:sanctum', EnsureOfficeContext::class]],
+    )
     ->withRouting(
         api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
@@ -36,7 +40,30 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontReportWhen(fn (Throwable $error): bool => $error instanceof DomainException
+            && in_array($error->getMessage(), [
+                'COMMUNICATION_DISABLED',
+                'OFFICE_COMMUNICATION_DISABLED',
+                'INBOX_COMMUNICATION_DISABLED',
+                'INBOX_NOT_CONNECTED',
+            ], true));
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+        $exceptions->render(function (DomainException $error, Request $request) {
+            $communicationCodes = [
+                'COMMUNICATION_DISABLED',
+                'OFFICE_COMMUNICATION_DISABLED',
+                'INBOX_COMMUNICATION_DISABLED',
+                'INBOX_NOT_CONNECTED',
+            ];
+            if (! $request->is('api/*') || ! in_array($error->getMessage(), $communicationCodes, true)) {
+                return null;
+            }
+
+            return response()->json([
+                'message' => 'Canal de comunicação indisponível.',
+                'code' => $error->getMessage(),
+            ], $error->getMessage() === 'INBOX_NOT_CONNECTED' ? 409 : 503);
+        });
     })->create();
