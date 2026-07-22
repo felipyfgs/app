@@ -1,5 +1,5 @@
 .PHONY: help init-env setup up dev down build logs shell migrate seed \
-	composer-install frontend-generate \
+	composer-install frontend-generate gateway-test \
 	prod-config prod-build prod-up prod-down \
 	backup restore prod-backup prod-restore \
 	frontend-prepare-generated frontend-install frontend-dev seed-dev seed-pilot \
@@ -53,19 +53,19 @@ init-env:
 setup: init-env build composer-install frontend-generate
 	docker compose up -d postgres redis
 	docker compose run --rm php php artisan migrate --force
-	docker compose up -d nginx php horizon scheduler
+	docker compose up -d nginx php horizon scheduler reverb whatsapp-gateway
 
 up:
-	docker compose up -d --remove-orphans nginx php postgres redis horizon scheduler
+	docker compose up -d --remove-orphans nginx php postgres redis horizon scheduler reverb whatsapp-gateway
 
 dev: frontend-prepare-generated
-	LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID) docker compose --profile dev up -d --remove-orphans nginx php postgres redis horizon scheduler frontend-dev
+	LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID) docker compose --profile dev up -d --remove-orphans nginx php postgres redis horizon scheduler reverb whatsapp-gateway frontend-dev
 
 down:
 	docker compose --profile dev down --remove-orphans
 
 build:
-	docker compose --profile dev build nginx php frontend-dev
+	docker compose --profile dev build nginx php frontend-dev whatsapp-gateway
 
 logs:
 	docker compose logs -f
@@ -105,6 +105,18 @@ prod-check:
 	@! grep -Eq '^SERPRO_SMOKE_ENABLED=true$$' "$(PROD_ENV)" || { echo "SERPRO_SMOKE_ENABLED deve permanecer false" >&2; exit 2; }
 	@! grep -Eq '^MEI_AUTOMATION_ENABLED=true$$' "$(PROD_ENV)" || { echo "MEI_AUTOMATION_ENABLED deve permanecer false (sem sidecar)" >&2; exit 2; }
 	@! grep -Eq '^MEI_AUTOMATION_LIVE_EGRESS_ENABLED=true$$' "$(PROD_ENV)" || { echo "MEI_AUTOMATION_LIVE_EGRESS_ENABLED deve permanecer false" >&2; exit 2; }
+	@if grep -qx 'COMMUNICATION_ENABLED=true' "$(PROD_ENV)"; then \
+		grep -qx 'WHATSAPP_GATEWAY_ENABLED=true' "$(PROD_ENV)" || { echo "Comunicação exige WHATSAPP_GATEWAY_ENABLED=true" >&2; exit 2; }; \
+		grep -qx 'BROADCAST_CONNECTION=reverb' "$(PROD_ENV)" || { echo "Comunicação exige BROADCAST_CONNECTION=reverb" >&2; exit 2; }; \
+		grep -Eq '^WHATSAPP_GATEWAY_DATABASE_URL=.+$$' "$(PROD_ENV)" || { echo "Defina WHATSAPP_GATEWAY_DATABASE_URL" >&2; exit 2; }; \
+		grep -Eq '^WHATSAPP_GATEWAY_DB_PASSWORD=.{32,}$$' "$(PROD_ENV)" || { echo "WHATSAPP_GATEWAY_DB_PASSWORD deve ter ao menos 32 caracteres" >&2; exit 2; }; \
+		grep -Eq '^WHATSAPP_GATEWAY_HMAC_KEY_ID=.+$$' "$(PROD_ENV)" || { echo "Defina WHATSAPP_GATEWAY_HMAC_KEY_ID" >&2; exit 2; }; \
+		grep -Eq '^WHATSAPP_GATEWAY_HMAC_SECRET=.{32,}$$' "$(PROD_ENV)" || { echo "WHATSAPP_GATEWAY_HMAC_SECRET deve ter ao menos 32 caracteres" >&2; exit 2; }; \
+		grep -Eq '^WHATSAPP_GATEWAY_DATA_KEY=.{43,}$$' "$(PROD_ENV)" || { echo "Defina WHATSAPP_GATEWAY_DATA_KEY base64" >&2; exit 2; }; \
+		grep -Eq '^REVERB_APP_ID=.+$$' "$(PROD_ENV)" || { echo "Defina REVERB_APP_ID" >&2; exit 2; }; \
+		grep -Eq '^REVERB_APP_KEY=.{16,}$$' "$(PROD_ENV)" || { echo "Defina REVERB_APP_KEY" >&2; exit 2; }; \
+		grep -Eq '^REVERB_APP_SECRET=.{32,}$$' "$(PROD_ENV)" || { echo "Defina REVERB_APP_SECRET" >&2; exit 2; }; \
+	fi
 
 prod-config: prod-check
 	$(PROD_COMPOSE) config --quiet
@@ -112,27 +124,31 @@ prod-config: prod-check
 prod-build: prod-check
 	@test -n "$(RELEASE_SHA)" || { echo "RELEASE_SHA vazio" >&2; exit 2; }
 	@echo "==> build RELEASE_SHA=$(RELEASE_SHA) RELEASE_TAG=$(RELEASE_TAG)"
-	$(PROD_COMPOSE) build acme-init traefik web php
+	$(PROD_COMPOSE) build acme-init traefik web php whatsapp-gateway
 	$(PROD_COMPOSE) pull socket-proxy
 	docker tag fiscal-hub-php:$(RELEASE_TAG) fiscal-hub-php:prod
 	docker tag fiscal-hub-web:$(RELEASE_TAG) fiscal-hub-web:prod
+	docker tag fiscal-hub-whatsapp-gateway:$(RELEASE_TAG) fiscal-hub-whatsapp-gateway:prod
 	@php_rev=$$(docker image inspect fiscal-hub-php:$(RELEASE_TAG) --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'); \
 	web_rev=$$(docker image inspect fiscal-hub-web:$(RELEASE_TAG) --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'); \
 	test "$$php_rev" = "$(RELEASE_SHA)" || { echo "OCI revision PHP=$$php_rev != $(RELEASE_SHA)" >&2; exit 2; }; \
 	test "$$web_rev" = "$(RELEASE_SHA)" || { echo "OCI revision web=$$web_rev != $(RELEASE_SHA)" >&2; exit 2; }; \
-	echo "OCI revision ok em php e web"
+		gateway_rev=$$(docker image inspect fiscal-hub-whatsapp-gateway:$(RELEASE_TAG) --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'); \
+		test "$$gateway_rev" = "$(RELEASE_SHA)" || { echo "OCI revision gateway=$$gateway_rev != $(RELEASE_SHA)" >&2; exit 2; }; \
+		echo "OCI revision ok em php, web e gateway"
 
 # Ordem fail-closed: build → dados/php → migrate (sem web/workers) → edge + app.
 prod-up: prod-check
 	@test -n "$(RELEASE_SHA)" || { echo "RELEASE_SHA vazio" >&2; exit 2; }
-	$(PROD_COMPOSE) build acme-init traefik web php
+	$(PROD_COMPOSE) build acme-init traefik web php whatsapp-gateway
 	$(PROD_COMPOSE) pull socket-proxy
 	docker tag fiscal-hub-php:$(RELEASE_TAG) fiscal-hub-php:prod
 	docker tag fiscal-hub-web:$(RELEASE_TAG) fiscal-hub-web:prod
+	docker tag fiscal-hub-whatsapp-gateway:$(RELEASE_TAG) fiscal-hub-whatsapp-gateway:prod
 	$(PROD_COMPOSE) up -d acme-init socket-proxy traefik postgres redis php
-	$(PROD_COMPOSE) stop web horizon scheduler 2>/dev/null || true
+	$(PROD_COMPOSE) stop web horizon scheduler reverb whatsapp-gateway 2>/dev/null || true
 	$(PROD_COMPOSE) run --rm --no-deps php php artisan migrate --force
-	$(PROD_COMPOSE) up -d web horizon scheduler
+	$(PROD_COMPOSE) up -d web horizon scheduler reverb whatsapp-gateway
 
 prod-down:
 	@test -f "$(PROD_ENV)" || { echo "Arquivo $(PROD_ENV) ausente" >&2; exit 2; }
@@ -164,6 +180,9 @@ frontend-generate: frontend-prepare-generated
 		docker compose --profile dev run --rm --no-deps frontend-dev generate
 
 frontend-dev: dev
+
+gateway-test:
+	docker run --rm -v $(CURDIR):/workspace -w /workspace/apps/whatsapp-gateway golang:1.25-alpine go test ./...
 
 seed-pilot:
 	docker compose exec php php artisan db:seed --class=PilotSeeder --force

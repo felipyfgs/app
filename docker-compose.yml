@@ -23,6 +23,23 @@ x-php: &php
     QUEUE_CONNECTION: redis
     CACHE_STORE: redis
     SESSION_DRIVER: redis
+    BROADCAST_CONNECTION: ${BROADCAST_CONNECTION:-log}
+    REVERB_APP_ID: ${REVERB_APP_ID:-communication-disabled}
+    REVERB_APP_KEY: ${REVERB_APP_KEY:-communication-disabled}
+    REVERB_APP_SECRET: ${REVERB_APP_SECRET:-communication-disabled}
+    REVERB_HOST: reverb
+    REVERB_PORT: 8081
+    REVERB_SCHEME: http
+    REVERB_SERVER_PORT: 8081
+    REVERB_SCALING_ENABLED: "true"
+    REVERB_ALLOWED_ORIGINS: ${REVERB_ALLOWED_ORIGINS:-http://localhost:8080,http://localhost:3000}
+    COMMUNICATION_ENABLED: ${COMMUNICATION_ENABLED:-false}
+    WHATSAPP_GATEWAY_ENABLED: ${WHATSAPP_GATEWAY_ENABLED:-false}
+    WHATSAPP_GATEWAY_URL: http://whatsapp-gateway:8080
+    WHATSAPP_GATEWAY_HMAC_KEY_ID: ${WHATSAPP_GATEWAY_HMAC_KEY_ID:-}
+    WHATSAPP_GATEWAY_HMAC_SECRET: ${WHATSAPP_GATEWAY_HMAC_SECRET:-}
+    WHATSAPP_GATEWAY_HMAC_PREVIOUS_KEY_ID: ${WHATSAPP_GATEWAY_HMAC_PREVIOUS_KEY_ID:-}
+    WHATSAPP_GATEWAY_HMAC_PREVIOUS_SECRET: ${WHATSAPP_GATEWAY_HMAC_PREVIOUS_SECRET:-}
     SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost,localhost:3000,127.0.0.1,127.0.0.1:3000}
     VAULT_DISK_ROOT: /var/vault
   volumes:
@@ -52,6 +69,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      reverb:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/up"]
@@ -78,6 +97,10 @@ services:
 
   horizon:
     <<: *php
+    image: ${COMPOSE_PROJECT_NAME:-app}-php-rpa:dev
+    build:
+      context: ./infra/docker/php
+      target: rpa-dev
     command: ["php", "artisan", "horizon"]
     depends_on:
       php:
@@ -93,6 +116,23 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+
+  reverb:
+    <<: *php
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8081"]
+    expose:
+      - "8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "$$s=@fsockopen('127.0.0.1',8081); exit($$s ? 0 : 1);"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   frontend-dev:
     image: ${COMPOSE_PROJECT_NAME:-app}-frontend-dev:dev
@@ -116,6 +156,11 @@ services:
       # IP/host visto pelo browser remoto (HMR WebSocket). Ex.: PUBLIC_HOST=74.x.x.x
       NUXT_DEV_HMR_HOST: ${PUBLIC_HOST:-}
       PUBLIC_HOST: ${PUBLIC_HOST:-}
+      NUXT_PUBLIC_COMMUNICATION_ENABLED: ${COMMUNICATION_ENABLED:-false}
+      NUXT_PUBLIC_REVERB_APP_KEY: ${REVERB_APP_KEY:-communication-disabled}
+      NUXT_PUBLIC_REVERB_HOST: ${PUBLIC_HOST:-localhost}
+      NUXT_PUBLIC_REVERB_PORT: ${APP_PORT:-8080}
+      NUXT_PUBLIC_REVERB_SCHEME: http
     init: true
     profiles: ["dev"]
     depends_on:
@@ -145,6 +190,60 @@ services:
     networks:
       - app
 
+  whatsapp-gateway-db-init:
+    image: postgres:17-alpine
+    entrypoint: ["/bin/sh", "/opt/fiscal-hub/init-whatsapp-gateway.sh"]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${DB_DATABASE:-nfse}
+      POSTGRES_USER: ${DB_USERNAME:-nfse}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-nfse}
+      WHATSAPP_GATEWAY_DB_USER: ${WHATSAPP_GATEWAY_DB_USER:-whatsapp_gateway}
+      WHATSAPP_GATEWAY_DB_PASSWORD: ${WHATSAPP_GATEWAY_DB_PASSWORD:-whatsapp-gateway-local-only}
+    volumes:
+      - ./infra/docker/postgres/init-whatsapp-gateway.sh:/opt/fiscal-hub/init-whatsapp-gateway.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - app
+
+  whatsapp-gateway:
+    image: ${COMPOSE_PROJECT_NAME:-app}-whatsapp-gateway:dev
+    build:
+      context: .
+      dockerfile: infra/docker/whatsapp-gateway/Dockerfile
+    environment:
+      WHATSAPP_GATEWAY_ENABLED: ${WHATSAPP_GATEWAY_ENABLED:-false}
+      WHATSAPP_GATEWAY_DATABASE_URL: ${WHATSAPP_GATEWAY_DATABASE_URL:-postgres://whatsapp_gateway:whatsapp-gateway-local-only@postgres:5432/nfse?search_path=whatsapp_gateway}
+      WHATSAPP_GATEWAY_EVENTS_URL: http://nginx/api/internal/v1/communication/gateway/events
+      WHATSAPP_GATEWAY_MEDIA_URL: http://nginx/api/internal/v1/communication/gateway/media
+      WHATSAPP_GATEWAY_HMAC_KEY_ID: ${WHATSAPP_GATEWAY_HMAC_KEY_ID:-}
+      WHATSAPP_GATEWAY_HMAC_SECRET: ${WHATSAPP_GATEWAY_HMAC_SECRET:-}
+      WHATSAPP_GATEWAY_HMAC_PREVIOUS_KEY_ID: ${WHATSAPP_GATEWAY_HMAC_PREVIOUS_KEY_ID:-}
+      WHATSAPP_GATEWAY_HMAC_PREVIOUS_SECRET: ${WHATSAPP_GATEWAY_HMAC_PREVIOUS_SECRET:-}
+      WHATSAPP_GATEWAY_DATA_KEY: ${WHATSAPP_GATEWAY_DATA_KEY:-}
+      WHATSAPP_GATEWAY_HMAC_WINDOW: ${WHATSAPP_GATEWAY_HMAC_WINDOW:-5m}
+      WHATSAPP_GATEWAY_NONCE_TTL: ${WHATSAPP_GATEWAY_NONCE_TTL:-10m}
+      WHATSAPP_GATEWAY_SESSION_CAPACITY: ${WHATSAPP_GATEWAY_SESSION_CAPACITY:-250}
+      WHATSAPP_GATEWAY_LEASE_TTL: ${WHATSAPP_GATEWAY_LEASE_TTL:-30s}
+      WHATSAPP_GATEWAY_HEARTBEAT_EVERY: ${WHATSAPP_GATEWAY_HEARTBEAT_EVERY:-10s}
+      WHATSAPP_GATEWAY_MEDIA_MAX_BYTES: ${COMMUNICATION_MEDIA_MAX_BYTES:-20971520}
+    volumes:
+      - whatsapp_gateway_spool:/var/lib/whatsapp-gateway/spool
+    expose:
+      - "8080"
+    depends_on:
+      whatsapp-gateway-db-init:
+        condition: service_completed_successfully
+      nginx:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app
+
   redis:
     image: redis:8-alpine
     command: ["redis-server", "--appendonly", "yes"]
@@ -168,6 +267,7 @@ volumes:
   vault_data:
   private_storage:
   frontend_node_modules:
+  whatsapp_gateway_spool:
 
 networks:
   app:

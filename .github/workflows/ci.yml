@@ -70,6 +70,23 @@ jobs:
         if: always()
         run: pnpm run test:artifacts
 
+  gateway:
+    name: Gateway Go
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/whatsapp-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/whatsapp-gateway/go.mod
+          cache-dependency-path: apps/whatsapp-gateway/go.sum
+      - name: Executar testes
+        run: go test ./...
+      - name: Executar análise estática
+        run: go vet ./...
+
   infrastructure:
     name: Compose e OpenSpec
     runs-on: ubuntu-latest
@@ -82,6 +99,7 @@ jobs:
         run: |
           for script in \
             infra/docker/php/entrypoint.sh \
+            infra/docker/postgres/init-whatsapp-gateway.sh \
             infra/docker/traefik/init.sh; do
             sh -n "$script"
           done
@@ -100,9 +118,13 @@ jobs:
             | grep -Eq '^(mei|mei-worker)$'
       - name: Construir imagens de desenvolvimento e conferir extensões críticas
         run: |
-          docker compose --profile dev build nginx php frontend-dev
+          docker compose --profile dev build nginx php horizon frontend-dev whatsapp-gateway
           docker compose run --rm --no-deps --entrypoint php php -r \
             'exit(extension_loaded("curl") && extension_loaded("sodium") ? 0 : 1);'
+      - name: Executar testes do worker FGTS Digital
+        run: |
+          docker compose run --rm --no-deps --entrypoint /opt/fgts-rpa/bin/python horizon \
+            rpa/fgts_digital/test_worker.py
       - name: Validar OpenSpec (main specs + changes com delta)
         run: |
           set -euo pipefail
