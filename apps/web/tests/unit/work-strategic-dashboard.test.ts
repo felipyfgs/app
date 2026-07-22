@@ -7,6 +7,7 @@ import {
   buildWorkDashboardKpis,
   buildWorkDepartmentRows,
   workCompletionPercent,
+  workOperationalLevel,
   workQueueLegacyTarget
 } from '../../app/utils/work-strategic-dashboard'
 
@@ -82,6 +83,44 @@ describe('work strategic dashboard', () => {
     expect(workCompletionPercent(empty)).toBe(0)
   })
 
+  it('deriva o nível operacional e a distância para a próxima faixa sem inventar histórico', () => {
+    expect(workOperationalLevel(fixture())).toMatchObject({
+      percent: 25,
+      label: 'Ganhando ritmo',
+      nextLabel: 'Ritmo consistente',
+      remainingToNext: 10,
+      tone: 'error'
+    })
+
+    const highPerformance = fixture()
+    highPerformance.kpis.total_open = 2
+    highPerformance.kpis.concluidas = 38
+    highPerformance.kpis.atrasadas = 0
+    highPerformance.kpis.em_multa = 0
+
+    expect(workOperationalLevel(highPerformance)).toMatchObject({
+      percent: 95,
+      label: 'Alta performance',
+      nextLabel: null,
+      remainingToNext: 0,
+      tone: 'success'
+    })
+
+    const empty = fixture()
+    empty.kpis.total_open = 0
+    empty.kpis.concluidas = 0
+    empty.kpis.atrasadas = 0
+    empty.kpis.em_multa = 0
+
+    expect(workOperationalLevel(empty)).toMatchObject({
+      percent: 0,
+      label: 'Sem carga',
+      nextLabel: null,
+      remainingToNext: 0,
+      tone: 'info'
+    })
+  })
+
   it('resolve departamentos, links e ordenação por carga aberta', () => {
     const rows = buildWorkDepartmentRows(fixture(), departments)
 
@@ -130,10 +169,17 @@ describe('work strategic dashboard', () => {
       'workQueueLegacyTarget',
       'ShellPagePanel',
       'ShellKpiStrip',
+      'workOperationalLevel',
+      'work-dashboard-loading',
+      'work-dashboard-performance',
+      'work-dashboard-level',
       'work-dashboard-departments',
+      'work-dashboard-departments-table',
+      'work-dashboard-departments-mobile',
+      'Sem carga no snapshot',
       'work-dashboard-risks',
       'work-dashboard-unassigned-processes',
-      'lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.75fr)]'
+      'xl:grid-cols-[minmax(0,2fr)_minmax(19rem,0.86fr)]'
     ]) {
       expect(page).toContain(token)
     }

@@ -19,6 +19,17 @@ export interface WorkQueueLegacyTarget {
   query: Record<string, unknown>
 }
 
+export type WorkOperationalLevelTone = 'primary' | 'info' | 'success' | 'warning' | 'error'
+
+export interface WorkOperationalLevel {
+  label: string
+  description: string
+  tone: WorkOperationalLevelTone
+  percent: number
+  remainingToNext: number
+  nextLabel: string | null
+}
+
 const WORK_QUEUE_QUERY_KEYS = new Set([
   'tab',
   'q',
@@ -94,6 +105,82 @@ export function workCompletionPercent(data: WorkKpis): number {
   const total = data.kpis.total_open + data.kpis.concluidas
   if (total <= 0) return 0
   return Math.round((data.kpis.concluidas / total) * 100)
+}
+
+export function workOperationalLevel(data: WorkKpis): WorkOperationalLevel {
+  const percent = workCompletionPercent(data)
+  const total = data.kpis.total_open + data.kpis.concluidas
+
+  if (total <= 0) {
+    return {
+      label: 'Sem carga',
+      description: 'Não há tarefas abertas ou concluídas neste snapshot.',
+      tone: 'info',
+      percent: 0,
+      remainingToNext: 0,
+      nextLabel: null
+    }
+  }
+
+  const bands = [
+    {
+      minimum: 0,
+      next: 25,
+      label: 'Em evolução',
+      nextLabel: 'Ganhando ritmo',
+      description: 'A operação ainda concentra uma parcela relevante da carga em aberto.'
+    },
+    {
+      minimum: 25,
+      next: 50,
+      label: 'Ganhando ritmo',
+      nextLabel: 'Ritmo consistente',
+      description: 'A execução avançou, com espaço para reduzir o estoque operacional.'
+    },
+    {
+      minimum: 50,
+      next: 75,
+      label: 'Ritmo consistente',
+      nextLabel: 'Bom desempenho',
+      description: 'A maior parte da carga está avançando para uma posição controlada.'
+    },
+    {
+      minimum: 75,
+      next: 90,
+      label: 'Bom desempenho',
+      nextLabel: 'Alta performance',
+      description: 'A operação mantém boa capacidade de conclusão sobre a carga atual.'
+    },
+    {
+      minimum: 90,
+      next: null,
+      label: 'Alta performance',
+      nextLabel: null,
+      description: 'A operação mantém a maior parte da carga consolidada concluída.'
+    }
+  ] as const
+  const band = [...bands].reverse().find(item => percent >= item.minimum) || bands[0]
+
+  const tone: WorkOperationalLevelTone = data.kpis.em_multa > 0
+    ? 'error'
+    : data.kpis.atrasadas > 0
+      ? 'warning'
+      : percent >= 75
+        ? 'success'
+        : percent >= 50
+          ? 'primary'
+          : 'info'
+
+  return {
+    label: band.label,
+    description: band.description,
+    tone,
+    percent,
+    remainingToNext: band.next == null
+      ? 0
+      : Math.max(0, Math.ceil((band.next / 100) * total) - data.kpis.concluidas),
+    nextLabel: band.nextLabel
+  }
 }
 
 export function buildWorkDepartmentRows(
