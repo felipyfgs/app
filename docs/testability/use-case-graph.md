@@ -1,8 +1,8 @@
 # Grafo de testabilidade dos casos de uso
 
-Snapshot: `ff66d72fab0bdfedd12e0b7580d8df6fa3ee4f1992a2c5662ea9c734cda56b79`
+Snapshot: `42b7020eec17d5a407368f97585653fadd96723784a2bd18291d8001cf832ab7`
 
-O levantamento classifica **456 rotas API**, **97 páginas Nuxt** e **14 clientes HTTP** em **10 jornadas**. 4 jornadas são críticas e exigem evidência L1–L3.
+O levantamento classifica **555 rotas API**, **100 páginas Nuxt** e **15 clientes HTTP** em **11 jornadas**. 4 jornadas são críticas e exigem evidência L1–L3.
 
 | Jornada | Crítica | Rotas | Páginas | Clientes HTTP | L0 | L1 | L2 | L3 | Lacunas |
 |---|:---:|---:|---:|---:|:---:|:---:|:---:|:---:|---|
@@ -12,8 +12,9 @@ O levantamento classifica **456 rotas API**, **97 páginas Nuxt** e **14 cliente
 | Configuração e onboarding do escritório (`office-operations`) | não | 33 | 8 | 1 | ✓ | ✓ | ✓ | — | L3 |
 | Catálogo e ciclo de vida de clientes (`client-lifecycle`) | sim | 21 | 23 | 1 | ✓ | ✓ | ✓ | ✓ | nenhuma |
 | Documentos, notas e exportações (`documents-notes`) | não | 24 | 9 | 1 | ✓ | — | — | — | L1, L2, L3 |
-| Monitoramento fiscal e consultas (`fiscal-monitoring`) | sim | 181 | 21 | 3 | ✓ | ✓ | ✓ | ✓ | nenhuma |
-| Fila e processos operacionais (`operational-work`) | sim | 50 | 7 | 3 | ✓ | ✓ | ✓ | ✓ | nenhuma |
+| Atendimento WhatsApp compartilhado (`communication-inbox`) | não | 74 | 2 | 1 | ✓ | ✓ | ✓ | — | L3 |
+| Monitoramento fiscal e consultas (`fiscal-monitoring`) | sim | 203 | 21 | 3 | ✓ | ✓ | ✓ | ✓ | nenhuma |
+| Fila e processos operacionais (`operational-work`) | sim | 53 | 8 | 3 | ✓ | ✓ | ✓ | ✓ | nenhuma |
 | Captura, integrações e documentos de saída (`outbound-capture`) | não | 43 | 1 | 1 | ✓ | — | — | — | L1, L2, L3 |
 | Autorização e consumo SERPRO (`serpro-governance`) | não | 65 | 0 | 2 | ✓ | — | — | — | L1, L2, L3 |
 

@@ -74,7 +74,7 @@ Antes de PR: rode os gates da área que alterou (api e/ou web) e, se tocou specs
 - Commits: Conventional Commits em pt-BR quando o time pedir commit
 - **Antes de qualquer modificação de código/produto:** rode `/opsx-propose` (skill `openspec-propose`) e só implemente depois com `/opsx:apply` — nunca pule a change OpenSpec (proposal/design/tasks/delta)
 - **Sempre** acrescente ou atualize testes (Unit e/ou Feature) que comprovem o comportamento novo/alterado; tasks OpenSpec de implementação devem listar os testes
-- UI do painel: alinhar ao arquétipo em `.local/reference/nuxt-dashboard-template` e ao fidelity gate — não reinvente o shell
+- UI do painel: para qualquer criação, edição, revisão ou padronização visual/UX em `apps/web`, use obrigatoriamente `$ui-archetype`; alinhe ao template em `.local/reference/nuxt-dashboard-template`, às cascas produtivas e ao fidelity gate — não reinvente o shell
 
 ## Architecture boundaries
 
@@ -102,6 +102,6 @@ Antes de PR: rode os gates da área que alterou (api e/ou web) e, se tocou specs
 ## Where else to look
 
 - Specs: `openspec/specs/`
-- Skills (workflows sob demanda; não duplicar aqui): `.codex/skills/` e espelho `.cursor/skills/` — `openspec-*`, `api-integra-contador`
+- Skills (workflows sob demanda; não duplicar aqui): `.codex/skills/` e espelho `.cursor/skills/` — `ui-archetype`, `openspec-*`, `api-integra-contador`
 - Cursor commands: `.cursor/commands/` (`opsx-propose`, `opsx-apply`, `opsx-explore`, `opsx-sync`, `opsx-archive`)
 - OpenSpec rules injetadas: `openspec/config.yaml` (não duplicar stack/ops aqui)
