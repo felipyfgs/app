@@ -262,7 +262,7 @@ function submitPollVote(): void {
             :src="attachment.preview_url"
             controls
             preload="metadata"
-            class="block w-full min-w-56 px-2 py-2"
+            class="block w-full max-w-full px-2 py-2"
             @play="markAudioPlayed"
           />
           <video
@@ -337,9 +337,5 @@ function submitPollVote(): void {
         />
       </div>
     </template>
-
-    <div v-if="message.metadata?.edited_at && !message.metadata.revoked" class="mt-1 text-[10px] opacity-65">
-      editada
-    </div>
   </div>
 </template>

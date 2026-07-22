@@ -315,27 +315,38 @@ onBeforeUnmount(() => {
         </p>
       </div>
 
-      <div v-else class="space-y-4">
+      <div v-else class="space-y-3.5 sm:space-y-4">
         <article
           v-for="message in conversation.messages"
           :key="message.id"
-          class="group flex scroll-m-8 transition"
+          class="group/message flex scroll-m-8 transition"
           :class="message.direction === 'OUTBOUND' ? 'justify-end' : 'justify-start'"
           :data-message-id="message.id"
         >
-          <div class="max-w-[88%] sm:max-w-[72%]">
+          <div class="min-w-0 w-fit max-w-[92%] sm:max-w-[78%] lg:max-w-[72%]">
             <div
-              class="rounded-xl px-3.5 py-2.5 shadow-xs transition-shadow"
+              data-testid="communication-message-bubble"
+              class="relative isolate inline-block w-fit max-w-full rounded-2xl px-3 py-2 shadow-xs ring-1 ring-inset transition sm:px-3.5 sm:py-2.5"
               :class="[
                 message.direction === 'OUTBOUND'
-                  ? 'rounded-br-sm bg-primary text-inverted'
+                  ? 'rounded-br-md bg-primary text-inverted ring-primary/30'
                   : message.direction === 'INTERNAL'
-                    ? 'border border-warning/40 bg-warning/10 text-highlighted'
-                    : 'rounded-bl-sm border border-default bg-default text-highlighted',
+                    ? 'rounded-bl-md bg-warning/10 text-highlighted ring-warning/40'
+                    : 'rounded-bl-md bg-default text-highlighted ring-default',
                 highlightedMessageId === message.id ? 'ring-2 ring-primary ring-offset-2 ring-offset-default' : ''
               ]"
             >
-              <div class="mb-1 flex items-center gap-1.5 text-[11px] opacity-80">
+              <span
+                aria-hidden="true"
+                class="pointer-events-none absolute bottom-px size-2.5 rotate-45 border-b border-l"
+                :class="message.direction === 'OUTBOUND'
+                  ? '-right-1 border-primary/30 bg-primary'
+                  : message.direction === 'INTERNAL'
+                    ? '-left-1 border-warning/40 bg-warning/10'
+                    : '-left-1 border-default bg-default'"
+              />
+
+              <div class="relative mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold leading-none opacity-80">
                 <UIcon
                   v-if="message.direction === 'INTERNAL'"
                   name="i-lucide-sticky-note"
@@ -346,17 +357,24 @@ onBeforeUnmount(() => {
                   name="i-lucide-bot"
                   class="size-3.5"
                 />
+                <UIcon
+                  v-else
+                  :name="message.direction === 'OUTBOUND' ? 'i-lucide-send' : 'i-lucide-message-circle-reply'"
+                  class="size-3.5"
+                />
                 <span>
                   {{ message.direction === 'INTERNAL'
                     ? 'Nota interna'
-                    : message.source === 'FISCAL_AUTOMATION' ? 'Automação fiscal' : 'WhatsApp' }}
+                    : message.source === 'FISCAL_AUTOMATION'
+                      ? 'Automação fiscal'
+                      : message.direction === 'OUTBOUND' ? 'Enviada · WhatsApp' : 'Recebida · WhatsApp' }}
                 </span>
               </div>
 
               <button
                 v-if="quotedMessage(message)"
                 type="button"
-                class="mb-2 block w-full rounded-md border-l-2 border-current bg-elevated/30 px-2.5 py-1.5 text-left text-xs opacity-80 transition-opacity hover:opacity-100"
+                class="relative mb-2 block w-full rounded-lg border-l-2 border-current bg-elevated/30 px-2.5 py-2 text-left text-xs opacity-80 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 title="Ir para a mensagem citada"
                 @click="scrollToMessage(quotedMessage(message)!.id)"
               >
@@ -366,6 +384,7 @@ onBeforeUnmount(() => {
               </button>
 
               <CommunicationMessageContent
+                class="relative"
                 :message="message"
                 :can-reply="canReply && outboundOperational"
                 :action-loading="actionLoadingId === message.id"
@@ -375,7 +394,7 @@ onBeforeUnmount(() => {
                 @recover="(target, operation) => emit('recover', target, operation)"
               />
 
-              <div v-if="message.metadata?.reactions?.length" class="mt-2 flex flex-wrap gap-1">
+              <div v-if="message.metadata?.reactions?.length" class="relative mt-2 flex flex-wrap gap-1">
                 <UButton
                   v-for="(emoji, index) in message.metadata.reactions"
                   :key="`${emoji}-${index}`"
@@ -389,47 +408,57 @@ onBeforeUnmount(() => {
                 />
               </div>
 
-              <div class="mt-1.5 flex items-center justify-end gap-1 text-[10px] opacity-75">
-                <UPopover v-if="canReply && outboundOperational && isRemoteMessage(message)">
-                  <UButton
-                    icon="i-lucide-smile-plus"
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
-                    class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
-                    :disabled="actionLoadingId === message.id"
-                    aria-label="Reagir à mensagem"
-                  />
-                  <template #content>
-                    <div class="grid w-64 grid-cols-8 gap-1 p-2" aria-label="Escolher reação">
-                      <UButton
-                        v-for="emoji in COMMUNICATION_REACTION_EMOJIS"
-                        :key="emoji"
-                        :label="emoji"
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        :aria-label="`Reagir com ${emoji}`"
-                        @click="emit('react', message, emoji)"
-                      />
-                    </div>
-                  </template>
-                </UPopover>
-                <UDropdownMenu
+              <div
+                data-testid="communication-message-meta"
+                class="relative mt-1.5 flex min-h-6 items-end justify-end gap-1 text-[10px] leading-none opacity-75"
+                aria-label="Metadados da mensagem"
+              >
+                <div
                   v-if="canReply && outboundOperational"
-                  :items="messageActionItems(message)"
+                  class="mr-auto flex items-center gap-0.5 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/message:opacity-100 group-focus-within/message:opacity-100"
+                  data-testid="communication-message-actions"
                 >
-                  <UButton
-                    icon="i-lucide-ellipsis"
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
-                    class="mr-auto opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
-                    :loading="actionLoadingId === message.id"
-                    aria-label="Ações da mensagem"
-                  />
-                </UDropdownMenu>
-                <span>{{ formatCommunicationDate(message.occurred_at) }}</span>
+                  <UPopover v-if="isRemoteMessage(message)">
+                    <UButton
+                      icon="i-lucide-smile-plus"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      :class="message.direction === 'OUTBOUND' ? 'text-inverted hover:bg-default/20' : ''"
+                      :disabled="actionLoadingId === message.id"
+                      aria-label="Reagir à mensagem"
+                    />
+                    <template #content>
+                      <div class="grid w-64 grid-cols-8 gap-1 p-2" aria-label="Escolher reação">
+                        <UButton
+                          v-for="emoji in COMMUNICATION_REACTION_EMOJIS"
+                          :key="emoji"
+                          :label="emoji"
+                          color="neutral"
+                          variant="ghost"
+                          size="sm"
+                          :aria-label="`Reagir com ${emoji}`"
+                          @click="emit('react', message, emoji)"
+                        />
+                      </div>
+                    </template>
+                  </UPopover>
+                  <UDropdownMenu :items="messageActionItems(message)">
+                    <UButton
+                      icon="i-lucide-ellipsis"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      :class="message.direction === 'OUTBOUND' ? 'text-inverted hover:bg-default/20' : ''"
+                      :loading="actionLoadingId === message.id"
+                      aria-label="Ações da mensagem"
+                    />
+                  </UDropdownMenu>
+                </div>
+                <span v-if="message.metadata?.edited_at && !message.metadata.revoked">editada ·</span>
+                <time :datetime="message.occurred_at || undefined">
+                  {{ formatCommunicationDate(message.occurred_at) }}
+                </time>
                 <template v-if="message.direction === 'OUTBOUND'">
                   <UIcon :name="COMMUNICATION_MESSAGE_STATUS[message.status].icon" class="size-3.5" />
                   <span class="sr-only">{{ COMMUNICATION_MESSAGE_STATUS[message.status].label }}</span>
